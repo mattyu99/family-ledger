@@ -1,8 +1,11 @@
 {
   "expo": {
-    "name": "test-expo",
-    "slug": "test-expo",
+    "name": "family-ledger",
+    "slug": "family-ledger",
     "version": "1.0.0",
+    "experiments": {
+      "baseUrl": "/family-ledger"
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
