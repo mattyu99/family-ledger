@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
+import { getCategoryIcon } from '../lib/icons';
 
 interface TransactionItemProps {
   transaction: Transaction;
@@ -21,7 +22,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = ({ transaction })
     <View style={styles.card}>
       {/* 類別圖示 */}
       <View style={[styles.iconBox, { backgroundColor: category ? `${category.color}20` : '#F3F4F6' }]}>
-        <Text style={styles.iconText}>{category?.icon || '📝'}</Text>
+        <Text style={styles.iconText}>{getCategoryIcon(category?.icon)}</Text>
       </View>
 
       {/* 項目與細節 */}

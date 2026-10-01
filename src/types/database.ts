@@ -4,7 +4,7 @@ export type CategoryType = 'expense' | 'income';
 
 export interface Profile {
   id: string;
-  email: string;
+  email?: string;
   display_name: string;
   avatar_url?: string;
 }

@@ -100,55 +100,101 @@ ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transaction_splits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ledger_invites ENABLE ROW LEVEL SECURITY;
 
--- 檢查當前登入者是否屬於特定帳本成員的輔助函式
+-- 檢查當前登入者是否屬於特定帳本成員的輔助函式（包含建立者與已加入成員）
 CREATE OR REPLACE FUNCTION public.is_ledger_member(target_ledger_id UUID)
 RETURNS BOOLEAN AS $$
 BEGIN
   RETURN EXISTS (
     SELECT 1 FROM public.ledger_members
     WHERE ledger_id = target_ledger_id AND user_id = auth.uid()
+  ) OR EXISTS (
+    SELECT 1 FROM public.ledgers
+    WHERE id = target_ledger_id AND created_by = auth.uid()
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Profiles 規則：任何人可讀取個人公開資訊，只能修改自己
+-- Profiles 規則：任何人可讀取個人公開資訊，自己可新增與修改
+DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON public.profiles;
 CREATE POLICY "Public profiles are viewable by everyone" ON public.profiles FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
+CREATE POLICY "Users can insert own profile" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
--- Ledgers 規則：只有成員能看自己參與的帳本
+-- Ledgers 規則：只有成員與建立者能看自己參與的帳本
+DROP POLICY IF EXISTS "Members can view their ledgers" ON public.ledgers;
 CREATE POLICY "Members can view their ledgers" ON public.ledgers FOR SELECT 
-  USING (EXISTS (SELECT 1 FROM public.ledger_members WHERE ledger_members.ledger_id = ledgers.id AND ledger_members.user_id = auth.uid()));
+  USING (public.is_ledger_member(id));
+
+DROP POLICY IF EXISTS "Users can create ledgers" ON public.ledgers;
 CREATE POLICY "Users can create ledgers" ON public.ledgers FOR INSERT WITH CHECK (auth.uid() = created_by);
+
+DROP POLICY IF EXISTS "Owners can update ledgers" ON public.ledgers;
 CREATE POLICY "Owners can update ledgers" ON public.ledgers FOR UPDATE 
-  USING (EXISTS (SELECT 1 FROM public.ledger_members WHERE ledger_members.ledger_id = ledgers.id AND ledger_members.user_id = auth.uid() AND ledger_members.role IN ('owner', 'admin')));
+  USING (public.is_ledger_member(id));
 
 -- Ledger Members 規則
+DROP POLICY IF EXISTS "Members can view ledger members" ON public.ledger_members;
 CREATE POLICY "Members can view ledger members" ON public.ledger_members FOR SELECT 
-  USING (public.is_ledger_member(ledger_id));
+  USING (public.is_ledger_member(ledger_id) OR user_id = auth.uid());
+
+DROP POLICY IF EXISTS "Members can insert ledger members" ON public.ledger_members;
+CREATE POLICY "Members can insert ledger members" ON public.ledger_members FOR INSERT 
+  WITH CHECK (
+    user_id = auth.uid() 
+    OR public.is_ledger_member(ledger_id)
+  );
+
+DROP POLICY IF EXISTS "Admins/Owners can manage members" ON public.ledger_members;
 CREATE POLICY "Admins/Owners can manage members" ON public.ledger_members FOR ALL 
-  USING (EXISTS (SELECT 1 FROM public.ledger_members lm WHERE lm.ledger_id = ledger_members.ledger_id AND lm.user_id = auth.uid() AND lm.role IN ('owner', 'admin')));
+  USING (public.is_ledger_member(ledger_id));
 
 -- Categories 規則
+DROP POLICY IF EXISTS "Members can view categories" ON public.categories;
 CREATE POLICY "Members can view categories" ON public.categories FOR SELECT 
   USING (ledger_id IS NULL OR public.is_ledger_member(ledger_id));
+
+DROP POLICY IF EXISTS "Members can manage categories" ON public.categories;
 CREATE POLICY "Members can manage categories" ON public.categories FOR ALL 
   USING (public.is_ledger_member(ledger_id));
 
 -- Transactions 規則：只有成員能看與增修帳目
+DROP POLICY IF EXISTS "Members can view transactions" ON public.transactions;
 CREATE POLICY "Members can view transactions" ON public.transactions FOR SELECT 
   USING (public.is_ledger_member(ledger_id));
+
+DROP POLICY IF EXISTS "Members can insert transactions" ON public.transactions;
 CREATE POLICY "Members can insert transactions" ON public.transactions FOR INSERT 
   WITH CHECK (public.is_ledger_member(ledger_id));
+
+DROP POLICY IF EXISTS "Members can update transactions" ON public.transactions;
 CREATE POLICY "Members can update transactions" ON public.transactions FOR UPDATE 
   USING (public.is_ledger_member(ledger_id));
+
+DROP POLICY IF EXISTS "Members can delete transactions" ON public.transactions;
 CREATE POLICY "Members can delete transactions" ON public.transactions FOR DELETE 
   USING (public.is_ledger_member(ledger_id));
 
 -- Splits 規則
+DROP POLICY IF EXISTS "Members can view splits" ON public.transaction_splits;
 CREATE POLICY "Members can view splits" ON public.transaction_splits FOR SELECT 
   USING (EXISTS (SELECT 1 FROM public.transactions t WHERE t.id = transaction_splits.transaction_id AND public.is_ledger_member(t.ledger_id)));
+
+DROP POLICY IF EXISTS "Members can manage splits" ON public.transaction_splits;
 CREATE POLICY "Members can manage splits" ON public.transaction_splits FOR ALL 
   USING (EXISTS (SELECT 1 FROM public.transactions t WHERE t.id = transaction_splits.transaction_id AND public.is_ledger_member(t.ledger_id)));
+
+-- Invites 規則
+DROP POLICY IF EXISTS "Members can view ledger invites" ON public.ledger_invites;
+CREATE POLICY "Members can view ledger invites" ON public.ledger_invites FOR SELECT 
+  USING (public.is_ledger_member(ledger_id));
+
+DROP POLICY IF EXISTS "Admins can manage invites" ON public.ledger_invites;
+CREATE POLICY "Admins can manage invites" ON public.ledger_invites FOR ALL 
+  USING (EXISTS (SELECT 1 FROM public.ledger_members lm WHERE lm.ledger_id = ledger_invites.ledger_id AND lm.user_id = auth.uid() AND lm.role IN ('owner', 'admin')));
 
 -- ==============================================================================
 -- 自動化觸發器 (Triggers)：新使用者註冊時，自動建立 Profile 與 預設家庭帳本及分類
@@ -164,8 +210,8 @@ BEGIN
     VALUES (
         NEW.id,
         NEW.email,
-        COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
-        NEW.raw_user_meta_data->>'avatar_url'
+        COALESCE(NEW.raw_user_meta_data->>'full_name', NULLIF(split_part(NEW.email, '@', 1), ''), '家庭成員'),
+        COALESCE(NEW.raw_user_meta_data->>'avatar_url', '👨')
     );
 
     -- 2. 為新使用者預設建立一本「幸福家庭帳本」
@@ -179,14 +225,14 @@ BEGIN
 
     -- 4. 建立常用的預設支出與收入分類
     INSERT INTO public.categories (ledger_id, name, icon, color, type, sort_order) VALUES
-    (new_ledger_id, '餐飲伙食', 'restaurant', '#EF4444', 'expense', 1),
-    (new_ledger_id, '生鮮超市', 'shopping-cart', '#F59E0B', 'expense', 2),
-    (new_ledger_id, '居家水電', 'home', '#3B82F6', 'expense', 3),
-    (new_ledger_id, '交通出行', 'car', '#10B981', 'expense', 4),
-    (new_ledger_id, '休閒娛樂', 'film', '#8B5CF6', 'expense', 5),
-    (new_ledger_id, '醫療保健', 'medkit', '#EC4899', 'expense', 6),
-    (new_ledger_id, '薪資收入', 'cash', '#059669', 'income', 1),
-    (new_ledger_id, '投資理財', 'trending-up', '#2563EB', 'income', 2);
+    (new_ledger_id, '餐飲伙食', '🍲', '#EF4444', 'expense', 1),
+    (new_ledger_id, '生鮮超市', '🛒', '#F59E0B', 'expense', 2),
+    (new_ledger_id, '居家水電', '💡', '#3B82F6', 'expense', 3),
+    (new_ledger_id, '交通出行', '🚗', '#10B981', 'expense', 4),
+    (new_ledger_id, '休閒娛樂', '🎬', '#8B5CF6', 'expense', 5),
+    (new_ledger_id, '醫療保健', '💊', '#EC4899', 'expense', 6),
+    (new_ledger_id, '薪資收入', '💰', '#059669', 'income', 1),
+    (new_ledger_id, '投資理財', '📈', '#2563EB', 'income', 2);
 
     RETURN NEW;
 END;
@@ -198,7 +244,27 @@ CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- 開啟 Realtime 即時推播 (Transactions 與 Splits 表)
-ALTER PUBLICATION supabase_realtime ADD TABLE public.transactions;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.transaction_splits;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.ledger_members;
+-- 安全加入 Realtime 即時推播 (已存在則自動略過，不報錯)
+DO $$
+BEGIN
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.transactions;
+  EXCEPTION
+    WHEN duplicate_object THEN NULL;
+    WHEN others THEN NULL;
+  END;
+
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.transaction_splits;
+  EXCEPTION
+    WHEN duplicate_object THEN NULL;
+    WHEN others THEN NULL;
+  END;
+
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.ledger_members;
+  EXCEPTION
+    WHEN duplicate_object THEN NULL;
+    WHEN others THEN NULL;
+  END;
+END $$;

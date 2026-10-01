@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useLedger } from '../context/LedgerContext';
 import { TransactionType } from '../types/database';
+import { getCategoryIcon } from '../lib/icons';
 
 interface AddTransactionModalProps {
   visible: boolean;
@@ -23,18 +24,27 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
 
   const [type, setType] = useState<TransactionType>('expense');
   const [amount, setAmount] = useState<string>('');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>(categories[0]?.id || '');
-  const [paidBy, setPaidBy] = useState<string>(currentUser.id);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
+  const [paidBy, setPaidBy] = useState<string>('');
   const [note, setNote] = useState<string>('');
   const [isSplit, setIsSplit] = useState<boolean>(true);
 
-  React.useEffect(() => {
-    if (isDeviceBound) {
-      setPaidBy(currentUser.id);
-    }
-  }, [visible, currentUser, isDeviceBound]);
-
   const availableCategories = categories.filter(c => c.type === type);
+
+  // 當彈窗開啟、或成員/分類/當前使用者載入時，自動同步預設選中值
+  React.useEffect(() => {
+    if (visible) {
+      const activeMember = members.find(m => m.id === currentUser.id) || members[0];
+      if (activeMember) {
+        setPaidBy(activeMember.id);
+      }
+
+      const activeCats = categories.filter(c => c.type === type);
+      if (activeCats.length > 0 && !activeCats.some(c => c.id === selectedCategoryId)) {
+        setSelectedCategoryId(activeCats[0].id);
+      }
+    }
+  }, [visible, currentUser.id, members, categories, type]);
 
   const handleSubmit = async () => {
     const numAmount = parseFloat(amount);
@@ -43,19 +53,32 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
       return;
     }
 
-    await addTransaction({
-      amount: numAmount,
-      type,
-      category_id: selectedCategoryId || availableCategories[0]?.id || '',
-      paid_by: isDeviceBound ? currentUser.id : paidBy,
-      note,
-      splitWithIds: isSplit && type === 'expense' ? members.map(m => m.id) : undefined,
-    });
+    const currentCats = categories.filter(c => c.type === type);
+    const targetCategory = currentCats.find(c => c.id === selectedCategoryId) || currentCats[0];
+    const targetPayer = (isDeviceBound ? currentUser.id : paidBy) || currentUser.id || members[0]?.id;
 
-    // 重設表單並關閉
-    setAmount('');
-    setNote('');
-    onClose();
+    if (!targetCategory) {
+      alert('請先選擇記帳分類');
+      return;
+    }
+
+    try {
+      await addTransaction({
+        amount: numAmount,
+        type,
+        category_id: targetCategory.id,
+        paid_by: targetPayer,
+        note,
+        splitWithIds: isSplit && type === 'expense' ? members.map(m => m.id) : undefined,
+      });
+
+      // 重設表單並關閉
+      setAmount('');
+      setNote('');
+      onClose();
+    } catch (err: any) {
+      alert(err.message || '儲存記帳時發生錯誤');
+    }
   };
 
   return (
@@ -131,7 +154,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
                     ]}
                     onPress={() => setSelectedCategoryId(cat.id)}
                   >
-                    <Text style={styles.categoryChipIcon}>{cat.icon}</Text>
+                    <Text style={styles.categoryChipIcon}>{getCategoryIcon(cat.icon)}</Text>
                     <Text
                       style={[
                         styles.categoryChipText,

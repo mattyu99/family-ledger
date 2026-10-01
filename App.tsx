@@ -15,6 +15,7 @@ import {
 import { LedgerProvider, useLedger } from './src/context/LedgerContext';
 import { TransactionItem } from './src/components/TransactionItem';
 import { AddTransactionModal } from './src/components/AddTransactionModal';
+import { getCategoryIcon } from './src/lib/icons';
 
 const AVATAR_OPTIONS = ['👨', '👩', '👦', '👧', '👴', '👵', '👶', '👱', '🐶', '🐱'];
 
@@ -211,7 +212,7 @@ function MainApp() {
                   return (
                     <View key={cat.id} style={styles.categoryStatRow}>
                       <View style={styles.catHeader}>
-                        <Text style={styles.catName}>{cat.icon} {cat.name}</Text>
+                        <Text style={styles.catName}>{getCategoryIcon(cat.icon)} {cat.name}</Text>
                         <Text style={styles.catAmount}>NT$ {catTotal.toLocaleString()} ({percentage}%)</Text>
                       </View>
                       <View style={styles.progressBarBg}>
