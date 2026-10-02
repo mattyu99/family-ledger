@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Transaction, Category, Ledger, Profile, TransactionType } from '../types/database';
 import { supabase, isConfigured } from '../lib/supabase';
@@ -129,6 +130,18 @@ interface LedgerContextType {
     netBalance: number;
     paidByMembers: Record<string, number>;
   };
+  hasJoinedLedger: boolean;
+  isOwner: boolean;
+  inviteCode: string;
+  createLedger: (name?: string, creatorName?: string, avatar?: string) => Promise<void>;
+  joinLedgerByCode: (codeOrUrl: string, memberName?: string, avatar?: string) => Promise<{ success: boolean; message?: string }>;
+  regenerateInviteCode: () => Promise<string>;
+  updateInviteCode: (customCode: string) => Promise<boolean>;
+  getInviteLink: () => string;
+  pendingInviteCode: string | null;
+  confirmPendingInvite: () => Promise<void>;
+  cancelPendingInvite: () => void;
+  leaveCurrentLedger: () => Promise<void>;
 }
 
 const LedgerContext = createContext<LedgerContextType | null>(null);
@@ -139,6 +152,8 @@ const STORAGE_KEYS = {
   MEMBERS: '@family_ledger_members',
   DEVICE_BOUND: '@family_ledger_device_bound',
   LEDGER: '@family_ledger_current',
+  HAS_JOINED: '@family_ledger_has_joined',
+  INVITE_CODE: '@family_ledger_invite_code',
 };
 
 export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -150,7 +165,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [currentUser, setCurrentUser] = useState<Profile>(DEFAULT_MEMBERS[0]);
   const [isCloudSynced, setIsCloudSynced] = useState<boolean>(false);
   const [isDeviceBound, setIsDeviceBound] = useState<boolean>(false);
+  const [hasJoinedLedger, setHasJoinedLedger] = useState<boolean>(true);
+  const [inviteCode, setInviteCode] = useState<string>('FAM-8823');
+  const [userRole, setUserRole] = useState<'owner' | 'admin' | 'member'>('owner');
+  const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
 
+  const isOwner = userRole === 'owner' || currentLedger.created_by === currentUser.id;
   const channelRef = useRef<any>(null);
 
   // 1. 初始化本地快取（Local-First: 先離線秒開，再非同步接雲端）
@@ -185,14 +205,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         }
 
+        const savedHasJoined = await AsyncStorage.getItem(STORAGE_KEYS.HAS_JOINED);
+        const savedCode = await AsyncStorage.getItem(STORAGE_KEYS.INVITE_CODE);
+        if (savedCode) setInviteCode(savedCode);
+
         const savedLedger = await AsyncStorage.getItem(STORAGE_KEYS.LEDGER);
         if (savedLedger) {
           const parsed = JSON.parse(savedLedger);
-          if (isValidUUID(parsed.id)) {
+          if (isValidUUID(parsed.id) && parsed.id !== DEMO_LEDGER_ID) {
             setCurrentLedger(parsed);
-          } else {
-            await AsyncStorage.removeItem(STORAGE_KEYS.LEDGER);
+            if (savedHasJoined !== 'false') {
+              setHasJoinedLedger(true);
+            }
           }
+        } else if (savedHasJoined === 'false') {
+          setHasJoinedLedger(false);
         }
 
         const savedBound = await AsyncStorage.getItem(STORAGE_KEYS.DEVICE_BOUND);
@@ -203,6 +230,156 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     loadLocalCache();
   }, []);
+
+  // 輔助函式：建立 Realtime WebSocket 訂閱
+  const setupRealtimeSubscription = (ledgerId: string) => {
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+    }
+
+    const channel = supabase
+      .channel(`ledger-${ledgerId}-realtime`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'transactions',
+          filter: `ledger_id=eq.${ledgerId}`,
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            const newRow = payload.new as any;
+            setTransactions((prev) => {
+              if (prev.some((t) => t.id === newRow.id)) return prev;
+              const item: Transaction = { ...newRow, amount: Number(newRow.amount) };
+              const updated = [item, ...prev];
+              AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
+              return updated;
+            });
+          } else if (payload.eventType === 'DELETE') {
+            const oldRow = payload.old as any;
+            setTransactions((prev) => {
+              const updated = prev.filter((t) => t.id !== oldRow.id);
+              AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
+              return updated;
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            const updatedRow = payload.new as any;
+            setTransactions((prev) => {
+              const updated = prev.map((t) =>
+                t.id === updatedRow.id ? { ...updatedRow, amount: Number(updatedRow.amount) } : t
+              );
+              AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
+              return updated;
+            });
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setIsCloudSynced(true);
+        }
+      });
+
+    channelRef.current = channel;
+  };
+
+  // 輔助函式：載入指定帳本的完整資料 (分類、成員、交易、即時推播)
+  const loadLedgerData = async (targetLedger: Ledger, authUserId: string) => {
+    setCurrentLedger(targetLedger);
+    await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(targetLedger));
+
+    // (A) 載入或獲取邀請碼
+    const { data: inviteRows } = await supabase
+      .from('ledger_invites')
+      .select('invite_code')
+      .eq('ledger_id', targetLedger.id)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (inviteRows && inviteRows.length > 0 && inviteRows[0].invite_code) {
+      setInviteCode(inviteRows[0].invite_code);
+      await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, inviteRows[0].invite_code);
+    } else {
+      const fallbackCode = 'FAM-' + (targetLedger.id ? targetLedger.id.replace(/-/g, '').slice(0, 4).toUpperCase() : '8823');
+      setInviteCode(fallbackCode);
+      await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, fallbackCode);
+      if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+        await supabase.from('ledger_invites').upsert({
+          ledger_id: targetLedger.id,
+          invite_code: fallbackCode,
+          created_by: authUserId,
+          expires_at: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+        }, { onConflict: 'ledger_id,invite_code' });
+      }
+    }
+
+    // (B) 載入分類表
+    const { data: catRows } = await supabase
+      .from('categories')
+      .select('*')
+      .or(`ledger_id.eq.${targetLedger.id},ledger_id.is.null`)
+      .order('sort_order', { ascending: true });
+
+    if (catRows && catRows.length > 0) {
+      setCategories(catRows);
+    } else {
+      const catsToInsert = DEFAULT_CATEGORIES.map(c => ({
+        id: generateUUID(),
+        ledger_id: targetLedger.id,
+        name: c.name,
+        icon: c.icon,
+        color: c.color,
+        type: c.type,
+        sort_order: c.sort_order,
+      }));
+      await supabase.from('categories').insert(catsToInsert);
+      setCategories(catsToInsert);
+    }
+
+    // (C) 載入全體家庭成員
+    const { data: memberRows } = await supabase
+      .from('ledger_members')
+      .select('user_id, role, profiles(*)')
+      .eq('ledger_id', targetLedger.id);
+
+    if (memberRows && memberRows.length > 0) {
+      const loadedMembers: Profile[] = memberRows
+        .map((r: any) => r.profiles)
+        .filter(Boolean);
+
+      if (loadedMembers.length > 0) {
+        setMembers(loadedMembers);
+        await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(loadedMembers));
+
+        const myMemberRow = memberRows.find((r: any) => r.user_id === authUserId);
+        if (myMemberRow) {
+          setUserRole(myMemberRow.role as any);
+        }
+      }
+    }
+
+    // (D) 載入交易明細
+    const { data: txRows } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('ledger_id', targetLedger.id)
+      .order('transacted_at', { ascending: false });
+
+    if (txRows) {
+      const formattedTx: Transaction[] = txRows.map((t: any) => ({
+        ...t,
+        amount: Number(t.amount),
+      }));
+      setTransactions(formattedTx);
+      await AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(formattedTx));
+      setIsCloudSynced(true);
+    }
+
+    // (E) Realtime 訂閱
+    setupRealtimeSubscription(targetLedger.id);
+  };
 
   // 2. 當連線設定具備時，啟動 Supabase 身分驗證與雲端即時同步
   useEffect(() => {
@@ -215,7 +392,6 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const setupSupabase = async () => {
       try {
-        // (A) 身份認證：取得現有 Session 或使用匿名快速登入
         let { data: { session } } = await supabase.auth.getSession();
         if (!session) {
           const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
@@ -229,7 +405,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const authUser = session?.user;
         if (!authUser || !isMounted) return;
 
-        // (B) 使用者 Profile 初始化
+        // 使用者 Profile 初始化
         const { data: existingProfile } = await supabase
           .from('profiles')
           .select('*')
@@ -249,161 +425,57 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           myProfile = existingProfile;
         }
 
-        // (C) 帳本取得或自動建立
+        // 偵測網址是否帶有邀請參數
+        let urlInviteCode: string | null = null;
+        let urlJoinId: string | null = null;
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
+          const params = new URLSearchParams(window.location.search);
+          urlInviteCode = params.get('invite');
+          urlJoinId = params.get('join') || params.get('ledger');
+        }
+
+        // 查詢該用戶目前已加入的帳本清單
         const { data: memberLedgers } = await supabase
           .from('ledger_members')
           .select('ledger_id, role, ledgers(*)')
           .eq('user_id', authUser.id);
 
-        let activeLedger: Ledger;
-        if (memberLedgers && memberLedgers.length > 0 && memberLedgers[0].ledgers) {
-          activeLedger = memberLedgers[0].ledgers as unknown as Ledger;
-        } else {
-          // 若尚無帳本，為此用戶建立一本公帳
-          const newLedgerId = generateUUID();
-          activeLedger = {
-            id: newLedgerId,
-            name: '幸福小窩家庭公帳',
-            description: '全家人日常採買與生活開銷',
-            currency: 'TWD',
-            created_by: authUser.id,
-            created_at: new Date().toISOString(),
-          };
+        const targetInvite = urlInviteCode || urlJoinId;
 
-          await supabase.from('ledgers').insert({
-            id: activeLedger.id,
-            name: activeLedger.name,
-            description: activeLedger.description,
-            currency: activeLedger.currency,
-            created_by: activeLedger.created_by,
-          });
+        // 情境 A：網址自帶邀請碼
+        if (targetInvite) {
+          const alreadyInThisLedger = memberLedgers?.some(
+            (m: any) => m.ledger_id === urlJoinId || m.ledgers?.id === urlJoinId
+          );
 
-          await supabase.from('ledger_members').insert({
-            ledger_id: activeLedger.id,
-            user_id: authUser.id,
-            role: 'owner',
-          });
-        }
-
-        if (!isMounted) return;
-        setCurrentLedger(activeLedger);
-        await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(activeLedger));
-
-        // (D) 載入此帳本的分類表
-        const { data: catRows } = await supabase
-          .from('categories')
-          .select('*')
-          .or(`ledger_id.eq.${activeLedger.id},ledger_id.is.null`)
-          .order('sort_order', { ascending: true });
-
-        if (catRows && catRows.length > 0) {
-          setCategories(catRows);
-        } else {
-          // 若無分類則寫入系統預設分類
-          const catsToInsert = DEFAULT_CATEGORIES.map(c => ({
-            id: generateUUID(),
-            ledger_id: activeLedger.id,
-            name: c.name,
-            icon: c.icon,
-            color: c.color,
-            type: c.type,
-            sort_order: c.sort_order,
-          }));
-          await supabase.from('categories').insert(catsToInsert);
-          setCategories(catsToInsert);
-        }
-
-        // (E) 載入此帳本的全體家庭成員
-        const { data: memberRows } = await supabase
-          .from('ledger_members')
-          .select('user_id, role, profiles(*)')
-          .eq('ledger_id', activeLedger.id);
-
-        if (memberRows && memberRows.length > 0) {
-          const loadedMembers: Profile[] = memberRows
-            .map((r: any) => r.profiles)
-            .filter(Boolean);
-
-          if (loadedMembers.length > 0) {
-            setMembers(loadedMembers);
-            await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(loadedMembers));
-
-            // 若目前選定的使用者不在成員清單中，重設為自己的真實 Profile
-            setCurrentUser(prev => {
-              const matched = loadedMembers.find(m => m.id === prev.id);
-              return matched || myProfile;
-            });
+          if (!alreadyInThisLedger) {
+            // 如果此裝置尚未有任何帳本，直接自動通關加入！
+            if (!memberLedgers || memberLedgers.length === 0) {
+              await joinLedgerByCode(targetInvite, myProfile.display_name, myProfile.avatar_url);
+              return;
+            } else {
+              // 此裝置已經有其他帳本，彈窗詢問是否切換加入
+              setPendingInviteCode(targetInvite);
+            }
           }
         }
 
-        // (F) 載入雲端交易明細
-        const { data: txRows } = await supabase
-          .from('transactions')
-          .select('*')
-          .eq('ledger_id', activeLedger.id)
-          .order('transacted_at', { ascending: false });
-
-        if (txRows) {
-          const formattedTx: Transaction[] = txRows.map((t: any) => ({
-            ...t,
-            amount: Number(t.amount),
-          }));
-          setTransactions(formattedTx);
-          await AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(formattedTx));
-          setIsCloudSynced(true);
+        // 情境 B：一般進入（已在某帳本內）
+        if (memberLedgers && memberLedgers.length > 0 && memberLedgers[0].ledgers) {
+          const activeLedger = memberLedgers[0].ledgers as unknown as Ledger;
+          setUserRole(memberLedgers[0].role as any);
+          if (!isMounted) return;
+          await loadLedgerData(activeLedger, authUser.id);
+          setHasJoinedLedger(true);
+          await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
+        } else {
+          // 情境 C：新訪客打開乾淨網址，未持有任何帳本 ➡️ 顯示歡迎首頁 (冷啟動)
+          if (!isMounted) return;
+          const savedHasJoined = await AsyncStorage.getItem(STORAGE_KEYS.HAS_JOINED);
+          if (savedHasJoined !== 'true') {
+            setHasJoinedLedger(false);
+          }
         }
-
-        // (G) 建立 Supabase WebSocket Realtime 即時推播訂閱
-        if (channelRef.current) {
-          supabase.removeChannel(channelRef.current);
-        }
-
-        const channel = supabase
-          .channel(`ledger-${activeLedger.id}-realtime`)
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'transactions',
-              filter: `ledger_id=eq.${activeLedger.id}`,
-            },
-            (payload) => {
-              if (payload.eventType === 'INSERT') {
-                const newRow = payload.new as any;
-                setTransactions((prev) => {
-                  if (prev.some((t) => t.id === newRow.id)) return prev;
-                  const item: Transaction = { ...newRow, amount: Number(newRow.amount) };
-                  const updated = [item, ...prev];
-                  AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
-                  return updated;
-                });
-              } else if (payload.eventType === 'DELETE') {
-                const oldRow = payload.old as any;
-                setTransactions((prev) => {
-                  const updated = prev.filter((t) => t.id !== oldRow.id);
-                  AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
-                  return updated;
-                });
-              } else if (payload.eventType === 'UPDATE') {
-                const updatedRow = payload.new as any;
-                setTransactions((prev) => {
-                  const updated = prev.map((t) =>
-                    t.id === updatedRow.id ? { ...updatedRow, amount: Number(updatedRow.amount) } : t
-                  );
-                  AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
-                  return updated;
-                });
-              }
-            }
-          )
-          .subscribe((status) => {
-            if (status === 'SUBSCRIBED') {
-              setIsCloudSynced(true);
-            }
-          });
-
-        channelRef.current = channel;
       } catch (err) {
         console.warn('初始化 Supabase 連線或即時同步時發生錯誤:', err);
         setIsCloudSynced(false);
@@ -419,6 +491,275 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     };
   }, []);
+
+  // 建立新的家庭公帳 (Owner 發起)
+  const createLedger = async (name: string = '幸福家庭帳本', creatorName?: string, avatar?: string) => {
+    try {
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        const { data: anonData } = await supabase.auth.signInAnonymously();
+        session = anonData?.session || null;
+      }
+      const authUserId = session?.user?.id || generateUUID();
+      const newLedgerId = generateUUID();
+      const newCode = 'FAM-' + Math.floor(1000 + Math.random() * 9000);
+
+      const newLedger: Ledger = {
+        id: newLedgerId,
+        name: name.trim() || '幸福家庭帳本',
+        description: '全家共享日常開銷帳本',
+        currency: 'TWD',
+        created_by: authUserId,
+        created_at: new Date().toISOString(),
+      };
+
+      if (isConfigured) {
+        if (creatorName || avatar) {
+          await supabase.from('profiles').upsert({
+            id: authUserId,
+            display_name: creatorName || '爸爸 (我)',
+            avatar_url: avatar || '👨',
+          });
+        }
+
+        await supabase.from('ledgers').insert({
+          id: newLedger.id,
+          name: newLedger.name,
+          description: newLedger.description,
+          currency: newLedger.currency,
+          created_by: newLedger.created_by,
+        });
+
+        await supabase.from('ledger_members').insert({
+          ledger_id: newLedger.id,
+          user_id: authUserId,
+          role: 'owner',
+        });
+
+        await supabase.from('ledger_invites').insert({
+          ledger_id: newLedger.id,
+          invite_code: newCode,
+          created_by: authUserId,
+          expires_at: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+        });
+      }
+
+      setUserRole('owner');
+      setInviteCode(newCode);
+      await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, newCode);
+      await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
+      setHasJoinedLedger(true);
+
+      if (creatorName || avatar) {
+        const updatedMe: Profile = {
+          id: authUserId,
+          display_name: creatorName || '爸爸 (我)',
+          avatar_url: avatar || '👨',
+        };
+        setCurrentUser(updatedMe);
+        await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedMe));
+      }
+
+      if (isConfigured) {
+        await loadLedgerData(newLedger, authUserId);
+      } else {
+        setCurrentLedger(newLedger);
+        await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(newLedger));
+      }
+    } catch (err: any) {
+      console.warn('建立帳本失敗:', err);
+      alert('建立帳本時發生錯誤: ' + (err.message || '請檢查網路連線'));
+    }
+  };
+
+  // 透過邀請碼或專屬連結加入帳本 (家人加入)
+  const joinLedgerByCode = async (
+    codeOrUrl: string,
+    memberName?: string,
+    avatar?: string
+  ): Promise<{ success: boolean; message?: string }> => {
+    try {
+      if (!codeOrUrl || !codeOrUrl.trim()) {
+        return { success: false, message: '請輸入有效的邀請碼或邀請連結' };
+      }
+
+      let code = codeOrUrl.trim();
+      let extractedJoinId = '';
+
+      if (code.includes('http://') || code.includes('https://') || code.includes('?')) {
+        try {
+          const urlObj = new URL(code.startsWith('http') ? code : `https://dummy.com/${code}`);
+          const pInvite = urlObj.searchParams.get('invite');
+          const pJoin = urlObj.searchParams.get('join') || urlObj.searchParams.get('ledger');
+          if (pInvite) code = pInvite.trim();
+          if (pJoin) extractedJoinId = pJoin.trim();
+        } catch {
+          // ignore parsing error
+        }
+      }
+
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        const { data: anonData } = await supabase.auth.signInAnonymously();
+        session = anonData?.session || null;
+      }
+      const authUserId = session?.user?.id || generateUUID();
+
+      let targetLedger: Ledger | null = null;
+      let targetLedgerId = extractedJoinId;
+
+      if (isValidUUID(targetLedgerId)) {
+        const { data: lData } = await supabase.from('ledgers').select('*').eq('id', targetLedgerId).maybeSingle();
+        if (lData) targetLedger = lData as unknown as Ledger;
+      }
+
+      if (!targetLedger) {
+        const { data: rpcRes } = await supabase.rpc('join_ledger_by_invite', {
+          invite_code_input: code,
+        });
+
+        if (rpcRes && rpcRes.success && rpcRes.ledger_id) {
+          targetLedgerId = rpcRes.ledger_id;
+          const { data: lData } = await supabase.from('ledgers').select('*').eq('id', targetLedgerId).maybeSingle();
+          if (lData) targetLedger = lData as unknown as Ledger;
+        }
+      }
+
+      if (!targetLedger) {
+        const { data: invRow } = await supabase
+          .from('ledger_invites')
+          .select('ledger_id, invite_code, ledgers(*)')
+          .ilike('invite_code', code)
+          .maybeSingle();
+
+        if (invRow && invRow.ledgers) {
+          targetLedger = invRow.ledgers as unknown as Ledger;
+          targetLedgerId = targetLedger.id;
+        }
+      }
+
+      if (!targetLedger && isValidUUID(code)) {
+        const { data: lData } = await supabase.from('ledgers').select('*').eq('id', code).maybeSingle();
+        if (lData) {
+          targetLedger = lData as unknown as Ledger;
+          targetLedgerId = lData.id;
+        }
+      }
+
+      if (!targetLedger) {
+        return { success: false, message: '找不到此邀請碼對應的帳本，請確認代碼是否正確！' };
+      }
+
+      await supabase.from('ledger_members').upsert({
+        ledger_id: targetLedger.id,
+        user_id: authUserId,
+        role: 'member',
+      }, { onConflict: 'ledger_id,user_id' });
+
+      if (memberName || avatar) {
+        await supabase.from('profiles').upsert({
+          id: authUserId,
+          display_name: memberName || '家庭成員',
+          avatar_url: avatar || '👩',
+        });
+        const updatedMe: Profile = {
+          id: authUserId,
+          display_name: memberName || '家庭成員',
+          avatar_url: avatar || '👩',
+        };
+        setCurrentUser(updatedMe);
+        await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedMe));
+      }
+
+      setUserRole('member');
+      setInviteCode(code);
+      setPendingInviteCode(null);
+      await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, code);
+      await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
+      setHasJoinedLedger(true);
+
+      await loadLedgerData(targetLedger, authUserId);
+      return { success: true };
+    } catch (err: any) {
+      console.warn('加入帳本時出錯:', err);
+      return { success: false, message: err.message || '加入帳本失敗，請稍後重試' };
+    }
+  };
+
+  // 重新產生邀請碼 (Owner 專屬，舊代碼作廢)
+  const regenerateInviteCode = async (): Promise<string> => {
+    const newCode = 'FAM-' + Math.floor(1000 + Math.random() * 9000);
+    setInviteCode(newCode);
+    await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, newCode);
+
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      const { data: { session } } = await supabase.auth.getSession();
+      const uid = session?.user?.id || currentUser.id;
+      await supabase.from('ledger_invites').insert({
+        ledger_id: currentLedger.id,
+        invite_code: newCode,
+        created_by: uid,
+        expires_at: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+      });
+    }
+    return newCode;
+  };
+
+  // 自訂邀請碼 (Owner 專屬)
+  const updateInviteCode = async (customCode: string): Promise<boolean> => {
+    const clean = customCode.trim().toUpperCase();
+    if (clean.length < 3 || clean.length > 15) {
+      alert('邀請碼長度需在 3 至 15 個字元之間');
+      return false;
+    }
+    setInviteCode(clean);
+    await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, clean);
+
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      const { data: { session } } = await supabase.auth.getSession();
+      const uid = session?.user?.id || currentUser.id;
+      const { error } = await supabase.from('ledger_invites').insert({
+        ledger_id: currentLedger.id,
+        invite_code: clean,
+        created_by: uid,
+        expires_at: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+      });
+      if (error) {
+        alert('此自訂代碼已被其他家庭使用，請換一個！');
+        return false;
+      }
+    }
+    return true;
+  };
+
+  // 取得完整邀請分享網址
+  const getInviteLink = (): string => {
+    let base = 'https://mattyu99.github.io/family-ledger/';
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
+      base = window.location.origin + window.location.pathname;
+    }
+    return `${base}?invite=${inviteCode}&join=${currentLedger.id}`;
+  };
+
+  // 確認切換至新邀請碼帳本
+  const confirmPendingInvite = async () => {
+    if (pendingInviteCode) {
+      await joinLedgerByCode(pendingInviteCode);
+      setPendingInviteCode(null);
+    }
+  };
+
+  // 取消切換
+  const cancelPendingInvite = () => {
+    setPendingInviteCode(null);
+  };
+
+  // 離開當前帳本 (回到冷啟動首頁)
+  const leaveCurrentLedger = async () => {
+    await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'false');
+    await AsyncStorage.removeItem(STORAGE_KEYS.LEDGER);
+    setHasJoinedLedger(false);
+  };
 
   // 更新交易並保存至本地快取
   const saveTransactionsToStorage = async (newTx: Transaction[]) => {
@@ -675,6 +1016,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         unbindDevice,
         isCloudSynced,
         settlementInfo,
+        hasJoinedLedger,
+        isOwner,
+        inviteCode,
+        createLedger,
+        joinLedgerByCode,
+        regenerateInviteCode,
+        updateInviteCode,
+        getInviteLink,
+        pendingInviteCode,
+        confirmPendingInvite,
+        cancelPendingInvite,
+        leaveCurrentLedger,
       }}
     >
       {children}

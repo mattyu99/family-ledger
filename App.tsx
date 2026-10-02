@@ -76,6 +76,19 @@ const showAlert = (title: string, message?: string) => {
   }
 };
 
+const copyToClipboard = async (text: string, successMsg: string) => {
+  try {
+    if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      showAlert('已複製', successMsg);
+      return;
+    }
+    showAlert('已複製', `${successMsg}\n\n${text}`);
+  } catch {
+    showAlert('邀請碼與連結', text);
+  }
+};
+
 function MainApp() {
   const {
     currentLedger,
@@ -92,6 +105,18 @@ function MainApp() {
     bindDeviceToMember,
     unbindDevice,
     isCloudSynced,
+    hasJoinedLedger,
+    isOwner,
+    inviteCode,
+    createLedger,
+    joinLedgerByCode,
+    regenerateInviteCode,
+    updateInviteCode,
+    getInviteLink,
+    pendingInviteCode,
+    confirmPendingInvite,
+    cancelPendingInvite,
+    leaveCurrentLedger,
   } = useLedger();
 
   const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'family'>('transactions');
@@ -101,6 +126,24 @@ function MainApp() {
   const [newMemberName, setNewMemberName] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState('👩');
   const [csvContent, setCsvContent] = useState('');
+
+  // 模式 A：帳本入口與邀請管理狀態
+  const [createLedgerModalVisible, setCreateLedgerModalVisible] = useState(false);
+  const [newLedgerName, setNewLedgerName] = useState('幸福家庭公帳');
+  const [creatorNickname, setCreatorNickname] = useState('爸爸 (我)');
+  const [creatorAvatar, setCreatorAvatar] = useState('👨');
+
+  const [joinLedgerModalVisible, setJoinLedgerModalVisible] = useState(false);
+  const [joinCodeInput, setJoinCodeInput] = useState('');
+  const [joinNickname, setJoinNickname] = useState('媽媽');
+  const [joinAvatar, setJoinAvatar] = useState('👩');
+  const [isJoining, setIsJoining] = useState(false);
+
+  const [customCodeModalVisible, setCustomCodeModalVisible] = useState(false);
+  const [customCodeInput, setCustomCodeInput] = useState('');
+
+  const [switchLedgerModalVisible, setSwitchLedgerModalVisible] = useState(false);
+  const [switchCodeInput, setSwitchCodeInput] = useState('');
 
   const handleExport = () => {
     const csv = exportToCSV();
@@ -118,6 +161,385 @@ function MainApp() {
     setMemberModalVisible(false);
   };
 
+  const handleCreateLedger = async () => {
+    if (!newLedgerName.trim()) {
+      showAlert('請輸入帳本名稱', '帳本名稱不能為空');
+      return;
+    }
+    await createLedger(newLedgerName.trim(), creatorNickname.trim() || '爸爸 (我)', creatorAvatar);
+    setCreateLedgerModalVisible(false);
+    showAlert('建立成功！', `已建立「${newLedgerName.trim()}」！\n系統已為您產生專屬邀請碼，可至「家庭與備份」分享給家人。`);
+  };
+
+  const handleJoinLedger = async () => {
+    if (!joinCodeInput.trim()) {
+      showAlert('請輸入邀請碼', '請輸入家人提供的 4~8 碼邀請碼或貼上邀請連結');
+      return;
+    }
+    setIsJoining(true);
+    const res = await joinLedgerByCode(joinCodeInput.trim(), joinNickname.trim() || '家庭成員', joinAvatar);
+    setIsJoining(false);
+    if (res.success) {
+      setJoinLedgerModalVisible(false);
+      showAlert('成功加入！', '已成功進入家庭公帳！');
+    } else {
+      showAlert('加入失敗', res.message || '找不到此邀請碼對應的帳本，請確認代碼是否正確。');
+    }
+  };
+
+  const handleSwitchLedger = async () => {
+    if (!switchCodeInput.trim()) {
+      showAlert('請輸入邀請碼', '請輸入目標帳本的邀請碼或完整邀請連結');
+      return;
+    }
+    setIsJoining(true);
+    const res = await joinLedgerByCode(switchCodeInput.trim(), currentUser.display_name, currentUser.avatar_url);
+    setIsJoining(false);
+    if (res.success) {
+      setSwitchLedgerModalVisible(false);
+      showAlert('切換成功', '已成功切換至目標家庭帳本！');
+    } else {
+      showAlert('切換失敗', res.message || '找不到此邀請碼對應的帳本，請確認代碼是否正確。');
+    }
+  };
+
+  const renderCreateLedgerModal = () => (
+    <Modal visible={createLedgerModalVisible} animationType="fade" transparent>
+      <View style={styles.exportOverlay}>
+        <View style={styles.exportCard}>
+          <View style={styles.modalHeaderRow}>
+            <Text style={styles.exportTitle}>🏠 建立新的家庭公帳</Text>
+            <TouchableOpacity onPress={() => setCreateLedgerModalVisible(false)} style={styles.closeBtn}>
+              <Text style={styles.closeText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.formHint}>建立專屬帳本後，您將成為管理員，可隨時分享邀請碼給家人加入。</Text>
+
+          <Text style={styles.formLabel}>公帳名稱</Text>
+          <TextInput
+            style={styles.modalInput}
+            placeholder="例如：幸福家庭公帳、我們這一家"
+            placeholderTextColor="#9CA3AF"
+            value={newLedgerName}
+            onChangeText={setNewLedgerName}
+          />
+
+          <Text style={styles.formLabel}>您的暱稱 / 稱謂</Text>
+          <TextInput
+            style={styles.modalInput}
+            placeholder="例如：爸爸、媽媽、大寶..."
+            placeholderTextColor="#9CA3AF"
+            value={creatorNickname}
+            onChangeText={setCreatorNickname}
+          />
+
+          <Text style={styles.formLabel}>選擇您的頭像</Text>
+          <View style={styles.avatarGrid}>
+            {AVATAR_OPTIONS.map(avatar => {
+              const isSelected = creatorAvatar === avatar;
+              return (
+                <TouchableOpacity
+                  key={avatar}
+                  style={[styles.avatarChip, isSelected && styles.avatarChipActive]}
+                  onPress={() => setCreatorAvatar(avatar)}
+                >
+                  <Text style={styles.avatarEmoji}>{avatar}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <TouchableOpacity style={styles.submitMemberBtn} onPress={handleCreateLedger}>
+            <Text style={styles.submitMemberBtnText}>🚀 確認建立並進入帳本</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const renderJoinLedgerModal = () => (
+    <Modal visible={joinLedgerModalVisible} animationType="fade" transparent>
+      <View style={styles.exportOverlay}>
+        <View style={styles.exportCard}>
+          <View style={styles.modalHeaderRow}>
+            <Text style={styles.exportTitle}>🔗 加入現有家庭帳本</Text>
+            <TouchableOpacity onPress={() => setJoinLedgerModalVisible(false)} style={styles.closeBtn}>
+              <Text style={styles.closeText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.formHint}>請輸入家人提供的 4~8 碼邀請代碼（例如 FAM-8823），或直接貼上 LINE 邀請網址。</Text>
+
+          <Text style={styles.formLabel}>邀請碼或完整邀請連結</Text>
+          <TextInput
+            style={styles.modalInput}
+            placeholder="例如：FAM-8823 或貼上連結"
+            placeholderTextColor="#9CA3AF"
+            value={joinCodeInput}
+            onChangeText={setJoinCodeInput}
+            autoCapitalize="characters"
+          />
+
+          <Text style={styles.formLabel}>您的暱稱 / 稱謂</Text>
+          <TextInput
+            style={styles.modalInput}
+            placeholder="例如：媽媽、大寶..."
+            placeholderTextColor="#9CA3AF"
+            value={joinNickname}
+            onChangeText={setJoinNickname}
+          />
+
+          <Text style={styles.formLabel}>選擇您的頭像</Text>
+          <View style={styles.avatarGrid}>
+            {AVATAR_OPTIONS.map(avatar => {
+              const isSelected = joinAvatar === avatar;
+              return (
+                <TouchableOpacity
+                  key={avatar}
+                  style={[styles.avatarChip, isSelected && styles.avatarChipActive]}
+                  onPress={() => setJoinAvatar(avatar)}
+                >
+                  <Text style={styles.avatarEmoji}>{avatar}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <TouchableOpacity
+            style={styles.submitMemberBtn}
+            disabled={isJoining}
+            onPress={handleJoinLedger}
+          >
+            <Text style={styles.submitMemberBtnText}>
+              {isJoining ? '正在驗證並加入...' : '✨ 驗證並加入帳本'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const renderPendingInviteModal = () => (
+    <Modal visible={!!pendingInviteCode} animationType="fade" transparent>
+      <View style={styles.exportOverlay}>
+        <View style={styles.exportCard}>
+          <Text style={styles.exportTitle}>💌 收到家庭帳本邀請！</Text>
+          <Text style={styles.formHint}>
+            系統偵測到來自邀請碼【{pendingInviteCode}】的加入邀請。
+            {hasJoinedLedger
+              ? `您目前已在「${currentLedger.name}」，是否要切換並加入該家庭帳本？`
+              : '是否立即加入此家庭公帳？'}
+          </Text>
+
+          <View style={styles.pendingInviteButtons}>
+            <TouchableOpacity
+              style={styles.confirmInviteBtn}
+              onPress={async () => {
+                await confirmPendingInvite();
+                showAlert('加入成功！', '已成功切換至新的家庭帳本！');
+              }}
+            >
+              <Text style={styles.confirmInviteBtnText}>✅ 確認切換並加入</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.cancelInviteBtn} onPress={cancelPendingInvite}>
+              <Text style={styles.cancelInviteBtnText}>✕ 保留現有帳本 (取消)</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const renderCustomCodeModal = () => (
+    <Modal visible={customCodeModalVisible} animationType="fade" transparent>
+      <View style={styles.exportOverlay}>
+        <View style={styles.exportCard}>
+          <View style={styles.modalHeaderRow}>
+            <Text style={styles.exportTitle}>✏️ 自訂專屬邀請碼</Text>
+            <TouchableOpacity onPress={() => setCustomCodeModalVisible(false)} style={styles.closeBtn}>
+              <Text style={styles.closeText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.formHint}>
+            身為發起人，您可以將邀請碼改成好記的英數字（3～15 個字元），例如 SWEETHOME、OURFAMILY。
+          </Text>
+
+          <Text style={styles.formLabel}>新邀請碼 (自動轉為大寫)</Text>
+          <TextInput
+            style={styles.modalInput}
+            placeholder="例如：SWEETHOME"
+            placeholderTextColor="#9CA3AF"
+            value={customCodeInput}
+            autoCapitalize="characters"
+            onChangeText={(t) => setCustomCodeInput(t.toUpperCase().replace(/[^A-Z0-9-]/g, ''))}
+          />
+
+          <TouchableOpacity
+            style={styles.submitMemberBtn}
+            onPress={async () => {
+              if (!customCodeInput.trim()) {
+                showAlert('請輸入代碼', '邀請碼不能為空');
+                return;
+              }
+              const success = await updateInviteCode(customCodeInput.trim());
+              if (success) {
+                showAlert('更新成功', `家庭邀請碼已變更為：${customCodeInput.trim().toUpperCase()}`);
+                setCustomCodeModalVisible(false);
+              }
+            }}
+          >
+            <Text style={styles.submitMemberBtnText}>確認變更邀請碼</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const renderSwitchLedgerModal = () => (
+    <Modal visible={switchLedgerModalVisible} animationType="fade" transparent>
+      <View style={styles.exportOverlay}>
+        <View style={styles.exportCard}>
+          <View style={styles.modalHeaderRow}>
+            <Text style={styles.exportTitle}>🚪 加入或切換家庭公帳</Text>
+            <TouchableOpacity onPress={() => setSwitchLedgerModalVisible(false)} style={styles.closeBtn}>
+              <Text style={styles.closeText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.formHint}>
+            若您想切換至其他家庭帳本，或先前誤點了「建立新帳本」，請輸入正確的邀請碼或貼上 LINE 邀請連結：
+          </Text>
+
+          <Text style={styles.formLabel}>邀請碼或完整邀請連結</Text>
+          <TextInput
+            style={styles.modalInput}
+            placeholder="例如：FAM-8823 或貼上連結"
+            placeholderTextColor="#9CA3AF"
+            value={switchCodeInput}
+            onChangeText={setSwitchCodeInput}
+            autoCapitalize="characters"
+          />
+
+          <TouchableOpacity
+            style={styles.submitMemberBtn}
+            disabled={isJoining}
+            onPress={handleSwitchLedger}
+          >
+            <Text style={styles.submitMemberBtnText}>
+              {isJoining ? '正在驗證並加入...' : '確認切換帳本'}
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.orDividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>或</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <TouchableOpacity
+            style={styles.leaveLedgerBtn}
+            onPress={() => {
+              showConfirm(
+                '退出當前帳本',
+                '退出後將返回初始起始畫面，您可以重新選擇「建立新帳本」或「輸入邀請碼加入」。確定要退出嗎？',
+                async () => {
+                  setSwitchLedgerModalVisible(false);
+                  await leaveCurrentLedger();
+                }
+              );
+            }}
+          >
+            <Text style={styles.leaveLedgerBtnText}>🚪 退出當前帳本（返回初始歡迎畫面）</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  // 若尚未加入任何家庭帳本，顯示模式 A 冷啟動歡迎雙入口
+  if (!hasJoinedLedger) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
+        <ScrollView contentContainerStyle={styles.welcomeScroll} showsVerticalScrollIndicator={false}>
+          <View style={styles.welcomeHero}>
+            <Text style={styles.welcomeEmoji}>👨‍👩‍👧‍👦</Text>
+            <Text style={styles.welcomeTitle}>家庭共享記帳本</Text>
+            <Text style={styles.welcomeSubtitle}>全家人一起記帳・即時雲端同步・代墊分攤自動算</Text>
+          </View>
+
+          <View style={styles.featureBox}>
+            <View style={styles.featureItem}>
+              <Text style={styles.featureIcon}>⚡</Text>
+              <View style={styles.featureTextCol}>
+                <Text style={styles.featureItemTitle}>即時雲端同步</Text>
+                <Text style={styles.featureItemDesc}>各自用自己的手機，一人記帳全家秒更新</Text>
+              </View>
+            </View>
+            <View style={styles.featureItem}>
+              <Text style={styles.featureIcon}>📊</Text>
+              <View style={styles.featureTextCol}>
+                <Text style={styles.featureItemTitle}>代墊分攤一目了然</Text>
+                <Text style={styles.featureItemDesc}>自動統計誰代墊多少、結餘清楚，公帳不混淆</Text>
+              </View>
+            </View>
+            <View style={styles.featureItem}>
+              <Text style={styles.featureIcon}>🔒</Text>
+              <View style={styles.featureTextCol}>
+                <Text style={styles.featureItemTitle}>專屬邀請碼安全守護</Text>
+                <Text style={styles.featureItemDesc}>只有持有家庭邀請碼的家人能進入，保護隱私</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.welcomeActions}>
+            <TouchableOpacity
+              style={styles.welcomePrimaryCard}
+              onPress={() => setCreateLedgerModalVisible(true)}
+              activeOpacity={0.85}
+            >
+              <View style={styles.welcomeCardHeader}>
+                <Text style={styles.welcomeCardBadge}>我是發起人</Text>
+                <Text style={styles.welcomeCardArrow}>→</Text>
+              </View>
+              <Text style={styles.welcomeCardTitle}>🏠 建立新的家庭公帳</Text>
+              <Text style={styles.welcomeCardDesc}>
+                適合第一位建立家庭帳本的人。建立後系統會自動為您產生專屬邀請碼，分享給伴侶或家人加入。
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.welcomeSecondaryCard}
+              onPress={() => setJoinLedgerModalVisible(true)}
+              activeOpacity={0.85}
+            >
+              <View style={styles.welcomeCardHeader}>
+                <Text style={styles.welcomeCardBadgeSecondary}>我是家人</Text>
+                <Text style={styles.welcomeCardArrowSecondary}>→</Text>
+              </View>
+              <Text style={styles.welcomeCardTitleSecondary}>🔗 輸入邀請碼加入現有帳本</Text>
+              <Text style={styles.welcomeCardDescSecondary}>
+                家人已建立帳本？輸入 4~8 碼邀請代碼（或貼上 LINE 邀請連結）立即進入同一本公帳。
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+
+        {/* 建立帳本彈窗 */}
+        {renderCreateLedgerModal()}
+
+        {/* 加入帳本彈窗 */}
+        {renderJoinLedgerModal()}
+
+        {/* 偵測到待確認的邀請網址 */}
+        {renderPendingInviteModal()}
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
@@ -126,7 +548,14 @@ function MainApp() {
       <View style={styles.topBar}>
         <View>
           <Text style={styles.ledgerSubtitle}>家庭共享記帳本</Text>
-          <Text style={styles.ledgerTitle}>{currentLedger.name}</Text>
+          <View style={styles.topBarTitleRow}>
+            <Text style={styles.ledgerTitle}>{currentLedger.name}</Text>
+            {isOwner && (
+              <View style={styles.ownerTopBadge}>
+                <Text style={styles.ownerTopBadgeText}>👑 管理員</Text>
+              </View>
+            )}
+          </View>
         </View>
 
         {/* 雲端狀態徽章 */}
@@ -372,20 +801,80 @@ function MainApp() {
               )}
             </View>
 
-            {/* 邀請家人加入 */}
+            {/* 邀請家人加入與代碼管理 */}
             <View style={styles.cardSection}>
-              <Text style={styles.cardSectionTitle}>🔗 邀請家人共同記帳</Text>
-              <Text style={styles.cardSectionDesc}>讓伴侶或家人下載 APP 後輸入此邀請碼即可加入</Text>
-
-              <View style={styles.inviteBox}>
-                <Text style={styles.inviteCode}>FAM-8823</Text>
-                <TouchableOpacity
-                  style={styles.copyBtn}
-                  onPress={() => showAlert('已複製邀請碼', '您可以將邀請碼傳送到 LINE 群組給家人！')}
-                >
-                  <Text style={styles.copyBtnText}>複製邀請連結</Text>
-                </TouchableOpacity>
+              <View style={styles.inviteHeaderRow}>
+                <View>
+                  <Text style={styles.cardSectionTitle}>🔗 邀請家人共同記帳</Text>
+                  <Text style={styles.cardSectionDesc}>讓伴侶或家人加入這本公帳，資料即時雙向同步</Text>
+                </View>
+                <View style={[styles.roleBadge, isOwner ? styles.roleBadgeOwner : styles.roleBadgeMember]}>
+                  <Text style={[styles.roleBadgeText, isOwner ? styles.roleBadgeTextOwner : styles.roleBadgeTextMember]}>
+                    {isOwner ? '👑 帳本管理員' : '👤 家庭成員'}
+                  </Text>
+                </View>
               </View>
+
+              <View style={styles.inviteCard}>
+                <Text style={styles.inviteCardLabel}>本家庭專屬邀請碼</Text>
+                <View style={styles.inviteCodeRow}>
+                  <Text style={styles.inviteCodeLarge}>{inviteCode}</Text>
+                  <TouchableOpacity
+                    style={styles.copyCodeMiniBtn}
+                    onPress={() => copyToClipboard(inviteCode, `邀請碼 ${inviteCode} 已複製！`)}
+                  >
+                    <Text style={styles.copyCodeMiniBtnText}>複製代碼</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.copyLinkBtn}
+                  onPress={() => copyToClipboard(getInviteLink(), '專屬邀請連結已複製！\n請直接貼到 LINE 聊天室傳送給家人，家人點開即可自動加入。')}
+                >
+                  <Text style={styles.copyLinkBtnText}>📋 複製專屬邀請連結 (傳 LINE 給家人)</Text>
+                </TouchableOpacity>
+
+                {isOwner && (
+                  <View style={styles.ownerControlsRow}>
+                    <TouchableOpacity
+                      style={styles.ownerControlBtn}
+                      onPress={() => {
+                        showConfirm(
+                          '重新產生邀請碼',
+                          '重新產生後，舊代碼將會作廢。確定要產生全新的一組隨機邀請碼嗎？',
+                          async () => {
+                            const newCode = await regenerateInviteCode();
+                            showAlert('已更新', `全新家庭邀請碼為：${newCode}`);
+                          }
+                        );
+                      }}
+                    >
+                      <Text style={styles.ownerControlBtnText}>🔄 重新產生</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.ownerControlBtn}
+                      onPress={() => {
+                        setCustomCodeInput(inviteCode);
+                        setCustomCodeModalVisible(true);
+                      }}
+                    >
+                      <Text style={styles.ownerControlBtnText}>✏️ 自訂代碼</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+
+              {/* 切換帳本入口 */}
+              <TouchableOpacity
+                style={styles.switchLedgerEntryBtn}
+                onPress={() => {
+                  setSwitchCodeInput('');
+                  setSwitchLedgerModalVisible(true);
+                }}
+              >
+                <Text style={styles.switchLedgerEntryText}>🚪 加入或切換其他家庭公帳</Text>
+              </TouchableOpacity>
             </View>
 
             {/* 資料備份與匯出 */}
@@ -495,6 +984,15 @@ function MainApp() {
           </View>
         </View>
       </Modal>
+
+      {/* 自訂邀請碼彈窗 */}
+      {renderCustomCodeModal()}
+
+      {/* 切換帳本彈窗 */}
+      {renderSwitchLedgerModal()}
+
+      {/* 偵測到待確認的邀請網址 */}
+      {renderPendingInviteModal()}
     </SafeAreaView>
   );
 }
@@ -1127,5 +1625,330 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#334155',
+  },
+  topBarTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  ownerTopBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  ownerTopBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#B45309',
+  },
+  welcomeScroll: {
+    padding: 20,
+    paddingBottom: 60,
+    alignItems: 'center',
+  },
+  welcomeHero: {
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 24,
+  },
+  welcomeEmoji: {
+    fontSize: 56,
+    marginBottom: 12,
+  },
+  welcomeTitle: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#0F172A',
+    marginBottom: 6,
+  },
+  welcomeSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  featureBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 18,
+    width: '100%',
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  featureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  featureIcon: {
+    fontSize: 22,
+    marginRight: 12,
+  },
+  featureTextCol: {
+    flex: 1,
+  },
+  featureItemTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginBottom: 2,
+  },
+  featureItemDesc: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 16,
+  },
+  welcomeActions: {
+    width: '100%',
+    gap: 14,
+  },
+  welcomePrimaryCard: {
+    backgroundColor: '#4F46E5',
+    borderRadius: 18,
+    padding: 18,
+    width: '100%',
+    shadowColor: '#4F46E5',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  welcomeCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  welcomeCardBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  welcomeCardArrow: {
+    fontSize: 18,
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  welcomeCardTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  welcomeCardDesc: {
+    fontSize: 12,
+    color: '#E0E7FF',
+    lineHeight: 17,
+  },
+  welcomeSecondaryCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 18,
+    width: '100%',
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+  },
+  welcomeCardBadgeSecondary: {
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#4F46E5',
+  },
+  welcomeCardArrowSecondary: {
+    fontSize: 18,
+    color: '#4F46E5',
+    fontWeight: 'bold',
+  },
+  welcomeCardTitleSecondary: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#1E293B',
+    marginBottom: 4,
+  },
+  welcomeCardDescSecondary: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 17,
+  },
+  formHint: {
+    fontSize: 13,
+    color: '#64748B',
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  pendingInviteButtons: {
+    marginTop: 16,
+    gap: 10,
+  },
+  confirmInviteBtn: {
+    backgroundColor: '#10B981',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  confirmInviteBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  cancelInviteBtn: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  cancelInviteBtnText: {
+    color: '#64748B',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  orDividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 14,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E2E8F0',
+  },
+  dividerText: {
+    paddingHorizontal: 10,
+    fontSize: 12,
+    color: '#94A3B8',
+  },
+  leaveLedgerBtn: {
+    backgroundColor: '#FEF2F2',
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  leaveLedgerBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
+  inviteHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  roleBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  roleBadgeOwner: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  roleBadgeMember: {
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  roleBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  roleBadgeTextOwner: {
+    color: '#B45309',
+  },
+  roleBadgeTextMember: {
+    color: '#4F46E5',
+  },
+  inviteCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 12,
+  },
+  inviteCardLabel: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  inviteCodeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  inviteCodeLarge: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#1E293B',
+    letterSpacing: 2,
+  },
+  copyCodeMiniBtn: {
+    backgroundColor: '#E2E8F0',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  copyCodeMiniBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  copyLinkBtn: {
+    backgroundColor: '#4F46E5',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  copyLinkBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  ownerControlsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  ownerControlBtn: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  ownerControlBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  switchLedgerEntryBtn: {
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 10,
+    backgroundColor: '#F1F5F9',
+  },
+  switchLedgerEntryText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#4F46E5',
   },
 });

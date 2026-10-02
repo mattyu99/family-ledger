@@ -187,23 +187,59 @@ DROP POLICY IF EXISTS "Members can manage splits" ON public.transaction_splits;
 CREATE POLICY "Members can manage splits" ON public.transaction_splits FOR ALL 
   USING (EXISTS (SELECT 1 FROM public.transactions t WHERE t.id = transaction_splits.transaction_id AND public.is_ledger_member(t.ledger_id)));
 
--- Invites 規則
+-- Invites 規則 (允許持有邀請碼的家人驗證邀請碼)
 DROP POLICY IF EXISTS "Members can view ledger invites" ON public.ledger_invites;
-CREATE POLICY "Members can view ledger invites" ON public.ledger_invites FOR SELECT 
-  USING (public.is_ledger_member(ledger_id));
+DROP POLICY IF EXISTS "Anyone can verify invite code" ON public.ledger_invites;
+CREATE POLICY "Anyone can verify invite code" ON public.ledger_invites FOR SELECT 
+  USING (true);
 
 DROP POLICY IF EXISTS "Admins can manage invites" ON public.ledger_invites;
 CREATE POLICY "Admins can manage invites" ON public.ledger_invites FOR ALL 
   USING (EXISTS (SELECT 1 FROM public.ledger_members lm WHERE lm.ledger_id = ledger_invites.ledger_id AND lm.user_id = auth.uid() AND lm.role IN ('owner', 'admin')));
 
+-- 家人透過邀請碼加入帳本的 RPC 函式 (SECURITY DEFINER 確保安全並自動完成關聯)
+CREATE OR REPLACE FUNCTION public.join_ledger_by_invite(invite_code_input TEXT)
+RETURNS JSONB AS $$
+DECLARE
+    target_invite RECORD;
+    target_ledger RECORD;
+BEGIN
+    SELECT * INTO target_invite FROM public.ledger_invites
+    WHERE UPPER(TRIM(invite_code)) = UPPER(TRIM(invite_code_input))
+      AND (expires_at IS NULL OR expires_at > now())
+    LIMIT 1;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'message', '找不到此邀請碼或邀請碼已失效');
+    END IF;
+
+    SELECT * INTO target_ledger FROM public.ledgers WHERE id = target_invite.ledger_id;
+
+    -- 自動將目前呼叫者加入帳本成員表
+    INSERT INTO public.ledger_members (ledger_id, user_id, role)
+    VALUES (target_invite.ledger_id, auth.uid(), 'member')
+    ON CONFLICT (ledger_id, user_id) DO NOTHING;
+
+    -- 累加已使用次數
+    UPDATE public.ledger_invites
+    SET used_count = used_count + 1
+    WHERE id = target_invite.id;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'ledger_id', target_ledger.id,
+        'ledger_name', target_ledger.name,
+        'invite_code', target_invite.invite_code
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- ==============================================================================
--- 自動化觸發器 (Triggers)：新使用者註冊時，自動建立 Profile 與 預設家庭帳本及分類
+-- 自動化觸發器 (Triggers)：新使用者註冊時，自動建立 Profile (由使用者自行建立或加入帳本)
 -- ==============================================================================
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
-DECLARE
-    new_ledger_id UUID;
 BEGIN
     -- 1. 建立 Profile
     INSERT INTO public.profiles (id, email, display_name, avatar_url)
@@ -212,27 +248,8 @@ BEGIN
         NEW.email,
         COALESCE(NEW.raw_user_meta_data->>'full_name', NULLIF(split_part(NEW.email, '@', 1), ''), '家庭成員'),
         COALESCE(NEW.raw_user_meta_data->>'avatar_url', '👨')
-    );
-
-    -- 2. 為新使用者預設建立一本「幸福家庭帳本」
-    INSERT INTO public.ledgers (name, description, currency, created_by)
-    VALUES ('幸福家庭帳本', '全家共享日常開銷帳本', 'TWD', NEW.id)
-    RETURNING id INTO new_ledger_id;
-
-    -- 3. 將使用者加入為此帳本的 Owner
-    INSERT INTO public.ledger_members (ledger_id, user_id, role)
-    VALUES (new_ledger_id, NEW.id, 'owner');
-
-    -- 4. 建立常用的預設支出與收入分類
-    INSERT INTO public.categories (ledger_id, name, icon, color, type, sort_order) VALUES
-    (new_ledger_id, '餐飲伙食', '🍲', '#EF4444', 'expense', 1),
-    (new_ledger_id, '生鮮超市', '🛒', '#F59E0B', 'expense', 2),
-    (new_ledger_id, '居家水電', '💡', '#3B82F6', 'expense', 3),
-    (new_ledger_id, '交通出行', '🚗', '#10B981', 'expense', 4),
-    (new_ledger_id, '休閒娛樂', '🎬', '#8B5CF6', 'expense', 5),
-    (new_ledger_id, '醫療保健', '💊', '#EC4899', 'expense', 6),
-    (new_ledger_id, '薪資收入', '💰', '#059669', 'income', 1),
-    (new_ledger_id, '投資理財', '📈', '#2563EB', 'income', 2);
+    )
+    ON CONFLICT (id) DO NOTHING;
 
     RETURN NEW;
 END;
