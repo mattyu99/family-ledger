@@ -19,6 +19,39 @@ import { getCategoryIcon } from './src/lib/icons';
 
 const AVATAR_OPTIONS = ['👨', '👩', '👦', '👧', '👴', '👵', '👶', '👱', '🐶', '🐱'];
 
+// 注入 Web 專用重設樣式，徹底防止手機瀏覽器水平超出或縮放跑版
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  const meta = document.querySelector('meta[name="viewport"]');
+  if (meta) {
+    meta.setAttribute(
+      'content',
+      'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, shrink-to-fit=no, viewport-fit=cover'
+    );
+  }
+  const styleId = 'family-ledger-web-reset';
+  if (!document.getElementById(styleId)) {
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+      html, body, #root {
+        overflow-x: hidden !important;
+        width: 100% !important;
+        max-width: 100vw !important;
+        height: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      * {
+        box-sizing: border-box !important;
+      }
+      input, textarea, select {
+        font-family: inherit !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+}
+
 // 跨平台確認彈窗輔助函式（完美相容 Web 與 手機）
 const showConfirm = (title: string, message: string, onConfirm: () => void) => {
   if (Platform.OS === 'web') {
@@ -437,7 +470,7 @@ function MainApp() {
               placeholderTextColor="#9CA3AF"
               value={newMemberName}
               onChangeText={setNewMemberName}
-              autoFocus
+              autoFocus={Platform.OS !== 'web'}
             />
 
             <Text style={styles.formLabel}>選擇專屬頭像</Text>
@@ -469,15 +502,28 @@ function MainApp() {
 export default function App() {
   return (
     <LedgerProvider>
-      <MainApp />
+      <View style={styles.rootWrapper}>
+        <MainApp />
+      </View>
     </LedgerProvider>
   );
 }
 
 const styles = StyleSheet.create({
+  rootWrapper: {
+    flex: 1,
+    backgroundColor: '#F1F5F9',
+    width: '100%',
+    height: '100%',
+  },
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',
+    maxWidth: 600,
+    width: '100%',
+    alignSelf: 'center',
+    position: 'relative',
+    overflow: 'hidden',
   },
   topBar: {
     flexDirection: 'row',
@@ -489,6 +535,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderColor: '#F1F5F9',
+    width: '100%',
   },
   ledgerSubtitle: {
     fontSize: 12,
@@ -706,10 +753,13 @@ const styles = StyleSheet.create({
   },
   userSwitchRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
+    width: '100%',
   },
   userChip: {
     flex: 1,
+    minWidth: 90,
     alignItems: 'center',
     paddingVertical: 12,
     backgroundColor: '#F8FAFC',
@@ -797,6 +847,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+    maxWidth: 600,
+    width: '100%',
+    alignSelf: 'center',
     height: 68,
     backgroundColor: '#FFFFFF',
     flexDirection: 'row',
@@ -835,6 +888,7 @@ const styles = StyleSheet.create({
   },
   exportCard: {
     width: '100%',
+    maxWidth: 500,
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: 20,
@@ -955,6 +1009,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#111827',
     marginBottom: 18,
+    width: '100%',
+    minWidth: 0,
   },
   avatarGrid: {
     flexDirection: 'row',

@@ -96,7 +96,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            style={styles.scrollArea}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
             {/* 支出 / 收入 切換鈕 */}
             <View style={styles.typeSelector}>
               <TouchableOpacity
@@ -136,7 +141,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
                 placeholderTextColor="#D1D5DB"
                 value={amount}
                 onChangeText={setAmount}
-                autoFocus
+                autoFocus={Platform.OS !== 'web'}
               />
             </View>
 
@@ -204,7 +209,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
                 style={styles.splitToggleRow}
                 onPress={() => setIsSplit(!isSplit)}
               >
-                <View>
+                <View style={styles.splitTextContainer}>
                   <Text style={styles.splitTitle}>👨‍👩‍👧 全家平分分攤</Text>
                   <Text style={styles.splitSubtitle}>
                     {isSplit
@@ -218,7 +223,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
               </TouchableOpacity>
             )}
 
-            {/* 備註輸入 */}
+            {/* 備註說明 */}
             <Text style={styles.sectionLabel}>備註說明</Text>
             <TextInput
               style={styles.noteInput}
@@ -244,6 +249,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.45)',
     justifyContent: 'flex-end',
+    width: '100%',
   },
   sheet: {
     backgroundColor: '#FFFFFF',
@@ -251,14 +257,28 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 32,
+    paddingBottom: 24,
     maxHeight: '90%',
+    width: '100%',
+    maxWidth: 600,
+    alignSelf: 'center',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  scrollArea: {
+    flex: 1,
+    width: '100%',
+  },
+  scrollContent: {
+    width: '100%',
+    paddingBottom: 32,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
+    width: '100%',
   },
   title: {
     fontSize: 18,
@@ -279,6 +299,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 4,
     marginBottom: 16,
+    width: '100%',
   },
   typeBtn: {
     flex: 1,
@@ -307,6 +328,8 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
     paddingVertical: 10,
     marginBottom: 20,
+    width: '100%',
+    minWidth: 0,
   },
   currencyPrefix: {
     fontSize: 24,
@@ -316,9 +339,12 @@ const styles = StyleSheet.create({
   },
   amountInput: {
     flex: 1,
+    minWidth: 0,
+    width: '100%',
     fontSize: 32,
     fontWeight: 'bold',
     color: '#111827',
+    padding: 0,
   },
   sectionLabel: {
     fontSize: 14,
@@ -331,16 +357,18 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
     marginBottom: 20,
+    width: '100%',
   },
   categoryChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: '#F9FAFB',
     borderWidth: 1,
     borderColor: '#E5E7EB',
+    maxWidth: '100%',
   },
   categoryChipIcon: {
     fontSize: 16,
@@ -353,8 +381,10 @@ const styles = StyleSheet.create({
   },
   payerRow: {
     flexDirection: 'row',
-    gap: 10,
+    flexWrap: 'wrap',
+    gap: 8,
     marginBottom: 20,
+    width: '100%',
   },
   payerChip: {
     flexDirection: 'row',
@@ -393,6 +423,11 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     borderWidth: 1,
     borderColor: '#E2E8F0',
+    width: '100%',
+  },
+  splitTextContainer: {
+    flex: 1,
+    marginRight: 10,
   },
   splitTitle: {
     fontSize: 14,
@@ -434,12 +469,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#111827',
     marginBottom: 24,
+    width: '100%',
+    minWidth: 0,
   },
   submitBtn: {
     backgroundColor: '#4F46E5',
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
     shadowColor: '#4F46E5',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -460,6 +499,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#C7D2FE',
     marginBottom: 20,
+    width: '100%',
   },
   lockedPayerAvatar: {
     fontSize: 26,
