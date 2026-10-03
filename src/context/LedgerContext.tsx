@@ -421,43 +421,41 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .filter(Boolean);
     }
 
-    // 檢查本地是否曾新增過尚未同步至雲端的成員（自動補修復）
-    const localSavedMembersStr = await AsyncStorage.getItem(STORAGE_KEYS.MEMBERS);
-    if (localSavedMembersStr && targetLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        const localMembers: Profile[] = JSON.parse(localSavedMembersStr);
-        const unsyncedMembers = localMembers.filter(
-          lm => isValidUUID(lm.id) &&
-          !loadedMembers.some(cm => cm.id === lm.id) &&
-          !lm.id.startsWith('20000000-0000-4000-8000')
-        );
-
-        for (const m of unsyncedMembers) {
-          try {
-            await supabase.from('profiles').upsert({
-              id: m.id,
-              display_name: m.display_name,
-              avatar_url: m.avatar_url,
-              email: m.email,
-            });
-            await supabase.from('ledger_members').insert({
-              ledger_id: targetLedger.id,
-              user_id: m.id,
-              role: 'member',
-            });
-            loadedMembers.push(m);
-          } catch (e) {
-            console.warn('補同步本地成員失敗:', m.display_name, e);
+    // 若雲端已有成員，以雲端為準；僅在離線或雲端尚無成員時才從本地快取補救，避免跨帳本成員污染
+    if (loadedMembers.length === 0 && targetLedger.id !== DEMO_LEDGER_ID) {
+      const localSavedMembersStr = await AsyncStorage.getItem(`${STORAGE_KEYS.MEMBERS}_${targetLedger.id}`);
+      if (localSavedMembersStr) {
+        try {
+          const localMembers: Profile[] = JSON.parse(localSavedMembersStr);
+          const validLocals = localMembers.filter(lm => isValidUUID(lm.id) && !lm.id.startsWith('20000000-0000-4000-8000'));
+          for (const m of validLocals) {
+            try {
+              await supabase.from('profiles').upsert({
+                id: m.id,
+                display_name: m.display_name,
+                avatar_url: m.avatar_url,
+                email: m.email,
+              });
+              await supabase.from('ledger_members').insert({
+                ledger_id: targetLedger.id,
+                user_id: m.id,
+                role: 'member',
+              });
+              loadedMembers.push(m);
+            } catch (e) {
+              console.warn('補同步本地成員失敗:', m.display_name, e);
+            }
           }
+        } catch (err) {
+          console.warn('解析本地成員快取失敗:', err);
         }
-      } catch (err) {
-        console.warn('解析本地成員快取失敗:', err);
       }
     }
 
     if (loadedMembers.length > 0) {
       setMembers(loadedMembers);
       await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(loadedMembers));
+      await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${targetLedger.id}`, JSON.stringify(loadedMembers));
 
       const myMemberRow = memberRows?.find((r: any) => r.user_id === authUserId);
       const isCreator = targetLedger.created_by === authUserId;
