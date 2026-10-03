@@ -444,8 +444,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         // 情境 A：網址自帶邀請碼
         if (targetInvite) {
+          const savedCode = await AsyncStorage.getItem(STORAGE_KEYS.INVITE_CODE);
           const alreadyInThisLedger = memberLedgers?.some(
-            (m: any) => m.ledger_id === urlJoinId || m.ledgers?.id === urlJoinId
+            (m: any) =>
+              (urlJoinId && (m.ledger_id === urlJoinId || m.ledgers?.id === urlJoinId)) ||
+              (urlInviteCode && savedCode && savedCode.toUpperCase() === urlInviteCode.toUpperCase())
           );
 
           if (!alreadyInThisLedger) {
@@ -457,13 +460,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               // 此裝置已經有其他帳本，彈窗詢問是否切換加入
               setPendingInviteCode(targetInvite);
             }
+          } else {
+            // 已經在此帳本中，平順自動清理網址列參數
+            if (Platform.OS === 'web' && typeof window !== 'undefined' && window.history) {
+              window.history.replaceState({}, '', window.location.pathname);
+            }
           }
         }
 
         // 情境 B：一般進入（已在某帳本內）
         if (memberLedgers && memberLedgers.length > 0 && memberLedgers[0].ledgers) {
-          const activeLedger = memberLedgers[0].ledgers as unknown as Ledger;
-          setUserRole(memberLedgers[0].role as any);
+          const targetRecord = (urlJoinId && memberLedgers.find((m: any) => m.ledger_id === urlJoinId || m.ledgers?.id === urlJoinId)) || memberLedgers[0];
+          const activeLedger = targetRecord.ledgers as unknown as Ledger;
+          setUserRole(targetRecord.role as any);
           if (!isMounted) return;
           await loadLedgerData(activeLedger, authUser.id);
           setHasJoinedLedger(true);
@@ -679,6 +688,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setHasJoinedLedger(true);
 
       await loadLedgerData(targetLedger, authUserId);
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.history) {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
       return { success: true };
     } catch (err: any) {
       console.warn('加入帳本時出錯:', err);
