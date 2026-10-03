@@ -154,6 +154,7 @@ const STORAGE_KEYS = {
   LEDGER: '@family_ledger_current',
   HAS_JOINED: '@family_ledger_has_joined',
   INVITE_CODE: '@family_ledger_invite_code',
+  USER_ROLE: '@family_ledger_user_role',
 };
 
 export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -167,10 +168,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isDeviceBound, setIsDeviceBound] = useState<boolean>(false);
   const [hasJoinedLedger, setHasJoinedLedger] = useState<boolean>(true);
   const [inviteCode, setInviteCode] = useState<string>('FAM-8823');
-  const [userRole, setUserRole] = useState<'owner' | 'admin' | 'member'>('owner');
+  const [userRole, setUserRole] = useState<'owner' | 'admin' | 'member'>('member');
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
 
-  const isOwner = userRole === 'owner' || currentLedger.created_by === currentUser.id;
+  // 帳本管理員必須由使用者在成員名冊中的角色（userRole）判定，絕不能看目前畫面點選的付款人 currentUser
+  const isOwner = userRole === 'owner';
   const channelRef = useRef<any>(null);
 
   // 1. 初始化本地快取（Local-First: 先離線秒開，再非同步接雲端）
@@ -224,6 +226,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         const savedBound = await AsyncStorage.getItem(STORAGE_KEYS.DEVICE_BOUND);
         if (savedBound === 'true') setIsDeviceBound(true);
+
+        const savedRole = await AsyncStorage.getItem(STORAGE_KEYS.USER_ROLE);
+        if (savedRole === 'owner' || savedRole === 'member') {
+          setUserRole(savedRole as any);
+        }
       } catch (err) {
         console.warn('載入本地記帳快取失敗:', err);
       }
@@ -386,7 +393,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         const myMemberRow = memberRows.find((r: any) => r.user_id === authUserId);
         if (myMemberRow) {
-          setUserRole(myMemberRow.role as any);
+          const role = (myMemberRow.role as 'owner' | 'admin' | 'member') || 'member';
+          setUserRole(role);
+          await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, role);
+          if (myMemberRow.profiles) {
+            const profile = myMemberRow.profiles as unknown as Profile;
+            setCurrentUser(profile);
+            await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(profile));
+          }
+        } else if (targetLedger.created_by === authUserId) {
+          setUserRole('owner');
+          await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, 'owner');
+        } else {
+          setUserRole('member');
+          await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, 'member');
         }
       }
     }
@@ -448,8 +468,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           myProfile = {
             id: authUser.id,
             email: authUser.email || undefined,
-            display_name: '爸爸 (我)',
-            avatar_url: '👨',
+            display_name: '家庭成員',
+            avatar_url: '👩',
           };
           await supabase.from('profiles').upsert(myProfile);
         } else {
@@ -503,7 +523,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (memberLedgers && memberLedgers.length > 0 && memberLedgers[0].ledgers) {
           const targetRecord = (urlJoinId && memberLedgers.find((m: any) => m.ledger_id === urlJoinId || m.ledgers?.id === urlJoinId)) || memberLedgers[0];
           const activeLedger = targetRecord.ledgers as unknown as Ledger;
-          setUserRole(targetRecord.role as any);
+          const role = (targetRecord.role as 'owner' | 'admin' | 'member') || 'member';
+          setUserRole(role);
+          await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, role);
           if (!isMounted) return;
           await loadLedgerData(activeLedger, authUser.id);
           setHasJoinedLedger(true);
@@ -585,6 +607,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       setUserRole('owner');
+      await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, 'owner');
       setInviteCode(newCode);
       await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, newCode);
       await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
@@ -648,21 +671,25 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       let targetLedger: Ledger | null = null;
       let targetLedgerId = extractedJoinId;
 
+      // 1. 優先使用 SECURITY DEFINER 的 join_ledger_by_invite 函式以邀請碼加入 (自動繞過 RLS 限制)
+      if (code) {
+        try {
+          const { data: rpcRes } = await supabase.rpc('join_ledger_by_invite', {
+            invite_code_input: code,
+          });
+
+          if (rpcRes && rpcRes.success && rpcRes.ledger_id) {
+            targetLedgerId = rpcRes.ledger_id;
+          }
+        } catch (rpcE) {
+          console.warn('RPC 加入帳本嘗試失敗，改用備用邏輯:', rpcE);
+        }
+      }
+
+      // 2. 獲取帳本實體
       if (isValidUUID(targetLedgerId)) {
         const { data: lData } = await supabase.from('ledgers').select('*').eq('id', targetLedgerId).maybeSingle();
         if (lData) targetLedger = lData as unknown as Ledger;
-      }
-
-      if (!targetLedger) {
-        const { data: rpcRes } = await supabase.rpc('join_ledger_by_invite', {
-          invite_code_input: code,
-        });
-
-        if (rpcRes && rpcRes.success && rpcRes.ledger_id) {
-          targetLedgerId = rpcRes.ledger_id;
-          const { data: lData } = await supabase.from('ledgers').select('*').eq('id', targetLedgerId).maybeSingle();
-          if (lData) targetLedger = lData as unknown as Ledger;
-        }
       }
 
       if (!targetLedger) {
@@ -712,6 +739,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       setUserRole('member');
+      await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, 'member');
       setInviteCode(code);
       setPendingInviteCode(null);
       await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, code);
@@ -801,6 +829,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const leaveCurrentLedger = async () => {
     await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'false');
     await AsyncStorage.removeItem(STORAGE_KEYS.LEDGER);
+    await AsyncStorage.removeItem(STORAGE_KEYS.USER_ROLE);
+    setUserRole('member');
     setHasJoinedLedger(false);
   };
 
