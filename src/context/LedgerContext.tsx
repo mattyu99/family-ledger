@@ -119,7 +119,7 @@ interface LedgerContextType {
   deleteTransaction: (id: string) => Promise<void>;
   exportToCSV: () => string;
   addMember: (name: string, avatar?: string) => Promise<void>;
-  deleteMember: (id: string) => Promise<void>;
+  deleteMember: (id: string) => Promise<boolean | void>;
   isDeviceBound: boolean;
   bindDeviceToMember: (member: Profile) => Promise<void>;
   unbindDevice: () => Promise<void>;
@@ -273,6 +273,37 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
               return updated;
             });
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'ledger_members',
+          filter: `ledger_id=eq.${ledgerId}`,
+        },
+        async () => {
+          // 當有新成員加入或成員變動時，即時推播刷新全體成員名單
+          try {
+            const { data: memberRows } = await supabase
+              .from('ledger_members')
+              .select('user_id, role, profiles(*)')
+              .eq('ledger_id', ledgerId);
+
+            if (memberRows && memberRows.length > 0) {
+              const loadedMembers: Profile[] = memberRows
+                .map((r: any) => r.profiles)
+                .filter(Boolean);
+
+              if (loadedMembers.length > 0) {
+                setMembers(loadedMembers);
+                await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(loadedMembers));
+              }
+            }
+          } catch (err) {
+            console.warn('Realtime 刷新成員名冊失敗:', err);
           }
         }
       )
@@ -963,12 +994,29 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  // 刪除家庭成員
-  const deleteMember = async (id: string) => {
+  // 刪除家庭成員 (僅 Owner 可操作，且受歷史紀錄保護)
+  const deleteMember = async (id: string): Promise<boolean> => {
     if (members.length <= 1) {
       alert('家庭至少需保留一位成員');
-      return;
+      return false;
     }
+
+    if (!isOwner) {
+      alert('只有帳本管理員（Owner）可以移除家庭成員');
+      return false;
+    }
+
+    if (currentUser.id === id) {
+      alert('無法移除自己正在使用的身分，若要離開此帳本請使用「退出帳本」功能');
+      return false;
+    }
+
+    const hasHistory = transactions.some(t => t.paid_by === id || t.creator_id === id);
+    if (hasHistory) {
+      alert('該成員已有記帳或代墊紀錄，為確保帳目與分攤結算準確，無法刪除！');
+      return false;
+    }
+
     const updated = members.filter(m => m.id !== id);
     setMembers(updated);
     if (currentUser.id === id) {
@@ -987,6 +1035,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         console.warn('雲端刪除成員失敗:', err);
       }
     }
+    return true;
   };
 
   // 將當前裝置綁定至指定家庭成員（長輩防呆專用）

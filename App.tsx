@@ -733,7 +733,7 @@ function MainApp() {
                           </Text>
                         )}
                       </TouchableOpacity>
-                      {members.length > 1 && !isDeviceBound && (
+                      {isOwner && !isCurrent && members.length > 1 && !isDeviceBound && (
                         <TouchableOpacity
                           style={styles.deleteMemberBtn}
                           onPress={() => {
