@@ -120,6 +120,7 @@ function MainApp() {
     leaveCurrentLedger,
     switchLedgerById,
     leaveLedgerById,
+    updateMemberRole,
   } = useLedger();
 
   const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'family'>('transactions');
@@ -789,8 +790,18 @@ function MainApp() {
               <View style={styles.userSwitchRow}>
                 {members.map(member => {
                   const isCurrent = currentUser.id === member.id;
+                  const isMemberAdmin = member.role === 'owner' || member.role === 'admin' || currentLedger.created_by === member.id;
+                  const isCreator = currentLedger.created_by === member.id;
+
                   return (
                     <View key={member.id} style={[styles.userChip, isCurrent && styles.userChipActive, isDeviceBound && !isCurrent && styles.userChipDisabled]}>
+                      {/* 管理員徽章 */}
+                      {isMemberAdmin && (
+                        <View style={styles.memberRoleBadge}>
+                          <Text style={styles.memberRoleBadgeText}>{isCreator ? '👑 創建者' : '👑 管理員'}</Text>
+                        </View>
+                      )}
+
                       <TouchableOpacity
                         style={styles.userChipClickable}
                         onPress={() => {
@@ -811,7 +822,35 @@ function MainApp() {
                           </Text>
                         )}
                       </TouchableOpacity>
-                      {isOwner && !isCurrent && members.length > 1 && !isDeviceBound && (
+
+                      {/* 共同管理員角色切換：身為管理員且對象非原始建立者時可調整 */}
+                      {isOwner && !isCreator && (
+                        <TouchableOpacity
+                          style={[styles.roleToggleBtn, isMemberAdmin ? styles.roleToggleBtnDemote : styles.roleToggleBtnPromote]}
+                          onPress={() => {
+                            if (isMemberAdmin) {
+                              showConfirm(
+                                '取消管理員權限',
+                                `確定要將「${member.display_name}」降為一般成員嗎？`,
+                                () => updateMemberRole(member.id, 'member')
+                              );
+                            } else {
+                              showConfirm(
+                                '設為共同管理員',
+                                `確定要將「${member.display_name}」設為這本帳本的共同管理員嗎？\n成為管理員後，該成員也可以刪除成員並管理家庭邀請碼。`,
+                                () => updateMemberRole(member.id, 'owner')
+                              );
+                            }
+                          }}
+                        >
+                          <Text style={[styles.roleToggleBtnText, isMemberAdmin ? styles.roleToggleBtnTextDemote : styles.roleToggleBtnTextPromote]}>
+                            {isMemberAdmin ? '降為成員' : '👑 設為管理員'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {/* 刪除成員按鈕 */}
+                      {isOwner && !isCurrent && members.length > 1 && !isDeviceBound && !isCreator && (
                         <TouchableOpacity
                           style={styles.deleteMemberBtn}
                           onPress={() => {
@@ -1571,6 +1610,50 @@ const styles = StyleSheet.create({
     color: '#EF4444',
     fontSize: 11,
     fontWeight: 'bold',
+  },
+  memberRoleBadge: {
+    position: 'absolute',
+    top: 4,
+    left: 6,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 6,
+    borderWidth: 0.5,
+    borderColor: '#FDE68A',
+    zIndex: 5,
+  },
+  memberRoleBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#B45309',
+  },
+  roleToggleBtn: {
+    marginTop: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  roleToggleBtnPromote: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FDE68A',
+  },
+  roleToggleBtnDemote: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#E2E8F0',
+  },
+  roleToggleBtnText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  roleToggleBtnTextPromote: {
+    color: '#B45309',
+  },
+  roleToggleBtnTextDemote: {
+    color: '#64748B',
   },
   modalHeaderRow: {
     flexDirection: 'row',

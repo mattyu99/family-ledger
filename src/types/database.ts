@@ -7,6 +7,7 @@ export interface Profile {
   email?: string;
   display_name: string;
   avatar_url?: string;
+  role?: RoleType;
 }
 
 export interface Ledger {

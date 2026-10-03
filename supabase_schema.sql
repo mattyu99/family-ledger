@@ -292,6 +292,44 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- 變更成員角色權限的 RPC 函式 (管理員可指派共同管理員或降為一般成員)
+CREATE OR REPLACE FUNCTION public.set_member_role(
+    target_ledger_id UUID,
+    target_user_id UUID,
+    new_role TEXT
+)
+RETURNS JSONB AS $$
+DECLARE
+    target_ledger RECORD;
+BEGIN
+    SELECT * INTO target_ledger FROM public.ledgers WHERE id = target_ledger_id;
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'message', '找不到指定的帳本');
+    END IF;
+
+    -- 檢查目前呼叫者是否為該帳本管理員或建立者
+    IF NOT EXISTS (
+        SELECT 1 FROM public.ledger_members 
+        WHERE ledger_id = target_ledger_id 
+          AND user_id = auth.uid() 
+          AND role IN ('owner', 'admin')
+    ) AND target_ledger.created_by != auth.uid() THEN
+        RETURN jsonb_build_object('success', false, 'message', '只有帳本管理員才能變更成員權限');
+    END IF;
+
+    -- 原始建立者不能被降級
+    IF target_ledger.created_by = target_user_id AND new_role != 'owner' THEN
+        RETURN jsonb_build_object('success', false, 'message', '帳本原始建立者不能被降為一般成員');
+    END IF;
+
+    UPDATE public.ledger_members
+    SET role = new_role
+    WHERE ledger_id = target_ledger_id AND user_id = target_user_id;
+
+    RETURN jsonb_build_object('success', true, 'role', new_role);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- ==============================================================================
 -- 自動化觸發器 (Triggers)：新使用者註冊時，自動建立 Profile (由使用者自行建立或加入帳本)
 -- ==============================================================================

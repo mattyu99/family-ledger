@@ -30,9 +30,9 @@ export const DEFAULT_CATEGORIES: Category[] = [
 ];
 
 export const DEFAULT_MEMBERS: Profile[] = [
-  { id: DEMO_USER_DAD, email: 'dad@family.local', display_name: '爸爸 (我)', avatar_url: '👨' },
-  { id: DEMO_USER_MOM, email: 'mom@family.local', display_name: '媽媽', avatar_url: '👩' },
-  { id: DEMO_USER_KID, email: 'kid@family.local', display_name: '小寶', avatar_url: '👦' },
+  { id: DEMO_USER_DAD, email: 'dad@family.local', display_name: '爸爸 (我)', avatar_url: '👨', role: 'owner' },
+  { id: DEMO_USER_MOM, email: 'mom@family.local', display_name: '媽媽', avatar_url: '👩', role: 'member' },
+  { id: DEMO_USER_KID, email: 'kid@family.local', display_name: '小寶', avatar_url: '👦', role: 'member' },
 ];
 
 export const DEFAULT_LEDGER: Ledger = {
@@ -144,6 +144,7 @@ interface LedgerContextType {
   leaveCurrentLedger: () => Promise<void>;
   switchLedgerById: (ledgerId: string) => Promise<void>;
   leaveLedgerById: (ledgerId: string) => Promise<void>;
+  updateMemberRole: (memberId: string, newRole: 'owner' | 'member') => Promise<boolean>;
 }
 
 const LedgerContext = createContext<LedgerContextType | null>(null);
@@ -173,8 +174,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [userRole, setUserRole] = useState<'owner' | 'admin' | 'member'>('member');
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
 
-  // 帳本管理員必須由使用者在成員名冊中的角色（userRole）判定，絕不能看目前畫面點選的付款人 currentUser
-  const isOwner = userRole === 'owner';
+  // 帳本管理員包含建立者 (owner) 與共同管理員 (admin)
+  const isOwner = userRole === 'owner' || userRole === 'admin';
   const channelRef = useRef<any>(null);
 
   // 1. 初始化本地快取（Local-First: 先離線秒開，再非同步接雲端）
@@ -294,7 +295,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           filter: `ledger_id=eq.${ledgerId}`,
         },
         async () => {
-          // 當有新成員加入或成員變動時，即時推播刷新全體成員名單
+          // 當有新成員加入或成員變動（如角色升降級）時，即時推播刷新全體成員名單
           try {
             const { data: memberRows } = await supabase
               .from('ledger_members')
@@ -303,12 +304,31 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             if (memberRows && memberRows.length > 0) {
               const loadedMembers: Profile[] = memberRows
-                .map((r: any) => r.profiles)
+                .map((r: any) => {
+                  if (!r.profiles) return null;
+                  const isThisCreator = currentLedger.created_by === r.user_id;
+                  return {
+                    ...r.profiles,
+                    role: isThisCreator ? 'owner' : (r.role || 'member'),
+                  };
+                })
                 .filter(Boolean);
 
               if (loadedMembers.length > 0) {
                 setMembers(loadedMembers);
                 await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(loadedMembers));
+                await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${ledgerId}`, JSON.stringify(loadedMembers));
+              }
+
+              // 即時同步本機使用者之角色權限
+              const { data: { session } } = await supabase.auth.getSession();
+              const myAuthId = session?.user?.id;
+              if (myAuthId) {
+                const myRow = memberRows.find((r: any) => r.user_id === myAuthId);
+                const isMeCreator = currentLedger.created_by === myAuthId;
+                const newRole = isMeCreator ? 'owner' : ((myRow?.role as 'owner' | 'admin' | 'member') || 'member');
+                setUserRole(newRole);
+                await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, newRole);
               }
             }
           } catch (err) {
@@ -333,12 +353,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             if (memberRows && memberRows.length > 0) {
               const loadedMembers: Profile[] = memberRows
-                .map((r: any) => r.profiles)
+                .map((r: any) => {
+                  if (!r.profiles) return null;
+                  const isThisCreator = currentLedger.created_by === r.user_id;
+                  return {
+                    ...r.profiles,
+                    role: isThisCreator ? 'owner' : (r.role || 'member'),
+                  };
+                })
                 .filter(Boolean);
 
               if (loadedMembers.length > 0) {
                 setMembers(loadedMembers);
                 await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(loadedMembers));
+                await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${ledgerId}`, JSON.stringify(loadedMembers));
               }
             }
           } catch (err) {
@@ -417,7 +445,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     let loadedMembers: Profile[] = [];
     if (memberRows && memberRows.length > 0) {
       loadedMembers = memberRows
-        .map((r: any) => r.profiles)
+        .map((r: any) => {
+          if (!r.profiles) return null;
+          const isThisCreator = targetLedger.created_by === r.user_id;
+          return {
+            ...r.profiles,
+            role: isThisCreator ? 'owner' : (r.role || 'member'),
+          };
+        })
         .filter(Boolean);
     }
 
@@ -1351,6 +1386,70 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await AsyncStorage.removeItem(STORAGE_KEYS.DEVICE_BOUND);
   };
 
+  // 變更成員角色權限 (管理員可指派共同管理員或降為一般成員)
+  const updateMemberRole = async (memberId: string, newRole: 'owner' | 'member'): Promise<boolean> => {
+    if (!isOwner) {
+      alert('只有帳本管理員才能變更成員角色權限');
+      return false;
+    }
+
+    if (currentLedger.created_by === memberId && newRole === 'member') {
+      alert('此帳本的原始建立者不能被降為一般成員');
+      return false;
+    }
+
+    // 1. 本地更新
+    const updated = members.map(m => m.id === memberId ? { ...m, role: newRole } : m);
+    setMembers(updated);
+    await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updated));
+    await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${currentLedger.id}`, JSON.stringify(updated));
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const myAuthId = session?.user?.id;
+    if (myAuthId === memberId) {
+      setUserRole(newRole);
+      await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, newRole);
+    }
+
+    // 2. 雲端同步
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        let rpcSuccess = false;
+        try {
+          const { data: rpcRes } = await supabase.rpc('set_member_role', {
+            target_ledger_id: currentLedger.id,
+            target_user_id: memberId,
+            new_role: newRole,
+          });
+          if (rpcRes && rpcRes.success) {
+            rpcSuccess = true;
+          }
+        } catch {
+          // fallback to direct table update
+        }
+
+        if (!rpcSuccess) {
+          const { error } = await supabase
+            .from('ledger_members')
+            .update({ role: newRole })
+            .eq('ledger_id', currentLedger.id)
+            .eq('user_id', memberId);
+
+          if (error) {
+            console.warn('雲端更新成員角色失敗:', error);
+            alert('變更成員權限失敗: ' + error.message);
+            return false;
+          }
+        }
+      } catch (err: any) {
+        console.warn('雲端更新成員角色異常:', err);
+        return false;
+      }
+    }
+
+    return true;
+  };
+
   return (
     <LedgerContext.Provider
       value={{
@@ -1390,6 +1489,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         leaveCurrentLedger,
         switchLedgerById,
         leaveLedgerById,
+        updateMemberRole,
       }}
     >
       {children}
