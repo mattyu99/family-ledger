@@ -157,6 +157,10 @@ DROP POLICY IF EXISTS "Admins/Owners can manage members" ON public.ledger_member
 CREATE POLICY "Admins/Owners can manage members" ON public.ledger_members FOR ALL 
   USING (public.is_ledger_member(ledger_id));
 
+DROP POLICY IF EXISTS "Users can leave ledger" ON public.ledger_members;
+CREATE POLICY "Users can leave ledger" ON public.ledger_members FOR DELETE 
+  USING (user_id = auth.uid());
+
 -- Categories 規則
 DROP POLICY IF EXISTS "Members can view categories" ON public.categories;
 CREATE POLICY "Members can view categories" ON public.categories FOR SELECT 

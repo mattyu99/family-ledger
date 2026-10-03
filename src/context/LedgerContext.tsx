@@ -142,6 +142,8 @@ interface LedgerContextType {
   confirmPendingInvite: () => Promise<void>;
   cancelPendingInvite: () => void;
   leaveCurrentLedger: () => Promise<void>;
+  switchLedgerById: (ledgerId: string) => Promise<void>;
+  leaveLedgerById: (ledgerId: string) => Promise<void>;
 }
 
 const LedgerContext = createContext<LedgerContextType | null>(null);
@@ -591,30 +593,50 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           urlJoinId = params.get('join') || params.get('ledger');
         }
 
-        // 查詢該用戶目前已加入的帳本清單
+        // 查詢該用戶目前已加入的帳本清單 (依加入時間新到舊排序)
         const { data: memberLedgers } = await supabase
           .from('ledger_members')
-          .select('ledger_id, role, ledgers(*)')
-          .eq('user_id', authUser.id);
+          .select('ledger_id, role, joined_at, ledgers(*)')
+          .eq('user_id', authUser.id)
+          .order('joined_at', { ascending: false });
 
         const targetInvite = urlInviteCode || urlJoinId;
 
+        // 讀取本地快取的帳本 ID 與邀請碼
+        const savedLedgerStr = await AsyncStorage.getItem(STORAGE_KEYS.LEDGER);
+        let savedLedgerId: string | null = null;
+        if (savedLedgerStr) {
+          try {
+            const parsed = JSON.parse(savedLedgerStr);
+            if (isValidUUID(parsed?.id) && parsed.id !== DEMO_LEDGER_ID) {
+              savedLedgerId = parsed.id;
+            }
+          } catch {}
+        }
+        const savedCode = await AsyncStorage.getItem(STORAGE_KEYS.INVITE_CODE);
+
+        const validMemberLedgers = (memberLedgers || []).filter((m: any) => m.ledgers && isValidUUID(m.ledgers.id));
+        const allUserLedgers: Ledger[] = validMemberLedgers.map((m: any) => ({
+          ...(m.ledgers as unknown as Ledger),
+          userRole: m.role as any,
+        }));
+        setLedgers(allUserLedgers);
+
         // 情境 A：網址自帶邀請碼
         if (targetInvite) {
-          const savedCode = await AsyncStorage.getItem(STORAGE_KEYS.INVITE_CODE);
-          const alreadyInThisLedger = memberLedgers?.some(
+          const alreadyInThisLedger = validMemberLedgers.some(
             (m: any) =>
               (urlJoinId && (m.ledger_id === urlJoinId || m.ledgers?.id === urlJoinId)) ||
               (urlInviteCode && savedCode && savedCode.toUpperCase() === urlInviteCode.toUpperCase())
           );
 
           if (!alreadyInThisLedger) {
-            // 如果此裝置尚未有任何帳本，直接自動通關加入！
-            if (!memberLedgers || memberLedgers.length === 0) {
+            // 如果此用戶尚未有任何真實帳本，直接自動通關加入！
+            if (validMemberLedgers.length === 0) {
               await joinLedgerByCode(targetInvite, myProfile.display_name, myProfile.avatar_url);
               return;
             } else {
-              // 此裝置已經有其他帳本，彈窗詢問是否切換加入
+              // 彈窗詢問是否切換加入
               setPendingInviteCode(targetInvite);
             }
           } else {
@@ -626,16 +648,55 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
 
         // 情境 B：一般進入（已在某帳本內）
-        if (memberLedgers && memberLedgers.length > 0 && memberLedgers[0].ledgers) {
-          const targetRecord = (urlJoinId && memberLedgers.find((m: any) => m.ledger_id === urlJoinId || m.ledgers?.id === urlJoinId)) || memberLedgers[0];
-          const activeLedger = targetRecord.ledgers as unknown as Ledger;
-          const role = (targetRecord.role as 'owner' | 'admin' | 'member') || 'member';
-          setUserRole(role);
-          await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, role);
-          if (!isMounted) return;
-          await loadLedgerData(activeLedger, authUser.id);
-          setHasJoinedLedger(true);
-          await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
+        if (validMemberLedgers.length > 0) {
+          // 精確決定啟動帳本優先順序：
+          // 1. 網址指定的 join ID
+          // 2. 本地儲存的邀請碼匹配之帳本 (避免回到舊帳本)
+          // 3. 本地儲存的有效帳本 ID (若仍在成員名冊中)
+          // 4. 最新加入的帳本 (validMemberLedgers[0]，joined_at DESC)
+          let targetRecord: any = null;
+
+          if (urlJoinId) {
+            targetRecord = validMemberLedgers.find(
+              (m: any) => m.ledger_id === urlJoinId || m.ledgers?.id === urlJoinId
+            );
+          }
+
+          if (!targetRecord && (urlInviteCode || savedCode)) {
+            const inviteToMatch = (urlInviteCode || savedCode || '').trim().toUpperCase();
+            const ledgerIds = validMemberLedgers.map((m: any) => m.ledger_id);
+            const { data: matchedInvites } = await supabase
+              .from('ledger_invites')
+              .select('ledger_id, invite_code')
+              .in('ledger_id', ledgerIds)
+              .ilike('invite_code', inviteToMatch);
+
+            if (matchedInvites && matchedInvites.length > 0) {
+              const matchedLedgerId = matchedInvites[0].ledger_id;
+              targetRecord = validMemberLedgers.find((m: any) => m.ledger_id === matchedLedgerId);
+            }
+          }
+
+          if (!targetRecord && savedLedgerId) {
+            targetRecord = validMemberLedgers.find(
+              (m: any) => m.ledger_id === savedLedgerId || m.ledgers?.id === savedLedgerId
+            );
+          }
+
+          if (!targetRecord && validMemberLedgers.length > 0) {
+            targetRecord = validMemberLedgers[0];
+          }
+
+          if (targetRecord) {
+            const activeLedger = targetRecord.ledgers as unknown as Ledger;
+            const role = (targetRecord.role as 'owner' | 'admin' | 'member') || 'member';
+            setUserRole(role);
+            await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, role);
+            if (!isMounted) return;
+            await loadLedgerData(activeLedger, authUser.id);
+            setHasJoinedLedger(true);
+            await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
+          }
         } else {
           // 情境 C：新訪客打開乾淨網址，未持有任何帳本 ➡️ 顯示歡迎首頁 (冷啟動)
           if (!isMounted) return;
@@ -718,6 +779,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, newCode);
       await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
       setHasJoinedLedger(true);
+      setLedgers(prev => [{ ...newLedger, userRole: 'owner' }, ...prev.filter(l => l.id !== newLedger.id)]);
 
       if (creatorName || avatar) {
         const updatedMe: Profile = {
@@ -851,6 +913,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, code);
       await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
       setHasJoinedLedger(true);
+      setLedgers(prev => [{ ...targetLedger, userRole: 'member' }, ...prev.filter(l => l.id !== targetLedger.id)]);
 
       await loadLedgerData(targetLedger, authUserId);
       if (Platform.OS === 'web' && typeof window !== 'undefined' && window.history) {
@@ -931,13 +994,85 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setPendingInviteCode(null);
   };
 
-  // 離開當前帳本 (回到冷啟動首頁)
+  // 離開當前帳本 (回到冷啟動首頁，並從雲端解除成員綁定)
   const leaveCurrentLedger = async () => {
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user?.id) {
+          await supabase
+            .from('ledger_members')
+            .delete()
+            .eq('ledger_id', currentLedger.id)
+            .eq('user_id', session.user.id);
+        }
+      } catch (e) {
+        console.warn('雲端退出帳本失敗:', e);
+      }
+    }
     await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'false');
     await AsyncStorage.removeItem(STORAGE_KEYS.LEDGER);
     await AsyncStorage.removeItem(STORAGE_KEYS.USER_ROLE);
+    await AsyncStorage.removeItem(STORAGE_KEYS.INVITE_CODE);
     setUserRole('member');
     setHasJoinedLedger(false);
+  };
+
+  // 依帳本 ID 直接在使用者已加入的帳本間無縫切換
+  const switchLedgerById = async (targetLedgerId: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const authUserId = session?.user?.id;
+      if (!authUserId) return;
+
+      const { data: memberRow } = await supabase
+        .from('ledger_members')
+        .select('role, ledgers(*)')
+        .eq('ledger_id', targetLedgerId)
+        .eq('user_id', authUserId)
+        .maybeSingle();
+
+      if (memberRow && memberRow.ledgers) {
+        const targetLedger = memberRow.ledgers as unknown as Ledger;
+        const role = (memberRow.role as 'owner' | 'admin' | 'member') || 'member';
+        setUserRole(role);
+        await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, role);
+        await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(targetLedger));
+        await loadLedgerData(targetLedger, authUserId);
+      }
+    } catch (e) {
+      console.warn('切換帳本失敗:', e);
+    }
+  };
+
+  // 退出指定帳本（從雲端 ledger_members 徹底刪除關係）
+  const leaveLedgerById = async (targetLedgerId: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const authUserId = session?.user?.id;
+      if (authUserId && isConfigured && targetLedgerId !== DEMO_LEDGER_ID) {
+        await supabase
+          .from('ledger_members')
+          .delete()
+          .eq('ledger_id', targetLedgerId)
+          .eq('user_id', authUserId);
+      }
+
+      const remainingLedgers = ledgers.filter(l => l.id !== targetLedgerId);
+      setLedgers(remainingLedgers);
+
+      // 若退出的是目前正在使用的帳本，自動切換至其他已加入帳本或返回首頁
+      if (currentLedger.id === targetLedgerId) {
+        if (remainingLedgers.length > 0 && authUserId) {
+          const nextLedger = remainingLedgers[0];
+          await switchLedgerById(nextLedger.id);
+        } else {
+          await leaveCurrentLedger();
+        }
+      }
+    } catch (err) {
+      console.warn('退出特定帳本失敗:', err);
+    }
   };
 
   // 更新交易並保存至本地快取
@@ -1243,6 +1378,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         confirmPendingInvite,
         cancelPendingInvite,
         leaveCurrentLedger,
+        switchLedgerById,
+        leaveLedgerById,
       }}
     >
       {children}

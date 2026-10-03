@@ -16,6 +16,7 @@ export interface Ledger {
   currency: string;
   created_by: string;
   created_at: string;
+  userRole?: RoleType;
 }
 
 export interface LedgerMember {

@@ -92,6 +92,7 @@ const copyToClipboard = async (text: string, successMsg: string) => {
 function MainApp() {
   const {
     currentLedger,
+    ledgers,
     transactions,
     categories,
     members,
@@ -117,6 +118,8 @@ function MainApp() {
     confirmPendingInvite,
     cancelPendingInvite,
     leaveCurrentLedger,
+    switchLedgerById,
+    leaveLedgerById,
   } = useLedger();
 
   const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'family'>('transactions');
@@ -409,51 +412,126 @@ function MainApp() {
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.formHint}>
-            若您想切換至其他家庭帳本，或先前誤點了「建立新帳本」，請輸入正確的邀請碼或貼上 LINE 邀請連結：
-          </Text>
+          <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+            {ledgers.length > 1 && (
+              <View style={{ marginBottom: 16 }}>
+                <Text style={styles.formLabel}>📚 您已加入的帳本清單 (點擊可切換)</Text>
+                {ledgers.map((l) => {
+                  const isCurrent = l.id === currentLedger.id;
+                  return (
+                    <View
+                      key={l.id}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        backgroundColor: isCurrent ? '#EEF2FF' : '#F9FAFB',
+                        borderColor: isCurrent ? '#4F46E5' : '#E5E7EB',
+                        borderWidth: isCurrent ? 2 : 1,
+                        borderRadius: 12,
+                        padding: 12,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <TouchableOpacity
+                        style={{ flex: 1 }}
+                        onPress={async () => {
+                          if (!isCurrent) {
+                            await switchLedgerById(l.id);
+                            setSwitchLedgerModalVisible(false);
+                            showAlert('切換成功', `已切換至「${l.name}」！`);
+                          }
+                        }}
+                      >
+                        <Text style={{ fontSize: 15, fontWeight: '700', color: isCurrent ? '#4F46E5' : '#1F2937' }}>
+                          {l.name} {isCurrent ? '（使用中 ✓）' : ''}
+                        </Text>
+                        <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 3 }}>
+                          身分：{l.userRole === 'owner' ? '👑 管理員 (Owner)' : '👤 成員'}
+                        </Text>
+                      </TouchableOpacity>
 
-          <Text style={styles.formLabel}>邀請碼或完整邀請連結</Text>
-          <TextInput
-            style={styles.modalInput}
-            placeholder="例如：FAM-8823 或貼上連結"
-            placeholderTextColor="#9CA3AF"
-            value={switchCodeInput}
-            onChangeText={setSwitchCodeInput}
-            autoCapitalize="characters"
-          />
+                      <TouchableOpacity
+                        style={{
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          backgroundColor: '#FEE2E2',
+                          borderRadius: 8,
+                          marginLeft: 8,
+                        }}
+                        onPress={() => {
+                          showConfirm(
+                            '退出此帳本',
+                            `確定要退出「${l.name}」嗎？退出後該帳本將從您的帳本清單中移除。`,
+                            async () => {
+                              await leaveLedgerById(l.id);
+                              if (isCurrent) {
+                                setSwitchLedgerModalVisible(false);
+                              }
+                            }
+                          );
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, color: '#EF4444', fontWeight: 'bold' }}>退出</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
 
-          <TouchableOpacity
-            style={styles.submitMemberBtn}
-            disabled={isJoining}
-            onPress={handleSwitchLedger}
-          >
-            <Text style={styles.submitMemberBtnText}>
-              {isJoining ? '正在驗證並加入...' : '確認切換帳本'}
+                <View style={styles.orDividerRow}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>或輸入新邀請碼</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+              </View>
+            )}
+
+            <Text style={styles.formHint}>
+              若您想加入其他家庭帳本，請輸入家人提供的邀請碼或貼上完整 LINE 邀請連結：
             </Text>
-          </TouchableOpacity>
 
-          <View style={styles.orDividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>或</Text>
-            <View style={styles.dividerLine} />
-          </View>
+            <Text style={styles.formLabel}>邀請碼或完整邀請連結</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="例如：FAM-8823 或貼上連結"
+              placeholderTextColor="#9CA3AF"
+              value={switchCodeInput}
+              onChangeText={setSwitchCodeInput}
+              autoCapitalize="characters"
+            />
 
-          <TouchableOpacity
-            style={styles.leaveLedgerBtn}
-            onPress={() => {
-              showConfirm(
-                '退出當前帳本',
-                '退出後將返回初始起始畫面，您可以重新選擇「建立新帳本」或「輸入邀請碼加入」。確定要退出嗎？',
-                async () => {
-                  setSwitchLedgerModalVisible(false);
-                  await leaveCurrentLedger();
-                }
-              );
-            }}
-          >
-            <Text style={styles.leaveLedgerBtnText}>🚪 退出當前帳本（返回初始歡迎畫面）</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.submitMemberBtn}
+              disabled={isJoining}
+              onPress={handleSwitchLedger}
+            >
+              <Text style={styles.submitMemberBtnText}>
+                {isJoining ? '正在驗證並加入...' : '確認加入並切換'}
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.orDividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>或</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            <TouchableOpacity
+              style={styles.leaveLedgerBtn}
+              onPress={() => {
+                showConfirm(
+                  '退出當前帳本',
+                  '退出後將返回初始起始畫面，您可以重新選擇「建立新帳本」或「輸入邀請碼加入」。確定要退出嗎？',
+                  async () => {
+                    setSwitchLedgerModalVisible(false);
+                    await leaveCurrentLedger();
+                  }
+                );
+              }}
+            >
+              <Text style={styles.leaveLedgerBtnText}>🚪 退出當前帳本（返回初始歡迎畫面）</Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
       </View>
     </Modal>
