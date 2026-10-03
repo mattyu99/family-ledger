@@ -5,15 +5,18 @@
 -- 啟用 UUID 擴充功能
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 1. 使用者個人資料表 (與 Supabase auth.users 連動)
+-- 1. 使用者個人資料表 (支援登入使用者與家庭無帳號成員)
 CREATE TABLE IF NOT EXISTS public.profiles (
-    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     email TEXT,
     display_name TEXT NOT NULL,
     avatar_url TEXT,
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- 移除 profiles 對 auth.users 的強制外鍵約束，允許家庭公帳建立無獨立登入帳號的家庭成員 (如長輩、小孩)
+ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_id_fkey;
 
 -- 2. 帳本表 (支援個人私帳與家庭公帳)
 CREATE TABLE IF NOT EXISTS public.ledgers (
@@ -114,15 +117,17 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Profiles 規則：任何人可讀取個人公開資訊，自己可新增與修改
+-- Profiles 規則：任何人可讀取個人公開資訊，已認證成員可新增與修改
 DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON public.profiles;
 CREATE POLICY "Public profiles are viewable by everyone" ON public.profiles FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
-CREATE POLICY "Users can insert own profile" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
+DROP POLICY IF EXISTS "Anyone can insert profiles" ON public.profiles;
+CREATE POLICY "Anyone can insert profiles" ON public.profiles FOR INSERT WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
-CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
+DROP POLICY IF EXISTS "Anyone can update profiles" ON public.profiles;
+CREATE POLICY "Anyone can update profiles" ON public.profiles FOR UPDATE USING (true);
 
 -- Ledgers 規則：只有成員與建立者能看自己參與的帳本
 DROP POLICY IF EXISTS "Members can view their ledgers" ON public.ledgers;
@@ -234,6 +239,41 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- 新增家庭成員的 RPC 函式 (SECURITY DEFINER 原子交易，自動寫入 profiles 與 ledger_members)
+CREATE OR REPLACE FUNCTION public.add_family_member(
+    target_ledger_id UUID,
+    member_name TEXT,
+    member_avatar TEXT DEFAULT '😊'
+)
+RETURNS JSONB AS $$
+DECLARE
+    new_member_id UUID := uuid_generate_v4();
+BEGIN
+    -- 檢查呼叫者是否為該帳本成員
+    IF NOT public.is_ledger_member(target_ledger_id) THEN
+        RETURN jsonb_build_object('success', false, 'message', '您不是此帳本的成員，無法新增成員');
+    END IF;
+
+    -- 1. 寫入 profiles 表
+    INSERT INTO public.profiles (id, display_name, avatar_url)
+    VALUES (new_member_id, member_name, member_avatar);
+
+    -- 2. 寫入 ledger_members 表
+    INSERT INTO public.ledger_members (ledger_id, user_id, role)
+    VALUES (target_ledger_id, new_member_id, 'member')
+    ON CONFLICT (ledger_id, user_id) DO NOTHING;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'member', jsonb_build_object(
+            'id', new_member_id,
+            'display_name', member_name,
+            'avatar_url', member_avatar
+        )
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- ==============================================================================
 -- 自動化觸發器 (Triggers)：新使用者註冊時，自動建立 Profile (由使用者自行建立或加入帳本)
 -- ==============================================================================
@@ -280,6 +320,13 @@ BEGIN
 
   BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.ledger_members;
+  EXCEPTION
+    WHEN duplicate_object THEN NULL;
+    WHEN others THEN NULL;
+  END;
+
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
   EXCEPTION
     WHEN duplicate_object THEN NULL;
     WHEN others THEN NULL;

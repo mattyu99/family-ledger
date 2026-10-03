@@ -314,6 +314,36 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'profiles',
+        },
+        async () => {
+          // 當有成員資料（如大頭貼或暱稱）變更時，刷新成員名單
+          try {
+            const { data: memberRows } = await supabase
+              .from('ledger_members')
+              .select('user_id, role, profiles(*)')
+              .eq('ledger_id', ledgerId);
+
+            if (memberRows && memberRows.length > 0) {
+              const loadedMembers: Profile[] = memberRows
+                .map((r: any) => r.profiles)
+                .filter(Boolean);
+
+              if (loadedMembers.length > 0) {
+                setMembers(loadedMembers);
+                await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(loadedMembers));
+              }
+            }
+          } catch (err) {
+            console.warn('Realtime 依 Profile 刷新成員失敗:', err);
+          }
+        }
+      )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           setIsCloudSynced(true);
@@ -382,32 +412,67 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       .select('user_id, role, profiles(*)')
       .eq('ledger_id', targetLedger.id);
 
+    let loadedMembers: Profile[] = [];
     if (memberRows && memberRows.length > 0) {
-      const loadedMembers: Profile[] = memberRows
+      loadedMembers = memberRows
         .map((r: any) => r.profiles)
         .filter(Boolean);
+    }
 
-      if (loadedMembers.length > 0) {
-        setMembers(loadedMembers);
-        await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(loadedMembers));
+    // 檢查本地是否曾新增過尚未同步至雲端的成員（自動補修復）
+    const localSavedMembersStr = await AsyncStorage.getItem(STORAGE_KEYS.MEMBERS);
+    if (localSavedMembersStr && targetLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        const localMembers: Profile[] = JSON.parse(localSavedMembersStr);
+        const unsyncedMembers = localMembers.filter(
+          lm => isValidUUID(lm.id) &&
+          !loadedMembers.some(cm => cm.id === lm.id) &&
+          !lm.id.startsWith('20000000-0000-4000-8000')
+        );
 
-        const myMemberRow = memberRows.find((r: any) => r.user_id === authUserId);
-        if (myMemberRow) {
-          const role = (myMemberRow.role as 'owner' | 'admin' | 'member') || 'member';
-          setUserRole(role);
-          await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, role);
-          if (myMemberRow.profiles) {
-            const profile = myMemberRow.profiles as unknown as Profile;
-            setCurrentUser(profile);
-            await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(profile));
+        for (const m of unsyncedMembers) {
+          try {
+            await supabase.from('profiles').upsert({
+              id: m.id,
+              display_name: m.display_name,
+              avatar_url: m.avatar_url,
+              email: m.email,
+            });
+            await supabase.from('ledger_members').insert({
+              ledger_id: targetLedger.id,
+              user_id: m.id,
+              role: 'member',
+            });
+            loadedMembers.push(m);
+          } catch (e) {
+            console.warn('補同步本地成員失敗:', m.display_name, e);
           }
-        } else if (targetLedger.created_by === authUserId) {
-          setUserRole('owner');
-          await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, 'owner');
-        } else {
-          setUserRole('member');
-          await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, 'member');
         }
+      } catch (err) {
+        console.warn('解析本地成員快取失敗:', err);
+      }
+    }
+
+    if (loadedMembers.length > 0) {
+      setMembers(loadedMembers);
+      await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(loadedMembers));
+
+      const myMemberRow = memberRows?.find((r: any) => r.user_id === authUserId);
+      if (myMemberRow) {
+        const role = (myMemberRow.role as 'owner' | 'admin' | 'member') || 'member';
+        setUserRole(role);
+        await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, role);
+        if (myMemberRow.profiles) {
+          const profile = myMemberRow.profiles as unknown as Profile;
+          setCurrentUser(profile);
+          await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(profile));
+        }
+      } else if (targetLedger.created_by === authUserId) {
+        setUserRole('owner');
+        await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, 'owner');
+      } else {
+        setUserRole('member');
+        await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, 'member');
       }
     }
 
@@ -418,15 +483,56 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       .eq('ledger_id', targetLedger.id)
       .order('transacted_at', { ascending: false });
 
+    let finalTx: Transaction[] = [];
     if (txRows) {
-      const formattedTx: Transaction[] = txRows.map((t: any) => ({
+      finalTx = txRows.map((t: any) => ({
         ...t,
         amount: Number(t.amount),
       }));
-      setTransactions(formattedTx);
-      await AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(formattedTx));
-      setIsCloudSynced(true);
     }
+
+    // 檢查本地是否有尚未成功送至雲端的交易（如因外鍵問題一度失敗，自動補修復上傳）
+    const localSavedTxStr = await AsyncStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
+    if (localSavedTxStr && targetLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        const localTxList: Transaction[] = JSON.parse(localSavedTxStr);
+        const unsyncedTx = localTxList.filter(
+          lt => isValidUUID(lt.id) &&
+          lt.ledger_id === targetLedger.id &&
+          !finalTx.some(ct => ct.id === lt.id) &&
+          !lt.id.startsWith('40000000-0000-4000-8000')
+        );
+
+        for (const ut of unsyncedTx) {
+          try {
+            const { error: insErr } = await supabase.from('transactions').insert({
+              id: ut.id,
+              ledger_id: ut.ledger_id,
+              creator_id: ut.creator_id,
+              category_id: ut.category_id,
+              amount: ut.amount,
+              type: ut.type,
+              paid_by: ut.paid_by,
+              transacted_at: ut.transacted_at,
+              note: ut.note,
+              is_settled: ut.is_settled,
+            });
+            if (!insErr) {
+              finalTx.push(ut);
+            }
+          } catch (e) {
+            console.warn('補同步本地交易至雲端失敗:', ut.id, e);
+          }
+        }
+      } catch (err) {
+        console.warn('解析本地交易快取失敗:', err);
+      }
+    }
+
+    finalTx.sort((a, b) => new Date(b.transacted_at).getTime() - new Date(a.transacted_at).getTime());
+    setTransactions(finalTx);
+    await AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(finalTx));
+    setIsCloudSynced(true);
 
     // (E) Realtime 訂閱
     setupRealtimeSubscription(targetLedger.id);
@@ -856,8 +962,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }) => {
     const txId = generateUUID();
 
-    // 嚴格校驗各 ID 欄位，若為歷史非 UUID 快取（如 usr-179...）則自動修正為有效 UUID
-    let validCreatorId = currentUser.id;
+    const { data: { session } } = await supabase.auth.getSession();
+    const authUserId = session?.user?.id;
+    let validCreatorId = authUserId || currentUser.id;
     if (!isValidUUID(validCreatorId)) {
       validCreatorId = members.find(m => isValidUUID(m.id))?.id || DEMO_USER_DAD;
     }
@@ -997,31 +1104,48 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, [transactions, members]);
 
-  // 新增家庭成員
+  // 新增家庭成員 (優先呼叫安全 RPC 函式，確保 profiles 與 ledger_members 寫入成功)
   const addMember = async (name: string, avatar: string = '😊') => {
-    const newMemberId = generateUUID();
-    const newMember: Profile = {
+    let newMemberId = generateUUID();
+    let newMember: Profile = {
       id: newMemberId,
       email: `${name.toLowerCase()}@family.local`,
       display_name: name,
       avatar_url: avatar,
     };
-    const updated = [...members, newMember];
-    setMembers(updated);
-    await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updated));
 
-    if (isConfigured) {
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
-        await supabase.from('profiles').insert(newMember);
-        await supabase.from('ledger_members').insert({
-          ledger_id: currentLedger.id,
-          user_id: newMemberId,
-          role: 'member',
+        const { data: rpcRes, error: rpcErr } = await supabase.rpc('add_family_member', {
+          target_ledger_id: currentLedger.id,
+          member_name: name,
+          member_avatar: avatar,
         });
-      } catch (err) {
+
+        if (rpcRes && rpcRes.success && rpcRes.member) {
+          newMember = {
+            id: rpcRes.member.id,
+            email: `${name.toLowerCase()}@family.local`,
+            display_name: rpcRes.member.display_name,
+            avatar_url: rpcRes.member.avatar_url,
+          };
+        } else {
+          // 備用直寫 (若尚未建立 RPC 函式)
+          await supabase.from('profiles').upsert(newMember);
+          await supabase.from('ledger_members').insert({
+            ledger_id: currentLedger.id,
+            user_id: newMember.id,
+            role: 'member',
+          });
+        }
+      } catch (err: any) {
         console.warn('雲端新增成員失敗:', err);
       }
     }
+
+    const updated = [...members.filter(m => m.id !== newMember.id), newMember];
+    setMembers(updated);
+    await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updated));
   };
 
   // 刪除家庭成員 (僅 Owner 可操作，且受歷史紀錄保護)
