@@ -212,6 +212,7 @@ RETURNS JSONB AS $$
 DECLARE
     target_invite RECORD;
     target_ledger RECORD;
+    assigned_role TEXT;
 BEGIN
     SELECT * INTO target_invite FROM public.ledger_invites
     WHERE UPPER(TRIM(invite_code)) = UPPER(TRIM(invite_code_input))
@@ -224,15 +225,23 @@ BEGIN
 
     SELECT * INTO target_ledger FROM public.ledgers WHERE id = target_invite.ledger_id;
 
-    -- 自動將目前呼叫者加入帳本成員表 (若為建立者本人重新加入，永遠恢復 owner 權限)
-    INSERT INTO public.ledger_members (ledger_id, user_id, role)
-    VALUES (
-        target_invite.ledger_id,
-        auth.uid(),
-        CASE WHEN target_ledger.created_by = auth.uid() THEN 'owner' ELSE 'member' END
-    )
-    ON CONFLICT (ledger_id, user_id) 
-    DO UPDATE SET role = CASE WHEN target_ledger.created_by = auth.uid() THEN 'owner' ELSE public.ledger_members.role END;
+    -- 若目前呼叫者為該帳本建立者，角色自動恢復為 'owner'；其餘家人則為 'member'
+    IF target_ledger.created_by = auth.uid() THEN
+        assigned_role := 'owner';
+    ELSE
+        assigned_role := 'member';
+    END IF;
+
+    -- 先嘗試更新既有成員紀錄之角色
+    UPDATE public.ledger_members
+    SET role = assigned_role
+    WHERE ledger_id = target_invite.ledger_id AND user_id = auth.uid();
+
+    -- 若尚未加入過，則新增成員紀錄
+    IF NOT FOUND THEN
+        INSERT INTO public.ledger_members (ledger_id, user_id, role)
+        VALUES (target_invite.ledger_id, auth.uid(), assigned_role);
+    END IF;
 
     -- 累加已使用次數
     UPDATE public.ledger_invites
