@@ -770,9 +770,9 @@ function MainApp() {
             {/* 家庭成員名冊與管理 */}
             <View style={styles.cardSection}>
               <View style={styles.sectionHeaderRow}>
-                <View>
+                <View style={styles.sectionHeaderLeft}>
                   <Text style={styles.cardSectionTitle}>👨‍👩‍👧 家庭成員名單 ({members.length})</Text>
-                  <Text style={styles.cardSectionDesc}>
+                  <Text style={styles.sectionHeaderDesc}>
                     {isDeviceBound
                       ? '🔒 本機已綁定專屬成員，無法點選切換身分'
                       : '點擊成員可切換當前記帳者，亦可隨時新增'}
@@ -802,7 +802,7 @@ function MainApp() {
                         }}
                       >
                         <Text style={styles.userAvatar}>{member.avatar_url}</Text>
-                        <Text style={[styles.userTitle, isCurrent && styles.userTitleActive]}>
+                        <Text style={[styles.userTitle, isCurrent && styles.userTitleActive]} numberOfLines={1} ellipsizeMode="tail">
                           {member.display_name}
                         </Text>
                         {isCurrent && (
@@ -871,7 +871,7 @@ function MainApp() {
                         }}
                       >
                         <Text style={styles.bindMemberAvatar}>{member.avatar_url}</Text>
-                        <Text style={styles.bindMemberName}>鎖定 {member.display_name}</Text>
+                        <Text style={styles.bindMemberName} numberOfLines={1} ellipsizeMode="tail">鎖定 {member.display_name}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -882,7 +882,7 @@ function MainApp() {
             {/* 邀請家人加入與代碼管理 */}
             <View style={styles.cardSection}>
               <View style={styles.inviteHeaderRow}>
-                <View>
+                <View style={styles.sectionHeaderLeft}>
                   <Text style={styles.cardSectionTitle}>🔗 邀請家人共同記帳</Text>
                   <Text style={styles.cardSectionDesc}>讓伴侶或家人加入這本公帳，資料即時雙向同步</Text>
                 </View>
@@ -968,10 +968,12 @@ function MainApp() {
         )}
       </View>
 
-      {/* 浮動記帳按鈕 (FAB) */}
-      <TouchableOpacity style={styles.fab} onPress={() => setModalVisible(true)}>
-        <Text style={styles.fabText}>＋</Text>
-      </TouchableOpacity>
+      {/* 浮動記帳按鈕 (FAB) - 僅在「明細」分頁顯示，避免遮擋家庭成員與設定操作 */}
+      {activeTab === 'transactions' && (
+        <TouchableOpacity style={styles.fab} onPress={() => setModalVisible(true)}>
+          <Text style={styles.fabText}>＋</Text>
+        </TouchableOpacity>
+      )}
 
       {/* 底部功能頁籤 */}
       <View style={styles.bottomNav}>
@@ -1330,18 +1332,20 @@ const styles = StyleSheet.create({
   userSwitchRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    justifyContent: 'space-between',
     width: '100%',
   },
   userChip: {
-    flex: 1,
-    minWidth: 90,
+    width: '48%',
     alignItems: 'center',
     paddingVertical: 12,
+    paddingHorizontal: 6,
+    marginBottom: 10,
     backgroundColor: '#F8FAFC',
     borderRadius: 14,
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
+    position: 'relative',
   },
   userChipActive: {
     backgroundColor: '#EEF2FF',
@@ -1509,16 +1513,28 @@ const styles = StyleSheet.create({
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     marginBottom: 14,
+    gap: 8,
+  },
+  sectionHeaderLeft: {
+    flex: 1,
+    minWidth: 0,
+    marginRight: 6,
+  },
+  sectionHeaderDesc: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
   },
   addMemberBtn: {
     backgroundColor: '#EEF2FF',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#C7D2FE',
+    flexShrink: 0,
   },
   addMemberBtnText: {
     color: '#4F46E5',
@@ -1549,6 +1565,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEE2E2',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 10,
   },
   deleteMemberText: {
     color: '#EF4444',
@@ -1684,16 +1701,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+    width: '100%',
   },
   bindMemberBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#CBD5E1',
+    maxWidth: '100%',
+    marginBottom: 4,
   },
   bindMemberAvatar: {
     fontSize: 16,
@@ -1703,6 +1723,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#334155',
+    flexShrink: 1,
   },
   topBarTitleRow: {
     flexDirection: 'row',
@@ -1922,13 +1943,15 @@ const styles = StyleSheet.create({
   inviteHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     marginBottom: 12,
+    gap: 8,
   },
   roleBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
+    flexShrink: 0,
   },
   roleBadgeOwner: {
     backgroundColor: '#FEF3C7',
