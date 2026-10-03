@@ -224,10 +224,15 @@ BEGIN
 
     SELECT * INTO target_ledger FROM public.ledgers WHERE id = target_invite.ledger_id;
 
-    -- 自動將目前呼叫者加入帳本成員表
+    -- 自動將目前呼叫者加入帳本成員表 (若為建立者本人重新加入，永遠恢復 owner 權限)
     INSERT INTO public.ledger_members (ledger_id, user_id, role)
-    VALUES (target_invite.ledger_id, auth.uid(), 'member')
-    ON CONFLICT (ledger_id, user_id) DO NOTHING;
+    VALUES (
+        target_invite.ledger_id,
+        auth.uid(),
+        CASE WHEN target_ledger.created_by = auth.uid() THEN 'owner' ELSE 'member' END
+    )
+    ON CONFLICT (ledger_id, user_id) 
+    DO UPDATE SET role = CASE WHEN target_ledger.created_by = auth.uid() THEN 'owner' ELSE public.ledger_members.role END;
 
     -- 累加已使用次數
     UPDATE public.ledger_invites

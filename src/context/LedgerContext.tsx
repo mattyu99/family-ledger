@@ -460,21 +460,24 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(loadedMembers));
 
       const myMemberRow = memberRows?.find((r: any) => r.user_id === authUserId);
-      if (myMemberRow) {
-        const role = (myMemberRow.role as 'owner' | 'admin' | 'member') || 'member';
-        setUserRole(role);
-        await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, role);
-        if (myMemberRow.profiles) {
-          const profile = myMemberRow.profiles as unknown as Profile;
-          setCurrentUser(profile);
-          await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(profile));
-        }
-      } else if (targetLedger.created_by === authUserId) {
-        setUserRole('owner');
-        await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, 'owner');
-      } else {
-        setUserRole('member');
-        await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, 'member');
+      const isCreator = targetLedger.created_by === authUserId;
+      const role = isCreator ? 'owner' : ((myMemberRow?.role as 'owner' | 'admin' | 'member') || 'member');
+      setUserRole(role);
+      await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, role);
+      if (myMemberRow?.profiles) {
+        const profile = myMemberRow.profiles as unknown as Profile;
+        setCurrentUser(profile);
+        await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(profile));
+      }
+
+      // 若身為建立者但雲端成員身分被誤設為 member，自動在雲端校正回 owner
+      if (isCreator && myMemberRow && myMemberRow.role !== 'owner' && isConfigured) {
+        supabase
+          .from('ledger_members')
+          .update({ role: 'owner' })
+          .eq('ledger_id', targetLedger.id)
+          .eq('user_id', authUserId)
+          .then();
       }
     }
 
@@ -616,10 +619,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const savedCode = await AsyncStorage.getItem(STORAGE_KEYS.INVITE_CODE);
 
         const validMemberLedgers = (memberLedgers || []).filter((m: any) => m.ledgers && isValidUUID(m.ledgers.id));
-        const allUserLedgers: Ledger[] = validMemberLedgers.map((m: any) => ({
-          ...(m.ledgers as unknown as Ledger),
-          userRole: m.role as any,
-        }));
+        const allUserLedgers: Ledger[] = validMemberLedgers.map((m: any) => {
+          const l = m.ledgers as unknown as Ledger;
+          const isCreator = l.created_by === authUser.id;
+          return {
+            ...l,
+            userRole: (isCreator ? 'owner' : m.role) as any,
+          };
+        });
         setLedgers(allUserLedgers);
 
         // 情境 A：網址自帶邀請碼
@@ -689,7 +696,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
           if (targetRecord) {
             const activeLedger = targetRecord.ledgers as unknown as Ledger;
-            const role = (targetRecord.role as 'owner' | 'admin' | 'member') || 'member';
+            const isCreator = activeLedger.created_by === authUser.id;
+            const role = isCreator ? 'owner' : ((targetRecord.role as 'owner' | 'admin' | 'member') || 'member');
             setUserRole(role);
             await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, role);
             if (!isMounted) return;
@@ -885,35 +893,38 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return { success: false, message: '找不到此邀請碼對應的帳本，請確認代碼是否正確！' };
       }
 
+      const isCreator = targetLedger.created_by === authUserId;
+      const assignedRole: 'owner' | 'member' = isCreator ? 'owner' : 'member';
+
       await supabase.from('ledger_members').upsert({
         ledger_id: targetLedger.id,
         user_id: authUserId,
-        role: 'member',
+        role: assignedRole,
       }, { onConflict: 'ledger_id,user_id' });
 
       if (memberName || avatar) {
         await supabase.from('profiles').upsert({
           id: authUserId,
-          display_name: memberName || '家庭成員',
-          avatar_url: avatar || '👩',
+          display_name: memberName || (isCreator ? '爸爸 (我)' : '家庭成員'),
+          avatar_url: avatar || (isCreator ? '👨' : '👩'),
         });
         const updatedMe: Profile = {
           id: authUserId,
-          display_name: memberName || '家庭成員',
-          avatar_url: avatar || '👩',
+          display_name: memberName || (isCreator ? '爸爸 (我)' : '家庭成員'),
+          avatar_url: avatar || (isCreator ? '👨' : '👩'),
         };
         setCurrentUser(updatedMe);
         await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedMe));
       }
 
-      setUserRole('member');
-      await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, 'member');
+      setUserRole(assignedRole);
+      await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, assignedRole);
       setInviteCode(code);
       setPendingInviteCode(null);
       await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, code);
       await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
       setHasJoinedLedger(true);
-      setLedgers(prev => [{ ...targetLedger, userRole: 'member' }, ...prev.filter(l => l.id !== targetLedger.id)]);
+      setLedgers(prev => [{ ...targetLedger, userRole: assignedRole }, ...prev.filter(l => l.id !== targetLedger.id)]);
 
       await loadLedgerData(targetLedger, authUserId);
       if (Platform.OS === 'web' && typeof window !== 'undefined' && window.history) {
@@ -1034,7 +1045,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       if (memberRow && memberRow.ledgers) {
         const targetLedger = memberRow.ledgers as unknown as Ledger;
-        const role = (memberRow.role as 'owner' | 'admin' | 'member') || 'member';
+        const isCreator = targetLedger.created_by === authUserId;
+        const role = isCreator ? 'owner' : ((memberRow.role as 'owner' | 'admin' | 'member') || 'member');
         setUserRole(role);
         await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, role);
         await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(targetLedger));
