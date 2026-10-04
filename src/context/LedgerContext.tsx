@@ -1253,19 +1253,26 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // 重新產生邀請碼 (Owner 專屬，舊代碼作廢)
   const regenerateInviteCode = async (): Promise<string> => {
     const newCode = 'FAM-' + Math.floor(1000 + Math.random() * 9000);
-    setInviteCode(newCode);
-    await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, newCode);
 
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-      const { data: { session } } = await supabase.auth.getSession();
-      const uid = session?.user?.id || currentUser.id;
-      await supabase.from('ledger_invites').insert({
-        ledger_id: currentLedger.id,
-        invite_code: newCode,
-        created_by: uid,
-        expires_at: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
-      });
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const uid = session?.user?.id || currentUser.id;
+        // 清理此帳本舊的邀請紀錄，確保舊碼作廢
+        await supabase.from('ledger_invites').delete().eq('ledger_id', currentLedger.id);
+        await supabase.from('ledger_invites').insert({
+          ledger_id: currentLedger.id,
+          invite_code: newCode,
+          created_by: uid,
+          expires_at: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+        });
+      } catch (e) {
+        console.warn('雲端更新邀請碼失敗:', e);
+      }
     }
+
+    setInviteCode(newCode);
+    await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, newCode);
     return newCode;
   };
 
@@ -1276,23 +1283,47 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       alert('邀請碼長度需在 3 至 15 個字元之間');
       return false;
     }
-    setInviteCode(clean);
-    await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, clean);
 
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-      const { data: { session } } = await supabase.auth.getSession();
-      const uid = session?.user?.id || currentUser.id;
-      const { error } = await supabase.from('ledger_invites').insert({
-        ledger_id: currentLedger.id,
-        invite_code: clean,
-        created_by: uid,
-        expires_at: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
-      });
-      if (error) {
-        alert('此自訂代碼已被其他家庭使用，請換一個！');
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const uid = session?.user?.id || currentUser.id;
+
+        // 檢查此代碼是否已被「其他家庭」使用
+        const { data: existing } = await supabase
+          .from('ledger_invites')
+          .select('id, ledger_id')
+          .ilike('invite_code', clean)
+          .maybeSingle();
+
+        if (existing && existing.ledger_id !== currentLedger.id) {
+          alert('此自訂代碼已被其他家庭使用，請換一個！');
+          return false;
+        }
+
+        // 若不是同一個既有代碼，作廢舊碼並寫入新碼
+        if (!existing) {
+          await supabase.from('ledger_invites').delete().eq('ledger_id', currentLedger.id);
+          const { error } = await supabase.from('ledger_invites').insert({
+            ledger_id: currentLedger.id,
+            invite_code: clean,
+            created_by: uid,
+            expires_at: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+          });
+          if (error) {
+            alert('此自訂代碼已被其他家庭使用，請換一個！');
+            return false;
+          }
+        }
+      } catch (e) {
+        console.warn('自訂邀請碼時發生錯誤:', e);
+        alert('變更邀請碼失敗，請稍後再試');
         return false;
       }
     }
+
+    setInviteCode(clean);
+    await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, clean);
     return true;
   };
 
