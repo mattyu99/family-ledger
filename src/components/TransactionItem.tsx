@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { getCategoryIcon } from '../lib/icons';
@@ -10,7 +10,7 @@ interface TransactionItemProps {
 }
 
 export const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onPress }) => {
-  const { categories, members, deleteTransaction, getMemberById, getCategoryById } = useLedger();
+  const { getMemberById, getCategoryById } = useLedger();
 
   const category = getCategoryById(transaction.category_id, transaction.category);
   const payer = getMemberById(transaction.paid_by) || transaction.payer_profile;
@@ -18,34 +18,6 @@ export const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, o
 
   const date = new Date(transaction.transacted_at);
   const formattedDate = `${date.getMonth() + 1}/${date.getDate()}`;
-
-  const handleDelete = (e: any) => {
-    if (e && e.stopPropagation) {
-      e.stopPropagation();
-    }
-
-    const catName = category?.name || '此筆記帳';
-    const amountStr = `NT$ ${Number(transaction.amount).toLocaleString()}`;
-    const payerName = payer?.display_name ? `（由「${payer.display_name}」付款）` : '';
-    const noteStr = transaction.note ? `\n備註：${transaction.note}` : '';
-
-    const confirmMsg = `確定要刪除這筆【${catName} ${amountStr}】${payerName}${noteStr} 嗎？\n刪除後無法復原。`;
-
-    if (Platform.OS === 'web') {
-      if (typeof window !== 'undefined' && window.confirm(`確認刪除記帳\n\n${confirmMsg}`)) {
-        deleteTransaction(transaction.id);
-      }
-    } else {
-      Alert.alert('確認刪除記帳', confirmMsg, [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '確定刪除',
-          style: 'destructive',
-          onPress: () => deleteTransaction(transaction.id),
-        },
-      ]);
-    }
-  };
 
   return (
     <TouchableOpacity
@@ -61,38 +33,48 @@ export const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, o
       {/* 項目與細節 */}
       <View style={styles.infoBox}>
         <View style={styles.topRow}>
-          <Text style={styles.categoryName}>{category?.name || '其他'}</Text>
-          <Text style={[styles.amountText, isExpense ? styles.expenseColor : styles.incomeColor]}>
+          <Text
+            style={styles.categoryName}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            maxFontSizeMultiplier={1.2}
+          >
+            {category?.name || '其他'}
+          </Text>
+          <Text
+            style={[styles.amountText, isExpense ? styles.expenseColor : styles.incomeColor]}
+            maxFontSizeMultiplier={1.2}
+          >
             {isExpense ? '-' : '+'} NT$ {Number(transaction.amount).toLocaleString()}
           </Text>
         </View>
 
         <View style={styles.bottomRow}>
-          <Text style={styles.noteText} numberOfLines={1}>
+          <Text
+            style={styles.noteText}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            maxFontSizeMultiplier={1.2}
+          >
             {transaction.note ? transaction.note : '無備註'}
           </Text>
           <View style={styles.metaRow}>
-            <Text style={styles.payerTag}>
-              {payer?.avatar_url || '👤'} {payer?.display_name || '家庭成員'} 付款
+            <Text
+              style={styles.payerTag}
+              numberOfLines={1}
+              maxFontSizeMultiplier={1.2}
+            >
+              {payer?.avatar_url || '👤'} {payer?.display_name || '成員'}
             </Text>
-            <Text style={styles.dateText}>{formattedDate}</Text>
+            <Text
+              style={styles.dateText}
+              maxFontSizeMultiplier={1.2}
+            >
+              {formattedDate}
+            </Text>
           </View>
         </View>
       </View>
-
-      {/* 編輯提示圖示 */}
-      <View style={styles.editHintBtn}>
-        <Text style={styles.editHintText}>✏️</Text>
-      </View>
-
-      {/* 刪除按鈕 */}
-      <TouchableOpacity 
-        style={styles.deleteButton}
-        onPress={handleDelete}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      >
-        <Text style={styles.deleteButtonText}>✕</Text>
-      </TouchableOpacity>
     </TouchableOpacity>
   );
 };
@@ -103,7 +85,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     borderRadius: 16,
     marginBottom: 10,
     shadowColor: '#000',
@@ -113,12 +95,12 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   iconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 10,
   },
   iconText: {
     fontSize: 20,
@@ -131,15 +113,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 4,
+    gap: 8,
   },
   categoryName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: '#1F2937',
+    flexShrink: 1,
   },
   amountText: {
     fontSize: 16,
     fontWeight: '700',
+    flexShrink: 0,
   },
   expenseColor: {
     color: '#EF4444',
@@ -151,16 +136,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
   },
   noteText: {
     fontSize: 13,
     color: '#6B7280',
     flex: 1,
-    marginRight: 8,
+    flexShrink: 1,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
   },
   payerTag: {
     fontSize: 11,
@@ -169,28 +157,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
-    marginRight: 6,
+    maxWidth: 110,
   },
   dateText: {
     fontSize: 12,
     color: '#9CA3AF',
-  },
-  deleteButton: {
-    padding: 6,
-    marginLeft: 6,
-  },
-  deleteButtonText: {
-    color: '#D1D5DB',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  editHintBtn: {
-    paddingHorizontal: 4,
-    paddingVertical: 4,
-    marginLeft: 6,
-    opacity: 0.6,
-  },
-  editHintText: {
-    fontSize: 14,
   },
 });

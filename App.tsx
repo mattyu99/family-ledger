@@ -1347,14 +1347,19 @@ function MainApp() {
             {/* 本月收支摘要卡片 */}
             <View style={styles.summaryCard}>
               <View style={styles.summaryHeader}>
-                <Text style={styles.summaryTitle}>本月家庭總覽</Text>
-                <Text style={styles.currencyLabel}>TWD (新台幣)</Text>
+                <Text style={styles.summaryTitle} maxFontSizeMultiplier={1.2}>本月家庭總覽</Text>
+                <Text style={styles.currencyLabel} maxFontSizeMultiplier={1.2}>TWD (新台幣)</Text>
               </View>
 
               <View style={styles.summaryGrid}>
                 <View style={styles.summaryCol}>
-                  <Text style={styles.summaryLabel}>總支出</Text>
-                  <Text style={[styles.summaryVal, styles.expenseVal]}>
+                  <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2}>總支出</Text>
+                  <Text
+                    style={[styles.summaryVal, styles.expenseVal]}
+                    maxFontSizeMultiplier={1.2}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
                     -NT$ {settlementInfo.totalExpense.toLocaleString()}
                   </Text>
                 </View>
@@ -1362,8 +1367,13 @@ function MainApp() {
                 <View style={styles.summaryDivider} />
 
                 <View style={styles.summaryCol}>
-                  <Text style={styles.summaryLabel}>總收入</Text>
-                  <Text style={[styles.summaryVal, styles.incomeVal]}>
+                  <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2}>總收入</Text>
+                  <Text
+                    style={[styles.summaryVal, styles.incomeVal]}
+                    maxFontSizeMultiplier={1.2}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
                     +NT$ {settlementInfo.totalIncome.toLocaleString()}
                   </Text>
                 </View>
@@ -1371,8 +1381,13 @@ function MainApp() {
                 <View style={styles.summaryDivider} />
 
                 <View style={styles.summaryCol}>
-                  <Text style={styles.summaryLabel}>結餘</Text>
-                  <Text style={styles.summaryVal}>
+                  <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2}>結餘</Text>
+                  <Text
+                    style={styles.summaryVal}
+                    maxFontSizeMultiplier={1.2}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
                     NT$ {settlementInfo.netBalance.toLocaleString()}
                   </Text>
                 </View>
