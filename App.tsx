@@ -19,6 +19,7 @@ import { EditTransactionModal } from './src/components/EditTransactionModal';
 import { Transaction, Profile } from './src/types/database';
 import { getCategoryIcon } from './src/lib/icons';
 import * as Updates from 'expo-updates';
+import appConfig from './app.json';
 
 const AVATAR_OPTIONS = ['👨', '👩', '👦', '👧', '👴', '👵', '👶', '👱', '🐶', '🐱'];
 
@@ -138,7 +139,7 @@ function MainApp() {
   const [csvContent, setCsvContent] = useState('');
 
   // 應用程式版本與熱更新狀態
-  const APP_VERSION = '1.0.0';
+  const APP_VERSION = appConfig.expo.version || '1.0.0';
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
 
   // 帳本更名狀態
