@@ -1,22 +1,38 @@
 # 👨‍👩‍👧 家庭共同記帳 APP (Family Ledger)
 
-這是一套支援 **iOS、Android 手機與電腦瀏覽器（Web）** 的家庭共同記帳應用程式。具備**多人協同記帳、即時雲端同步、離線隨身記帳、代墊款平分結算**與**一鍵匯出 Excel 備份**功能。
+這是一套基於 **React Native + Expo** 與 **Supabase PostgreSQL** 打造的跨平台家庭共同記帳系統。  
+支援 **Android 原生 App（APK）、電腦網頁版（Web）與手機瀏覽器（PWA）** 多端併行，具備**多人協同記帳、即時雙向同步、離線隨身記帳、4 位數安全防護、代墊平分結算**與**雲端 OTA 熱更新**功能。
 
 ---
 
 ## ✨ 核心特色與架構
 
-1. **跨平台運行（React Native + Expo）**：一套程式碼同時支援 iPhone、Android 與電腦瀏覽器。
-2. **雲端即時同步（Supabase PostgreSQL）**：
-   - 具備 **RLS（Row Level Security）** 權限隔離，確保只有同帳本的家庭成員能看見彼此的帳目。
-   - 支援 WebSocket 毫秒級即時同步，有人記帳時全家手機立即更新。
-3. **離線優先（Local-First）**：
-   - 在地下室賣場或無網路時依然可流暢記帳，資料先保存在手機本地快取，連網後自動同步至雲端。
-4. **代墊與平分結算**：
-   - 清楚統計各成員（例如爸爸、媽媽）的代墊付款比例。
-   - 支援單筆消費「全家平分分攤」，自動計算代墊差額。
-5. **資料完全掌控**：
-   - 支援一鍵將整本帳目匯出為標準 **CSV / Excel** 格式，隨時可備份到自己的 Google Drive 或電腦。
+1. **多端併行運作（手機 APK + 電腦網頁）**：
+   - **外出隨手記**：手機安裝 Android APK 原生 App，外出買菜、加油、用餐秒開秒記。
+   - **月末大螢幕對帳**：電腦瀏覽器開啟網頁版，大螢幕檢視收支統計與一鍵匯出 Excel。
+   - **資料 100% 即時互通**：所有端皆連線至同一個 Supabase 雲端資料庫，手機記帳電腦即刻跳出。
+2. **一人一機身分架構**：
+   - 每位家庭成員各自使用自己的手機進入帳本，首頁清晰標記 `📱 我 (本機)`。
+   - 記帳時預設自動帶入本人身分，亦可自由切換「付款人」輕鬆處理家人間的代墊與代記。
+3. **完善的管理員權限與安全體系**：
+   - **4 位數安全 PIN 碼**：預設為 `8888`，管理員可自由修改。新裝置認領管理員身分時須驗證此碼，防止他人冒充奪權。
+   - **最後一位管理員防呆保護**：系統強制每本公帳至少保留一位管理員，禁止自己降級自己，亦無法將最後一位管理員降級。
+   - **PIN 碼緊急救援恢復**：若在其他裝置遺失管理員權限，一般成員可憑 4 位數 PIN 碼一鍵即時升級/恢復為管理員。
+4. **一鍵智慧移交帳目（刪除成員防護）**：
+   - 刪除成員時若該成員尚有代墊紀錄，系統會自動彈出「帳目承接」視窗，管理員可自由指定由哪位家人（不限管理員）承接款項，確保公帳歷史收支完整平衡。
+5. **靈活的邀請碼與門牌機制**：
+   - 帳本底層綁定全球唯一永久 ID（`ledger_id`），邀請碼為尋路門牌。
+   - 支援「自訂邀請碼（如 `SWEETHOME`）」與「重新產生隨機邀請碼（舊碼自動作廢）」。
+   - **資料庫級唯一性防撞**：全系統同一時間一組代碼只對應唯一帳本，絕不打架混淆。
+   - 支援複製專屬邀請連結（含網址參數），LINE 傳送給家人點開即可自動帶入加入。
+6. **帳本更名功能**：
+   - 管理員可直接點擊頂部帳本名稱旁的 ✏️ 或在設定頁點選「帳本更名」，修改後全家手機即時同步變更。
+7. **OTA 無感熱更新（EAS Update）與版本資訊卡**：
+   - 手機安裝一次 APK，日後更新畫面**無需重新下載安裝 APK**，打開 App 自動在背景抓取最新介面。
+   - 成員分頁底部提供「應用程式版本資訊」卡片，清楚顯示版本號、Update ID、更新發布時間，並提供【🔄 檢查並載入最新版本】手動更新鈕。
+8. **離線優先（Local-First）與資料掌控**：
+   - 無網路或賣場地下室仍可流暢記帳，連網後自動補推同步。
+   - 支援一鍵匯出完整帳簿為標準 **CSV / Excel** 格式備份至個人硬碟。
 
 ---
 
@@ -24,54 +40,87 @@
 
 ```text
 family-ledger/
-├── supabase_schema.sql       # 雲端資料庫建置腳本 (包含表格、RLS安全規則、即時推播)
-├── App.tsx                   # 應用程式主畫面 (明細、統計圖表、家庭設定三頁籤)
+├── App.tsx                     # 主畫面 (明細列表、統計圖表、家庭成員與設定)
+├── app.json                    # Expo 與 Android 原生配置 (套件名稱、圖示、版本)
+├── eas.json                    # Expo EAS Build 雲端打包與 EAS Update 頻道設定
+├── package.json                # 專案相依性與 npm 快速建置腳本
+├── supabase_schema.sql         # Supabase PostgreSQL 完整腳本 (表格、RLS 安全策略、RPC)
 ├── src/
-│   ├── types/database.ts     # TypeScript 資料庫型別定義
-│   ├── lib/supabase.ts       # Supabase 客戶端連線與本地 AsyncStorage 快取
-│   ├── context/LedgerContext.tsx # 全域記帳狀態管理 (新增、刪除、匯出、代墊計算)
+│   ├── types/database.ts       # TypeScript 資料庫型別定義
+│   ├── lib/
+│   │   ├── supabase.ts         # Supabase 連線客戶端與配置檢查
+│   │   ├── uuid.ts             # 跨平台 UUID 生成工具
+│   │   └── icons.ts            # 分類圖示對照輔助函式
+│   ├── context/
+│   │   └── LedgerContext.tsx   # 全域帳本狀態 (CRUD、邀請碼、管理員PIN、角色權限)
 │   └── components/
-│       ├── TransactionItem.tsx   # 單筆記帳明細卡片 (圖示、金額、代墊人標籤)
-│       └── AddTransactionModal.tsx # 新增記帳互動彈窗 (收支切換、類別選擇、平分切換)
-├── package.json
-└── README.md
+│       ├── TransactionItem.tsx # 單筆消費/收入卡片
+│       ├── AddTransactionModal.tsx  # 新增記帳彈窗 (收支切換、類別選擇、付款人指定)
+│       └── EditTransactionModal.tsx # 編輯既有記帳明細彈窗
+└── assets/                     # 應用程式圖示、自適應啟動圖與 Favicon
 ```
 
 ---
 
-## 🚀 啟動與測試步驟
+## 🚀 常用指令與運維操作
 
-此專案已在 WSL2 (`flex-test`) 環境下完成 Node.js 與相依套件安裝：
-
-### 1. 啟動 Expo 開發伺服器
-
-在 WSL2 終端機中執行：
-
+### 1. 本地開發與除錯
 ```bash
-cd /mnt/c/Users/tpimatyu/.gemini/antigravity/scratch/family-ledger
-npx expo start
+npx expo start        # 啟動開發伺服器
+npx expo start --web  # 直接開啟網頁版除錯
+npx tsc --noEmit      # 執行 TypeScript 靜態型別檢查
 ```
 
-### 2. 檢視與測試畫面
+### 2. 部署電腦網頁版（GitHub Pages）
+若修改了前端程式碼，發布至網頁版只需一行：
+```bash
+npm run deploy:web
+```
+發布後電腦重新整理頁面即可體驗最新版。
 
-啟動後終端機會顯示一個 **QR Code** 與操作選單：
-- **電腦瀏覽器檢視**：在終端機直接按鍵盤上的 **`w`** 鍵，即可在電腦瀏覽器打開網頁版。
-- **手機實機測試**：
-  - **iPhone**：打開「相機」直接掃描終端機上的 QR Code（需先安裝 [Expo Go App](https://apps.apple.com/app/expo-go/id982107779)）。
-  - **Android**：打開 [Expo Go App](https://play.google.com/store/apps/details?id=host.exp.exponent) 內的掃描器掃描 QR Code。
+### 3. 編譯 Android 原生 APK 安裝檔（EAS Build）
+使用 Expo 官方免費雲端伺服器打包 APK（免裝 Android Studio）：
+```bash
+# 第一次使用前請先登入 Expo 帳號
+npx eas-cli@latest login
+
+# 啟動雲端打包 APK (產出直接可安裝的 .apk 檔)
+npm run build:android
+```
+編譯完成後，終端機會直接顯示 **下載連結** 與 **QR Code**，手機掃碼即可下載安裝。
+
+### 4. 推播手機 App 熱更新（EAS Update / OTA）
+手機安裝過「熱更新正式版 APK」後，未來修改介面**不需要重新打包 APK**，直接推播：
+```bash
+npm run update:android -- --message "版本更新備註"
+```
+家人手機下次打開 App 時就會自動無感套用最新畫面。
 
 ---
 
-## ☁️ 連接至真實 Supabase 雲端資料庫（選用）
+## 🏷️ 版本號更新規範（語意化版本 SemVer）
 
-本系統預設自帶**本地示範與離線快取模式**，您可以立即點擊操作體驗。若要啟用真正的雲端多人同步：
+本系統遵循 `主版本 (Major) . 次版本 (Minor) . 修訂號 (Patch)` 格式：
 
-1. 前往 [Supabase 官網](https://supabase.com) 註冊並免費建立一個專案。
-2. 在 Supabase 後台左側點擊 **SQL Editor**，將本專案目錄下的 `supabase_schema.sql` 內容複製貼上並執行（一鍵自動建立所有資料表、RLS 安全機制與預設分類）。
-3. 前往專案 **Settings -> API** 複製 `Project URL` 與 `anon public key`。
-4. 在本專案根目錄建立 `.env` 檔案（或直接修改 `src/lib/supabase.ts`）：
-   ```env
-   EXPO_PUBLIC_SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
-   EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-   ```
-5. 重新啟動 App，頂部的狀態徽章將立即轉為 **🟢 雲端即時同步**！
+* **修訂號 (Patch，例如 `1.0.0` ➜ `1.0.1`)**：最常見，用於修正小 Bug、介面微調、文字修正。
+* **次版本 (Minor，例如 `1.0.1` ➜ `1.1.0`)**：新增了新功能（如月預算功能），但原有功能相容。
+* **主版本 (Major，例如 `1.x.x` ➜ `2.0.0`)**：重大改版或資料架構升級。
+
+### 如何前進版本號？
+只要打開 **`app.json`**，將 `"version"` 修改為新版本號（如 `"1.0.1"`），App 介面卡片將**自動連動顯示**新版本號！
+
+---
+
+## ⚠️ 重要注意事項與最佳實踐
+
+1. **管理員安全 PIN 碼**：
+   - 預設 PIN 碼為 **`8888`**。
+   - 建立帳本後，建議管理員前往【成員】頁面修改為專屬 PIN 碼，並妥善與另一位主要管理者（如伴侶）共享。
+2. **認領成員身分**：
+   - 新家人手機加入帳本時，請點選自己的稱謂進行綁定；若需替家人代墊，請直接在記帳視窗中改選【付款人】，無需更換手機綁定。
+3. **熱更新 APK 依賴順序**：
+   - 手機安裝的 APK 必須包含 `expo-updates` 模組才能接收後續的遠端熱更新。若曾安裝過早期未包含熱更新模組的測試版 APK，請務必重新下載安裝最新的正式版 APK。
+4. **資料庫 RLS 行級權限**：
+   - 所有記帳明細均受 Supabase RLS 嚴密保護，只有持有該帳本成員資格的手機才能讀取與寫入，杜絕跨家庭外洩風險。
+5. **備份習慣**：
+   - 建議每月結算後，管理員至【成員】分頁點選「📥 一鍵匯出 CSV / Excel 備份檔」，妥善留存於個人電腦或 Google 雲端硬碟。
