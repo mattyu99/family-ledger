@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "家庭公帳",
+    "name": "甜心記帳本",
     "slug": "family-ledger",
     "version": "1.0.1",
     "runtimeVersion": "1.0.0",
@@ -20,10 +20,9 @@
     "android": {
       "package": "com.mattyu.familyledger",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#FFF0F5",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundImage": "./assets/android-icon-background.png"
       },
       "predictiveBackGestureEnabled": false
     },

@@ -1726,7 +1726,7 @@ function MainApp() {
               <View style={styles.versionHeaderRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cardSectionTitle}>📱 應用程式版本資訊</Text>
-                  <Text style={styles.cardSectionDesc}>家庭公帳跨平台系統</Text>
+                  <Text style={styles.cardSectionDesc}>甜心記帳本跨平台系統</Text>
                 </View>
                 <View style={styles.versionTagBadge}>
                   <Text style={styles.versionTagBadgeText}>v{APP_VERSION}</Text>
