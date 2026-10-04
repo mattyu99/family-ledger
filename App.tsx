@@ -111,6 +111,7 @@ function MainApp() {
     adminPin,
     updateAdminPin,
     createLedger,
+    updateLedgerName,
     joinLedgerByCode,
     previewInvite,
     regenerateInviteCode,
@@ -134,6 +135,10 @@ function MainApp() {
   const [newMemberName, setNewMemberName] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState('👩');
   const [csvContent, setCsvContent] = useState('');
+
+  // 帳本更名狀態
+  const [editLedgerModalVisible, setEditLedgerModalVisible] = useState(false);
+  const [editLedgerNameInput, setEditLedgerNameInput] = useState('');
 
   // 編輯成員稱謂與頭像狀態
   const [editMemberModalVisible, setEditMemberModalVisible] = useState(false);
@@ -834,6 +839,52 @@ function MainApp() {
     </Modal>
   );
 
+  const renderEditLedgerModal = () => (
+    <Modal visible={editLedgerModalVisible} animationType="fade" transparent>
+      <View style={styles.exportOverlay}>
+        <View style={styles.exportCard}>
+          <View style={styles.modalHeaderRow}>
+            <Text style={styles.exportTitle}>✏️ 修改家庭公帳名稱</Text>
+            <TouchableOpacity onPress={() => setEditLedgerModalVisible(false)} style={styles.closeBtn}>
+              <Text style={styles.closeText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.formHint}>
+            身為管理員，您可以隨時更新帳本名稱。修改後，所有已加入此帳本的家人手機都會即時同步更新。
+          </Text>
+
+          <Text style={styles.formLabel}>新帳本名稱 (例如：陳家幸福公帳)</Text>
+          <TextInput
+            style={styles.modalInput}
+            placeholder="請輸入新帳本名稱"
+            placeholderTextColor="#9CA3AF"
+            value={editLedgerNameInput}
+            onChangeText={setEditLedgerNameInput}
+            maxLength={30}
+          />
+
+          <TouchableOpacity
+            style={styles.submitMemberBtn}
+            onPress={async () => {
+              if (!editLedgerNameInput.trim()) {
+                showAlert('請輸入名稱', '帳本名稱不能為空');
+                return;
+              }
+              const success = await updateLedgerName(editLedgerNameInput.trim());
+              if (success) {
+                showAlert('修改成功', `帳本名稱已變更為「${editLedgerNameInput.trim()}」！`);
+                setEditLedgerModalVisible(false);
+              }
+            }}
+          >
+            <Text style={styles.submitMemberBtnText}>確認變更名稱</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+
   const renderCustomCodeModal = () => (
     <Modal visible={customCodeModalVisible} animationType="fade" transparent>
       <View style={styles.exportOverlay}>
@@ -1201,10 +1252,24 @@ function MainApp() {
 
       {/* 頂部導航列 */}
       <View style={styles.topBar}>
-        <View>
+        <View style={{ flex: 1, marginRight: 8 }}>
           <Text style={styles.ledgerSubtitle}>家庭共享記帳本</Text>
           <View style={styles.topBarTitleRow}>
-            <Text style={styles.ledgerTitle}>{currentLedger.name}</Text>
+            {isOwner ? (
+              <TouchableOpacity
+                style={styles.ledgerTitleClickable}
+                onPress={() => {
+                  setEditLedgerNameInput(currentLedger.name);
+                  setEditLedgerModalVisible(true);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.ledgerTitle} numberOfLines={1}>{currentLedger.name}</Text>
+                <Text style={styles.ledgerEditPencil}>✏️</Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.ledgerTitle} numberOfLines={1}>{currentLedger.name}</Text>
+            )}
             {isOwner && (
               <View style={styles.ownerTopBadge}>
                 <Text style={styles.ownerTopBadgeText}>👑 管理員</Text>
@@ -1513,6 +1578,16 @@ function MainApp() {
                     <TouchableOpacity
                       style={styles.ownerControlBtn}
                       onPress={() => {
+                        setEditLedgerNameInput(currentLedger.name);
+                        setEditLedgerModalVisible(true);
+                      }}
+                    >
+                      <Text style={styles.ownerControlBtnText}>✏️ 帳本更名</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.ownerControlBtn}
+                      onPress={() => {
                         showConfirm(
                           '重新產生邀請碼',
                           '重新產生後，舊代碼將會作廢。確定要產生全新的一組隨機邀請碼嗎？',
@@ -1712,6 +1787,9 @@ function MainApp() {
 
       {/* 移轉帳目並刪除成員彈窗 */}
       {renderTransferDeleteModal()}
+
+      {/* 修改家庭公帳名稱彈窗 */}
+      {renderEditLedgerModal()}
 
       {/* 自訂邀請碼彈窗 */}
       {renderCustomCodeModal()}
@@ -2341,6 +2419,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  ledgerTitleClickable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  ledgerEditPencil: {
+    fontSize: 13,
   },
   ownerTopBadge: {
     backgroundColor: '#FEF3C7',

@@ -146,6 +146,7 @@ interface LedgerContextType {
   isOwner: boolean;
   inviteCode: string;
   createLedger: (name?: string, creatorName?: string, avatar?: string) => Promise<void>;
+  updateLedgerName: (newName: string) => Promise<boolean>;
   joinLedgerByCode: (
     codeOrUrl: string,
     memberName?: string,
@@ -967,6 +968,34 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.warn('建立帳本失敗:', err);
       alert('建立帳本時發生錯誤: ' + (err.message || '請檢查網路連線'));
     }
+  };
+
+  // 修改家庭公帳名稱 (管理員專屬)
+  const updateLedgerName = async (newName: string): Promise<boolean> => {
+    const clean = newName.trim();
+    if (!clean) {
+      alert('帳本名稱不能為空');
+      return false;
+    }
+    const updatedLedger = { ...currentLedger, name: clean };
+    setCurrentLedger(updatedLedger);
+    setLedgers(prev => prev.map(l => (l.id === currentLedger.id ? { ...l, name: clean } : l)));
+    await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(updatedLedger));
+
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        const { error } = await supabase
+          .from('ledgers')
+          .update({ name: clean, updated_at: new Date().toISOString() })
+          .eq('id', currentLedger.id);
+        if (error) {
+          console.warn('雲端更新帳本名稱失敗:', error);
+        }
+      } catch (e) {
+        console.warn('雲端更新帳本名稱失敗:', e);
+      }
+    }
+    return true;
   };
 
   // 透過邀請碼或專屬連結加入帳本 (家人加入或認領既有身分，支援管理員 PIN 碼驗證)
@@ -2041,6 +2070,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         adminPin,
         updateAdminPin,
         createLedger,
+        updateLedgerName,
         joinLedgerByCode,
         previewInvite,
         regenerateInviteCode,
