@@ -1299,7 +1299,14 @@ function MainApp() {
       {/* 頂部導航列 */}
       <View style={styles.topBar}>
         <View style={{ flex: 1, marginRight: 8 }}>
-          <Text style={styles.ledgerSubtitle}>家庭共享記帳本</Text>
+          <View style={styles.topBarSubtitleRow}>
+            <Text style={styles.ledgerSubtitle} maxFontSizeMultiplier={1.2}>家庭共享記帳本</Text>
+            {isOwner && (
+              <View style={styles.ownerTopBadge}>
+                <Text style={styles.ownerTopBadgeText} maxFontSizeMultiplier={1.2}>👑 管理員</Text>
+              </View>
+            )}
+          </View>
           <View style={styles.topBarTitleRow}>
             {isOwner ? (
               <TouchableOpacity
@@ -1310,16 +1317,15 @@ function MainApp() {
                 }}
                 activeOpacity={0.7}
               >
-                <Text style={styles.ledgerTitle} numberOfLines={1}>{currentLedger.name}</Text>
+                <Text style={styles.ledgerTitle} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.2}>
+                  {currentLedger.name}
+                </Text>
                 <Text style={styles.ledgerEditPencil}>✏️</Text>
               </TouchableOpacity>
             ) : (
-              <Text style={styles.ledgerTitle} numberOfLines={1}>{currentLedger.name}</Text>
-            )}
-            {isOwner && (
-              <View style={styles.ownerTopBadge}>
-                <Text style={styles.ownerTopBadgeText}>👑 管理員</Text>
-              </View>
+              <Text style={styles.ledgerTitle} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.2}>
+                {currentLedger.name}
+              </Text>
             )}
           </View>
         </View>
@@ -1327,7 +1333,9 @@ function MainApp() {
         {/* 雲端狀態徽章 */}
         <View style={[styles.syncBadge, isCloudSynced ? styles.syncOnline : styles.syncLocal]}>
           <Text style={styles.syncDot}>{isCloudSynced ? '🟢' : '🟡'}</Text>
-          <Text style={styles.syncText}>{isCloudSynced ? '雲端即時同步' : '本地離線快取'}</Text>
+          <Text style={styles.syncText} maxFontSizeMultiplier={1.2}>
+            {isCloudSynced ? '雲端即時同步' : '本地離線快取'}
+          </Text>
         </View>
       </View>
 
@@ -1948,13 +1956,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingHorizontal: 16,
+    paddingTop: 14,
     paddingBottom: 12,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderColor: '#F1F5F9',
     width: '100%',
+  },
+  topBarSubtitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 3,
   },
   ledgerSubtitle: {
     fontSize: 12,
@@ -1965,13 +1979,15 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
     color: '#0F172A',
+    flexShrink: 1,
   },
   syncBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 20,
+    flexShrink: 0,
   },
   syncOnline: {
     backgroundColor: '#ECFDF5',
@@ -2527,26 +2543,27 @@ const styles = StyleSheet.create({
   topBarTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   ledgerTitleClickable: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexShrink: 1,
   },
   ledgerEditPencil: {
     fontSize: 13,
   },
   ownerTopBadge: {
     backgroundColor: '#FEF3C7',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#FDE68A',
   },
   ownerTopBadgeText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: '#B45309',
   },
