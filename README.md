@@ -62,6 +62,22 @@ family-ledger/
 
 ---
 
+## ☁️ 連接至真實 Supabase 雲端資料庫（選用）
+
+本系統預設自帶**本地示範與離線快取模式**，即使不連接雲端亦可立即點擊操作體驗。若要啟用真正的雲端多人同步：
+
+1. 前往 [Supabase 官網](https://supabase.com) 註冊並免費建立一個專案。
+2. 在 Supabase 後台左側點擊 **SQL Editor**，將本專案目錄下的 `supabase_schema.sql` 內容複製貼上並執行（一鍵自動建立所有資料表、RLS 安全機制、RPC 儲存程序與預設分類）。
+3. 前往專案 **Settings -> API** 複製 `Project URL` 與 `anon public key`。
+4. 在本專案根目錄建立 `.env` 檔案（或直接修改 `src/lib/supabase.ts`）：
+   ```env
+   EXPO_PUBLIC_SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
+   EXPO_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_xxxxxxxxxxxxxxxxxxxxxxxx
+   ```
+5. 重新啟動 App 或重新整理網頁，頂部的狀態徽章將立即轉為 **🟢 雲端即時同步**！
+
+---
+
 ## 🚀 常用指令與運維操作
 
 ### 1. 本地開發與除錯
