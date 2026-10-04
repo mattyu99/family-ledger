@@ -27,7 +27,7 @@
     "build:web": "expo export -p web",
     "deploy:web": "expo export -p web && touch dist/.nojekyll && cp dist/index.html dist/404.html && gh-pages -d dist --dotfiles",
     "build:android": "npx eas-cli@latest build -p android --profile preview",
-    "update:android": "npx eas-cli@latest update --channel preview"
+    "update:android": "npx eas-cli@latest update --channel preview --environment preview --non-interactive"
   },
   "private": true
 }
