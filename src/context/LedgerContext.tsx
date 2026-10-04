@@ -174,6 +174,8 @@ interface LedgerContextType {
   leaveLedgerById: (ledgerId: string) => Promise<void>;
   updateMemberRole: (memberId: string, newRole: 'owner' | 'member') => Promise<boolean>;
   claimAdminRoleWithPin: (pin: string) => Promise<{ success: boolean; message?: string }>;
+  getMemberById: (id?: string) => Profile | undefined;
+  memberAliasMap: Record<string, Profile>;
 }
 
 const LedgerContext = createContext<LedgerContextType | null>(null);
@@ -200,6 +202,52 @@ export const deduplicateMembers = (memberList: Profile[]): Profile[] => {
   return result;
 };
 
+// 建立成員別名映射表：將多台裝置同名 UUID、示範資料常數 UUID 等均映射至去重後之主要 Profile
+export const buildMemberAliasMap = (
+  deduped: Profile[],
+  loaded: Profile[],
+  extraProfiles?: Profile[]
+): Record<string, Profile> => {
+  const map: Record<string, Profile> = {};
+
+  // 1. 主要成員自身映射
+  for (const m of deduped) {
+    map[m.id] = m;
+  }
+
+  // 2. 雲端所有關聯成員（包含不同裝置登入但同一暱稱者）
+  for (const raw of loaded) {
+    const rawName = (raw.display_name || '').trim().toLowerCase();
+    const canonical = deduped.find(
+      m => (m.display_name || '').trim().toLowerCase() === rawName
+    );
+    map[raw.id] = canonical || raw;
+  }
+
+  // 3. 額外查詢之付款人 Profile
+  if (extraProfiles) {
+    for (const p of extraProfiles) {
+      const pName = (p.display_name || '').trim().toLowerCase();
+      const canonical = deduped.find(
+        m => (m.display_name || '').trim().toLowerCase() === pName
+      );
+      map[p.id] = canonical || p;
+    }
+  }
+
+  // 4. 歷史與示範帳目常數回退
+  if (deduped.length > 0) {
+    const dad = deduped.find(m => m.display_name.includes('爸') || m.role === 'owner') || deduped[0];
+    const mom = deduped.find(m => m.display_name.includes('媽')) || deduped[1] || dad;
+    const kid = deduped.find(m => m.display_name.includes('寶') || m.display_name.includes('孩')) || deduped[2] || dad;
+    map[DEMO_USER_DAD] = dad;
+    map[DEMO_USER_MOM] = mom;
+    map[DEMO_USER_KID] = kid;
+  }
+
+  return map;
+};
+
 const STORAGE_KEYS = {
   TRANSACTIONS: '@family_ledger_transactions',
   CURRENT_USER: '@family_ledger_current_user',
@@ -210,12 +258,15 @@ const STORAGE_KEYS = {
   INVITE_CODE: '@family_ledger_invite_code',
   USER_ROLE: '@family_ledger_user_role',
   ADMIN_PIN: '@family_ledger_admin_pin',
+  ALIAS_MAP: '@family_ledger_alias_map',
 };
 
 export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentLedger, setCurrentLedger] = useState<Ledger>(DEFAULT_LEDGER);
   const [ledgers, setLedgers] = useState<Ledger[]>([DEFAULT_LEDGER]);
   const [members, setMembers] = useState<Profile[]>(DEFAULT_MEMBERS);
+  const [rawMembers, setRawMembers] = useState<Profile[]>([]);
+  const [memberAliasMap, setMemberAliasMap] = useState<Record<string, Profile>>({});
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const [currentUser, setCurrentUser] = useState<Profile>(DEFAULT_MEMBERS[0]);
@@ -226,6 +277,42 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [adminPin, setAdminPin] = useState<string>('8888');
   const [userRole, setUserRole] = useState<'owner' | 'admin' | 'member'>('member');
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
+
+  // 透過 ID 取得標準成員資料（自動穿透多裝置 UUID、別名表、歷史示範常數）
+  const getMemberById = React.useCallback(
+    (id?: string): Profile | undefined => {
+      if (!id) return undefined;
+      // 1. 直查去重後主要成員名單
+      const direct = members.find(m => m.id === id);
+      if (direct) return direct;
+
+      // 2. 查別名映射表
+      if (memberAliasMap[id]) return memberAliasMap[id];
+
+      // 3. 示範常數映射
+      if (id === DEMO_USER_DAD) {
+        return members.find(m => m.display_name.includes('爸') || m.role === 'owner') || members[0];
+      }
+      if (id === DEMO_USER_MOM) {
+        return members.find(m => m.display_name.includes('媽')) || members[1] || members[0];
+      }
+      if (id === DEMO_USER_KID) {
+        return members.find(m => m.display_name.includes('寶') || m.display_name.includes('孩')) || members[2] || members[0];
+      }
+
+      // 4. 查未去重之 rawMembers
+      const raw = rawMembers.find(m => m.id === id);
+      if (raw) {
+        const canonical = members.find(
+          m => (m.display_name || '').trim().toLowerCase() === (raw.display_name || '').trim().toLowerCase()
+        );
+        return canonical || raw;
+      }
+
+      return undefined;
+    },
+    [members, memberAliasMap, rawMembers]
+  );
 
   // 帳本管理員包含建立者 (owner) 與共同管理員 (admin)
   const isOwner = userRole === 'owner' || userRole === 'admin';
@@ -261,6 +348,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } else {
             await AsyncStorage.removeItem(STORAGE_KEYS.MEMBERS);
           }
+        }
+
+        const savedAlias = await AsyncStorage.getItem(STORAGE_KEYS.ALIAS_MAP);
+        if (savedAlias) {
+          try {
+            setMemberAliasMap(JSON.parse(savedAlias));
+          } catch {}
         }
 
         const savedHasJoined = await AsyncStorage.getItem(STORAGE_KEYS.HAS_JOINED);
@@ -318,7 +412,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const newRow = payload.new as any;
             setTransactions((prev) => {
               if (prev.some((t) => t.id === newRow.id)) return prev;
-              const item: Transaction = { ...newRow, amount: Number(newRow.amount) };
+              const canonicalPayer = getMemberById(newRow.paid_by);
+              const item: Transaction = {
+                ...newRow,
+                amount: Number(newRow.amount),
+                payer_profile: canonicalPayer || newRow.payer_profile,
+              };
               const updated = [item, ...prev];
               AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
               return updated;
@@ -333,8 +432,15 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } else if (payload.eventType === 'UPDATE') {
             const updatedRow = payload.new as any;
             setTransactions((prev) => {
+              const canonicalPayer = getMemberById(updatedRow.paid_by);
               const updated = prev.map((t) =>
-                t.id === updatedRow.id ? { ...updatedRow, amount: Number(updatedRow.amount) } : t
+                t.id === updatedRow.id
+                  ? {
+                      ...updatedRow,
+                      amount: Number(updatedRow.amount),
+                      payer_profile: canonicalPayer || updatedRow.payer_profile || t.payer_profile,
+                    }
+                  : t
               );
               AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
               return updated;
@@ -392,7 +498,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 })
                 .filter(Boolean);
 
+              setRawMembers(loadedMembers);
               const dedupedMembers = deduplicateMembers(loadedMembers);
+              const updatedAliasMap = buildMemberAliasMap(dedupedMembers, loadedMembers);
+              setMemberAliasMap(updatedAliasMap);
+              await AsyncStorage.setItem(STORAGE_KEYS.ALIAS_MAP, JSON.stringify(updatedAliasMap));
+              await AsyncStorage.setItem(`${STORAGE_KEYS.ALIAS_MAP}_${ledgerId}`, JSON.stringify(updatedAliasMap));
+
               if (dedupedMembers.length > 0) {
                 setMembers(dedupedMembers);
                 await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(dedupedMembers));
@@ -442,7 +554,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 })
                 .filter(Boolean);
 
+              setRawMembers(loadedMembers);
               const dedupedMembers = deduplicateMembers(loadedMembers);
+              const updatedAliasMap = buildMemberAliasMap(dedupedMembers, loadedMembers);
+              setMemberAliasMap(updatedAliasMap);
+              await AsyncStorage.setItem(STORAGE_KEYS.ALIAS_MAP, JSON.stringify(updatedAliasMap));
+              await AsyncStorage.setItem(`${STORAGE_KEYS.ALIAS_MAP}_${ledgerId}`, JSON.stringify(updatedAliasMap));
+
               if (dedupedMembers.length > 0) {
                 setMembers(dedupedMembers);
                 await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(dedupedMembers));
@@ -585,7 +703,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
 
+    setRawMembers(loadedMembers);
     const dedupedMembers = deduplicateMembers(loadedMembers);
+    let aliasMap = buildMemberAliasMap(dedupedMembers, loadedMembers);
 
     if (dedupedMembers.length > 0) {
       setMembers(dedupedMembers);
@@ -633,12 +753,67 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       .eq('ledger_id', targetLedger.id)
       .order('transacted_at', { ascending: false });
 
+    // 檢查是否有未在 aliasMap 中的付款人 ID，額外向 profiles 查詢補充
+    if (txRows && txRows.length > 0) {
+      const missingPayerIds = Array.from(new Set(
+        txRows
+          .map((t: any) => t.paid_by)
+          .filter((id: string) => id && isValidUUID(id) && !aliasMap[id] && !id.startsWith('20000000-0000-4000-8000'))
+      ));
+
+      if (missingPayerIds.length > 0) {
+        try {
+          const { data: missingProfiles } = await supabase
+            .from('profiles')
+            .select('*')
+            .in('id', missingPayerIds);
+          if (missingProfiles && missingProfiles.length > 0) {
+            aliasMap = buildMemberAliasMap(dedupedMembers, loadedMembers, missingProfiles);
+          }
+        } catch (e) {
+          console.warn('補載入付款人 Profile 失敗:', e);
+        }
+      }
+    }
+
+    setMemberAliasMap(aliasMap);
+    await AsyncStorage.setItem(STORAGE_KEYS.ALIAS_MAP, JSON.stringify(aliasMap));
+    await AsyncStorage.setItem(`${STORAGE_KEYS.ALIAS_MAP}_${targetLedger.id}`, JSON.stringify(aliasMap));
+
+    const healList: { id: string; paid_by: string }[] = [];
     let finalTx: Transaction[] = [];
     if (txRows) {
-      finalTx = txRows.map((t: any) => ({
-        ...t,
-        amount: Number(t.amount),
-      }));
+      finalTx = txRows.map((t: any) => {
+        const canonicalPayer = aliasMap[t.paid_by] || dedupedMembers.find(m => m.id === t.paid_by);
+        let correctedPaidBy = t.paid_by;
+        if (
+          canonicalPayer &&
+          isValidUUID(canonicalPayer.id) &&
+          !canonicalPayer.id.startsWith('20000000') &&
+          canonicalPayer.id !== t.paid_by
+        ) {
+          correctedPaidBy = canonicalPayer.id;
+          healList.push({ id: t.id, paid_by: canonicalPayer.id });
+        }
+
+        return {
+          ...t,
+          amount: Number(t.amount),
+          paid_by: correctedPaidBy,
+          payer_profile: canonicalPayer || t.payer_profile,
+        };
+      });
+    }
+
+    // 自動校正雲端 Supabase 中的歷史付款人 ID（背景執行）
+    if (healList.length > 0 && targetLedger.id !== DEMO_LEDGER_ID && isConfigured) {
+      Promise.all(
+        healList.map(item =>
+          supabase.from('transactions').update({ paid_by: item.paid_by }).eq('id', item.id)
+        )
+      ).catch(err => {
+        console.warn('自動修復歷史交易付款人 ID 失敗:', err);
+      });
     }
 
     // 檢查本地是否有尚未成功送至雲端的交易（如因外鍵問題一度失敗，自動補修復上傳）
@@ -1627,11 +1802,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       const updatedTxs = transactions.map(t => {
         if (t.id === id) {
+          const effectivePaidBy = data.paid_by !== undefined ? data.paid_by : t.paid_by;
+          const canonicalPayer = getMemberById(effectivePaidBy);
           return {
             ...t,
             ...data,
             category: data.category_id ? categories.find(c => c.id === data.category_id) || t.category : t.category,
-            payer_profile: data.paid_by ? members.find(m => m.id === data.paid_by) || t.payer_profile : t.payer_profile,
+            payer_profile: canonicalPayer || t.payer_profile,
           };
         }
         return t;
@@ -1671,7 +1848,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const headers = ['日期', '類型', '分類', '金額', '付款人', '備註'];
     const rows = transactions.map(t => {
       const cat = categories.find(c => c.id === t.category_id)?.name || '未分類';
-      const payer = members.find(m => m.id === t.paid_by)?.display_name || '未知';
+      const payer = getMemberById(t.paid_by)?.display_name || t.payer_profile?.display_name || '家庭成員';
       const typeStr = t.type === 'expense' ? '支出' : '收入';
       const dateStr = new Date(t.transacted_at).toLocaleDateString('zh-TW');
       return `"${dateStr}","${typeStr}","${cat}",${t.amount},"${payer}","${(t.note || '').replace(/"/g, '""')}"`;
@@ -1692,10 +1869,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     transactions.forEach(t => {
       if (t.type === 'expense') {
         totalExpense += Number(t.amount);
-        if (paidByMembers[t.paid_by] !== undefined) {
-          paidByMembers[t.paid_by] += Number(t.amount);
+        const canonical = getMemberById(t.paid_by);
+        const targetId = canonical ? canonical.id : t.paid_by;
+        if (paidByMembers[targetId] !== undefined) {
+          paidByMembers[targetId] += Number(t.amount);
         } else {
-          paidByMembers[t.paid_by] = Number(t.amount);
+          paidByMembers[targetId] = Number(t.amount);
         }
       } else if (t.type === 'income') {
         totalIncome += Number(t.amount);
@@ -1708,7 +1887,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       netBalance: totalIncome - totalExpense,
       paidByMembers,
     };
-  }, [transactions, members]);
+  }, [transactions, members, getMemberById]);
 
   // 新增家庭成員 (優先呼叫安全 RPC 函式，確保 profiles 與 ledger_members 寫入成功)
   const addMember = async (name: string, avatar: string = '😊') => {
@@ -2084,6 +2263,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         leaveLedgerById,
         updateMemberRole,
         claimAdminRoleWithPin,
+        getMemberById,
+        memberAliasMap,
       }}
     >
       {children}

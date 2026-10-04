@@ -10,10 +10,10 @@ interface TransactionItemProps {
 }
 
 export const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onPress }) => {
-  const { categories, members, deleteTransaction } = useLedger();
+  const { categories, members, deleteTransaction, getMemberById } = useLedger();
 
   const category = categories.find(c => c.id === transaction.category_id);
-  const payer = members.find(m => m.id === transaction.paid_by);
+  const payer = getMemberById(transaction.paid_by) || transaction.payer_profile;
   const isExpense = transaction.type === 'expense';
 
   const date = new Date(transaction.transacted_at);
@@ -73,7 +73,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, o
           </Text>
           <View style={styles.metaRow}>
             <Text style={styles.payerTag}>
-              {payer?.avatar_url} {payer?.display_name || '未知成員'} 付款
+              {payer?.avatar_url || '👤'} {payer?.display_name || '家庭成員'} 付款
             </Text>
             <Text style={styles.dateText}>{formattedDate}</Text>
           </View>

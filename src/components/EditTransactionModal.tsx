@@ -26,7 +26,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   transaction,
   onClose,
 }) => {
-  const { categories, members, currentUser, updateTransaction, deleteTransaction } = useLedger();
+  const { categories, members, currentUser, updateTransaction, deleteTransaction, getMemberById } = useLedger();
 
   const [type, setType] = useState<TransactionType>('expense');
   const [amount, setAmount] = useState<string>('');
@@ -42,10 +42,11 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       setType(transaction.type);
       setAmount(transaction.amount ? String(transaction.amount) : '');
       setSelectedCategoryId(transaction.category_id || '');
-      setPaidBy(transaction.paid_by || '');
+      const canonicalPayer = getMemberById(transaction.paid_by);
+      setPaidBy(canonicalPayer ? canonicalPayer.id : (transaction.paid_by || ''));
       setNote(transaction.note || '');
     }
-  }, [visible, transaction]);
+  }, [visible, transaction, getMemberById]);
 
   // 切換支出/收入時，若當前分類不符，自動調整至該類型的第一個分類
   useEffect(() => {
@@ -68,7 +69,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
     const currentCats = categories.filter(c => c.type === type);
     const targetCategory = currentCats.find(c => c.id === selectedCategoryId) || currentCats[0];
-    const targetPayer = paidBy || transaction.paid_by || currentUser.id || members[0]?.id;
+    const canonicalPayer = getMemberById(transaction.paid_by);
+    const targetPayer = paidBy || canonicalPayer?.id || currentUser.id || members[0]?.id;
 
     if (!targetCategory) {
       alert('請先選擇記帳分類');

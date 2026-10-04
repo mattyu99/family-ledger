@@ -127,6 +127,7 @@ function MainApp() {
     leaveLedgerById,
     updateMemberRole,
     claimAdminRoleWithPin,
+    getMemberById,
   } = useLedger();
 
   const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'family'>('transactions');
@@ -402,7 +403,7 @@ function MainApp() {
 
   const renderTransferDeleteModal = () => {
     if (!memberToDelete) return null;
-    const paidTxs = transactions.filter(t => t.paid_by === memberToDelete.id);
+    const paidTxs = transactions.filter(t => (getMemberById(t.paid_by)?.id || t.paid_by) === memberToDelete.id);
     const paidTotal = paidTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
     const eligibleRecipients = members.filter(m => m.id !== memberToDelete.id);
     const selectedRecipient = members.find(m => m.id === transferRecipientId);
@@ -1533,7 +1534,7 @@ function MainApp() {
                         <TouchableOpacity
                           style={styles.deleteMemberBtn}
                           onPress={() => {
-                            const paidTxs = transactions.filter(t => t.paid_by === member.id);
+                            const paidTxs = transactions.filter(t => (getMemberById(t.paid_by)?.id || t.paid_by) === member.id);
                             const paidTotal = paidTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
                             if (paidTotal > 0) {
                               setMemberToDelete(member);

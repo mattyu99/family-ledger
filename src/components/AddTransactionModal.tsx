@@ -20,7 +20,7 @@ interface AddTransactionModalProps {
 }
 
 export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visible, onClose }) => {
-  const { categories, members, currentUser, addTransaction } = useLedger();
+  const { categories, members, currentUser, addTransaction, getMemberById } = useLedger();
 
   const [type, setType] = useState<TransactionType>('expense');
   const [amount, setAmount] = useState<string>('');
@@ -33,7 +33,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
   // 當彈窗開啟、或成員/分類/當前使用者載入時，自動同步預設選中值
   React.useEffect(() => {
     if (visible) {
-      const activeMember = members.find(m => m.id === currentUser.id) || members[0];
+      const activeMember = members.find(m => m.id === currentUser.id)
+        || getMemberById(currentUser.id)
+        || members.find(m => (m.display_name || '').trim().toLowerCase() === (currentUser.display_name || '').trim().toLowerCase())
+        || members[0];
       if (activeMember) {
         setPaidBy(activeMember.id);
       }
@@ -43,7 +46,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
         setSelectedCategoryId(activeCats[0].id);
       }
     }
-  }, [visible, currentUser.id, members, categories, type]);
+  }, [visible, currentUser, members, categories, type, getMemberById]);
 
   const handleSubmit = async () => {
     const numAmount = parseFloat(amount);
