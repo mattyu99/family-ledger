@@ -29,6 +29,9 @@ CREATE TABLE IF NOT EXISTS public.ledgers (
     updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- 為 ledgers 表新增 admin_pin 欄位（管理員 4 位數安全碼，預設 8888）
+ALTER TABLE public.ledgers ADD COLUMN IF NOT EXISTS admin_pin TEXT DEFAULT '8888';
+
 -- 3. 帳本成員關聯表 (角色與權限)
 CREATE TABLE IF NOT EXISTS public.ledger_members (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -209,16 +212,19 @@ CREATE POLICY "Admins can manage invites" ON public.ledger_invites FOR ALL
 -- 家人透過邀請碼加入帳本的 RPC 函式 (SECURITY DEFINER 確保安全並自動完成關聯)
 DROP FUNCTION IF EXISTS public.join_ledger_by_invite(TEXT);
 DROP FUNCTION IF EXISTS public.join_ledger_by_invite(TEXT, TEXT);
+DROP FUNCTION IF EXISTS public.join_ledger_by_invite(TEXT, TEXT, TEXT);
 
 CREATE OR REPLACE FUNCTION public.join_ledger_by_invite(
     invite_code_input TEXT,
-    claimed_role TEXT DEFAULT NULL
+    claimed_role TEXT DEFAULT NULL,
+    admin_pin_input TEXT DEFAULT NULL
 )
 RETURNS JSONB AS $$
 DECLARE
     target_invite RECORD;
     target_ledger RECORD;
     assigned_role TEXT;
+    expected_pin TEXT;
 BEGIN
     SELECT * INTO target_invite FROM public.ledger_invites
     WHERE UPPER(TRIM(invite_code)) = UPPER(TRIM(invite_code_input))
@@ -243,6 +249,10 @@ BEGIN
     IF target_ledger.created_by = auth.uid() THEN
         assigned_role := 'owner';
     ELSIF claimed_role IN ('owner', 'admin') THEN
+        expected_pin := COALESCE(target_ledger.admin_pin, '8888');
+        IF expected_pin != '' AND expected_pin != COALESCE(TRIM(admin_pin_input), '') THEN
+            RETURN jsonb_build_object('success', false, 'message', '管理員安全 PIN 碼錯誤，無法取得管理員權限！');
+        END IF;
         assigned_role := claimed_role;
     ELSE
         assigned_role := 'member';
@@ -270,12 +280,47 @@ BEGIN
         'success', true,
         'ledger_id', target_ledger.id,
         'ledger_name', target_ledger.name,
+        'assigned_role', assigned_role,
         'invite_code', COALESCE(target_invite.invite_code, invite_code_input)
     );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-GRANT EXECUTE ON FUNCTION public.join_ledger_by_invite(TEXT, TEXT) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.join_ledger_by_invite(TEXT, TEXT, TEXT) TO anon, authenticated;
+
+-- 修改管理員安全 PIN 碼的 RPC 函式 (僅限 Owner/Admin 操作)
+DROP FUNCTION IF EXISTS public.update_admin_pin(UUID, TEXT);
+
+CREATE OR REPLACE FUNCTION public.update_admin_pin(
+    target_ledger_id UUID,
+    new_pin TEXT
+)
+RETURNS JSONB AS $$
+DECLARE
+    clean_pin TEXT := TRIM(new_pin);
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM public.ledger_members 
+        WHERE ledger_id = target_ledger_id 
+          AND user_id = auth.uid() 
+          AND role IN ('owner', 'admin')
+    ) AND (SELECT created_by FROM public.ledgers WHERE id = target_ledger_id) != auth.uid() THEN
+        RETURN jsonb_build_object('success', false, 'message', '只有帳本管理員才能修改安全 PIN 碼');
+    END IF;
+
+    IF length(clean_pin) < 4 OR length(clean_pin) > 8 THEN
+        RETURN jsonb_build_object('success', false, 'message', 'PIN 碼長度需在 4 至 8 碼之間');
+    END IF;
+
+    UPDATE public.ledgers
+    SET admin_pin = clean_pin
+    WHERE id = target_ledger_id;
+
+    RETURN jsonb_build_object('success', true, 'pin', clean_pin);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.update_admin_pin(UUID, TEXT) TO anon, authenticated;
 
 -- 取得帳本邀請預覽與成員名冊 (SECURITY DEFINER 供訪客在加入前預覽帳本資訊與認領成員)
 DROP FUNCTION IF EXISTS public.get_ledger_invite_preview(TEXT);

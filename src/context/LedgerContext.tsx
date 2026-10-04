@@ -150,8 +150,11 @@ interface LedgerContextType {
     codeOrUrl: string,
     memberName?: string,
     avatar?: string,
-    claimedMember?: Profile
+    claimedMember?: Profile,
+    adminPin?: string
   ) => Promise<{ success: boolean; message?: string }>;
+  adminPin: string;
+  updateAdminPin: (newPin: string) => Promise<boolean>;
   previewInvite: (codeOrUrl: string) => Promise<{
     success: boolean;
     ledgerId?: string;
@@ -204,6 +207,7 @@ const STORAGE_KEYS = {
   HAS_JOINED: '@family_ledger_has_joined',
   INVITE_CODE: '@family_ledger_invite_code',
   USER_ROLE: '@family_ledger_user_role',
+  ADMIN_PIN: '@family_ledger_admin_pin',
 };
 
 export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -217,6 +221,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isDeviceBound, setIsDeviceBound] = useState<boolean>(false);
   const [hasJoinedLedger, setHasJoinedLedger] = useState<boolean>(true);
   const [inviteCode, setInviteCode] = useState<string>('FAM-8823');
+  const [adminPin, setAdminPin] = useState<string>('8888');
   const [userRole, setUserRole] = useState<'owner' | 'admin' | 'member'>('member');
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
 
@@ -280,6 +285,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (savedRole === 'owner' || savedRole === 'member') {
           setUserRole(savedRole as any);
         }
+
+        const savedPin = await AsyncStorage.getItem(STORAGE_KEYS.ADMIN_PIN);
+        if (savedPin) setAdminPin(savedPin);
       } catch (err) {
         console.warn('載入本地記帳快取失敗:', err);
       }
@@ -457,6 +465,24 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const loadLedgerData = async (targetLedger: Ledger, authUserId: string) => {
     setCurrentLedger(targetLedger);
     await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(targetLedger));
+
+    // (A-0) 載入帳本 admin_pin
+    if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        const { data: lData } = await supabase
+          .from('ledgers')
+          .select('admin_pin')
+          .eq('id', targetLedger.id)
+          .maybeSingle();
+        if (lData && lData.admin_pin) {
+          setAdminPin(lData.admin_pin);
+          await AsyncStorage.setItem(STORAGE_KEYS.ADMIN_PIN, lData.admin_pin);
+          await AsyncStorage.setItem(`${STORAGE_KEYS.ADMIN_PIN}_${targetLedger.id}`, lData.admin_pin);
+        }
+      } catch (e) {
+        console.warn('載入帳本 admin_pin 失敗:', e);
+      }
+    }
 
     // (A) 載入或獲取邀請碼
     const { data: inviteRows } = await supabase
@@ -892,6 +918,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           description: newLedger.description,
           currency: newLedger.currency,
           created_by: newLedger.created_by,
+          admin_pin: '8888',
         });
 
         await supabase.from('ledger_members').insert({
@@ -912,6 +939,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, 'owner');
       setInviteCode(newCode);
       await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, newCode);
+      setAdminPin('8888');
+      await AsyncStorage.setItem(STORAGE_KEYS.ADMIN_PIN, '8888');
+      await AsyncStorage.setItem(`${STORAGE_KEYS.ADMIN_PIN}_${newLedger.id}`, '8888');
       await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
       setHasJoinedLedger(true);
       setLedgers(prev => [{ ...newLedger, userRole: 'owner' }, ...prev.filter(l => l.id !== newLedger.id)]);
@@ -938,12 +968,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  // 透過邀請碼或專屬連結加入帳本 (家人加入或認領既有身分)
+  // 透過邀請碼或專屬連結加入帳本 (家人加入或認領既有身分，支援管理員 PIN 碼驗證)
   const joinLedgerByCode = async (
     codeOrUrl: string,
     memberName?: string,
     avatar?: string,
-    claimedMember?: Profile
+    claimedMember?: Profile,
+    adminPinInput?: string
   ): Promise<{ success: boolean; message?: string }> => {
     try {
       if (!codeOrUrl || !codeOrUrl.trim()) {
@@ -976,17 +1007,24 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       let targetLedgerId = extractedJoinId;
 
       const targetRole = claimedMember?.role || undefined;
+      const isClaimingAdmin = claimedMember?.role === 'owner' || claimedMember?.role === 'admin';
 
-      // 1. 優先使用 SECURITY DEFINER 的 join_ledger_by_invite 函式以邀請碼加入 (自動繞過 RLS 限制)
+      // 1. 優先使用 SECURITY DEFINER 的 join_ledger_by_invite 函式以邀請碼加入 (自動驗證 PIN 與繞過 RLS 限制)
       if (code) {
         try {
           const { data: rpcRes } = await supabase.rpc('join_ledger_by_invite', {
             invite_code_input: code,
             claimed_role: targetRole,
+            admin_pin_input: adminPinInput?.trim() || null,
           });
 
-          if (rpcRes && rpcRes.success && rpcRes.ledger_id) {
-            targetLedgerId = rpcRes.ledger_id;
+          if (rpcRes) {
+            if (!rpcRes.success) {
+              return { success: false, message: rpcRes.message || '加入帳本失敗' };
+            }
+            if (rpcRes.ledger_id) {
+              targetLedgerId = rpcRes.ledger_id;
+            }
           }
         } catch (rpcE) {
           console.warn('RPC 加入帳本嘗試失敗，改用備用邏輯:', rpcE);
@@ -1025,9 +1063,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       const isCreator = targetLedger.created_by === authUserId;
+
+      // 若非原始建立者，但試圖認領管理員身分，進行安全 PIN 碼核對
+      if (!isCreator && isClaimingAdmin) {
+        const expectedPin = (targetLedger as any)?.admin_pin || '8888';
+        if (!adminPinInput || adminPinInput.trim() !== expectedPin.trim()) {
+          return {
+            success: false,
+            message: '管理員安全 PIN 碼錯誤！若您是一般家庭成員，請直接點選其他家庭成員稱謂或建立新身分。',
+          };
+        }
+      }
+
       const assignedRole: 'owner' | 'admin' | 'member' = isCreator
         ? 'owner'
-        : (claimedMember?.role === 'owner' || claimedMember?.role === 'admin' ? claimedMember.role : 'member');
+        : (isClaimingAdmin ? (claimedMember?.role === 'admin' ? 'admin' : 'owner') : 'member');
 
       await supabase.from('ledger_members').upsert({
         ledger_id: targetLedger.id,
@@ -1063,6 +1113,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setInviteCode(code);
       setPendingInviteCode(null);
       await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, code);
+
+      if ((targetLedger as any)?.admin_pin) {
+        setAdminPin((targetLedger as any).admin_pin);
+        await AsyncStorage.setItem(STORAGE_KEYS.ADMIN_PIN, (targetLedger as any).admin_pin);
+        await AsyncStorage.setItem(`${STORAGE_KEYS.ADMIN_PIN}_${targetLedger.id}`, (targetLedger as any).admin_pin);
+      }
+
       await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
       setHasJoinedLedger(true);
       setLedgers(prev => [{ ...targetLedger, userRole: assignedRole }, ...prev.filter(l => l.id !== targetLedger.id)]);
@@ -1233,6 +1290,36 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (error) {
         alert('此自訂代碼已被其他家庭使用，請換一個！');
         return false;
+      }
+    }
+    return true;
+  };
+
+  // 自訂管理員安全 PIN 碼 (Owner 專屬)
+  const updateAdminPin = async (newPin: string): Promise<boolean> => {
+    const clean = newPin.trim();
+    if (clean.length < 4 || clean.length > 8) {
+      alert('PIN 碼長度需在 4 至 8 碼之間');
+      return false;
+    }
+    setAdminPin(clean);
+    await AsyncStorage.setItem(STORAGE_KEYS.ADMIN_PIN, clean);
+    await AsyncStorage.setItem(`${STORAGE_KEYS.ADMIN_PIN}_${currentLedger.id}`, clean);
+
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        const { data: rpcRes, error: rpcErr } = await supabase.rpc('update_admin_pin', {
+          target_ledger_id: currentLedger.id,
+          new_pin: clean,
+        });
+        if (rpcErr || (rpcRes && !rpcRes.success)) {
+          await supabase
+            .from('ledgers')
+            .update({ admin_pin: clean })
+            .eq('id', currentLedger.id);
+        }
+      } catch (e) {
+        console.warn('雲端更新 admin_pin 失敗:', e);
       }
     }
     return true;
@@ -1875,6 +1962,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         hasJoinedLedger,
         isOwner,
         inviteCode,
+        adminPin,
+        updateAdminPin,
         createLedger,
         joinLedgerByCode,
         previewInvite,

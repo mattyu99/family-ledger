@@ -109,6 +109,8 @@ function MainApp() {
     hasJoinedLedger,
     isOwner,
     inviteCode,
+    adminPin,
+    updateAdminPin,
     createLedger,
     joinLedgerByCode,
     previewInvite,
@@ -144,6 +146,12 @@ function MainApp() {
   const [memberToDelete, setMemberToDelete] = useState<Profile | null>(null);
   const [transferRecipientId, setTransferRecipientId] = useState<string>('');
   const [isDeletingMember, setIsDeletingMember] = useState(false);
+
+  // 管理員安全 PIN 碼狀態
+  const [adminPinInput, setAdminPinInput] = useState('');
+  const [changePinModalVisible, setChangePinModalVisible] = useState(false);
+  const [newPinInput, setNewPinInput] = useState('');
+  const [showPinClear, setShowPinClear] = useState(false);
 
   // 模式 A：帳本入口與邀請管理狀態
   const [createLedgerModalVisible, setCreateLedgerModalVisible] = useState(false);
@@ -613,7 +621,10 @@ function MainApp() {
                       <TouchableOpacity
                         key={m.id}
                         style={[styles.claimMemberCard, isSelected && styles.claimMemberCardActive]}
-                        onPress={() => setSelectedClaimMember(m)}
+                        onPress={() => {
+                          setSelectedClaimMember(m);
+                          setAdminPinInput('');
+                        }}
                         activeOpacity={0.8}
                       >
                         <Text style={styles.claimMemberAvatar}>{m.avatar_url || '👤'}</Text>
@@ -622,7 +633,7 @@ function MainApp() {
                             {m.display_name}
                           </Text>
                           <Text style={styles.claimMemberRoleText}>
-                            {isMAdmin ? '👑 管理員' : '👤 家庭成員'}
+                            {isMAdmin ? '👑 管理員 (需PIN碼)' : '👤 家庭成員'}
                           </Text>
                         </View>
                         {isSelected && (
@@ -636,19 +647,54 @@ function MainApp() {
                 </View>
               </ScrollView>
 
+              {/* 若選擇的是管理員身分，顯示 PIN 碼輸入防護 */}
+              {selectedClaimMember && (selectedClaimMember.role === 'owner' || selectedClaimMember.role === 'admin') && (
+                <View style={styles.adminPinPromptBox}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                    <Text style={{ fontSize: 16, marginRight: 6 }}>🔐</Text>
+                    <Text style={styles.adminPinPromptTitle}>管理員身分安全驗證</Text>
+                  </View>
+                  <Text style={styles.adminPinPromptDesc}>
+                    「{selectedClaimMember.display_name}」具備管理員權限，請輸入 4 位數安全 PIN 碼（預設為 8888）：
+                  </Text>
+                  <TextInput
+                    style={styles.adminPinInput}
+                    placeholder="請輸入管理員 PIN 碼 (預設 8888)"
+                    placeholderTextColor="#9CA3AF"
+                    value={adminPinInput}
+                    onChangeText={setAdminPinInput}
+                    keyboardType="number-pad"
+                    maxLength={8}
+                    secureTextEntry
+                  />
+                </View>
+              )}
+
               <TouchableOpacity
                 style={[styles.submitMemberBtn, (!selectedClaimMember || isJoining) && { opacity: 0.6 }]}
                 disabled={!selectedClaimMember || isJoining}
                 onPress={async () => {
                   if (!selectedClaimMember) return;
+                  const isClaimingAdmin = selectedClaimMember.role === 'owner' || selectedClaimMember.role === 'admin';
+                  if (isClaimingAdmin && !adminPinInput.trim()) {
+                    showAlert('請輸入管理員 PIN 碼', '此身分具備管理員特權，請輸入 4 位數安全 PIN 碼（預設 8888）。\n\n若您是一般家庭成員，請直接點選其他成員或建立新身分。');
+                    return;
+                  }
                   setIsJoining(true);
-                  const res = await joinLedgerByCode(joinCodeInput.trim(), undefined, undefined, selectedClaimMember);
+                  const res = await joinLedgerByCode(
+                    joinCodeInput.trim(),
+                    undefined,
+                    undefined,
+                    selectedClaimMember,
+                    adminPinInput.trim()
+                  );
                   setIsJoining(false);
                   if (res.success) {
                     setJoinLedgerModalVisible(false);
+                    setAdminPinInput('');
                     showAlert('加入成功！', `已成功以「${selectedClaimMember.display_name}」身分進入「${previewLedgerName || '家庭帳本'}」！`);
                   } else {
-                    showAlert('加入失敗', res.message || '加入帳本失敗，請確認代碼');
+                    showAlert('驗證失敗', res.message || '加入帳本失敗，請確認代碼或 PIN 碼是否正確');
                   }
                 }}
               >
@@ -826,6 +872,53 @@ function MainApp() {
             }}
           >
             <Text style={styles.submitMemberBtnText}>確認變更邀請碼</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const renderChangePinModal = () => (
+    <Modal visible={changePinModalVisible} animationType="fade" transparent>
+      <View style={styles.exportOverlay}>
+        <View style={styles.exportCard}>
+          <View style={styles.modalHeaderRow}>
+            <Text style={styles.exportTitle}>🔐 修改管理員安全 PIN 碼</Text>
+            <TouchableOpacity onPress={() => setChangePinModalVisible(false)} style={styles.closeBtn}>
+              <Text style={styles.closeText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.formHint}>
+            請設定 4 至 8 位數字 PIN 碼。未來在其他手機或新電腦以「👑 管理員」身分認領時，需輸入此 PIN 碼，防止他人誤認領或奪權。
+          </Text>
+
+          <Text style={styles.formLabel}>新管理員 PIN 碼 (4~8 位純數字)</Text>
+          <TextInput
+            style={styles.modalInput}
+            placeholder="例如：1234 或 8888"
+            placeholderTextColor="#9CA3AF"
+            value={newPinInput}
+            keyboardType="number-pad"
+            maxLength={8}
+            onChangeText={(t) => setNewPinInput(t.replace(/[^0-9]/g, ''))}
+          />
+
+          <TouchableOpacity
+            style={styles.submitMemberBtn}
+            onPress={async () => {
+              if (newPinInput.length < 4 || newPinInput.length > 8) {
+                showAlert('格式不符', 'PIN 碼長度需在 4 至 8 位純數字之間');
+                return;
+              }
+              const ok = await updateAdminPin(newPinInput);
+              if (ok) {
+                showAlert('修改成功', `管理員安全 PIN 碼已成功變更為：${newPinInput}`);
+                setChangePinModalVisible(false);
+              }
+            }}
+          >
+            <Text style={styles.submitMemberBtnText}>確認變更 PIN 碼</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1382,6 +1475,45 @@ function MainApp() {
                     </TouchableOpacity>
                   </View>
                 )}
+
+                {/* 管理員安全 PIN 碼管理 (僅 Owner 可見) */}
+                {isOwner && (
+                  <View style={styles.pinSectionWrapper}>
+                    <View style={styles.pinHeaderRow}>
+                      <Text style={styles.pinHeaderTitle}>🔐 管理員安全 PIN 碼</Text>
+                      <Text style={styles.pinHeaderDesc}>
+                        換手機或新電腦以「管理員」身分認領時需輸入此碼，防範他人冒充
+                      </Text>
+                    </View>
+
+                    <View style={styles.pinCardInner}>
+                      <View>
+                        <Text style={styles.pinCardLabel}>目前安全 PIN 碼</Text>
+                        <Text style={styles.pinCardValue}>
+                          {showPinClear ? adminPin : `${adminPin.slice(0, 1)}••${adminPin.slice(-1)}`}
+                        </Text>
+                        <Text style={styles.pinCardHint}>（共 {adminPin.length} 碼）</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                        <TouchableOpacity
+                          style={styles.togglePinBtn}
+                          onPress={() => setShowPinClear(!showPinClear)}
+                        >
+                          <Text style={styles.togglePinBtnText}>{showPinClear ? '🙈 隱藏' : '👁️ 顯示'}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.changePinBtn}
+                          onPress={() => {
+                            setNewPinInput(adminPin);
+                            setChangePinModalVisible(true);
+                          }}
+                        >
+                          <Text style={styles.changePinBtnText}>✏️ 修改</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                )}
               </View>
 
               {/* 切換帳本入口 */}
@@ -1521,6 +1653,9 @@ function MainApp() {
 
       {/* 自訂邀請碼彈窗 */}
       {renderCustomCodeModal()}
+
+      {/* 修改管理員安全 PIN 碼彈窗 */}
+      {renderChangePinModal()}
 
       {/* 切換帳本彈窗 */}
       {renderSwitchLedgerModal()}
@@ -2712,5 +2847,108 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#64748B',
     fontWeight: '600',
+  },
+  adminPinPromptBox: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#FCD34D',
+    padding: 12,
+    marginTop: 6,
+    marginBottom: 14,
+  },
+  adminPinPromptTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  adminPinPromptDesc: {
+    fontSize: 12,
+    color: '#78350F',
+    lineHeight: 18,
+    marginBottom: 10,
+  },
+  adminPinInput: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
+    letterSpacing: 2,
+  },
+  pinSectionWrapper: {
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  pinHeaderRow: {
+    marginBottom: 8,
+  },
+  pinHeaderTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginBottom: 2,
+  },
+  pinHeaderDesc: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 16,
+  },
+  pinCardInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  pinCardLabel: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  pinCardValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: 3,
+    marginTop: 2,
+  },
+  pinCardHint: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 1,
+  },
+  togglePinBtn: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  togglePinBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  changePinBtn: {
+    backgroundColor: '#4F46E5',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  changePinBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });
