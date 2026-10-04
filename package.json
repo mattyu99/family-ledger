@@ -24,7 +24,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "build:web": "expo export -p web",
-    "deploy:web": "expo export -p web && touch dist/.nojekyll && cp dist/index.html dist/404.html && gh-pages -d dist --dotfiles"
+    "deploy:web": "expo export -p web && touch dist/.nojekyll && cp dist/index.html dist/404.html && gh-pages -d dist --dotfiles",
+    "build:android": "eas build -p android --profile preview"
   },
   "private": true
 }
