@@ -3,9 +3,7 @@
     "name": "家庭公帳",
     "slug": "family-ledger",
     "version": "1.0.1",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.0",
     "updates": {
       "url": "https://u.expo.dev/c85782b1-d64f-4182-a947-5d8363892f4c"
     },
