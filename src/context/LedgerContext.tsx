@@ -1,9 +1,17 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Transaction, Category, Ledger, Profile, TransactionType } from '../types/database';
 import { supabase, isConfigured } from '../lib/supabase';
 import { generateUUID } from '../lib/uuid';
+
+const safeAlert = (title: string, message: string) => {
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined') window.alert(`${title}\n\n${message}`);
+  } else {
+    Alert.alert(title, message);
+  }
+};
 
 // UUID 格式校驗函式（本地內建，避免打包快取未更新）
 const isValidUUID = (str?: string | null): boolean => {
@@ -822,7 +830,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       const role = isCreator
         ? 'owner'
-        : ((myMemberRow?.role as 'owner' | 'admin' | 'member') || canonicalMe.role || 'member');
+        : ((myMemberRow?.role as 'owner' | 'admin' | 'member') || 'member');
       setUserRole(role);
       await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, role);
 
@@ -2177,12 +2185,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // 刪除家庭成員 (僅 Owner 可操作，支援一鍵移轉帳目)
   const deleteMember = async (id: string, transferToId?: string): Promise<boolean> => {
     if (members.length <= 1) {
-      alert('家庭至少需保留一位成員');
+      safeAlert('無法刪除', '家庭至少需保留一位成員');
       return false;
     }
 
     if (!isOwner) {
-      alert('只有帳本管理員（Owner）可以移除家庭成員');
+      safeAlert('權限不足', '只有帳本管理員才能移除家庭成員');
       return false;
     }
 

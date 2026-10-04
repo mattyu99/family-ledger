@@ -514,6 +514,10 @@ function MainApp() {
               disabled={!transferRecipientId || isDeletingMember}
               onPress={async () => {
                 if (!memberToDelete || !transferRecipientId) return;
+                if (!isOwner) {
+                  showAlert('權限不足', '只有帳本管理員才能刪除家庭成員');
+                  return;
+                }
                 setIsDeletingMember(true);
                 try {
                   const targetName = selectedRecipient?.display_name || '指定成員';
@@ -1578,11 +1582,15 @@ function MainApp() {
                         </TouchableOpacity>
                       )}
 
-                      {/* 刪除成員按鈕 */}
+                      {/* 刪除成員按鈕：僅管理員且非本人、非創建者可刪除 */}
                       {isOwner && !isCurrent && members.length > 1 && !isCreator && (
                         <TouchableOpacity
                           style={styles.deleteMemberBtn}
                           onPress={() => {
+                            if (!isOwner) {
+                              showAlert('權限不足', '只有帳本管理員才能刪除家庭成員');
+                              return;
+                            }
                             const paidTxs = transactions.filter(t => (getMemberById(t.paid_by)?.id || t.paid_by) === member.id);
                             const paidTotal = paidTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
                             if (paidTotal > 0) {
