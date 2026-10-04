@@ -2118,6 +2118,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const oldMember = members.find(m => m.id === id);
     const oldName = oldMember?.display_name;
 
+    // 只有本機上的成員才允許編輯稱謂，其他非本機成員不允許，但以管理員身分登入的成員例外
+    const isCurrent = currentUser.id === id || (!!oldName && !!currentUser.display_name && currentUser.display_name === oldName);
+    if (!isCurrent && !isOwner) {
+      alert('只有本機成員或帳本管理員可以修改此成員稱謂');
+      return false;
+    }
+
     // 1. 本地更新
     const updated = members.map(m => (m.id === id ? { ...m, display_name: cleanName, avatar_url: avatar } : m));
     setMembers(updated);

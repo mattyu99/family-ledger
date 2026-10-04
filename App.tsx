@@ -290,6 +290,11 @@ function MainApp() {
   };
 
   const handleStartEditMember = (member: any) => {
+    const isCurrent = currentUser.id === member.id || (!!currentUser.display_name && currentUser.display_name === member.display_name);
+    if (!isCurrent && !isOwner) {
+      showAlert('權限不足', '只有本機成員或帳本管理員才允許編輯該成員稱謂');
+      return;
+    }
     setEditingMemberId(member.id);
     setEditingMemberName(member.display_name);
     setEditingMemberAvatar(member.avatar_url || '👨');
@@ -302,6 +307,13 @@ function MainApp() {
       return;
     }
     if (!editingMemberId) return;
+
+    const targetMember = members.find(m => m.id === editingMemberId);
+    const isCurrent = editingMemberId === currentUser.id || (!!targetMember && !!currentUser.display_name && targetMember.display_name === currentUser.display_name);
+    if (!isCurrent && !isOwner) {
+      showAlert('權限不足', '只有本機成員或帳本管理員才允許編輯此稱謂');
+      return;
+    }
 
     setIsSavingEdit(true);
     const success = await updateMember(editingMemberId, editingMemberName.trim(), editingMemberAvatar);
@@ -1530,13 +1542,15 @@ function MainApp() {
                         )}
                       </View>
 
-                      {/* 編輯稱謂與頭像按鈕 */}
-                      <TouchableOpacity
-                        style={styles.editMemberBtn}
-                        onPress={() => handleStartEditMember(member)}
-                      >
-                        <Text style={styles.editMemberBtnText}>✏️ 編輯稱謂</Text>
-                      </TouchableOpacity>
+                      {/* 編輯稱謂與頭像按鈕：只有本機成員或管理員允許編輯 */}
+                      {(isCurrent || isOwner) && (
+                        <TouchableOpacity
+                          style={styles.editMemberBtn}
+                          onPress={() => handleStartEditMember(member)}
+                        >
+                          <Text style={styles.editMemberBtnText}>✏️ 編輯稱謂</Text>
+                        </TouchableOpacity>
+                      )}
 
                       {/* 共同管理員角色切換：身為管理員且對象非自己、非原始建立者時可調整 */}
                       {isOwner && !isCurrent && !isCreator && (
