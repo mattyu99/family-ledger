@@ -18,6 +18,7 @@ import { AddTransactionModal } from './src/components/AddTransactionModal';
 import { EditTransactionModal } from './src/components/EditTransactionModal';
 import { Transaction, Profile } from './src/types/database';
 import { getCategoryIcon } from './src/lib/icons';
+import * as Updates from 'expo-updates';
 
 const AVATAR_OPTIONS = ['👨', '👩', '👦', '👧', '👴', '👵', '👶', '👱', '🐶', '🐱'];
 
@@ -136,6 +137,10 @@ function MainApp() {
   const [selectedAvatar, setSelectedAvatar] = useState('👩');
   const [csvContent, setCsvContent] = useState('');
 
+  // 應用程式版本與熱更新狀態
+  const APP_VERSION = '1.0.0';
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+
   // 帳本更名狀態
   const [editLedgerModalVisible, setEditLedgerModalVisible] = useState(false);
   const [editLedgerNameInput, setEditLedgerNameInput] = useState('');
@@ -230,6 +235,37 @@ function MainApp() {
     const csv = exportToCSV();
     setCsvContent(csv);
     setExportModalVisible(true);
+  };
+
+  const handleCheckForUpdates = async () => {
+    if (Platform.OS === 'web' || !Updates.isEnabled) {
+      showAlert('網頁版已是最新狀態', '網頁版在您每次開啟或重新整理網頁時，皆會自動載入最新程式碼與功能。');
+      return;
+    }
+    try {
+      setIsCheckingUpdate(true);
+      const update = await Updates.checkForUpdateAsync();
+      if (update.isAvailable) {
+        showConfirm(
+          '發現新版本！',
+          '雲端已發布最新功能更新，是否立即下載並重新啟動應用程式？',
+          async () => {
+            try {
+              await Updates.fetchUpdateAsync();
+              await Updates.reloadAsync();
+            } catch (e: any) {
+              showAlert('更新失敗', e.message || '下載更新時發生問題，請稍後再試');
+            }
+          }
+        );
+      } else {
+        showAlert('已是最新版本', '目前 App 已運行最新的程式碼，無需更新！');
+      }
+    } catch (err: any) {
+      showAlert('檢查更新完成', '目前已是最新版本，或暫無可用的遠端更新包。');
+    } finally {
+      setIsCheckingUpdate(false);
+    }
   };
 
   const handleAddMember = async () => {
@@ -1672,6 +1708,65 @@ function MainApp() {
 
               <TouchableOpacity style={styles.exportBtn} onPress={handleExport}>
                 <Text style={styles.exportBtnText}>📥 一鍵匯出 CSV / Excel 備份檔</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* 系統版本與更新狀態卡片 */}
+            <View style={styles.cardSection}>
+              <View style={styles.versionHeaderRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cardSectionTitle}>📱 應用程式版本資訊</Text>
+                  <Text style={styles.cardSectionDesc}>家庭公帳跨平台系統</Text>
+                </View>
+                <View style={styles.versionTagBadge}>
+                  <Text style={styles.versionTagBadgeText}>v{APP_VERSION}</Text>
+                </View>
+              </View>
+
+              <View style={styles.versionDetailBox}>
+                <View style={styles.versionDetailRow}>
+                  <Text style={styles.versionDetailLabel}>運行環境：</Text>
+                  <Text style={styles.versionDetailValue}>
+                    {Platform.OS === 'web' ? '🌐 網頁版 (Web 瀏覽器)' : '🤖 Android 原生應用程式'}
+                  </Text>
+                </View>
+
+                <View style={styles.versionDetailRow}>
+                  <Text style={styles.versionDetailLabel}>更新機制：</Text>
+                  <Text style={styles.versionDetailValue}>
+                    {Platform.OS === 'web'
+                      ? '網頁即時快取 (每次開啟即最新)'
+                      : (Updates.isEnabled ? '⚡ EAS OTA 遠端熱更新' : '📦 獨立安裝版')}
+                  </Text>
+                </View>
+
+                {Platform.OS !== 'web' && !!Updates.updateId && (
+                  <View style={styles.versionDetailRow}>
+                    <Text style={styles.versionDetailLabel}>更新代碼：</Text>
+                    <Text style={[styles.versionDetailValue, styles.monoText]}>
+                      {Updates.updateId.slice(0, 8)}
+                    </Text>
+                  </View>
+                )}
+
+                {Platform.OS !== 'web' && !!Updates.createdAt && (
+                  <View style={styles.versionDetailRow}>
+                    <Text style={styles.versionDetailLabel}>更新時間：</Text>
+                    <Text style={styles.versionDetailValue}>
+                      {new Date(Updates.createdAt).toLocaleString('zh-TW', { hour12: false })}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              <TouchableOpacity
+                style={[styles.checkUpdateBtn, isCheckingUpdate && styles.checkUpdateBtnDisabled]}
+                onPress={handleCheckForUpdates}
+                disabled={isCheckingUpdate}
+              >
+                <Text style={styles.checkUpdateBtnText}>
+                  {isCheckingUpdate ? '⏳ 正在檢查雲端更新...' : '🔄 檢查並載入最新版本'}
+                </Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -3134,5 +3229,69 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  versionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  versionTagBadge: {
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  versionTagBadgeText: {
+    color: '#4F46E5',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  versionDetailBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 6,
+  },
+  versionDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  versionDetailLabel: {
+    fontSize: 13,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  versionDetailValue: {
+    fontSize: 13,
+    color: '#1E293B',
+    fontWeight: '600',
+  },
+  monoText: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontWeight: '700',
+    color: '#4F46E5',
+  },
+  checkUpdateBtn: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  checkUpdateBtnDisabled: {
+    opacity: 0.6,
+  },
+  checkUpdateBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#334155',
   },
 });
