@@ -101,6 +101,7 @@ function MainApp() {
     settlementInfo,
     exportToCSV,
     addMember,
+    updateMember,
     deleteMember,
     isDeviceBound,
     bindDeviceToMember,
@@ -131,6 +132,13 @@ function MainApp() {
   const [newMemberName, setNewMemberName] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState('👩');
   const [csvContent, setCsvContent] = useState('');
+
+  // 編輯成員稱謂與頭像狀態
+  const [editMemberModalVisible, setEditMemberModalVisible] = useState(false);
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  const [editingMemberName, setEditingMemberName] = useState('');
+  const [editingMemberAvatar, setEditingMemberAvatar] = useState('👨');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   // 模式 A：帳本入口與邀請管理狀態
   const [createLedgerModalVisible, setCreateLedgerModalVisible] = useState(false);
@@ -214,6 +222,32 @@ function MainApp() {
     setMemberModalVisible(false);
   };
 
+  const handleStartEditMember = (member: any) => {
+    setEditingMemberId(member.id);
+    setEditingMemberName(member.display_name);
+    setEditingMemberAvatar(member.avatar_url || '👨');
+    setEditMemberModalVisible(true);
+  };
+
+  const handleSaveEditMember = async () => {
+    if (!editingMemberName.trim()) {
+      showAlert('請輸入姓名', '成員名稱不能為空');
+      return;
+    }
+    if (!editingMemberId) return;
+
+    setIsSavingEdit(true);
+    const success = await updateMember(editingMemberId, editingMemberName.trim(), editingMemberAvatar);
+    setIsSavingEdit(false);
+
+    if (success) {
+      setEditMemberModalVisible(false);
+      showAlert('修改成功！', `成員資料已更新為「${editingMemberName.trim()}」！\n全家裝置與歷史記帳皆已同步。`);
+    } else {
+      showAlert('修改失敗', '儲存時發生錯誤，請稍後重試');
+    }
+  };
+
   const handleCreateLedger = async () => {
     if (!newLedgerName.trim()) {
       showAlert('請輸入帳本名稱', '帳本名稱不能為空');
@@ -255,6 +289,59 @@ function MainApp() {
       showAlert('切換失敗', res.message || '找不到此邀請碼對應的帳本，請確認代碼是否正確。');
     }
   };
+
+  const renderEditMemberModal = () => (
+    <Modal visible={editMemberModalVisible} animationType="fade" transparent>
+      <View style={styles.exportOverlay}>
+        <View style={styles.exportCard}>
+          <View style={styles.modalHeaderRow}>
+            <Text style={styles.exportTitle}>✏️ 編輯成員稱謂與頭像</Text>
+            <TouchableOpacity onPress={() => setEditMemberModalVisible(false)} style={styles.closeBtn}>
+              <Text style={styles.closeText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.formHint}>修改後，所有家人的手機與歷史記帳紀錄皆會即時同步更新為新稱謂。</Text>
+
+          <Text style={styles.formLabel}>成員暱稱 / 稱謂</Text>
+          <TextInput
+            style={styles.modalInput}
+            placeholder="例如：張三、爸爸、媽媽..."
+            placeholderTextColor="#9CA3AF"
+            value={editingMemberName}
+            onChangeText={setEditingMemberName}
+            autoFocus={Platform.OS !== 'web'}
+          />
+
+          <Text style={styles.formLabel}>選擇專屬頭像</Text>
+          <View style={styles.avatarGrid}>
+            {AVATAR_OPTIONS.map(avatar => {
+              const isSelected = editingMemberAvatar === avatar;
+              return (
+                <TouchableOpacity
+                  key={avatar}
+                  style={[styles.avatarChip, isSelected && styles.avatarChipActive]}
+                  onPress={() => setEditingMemberAvatar(avatar)}
+                >
+                  <Text style={styles.avatarEmoji}>{avatar}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <TouchableOpacity
+            style={styles.submitMemberBtn}
+            disabled={isSavingEdit}
+            onPress={handleSaveEditMember}
+          >
+            <Text style={styles.submitMemberBtnText}>
+              {isSavingEdit ? '正在儲存...' : '💾 儲存修改'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
 
   const renderCreateLedgerModal = () => (
     <Modal visible={createLedgerModalVisible} animationType="fade" transparent>
@@ -1031,6 +1118,14 @@ function MainApp() {
                         )}
                       </TouchableOpacity>
 
+                      {/* 編輯稱謂與頭像按鈕 */}
+                      <TouchableOpacity
+                        style={styles.editMemberBtn}
+                        onPress={() => handleStartEditMember(member)}
+                      >
+                        <Text style={styles.editMemberBtnText}>✏️ 編輯稱謂</Text>
+                      </TouchableOpacity>
+
                       {/* 共同管理員角色切換：身為管理員且對象非原始建立者時可調整 */}
                       {isOwner && !isCreator && (
                         <TouchableOpacity
@@ -1311,6 +1406,9 @@ function MainApp() {
           </View>
         </View>
       </Modal>
+
+      {/* 編輯家庭成員彈窗 */}
+      {renderEditMemberModal()}
 
       {/* 自訂邀請碼彈窗 */}
       {renderCustomCodeModal()}
@@ -2486,5 +2584,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#4F46E5',
     fontWeight: '600',
+  },
+  editMemberBtn: {
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    width: '100%',
+  },
+  editMemberBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#4B5563',
   },
 });

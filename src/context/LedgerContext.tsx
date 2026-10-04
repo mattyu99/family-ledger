@@ -119,6 +119,7 @@ interface LedgerContextType {
   deleteTransaction: (id: string) => Promise<void>;
   exportToCSV: () => string;
   addMember: (name: string, avatar?: string) => Promise<void>;
+  updateMember: (id: string, name: string, avatar: string) => Promise<boolean>;
   deleteMember: (id: string) => Promise<boolean | void>;
   isDeviceBound: boolean;
   bindDeviceToMember: (member: Profile) => Promise<void>;
@@ -1545,6 +1546,63 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updated));
   };
 
+  // 編輯成員資料 (名稱與頭像)
+  const updateMember = async (id: string, name: string, avatar: string): Promise<boolean> => {
+    const cleanName = name.trim();
+    if (!cleanName) return false;
+
+    const oldMember = members.find(m => m.id === id);
+    const oldName = oldMember?.display_name;
+
+    // 1. 本地更新
+    const updated = members.map(m => (m.id === id ? { ...m, display_name: cleanName, avatar_url: avatar } : m));
+    setMembers(updated);
+
+    // 若修改的是目前使用中的成員身分，同步更新 currentUser
+    if (currentUser.id === id || (oldName && currentUser.display_name === oldName)) {
+      const updatedMe: Profile = {
+        ...currentUser,
+        display_name: cleanName,
+        avatar_url: avatar,
+      };
+      setCurrentUser(updatedMe);
+      await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedMe));
+    }
+
+    await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updated));
+    await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${currentLedger.id}`, JSON.stringify(updated));
+
+    // 2. 雲端同步更新 (Supabase profiles 表)
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        await supabase
+          .from('profiles')
+          .update({ display_name: cleanName, avatar_url: avatar })
+          .eq('id', id);
+
+        // 若多台裝置認領同一身分 (相同舊 display_name)，一併同步更新
+        if (oldName && oldName !== cleanName) {
+          const { data: siblingProfiles } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('display_name', oldName);
+
+          if (siblingProfiles && siblingProfiles.length > 0) {
+            const siblingIds = siblingProfiles.map(p => p.id);
+            await supabase
+              .from('profiles')
+              .update({ display_name: cleanName, avatar_url: avatar })
+              .in('id', siblingIds);
+          }
+        }
+      } catch (err) {
+        console.warn('雲端更新成員資料失敗:', err);
+      }
+    }
+
+    return true;
+  };
+
   // 刪除家庭成員 (僅 Owner 可操作，且受歷史紀錄保護)
   const deleteMember = async (id: string): Promise<boolean> => {
     if (members.length <= 1) {
@@ -1704,6 +1762,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         deleteTransaction,
         exportToCSV,
         addMember,
+        updateMember,
         deleteMember,
         isDeviceBound,
         bindDeviceToMember,
