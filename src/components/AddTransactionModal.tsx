@@ -27,7 +27,6 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [paidBy, setPaidBy] = useState<string>('');
   const [note, setNote] = useState<string>('');
-  const [isSplit, setIsSplit] = useState<boolean>(true);
 
   const availableCategories = categories.filter(c => c.type === type);
 
@@ -69,7 +68,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
         category_id: targetCategory.id,
         paid_by: targetPayer,
         note,
-        splitWithIds: isSplit && type === 'expense' ? members.map(m => m.id) : undefined,
+        splitWithIds: type === 'expense' ? members.map(m => m.id) : undefined,
       });
 
       // 重設表單並關閉
@@ -193,26 +192,6 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
                 );
               })}
             </View>
-
-            {/* 全家平分分攤切換（僅在支出時顯示） */}
-            {type === 'expense' && (
-              <TouchableOpacity
-                style={styles.splitToggleRow}
-                onPress={() => setIsSplit(!isSplit)}
-              >
-                <View style={styles.splitTextContainer}>
-                  <Text style={styles.splitTitle}>👨‍👩‍👧 全家平分分攤</Text>
-                  <Text style={styles.splitSubtitle}>
-                    {isSplit
-                      ? `此筆支出由 ${members.length} 位家庭成員均分`
-                      : '僅記錄為個人花費，不計入分攤代墊'}
-                  </Text>
-                </View>
-                <View style={[styles.toggleSwitch, isSplit && styles.toggleSwitchActive]}>
-                  <View style={[styles.toggleCircle, isSplit && styles.toggleCircleActive]} />
-                </View>
-              </TouchableOpacity>
-            )}
 
             {/* 備註說明 */}
             <Text style={styles.sectionLabel}>備註說明</Text>
@@ -403,52 +382,6 @@ const styles = StyleSheet.create({
   payerNameActive: {
     color: '#4F46E5',
     fontWeight: '700',
-  },
-  splitToggleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    padding: 12,
-    borderRadius: 14,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    width: '100%',
-  },
-  splitTextContainer: {
-    flex: 1,
-    marginRight: 10,
-  },
-  splitTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1E293B',
-  },
-  splitSubtitle: {
-    fontSize: 12,
-    color: '#64748B',
-    marginTop: 2,
-  },
-  toggleSwitch: {
-    width: 44,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#CBD5E1',
-    padding: 2,
-    justifyContent: 'center',
-  },
-  toggleSwitchActive: {
-    backgroundColor: '#4F46E5',
-  },
-  toggleCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
-  },
-  toggleCircleActive: {
-    alignSelf: 'flex-end',
   },
   noteInput: {
     backgroundColor: '#F9FAFB',

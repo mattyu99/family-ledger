@@ -1617,11 +1617,22 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return false;
     }
 
-    const hasHistory = transactions.some(t => t.paid_by === id || t.creator_id === id);
-    if (hasHistory) {
-      alert('該成員已有記帳或代墊紀錄，為確保帳目與分攤結算準確，無法刪除！');
+    // 檢查是否有「該成員實際代墊付款」且金額大於 0 的紀錄
+    const paidTxs = transactions.filter(t => t.paid_by === id);
+    const paidTotal = paidTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+    if (paidTotal > 0) {
+      alert(`該成員尚有 ${paidTxs.length} 筆付款紀錄（合計 NT$ ${paidTotal.toLocaleString()}）。為確保帳目歷史準確，無法直接刪除。若要清理，請先將這些紀錄的付款人變更為其他成員。`);
       return false;
     }
+
+    // 若有該成員作為建檔人 (creator_id) 或已結清/0元之付款人，自動將紀錄移轉給當前操作者，避免外鍵關聯阻礙刪除
+    const cleanTxs = transactions.map(t => {
+      let updated = { ...t };
+      if (t.creator_id === id) updated.creator_id = currentUser.id;
+      if (t.paid_by === id) updated.paid_by = currentUser.id;
+      return updated;
+    });
+    setTransactions(cleanTxs);
 
     const updated = members.filter(m => m.id !== id && (!targetMember || m.display_name !== targetMember.display_name));
     setMembers(updated);
@@ -1632,12 +1643,27 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (isConfigured) {
       try {
+        // 1. 將舊成員在雲端的建檔人/付款人轉給當前操作者，確保外鍵與權限平順移交
+        await supabase
+          .from('transactions')
+          .update({ creator_id: currentUser.id })
+          .eq('ledger_id', currentLedger.id)
+          .eq('creator_id', id);
+
+        await supabase
+          .from('transactions')
+          .update({ paid_by: currentUser.id })
+          .eq('ledger_id', currentLedger.id)
+          .eq('paid_by', id);
+
+        // 2. 清除該成員的 ledger_members 紀錄
         await supabase
           .from('ledger_members')
           .delete()
           .eq('ledger_id', currentLedger.id)
           .eq('user_id', id);
 
+        // 3. 若為同名重複紀錄，一併清理
         if (targetMember?.display_name) {
           const { data: siblingProfiles } = await supabase
             .from('profiles')
@@ -1646,6 +1672,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
           if (siblingProfiles && siblingProfiles.length > 0) {
             const siblingIds = siblingProfiles.map(p => p.id);
+            await supabase
+              .from('transactions')
+              .update({ creator_id: currentUser.id })
+              .eq('ledger_id', currentLedger.id)
+              .in('creator_id', siblingIds);
+
+            await supabase
+              .from('transactions')
+              .update({ paid_by: currentUser.id })
+              .eq('ledger_id', currentLedger.id)
+              .in('paid_by', siblingIds);
+
             await supabase
               .from('ledger_members')
               .delete()
