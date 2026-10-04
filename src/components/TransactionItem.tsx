@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Alert } from 'react-native';
 import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { getCategoryIcon } from '../lib/icons';
@@ -23,7 +23,28 @@ export const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, o
     if (e && e.stopPropagation) {
       e.stopPropagation();
     }
-    deleteTransaction(transaction.id);
+
+    const catName = category?.name || '此筆記帳';
+    const amountStr = `NT$ ${Number(transaction.amount).toLocaleString()}`;
+    const payerName = payer?.display_name ? `（由「${payer.display_name}」付款）` : '';
+    const noteStr = transaction.note ? `\n備註：${transaction.note}` : '';
+
+    const confirmMsg = `確定要刪除這筆【${catName} ${amountStr}】${payerName}${noteStr} 嗎？\n刪除後無法復原。`;
+
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm(`確認刪除記帳\n\n${confirmMsg}`)) {
+        deleteTransaction(transaction.id);
+      }
+    } else {
+      Alert.alert('確認刪除記帳', confirmMsg, [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '確定刪除',
+          style: 'destructive',
+          onPress: () => deleteTransaction(transaction.id),
+        },
+      ]);
+    }
   };
 
   return (
