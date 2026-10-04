@@ -29,7 +29,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   transaction,
   onClose,
 }) => {
-  const { categories, members, currentUser, updateTransaction, deleteTransaction, getMemberById } = useLedger();
+  const { categories, members, currentUser, updateTransaction, deleteTransaction, getMemberById, getCategoryById } = useLedger();
 
   const [type, setType] = useState<TransactionType>('expense');
   const [amount, setAmount] = useState<string>('');
@@ -44,12 +44,14 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     if (visible && transaction) {
       setType(transaction.type);
       setAmount(transaction.amount ? String(transaction.amount) : '');
-      setSelectedCategoryId(transaction.category_id || '');
+      const cat = getCategoryById(transaction.category_id, transaction.category);
+      const match = categories.find(c => c.id === cat.id || c.name === cat.name) || categories[0];
+      setSelectedCategoryId(match?.id || transaction.category_id || '');
       const canonicalPayer = getMemberById(transaction.paid_by);
       setPaidBy(canonicalPayer ? canonicalPayer.id : (transaction.paid_by || ''));
       setNote(transaction.note || '');
     }
-  }, [visible, transaction, getMemberById]);
+  }, [visible, transaction, getMemberById, categories, getCategoryById]);
 
   // 切換支出/收入時，若當前分類不符，自動調整至該類型的第一個分類
   useEffect(() => {

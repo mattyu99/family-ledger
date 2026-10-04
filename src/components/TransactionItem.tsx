@@ -10,9 +10,9 @@ interface TransactionItemProps {
 }
 
 export const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onPress }) => {
-  const { categories, members, deleteTransaction, getMemberById } = useLedger();
+  const { categories, members, deleteTransaction, getMemberById, getCategoryById } = useLedger();
 
-  const category = categories.find(c => c.id === transaction.category_id);
+  const category = getCategoryById(transaction.category_id, transaction.category);
   const payer = getMemberById(transaction.paid_by) || transaction.payer_profile;
   const isExpense = transaction.type === 'expense';
 

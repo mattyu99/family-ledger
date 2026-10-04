@@ -128,6 +128,7 @@ function MainApp() {
     updateMemberRole,
     claimAdminRoleWithPin,
     getMemberById,
+    getCategoryById,
   } = useLedger();
 
   const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'family'>('transactions');
@@ -1440,7 +1441,10 @@ function MainApp() {
                 .filter(c => c.type === 'expense')
                 .map(cat => {
                   const catTotal = transactions
-                    .filter(t => t.category_id === cat.id && t.type === 'expense')
+                    .filter(t => {
+                      const c = getCategoryById(t.category_id, t.category);
+                      return (c.id === cat.id || c.name === cat.name) && t.type === 'expense';
+                    })
                     .reduce((sum, t) => sum + Number(t.amount), 0);
                   
                   if (catTotal === 0) return null;

@@ -176,6 +176,7 @@ interface LedgerContextType {
   claimAdminRoleWithPin: (pin: string) => Promise<{ success: boolean; message?: string }>;
   getMemberById: (id?: string) => Profile | undefined;
   memberAliasMap: Record<string, Profile>;
+  getCategoryById: (categoryId?: string, txCategory?: Category) => Category;
 }
 
 const LedgerContext = createContext<LedgerContextType | null>(null);
@@ -252,6 +253,7 @@ const STORAGE_KEYS = {
   TRANSACTIONS: '@family_ledger_transactions',
   CURRENT_USER: '@family_ledger_current_user',
   MEMBERS: '@family_ledger_members',
+  CATEGORIES: '@family_ledger_categories',
   DEVICE_BOUND: '@family_ledger_device_bound',
   LEDGER: '@family_ledger_current',
   HAS_JOINED: '@family_ledger_has_joined',
@@ -259,6 +261,19 @@ const STORAGE_KEYS = {
   USER_ROLE: '@family_ledger_user_role',
   ADMIN_PIN: '@family_ledger_admin_pin',
   ALIAS_MAP: '@family_ledger_alias_map',
+};
+
+// 已知雲端資料庫分類 UUID 映射表（確保本機離線或 cold start 時舊交易分類 100% 完整解析）
+export const KNOWN_CATEGORY_UUIDS: Record<string, Partial<Category>> = {
+  'ed4b17ce-c9db-4986-88d3-fa5f2f391e2c': { name: '餐飲伙食', icon: '🍲', color: '#EF4444', type: 'expense' },
+  '463e7f0e-0998-40bc-8cc2-ca93db086e62': { name: '生鮮超市', icon: '🛒', color: '#F59E0B', type: 'expense' },
+  '605b2f24-9b67-4890-8515-bc3e28622674': { name: '居家水電', icon: '💡', color: '#3B82F6', type: 'expense' },
+  'd5eb5014-9b29-436f-ac6e-06e4faf8dcdd': { name: '交通出行', icon: '🚗', color: '#10B981', type: 'expense' },
+  'bd4d2fc6-6df9-49b5-9071-9574d0a19e32': { name: '休閒娛樂', icon: '🎬', color: '#8B5CF6', type: 'expense' },
+  '8cb7fefd-c8a1-4b2d-a464-8d78c4d6e423': { name: '醫療保健', icon: '💊', color: '#EC4899', type: 'expense' },
+  '3b4258cb-f8c3-4eb0-958a-009a86d68a86': { name: '育兒教育', icon: '👶', color: '#06B6D4', type: 'expense' },
+  '52678d37-fed9-4596-90dd-4f606bc62c0b': { name: '薪資收入', icon: '💰', color: '#059669', type: 'income' },
+  'c5648d3b-dfcb-4aa0-b230-a9074bfa58f5': { name: '投資理財', icon: '📈', color: '#2563EB', type: 'income' },
 };
 
 export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -314,6 +329,49 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     [members, memberAliasMap, rawMembers]
   );
 
+  // 透過 ID 或交易附加資訊精確取得分類（支援本機離線快取、歷史示範常數、雲端 UUID）
+  const getCategoryById = React.useCallback(
+    (categoryId?: string, txCategory?: Category): Category => {
+      if (categoryId) {
+        // 1. 直查當前 categories state
+        const fromState = categories.find(c => c.id === categoryId);
+        if (fromState) return fromState;
+
+        // 2. 查預設 DEFAULT_CATEGORIES
+        const fromDefault = DEFAULT_CATEGORIES.find(c => c.id === categoryId);
+        if (fromDefault) return fromDefault;
+
+        // 3. 查已知雲端 UUID 字典表 (確保離線狀態下舊帳目永不遺失)
+        const fromKnown = KNOWN_CATEGORY_UUIDS[categoryId];
+        if (fromKnown) {
+          return {
+            id: categoryId,
+            name: fromKnown.name || '其他',
+            icon: fromKnown.icon || '📝',
+            color: fromKnown.color || '#6B7280',
+            type: fromKnown.type || 'expense',
+            sort_order: 99,
+          };
+        }
+      }
+
+      // 4. 查交易自身快取的 category 物件
+      if (txCategory && txCategory.name) {
+        return txCategory;
+      }
+
+      return {
+        id: categoryId || 'unknown',
+        name: '其他',
+        icon: '📝',
+        color: '#6B7280',
+        type: 'expense',
+        sort_order: 99,
+      };
+    },
+    [categories]
+  );
+
   // 帳本管理員包含建立者 (owner) 與共同管理員 (admin)
   const isOwner = userRole === 'owner' || userRole === 'admin';
   const channelRef = useRef<any>(null);
@@ -322,10 +380,44 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     const loadLocalCache = async () => {
       try {
+        // 優先載入本地分類快取
+        const savedCategories = await AsyncStorage.getItem(STORAGE_KEYS.CATEGORIES);
+        let activeCategories = DEFAULT_CATEGORIES;
+        if (savedCategories) {
+          try {
+            const parsed = JSON.parse(savedCategories);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              activeCategories = parsed;
+              setCategories(parsed);
+            }
+          } catch {}
+        }
+
         const savedTx = await AsyncStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
         if (savedTx) {
           const parsed = JSON.parse(savedTx);
-          const validTx = parsed.filter((t: any) => isValidUUID(t.id) && isValidUUID(t.ledger_id));
+          const validTx = parsed
+            .filter((t: any) => isValidUUID(t.id) && isValidUUID(t.ledger_id))
+            .map((t: any) => {
+              const matchedCat =
+                activeCategories.find((c: any) => c.id === t.category_id) ||
+                DEFAULT_CATEGORIES.find(c => c.id === t.category_id) ||
+                (t.category_id && KNOWN_CATEGORY_UUIDS[t.category_id]
+                  ? {
+                      id: t.category_id,
+                      name: KNOWN_CATEGORY_UUIDS[t.category_id].name || '其他',
+                      icon: KNOWN_CATEGORY_UUIDS[t.category_id].icon || '📝',
+                      color: KNOWN_CATEGORY_UUIDS[t.category_id].color || '#6B7280',
+                      type: KNOWN_CATEGORY_UUIDS[t.category_id].type || 'expense',
+                      sort_order: 99,
+                    }
+                  : null) ||
+                t.category;
+              return {
+                ...t,
+                category: matchedCat || t.category,
+              };
+            });
           if (validTx.length > 0) setTransactions(validTx);
         }
 
@@ -638,6 +730,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (catRows && catRows.length > 0) {
       setCategories(catRows);
+      await AsyncStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(catRows));
+      await AsyncStorage.setItem(`${STORAGE_KEYS.CATEGORIES}_${targetLedger.id}`, JSON.stringify(catRows));
     } else {
       const catsToInsert = DEFAULT_CATEGORIES.map(c => ({
         id: generateUUID(),
@@ -650,6 +744,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }));
       await supabase.from('categories').insert(catsToInsert);
       setCategories(catsToInsert);
+      await AsyncStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(catsToInsert));
+      await AsyncStorage.setItem(`${STORAGE_KEYS.CATEGORIES}_${targetLedger.id}`, JSON.stringify(catsToInsert));
     }
 
     // (C) 載入全體家庭成員
@@ -801,6 +897,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           amount: Number(t.amount),
           paid_by: correctedPaidBy,
           payer_profile: canonicalPayer || t.payer_profile,
+          category: getCategoryById(t.category_id, t.category),
         };
       });
     }
@@ -938,7 +1035,53 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
         const savedCode = await AsyncStorage.getItem(STORAGE_KEYS.INVITE_CODE);
 
-        const validMemberLedgers = (memberLedgers || []).filter((m: any) => m.ledgers && isValidUUID(m.ledgers.id));
+        let validMemberLedgers = (memberLedgers || []).filter((m: any) => m.ledgers && isValidUUID(m.ledgers.id));
+
+        // 若伺服器查無該使用者的帳本成員記錄，但本機已儲存有效邀請碼或帳本 ID（例如 APK 剛安裝或本地離線恢復）
+        if (validMemberLedgers.length === 0 && (savedCode || savedLedgerId)) {
+          try {
+            let foundLedger: any = null;
+            if (savedLedgerId) {
+              const { data: directLedger } = await supabase
+                .from('ledgers')
+                .select('*')
+                .eq('id', savedLedgerId)
+                .maybeSingle();
+              if (directLedger) foundLedger = directLedger;
+            }
+
+            if (!foundLedger && savedCode) {
+              const { data: inviteRows } = await supabase
+                .from('ledger_invites')
+                .select('ledger_id, ledgers(*)')
+                .ilike('invite_code', savedCode.trim())
+                .limit(1);
+              if (inviteRows && inviteRows.length > 0 && inviteRows[0].ledgers) {
+                foundLedger = inviteRows[0].ledgers;
+              }
+            }
+
+            if (foundLedger && isValidUUID(foundLedger.id)) {
+              const savedRole = (await AsyncStorage.getItem(STORAGE_KEYS.USER_ROLE)) || 'member';
+              await supabase.from('ledger_members').upsert({
+                ledger_id: foundLedger.id,
+                user_id: authUser.id,
+                role: savedRole,
+              });
+
+              validMemberLedgers = [
+                {
+                  ledger_id: foundLedger.id,
+                  role: savedRole,
+                  joined_at: new Date().toISOString(),
+                  ledgers: foundLedger,
+                },
+              ];
+            }
+          } catch (bindErr) {
+            console.warn('本機已存帳本自動關聯失敗:', bindErr);
+          }
+        }
         const allUserLedgers: Ledger[] = validMemberLedgers.map((m: any) => {
           const l = m.ledgers as unknown as Ledger;
           const isCreator = l.created_by === authUser.id;
@@ -1711,11 +1854,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       validCategoryId = categories.find(c => isValidUUID(c.id))?.id || DEFAULT_CATEGORIES[0].id;
     }
 
+    const resolvedCategory = getCategoryById(validCategoryId);
+
     const newTx: Transaction = {
       id: txId,
       ledger_id: validLedgerId,
       creator_id: validCreatorId,
       category_id: validCategoryId,
+      category: resolvedCategory,
       amount: data.amount,
       type: data.type,
       paid_by: validPaidBy,
@@ -1807,7 +1953,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           return {
             ...t,
             ...data,
-            category: data.category_id ? categories.find(c => c.id === data.category_id) || t.category : t.category,
+            category: data.category_id ? getCategoryById(data.category_id, t.category) : t.category,
             payer_profile: canonicalPayer || t.payer_profile,
           };
         }
@@ -1847,7 +1993,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const exportToCSV = (): string => {
     const headers = ['日期', '類型', '分類', '金額', '付款人', '備註'];
     const rows = transactions.map(t => {
-      const cat = categories.find(c => c.id === t.category_id)?.name || '未分類';
+      const cat = getCategoryById(t.category_id, t.category)?.name || '未分類';
       const payer = getMemberById(t.paid_by)?.display_name || t.payer_profile?.display_name || '家庭成員';
       const typeStr = t.type === 'expense' ? '支出' : '收入';
       const dateStr = new Date(t.transacted_at).toLocaleDateString('zh-TW');
@@ -2265,6 +2411,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         claimAdminRoleWithPin,
         getMemberById,
         memberAliasMap,
+        getCategoryById,
       }}
     >
       {children}
