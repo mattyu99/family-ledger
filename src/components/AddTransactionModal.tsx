@@ -9,10 +9,13 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Dimensions,
 } from 'react-native';
 import { useLedger } from '../context/LedgerContext';
 import { TransactionType } from '../types/database';
 import { getCategoryIcon } from '../lib/icons';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface AddTransactionModalProps {
   visible: boolean;
@@ -84,7 +87,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.overlay}
@@ -143,7 +146,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
                 placeholderTextColor="#D1D5DB"
                 value={amount}
                 onChangeText={setAmount}
-                autoFocus={Platform.OS !== 'web'}
+                autoFocus={false}
               />
             </View>
 
@@ -230,21 +233,18 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 24,
-    maxHeight: '90%',
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    maxHeight: Math.min(SCREEN_HEIGHT * 0.88, 720),
     width: '100%',
     maxWidth: 600,
     alignSelf: 'center',
-    display: 'flex',
-    flexDirection: 'column',
   },
   scrollArea: {
-    flex: 1,
     width: '100%',
   },
   scrollContent: {
     width: '100%',
-    paddingBottom: 32,
+    paddingBottom: 28,
   },
   header: {
     flexDirection: 'row',

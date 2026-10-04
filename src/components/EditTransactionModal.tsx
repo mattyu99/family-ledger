@@ -10,10 +10,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Dimensions,
 } from 'react-native';
 import { useLedger } from '../context/LedgerContext';
 import { Transaction, TransactionType } from '../types/database';
 import { getCategoryIcon } from '../lib/icons';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface EditTransactionModalProps {
   visible: boolean;
@@ -122,7 +125,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   if (!transaction) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.overlay}
@@ -263,7 +266,10 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: Platform.OS === 'ios' ? 40 : 24,
     paddingHorizontal: 20,
-    maxHeight: '90%',
+    maxHeight: Math.min(SCREEN_HEIGHT * 0.88, 720),
+    width: '100%',
+    maxWidth: 600,
+    alignSelf: 'center',
   },
   header: {
     flexDirection: 'row',
