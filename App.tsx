@@ -103,9 +103,6 @@ function MainApp() {
     addMember,
     updateMember,
     deleteMember,
-    isDeviceBound,
-    bindDeviceToMember,
-    unbindDevice,
     isCloudSynced,
     hasJoinedLedger,
     isOwner,
@@ -1069,9 +1066,7 @@ function MainApp() {
                 <View style={styles.sectionHeaderLeft}>
                   <Text style={styles.cardSectionTitle}>👨‍👩‍👧 家庭成員名單 ({members.length})</Text>
                   <Text style={styles.sectionHeaderDesc}>
-                    {isDeviceBound
-                      ? '🔒 本機已綁定專屬成員，無法點選切換身分'
-                      : '點擊成員可切換當前記帳者，亦可隨時新增'}
+                    每位家人使用自己的手機進入，記帳時預設自動帶入個人身分
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -1089,7 +1084,7 @@ function MainApp() {
                   const isCreator = currentLedger.created_by === member.id;
 
                   return (
-                    <View key={member.id} style={[styles.userChip, isCurrent && styles.userChipActive, isDeviceBound && !isCurrent && styles.userChipDisabled]}>
+                    <View key={member.id} style={[styles.userChip, isCurrent && styles.userChipActive]}>
                       {/* 管理員徽章 */}
                       {isMemberAdmin && (
                         <View style={styles.memberRoleBadge}>
@@ -1099,11 +1094,14 @@ function MainApp() {
 
                       <TouchableOpacity
                         style={styles.userChipClickable}
+                        activeOpacity={isCurrent ? 1 : 0.7}
                         onPress={() => {
-                          if (isDeviceBound && !isCurrent) {
-                            showAlert('本機已鎖定', `此手機已鎖定為「${currentUser.display_name}」的專用機，若要切換請先在下方解除鎖定。`);
-                          } else {
-                            setCurrentUser(member);
+                          if (!isCurrent) {
+                            showConfirm(
+                              '切換本機身分',
+                              `確定要將這台裝置的身分更換為「${member.display_name}」嗎？\n更換後，此手機記帳預設將歸屬於「${member.display_name}」。`,
+                              () => setCurrentUser(member)
+                            );
                           }
                         }}
                       >
@@ -1113,7 +1111,7 @@ function MainApp() {
                         </Text>
                         {isCurrent && (
                           <Text style={styles.activeTag}>
-                            {isDeviceBound ? '🔒 本機專用' : '使用中'}
+                            📱 我 (本機)
                           </Text>
                         )}
                       </TouchableOpacity>
@@ -1153,7 +1151,7 @@ function MainApp() {
                       )}
 
                       {/* 刪除成員按鈕 */}
-                      {isOwner && !isCurrent && members.length > 1 && !isDeviceBound && !isCreator && (
+                      {isOwner && !isCurrent && members.length > 1 && !isCreator && (
                         <TouchableOpacity
                           style={styles.deleteMemberBtn}
                           onPress={() => {
@@ -1167,58 +1165,6 @@ function MainApp() {
                   );
                 })}
               </View>
-            </View>
-
-            {/* 裝置身分綁定（長輩防呆專用） */}
-            <View style={styles.cardSection}>
-              <Text style={styles.cardSectionTitle}>📱 裝置身分鎖定（長輩防呆）</Text>
-              <Text style={styles.cardSectionDesc}>
-                {isDeviceBound
-                  ? `本手機已鎖定為【${currentUser.display_name}】專用機，記帳時自動鎖死頭像，長輩絕不按錯！`
-                  : '可將這支手機綁定為媽媽（或特定成員）的專用機，鎖定後無法切換身分與付款人。'}
-              </Text>
-
-              {isDeviceBound ? (
-                <View style={styles.boundStatusBox}>
-                  <View style={styles.boundStatusContent}>
-                    <Text style={styles.boundStatusIcon}>🔒</Text>
-                    <View style={styles.boundStatusTextCol}>
-                      <Text style={styles.boundStatusTitle}>
-                        已鎖定：{currentUser.avatar_url} {currentUser.display_name}
-                      </Text>
-                      <Text style={styles.boundStatusSub}>所有新記帳皆自動歸屬此成員，無法更改</Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.unbindBtn}
-                    onPress={() => {
-                      showConfirm('解除裝置鎖定', '解除後即可自由切換成員記帳，確定要解除嗎？', () => unbindDevice());
-                    }}
-                  >
-                    <Text style={styles.unbindBtnText}>🔓 解除鎖定</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <View style={styles.bindActionBox}>
-                  <Text style={styles.bindActionPrompt}>
-                    點擊下方成員，將本機設為其「專用手機」：
-                  </Text>
-                  <View style={styles.bindButtonRow}>
-                    {members.map(member => (
-                      <TouchableOpacity
-                        key={member.id}
-                        style={styles.bindMemberBtn}
-                        onPress={() => {
-                          showConfirm('鎖定裝置身分', `確定將這支手機鎖定為「${member.display_name}」的專用機嗎？`, () => bindDeviceToMember(member));
-                        }}
-                      >
-                        <Text style={styles.bindMemberAvatar}>{member.avatar_url}</Text>
-                        <Text style={styles.bindMemberName} numberOfLines={1} ellipsizeMode="tail">鎖定 {member.display_name}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              )}
             </View>
 
             {/* 邀請家人加入與代碼管理 */}
@@ -2027,92 +1973,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
-  },
-  userChipDisabled: {
-    opacity: 0.6,
-  },
-  boundStatusBox: {
-    backgroundColor: '#F0FDF4',
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#86EFAC',
-    padding: 14,
-  },
-  boundStatusContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  boundStatusIcon: {
-    fontSize: 26,
-    marginRight: 10,
-  },
-  boundStatusTextCol: {
-    flex: 1,
-  },
-  boundStatusTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#166534',
-  },
-  boundStatusSub: {
-    fontSize: 12,
-    color: '#15803D',
-    marginTop: 2,
-  },
-  unbindBtn: {
-    backgroundColor: '#DCFCE7',
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#86EFAC',
-  },
-  unbindBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#166534',
-  },
-  bindActionBox: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  bindActionPrompt: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#475569',
-    marginBottom: 10,
-  },
-  bindButtonRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    width: '100%',
-  },
-  bindMemberBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    maxWidth: '100%',
-    marginBottom: 4,
-  },
-  bindMemberAvatar: {
-    fontSize: 16,
-    marginRight: 6,
-  },
-  bindMemberName: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#334155',
-    flexShrink: 1,
   },
   topBarTitleRow: {
     flexDirection: 'row',

@@ -20,7 +20,7 @@ interface AddTransactionModalProps {
 }
 
 export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visible, onClose }) => {
-  const { categories, members, currentUser, addTransaction, isDeviceBound } = useLedger();
+  const { categories, members, currentUser, addTransaction } = useLedger();
 
   const [type, setType] = useState<TransactionType>('expense');
   const [amount, setAmount] = useState<string>('');
@@ -55,7 +55,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
 
     const currentCats = categories.filter(c => c.type === type);
     const targetCategory = currentCats.find(c => c.id === selectedCategoryId) || currentCats[0];
-    const targetPayer = (isDeviceBound ? currentUser.id : paidBy) || currentUser.id || members[0]?.id;
+    const targetPayer = paidBy || currentUser.id || members[0]?.id;
 
     if (!targetCategory) {
       alert('請先選擇記帳分類');
@@ -175,33 +175,24 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
 
             {/* 付款人選擇 */}
             <Text style={styles.sectionLabel}>誰先付款 / 代墊</Text>
-            {isDeviceBound ? (
-              <View style={styles.lockedPayerBox}>
-                <Text style={styles.lockedPayerAvatar}>{currentUser.avatar_url}</Text>
-                <View style={styles.lockedPayerContent}>
-                  <Text style={styles.lockedPayerName}>{currentUser.display_name} (本手機專用)</Text>
-                  <Text style={styles.lockedPayerHint}>🔒 本裝置已綁定，免選付款人自動記入</Text>
-                </View>
-              </View>
-            ) : (
-              <View style={styles.payerRow}>
-                {members.map(member => {
-                  const isSelected = paidBy === member.id;
-                  return (
-                    <TouchableOpacity
-                      key={member.id}
-                      style={[styles.payerChip, isSelected && styles.payerChipActive]}
-                      onPress={() => setPaidBy(member.id)}
-                    >
-                      <Text style={styles.payerAvatar}>{member.avatar_url}</Text>
-                      <Text style={[styles.payerName, isSelected && styles.payerNameActive]}>
-                        {member.display_name}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
+            <View style={styles.payerRow}>
+              {members.map(member => {
+                const isSelected = paidBy === member.id;
+                const isMe = member.id === currentUser.id || (!!currentUser.display_name && currentUser.display_name === member.display_name);
+                return (
+                  <TouchableOpacity
+                    key={member.id}
+                    style={[styles.payerChip, isSelected && styles.payerChipActive]}
+                    onPress={() => setPaidBy(member.id)}
+                  >
+                    <Text style={styles.payerAvatar}>{member.avatar_url}</Text>
+                    <Text style={[styles.payerName, isSelected && styles.payerNameActive]}>
+                      {member.display_name}{isMe ? ' (我)' : ''}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
             {/* 全家平分分攤切換（僅在支出時顯示） */}
             {type === 'expense' && (
@@ -489,33 +480,5 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
-  },
-  lockedPayerBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EEF2FF',
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#C7D2FE',
-    marginBottom: 20,
-    width: '100%',
-  },
-  lockedPayerAvatar: {
-    fontSize: 26,
-    marginRight: 12,
-  },
-  lockedPayerContent: {
-    flex: 1,
-  },
-  lockedPayerName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#3730A3',
-  },
-  lockedPayerHint: {
-    fontSize: 12,
-    color: '#6366F1',
-    marginTop: 2,
   },
 });

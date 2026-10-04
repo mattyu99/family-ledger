@@ -1047,11 +1047,6 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setCurrentUser(updatedMe);
       await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedMe));
 
-      if (claimedMember) {
-        setIsDeviceBound(true);
-        await AsyncStorage.setItem(STORAGE_KEYS.DEVICE_BOUND, 'true');
-      }
-
       setUserRole(assignedRole);
       await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, assignedRole);
       setInviteCode(code);
@@ -1753,10 +1748,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         transactions,
         currentUser,
         setCurrentUser: (u: Profile) => {
-          if (!isDeviceBound) {
-            setCurrentUser(u);
-            AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(u));
-          }
+          setCurrentUser(u);
+          AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(u));
         },
         addTransaction,
         deleteTransaction,
@@ -1764,9 +1757,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addMember,
         updateMember,
         deleteMember,
-        isDeviceBound,
-        bindDeviceToMember,
-        unbindDevice,
+        isDeviceBound: false,
+        bindDeviceToMember: async (member: Profile) => {
+          setCurrentUser(member);
+          await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(member));
+        },
+        unbindDevice: async () => {},
         isCloudSynced,
         settlementInfo,
         hasJoinedLedger,
