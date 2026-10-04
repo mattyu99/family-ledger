@@ -207,6 +207,9 @@ CREATE POLICY "Admins can manage invites" ON public.ledger_invites FOR ALL
   USING (EXISTS (SELECT 1 FROM public.ledger_members lm WHERE lm.ledger_id = ledger_invites.ledger_id AND lm.user_id = auth.uid() AND lm.role IN ('owner', 'admin')));
 
 -- 家人透過邀請碼加入帳本的 RPC 函式 (SECURITY DEFINER 確保安全並自動完成關聯)
+DROP FUNCTION IF EXISTS public.join_ledger_by_invite(TEXT);
+DROP FUNCTION IF EXISTS public.join_ledger_by_invite(TEXT, TEXT);
+
 CREATE OR REPLACE FUNCTION public.join_ledger_by_invite(
     invite_code_input TEXT,
     claimed_role TEXT DEFAULT NULL
@@ -272,9 +275,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-GRANT EXECUTE ON FUNCTION public.join_ledger_by_invite TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.join_ledger_by_invite(TEXT, TEXT) TO anon, authenticated;
 
 -- 取得帳本邀請預覽與成員名冊 (SECURITY DEFINER 供訪客在加入前預覽帳本資訊與認領成員)
+DROP FUNCTION IF EXISTS public.get_ledger_invite_preview(TEXT);
+
 CREATE OR REPLACE FUNCTION public.get_ledger_invite_preview(invite_code_input TEXT)
 RETURNS JSONB AS $$
 DECLARE
@@ -337,9 +342,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-GRANT EXECUTE ON FUNCTION public.get_ledger_invite_preview TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_ledger_invite_preview(TEXT) TO anon, authenticated;
 
 -- 新增家庭成員的 RPC 函式 (SECURITY DEFINER 原子交易，自動寫入 profiles 與 ledger_members)
+DROP FUNCTION IF EXISTS public.add_family_member(UUID, TEXT);
+DROP FUNCTION IF EXISTS public.add_family_member(UUID, TEXT, TEXT);
+
 CREATE OR REPLACE FUNCTION public.add_family_member(
     target_ledger_id UUID,
     member_name TEXT,
@@ -374,7 +382,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+GRANT EXECUTE ON FUNCTION public.add_family_member(UUID, TEXT, TEXT) TO anon, authenticated;
+
 -- 變更成員角色權限的 RPC 函式 (管理員可指派共同管理員或降為一般成員)
+DROP FUNCTION IF EXISTS public.set_member_role(UUID, UUID, TEXT);
+
 CREATE OR REPLACE FUNCTION public.set_member_role(
     target_ledger_id UUID,
     target_user_id UUID,
@@ -411,6 +423,8 @@ BEGIN
     RETURN jsonb_build_object('success', true, 'role', new_role);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.set_member_role(UUID, UUID, TEXT) TO anon, authenticated;
 
 -- ==============================================================================
 -- 自動化觸發器 (Triggers)：新使用者註冊時，自動建立 Profile (由使用者自行建立或加入帳本)
