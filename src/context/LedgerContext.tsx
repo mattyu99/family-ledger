@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { Platform, Alert } from 'react-native';
+import { Platform, Alert, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Transaction, Category, Ledger, Profile, TransactionType } from '../types/database';
 import { supabase, isConfigured } from '../lib/supabase';
@@ -185,6 +185,7 @@ interface LedgerContextType {
   getMemberById: (id?: string) => Profile | undefined;
   memberAliasMap: Record<string, Profile>;
   getCategoryById: (categoryId?: string, txCategory?: Category) => Category;
+  refreshLedger: () => Promise<void>;
 }
 
 const LedgerContext = createContext<LedgerContextType | null>(null);
@@ -269,6 +270,7 @@ const STORAGE_KEYS = {
   USER_ROLE: '@family_ledger_user_role',
   ADMIN_PIN: '@family_ledger_admin_pin',
   ALIAS_MAP: '@family_ledger_alias_map',
+  DELETED_TX_IDS: '@family_ledger_deleted_tx_ids',
 };
 
 // 已知雲端資料庫分類 UUID 映射表（確保本機離線或 cold start 時舊交易分類 100% 完整解析）
@@ -502,47 +504,83 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
           schema: 'public',
           table: 'transactions',
           filter: `ledger_id=eq.${ledgerId}`,
         },
         (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const newRow = payload.new as any;
+          const newRow = payload.new as any;
+          if (!newRow) return;
+          setTransactions((prev) => {
+            if (prev.some((t) => t.id === newRow.id)) return prev;
+            const canonicalPayer = getMemberById(newRow.paid_by);
+            const item: Transaction = {
+              ...newRow,
+              amount: Number(newRow.amount),
+              payer_profile: canonicalPayer || newRow.payer_profile,
+            };
+            const updated = [item, ...prev];
+            AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
+            AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${ledgerId}`, JSON.stringify(updated));
+            return updated;
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'transactions',
+          filter: `ledger_id=eq.${ledgerId}`,
+        },
+        (payload) => {
+          const updatedRow = payload.new as any;
+          if (!updatedRow) return;
+          setTransactions((prev) => {
+            const canonicalPayer = getMemberById(updatedRow.paid_by);
+            const updated = prev.map((t) =>
+              t.id === updatedRow.id
+                ? {
+                    ...updatedRow,
+                    amount: Number(updatedRow.amount),
+                    payer_profile: canonicalPayer || updatedRow.payer_profile || t.payer_profile,
+                  }
+                : t
+            );
+            AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
+            AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${ledgerId}`, JSON.stringify(updated));
+            return updated;
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'transactions',
+        },
+        async (payload) => {
+          const oldRow = payload.old as any;
+          if (oldRow && oldRow.id) {
+            try {
+              const deletedKey = `${STORAGE_KEYS.DELETED_TX_IDS}_${ledgerId}`;
+              const savedDeletedStr = await AsyncStorage.getItem(deletedKey);
+              const deletedList: string[] = savedDeletedStr ? JSON.parse(savedDeletedStr) : [];
+              if (!deletedList.includes(oldRow.id)) {
+                deletedList.push(oldRow.id);
+                if (deletedList.length > 500) deletedList.shift();
+                await AsyncStorage.setItem(deletedKey, JSON.stringify(deletedList));
+              }
+            } catch {}
+
             setTransactions((prev) => {
-              if (prev.some((t) => t.id === newRow.id)) return prev;
-              const canonicalPayer = getMemberById(newRow.paid_by);
-              const item: Transaction = {
-                ...newRow,
-                amount: Number(newRow.amount),
-                payer_profile: canonicalPayer || newRow.payer_profile,
-              };
-              const updated = [item, ...prev];
-              AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
-              return updated;
-            });
-          } else if (payload.eventType === 'DELETE') {
-            const oldRow = payload.old as any;
-            setTransactions((prev) => {
+              if (!prev.some((t) => t.id === oldRow.id)) return prev;
               const updated = prev.filter((t) => t.id !== oldRow.id);
               AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
-              return updated;
-            });
-          } else if (payload.eventType === 'UPDATE') {
-            const updatedRow = payload.new as any;
-            setTransactions((prev) => {
-              const canonicalPayer = getMemberById(updatedRow.paid_by);
-              const updated = prev.map((t) =>
-                t.id === updatedRow.id
-                  ? {
-                      ...updatedRow,
-                      amount: Number(updatedRow.amount),
-                      payer_profile: canonicalPayer || updatedRow.payer_profile || t.payer_profile,
-                    }
-                  : t
-              );
-              AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
+              AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${ledgerId}`, JSON.stringify(updated));
               return updated;
             });
           }
@@ -921,16 +959,22 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       });
     }
 
-    // 檢查本地是否有尚未成功送至雲端的交易（如因外鍵問題一度失敗，自動補修復上傳）
+    // 檢查本地是否有離線建立、尚未成功送至雲端的交易（注意：僅同步有 _isPendingSync 標記的交易，絕不復活已被刪除的交易）
     const localSavedTxStr = await AsyncStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
     if (localSavedTxStr && targetLedger.id !== DEMO_LEDGER_ID) {
       try {
+        const deletedKey = `${STORAGE_KEYS.DELETED_TX_IDS}_${targetLedger.id}`;
+        const savedDeletedStr = await AsyncStorage.getItem(deletedKey);
+        const deletedList: string[] = savedDeletedStr ? JSON.parse(savedDeletedStr) : [];
+
         const localTxList: Transaction[] = JSON.parse(localSavedTxStr);
         const unsyncedTx = localTxList.filter(
           lt => isValidUUID(lt.id) &&
           lt.ledger_id === targetLedger.id &&
           !finalTx.some(ct => ct.id === lt.id) &&
-          !lt.id.startsWith('40000000-0000-4000-8000')
+          !deletedList.includes(lt.id) &&
+          !lt.id.startsWith('40000000-0000-4000-8000') &&
+          (lt as any)._isPendingSync === true
         );
 
         for (const ut of unsyncedTx) {
@@ -948,6 +992,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               is_settled: ut.is_settled,
             });
             if (!insErr) {
+              delete (ut as any)._isPendingSync;
               finalTx.push(ut);
             }
           } catch (e) {
@@ -1240,6 +1285,34 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     };
   }, []);
+
+  // 手動 / 前景重新整理當前帳本完整資料
+  const refreshLedger = async () => {
+    if (isConfigured && currentLedger && currentLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const authUserId = session?.user?.id;
+        if (authUserId) {
+          await loadLedgerData(currentLedger, authUserId);
+        }
+      } catch (err) {
+        console.warn('重新整理帳本資料失敗:', err);
+      }
+    }
+  };
+
+  // 3. 當 App 從背景回到前景時，自動檢查並重新載入最新雲端資料
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active' && isConfigured && currentLedger && currentLedger.id !== DEMO_LEDGER_ID) {
+        refreshLedger();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [currentLedger, isConfigured]);
 
   // 建立新的家庭公帳 (Owner 發起)
   const createLedger = async (name: string = '幸福家庭帳本', creatorName?: string, avatar?: string) => {
@@ -1918,11 +1991,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
 
     // 樂觀更新本地畫面
+    const isOnlinePublishing = isConfigured && isCloudSynced && newTx.ledger_id !== DEMO_LEDGER_ID;
+    if (!isOnlinePublishing) {
+      (newTx as any)._isPendingSync = true;
+    }
     const updated = [newTx, ...transactions];
+    setTransactions(updated);
     await saveTransactionsToStorage(updated);
 
     // 若雲端已連線且為正式雲端帳本，推送至 Supabase PostgreSQL
-    if (isConfigured && isCloudSynced && newTx.ledger_id !== DEMO_LEDGER_ID) {
+    if (isOnlinePublishing) {
       try {
         const { error: txError } = await supabase.from('transactions').insert({
           id: newTx.id,
@@ -1939,6 +2017,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         if (txError) {
           console.warn('雲端寫入交易失敗:', txError.message);
+          (newTx as any)._isPendingSync = true;
+          await saveTransactionsToStorage([newTx, ...transactions.filter(t => t.id !== newTx.id)]);
         } else if (newTx.splits && newTx.splits.length > 0) {
           // 同步分攤明細至 transaction_splits
           await supabase.from('transaction_splits').insert(
@@ -1953,17 +2033,35 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       } catch (err) {
         console.warn('雲端新增交易連線延遲，已保存於本機稍後重試:', err);
+        (newTx as any)._isPendingSync = true;
+        await saveTransactionsToStorage([newTx, ...transactions.filter(t => t.id !== newTx.id)]);
       }
     }
   };
 
   // 刪除交易
   const deleteTransaction = async (id: string) => {
+    // 1. 本地立即清除
     const updated = transactions.filter(t => t.id !== id);
+    setTransactions(updated);
     await saveTransactionsToStorage(updated);
 
-    if (isConfigured) {
+    // 2. 記錄至已刪除清單，避免離線補同步時誤當作未上傳交易重新插入
+    try {
+      const deletedKey = `${STORAGE_KEYS.DELETED_TX_IDS}_${currentLedger.id}`;
+      const savedDeletedStr = await AsyncStorage.getItem(deletedKey);
+      const deletedList: string[] = savedDeletedStr ? JSON.parse(savedDeletedStr) : [];
+      if (!deletedList.includes(id)) {
+        deletedList.push(id);
+        if (deletedList.length > 500) deletedList.shift();
+        await AsyncStorage.setItem(deletedKey, JSON.stringify(deletedList));
+      }
+    } catch {}
+
+    // 3. 雲端同步刪除
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
+        await supabase.from('transaction_splits').delete().eq('transaction_id', id);
         const { error } = await supabase.from('transactions').delete().eq('id', id);
         if (error) console.warn('雲端刪除交易失敗:', error.message);
       } catch (err) {
@@ -2463,6 +2561,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         getMemberById,
         memberAliasMap,
         getCategoryById,
+        refreshLedger,
       }}
     >
       {children}

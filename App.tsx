@@ -11,6 +11,7 @@ import {
   Modal,
   Platform,
   TextInput,
+  RefreshControl,
 } from 'react-native';
 import { LedgerProvider, useLedger } from './src/context/LedgerContext';
 import { TransactionItem } from './src/components/TransactionItem';
@@ -129,6 +130,7 @@ function MainApp() {
     claimAdminRoleWithPin,
     getMemberById,
     getCategoryById,
+    refreshLedger,
   } = useLedger();
 
   const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'family'>('transactions');
@@ -139,6 +141,18 @@ function MainApp() {
   const [newMemberName, setNewMemberName] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState('👩');
   const [csvContent, setCsvContent] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshLedger();
+    } catch (e) {
+      console.warn('手動同步失敗:', e);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // 應用程式版本與熱更新狀態
   const APP_VERSION = appConfig.expo.version || '1.0.0';
@@ -1351,19 +1365,34 @@ function MainApp() {
           </View>
         </View>
 
-        {/* 雲端狀態徽章 */}
-        <View style={[styles.syncBadge, isCloudSynced ? styles.syncOnline : styles.syncLocal]}>
-          <Text style={styles.syncDot}>{isCloudSynced ? '🟢' : '🟡'}</Text>
+        {/* 雲端狀態徽章 (點擊可立即手動重新同步) */}
+        <TouchableOpacity
+          style={[styles.syncBadge, isCloudSynced ? styles.syncOnline : styles.syncLocal]}
+          onPress={handleRefresh}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.syncDot}>{isRefreshing ? '🔄' : (isCloudSynced ? '🟢' : '🟡')}</Text>
           <Text style={styles.syncText} maxFontSizeMultiplier={1.2}>
-            {isCloudSynced ? '雲端即時同步' : '本地離線快取'}
+            {isRefreshing ? '同步更新中...' : (isCloudSynced ? '雲端即時同步' : '本地離線快取')}
           </Text>
-        </View>
+        </TouchableOpacity>
       </View>
 
       {/* 頁籤內容 */}
       <View style={styles.content}>
         {activeTab === 'transactions' && (
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollPadding}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollPadding}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
+                colors={['#4F46E5']}
+                tintColor="#4F46E5"
+              />
+            }
+          >
             {/* 本月收支摘要卡片 */}
             <View style={styles.summaryCard}>
               <View style={styles.summaryHeader}>
