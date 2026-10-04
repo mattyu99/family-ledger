@@ -99,7 +99,6 @@ function MainApp() {
     categories,
     members,
     currentUser,
-    setCurrentUser,
     settlementInfo,
     exportToCSV,
     addMember,
@@ -1381,19 +1380,7 @@ function MainApp() {
                         </View>
                       )}
 
-                      <TouchableOpacity
-                        style={styles.userChipClickable}
-                        activeOpacity={isCurrent ? 1 : 0.7}
-                        onPress={() => {
-                          if (!isCurrent) {
-                            showConfirm(
-                              '切換本機身分',
-                              `確定要將這台裝置的身分更換為「${member.display_name}」嗎？\n更換後，此手機記帳預設將歸屬於「${member.display_name}」。`,
-                              () => setCurrentUser(member)
-                            );
-                          }
-                        }}
-                      >
+                      <View style={styles.userChipClickable}>
                         <Text style={styles.userAvatar}>{member.avatar_url}</Text>
                         <Text style={[styles.userTitle, isCurrent && styles.userTitleActive]} numberOfLines={1} ellipsizeMode="tail">
                           {member.display_name}
@@ -1403,7 +1390,7 @@ function MainApp() {
                             📱 我 (本機)
                           </Text>
                         )}
-                      </TouchableOpacity>
+                      </View>
 
                       {/* 編輯稱謂與頭像按鈕 */}
                       <TouchableOpacity
