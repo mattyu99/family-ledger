@@ -240,8 +240,16 @@ function MainApp() {
   };
 
   const handleCheckForUpdates = async () => {
-    if (Platform.OS === 'web' || !Updates.isEnabled) {
+    if (Platform.OS === 'web') {
       showAlert('網頁版已是最新狀態', '網頁版在您每次開啟或重新整理網頁時，皆會自動載入最新程式碼與功能。');
+      return;
+    }
+
+    if (!Updates.isEnabled) {
+      showAlert(
+        '目前為獨立安裝版 (APK)',
+        '此安裝檔為獨立 APK 版本，未開啟 EAS OTA 遠端熱更新通道。\n\n若您有編譯新版 APK，重新下載安裝後即可啟用「免重新安裝即可遠端更新」功能！'
+      );
       return;
     }
     try {
@@ -1728,24 +1736,28 @@ function MainApp() {
               <View style={styles.versionDetailBox}>
                 <View style={styles.versionDetailRow}>
                   <Text style={styles.versionDetailLabel}>運行環境：</Text>
-                  <Text style={styles.versionDetailValue}>
-                    {Platform.OS === 'web' ? '🌐 網頁版 (Web 瀏覽器)' : '🤖 Android 原生應用程式'}
+                  <Text style={styles.versionDetailValue} numberOfLines={1}>
+                    {Platform.OS === 'web'
+                      ? '🌐 Web 網頁版'
+                      : Platform.OS === 'ios'
+                      ? '🍎 iOS 原生 App'
+                      : '🤖 Android 原生 App'}
                   </Text>
                 </View>
 
                 <View style={styles.versionDetailRow}>
                   <Text style={styles.versionDetailLabel}>更新機制：</Text>
-                  <Text style={styles.versionDetailValue}>
+                  <Text style={styles.versionDetailValue} numberOfLines={1}>
                     {Platform.OS === 'web'
-                      ? '網頁即時快取 (每次開啟即最新)'
-                      : (Updates.isEnabled ? '⚡ EAS OTA 遠端熱更新' : '📦 獨立安裝版')}
+                      ? '🌐 網頁即時快取'
+                      : (Updates.isEnabled ? '⚡ EAS 雲端熱更新' : '📦 獨立安裝版 (APK)')}
                   </Text>
                 </View>
 
                 {Platform.OS !== 'web' && !!Updates.updateId && (
                   <View style={styles.versionDetailRow}>
                     <Text style={styles.versionDetailLabel}>更新代碼：</Text>
-                    <Text style={[styles.versionDetailValue, styles.monoText]}>
+                    <Text style={[styles.versionDetailValue, styles.monoText]} numberOfLines={1}>
                       {Updates.updateId.slice(0, 8)}
                     </Text>
                   </View>
@@ -1754,7 +1766,7 @@ function MainApp() {
                 {Platform.OS !== 'web' && !!Updates.createdAt && (
                   <View style={styles.versionDetailRow}>
                     <Text style={styles.versionDetailLabel}>更新時間：</Text>
-                    <Text style={styles.versionDetailValue}>
+                    <Text style={styles.versionDetailValue} numberOfLines={1}>
                       {new Date(Updates.createdAt).toLocaleString('zh-TW', { hour12: false })}
                     </Text>
                   </View>
@@ -3264,16 +3276,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
   },
   versionDetailLabel: {
     fontSize: 13,
     color: '#64748B',
     fontWeight: '500',
+    flexShrink: 0,
   },
   versionDetailValue: {
     fontSize: 13,
     color: '#1E293B',
     fontWeight: '600',
+    flex: 1,
+    textAlign: 'right',
   },
   monoText: {
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
