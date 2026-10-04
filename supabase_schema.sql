@@ -207,7 +207,10 @@ CREATE POLICY "Admins can manage invites" ON public.ledger_invites FOR ALL
   USING (EXISTS (SELECT 1 FROM public.ledger_members lm WHERE lm.ledger_id = ledger_invites.ledger_id AND lm.user_id = auth.uid() AND lm.role IN ('owner', 'admin')));
 
 -- 家人透過邀請碼加入帳本的 RPC 函式 (SECURITY DEFINER 確保安全並自動完成關聯)
-CREATE OR REPLACE FUNCTION public.join_ledger_by_invite(invite_code_input TEXT)
+CREATE OR REPLACE FUNCTION public.join_ledger_by_invite(
+    invite_code_input TEXT,
+    claimed_role TEXT DEFAULT NULL
+)
 RETURNS JSONB AS $$
 DECLARE
     target_invite RECORD;
@@ -220,14 +223,24 @@ BEGIN
     LIMIT 1;
 
     IF NOT FOUND THEN
-        RETURN jsonb_build_object('success', false, 'message', '找不到此邀請碼或邀請碼已失效');
+        BEGIN
+            SELECT * INTO target_ledger FROM public.ledgers WHERE id = invite_code_input::UUID;
+        EXCEPTION WHEN others THEN
+            target_ledger := NULL;
+        END;
+
+        IF target_ledger IS NULL THEN
+            RETURN jsonb_build_object('success', false, 'message', '找不到此邀請碼或邀請碼已失效');
+        END IF;
+    ELSE
+        SELECT * INTO target_ledger FROM public.ledgers WHERE id = target_invite.ledger_id;
     END IF;
 
-    SELECT * INTO target_ledger FROM public.ledgers WHERE id = target_invite.ledger_id;
-
-    -- 若目前呼叫者為該帳本建立者，角色自動恢復為 'owner'；其餘家人則為 'member'
+    -- 若目前呼叫者為該帳本建立者，角色自動恢復為 'owner'
     IF target_ledger.created_by = auth.uid() THEN
         assigned_role := 'owner';
+    ELSIF claimed_role IN ('owner', 'admin') THEN
+        assigned_role := claimed_role;
     ELSE
         assigned_role := 'member';
     END IF;
@@ -235,27 +248,96 @@ BEGIN
     -- 先嘗試更新既有成員紀錄之角色
     UPDATE public.ledger_members
     SET role = assigned_role
-    WHERE ledger_id = target_invite.ledger_id AND user_id = auth.uid();
+    WHERE ledger_id = target_ledger.id AND user_id = auth.uid();
 
     -- 若尚未加入過，則新增成員紀錄
     IF NOT FOUND THEN
         INSERT INTO public.ledger_members (ledger_id, user_id, role)
-        VALUES (target_invite.ledger_id, auth.uid(), assigned_role);
+        VALUES (target_ledger.id, auth.uid(), assigned_role);
     END IF;
 
     -- 累加已使用次數
-    UPDATE public.ledger_invites
-    SET used_count = used_count + 1
-    WHERE id = target_invite.id;
+    IF target_invite.id IS NOT NULL THEN
+        UPDATE public.ledger_invites
+        SET used_count = used_count + 1
+        WHERE id = target_invite.id;
+    END IF;
 
     RETURN jsonb_build_object(
         'success', true,
         'ledger_id', target_ledger.id,
         'ledger_name', target_ledger.name,
-        'invite_code', target_invite.invite_code
+        'invite_code', COALESCE(target_invite.invite_code, invite_code_input)
     );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.join_ledger_by_invite TO anon, authenticated;
+
+-- 取得帳本邀請預覽與成員名冊 (SECURITY DEFINER 供訪客在加入前預覽帳本資訊與認領成員)
+CREATE OR REPLACE FUNCTION public.get_ledger_invite_preview(invite_code_input TEXT)
+RETURNS JSONB AS $$
+DECLARE
+    target_invite RECORD;
+    target_ledger RECORD;
+    members_json JSONB;
+BEGIN
+    -- 1. 先嘗試以邀請碼比對 (不分大小寫)
+    SELECT * INTO target_invite FROM public.ledger_invites
+    WHERE UPPER(TRIM(invite_code)) = UPPER(TRIM(invite_code_input))
+      AND (expires_at IS NULL OR expires_at > now())
+    LIMIT 1;
+
+    IF FOUND THEN
+        SELECT * INTO target_ledger FROM public.ledgers WHERE id = target_invite.ledger_id;
+    ELSE
+        -- 2. 備用：若傳入的是 ledger UUID
+        BEGIN
+            SELECT * INTO target_ledger FROM public.ledgers WHERE id = invite_code_input::UUID;
+        EXCEPTION WHEN others THEN
+            target_ledger := NULL;
+        END;
+    END IF;
+
+    IF target_ledger IS NULL OR target_ledger.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'message', '找不到此邀請碼對應的帳本或邀請碼已失效');
+    END IF;
+
+    -- 3. 查詢該帳本既有成員清單 (依 display_name 去重，保留最早加入者)
+    SELECT COALESCE(
+        jsonb_agg(
+            jsonb_build_object(
+                'id', sub.id,
+                'display_name', sub.display_name,
+                'avatar_url', sub.avatar_url,
+                'role', sub.role
+            ) ORDER BY sub.joined_at ASC
+        ), '[]'::jsonb
+    ) INTO members_json
+    FROM (
+        SELECT DISTINCT ON (p.display_name)
+            p.id,
+            p.display_name,
+            p.avatar_url,
+            lm.role,
+            lm.joined_at
+        FROM public.ledger_members lm
+        JOIN public.profiles p ON lm.user_id = p.id
+        WHERE lm.ledger_id = target_ledger.id
+        ORDER BY p.display_name, lm.joined_at ASC
+    ) sub;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'ledger_id', target_ledger.id,
+        'ledger_name', target_ledger.name,
+        'invite_code', COALESCE(target_invite.invite_code, invite_code_input),
+        'members', members_json
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.get_ledger_invite_preview TO anon, authenticated;
 
 -- 新增家庭成員的 RPC 函式 (SECURITY DEFINER 原子交易，自動寫入 profiles 與 ledger_members)
 CREATE OR REPLACE FUNCTION public.add_family_member(

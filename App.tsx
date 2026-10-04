@@ -111,6 +111,7 @@ function MainApp() {
     inviteCode,
     createLedger,
     joinLedgerByCode,
+    previewInvite,
     regenerateInviteCode,
     updateInviteCode,
     getInviteLink,
@@ -143,17 +144,56 @@ function MainApp() {
   const [joinAvatar, setJoinAvatar] = useState('👩');
   const [isJoining, setIsJoining] = useState(false);
 
+  // 認領既有身分與預覽狀態
+  const [previewLedgerName, setPreviewLedgerName] = useState<string>('');
+  const [previewMembers, setPreviewMembers] = useState<any[]>([]);
+  const [isLoadingPreview, setIsLoadingPreview] = useState<boolean>(false);
+  const [isCreatingNewMember, setIsCreatingNewMember] = useState<boolean>(false);
+  const [selectedClaimMember, setSelectedClaimMember] = useState<any | null>(null);
+
+  const fetchInvitePreview = async (codeToQuery: string) => {
+    const clean = codeToQuery.trim();
+    if (!clean) return;
+    setIsLoadingPreview(true);
+    setSelectedClaimMember(null);
+    try {
+      const res = await previewInvite(clean);
+      if (res.success) {
+        setPreviewLedgerName(res.ledgerName || '家庭公帳');
+        const mems = res.members || [];
+        setPreviewMembers(mems);
+        if (mems.length > 0) {
+          setIsCreatingNewMember(false);
+          setSelectedClaimMember(mems[0]);
+        } else {
+          setIsCreatingNewMember(true);
+        }
+      } else {
+        setPreviewLedgerName('');
+        setPreviewMembers([]);
+        setIsCreatingNewMember(true);
+      }
+    } catch {
+      setPreviewLedgerName('');
+      setPreviewMembers([]);
+      setIsCreatingNewMember(true);
+    } finally {
+      setIsLoadingPreview(false);
+    }
+  };
+
   const [customCodeModalVisible, setCustomCodeModalVisible] = useState(false);
   const [customCodeInput, setCustomCodeInput] = useState('');
 
   const [switchLedgerModalVisible, setSwitchLedgerModalVisible] = useState(false);
   const [switchCodeInput, setSwitchCodeInput] = useState('');
 
-  // 當偵測到網址帶有邀請碼且尚未加入帳本時，自動彈出加入彈窗並填入代碼，讓使用者自訂暱稱與頭像（絕不偷偷產生幽靈「家庭成員」）
+  // 當偵測到網址帶有邀請碼且尚未加入帳本時，自動彈出加入彈窗並填入代碼，自動載入帳本名稱與現有成員供直接認領
   useEffect(() => {
     if (pendingInviteCode && !hasJoinedLedger) {
       setJoinCodeInput(pendingInviteCode);
       setJoinLedgerModalVisible(true);
+      fetchInvitePreview(pendingInviteCode);
       cancelPendingInvite();
     }
   }, [pendingInviteCode, hasJoinedLedger]);
@@ -276,58 +316,214 @@ function MainApp() {
       <View style={styles.exportOverlay}>
         <View style={styles.exportCard}>
           <View style={styles.modalHeaderRow}>
-            <Text style={styles.exportTitle}>🔗 加入現有家庭帳本</Text>
+            <Text style={styles.exportTitle}>🔗 加入家庭公帳</Text>
             <TouchableOpacity onPress={() => setJoinLedgerModalVisible(false)} style={styles.closeBtn}>
               <Text style={styles.closeText}>✕</Text>
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.formHint}>請輸入家人提供的 4~8 碼邀請代碼（例如 FAM-8823），或直接貼上 LINE 邀請網址。</Text>
-
-          <Text style={styles.formLabel}>邀請碼或完整邀請連結</Text>
-          <TextInput
-            style={styles.modalInput}
-            placeholder="例如：FAM-8823 或貼上連結"
-            placeholderTextColor="#9CA3AF"
-            value={joinCodeInput}
-            onChangeText={setJoinCodeInput}
-            autoCapitalize="characters"
-          />
-
-          <Text style={styles.formLabel}>您的暱稱 / 稱謂</Text>
-          <TextInput
-            style={styles.modalInput}
-            placeholder="例如：媽媽、大寶..."
-            placeholderTextColor="#9CA3AF"
-            value={joinNickname}
-            onChangeText={setJoinNickname}
-          />
-
-          <Text style={styles.formLabel}>選擇您的頭像</Text>
-          <View style={styles.avatarGrid}>
-            {AVATAR_OPTIONS.map(avatar => {
-              const isSelected = joinAvatar === avatar;
-              return (
+          {/* 帳本名稱預覽或代碼輸入 */}
+          {previewLedgerName ? (
+            <View style={styles.invitePreviewHeader}>
+              <View style={styles.invitePreviewIconBox}>
+                <Text style={{ fontSize: 24 }}>🏠</Text>
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.invitePreviewLedgerName} numberOfLines={1}>{previewLedgerName}</Text>
+                <Text style={styles.invitePreviewCodeText}>邀請碼：{joinCodeInput}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.changeCodeBtn}
+                onPress={() => {
+                  setPreviewLedgerName('');
+                  setPreviewMembers([]);
+                  setIsCreatingNewMember(true);
+                }}
+              >
+                <Text style={styles.changeCodeBtnText}>更換代碼</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={{ marginBottom: 12 }}>
+              <Text style={styles.formHint}>請輸入家人提供的 4~8 碼邀請代碼（例如 FAM-8823），或直接貼上 LINE 邀請網址：</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                <TextInput
+                  style={[styles.modalInput, { flex: 1, marginBottom: 0 }]}
+                  placeholder="例如：FAM-8823 或貼上連結"
+                  placeholderTextColor="#9CA3AF"
+                  value={joinCodeInput}
+                  onChangeText={setJoinCodeInput}
+                  autoCapitalize="characters"
+                />
                 <TouchableOpacity
-                  key={avatar}
-                  style={[styles.avatarChip, isSelected && styles.avatarChipActive]}
-                  onPress={() => setJoinAvatar(avatar)}
+                  style={styles.queryPreviewBtn}
+                  disabled={isLoadingPreview || !joinCodeInput.trim()}
+                  onPress={() => fetchInvitePreview(joinCodeInput)}
                 >
-                  <Text style={styles.avatarEmoji}>{avatar}</Text>
+                  <Text style={styles.queryPreviewBtnText}>
+                    {isLoadingPreview ? '查詢中...' : '查詢'}
+                  </Text>
                 </TouchableOpacity>
-              );
-            })}
-          </View>
+              </View>
+            </View>
+          )}
 
-          <TouchableOpacity
-            style={styles.submitMemberBtn}
-            disabled={isJoining}
-            onPress={handleJoinLedger}
-          >
-            <Text style={styles.submitMemberBtnText}>
-              {isJoining ? '正在驗證並加入...' : '✨ 驗證並加入帳本'}
-            </Text>
-          </TouchableOpacity>
+          {isLoadingPreview && (
+            <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+              <Text style={{ fontSize: 14, color: '#6366F1', fontWeight: '600' }}>🔍 正在載入帳本與成員資訊...</Text>
+            </View>
+          )}
+
+          {/* 若有現有成員可認領，且目前不是「建立新成員」模式 */}
+          {!isLoadingPreview && previewMembers.length > 0 && !isCreatingNewMember && (
+            <View style={{ marginTop: 4 }}>
+              <Text style={styles.claimSectionTitle}>請問您是哪位家庭成員？</Text>
+              <Text style={styles.claimSectionDesc}>
+                若是換手機、用電腦開啟、或家人已先建立名單，點選即可直接認領身分，不會重複建立成員！
+              </Text>
+
+              <ScrollView style={{ maxHeight: 200, marginVertical: 8 }} showsVerticalScrollIndicator={false}>
+                <View style={styles.claimGrid}>
+                  {previewMembers.map(m => {
+                    const isSelected = selectedClaimMember?.id === m.id;
+                    const isMAdmin = m.role === 'owner' || m.role === 'admin';
+                    return (
+                      <TouchableOpacity
+                        key={m.id}
+                        style={[styles.claimMemberCard, isSelected && styles.claimMemberCardActive]}
+                        onPress={() => setSelectedClaimMember(m)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.claimMemberAvatar}>{m.avatar_url || '👤'}</Text>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={[styles.claimMemberName, isSelected && styles.claimMemberNameActive]} numberOfLines={1}>
+                            {m.display_name}
+                          </Text>
+                          <Text style={styles.claimMemberRoleText}>
+                            {isMAdmin ? '👑 管理員' : '👤 家庭成員'}
+                          </Text>
+                        </View>
+                        {isSelected && (
+                          <View style={styles.claimCheckedBadge}>
+                            <Text style={styles.claimCheckedText}>✓ 我是此成員</Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+
+              <TouchableOpacity
+                style={[styles.submitMemberBtn, (!selectedClaimMember || isJoining) && { opacity: 0.6 }]}
+                disabled={!selectedClaimMember || isJoining}
+                onPress={async () => {
+                  if (!selectedClaimMember) return;
+                  setIsJoining(true);
+                  const res = await joinLedgerByCode(joinCodeInput.trim(), undefined, undefined, selectedClaimMember);
+                  setIsJoining(false);
+                  if (res.success) {
+                    setJoinLedgerModalVisible(false);
+                    showAlert('加入成功！', `已成功以「${selectedClaimMember.display_name}」身分進入「${previewLedgerName || '家庭帳本'}」！`);
+                  } else {
+                    showAlert('加入失敗', res.message || '加入帳本失敗，請確認代碼');
+                  }
+                }}
+              >
+                <Text style={styles.submitMemberBtnText}>
+                  {isJoining
+                    ? '正在認領並進入...'
+                    : selectedClaimMember
+                    ? `🚀 以「${selectedClaimMember.display_name}」身分進入帳本`
+                    : '請先點選上方的身分'}
+                </Text>
+              </TouchableOpacity>
+
+              <View style={styles.orDividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>或</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              <TouchableOpacity
+                style={styles.switchCreateMemberBtn}
+                onPress={() => {
+                  setIsCreatingNewMember(true);
+                  if (!joinNickname) setJoinNickname('');
+                }}
+              >
+                <Text style={styles.switchCreateMemberBtnText}>➕ 我是新加入的家人（建立新稱謂）</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* 建立新成員模式（或初次無成員可選時） */}
+          {!isLoadingPreview && (isCreatingNewMember || previewMembers.length === 0) && (
+            <View style={{ marginTop: 4 }}>
+              {previewMembers.length > 0 && (
+                <TouchableOpacity
+                  style={styles.backToClaimBtn}
+                  onPress={() => setIsCreatingNewMember(false)}
+                >
+                  <Text style={styles.backToClaimBtnText}>← 返回選擇現有家庭成員</Text>
+                </TouchableOpacity>
+              )}
+
+              <Text style={styles.formLabel}>您的暱稱 / 稱謂</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="例如：媽媽、大寶、奶奶..."
+                placeholderTextColor="#9CA3AF"
+                value={joinNickname}
+                onChangeText={setJoinNickname}
+                autoFocus={Platform.OS !== 'web'}
+              />
+
+              <Text style={styles.formLabel}>選擇您的頭像</Text>
+              <View style={styles.avatarGrid}>
+                {AVATAR_OPTIONS.map(avatar => {
+                  const isSelected = joinAvatar === avatar;
+                  return (
+                    <TouchableOpacity
+                      key={avatar}
+                      style={[styles.avatarChip, isSelected && styles.avatarChipActive]}
+                      onPress={() => setJoinAvatar(avatar)}
+                    >
+                      <Text style={styles.avatarEmoji}>{avatar}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <TouchableOpacity
+                style={styles.submitMemberBtn}
+                disabled={isJoining}
+                onPress={async () => {
+                  if (!joinCodeInput.trim()) {
+                    showAlert('請輸入邀請碼', '請輸入邀請碼或貼上邀請連結');
+                    return;
+                  }
+                  if (!joinNickname.trim()) {
+                    showAlert('請輸入暱稱', '請輸入您的暱稱或稱謂');
+                    return;
+                  }
+                  setIsJoining(true);
+                  const res = await joinLedgerByCode(joinCodeInput.trim(), joinNickname.trim(), joinAvatar);
+                  setIsJoining(false);
+                  if (res.success) {
+                    setJoinLedgerModalVisible(false);
+                    showAlert('加入成功！', `已成功以「${joinNickname.trim()}」加入家庭帳本！`);
+                  } else {
+                    showAlert('加入失敗', res.message || '加入帳本失敗，請確認代碼');
+                  }
+                }}
+              >
+                <Text style={styles.submitMemberBtnText}>
+                  {isJoining ? '正在建立並加入...' : '✨ 建立新身分並加入帳本'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
     </Modal>
@@ -340,20 +536,23 @@ function MainApp() {
           <Text style={styles.exportTitle}>💌 收到家庭帳本邀請！</Text>
           <Text style={styles.formHint}>
             系統偵測到來自邀請碼【{pendingInviteCode}】的加入邀請。
-            {hasJoinedLedger
-              ? `您目前已在「${currentLedger.name}」，是否要切換並加入該家庭帳本？`
-              : '是否立即加入此家庭公帳？'}
+            您目前已在「{currentLedger.name}」，是否要切換至該家庭帳本？
           </Text>
 
           <View style={styles.pendingInviteButtons}>
             <TouchableOpacity
               style={styles.confirmInviteBtn}
-              onPress={async () => {
-                await confirmPendingInvite(currentUser.display_name, currentUser.avatar_url);
-                showAlert('加入成功！', '已成功切換至新的家庭帳本！');
+              onPress={() => {
+                if (pendingInviteCode) {
+                  const code = pendingInviteCode;
+                  setJoinCodeInput(code);
+                  setJoinLedgerModalVisible(true);
+                  fetchInvitePreview(code);
+                  cancelPendingInvite();
+                }
               }}
             >
-              <Text style={styles.confirmInviteBtnText}>✅ 確認切換並加入</Text>
+              <Text style={styles.confirmInviteBtnText}>✅ 選擇成員身分並切換</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.cancelInviteBtn} onPress={cancelPendingInvite}>
@@ -798,7 +997,7 @@ function MainApp() {
 
               <View style={styles.userSwitchRow}>
                 {members.map(member => {
-                  const isCurrent = currentUser.id === member.id;
+                  const isCurrent = currentUser.id === member.id || (!!currentUser.display_name && currentUser.display_name === member.display_name);
                   const isMemberAdmin = member.role === 'owner' || member.role === 'admin' || currentLedger.created_by === member.id;
                   const isCreator = currentLedger.created_by === member.id;
 
@@ -2143,5 +2342,149 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#4F46E5',
+  },
+  invitePreviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EEF2FF',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  invitePreviewIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  invitePreviewLedgerName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#312E81',
+  },
+  invitePreviewCodeText: {
+    fontSize: 12,
+    color: '#6366F1',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  changeCodeBtn: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    marginLeft: 6,
+  },
+  changeCodeBtnText: {
+    fontSize: 11,
+    color: '#4F46E5',
+    fontWeight: '600',
+  },
+  queryPreviewBtn: {
+    backgroundColor: '#4F46E5',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  queryPreviewBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  claimSectionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  claimSectionDesc: {
+    fontSize: 12,
+    color: '#6B7280',
+    lineHeight: 18,
+    marginBottom: 10,
+  },
+  claimGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    width: '100%',
+  },
+  claimMemberCard: {
+    width: '48%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    position: 'relative',
+  },
+  claimMemberCardActive: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#4F46E5',
+  },
+  claimMemberAvatar: {
+    fontSize: 24,
+    marginRight: 8,
+  },
+  claimMemberName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  claimMemberNameActive: {
+    color: '#4F46E5',
+  },
+  claimMemberRoleText: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  claimCheckedBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: '#4F46E5',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  claimCheckedText: {
+    fontSize: 9,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  switchCreateMemberBtn: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    paddingVertical: 11,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  switchCreateMemberBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#4B5563',
+  },
+  backToClaimBtn: {
+    paddingVertical: 6,
+    marginBottom: 10,
+  },
+  backToClaimBtnText: {
+    fontSize: 13,
+    color: '#4F46E5',
+    fontWeight: '600',
   },
 });

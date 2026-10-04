@@ -134,12 +134,24 @@ interface LedgerContextType {
   isOwner: boolean;
   inviteCode: string;
   createLedger: (name?: string, creatorName?: string, avatar?: string) => Promise<void>;
-  joinLedgerByCode: (codeOrUrl: string, memberName?: string, avatar?: string) => Promise<{ success: boolean; message?: string }>;
+  joinLedgerByCode: (
+    codeOrUrl: string,
+    memberName?: string,
+    avatar?: string,
+    claimedMember?: Profile
+  ) => Promise<{ success: boolean; message?: string }>;
+  previewInvite: (codeOrUrl: string) => Promise<{
+    success: boolean;
+    ledgerId?: string;
+    ledgerName?: string;
+    members?: Profile[];
+    message?: string;
+  }>;
   regenerateInviteCode: () => Promise<string>;
   updateInviteCode: (customCode: string) => Promise<boolean>;
   getInviteLink: () => string;
   pendingInviteCode: string | null;
-  confirmPendingInvite: (name?: string, avatar?: string) => Promise<void>;
+  confirmPendingInvite: (name?: string, avatar?: string, claimedMember?: Profile) => Promise<void>;
   cancelPendingInvite: () => void;
   leaveCurrentLedger: () => Promise<void>;
   switchLedgerById: (ledgerId: string) => Promise<void>;
@@ -148,6 +160,28 @@ interface LedgerContextType {
 }
 
 const LedgerContext = createContext<LedgerContextType | null>(null);
+
+// 成員名冊去重函式：相同 display_name 視為同一位家庭成員（支援多台手機/電腦認領同一身分）
+export const deduplicateMembers = (memberList: Profile[]): Profile[] => {
+  const result: Profile[] = [];
+  const seen = new Set<string>();
+
+  for (const m of memberList) {
+    const key = (m.display_name || '').trim().toLowerCase();
+    if (!key) continue;
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push({ ...m });
+    } else {
+      const existing = result.find(em => (em.display_name || '').trim().toLowerCase() === key);
+      if (existing) {
+        if (m.role === 'owner') existing.role = 'owner';
+        else if (m.role === 'admin' && existing.role !== 'owner') existing.role = 'admin';
+      }
+    }
+  }
+  return result;
+};
 
 const STORAGE_KEYS = {
   TRANSACTIONS: '@family_ledger_transactions',
@@ -336,10 +370,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 })
                 .filter(Boolean);
 
-              if (loadedMembers.length > 0) {
-                setMembers(loadedMembers);
-                await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(loadedMembers));
-                await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${ledgerId}`, JSON.stringify(loadedMembers));
+              const dedupedMembers = deduplicateMembers(loadedMembers);
+              if (dedupedMembers.length > 0) {
+                setMembers(dedupedMembers);
+                await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(dedupedMembers));
+                await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${ledgerId}`, JSON.stringify(dedupedMembers));
               }
 
               // 即時同步本機使用者之角色權限
@@ -385,10 +420,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 })
                 .filter(Boolean);
 
-              if (loadedMembers.length > 0) {
-                setMembers(loadedMembers);
-                await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(loadedMembers));
-                await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${ledgerId}`, JSON.stringify(loadedMembers));
+              const dedupedMembers = deduplicateMembers(loadedMembers);
+              if (dedupedMembers.length > 0) {
+                setMembers(dedupedMembers);
+                await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(dedupedMembers));
+                await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${ledgerId}`, JSON.stringify(dedupedMembers));
               }
             }
           } catch (err) {
@@ -509,20 +545,34 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
 
-    if (loadedMembers.length > 0) {
-      setMembers(loadedMembers);
-      await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(loadedMembers));
-      await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${targetLedger.id}`, JSON.stringify(loadedMembers));
+    const dedupedMembers = deduplicateMembers(loadedMembers);
+
+    if (dedupedMembers.length > 0) {
+      setMembers(dedupedMembers);
+      await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(dedupedMembers));
+      await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${targetLedger.id}`, JSON.stringify(dedupedMembers));
 
       const myMemberRow = memberRows?.find((r: any) => r.user_id === authUserId);
       const isCreator = targetLedger.created_by === authUserId;
-      const role = isCreator ? 'owner' : ((myMemberRow?.role as 'owner' | 'admin' | 'member') || 'member');
+      const myDisplayName = (myMemberRow?.profiles as any)?.display_name;
+
+      // 尋找此裝置對應的成員（優先比對 authUserId，若名冊已去重則比對相同 display_name 的主要成員）
+      let canonicalMe = dedupedMembers.find(
+        m => m.id === authUserId || (myDisplayName && (m.display_name || '').trim().toLowerCase() === myDisplayName.trim().toLowerCase())
+      );
+      if (!canonicalMe) {
+        canonicalMe = dedupedMembers[0];
+      }
+
+      const role = isCreator
+        ? 'owner'
+        : ((myMemberRow?.role as 'owner' | 'admin' | 'member') || canonicalMe.role || 'member');
       setUserRole(role);
       await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, role);
-      if (myMemberRow?.profiles) {
-        const profile = myMemberRow.profiles as unknown as Profile;
-        setCurrentUser(profile);
-        await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(profile));
+
+      if (canonicalMe) {
+        setCurrentUser(canonicalMe);
+        await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(canonicalMe));
       }
 
       // 若身為建立者但雲端成員身分被誤設為 member，自動在雲端校正回 owner
@@ -876,11 +926,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  // 透過邀請碼或專屬連結加入帳本 (家人加入)
+  // 透過邀請碼或專屬連結加入帳本 (家人加入或認領既有身分)
   const joinLedgerByCode = async (
     codeOrUrl: string,
     memberName?: string,
-    avatar?: string
+    avatar?: string,
+    claimedMember?: Profile
   ): Promise<{ success: boolean; message?: string }> => {
     try {
       if (!codeOrUrl || !codeOrUrl.trim()) {
@@ -912,11 +963,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       let targetLedger: Ledger | null = null;
       let targetLedgerId = extractedJoinId;
 
+      const targetRole = claimedMember?.role || undefined;
+
       // 1. 優先使用 SECURITY DEFINER 的 join_ledger_by_invite 函式以邀請碼加入 (自動繞過 RLS 限制)
       if (code) {
         try {
           const { data: rpcRes } = await supabase.rpc('join_ledger_by_invite', {
             invite_code_input: code,
+            claimed_role: targetRole,
           });
 
           if (rpcRes && rpcRes.success && rpcRes.ledger_id) {
@@ -959,7 +1013,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       const isCreator = targetLedger.created_by === authUserId;
-      const assignedRole: 'owner' | 'member' = isCreator ? 'owner' : 'member';
+      const assignedRole: 'owner' | 'admin' | 'member' = isCreator
+        ? 'owner'
+        : (claimedMember?.role === 'owner' || claimedMember?.role === 'admin' ? claimedMember.role : 'member');
 
       await supabase.from('ledger_members').upsert({
         ledger_id: targetLedger.id,
@@ -967,19 +1023,32 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         role: assignedRole,
       }, { onConflict: 'ledger_id,user_id' });
 
-      if (memberName || avatar) {
-        await supabase.from('profiles').upsert({
-          id: authUserId,
-          display_name: memberName || (isCreator ? '爸爸 (我)' : '家庭成員'),
-          avatar_url: avatar || (isCreator ? '👨' : '👩'),
-        });
-        const updatedMe: Profile = {
-          id: authUserId,
-          display_name: memberName || (isCreator ? '爸爸 (我)' : '家庭成員'),
-          avatar_url: avatar || (isCreator ? '👨' : '👩'),
-        };
-        setCurrentUser(updatedMe);
-        await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedMe));
+      const finalDisplayName = claimedMember
+        ? claimedMember.display_name
+        : (memberName || (isCreator ? '爸爸 (我)' : '家庭成員'));
+      const finalAvatar = claimedMember
+        ? claimedMember.avatar_url
+        : (avatar || (isCreator ? '👨' : '👩'));
+
+      await supabase.from('profiles').upsert({
+        id: authUserId,
+        display_name: finalDisplayName,
+        avatar_url: finalAvatar,
+      });
+
+      const updatedMe: Profile = {
+        id: claimedMember ? claimedMember.id : authUserId,
+        display_name: finalDisplayName,
+        avatar_url: finalAvatar,
+        role: assignedRole,
+      };
+
+      setCurrentUser(updatedMe);
+      await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedMe));
+
+      if (claimedMember) {
+        setIsDeviceBound(true);
+        await AsyncStorage.setItem(STORAGE_KEYS.DEVICE_BOUND, 'true');
       }
 
       setUserRole(assignedRole);
@@ -999,6 +1068,120 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch (err: any) {
       console.warn('加入帳本時出錯:', err);
       return { success: false, message: err.message || '加入帳本失敗，請稍後重試' };
+    }
+  };
+
+  // 預覽邀請碼對應的帳本與既有成員名單（供認領身分使用）
+  const previewInvite = async (
+    codeOrUrl: string
+  ): Promise<{
+    success: boolean;
+    ledgerId?: string;
+    ledgerName?: string;
+    members?: Profile[];
+    message?: string;
+  }> => {
+    try {
+      if (!codeOrUrl || !codeOrUrl.trim()) {
+        return { success: false, message: '請輸入有效的邀請碼或邀請連結' };
+      }
+
+      let code = codeOrUrl.trim();
+      let extractedJoinId = '';
+
+      if (code.includes('http://') || code.includes('https://') || code.includes('?')) {
+        try {
+          const urlObj = new URL(code.startsWith('http') ? code : `https://dummy.com/${code}`);
+          const pInvite = urlObj.searchParams.get('invite');
+          const pJoin = urlObj.searchParams.get('join') || urlObj.searchParams.get('ledger');
+          if (pInvite) code = pInvite.trim();
+          if (pJoin) extractedJoinId = pJoin.trim();
+        } catch {
+          // ignore parsing error
+        }
+      }
+
+      const lookupCode = code || extractedJoinId;
+
+      // 1. 優先嘗試 RPC 獲取預覽 (SECURITY DEFINER 供訪客查詢成員與帳本名稱)
+      if (isConfigured) {
+        try {
+          const { data: rpcRes, error: rpcErr } = await supabase.rpc('get_ledger_invite_preview', {
+            invite_code_input: lookupCode,
+          });
+
+          if (!rpcErr && rpcRes && rpcRes.success) {
+            const rawMems: Profile[] = (rpcRes.members || []).map((m: any) => ({
+              id: m.id,
+              display_name: m.display_name,
+              avatar_url: m.avatar_url,
+              role: m.role || 'member',
+            }));
+            return {
+              success: true,
+              ledgerId: rpcRes.ledger_id,
+              ledgerName: rpcRes.ledger_name,
+              members: deduplicateMembers(rawMems),
+            };
+          }
+        } catch (rpcErr) {
+          console.warn('RPC 預覽邀請碼失敗，改用備用查詢:', rpcErr);
+        }
+
+        // 2. 備用查詢（若尚未在 Supabase 執行新 RPC 腳本）
+        let targetLedgerId = extractedJoinId;
+        let targetLedgerName = '';
+
+        if (!targetLedgerId && lookupCode) {
+          const { data: invRow } = await supabase
+            .from('ledger_invites')
+            .select('ledger_id, ledgers(id, name)')
+            .ilike('invite_code', lookupCode)
+            .maybeSingle();
+
+          if (invRow) {
+            targetLedgerId = invRow.ledger_id;
+            targetLedgerName = (invRow.ledgers as any)?.name || '';
+          }
+        }
+
+        if (targetLedgerId) {
+          if (!targetLedgerName) {
+            const { data: lData } = await supabase
+              .from('ledgers')
+              .select('id, name')
+              .eq('id', targetLedgerId)
+              .maybeSingle();
+            if (lData) targetLedgerName = lData.name;
+          }
+
+          const { data: memRows } = await supabase
+            .from('ledger_members')
+            .select('user_id, role, profiles(*)')
+            .eq('ledger_id', targetLedgerId);
+
+          const foundMembers: Profile[] = (memRows || [])
+            .map((r: any) => {
+              if (!r.profiles) return null;
+              return {
+                ...r.profiles,
+                role: r.role || 'member',
+              };
+            })
+            .filter(Boolean);
+
+          return {
+            success: true,
+            ledgerId: targetLedgerId,
+            ledgerName: targetLedgerName || '家庭共享帳本',
+            members: deduplicateMembers(foundMembers),
+          };
+        }
+      }
+
+      return { success: false, message: '找不到此邀請碼對應的帳本或邀請已失效' };
+    } catch (e: any) {
+      return { success: false, message: e.message || '查詢邀請失敗' };
     }
   };
 
@@ -1058,11 +1241,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // 確認切換至新邀請碼帳本
-  const confirmPendingInvite = async (name?: string, avatar?: string) => {
+  const confirmPendingInvite = async (name?: string, avatar?: string, claimedMember?: Profile) => {
     if (pendingInviteCode) {
       const joinName = name || (currentUser.display_name !== '家庭成員' ? currentUser.display_name : '媽媽');
       const joinAvatar = avatar || currentUser.avatar_url || '👩';
-      await joinLedgerByCode(pendingInviteCode, joinName, joinAvatar);
+      await joinLedgerByCode(pendingInviteCode, joinName, joinAvatar, claimedMember);
       setPendingInviteCode(null);
     }
   };
@@ -1374,7 +1557,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return false;
     }
 
-    if (currentUser.id === id) {
+    const targetMember = members.find(m => m.id === id);
+    const isDeletingSelf = currentUser.id === id || (targetMember && currentUser.display_name === targetMember.display_name);
+    if (isDeletingSelf) {
       alert('無法移除自己正在使用的身分，若要離開此帳本請使用「退出帳本」功能');
       return false;
     }
@@ -1385,7 +1570,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return false;
     }
 
-    const updated = members.filter(m => m.id !== id);
+    const updated = members.filter(m => m.id !== id && (!targetMember || m.display_name !== targetMember.display_name));
     setMembers(updated);
     if (currentUser.id === id) {
       setCurrentUser(updated[0]);
@@ -1399,6 +1584,22 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           .delete()
           .eq('ledger_id', currentLedger.id)
           .eq('user_id', id);
+
+        if (targetMember?.display_name) {
+          const { data: siblingProfiles } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('display_name', targetMember.display_name);
+
+          if (siblingProfiles && siblingProfiles.length > 0) {
+            const siblingIds = siblingProfiles.map(p => p.id);
+            await supabase
+              .from('ledger_members')
+              .delete()
+              .eq('ledger_id', currentLedger.id)
+              .in('user_id', siblingIds);
+          }
+        }
       } catch (err) {
         console.warn('雲端刪除成員失敗:', err);
       }
@@ -1493,7 +1694,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         categories,
         transactions,
         currentUser,
-        setCurrentUser: (u) => {
+        setCurrentUser: (u: Profile) => {
           if (!isDeviceBound) {
             setCurrentUser(u);
             AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(u));
@@ -1514,6 +1715,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         inviteCode,
         createLedger,
         joinLedgerByCode,
+        previewInvite,
         regenerateInviteCode,
         updateInviteCode,
         getInviteLink,
