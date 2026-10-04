@@ -1061,6 +1061,37 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               }
             }
 
+            // 若因 RLS 限制無法直接讀取，透過 SECURITY DEFINER RPC 進行重連
+            if (!foundLedger && savedCode) {
+              const { data: rpcRes } = await supabase.rpc('join_ledger_by_invite', {
+                invite_code_input: savedCode.trim(),
+                claimed_role: (await AsyncStorage.getItem(STORAGE_KEYS.USER_ROLE)) || 'member',
+              });
+              if (rpcRes?.success && rpcRes?.ledger_id) {
+                const { data: lData } = await supabase
+                  .from('ledgers')
+                  .select('*')
+                  .eq('id', rpcRes.ledger_id)
+                  .maybeSingle();
+                if (lData) foundLedger = lData;
+              }
+            }
+
+            if (!foundLedger && savedLedgerId) {
+              const { data: rpcRes } = await supabase.rpc('join_ledger_by_invite', {
+                invite_code_input: savedLedgerId,
+                claimed_role: (await AsyncStorage.getItem(STORAGE_KEYS.USER_ROLE)) || 'member',
+              });
+              if (rpcRes?.success && rpcRes?.ledger_id) {
+                const { data: lData } = await supabase
+                  .from('ledgers')
+                  .select('*')
+                  .eq('id', rpcRes.ledger_id)
+                  .maybeSingle();
+                if (lData) foundLedger = lData;
+              }
+            }
+
             if (foundLedger && isValidUUID(foundLedger.id)) {
               const savedRole = (await AsyncStorage.getItem(STORAGE_KEYS.USER_ROLE)) || 'member';
               await supabase.from('ledger_members').upsert({
