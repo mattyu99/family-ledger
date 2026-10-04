@@ -139,7 +139,7 @@ interface LedgerContextType {
   updateInviteCode: (customCode: string) => Promise<boolean>;
   getInviteLink: () => string;
   pendingInviteCode: string | null;
-  confirmPendingInvite: () => Promise<void>;
+  confirmPendingInvite: (name?: string, avatar?: string) => Promise<void>;
   cancelPendingInvite: () => void;
   leaveCurrentLedger: () => Promise<void>;
   switchLedgerById: (ledgerId: string) => Promise<void>;
@@ -294,9 +294,31 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           table: 'ledger_members',
           filter: `ledger_id=eq.${ledgerId}`,
         },
-        async () => {
-          // 當有新成員加入或成員變動（如角色升降級）時，即時推播刷新全體成員名單
+        async (payload: any) => {
+          // 當有成員變動（如角色升降級、新增或刪除成員）時，即時推播刷新全體成員名單
           try {
+            if (payload?.eventType === 'DELETE') {
+              const deletedUserId = payload.old?.user_id;
+              const { data: { session } } = await supabase.auth.getSession();
+              const myAuthId = session?.user?.id;
+              if (deletedUserId && myAuthId && deletedUserId === myAuthId) {
+                // 本機裝置已被管理員移出帳本！清理本地資料回到首頁
+                await leaveCurrentLedger();
+                alert('您已被管理員移出此帳本');
+                return;
+              }
+
+              // 其他成員被刪除：立刻從本地狀態中移除，所有手機畫面同步更新
+              if (deletedUserId) {
+                setMembers((prev) => {
+                  const updated = prev.filter((m) => m.id !== deletedUserId);
+                  AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updated));
+                  AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${ledgerId}`, JSON.stringify(updated));
+                  return updated;
+                });
+              }
+            }
+
             const { data: memberRows } = await supabase
               .from('ledger_members')
               .select('user_id, role, profiles(*)')
@@ -664,26 +686,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         // 情境 A：網址自帶邀請碼
         if (targetInvite) {
+          // 清理網址列，避免使用者往後重新整理時再次觸發邀請參數
+          if (Platform.OS === 'web' && typeof window !== 'undefined' && window.history) {
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+
           const alreadyInThisLedger = validMemberLedgers.some(
             (m: any) =>
               (urlJoinId && (m.ledger_id === urlJoinId || m.ledgers?.id === urlJoinId)) ||
               (urlInviteCode && savedCode && savedCode.toUpperCase() === urlInviteCode.toUpperCase())
-          );
+          ) || (savedLedgerId && urlJoinId && savedLedgerId === urlJoinId);
 
           if (!alreadyInThisLedger) {
-            // 如果此用戶尚未有任何真實帳本，直接自動通關加入！
-            if (validMemberLedgers.length === 0) {
-              await joinLedgerByCode(targetInvite, myProfile.display_name, myProfile.avatar_url);
-              return;
-            } else {
-              // 彈窗詢問是否切換加入
-              setPendingInviteCode(targetInvite);
-            }
-          } else {
-            // 已經在此帳本中，平順自動清理網址列參數
-            if (Platform.OS === 'web' && typeof window !== 'undefined' && window.history) {
-              window.history.replaceState({}, '', window.location.pathname);
-            }
+            // 收到邀請：交給 Join Modal 讓使用者填寫自己的暱稱與頭像確認加入，絕不可在背景偷偷產生「家庭成員」假人
+            setPendingInviteCode(targetInvite);
           }
         }
 
@@ -739,11 +755,27 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
           }
         } else {
-          // 情境 C：新訪客打開乾淨網址，未持有任何帳本 ➡️ 顯示歡迎首頁 (冷啟動)
+          // 情境 C：新訪客打開乾淨網址，或已被管理員從帳本名冊中移除
           if (!isMounted) return;
-          const savedHasJoined = await AsyncStorage.getItem(STORAGE_KEYS.HAS_JOINED);
-          if (savedHasJoined !== 'true') {
+          const savedLedgerStr = await AsyncStorage.getItem(STORAGE_KEYS.LEDGER);
+          if (savedLedgerStr) {
+            // 此裝置原先有帳本紀錄，但在雲端查無任何加入紀錄（已被管理員踢除/刪除）
+            console.log('此裝置已不再屬於任何雲端帳本，清理本地狀態回到初始歡迎畫面');
+            await AsyncStorage.removeItem(STORAGE_KEYS.LEDGER);
+            await AsyncStorage.removeItem(STORAGE_KEYS.MEMBERS);
+            await AsyncStorage.removeItem(STORAGE_KEYS.TRANSACTIONS);
+            await AsyncStorage.removeItem(STORAGE_KEYS.USER_ROLE);
+            await AsyncStorage.removeItem(STORAGE_KEYS.INVITE_CODE);
+            await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'false');
             setHasJoinedLedger(false);
+            setIsCloudSynced(false);
+            setTransactions([]);
+            setMembers(DEFAULT_MEMBERS);
+          } else {
+            const savedHasJoined = await AsyncStorage.getItem(STORAGE_KEYS.HAS_JOINED);
+            if (savedHasJoined !== 'true') {
+              setHasJoinedLedger(false);
+            }
           }
         }
       } catch (err) {
@@ -1026,9 +1058,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // 確認切換至新邀請碼帳本
-  const confirmPendingInvite = async () => {
+  const confirmPendingInvite = async (name?: string, avatar?: string) => {
     if (pendingInviteCode) {
-      await joinLedgerByCode(pendingInviteCode);
+      const joinName = name || (currentUser.display_name !== '家庭成員' ? currentUser.display_name : '媽媽');
+      const joinAvatar = avatar || currentUser.avatar_url || '👩';
+      await joinLedgerByCode(pendingInviteCode, joinName, joinAvatar);
       setPendingInviteCode(null);
     }
   };

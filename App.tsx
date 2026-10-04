@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   SafeAreaView,
   View,
@@ -148,6 +148,15 @@ function MainApp() {
 
   const [switchLedgerModalVisible, setSwitchLedgerModalVisible] = useState(false);
   const [switchCodeInput, setSwitchCodeInput] = useState('');
+
+  // 當偵測到網址帶有邀請碼且尚未加入帳本時，自動彈出加入彈窗並填入代碼，讓使用者自訂暱稱與頭像（絕不偷偷產生幽靈「家庭成員」）
+  useEffect(() => {
+    if (pendingInviteCode && !hasJoinedLedger) {
+      setJoinCodeInput(pendingInviteCode);
+      setJoinLedgerModalVisible(true);
+      cancelPendingInvite();
+    }
+  }, [pendingInviteCode, hasJoinedLedger]);
 
   const handleExport = () => {
     const csv = exportToCSV();
@@ -340,7 +349,7 @@ function MainApp() {
             <TouchableOpacity
               style={styles.confirmInviteBtn}
               onPress={async () => {
-                await confirmPendingInvite();
+                await confirmPendingInvite(currentUser.display_name, currentUser.avatar_url);
                 showAlert('加入成功！', '已成功切換至新的家庭帳本！');
               }}
             >
