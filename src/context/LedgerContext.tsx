@@ -2074,8 +2074,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, [transactions, members, getMemberById]);
 
-  // 新增家庭成員 (優先呼叫安全 RPC 函式，確保 profiles 與 ledger_members 寫入成功)
+  // 新增家庭成員 (僅 Owner / Admin 可操作)
   const addMember = async (name: string, avatar: string = '😊') => {
+    if (!isOwner) {
+      safeAlert('權限不足', '只有帳本管理員才能新增家庭成員');
+      return;
+    }
+
     let newMemberId = generateUUID();
     let newMember: Profile = {
       id: newMemberId,

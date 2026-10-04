@@ -280,6 +280,10 @@ function MainApp() {
   };
 
   const handleAddMember = async () => {
+    if (!isOwner) {
+      showAlert('權限不足', '只有帳本管理員才能新增家庭成員');
+      return;
+    }
     if (!newMemberName.trim()) {
       showAlert('請輸入姓名', '成員名稱不能為空');
       return;
@@ -1511,12 +1515,14 @@ function MainApp() {
                     每位家人使用自己的手機進入，記帳時預設自動帶入個人身分
                   </Text>
                 </View>
-                <TouchableOpacity
-                  style={styles.addMemberBtn}
-                  onPress={() => setMemberModalVisible(true)}
-                >
-                  <Text style={styles.addMemberBtnText}>＋ 新增成員</Text>
-                </TouchableOpacity>
+                {isOwner && (
+                  <TouchableOpacity
+                    style={styles.addMemberBtn}
+                    onPress={() => setMemberModalVisible(true)}
+                  >
+                    <Text style={styles.addMemberBtnText}>＋ 新增成員</Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
               <View style={styles.userSwitchRow}>
