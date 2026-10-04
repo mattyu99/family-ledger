@@ -116,11 +116,22 @@ interface LedgerContextType {
     transacted_at?: string;
     splitWithIds?: string[];
   }) => Promise<void>;
+  updateTransaction: (
+    id: string,
+    data: {
+      amount?: number;
+      type?: TransactionType;
+      category_id?: string;
+      paid_by?: string;
+      note?: string;
+      transacted_at?: string;
+    }
+  ) => Promise<boolean>;
   deleteTransaction: (id: string) => Promise<void>;
   exportToCSV: () => string;
   addMember: (name: string, avatar?: string) => Promise<void>;
   updateMember: (id: string, name: string, avatar: string) => Promise<boolean>;
-  deleteMember: (id: string) => Promise<boolean | void>;
+  deleteMember: (id: string, transferToId?: string) => Promise<boolean | void>;
   isDeviceBound: boolean;
   bindDeviceToMember: (member: Profile) => Promise<void>;
   unbindDevice: () => Promise<void>;
@@ -1453,6 +1464,60 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  // 修改編輯既有交易明細
+  const updateTransaction = async (
+    id: string,
+    data: {
+      amount?: number;
+      type?: TransactionType;
+      category_id?: string;
+      paid_by?: string;
+      note?: string;
+      transacted_at?: string;
+    }
+  ): Promise<boolean> => {
+    try {
+      const updatedTxs = transactions.map(t => {
+        if (t.id === id) {
+          return {
+            ...t,
+            ...data,
+            category: data.category_id ? categories.find(c => c.id === data.category_id) || t.category : t.category,
+            payer_profile: data.paid_by ? members.find(m => m.id === data.paid_by) || t.payer_profile : t.payer_profile,
+          };
+        }
+        return t;
+      });
+
+      await saveTransactionsToStorage(updatedTxs);
+
+      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+        const updatePayload: any = {};
+        if (data.amount !== undefined) updatePayload.amount = data.amount;
+        if (data.type !== undefined) updatePayload.type = data.type;
+        if (data.category_id !== undefined) updatePayload.category_id = data.category_id;
+        if (data.paid_by !== undefined) updatePayload.paid_by = data.paid_by;
+        if (data.note !== undefined) updatePayload.note = data.note;
+        if (data.transacted_at !== undefined) updatePayload.transacted_at = data.transacted_at;
+        updatePayload.updated_at = new Date().toISOString();
+
+        const { error } = await supabase
+          .from('transactions')
+          .update(updatePayload)
+          .eq('id', id);
+
+        if (error) {
+          console.warn('雲端更新交易失敗:', error);
+          return false;
+        }
+      }
+      return true;
+    } catch (err) {
+      console.warn('更新交易例外錯誤:', err);
+      return false;
+    }
+  };
+
   // 匯出為 CSV 格式
   const exportToCSV = (): string => {
     const headers = ['日期', '類型', '分類', '金額', '付款人', '備註'];
@@ -1598,8 +1663,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return true;
   };
 
-  // 刪除家庭成員 (僅 Owner 可操作，且受歷史紀錄保護)
-  const deleteMember = async (id: string): Promise<boolean> => {
+  // 刪除家庭成員 (僅 Owner 可操作，支援一鍵移轉帳目)
+  const deleteMember = async (id: string, transferToId?: string): Promise<boolean> => {
     if (members.length <= 1) {
       alert('家庭至少需保留一位成員');
       return false;
@@ -1620,19 +1685,22 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // 檢查是否有「該成員實際代墊付款」且金額大於 0 的紀錄
     const paidTxs = transactions.filter(t => t.paid_by === id);
     const paidTotal = paidTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
-    if (paidTotal > 0) {
+    if (paidTotal > 0 && !transferToId) {
       alert(`該成員尚有 ${paidTxs.length} 筆付款紀錄（合計 NT$ ${paidTotal.toLocaleString()}）。為確保帳目歷史準確，無法直接刪除。若要清理，請先將這些紀錄的付款人變更為其他成員。`);
       return false;
     }
 
-    // 若有該成員作為建檔人 (creator_id) 或已結清/0元之付款人，自動將紀錄移轉給當前操作者，避免外鍵關聯阻礙刪除
+    const finalTransferToId = transferToId || currentUser.id;
+
+    // 若有該成員作為建檔人 (creator_id) 或付款人，自動將紀錄移轉給承接者，避免外鍵關聯阻礙刪除
     const cleanTxs = transactions.map(t => {
       let updated = { ...t };
-      if (t.creator_id === id) updated.creator_id = currentUser.id;
-      if (t.paid_by === id) updated.paid_by = currentUser.id;
+      if (t.creator_id === id) updated.creator_id = finalTransferToId;
+      if (t.paid_by === id) updated.paid_by = finalTransferToId;
       return updated;
     });
     setTransactions(cleanTxs);
+    await saveTransactionsToStorage(cleanTxs);
 
     const updated = members.filter(m => m.id !== id && (!targetMember || m.display_name !== targetMember.display_name));
     setMembers(updated);
@@ -1643,16 +1711,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (isConfigured) {
       try {
-        // 1. 將舊成員在雲端的建檔人/付款人轉給當前操作者，確保外鍵與權限平順移交
+        // 1. 將舊成員在雲端的建檔人/付款人轉給承接者，確保外鍵與權限平順移交
         await supabase
           .from('transactions')
-          .update({ creator_id: currentUser.id })
+          .update({ creator_id: finalTransferToId })
           .eq('ledger_id', currentLedger.id)
           .eq('creator_id', id);
 
         await supabase
           .from('transactions')
-          .update({ paid_by: currentUser.id })
+          .update({ paid_by: finalTransferToId })
           .eq('ledger_id', currentLedger.id)
           .eq('paid_by', id);
 
@@ -1674,13 +1742,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const siblingIds = siblingProfiles.map(p => p.id);
             await supabase
               .from('transactions')
-              .update({ creator_id: currentUser.id })
+              .update({ creator_id: finalTransferToId })
               .eq('ledger_id', currentLedger.id)
               .in('creator_id', siblingIds);
 
             await supabase
               .from('transactions')
-              .update({ paid_by: currentUser.id })
+              .update({ paid_by: finalTransferToId })
               .eq('ledger_id', currentLedger.id)
               .in('paid_by', siblingIds);
 
@@ -1790,6 +1858,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(u));
         },
         addTransaction,
+        updateTransaction,
         deleteTransaction,
         exportToCSV,
         addMember,

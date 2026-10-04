@@ -6,9 +6,10 @@ import { getCategoryIcon } from '../lib/icons';
 
 interface TransactionItemProps {
   transaction: Transaction;
+  onPress?: (transaction: Transaction) => void;
 }
 
-export const TransactionItem: React.FC<TransactionItemProps> = ({ transaction }) => {
+export const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onPress }) => {
   const { categories, members, deleteTransaction } = useLedger();
 
   const category = categories.find(c => c.id === transaction.category_id);
@@ -18,8 +19,19 @@ export const TransactionItem: React.FC<TransactionItemProps> = ({ transaction })
   const date = new Date(transaction.transacted_at);
   const formattedDate = `${date.getMonth() + 1}/${date.getDate()}`;
 
+  const handleDelete = (e: any) => {
+    if (e && e.stopPropagation) {
+      e.stopPropagation();
+    }
+    deleteTransaction(transaction.id);
+  };
+
   return (
-    <View style={styles.card}>
+    <TouchableOpacity
+      activeOpacity={0.7}
+      style={styles.card}
+      onPress={() => onPress?.(transaction)}
+    >
       {/* 類別圖示 */}
       <View style={[styles.iconBox, { backgroundColor: category ? `${category.color}20` : '#F3F4F6' }]}>
         <Text style={styles.iconText}>{getCategoryIcon(category?.icon)}</Text>
@@ -47,14 +59,20 @@ export const TransactionItem: React.FC<TransactionItemProps> = ({ transaction })
         </View>
       </View>
 
+      {/* 編輯提示圖示 */}
+      <View style={styles.editHintBtn}>
+        <Text style={styles.editHintText}>✏️</Text>
+      </View>
+
       {/* 刪除按鈕 */}
       <TouchableOpacity 
         style={styles.deleteButton}
-        onPress={() => deleteTransaction(transaction.id)}
+        onPress={handleDelete}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
         <Text style={styles.deleteButtonText}>✕</Text>
       </TouchableOpacity>
-    </View>
+    </TouchableOpacity>
   );
 };
 
@@ -144,5 +162,14 @@ const styles = StyleSheet.create({
     color: '#D1D5DB',
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  editHintBtn: {
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    marginLeft: 6,
+    opacity: 0.6,
+  },
+  editHintText: {
+    fontSize: 14,
   },
 });

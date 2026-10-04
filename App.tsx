@@ -15,6 +15,8 @@ import {
 import { LedgerProvider, useLedger } from './src/context/LedgerContext';
 import { TransactionItem } from './src/components/TransactionItem';
 import { AddTransactionModal } from './src/components/AddTransactionModal';
+import { EditTransactionModal } from './src/components/EditTransactionModal';
+import { Transaction, Profile } from './src/types/database';
 import { getCategoryIcon } from './src/lib/icons';
 
 const AVATAR_OPTIONS = ['👨', '👩', '👦', '👧', '👴', '👵', '👶', '👱', '🐶', '🐱'];
@@ -124,6 +126,7 @@ function MainApp() {
 
   const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'family'>('transactions');
   const [modalVisible, setModalVisible] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [exportModalVisible, setExportModalVisible] = useState(false);
   const [memberModalVisible, setMemberModalVisible] = useState(false);
   const [newMemberName, setNewMemberName] = useState('');
@@ -990,7 +993,11 @@ function MainApp() {
               </View>
             ) : (
               transactions.map(item => (
-                <TransactionItem key={item.id} transaction={item} />
+                <TransactionItem
+                  key={item.id}
+                  transaction={item}
+                  onPress={tx => setEditingTransaction(tx)}
+                />
               ))
             )}
           </ScrollView>
@@ -1155,7 +1162,21 @@ function MainApp() {
                         <TouchableOpacity
                           style={styles.deleteMemberBtn}
                           onPress={() => {
-                            showConfirm('刪除成員', `確定要將「${member.display_name}」從家庭名冊移除嗎？`, () => deleteMember(member.id));
+                            const paidTxs = transactions.filter(t => t.paid_by === member.id);
+                            const paidTotal = paidTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+                            if (paidTotal > 0) {
+                              showConfirm(
+                                '移轉帳目並刪除成員',
+                                `「${member.display_name}」尚有 ${paidTxs.length} 筆代墊付款紀錄（合計 NT$ ${paidTotal.toLocaleString()}）。\n\n是否將這些付款紀錄自動轉由「${currentUser.display_name} (我)」承接，並將該成員從家庭名冊中移除？`,
+                                () => deleteMember(member.id, currentUser.id)
+                              );
+                            } else {
+                              showConfirm(
+                                '刪除成員',
+                                `確定要將「${member.display_name}」從家庭名冊移除嗎？`,
+                                () => deleteMember(member.id)
+                              );
+                            }
                           }}
                         >
                           <Text style={styles.deleteMemberText}>✕</Text>
@@ -1292,6 +1313,13 @@ function MainApp() {
 
       {/* 新增記帳彈窗 */}
       <AddTransactionModal visible={modalVisible} onClose={() => setModalVisible(false)} />
+
+      {/* 編輯記帳明細彈窗 */}
+      <EditTransactionModal
+        visible={!!editingTransaction}
+        transaction={editingTransaction}
+        onClose={() => setEditingTransaction(null)}
+      />
 
       {/* 匯出資料展示彈窗 */}
       <Modal visible={exportModalVisible} animationType="fade" transparent>
