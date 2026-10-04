@@ -172,6 +172,7 @@ interface LedgerContextType {
   switchLedgerById: (ledgerId: string) => Promise<void>;
   leaveLedgerById: (ledgerId: string) => Promise<void>;
   updateMemberRole: (memberId: string, newRole: 'owner' | 'member') => Promise<boolean>;
+  claimAdminRoleWithPin: (pin: string) => Promise<{ success: boolean; message?: string }>;
 }
 
 const LedgerContext = createContext<LedgerContextType | null>(null);
@@ -1879,6 +1880,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return false;
     }
 
+    // 防呆保護：若欲降級的成員是目前唯一的管理員，強制禁止，避免整本帳本出現 0 管理員
+    if (newRole === 'member') {
+      const remainingAdmins = members.filter(
+        m => m.id !== memberId && (m.role === 'owner' || m.role === 'admin' || currentLedger.created_by === m.id)
+      );
+      if (remainingAdmins.length === 0) {
+        alert('家庭公帳至少需保留一位管理員。若要卸任，請先將另一位家人（如伴侶）設為管理員！');
+        return false;
+      }
+    }
+
     // 1. 本地更新
     const updated = members.map(m => m.id === memberId ? { ...m, role: newRole } : m);
     setMembers(updated);
@@ -1931,6 +1943,39 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return true;
   };
 
+  // 透過管理員安全 PIN 碼恢復或取回管理員權限 (救援機制)
+  const claimAdminRoleWithPin = async (inputPin: string): Promise<{ success: boolean; message?: string }> => {
+    const clean = inputPin.trim();
+    const expected = (currentLedger as any)?.admin_pin || adminPin || '8888';
+    if (!clean || clean !== expected.trim()) {
+      return { success: false, message: '管理員安全 PIN 碼錯誤，無法取得管理員權限！' };
+    }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const authUserId = session?.user?.id || currentUser.id;
+
+    setUserRole('owner');
+    await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, 'owner');
+
+    const updatedMembers = members.map(m => (m.id === currentUser.id ? { ...m, role: 'owner' as const } : m));
+    setMembers(updatedMembers);
+    await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updatedMembers));
+    await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${currentLedger.id}`, JSON.stringify(updatedMembers));
+
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        await supabase.from('ledger_members').upsert({
+          ledger_id: currentLedger.id,
+          user_id: authUserId,
+          role: 'owner',
+        }, { onConflict: 'ledger_id,user_id' });
+      } catch (e) {
+        console.warn('雲端更新角色失敗:', e);
+      }
+    }
+    return { success: true };
+  };
+
   return (
     <LedgerContext.Provider
       value={{
@@ -1977,6 +2022,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         switchLedgerById,
         leaveLedgerById,
         updateMemberRole,
+        claimAdminRoleWithPin,
       }}
     >
       {children}

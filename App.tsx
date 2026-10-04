@@ -124,6 +124,7 @@ function MainApp() {
     switchLedgerById,
     leaveLedgerById,
     updateMemberRole,
+    claimAdminRoleWithPin,
   } = useLedger();
 
   const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'family'>('transactions');
@@ -152,6 +153,8 @@ function MainApp() {
   const [changePinModalVisible, setChangePinModalVisible] = useState(false);
   const [newPinInput, setNewPinInput] = useState('');
   const [showPinClear, setShowPinClear] = useState(false);
+  const [claimAdminModalVisible, setClaimAdminModalVisible] = useState(false);
+  const [claimAdminPinInput, setClaimAdminPinInput] = useState('');
 
   // 模式 A：帳本入口與邀請管理狀態
   const [createLedgerModalVisible, setCreateLedgerModalVisible] = useState(false);
@@ -925,6 +928,57 @@ function MainApp() {
     </Modal>
   );
 
+  const renderClaimAdminModal = () => (
+    <Modal visible={claimAdminModalVisible} animationType="fade" transparent>
+      <View style={styles.exportOverlay}>
+        <View style={styles.exportCard}>
+          <View style={styles.modalHeaderRow}>
+            <Text style={styles.exportTitle}>🔐 取得/恢復管理員權限</Text>
+            <TouchableOpacity onPress={() => setClaimAdminModalVisible(false)} style={styles.closeBtn}>
+              <Text style={styles.closeText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.formHint}>
+            請輸入本家庭公帳的 4 位數管理員安全 PIN 碼（預設為 8888）。驗證通過後，此手機將立即獲得管理員特權。
+          </Text>
+
+          <Text style={styles.formLabel}>管理員安全 PIN 碼</Text>
+          <TextInput
+            style={styles.modalInput}
+            placeholder="請輸入 4 位數 PIN 碼 (預設 8888)"
+            placeholderTextColor="#9CA3AF"
+            value={claimAdminPinInput}
+            keyboardType="number-pad"
+            maxLength={8}
+            secureTextEntry
+            onChangeText={setClaimAdminPinInput}
+          />
+
+          <TouchableOpacity
+            style={styles.submitMemberBtn}
+            onPress={async () => {
+              if (!claimAdminPinInput.trim()) {
+                showAlert('請輸入 PIN 碼', '請輸入管理員 4 位數安全 PIN 碼');
+                return;
+              }
+              const res = await claimAdminRoleWithPin(claimAdminPinInput.trim());
+              if (res.success) {
+                setClaimAdminModalVisible(false);
+                setClaimAdminPinInput('');
+                showAlert('身分升級成功！', '您已成功取得此家庭公帳的管理員權限！');
+              } else {
+                showAlert('驗證失敗', res.message || 'PIN 碼錯誤，無法取得管理員權限');
+              }
+            }}
+          >
+            <Text style={styles.submitMemberBtnText}>確認驗證並取得管理員權限</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+
   const renderSwitchLedgerModal = () => (
     <Modal visible={switchLedgerModalVisible} animationType="fade" transparent>
       <View style={styles.exportOverlay}>
@@ -1359,8 +1413,8 @@ function MainApp() {
                         <Text style={styles.editMemberBtnText}>✏️ 編輯稱謂</Text>
                       </TouchableOpacity>
 
-                      {/* 共同管理員角色切換：身為管理員且對象非原始建立者時可調整 */}
-                      {isOwner && !isCreator && (
+                      {/* 共同管理員角色切換：身為管理員且對象非自己、非原始建立者時可調整 */}
+                      {isOwner && !isCurrent && !isCreator && (
                         <TouchableOpacity
                           style={[styles.roleToggleBtn, isMemberAdmin ? styles.roleToggleBtnDemote : styles.roleToggleBtnPromote]}
                           onPress={() => {
@@ -1411,6 +1465,27 @@ function MainApp() {
                   );
                 })}
               </View>
+
+              {/* 若此手機目前不是管理員，提供 PIN 碼驗證升級入口 */}
+              {!isOwner && (
+                <View style={styles.claimAdminBanner}>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={styles.claimAdminBannerTitle}>👑 您目前為一般成員</Text>
+                    <Text style={styles.claimAdminBannerDesc}>
+                      若需恢復管理員權限，可輸入 4 位數 PIN 碼立即取回/升級為管理員
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.claimAdminBannerBtn}
+                    onPress={() => {
+                      setClaimAdminPinInput('');
+                      setClaimAdminModalVisible(true);
+                    }}
+                  >
+                    <Text style={styles.claimAdminBannerBtnText}>🔐 升為管理員</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
 
             {/* 邀請家人加入與代碼管理 */}
@@ -1656,6 +1731,9 @@ function MainApp() {
 
       {/* 修改管理員安全 PIN 碼彈窗 */}
       {renderChangePinModal()}
+
+      {/* PIN 碼升級管理員彈窗 */}
+      {renderClaimAdminModal()}
 
       {/* 切換帳本彈窗 */}
       {renderSwitchLedgerModal()}
@@ -2947,6 +3025,39 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   changePinBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  claimAdminBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    marginTop: 10,
+  },
+  claimAdminBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1E40AF',
+    marginBottom: 2,
+  },
+  claimAdminBannerDesc: {
+    fontSize: 11,
+    color: '#3B82F6',
+    lineHeight: 15,
+  },
+  claimAdminBannerBtn: {
+    backgroundColor: '#3B82F6',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  claimAdminBannerBtnText: {
     fontSize: 12,
     fontWeight: '700',
     color: '#FFFFFF',
