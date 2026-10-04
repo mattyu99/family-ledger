@@ -140,6 +140,11 @@ function MainApp() {
   const [editingMemberAvatar, setEditingMemberAvatar] = useState('👨');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
+  // 移轉帳目並刪除成員彈窗狀態
+  const [memberToDelete, setMemberToDelete] = useState<Profile | null>(null);
+  const [transferRecipientId, setTransferRecipientId] = useState<string>('');
+  const [isDeletingMember, setIsDeletingMember] = useState(false);
+
   // 模式 A：帳本入口與邀請管理狀態
   const [createLedgerModalVisible, setCreateLedgerModalVisible] = useState(false);
   const [newLedgerName, setNewLedgerName] = useState('幸福家庭公帳');
@@ -342,6 +347,136 @@ function MainApp() {
       </View>
     </Modal>
   );
+
+  const renderTransferDeleteModal = () => {
+    if (!memberToDelete) return null;
+    const paidTxs = transactions.filter(t => t.paid_by === memberToDelete.id);
+    const paidTotal = paidTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+    const eligibleRecipients = members.filter(m => m.id !== memberToDelete.id);
+    const selectedRecipient = members.find(m => m.id === transferRecipientId);
+
+    return (
+      <Modal visible={!!memberToDelete} animationType="fade" transparent>
+        <View style={styles.exportOverlay}>
+          <View style={styles.exportCard}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.exportTitle}>🔄 移轉帳目並刪除成員</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  if (!isDeletingMember) setMemberToDelete(null);
+                }}
+                style={styles.closeBtn}
+              >
+                <Text style={styles.closeText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* 提示說明 */}
+            <View style={styles.transferAlertBox}>
+              <Text style={styles.transferAlertTitle}>⚠️ 包含代墊付款紀錄</Text>
+              <Text style={styles.transferAlertDesc}>
+                成員「{memberToDelete.display_name}」尚有{' '}
+                <Text style={{ fontWeight: '700', color: '#B45309' }}>{paidTxs.length}</Text> 筆代墊付款紀錄（合計{' '}
+                <Text style={{ fontWeight: '700', color: '#B45309' }}>NT$ {paidTotal.toLocaleString()}</Text>）。
+              </Text>
+              <Text style={[styles.transferAlertDesc, { marginTop: 4 }]}>
+                為保持家庭公帳的收支平衡與歷史完整性，請選擇由哪位家人接收並承接這些款項：
+              </Text>
+            </View>
+
+            <Text style={styles.formLabel}>選擇帳目承接人：</Text>
+            <ScrollView style={{ maxHeight: 220, marginBottom: 16 }} showsVerticalScrollIndicator={false}>
+              <View style={{ gap: 8 }}>
+                {eligibleRecipients.map(m => {
+                  const isSelected = transferRecipientId === m.id;
+                  const isCurrent = m.id === currentUser.id;
+                  const isOwnerRole = m.role === 'owner';
+                  return (
+                    <TouchableOpacity
+                      key={m.id}
+                      style={[
+                        styles.transferRecipientCard,
+                        isSelected && styles.transferRecipientCardActive,
+                      ]}
+                      onPress={() => setTransferRecipientId(m.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.transferRecipientAvatar}>{m.avatar_url || '👤'}</Text>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text
+                            style={[
+                              styles.transferRecipientName,
+                              isSelected && styles.transferRecipientNameActive,
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {m.display_name}
+                          </Text>
+                          {isCurrent && (
+                            <View style={styles.meTransferBadge}>
+                              <Text style={styles.meTransferBadgeText}>我 (本機)</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.transferRecipientSub}>
+                          {isOwnerRole ? '👑 管理員' : '👤 家庭成員'}
+                        </Text>
+                      </View>
+                      <View style={[styles.radioCircle, isSelected && styles.radioCircleActive]}>
+                        {isSelected && <View style={styles.radioDot} />}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[
+                styles.submitMemberBtn,
+                (!transferRecipientId || isDeletingMember) && { opacity: 0.6 },
+              ]}
+              disabled={!transferRecipientId || isDeletingMember}
+              onPress={async () => {
+                if (!memberToDelete || !transferRecipientId) return;
+                setIsDeletingMember(true);
+                try {
+                  const targetName = selectedRecipient?.display_name || '指定成員';
+                  const sourceName = memberToDelete.display_name;
+                  const success = await deleteMember(memberToDelete.id, transferRecipientId);
+                  if (success) {
+                    setMemberToDelete(null);
+                    showAlert(
+                      '移轉並刪除成功',
+                      `已將「${sourceName}」的 ${paidTxs.length} 筆代墊紀錄移交給「${targetName}」，並已將該成員從家庭名冊移除。`
+                    );
+                  }
+                } finally {
+                  setIsDeletingMember(false);
+                }
+              }}
+            >
+              <Text style={styles.submitMemberBtnText}>
+                {isDeletingMember
+                  ? '正在移交帳目並刪除...'
+                  : `🔄 確認移交給「${selectedRecipient?.display_name || '...'}」並移除成員`}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.cancelTransferBtn}
+              onPress={() => {
+                if (!isDeletingMember) setMemberToDelete(null);
+              }}
+            >
+              <Text style={styles.cancelTransferBtnText}>取消</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
 
   const renderCreateLedgerModal = () => (
     <Modal visible={createLedgerModalVisible} animationType="fade" transparent>
@@ -1165,11 +1300,8 @@ function MainApp() {
                             const paidTxs = transactions.filter(t => t.paid_by === member.id);
                             const paidTotal = paidTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
                             if (paidTotal > 0) {
-                              showConfirm(
-                                '移轉帳目並刪除成員',
-                                `「${member.display_name}」尚有 ${paidTxs.length} 筆代墊付款紀錄（合計 NT$ ${paidTotal.toLocaleString()}）。\n\n是否將這些付款紀錄自動轉由「${currentUser.display_name} (我)」承接，並將該成員從家庭名冊中移除？`,
-                                () => deleteMember(member.id, currentUser.id)
-                              );
+                              setMemberToDelete(member);
+                              setTransferRecipientId(currentUser.id);
                             } else {
                               showConfirm(
                                 '刪除成員',
@@ -1383,6 +1515,9 @@ function MainApp() {
 
       {/* 編輯家庭成員彈窗 */}
       {renderEditMemberModal()}
+
+      {/* 移轉帳目並刪除成員彈窗 */}
+      {renderTransferDeleteModal()}
 
       {/* 自訂邀請碼彈窗 */}
       {renderCustomCodeModal()}
@@ -2488,5 +2623,94 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: '#4B5563',
+  },
+  transferAlertBox: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    padding: 12,
+    marginBottom: 14,
+  },
+  transferAlertTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#92400E',
+    marginBottom: 4,
+  },
+  transferAlertDesc: {
+    fontSize: 12,
+    color: '#78350F',
+    lineHeight: 18,
+  },
+  transferRecipientCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+  },
+  transferRecipientCardActive: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#4F46E5',
+  },
+  transferRecipientAvatar: {
+    fontSize: 24,
+    marginRight: 10,
+  },
+  transferRecipientName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  transferRecipientNameActive: {
+    color: '#4F46E5',
+  },
+  transferRecipientSub: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  meTransferBadge: {
+    backgroundColor: '#E0E7FF',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  meTransferBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#4338CA',
+  },
+  radioCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#CBD5E1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  radioCircleActive: {
+    borderColor: '#4F46E5',
+  },
+  radioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#4F46E5',
+  },
+  cancelTransferBtn: {
+    marginTop: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  cancelTransferBtnText: {
+    fontSize: 14,
+    color: '#64748B',
+    fontWeight: '600',
   },
 });
