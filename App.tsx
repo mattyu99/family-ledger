@@ -588,6 +588,24 @@ function MainApp() {
                 </Text>
               </TouchableOpacity>
 
+              {/* 若在預覽模式中：在彈窗內提供大按鈕隨時結束預覽返回管理員 */}
+              {isPreviewMode && (
+                <View style={{ marginTop: 14 }}>
+                  <TouchableOpacity
+                    style={[styles.modalPreviewBtn, { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' }]}
+                    onPress={() => {
+                      setEditMemberModalVisible(false);
+                      exitMemberPreview();
+                      showAlert('已結束預覽', '已安全切回管理員身分！');
+                    }}
+                  >
+                    <Text style={[styles.modalPreviewBtnText, { color: '#B91C1C' }]}>
+                      ✕ 結束預覽，返回管理員
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
               {/* 角色預覽與測試視角：僅管理員且對象非自己時可使用 */}
               {realIsOwner && !isCurrent && targetMember && (
                 <View style={styles.modalMemberAdminSection}>
@@ -1591,33 +1609,6 @@ function MainApp() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
 
-      {/* 角色預覽模式頂部橫幅 */}
-      {isPreviewMode && previewMember && (
-        <View style={styles.previewModeBanner}>
-          <View style={styles.previewModeBannerLeft}>
-            <Text style={styles.previewModeBannerIcon}>👀</Text>
-            <View style={{ flex: 1, marginRight: 8 }}>
-              <Text style={styles.previewModeBannerTitle} numberOfLines={1}>
-                正在預覽：{previewMember.display_name}
-              </Text>
-              <Text style={styles.previewModeBannerSub} numberOfLines={1}>
-                模擬一般成員視角中・記帳預設以其付款
-              </Text>
-            </View>
-          </View>
-          <TouchableOpacity
-            style={styles.exitPreviewBtn}
-            activeOpacity={0.8}
-            onPress={() => {
-              exitMemberPreview();
-              showAlert('已結束預覽', '已安全切回管理員身分！');
-            }}
-          >
-            <Text style={styles.exitPreviewBtnText}>✕ 結束預覽</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
       {/* 頂部導航列 */}
       <View style={styles.topBar}>
         <View style={{ flex: 1, marginRight: 8 }}>
@@ -1664,6 +1655,34 @@ function MainApp() {
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* 角色預覽模式橫幅 (置於導航列下方，避免與系統狀態列重疊) */}
+      {isPreviewMode && previewMember && (
+        <View style={styles.previewModeBanner}>
+          <View style={styles.previewModeBannerLeft}>
+            <Text style={styles.previewModeBannerIcon}>👀</Text>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <Text style={styles.previewModeBannerTitle} numberOfLines={1}>
+                正在預覽：{previewMember.display_name}
+              </Text>
+              <Text style={styles.previewModeBannerSub} numberOfLines={1}>
+                模擬一般成員視角中・記帳預設以其付款
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.exitPreviewBtn}
+            activeOpacity={0.8}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            onPress={() => {
+              exitMemberPreview();
+              showAlert('已結束預覽', '已安全切回管理員身分！');
+            }}
+          >
+            <Text style={styles.exitPreviewBtnText}>✕ 結束預覽</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* 頁籤內容 */}
       <View style={styles.content}>
@@ -2415,6 +2434,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     position: 'relative',
     overflow: 'hidden',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0,
   },
   topBar: {
     flexDirection: 'row',
