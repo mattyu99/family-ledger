@@ -162,6 +162,11 @@ function MainApp() {
     exitMemberPreview,
     realIsOwner,
     realCurrentUser,
+    lastBackupAt,
+    autoBackupEnabled,
+    autoBackupInterval,
+    recordBackupComplete,
+    updateAutoBackupConfig,
   } = useLedger();
 
   const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'family'>('transactions');
@@ -173,6 +178,51 @@ function MainApp() {
   const [selectedAvatar, setSelectedAvatar] = useState('👩');
   const [csvContent, setCsvContent] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isReminderDismissed, setIsReminderDismissed] = useState(false);
+
+  // 定期備份計算與過期檢測 (Option B)
+  const daysSinceLastBackup = useMemo(() => {
+    if (!lastBackupAt) return null;
+    const lastDate = new Date(lastBackupAt);
+    if (isNaN(lastDate.getTime())) return null;
+    const diffMs = Date.now() - lastDate.getTime();
+    return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  }, [lastBackupAt]);
+
+  const isBackupDue = useMemo(() => {
+    if (!autoBackupEnabled) return false;
+    // 若從未備份過且已經有超過 5 筆交易，提示備份
+    if (daysSinceLastBackup === null) return transactions.length >= 5;
+    return daysSinceLastBackup >= autoBackupInterval;
+  }, [autoBackupEnabled, daysSinceLastBackup, autoBackupInterval, transactions.length]);
+
+  const showBackupBanner = isBackupDue && !isReminderDismissed;
+
+  const formatLastBackupText = (isoString: string | null) => {
+    if (!isoString) return '尚未進行過手動/雲端備份';
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return '尚未進行過手動/雲端備份';
+
+    const now = Date.now();
+    const diffMs = now - date.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    let relative = '';
+    if (diffMins < 1) relative = '剛剛';
+    else if (diffMins < 60) relative = `${diffMins} 分鐘前`;
+    else if (diffHours < 24) relative = `${diffHours} 小時前`;
+    else relative = `${diffDays} 天前`;
+
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    const hh = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+
+    return `${yyyy}/${mm}/${dd} ${hh}:${min} (${relative})`;
+  };
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -642,6 +692,7 @@ function MainApp() {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
+        recordBackupComplete();
         showAlert('下載成功', `已將備份檔「${filename}」下載至您的裝置！`);
         return true;
       } catch (err) {
@@ -660,9 +711,10 @@ function MainApp() {
     setExportModalVisible(true);
   };
 
-  const handleCopyExportContent = () => {
+  const handleCopyExportContent = async () => {
     const isCsv = exportTab === 'csv';
     const text = isCsv ? csvContent : jsonContent;
+    await recordBackupComplete();
     copyToClipboard(
       text,
       isCsv
@@ -692,6 +744,7 @@ function MainApp() {
               title: filename,
               text: `甜心記帳本備份檔：${filename}`,
             });
+            await recordBackupComplete();
             return;
           }
         } catch (e: any) {
@@ -710,9 +763,11 @@ function MainApp() {
         title: filename,
         message: content,
       });
+      await recordBackupComplete();
     } catch (err) {
       console.warn('原生呼叫分享失敗:', err);
       copyToClipboard(content, `已將備份內容複製到剪貼簿！可直接貼至 Google 雲端硬碟或備忘錄。`);
+      await recordBackupComplete();
     }
   };
 
@@ -2020,6 +2075,47 @@ function MainApp() {
             }}
             scrollEventThrottle={200}
           >
+            {/* 定期備份提醒橫幅 (Option B) */}
+            {showBackupBanner && (
+              <View style={styles.backupReminderBanner}>
+                <View style={styles.backupReminderHeader}>
+                  <View style={styles.backupReminderTitleRow}>
+                    <Text style={styles.backupReminderIcon} allowFontScaling={false} maxFontSizeMultiplier={1.08}>☁️</Text>
+                    <Text style={styles.backupReminderTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      {daysSinceLastBackup === null
+                        ? '家庭帳本尚未備份至個人雲端'
+                        : `定期備份提醒 (已間隔 ${daysSinceLastBackup} 天)`}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.backupReminderDismissBtn}
+                    onPress={() => setIsReminderDismissed(true)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={styles.backupReminderDismissText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>✕ 稍後提醒</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.backupReminderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                  {daysSinceLastBackup === null
+                    ? `您目前已有 ${transactions.length} 筆明細，建議將資料存檔至 Google 雲端硬碟或個人電腦，確保家庭資料永久安全。`
+                    : `您設定每 ${autoBackupInterval} 天定期提醒備份，目前已達 ${daysSinceLastBackup} 天，建議花 3 秒存檔一份最新資料至雲端硬碟。`}
+                </Text>
+
+                <View style={styles.backupReminderActionRow}>
+                  <TouchableOpacity
+                    style={styles.backupReminderActionBtn}
+                    onPress={() => handleOpenExportModal('json')}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.backupReminderActionBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      🚀 立即備份至雲端硬碟
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
             {/* 本月收支摘要卡片 */}
             <View style={styles.summaryCard}>
               <View style={styles.summaryHeader}>
@@ -2922,13 +3018,13 @@ function MainApp() {
             <View style={styles.cardSection}>
               <View style={styles.sectionHeaderRow}>
                 <View style={styles.sectionHeaderLeft}>
-                  <Text style={styles.cardSectionTitle}>🛡️ 資料備份與掌控</Text>
-                  <Text style={styles.cardSectionDesc}>
+                  <Text style={styles.cardSectionTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>🛡️ 資料備份與掌控</Text>
+                  <Text style={styles.cardSectionDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                     隨時匯出整本帳簿，資料自主永久保存在個人設備
                   </Text>
                 </View>
                 <View style={[styles.roleBadge, isCloudSynced ? styles.roleBadgeOwner : styles.roleBadgeMember]}>
-                  <Text style={[styles.roleBadgeText, isCloudSynced ? styles.roleBadgeTextOwner : styles.roleBadgeTextMember]}>
+                  <Text style={[styles.roleBadgeText, isCloudSynced ? styles.roleBadgeTextOwner : styles.roleBadgeTextMember]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                     {isCloudSynced ? '🟢 雲端已同步' : '💾 本機離線模式'}
                   </Text>
                 </View>
@@ -2937,19 +3033,92 @@ function MainApp() {
               {/* 帳本狀態小指標 */}
               <View style={styles.backupStatsRow}>
                 <View style={styles.backupStatItem}>
-                  <Text style={styles.backupStatVal}>{transactions.length}</Text>
-                  <Text style={styles.backupStatLabel}>歷史明細筆數</Text>
+                  <Text style={styles.backupStatVal} allowFontScaling={false} maxFontSizeMultiplier={1.08}>{transactions.length}</Text>
+                  <Text style={styles.backupStatLabel} allowFontScaling={false} maxFontSizeMultiplier={1.08}>歷史明細筆數</Text>
                 </View>
                 <View style={styles.backupStatDivider} />
                 <View style={styles.backupStatItem}>
-                  <Text style={styles.backupStatVal}>{members.length}</Text>
-                  <Text style={styles.backupStatLabel}>家庭成員數</Text>
+                  <Text style={styles.backupStatVal} allowFontScaling={false} maxFontSizeMultiplier={1.08}>{members.length}</Text>
+                  <Text style={styles.backupStatLabel} allowFontScaling={false} maxFontSizeMultiplier={1.08}>家庭成員數</Text>
                 </View>
                 <View style={styles.backupStatDivider} />
                 <View style={styles.backupStatItem}>
-                  <Text style={styles.backupStatVal}>{categories.length}</Text>
-                  <Text style={styles.backupStatLabel}>自訂分類數</Text>
+                  <Text style={styles.backupStatVal} allowFontScaling={false} maxFontSizeMultiplier={1.08}>{categories.length}</Text>
+                  <Text style={styles.backupStatLabel} allowFontScaling={false} maxFontSizeMultiplier={1.08}>自訂分類數</Text>
                 </View>
+              </View>
+
+              {/* Option B: 定期備份管理區塊 */}
+              <View style={styles.backupScheduleBox}>
+                <View style={styles.backupScheduleHeader}>
+                  <View style={styles.backupScheduleHeaderLeft}>
+                    <Text style={styles.backupScheduleTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      ⏰ 定期備份提醒
+                    </Text>
+                    <Text style={styles.backupScheduleSub} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      上次備份：{formatLastBackupText(lastBackupAt)}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.backupToggleBtn, autoBackupEnabled ? styles.backupToggleBtnActive : styles.backupToggleBtnInactive]}
+                    onPress={() => updateAutoBackupConfig(!autoBackupEnabled, autoBackupInterval)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.backupToggleText, autoBackupEnabled ? styles.backupToggleTextActive : styles.backupToggleTextInactive]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      {autoBackupEnabled ? '已開啟提醒' : '已關閉提醒'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* 備份狀態徽章 */}
+                <View style={[styles.backupStatusNotice, isBackupDue ? styles.backupStatusNoticeDue : styles.backupStatusNoticeOk]}>
+                  <Text style={[styles.backupStatusNoticeText, isBackupDue ? styles.backupStatusNoticeTextDue : styles.backupStatusNoticeTextOk]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    {!autoBackupEnabled
+                      ? '⏸️ 定期提醒已關閉，您仍可隨時手動點擊下方按鈕匯出存檔。'
+                      : daysSinceLastBackup === null
+                      ? '⚠️ 尚未備份至雲端，建議儘早建立第一份備份！'
+                      : daysSinceLastBackup >= autoBackupInterval
+                      ? `⚠️ 已間隔 ${daysSinceLastBackup} 天未備份（已超過設定之 ${autoBackupInterval} 天），建議立即存檔！`
+                      : `✅ 備份狀態良好（預計 ${Math.max(1, autoBackupInterval - daysSinceLastBackup)} 天後提醒）`}
+                  </Text>
+                </View>
+
+                {/* 週期選擇器 Chips */}
+                {autoBackupEnabled && (
+                  <View style={styles.backupIntervalSection}>
+                    <Text style={styles.backupIntervalLabel} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      提醒週期頻率：
+                    </Text>
+                    <View style={styles.backupIntervalChips}>
+                      {([7, 14, 30] as const).map((days) => (
+                        <TouchableOpacity
+                          key={days}
+                          style={[
+                            styles.backupIntervalChip,
+                            autoBackupInterval === days && styles.backupIntervalChipActive,
+                          ]}
+                          onPress={() => updateAutoBackupConfig(true, days)}
+                          activeOpacity={0.7}
+                        >
+                          <Text
+                            style={[
+                              styles.backupIntervalChipText,
+                              autoBackupInterval === days && styles.backupIntervalChipTextActive,
+                            ]}
+                            allowFontScaling={false}
+                            maxFontSizeMultiplier={1.08}
+                          >
+                            {days === 7 ? '每週 (7天)' : days === 14 ? '每雙週 (14天)' : '每月 (30天)'}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                <Text style={styles.backupPrivacyNote} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                  💡 手機系統隱私機制限制 App 靜默寫入個人雲端；開啟提醒後，系統會在到期時以橫幅通知您一鍵存檔至 Google Drive 或 iCloud。
+                </Text>
               </View>
 
               <View style={styles.backupBtnRow}>
@@ -2958,8 +3127,8 @@ function MainApp() {
                   onPress={() => handleOpenExportModal('csv')}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.exportCsvBtnText}>📊 匯出 CSV 報表 (Excel)</Text>
-                  <Text style={styles.exportBtnSubtext}>內建 UTF-8 BOM 防中文亂碼</Text>
+                  <Text style={styles.exportCsvBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>📊 匯出 CSV 報表 (Excel)</Text>
+                  <Text style={styles.exportBtnSubtext} allowFontScaling={false} maxFontSizeMultiplier={1.08}>內建 UTF-8 BOM 防中文亂碼</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -2967,8 +3136,8 @@ function MainApp() {
                   onPress={() => handleOpenExportModal('json')}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.exportJsonBtnText}>📦 匯出 JSON 結構備份</Text>
-                  <Text style={styles.exportBtnSubtext}>包含成員頭像與自訂分類</Text>
+                  <Text style={styles.exportJsonBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>📦 匯出 JSON 結構備份</Text>
+                  <Text style={styles.exportBtnSubtext} allowFontScaling={false} maxFontSizeMultiplier={1.08}>包含成員頭像與自訂分類</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -3157,16 +3326,21 @@ function MainApp() {
 
             {/* 說明橫幅 */}
             <View style={styles.exportTipBox}>
-              <Text style={styles.exportTipText}>
+              <Text style={styles.exportTipText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                 {exportTab === 'csv'
                   ? '💡 格式通用於微軟 Excel、Google 試算表與 Apple Numbers，已注入 UTF-8 BOM 繁體中文防亂碼保護。'
                   : '💡 包含帳本基本資料、全體成員稱謂頭像、自訂分類顏色及每筆交易明細之高精度結構封包。'}
               </Text>
               {Platform.OS !== 'web' && (
-                <Text style={styles.exportTipSubtext}>
+                <Text style={styles.exportTipSubtext} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                   📱 手機端點擊下方「☁️ 存到雲端硬碟 / 分享」，可在系統選單直接點選「Google 雲端硬碟」或「儲存到檔案」即時備份。
                 </Text>
               )}
+              <View style={styles.exportLastBackupRow}>
+                <Text style={styles.exportLastBackupText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                  ⏱️ 上次備份記錄：{formatLastBackupText(lastBackupAt)}
+                </Text>
+              </View>
             </View>
 
             {/* 內容預覽 */}
@@ -4063,6 +4237,200 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontWeight: '500',
   },
+  // Option B: 備份提醒橫幅樣式 (Transactions tab)
+  backupReminderBanner: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  backupReminderHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  backupReminderTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
+  backupReminderIcon: {
+    fontSize: 18,
+    marginRight: 6,
+  },
+  backupReminderTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#92400E',
+  },
+  backupReminderDismissBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: 'rgba(217, 119, 6, 0.15)',
+  },
+  backupReminderDismissText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#B45309',
+  },
+  backupReminderDesc: {
+    fontSize: 12,
+    color: '#78350F',
+    lineHeight: 18,
+    marginBottom: 10,
+    fontWeight: '500',
+  },
+  backupReminderActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  backupReminderActionBtn: {
+    backgroundColor: '#D97706',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backupReminderActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  // Option B: 家庭頁面備份排程與狀態卡片樣式
+  backupScheduleBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  backupScheduleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  backupScheduleHeaderLeft: {
+    flex: 1,
+    marginRight: 8,
+  },
+  backupScheduleTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  backupScheduleSub: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  backupToggleBtn: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+  },
+  backupToggleBtnActive: {
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#4F46E5',
+  },
+  backupToggleBtnInactive: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  backupToggleText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  backupToggleTextActive: {
+    color: '#4F46E5',
+  },
+  backupToggleTextInactive: {
+    color: '#64748B',
+  },
+  backupStatusNotice: {
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    marginBottom: 10,
+  },
+  backupStatusNoticeOk: {
+    backgroundColor: '#ECFDF5',
+    borderLeftWidth: 3,
+    borderLeftColor: '#10B981',
+  },
+  backupStatusNoticeDue: {
+    backgroundColor: '#FFFBEB',
+    borderLeftWidth: 3,
+    borderLeftColor: '#F59E0B',
+  },
+  backupStatusNoticeText: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
+  },
+  backupStatusNoticeTextOk: {
+    color: '#065F46',
+  },
+  backupStatusNoticeTextDue: {
+    color: '#92400E',
+  },
+  backupIntervalSection: {
+    marginBottom: 10,
+  },
+  backupIntervalLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#334155',
+    marginBottom: 6,
+  },
+  backupIntervalChips: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  backupIntervalChip: {
+    flex: 1,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  backupIntervalChipActive: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#4F46E5',
+  },
+  backupIntervalChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  backupIntervalChipTextActive: {
+    color: '#4F46E5',
+    fontWeight: '700',
+  },
+  backupPrivacyNote: {
+    fontSize: 11,
+    color: '#64748B',
+    lineHeight: 16,
+  },
   fab: {
     position: 'absolute',
     right: 24,
@@ -4188,6 +4556,17 @@ const styles = StyleSheet.create({
     color: '#4F46E5',
     lineHeight: 16,
     marginTop: 4,
+    fontWeight: '600',
+  },
+  exportLastBackupRow: {
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  exportLastBackupText: {
+    fontSize: 11,
+    color: '#64748B',
     fontWeight: '600',
   },
   csvBox: {

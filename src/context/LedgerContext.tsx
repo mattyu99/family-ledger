@@ -138,6 +138,11 @@ interface LedgerContextType {
   deleteTransaction: (id: string) => Promise<void>;
   exportToCSV: () => string;
   exportToJSON: () => string;
+  lastBackupAt: string | null;
+  autoBackupEnabled: boolean;
+  autoBackupInterval: 7 | 14 | 30;
+  recordBackupComplete: () => Promise<void>;
+  updateAutoBackupConfig: (enabled: boolean, intervalDays: 7 | 14 | 30) => Promise<void>;
   addMember: (name: string, avatar?: string) => Promise<void>;
   updateMember: (id: string, name: string, avatar: string) => Promise<boolean>;
   deleteMember: (id: string, transferToId?: string) => Promise<boolean | void>;
@@ -295,6 +300,8 @@ const STORAGE_KEYS = {
   ADMIN_PIN: '@family_ledger_admin_pin',
   ALIAS_MAP: '@family_ledger_alias_map',
   DELETED_TX_IDS: '@family_ledger_deleted_tx_ids',
+  LAST_BACKUP_AT: '@family_ledger_last_backup_at',
+  AUTO_BACKUP_CONFIG: '@family_ledger_auto_backup_config',
 };
 
 // 已知雲端資料庫分類 UUID 映射表（確保本機離線或 cold start 時舊交易分類 100% 完整解析）
@@ -326,6 +333,30 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [adminPin, setAdminPin] = useState<string>('8888');
   const [userRole, setUserRole] = useState<'owner' | 'admin' | 'member'>('member');
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
+
+  // 定期備份設定與上次備份記錄
+  const [lastBackupAt, setLastBackupAt] = useState<string | null>(null);
+  const [autoBackupEnabled, setAutoBackupEnabled] = useState<boolean>(true);
+  const [autoBackupInterval, setAutoBackupInterval] = useState<7 | 14 | 30>(7);
+
+  const recordBackupComplete = async () => {
+    const nowIso = new Date().toISOString();
+    setLastBackupAt(nowIso);
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.LAST_BACKUP_AT, nowIso);
+    } catch {}
+  };
+
+  const updateAutoBackupConfig = async (enabled: boolean, intervalDays: 7 | 14 | 30) => {
+    setAutoBackupEnabled(enabled);
+    setAutoBackupInterval(intervalDays);
+    try {
+      await AsyncStorage.setItem(
+        STORAGE_KEYS.AUTO_BACKUP_CONFIG,
+        JSON.stringify({ enabled, intervalDays })
+      );
+    } catch {}
+  };
 
   // 透過 ID 取得標準成員資料（自動穿透多裝置 UUID、別名表、歷史示範常數）
   const getMemberById = React.useCallback(
@@ -531,6 +562,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         const savedPin = await AsyncStorage.getItem(STORAGE_KEYS.ADMIN_PIN);
         if (savedPin) setAdminPin(savedPin);
+
+        const savedLastBackup = await AsyncStorage.getItem(STORAGE_KEYS.LAST_BACKUP_AT);
+        if (savedLastBackup) setLastBackupAt(savedLastBackup);
+
+        const savedAutoBackup = await AsyncStorage.getItem(STORAGE_KEYS.AUTO_BACKUP_CONFIG);
+        if (savedAutoBackup) {
+          try {
+            const parsed = JSON.parse(savedAutoBackup);
+            if (typeof parsed.enabled === 'boolean') setAutoBackupEnabled(parsed.enabled);
+            if ([7, 14, 30].includes(parsed.intervalDays)) setAutoBackupInterval(parsed.intervalDays);
+          } catch {}
+        }
       } catch (err) {
         console.warn('載入本地記帳快取失敗:', err);
       }
@@ -2790,6 +2833,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         deleteTransaction,
         exportToCSV,
         exportToJSON,
+        lastBackupAt,
+        autoBackupEnabled,
+        autoBackupInterval,
+        recordBackupComplete,
+        updateAutoBackupConfig,
         addMember,
         updateMember,
         deleteMember,
