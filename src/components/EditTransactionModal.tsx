@@ -216,6 +216,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 onChangeText={setAmount}
                 autoFocus={false}
                 maxFontSizeMultiplier={1.15}
+                underlineColorAndroid="transparent"
               />
             </View>
 
@@ -436,9 +437,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 4,
     marginBottom: 12,
+    minHeight: 48,
   },
   currencySymbol: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
     color: '#4F46E5',
     marginRight: 6,
@@ -449,7 +451,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#111827',
     minWidth: 0,
-    height: 34,
+    height: 42,
+    padding: 0,
+    paddingVertical: 0,
+    textAlignVertical: 'center',
   },
   categoryGrid: {
     flexDirection: 'row',

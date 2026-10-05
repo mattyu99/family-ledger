@@ -172,6 +172,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
                 onChangeText={setAmount}
                 autoFocus={false}
                 maxFontSizeMultiplier={1.15}
+                underlineColorAndroid="transparent"
               />
             </View>
 
@@ -335,6 +336,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     width: '100%',
     minWidth: 0,
+    minHeight: 48,
   },
   currencyPrefix: {
     fontSize: 18,
@@ -350,7 +352,9 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#111827',
     padding: 0,
-    height: 34,
+    paddingVertical: 0,
+    height: 42,
+    textAlignVertical: 'center',
   },
   sectionLabel: {
     fontSize: 12,
