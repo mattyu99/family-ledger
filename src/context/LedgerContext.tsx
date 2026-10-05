@@ -2380,7 +2380,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return false;
     }
 
-    // 檢查是否有「該成員實際代墊付款」且金額大於 0 的紀錄
+    // 檢查是否有「該成員實際付款」且金額大於 0 的紀錄
     const paidTxs = transactions.filter(t => t.paid_by === id);
     const paidTotal = paidTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
     if (paidTotal > 0 && !transferToId) {

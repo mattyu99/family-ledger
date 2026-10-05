@@ -217,6 +217,82 @@ function MainApp() {
       }));
   }, [transactions]);
 
+  // 當前與上一月份字串
+  const currentMonthYm = useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
+
+  const lastMonthYm = useMemo(() => {
+    const now = new Date();
+    now.setDate(1);
+    now.setMonth(now.getMonth() - 1);
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
+
+  // 統計分頁之時間篩選狀態 (預設當前月份)
+  const [analyticsMonth, setAnalyticsMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+
+  // 統計分頁選定時間之交易紀錄
+  const analyticsTransactions = useMemo(() => {
+    if (analyticsMonth === 'all') return transactions;
+    return transactions.filter(t => {
+      if (!t.transacted_at) return false;
+      const d = new Date(t.transacted_at);
+      if (isNaN(d.getTime())) return false;
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      return ym === analyticsMonth;
+    });
+  }, [transactions, analyticsMonth]);
+
+  // 統計分頁之動態彙總統計
+  const analyticsSummary = useMemo(() => {
+    let totalExpense = 0;
+    let totalIncome = 0;
+    const paidByMembers: Record<string, number> = {};
+
+    members.forEach(m => {
+      paidByMembers[m.id] = 0;
+    });
+
+    analyticsTransactions.forEach(t => {
+      if (t.type === 'expense') {
+        const amt = Number(t.amount) || 0;
+        totalExpense += amt;
+        const canonical = getMemberById(t.paid_by);
+        const targetId = canonical ? canonical.id : t.paid_by;
+        paidByMembers[targetId] = (paidByMembers[targetId] || 0) + amt;
+      } else if (t.type === 'income') {
+        totalIncome += Number(t.amount) || 0;
+      }
+    });
+
+    return {
+      totalExpense,
+      totalIncome,
+      netBalance: totalIncome - totalExpense,
+      paidByMembers,
+      count: analyticsTransactions.length,
+    };
+  }, [analyticsTransactions, members, getMemberById]);
+
+  const analyticsMonthLabel = useMemo(() => {
+    if (analyticsMonth === 'all') return '全部歷史累計';
+    if (analyticsMonth === currentMonthYm) {
+      const parts = currentMonthYm.split('-');
+      return `本月 (${parts[0]}年${parseInt(parts[1], 10)}月)`;
+    }
+    if (analyticsMonth === lastMonthYm) {
+      const parts = lastMonthYm.split('-');
+      return `上月 (${parts[0]}年${parseInt(parts[1], 10)}月)`;
+    }
+    const found = availableMonths.find(m => m.ym === analyticsMonth);
+    return found ? found.label : analyticsMonth;
+  }, [analyticsMonth, currentMonthYm, lastMonthYm, availableMonths]);
+
   // 依據選取的月份與成員進行即時篩選
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
@@ -734,10 +810,10 @@ function MainApp() {
 
             {/* 提示說明 */}
             <View style={styles.transferAlertBox}>
-              <Text style={styles.transferAlertTitle}>⚠️ 包含代墊付款紀錄</Text>
+              <Text style={styles.transferAlertTitle}>⚠️ 包含付款紀錄</Text>
               <Text style={styles.transferAlertDesc}>
                 成員「{memberToDelete.display_name}」尚有{' '}
-                <Text style={{ fontWeight: '700', color: '#B45309' }}>{paidTxs.length}</Text> 筆代墊付款紀錄（合計{' '}
+                <Text style={{ fontWeight: '700', color: '#B45309' }}>{paidTxs.length}</Text> 筆付款紀錄（合計{' '}
                 <Text style={{ fontWeight: '700', color: '#B45309' }}>NT$ {paidTotal.toLocaleString()}</Text>）。
               </Text>
               <Text style={[styles.transferAlertDesc, { marginTop: 4 }]}>
@@ -814,7 +890,7 @@ function MainApp() {
                     setMemberToDelete(null);
                     showAlert(
                       '移轉並刪除成功',
-                      `已將「${sourceName}」的 ${paidTxs.length} 筆代墊紀錄移交給「${targetName}」，並已將該成員從家庭名冊移除。`
+                      `已將「${sourceName}」的 ${paidTxs.length} 筆付款紀錄移交給「${targetName}」，並已將該成員從家庭名冊移除。`
                     );
                   }
                 } finally {
@@ -1508,7 +1584,7 @@ function MainApp() {
           <View style={styles.welcomeHero}>
             <Text style={styles.welcomeEmoji}>👨‍👩‍👧‍👦</Text>
             <Text style={styles.welcomeTitle}>家庭共享記帳本</Text>
-            <Text style={styles.welcomeSubtitle}>全家人一起記帳・即時雲端同步・代墊分攤自動算</Text>
+            <Text style={styles.welcomeSubtitle}>全家人一起記帳・即時雲端同步・收支結餘自動算</Text>
           </View>
 
           <View style={styles.featureBox}>
@@ -1522,8 +1598,8 @@ function MainApp() {
             <View style={styles.featureItem}>
               <Text style={styles.featureIcon}>📊</Text>
               <View style={styles.featureTextCol}>
-                <Text style={styles.featureItemTitle}>代墊分攤一目了然</Text>
-                <Text style={styles.featureItemDesc}>自動統計誰代墊多少、結餘清楚，公帳不混淆</Text>
+                <Text style={styles.featureItemTitle}>家庭收支一目了然</Text>
+                <Text style={styles.featureItemDesc}>自動統計成員付款、結餘清楚，公帳不混淆</Text>
               </View>
             </View>
             <View style={styles.featureItem}>
@@ -1812,16 +1888,123 @@ function MainApp() {
 
         {activeTab === 'analytics' && (
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollPadding}>
-            {/* 誰代墊了多少（家庭分攤統計） */}
+            {/* 時間維度切換器 */}
+            <View style={styles.analyticsFilterBox}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.analyticsFilterScroll}
+              >
+                {/* 本月 */}
+                <TouchableOpacity
+                  style={[
+                    styles.analyticsFilterChip,
+                    analyticsMonth === currentMonthYm && styles.analyticsFilterChipActive,
+                  ]}
+                  onPress={() => setAnalyticsMonth(currentMonthYm)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    allowFontScaling={false}
+                    maxFontSizeMultiplier={1.08}
+                    style={[
+                      styles.analyticsFilterText,
+                      analyticsMonth === currentMonthYm && styles.analyticsFilterTextActive,
+                    ]}
+                  >
+                    📅 本月
+                  </Text>
+                </TouchableOpacity>
+
+                {/* 上月 */}
+                {lastMonthYm ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.analyticsFilterChip,
+                      analyticsMonth === lastMonthYm && styles.analyticsFilterChipActive,
+                    ]}
+                    onPress={() => setAnalyticsMonth(lastMonthYm)}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      allowFontScaling={false}
+                      maxFontSizeMultiplier={1.08}
+                      style={[
+                        styles.analyticsFilterText,
+                        analyticsMonth === lastMonthYm && styles.analyticsFilterTextActive,
+                      ]}
+                    >
+                      📅 上月
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+
+                {/* 全部歷史 */}
+                <TouchableOpacity
+                  style={[
+                    styles.analyticsFilterChip,
+                    analyticsMonth === 'all' && styles.analyticsFilterChipActive,
+                  ]}
+                  onPress={() => setAnalyticsMonth('all')}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    allowFontScaling={false}
+                    maxFontSizeMultiplier={1.08}
+                    style={[
+                      styles.analyticsFilterText,
+                      analyticsMonth === 'all' && styles.analyticsFilterTextActive,
+                    ]}
+                  >
+                    🌐 全部歷史
+                  </Text>
+                </TouchableOpacity>
+
+                {/* 其他歷史月份 */}
+                {availableMonths
+                  .filter(m => m.ym !== currentMonthYm && m.ym !== lastMonthYm)
+                  .map(m => (
+                    <TouchableOpacity
+                      key={m.ym}
+                      style={[
+                        styles.analyticsFilterChip,
+                        analyticsMonth === m.ym && styles.analyticsFilterChipActive,
+                      ]}
+                      onPress={() => setAnalyticsMonth(m.ym)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        allowFontScaling={false}
+                        maxFontSizeMultiplier={1.08}
+                        style={[
+                          styles.analyticsFilterText,
+                          analyticsMonth === m.ym && styles.analyticsFilterTextActive,
+                        ]}
+                      >
+                        {m.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+              </ScrollView>
+
+              {/* 當前選中期間提示 */}
+              <View style={styles.analyticsFilterStatusRow}>
+                <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.analyticsFilterStatusText}>
+                  📊 統計範圍：{analyticsMonthLabel}（共 {analyticsSummary.count} 筆記帳）
+                </Text>
+              </View>
+            </View>
+
+            {/* 各成員付款支出比例 */}
             <View style={styles.cardSection}>
-              <Text style={styles.cardSectionTitle}>👨‍👩‍👧 各成員代墊付款比例</Text>
-              <Text style={styles.cardSectionDesc}>清楚掌握誰為家裡付出最多代墊款</Text>
+              <Text style={styles.cardSectionTitle}>👨‍👩‍👧 各成員付款支出比例</Text>
+              <Text style={styles.cardSectionDesc}>掌握每位家庭成員在家庭開銷中的付款金額與佔比</Text>
 
               <View style={styles.memberPayList}>
                 {members.map(member => {
-                  const paid = settlementInfo.paidByMembers[member.id] || 0;
-                  const ratio = settlementInfo.totalExpense > 0 
-                    ? ((paid / settlementInfo.totalExpense) * 100).toFixed(1) 
+                  const paid = analyticsSummary.paidByMembers[member.id] || 0;
+                  const ratio = analyticsSummary.totalExpense > 0 
+                    ? ((paid / analyticsSummary.totalExpense) * 100).toFixed(1) 
                     : '0';
 
                   return (
@@ -1843,34 +2026,41 @@ function MainApp() {
             {/* 分類支出排行 */}
             <View style={styles.cardSection}>
               <Text style={styles.cardSectionTitle}>📊 支出分類排行</Text>
-              {categories
-                .filter(c => c.type === 'expense')
-                .map(cat => {
-                  const catTotal = transactions
-                    .filter(t => {
-                      const c = getCategoryById(t.category_id, t.category);
-                      return (c.id === cat.id || c.name === cat.name) && t.type === 'expense';
-                    })
-                    .reduce((sum, t) => sum + Number(t.amount), 0);
-                  
-                  if (catTotal === 0) return null;
+              {analyticsSummary.totalExpense === 0 ? (
+                <View style={styles.analyticsEmptyBox}>
+                  <Text style={styles.analyticsEmptyEmoji}>🍃</Text>
+                  <Text style={styles.analyticsEmptyText}>本期尚無支出紀錄</Text>
+                </View>
+              ) : (
+                categories
+                  .filter(c => c.type === 'expense')
+                  .map(cat => {
+                    const catTotal = analyticsTransactions
+                      .filter(t => {
+                        const c = getCategoryById(t.category_id, t.category);
+                        return (c.id === cat.id || c.name === cat.name) && t.type === 'expense';
+                      })
+                      .reduce((sum, t) => sum + Number(t.amount), 0);
+                    
+                    if (catTotal === 0) return null;
 
-                  const percentage = settlementInfo.totalExpense > 0
-                    ? Math.round((catTotal / settlementInfo.totalExpense) * 100)
-                    : 0;
+                    const percentage = analyticsSummary.totalExpense > 0
+                      ? Math.round((catTotal / analyticsSummary.totalExpense) * 100)
+                      : 0;
 
-                  return (
-                    <View key={cat.id} style={styles.categoryStatRow}>
-                      <View style={styles.catHeader}>
-                        <Text style={styles.catName}>{getCategoryIcon(cat.icon)} {cat.name}</Text>
-                        <Text style={styles.catAmount}>NT$ {catTotal.toLocaleString()} ({percentage}%)</Text>
+                    return (
+                      <View key={cat.id} style={styles.categoryStatRow}>
+                        <View style={styles.catHeader}>
+                          <Text style={styles.catName}>{getCategoryIcon(cat.icon)} {cat.name}</Text>
+                          <Text style={styles.catAmount}>NT$ {catTotal.toLocaleString()} ({percentage}%)</Text>
+                        </View>
+                        <View style={styles.progressBarBg}>
+                          <View style={[styles.progressBarFill, { width: `${percentage}%`, backgroundColor: cat.color }]} />
+                        </View>
                       </View>
-                      <View style={styles.progressBarBg}>
-                        <View style={[styles.progressBarFill, { width: `${percentage}%`, backgroundColor: cat.color }]} />
-                      </View>
-                    </View>
-                  );
-                })}
+                    );
+                  })
+              )}
             </View>
           </ScrollView>
         )}
@@ -2614,6 +2804,67 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#9CA3AF',
     marginTop: 4,
+  },
+  analyticsFilterBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  analyticsFilterScroll: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+    paddingHorizontal: 2,
+  },
+  analyticsFilterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: '#F1F5F9',
+  },
+  analyticsFilterChipActive: {
+    backgroundColor: '#4F46E5',
+  },
+  analyticsFilterText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  analyticsFilterTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  analyticsFilterStatusRow: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    alignItems: 'center',
+  },
+  analyticsFilterStatusText: {
+    fontSize: 12,
+    color: '#6366F1',
+    fontWeight: '600',
+  },
+  analyticsEmptyBox: {
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  analyticsEmptyEmoji: {
+    fontSize: 32,
+    marginBottom: 6,
+  },
+  analyticsEmptyText: {
+    fontSize: 13,
+    color: '#94A3B8',
+    fontWeight: '500',
   },
   cardSection: {
     backgroundColor: '#FFFFFF',

@@ -250,7 +250,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             </View>
 
             {/* 付款人選擇 */}
-            <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>誰先付款 / 代墊</Text>
+            <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>付款成員</Text>
             <View style={styles.payerRow}>
               {members.map(member => {
                 const isSelected = paidBy === member.id;
