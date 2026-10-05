@@ -351,6 +351,40 @@ function MainApp() {
       });
   }, [analyticsTransactions, analyticsSummary.totalExpense, getCategoryById]);
 
+  // 統計分頁之平均每日支出試算
+  const dailyAverageExpense = useMemo(() => {
+    if (analyticsSummary.totalExpense <= 0) return 0;
+
+    const now = new Date();
+    if (analyticsMonth === currentMonthYm) {
+      const dayOfMonth = Math.max(1, now.getDate());
+      return Math.round(analyticsSummary.totalExpense / dayOfMonth);
+    }
+
+    if (analyticsMonth !== 'all') {
+      const parts = analyticsMonth.split('-');
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10);
+      const daysInMonth = new Date(year, month, 0).getDate();
+      return Math.round(analyticsSummary.totalExpense / (daysInMonth || 30));
+    }
+
+    // 全部歷史累計：若有交易，算首尾天數
+    if (analyticsTransactions.length > 0) {
+      const timestamps = analyticsTransactions
+        .map(t => new Date(t.transacted_at).getTime())
+        .filter(t => !isNaN(t));
+      if (timestamps.length > 0) {
+        const minT = Math.min(...timestamps);
+        const maxT = Math.max(...timestamps);
+        const daySpan = Math.max(1, Math.round((maxT - minT) / (1000 * 60 * 60 * 24)) + 1);
+        return Math.round(analyticsSummary.totalExpense / daySpan);
+      }
+    }
+
+    return Math.round(analyticsSummary.totalExpense / 30);
+  }, [analyticsSummary.totalExpense, analyticsMonth, currentMonthYm, analyticsTransactions]);
+
   // 依據選取的月份與成員進行即時篩選
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
@@ -2053,6 +2087,69 @@ function MainApp() {
               </View>
             </View>
 
+            {/* 統計總覽指標卡 */}
+            <View style={styles.analyticsOverviewCard}>
+              <View style={styles.analyticsOverviewHeader}>
+                <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.analyticsOverviewTitle}>
+                  💳 {analyticsMonthLabel} 收支總覽
+                </Text>
+                <View style={styles.analyticsOverviewBadge}>
+                  <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.analyticsOverviewBadgeText}>
+                    {analyticsSummary.count} 筆紀錄
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.analyticsOverviewGrid}>
+                {/* 總支出 */}
+                <View style={styles.analyticsOverviewItem}>
+                  <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.analyticsOverviewItemLabel}>
+                    💸 總支出
+                  </Text>
+                  <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={[styles.analyticsOverviewItemVal, styles.expenseColor]}>
+                    NT$ {analyticsSummary.totalExpense.toLocaleString()}
+                  </Text>
+                </View>
+
+                {/* 總收入 */}
+                <View style={styles.analyticsOverviewItem}>
+                  <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.analyticsOverviewItemLabel}>
+                    💰 總收入
+                  </Text>
+                  <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={[styles.analyticsOverviewItemVal, styles.incomeColor]}>
+                    NT$ {analyticsSummary.totalIncome.toLocaleString()}
+                  </Text>
+                </View>
+
+                {/* 本期結餘 */}
+                <View style={styles.analyticsOverviewItem}>
+                  <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.analyticsOverviewItemLabel}>
+                    ⚖️ 本期結餘
+                  </Text>
+                  <Text
+                    allowFontScaling={false}
+                    maxFontSizeMultiplier={1.08}
+                    style={[
+                      styles.analyticsOverviewItemVal,
+                      analyticsSummary.netBalance >= 0 ? styles.balancePositive : styles.balanceNegative,
+                    ]}
+                  >
+                    {analyticsSummary.netBalance >= 0 ? '+' : ''}NT$ {analyticsSummary.netBalance.toLocaleString()}
+                  </Text>
+                </View>
+
+                {/* 日均開銷 */}
+                <View style={styles.analyticsOverviewItem}>
+                  <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.analyticsOverviewItemLabel}>
+                    📅 日均支出
+                  </Text>
+                  <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.analyticsOverviewItemVal}>
+                    NT$ {dailyAverageExpense.toLocaleString()}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
             {/* 各成員付款支出比例 */}
             <View style={styles.cardSection}>
               <Text style={styles.cardSectionTitle}>👨‍👩‍👧 各成員付款支出比例</Text>
@@ -2952,6 +3049,78 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#94A3B8',
     fontWeight: '500',
+  },
+  analyticsOverviewCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  analyticsOverviewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  analyticsOverviewTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  analyticsOverviewBadge: {
+    backgroundColor: '#EEF2FF',
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+  },
+  analyticsOverviewBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#4F46E5',
+  },
+  analyticsOverviewGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  analyticsOverviewItem: {
+    width: '48%',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 10,
+  },
+  analyticsOverviewItemLabel: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  analyticsOverviewItemVal: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  expenseColor: {
+    color: '#EF4444',
+  },
+  incomeColor: {
+    color: '#10B981',
+  },
+  balancePositive: {
+    color: '#0284C7',
+  },
+  balanceNegative: {
+    color: '#DC2626',
   },
   cardSection: {
     backgroundColor: '#FFFFFF',
