@@ -127,6 +127,7 @@ function MainApp() {
     currentUser,
     settlementInfo,
     exportToCSV,
+    exportToJSON,
     addMember,
     updateMember,
     deleteMember,
@@ -624,10 +625,74 @@ function MainApp() {
     }
   }, [pendingInviteCode, hasJoinedLedger]);
 
-  const handleExport = () => {
+  const [jsonContent, setJsonContent] = useState('');
+  const [exportTab, setExportTab] = useState<'csv' | 'json'>('csv');
+
+  // Web 端自動觸發檔案下載
+  const downloadWebFile = (filename: string, content: string, mimeType: string) => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      try {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        showAlert('下載成功', `已將備份檔「${filename}」下載至您的裝置！`);
+        return true;
+      } catch (err) {
+        console.warn('下載失敗:', err);
+      }
+    }
+    return false;
+  };
+
+  const handleOpenExportModal = (tab: 'csv' | 'json' = 'csv') => {
     const csv = exportToCSV();
+    const json = exportToJSON();
     setCsvContent(csv);
+    setJsonContent(json);
+    setExportTab(tab);
     setExportModalVisible(true);
+  };
+
+  const handleCopyExportContent = () => {
+    const isCsv = exportTab === 'csv';
+    const text = isCsv ? csvContent : jsonContent;
+    copyToClipboard(
+      text,
+      isCsv
+        ? '✅ CSV 報表內容已複製到剪貼簿！可直接貼上至 Excel 或 Google 試算表。'
+        : '✅ JSON 完整結構備份已複製到剪貼簿！'
+    );
+  };
+
+  const handleDownloadExportFile = () => {
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    if (exportTab === 'csv') {
+      const filename = `甜心記帳本_${currentLedger.name || '家庭公帳'}_${dateStr}.csv`;
+      if (Platform.OS === 'web') {
+        downloadWebFile(filename, csvContent, 'text/csv;charset=utf-8;');
+      } else {
+        copyToClipboard(
+          csvContent,
+          `已為您複製全部 CSV 文字！可直接貼至備忘錄或 LINE 儲存備份。\n建議檔名：${filename}`
+        );
+      }
+    } else {
+      const filename = `甜心記帳本_${currentLedger.name || '家庭公帳'}_完整備份_${dateStr}.json`;
+      if (Platform.OS === 'web') {
+        downloadWebFile(filename, jsonContent, 'application/json;charset=utf-8;');
+      } else {
+        copyToClipboard(
+          jsonContent,
+          `已為您複製全部 JSON 文字！可直接貼至備忘錄或雲端硬碟儲存備份。\n建議檔名：${filename}`
+        );
+      }
+    }
   };
 
   const handleCheckForUpdates = async () => {
@@ -2832,16 +2897,59 @@ function MainApp() {
               </View>
             </View>
 
-            {/* 資料備份與匯出 */}
+            {/* 資料備份與掌控 */}
             <View style={styles.cardSection}>
-              <Text style={styles.cardSectionTitle}>🛡️ 資料備份與掌控</Text>
-              <Text style={styles.cardSectionDesc}>隨時匯出整本帳簿 Excel / CSV 格式，保存至個人硬碟</Text>
+              <View style={styles.sectionHeaderRow}>
+                <View style={styles.sectionHeaderLeft}>
+                  <Text style={styles.cardSectionTitle}>🛡️ 資料備份與掌控</Text>
+                  <Text style={styles.cardSectionDesc}>
+                    隨時匯出整本帳簿，資料自主永久保存在個人設備
+                  </Text>
+                </View>
+                <View style={[styles.roleBadge, isCloudSynced ? styles.roleBadgeOwner : styles.roleBadgeMember]}>
+                  <Text style={[styles.roleBadgeText, isCloudSynced ? styles.roleBadgeTextOwner : styles.roleBadgeTextMember]}>
+                    {isCloudSynced ? '🟢 雲端已同步' : '💾 本機離線模式'}
+                  </Text>
+                </View>
+              </View>
 
-              <TouchableOpacity style={styles.exportBtn} onPress={handleExport}>
-                <Text style={styles.exportBtnText} numberOfLines={1} adjustsFontSizeToFit>
-                  📥 一鍵匯出 CSV / Excel 備份檔
-                </Text>
-              </TouchableOpacity>
+              {/* 帳本狀態小指標 */}
+              <View style={styles.backupStatsRow}>
+                <View style={styles.backupStatItem}>
+                  <Text style={styles.backupStatVal}>{transactions.length}</Text>
+                  <Text style={styles.backupStatLabel}>歷史明細筆數</Text>
+                </View>
+                <View style={styles.backupStatDivider} />
+                <View style={styles.backupStatItem}>
+                  <Text style={styles.backupStatVal}>{members.length}</Text>
+                  <Text style={styles.backupStatLabel}>家庭成員數</Text>
+                </View>
+                <View style={styles.backupStatDivider} />
+                <View style={styles.backupStatItem}>
+                  <Text style={styles.backupStatVal}>{categories.length}</Text>
+                  <Text style={styles.backupStatLabel}>自訂分類數</Text>
+                </View>
+              </View>
+
+              <View style={styles.backupBtnRow}>
+                <TouchableOpacity
+                  style={styles.exportCsvBtn}
+                  onPress={() => handleOpenExportModal('csv')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.exportCsvBtnText}>📊 匯出 CSV 報表 (Excel)</Text>
+                  <Text style={styles.exportBtnSubtext}>內建 UTF-8 BOM 防中文亂碼</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.exportJsonBtn}
+                  onPress={() => handleOpenExportModal('json')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.exportJsonBtnText}>📦 匯出 JSON 結構備份</Text>
+                  <Text style={styles.exportBtnSubtext}>包含成員頭像與自訂分類</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* 系統版本與更新狀態卡片 */}
@@ -2988,15 +3096,76 @@ function MainApp() {
       />
 
       {/* 匯出資料展示彈窗 */}
-      <Modal visible={exportModalVisible} animationType="fade" transparent>
+      <Modal
+        visible={exportModalVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setExportModalVisible(false)}
+      >
         <View style={styles.exportOverlay}>
           <View style={styles.exportCard}>
-            <Text style={styles.exportTitle}>📋 CSV 匯出預覽</Text>
-            <Text style={styles.exportDesc}>此純文字可用微軟 Excel 或 Google 試算表直接開啟：</Text>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.exportTitle}>🛡️ 帳本資料備份與匯出</Text>
+              <TouchableOpacity onPress={() => setExportModalVisible(false)} style={styles.closeBtn}>
+                <Text style={styles.closeText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* 格式切換頁籤 (CSV vs JSON) */}
+            <View style={styles.exportTabRow}>
+              <TouchableOpacity
+                style={[styles.exportTabBtn, exportTab === 'csv' && styles.exportTabBtnActive]}
+                onPress={() => setExportTab('csv')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.exportTabBtnText, exportTab === 'csv' && styles.exportTabBtnTextActive]}>
+                  📊 CSV 報表 (Excel)
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.exportTabBtn, exportTab === 'json' && styles.exportTabBtnActive]}
+                onPress={() => setExportTab('json')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.exportTabBtnText, exportTab === 'json' && styles.exportTabBtnTextActive]}>
+                  📦 JSON 完整結構
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* 說明橫幅 */}
+            <View style={styles.exportTipBox}>
+              <Text style={styles.exportTipText}>
+                {exportTab === 'csv'
+                  ? '💡 格式通用於微軟 Excel、Google 試算表與 Apple Numbers，已注入 UTF-8 BOM 繁體中文防亂碼保護。'
+                  : '💡 包含帳本基本資料、全體成員稱謂頭像、自訂分類顏色及每筆交易明細之高精度結構封包。'}
+              </Text>
+            </View>
+
+            {/* 內容預覽 */}
             <ScrollView style={styles.csvBox}>
-              <Text style={styles.csvText}>{csvContent}</Text>
+              <Text style={styles.csvText} selectable>
+                {exportTab === 'csv' ? csvContent : jsonContent}
+              </Text>
             </ScrollView>
-            <TouchableOpacity style={styles.closeExportBtn} onPress={() => setExportModalVisible(false)}>
+
+            {/* 操作按鈕群 */}
+            <View style={styles.exportActionRow}>
+              <TouchableOpacity style={styles.exportCopyBtn} onPress={handleCopyExportContent} activeOpacity={0.8}>
+                <Text style={styles.exportCopyBtnText}>📋 一鍵複製全部文字</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.exportDownloadBtn} onPress={handleDownloadExportFile} activeOpacity={0.8}>
+                <Text style={styles.exportDownloadBtnText}>
+                  {Platform.OS === 'web'
+                    ? (exportTab === 'csv' ? '💾 下載 .csv 檔案' : '💾 下載 .json 檔案')
+                    : '📤 儲存 / 分享備份'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={styles.closeExportBtn} onPress={() => setExportModalVisible(false)} activeOpacity={0.8}>
               <Text style={styles.closeExportBtnText}>關閉</Text>
             </TouchableOpacity>
           </View>
@@ -3788,18 +3957,85 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  exportBtn: {
+  backupStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  backupStatItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  backupStatVal: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#1E293B',
+  },
+  backupStatLabel: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  backupStatDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: '#CBD5E1',
+  },
+  backupBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  exportCsvBtn: {
+    flex: 1,
     backgroundColor: '#10B981',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    borderRadius: 14,
+    paddingVertical: 11,
+    paddingHorizontal: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  exportBtnText: {
+  exportCsvBtnText: {
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
+  },
+  exportJsonBtn: {
+    flex: 1,
+    backgroundColor: '#4F46E5',
+    borderRadius: 14,
+    paddingVertical: 11,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#4F46E5',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  exportJsonBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  exportBtnSubtext: {
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontSize: 10,
+    marginTop: 2,
+    fontWeight: '500',
   },
   fab: {
     position: 'absolute',
@@ -3881,10 +4117,45 @@ const styles = StyleSheet.create({
     color: '#0F172A',
     marginBottom: 6,
   },
-  exportDesc: {
-    fontSize: 13,
+  exportTabRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  exportTabBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exportTabBtnActive: {
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1.5,
+    borderColor: '#4F46E5',
+  },
+  exportTabBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
     color: '#64748B',
-    marginBottom: 12,
+  },
+  exportTabBtnTextActive: {
+    color: '#4F46E5',
+    fontWeight: '700',
+  },
+  exportTipBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: '#4F46E5',
+  },
+  exportTipText: {
+    fontSize: 11,
+    color: '#475569',
+    lineHeight: 16,
   },
   csvBox: {
     backgroundColor: '#F8FAFC',
@@ -3893,22 +4164,55 @@ const styles = StyleSheet.create({
     maxHeight: 200,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   csvText: {
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     fontSize: 12,
     color: '#334155',
   },
+  exportActionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 10,
+  },
+  exportCopyBtn: {
+    flex: 1,
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1.5,
+    borderColor: '#C7D2FE',
+    borderRadius: 12,
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exportCopyBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#4F46E5',
+  },
+  exportDownloadBtn: {
+    flex: 1,
+    backgroundColor: '#10B981',
+    borderRadius: 12,
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exportDownloadBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
   closeExportBtn: {
-    backgroundColor: '#4F46E5',
+    backgroundColor: '#F1F5F9',
     borderRadius: 10,
-    paddingVertical: 12,
+    paddingVertical: 11,
     alignItems: 'center',
   },
   closeExportBtnText: {
-    color: '#FFFFFF',
-    fontSize: 15,
+    color: '#64748B',
+    fontSize: 14,
     fontWeight: '600',
   },
   sectionHeaderRow: {

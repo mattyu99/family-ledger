@@ -137,6 +137,7 @@ interface LedgerContextType {
   ) => Promise<boolean>;
   deleteTransaction: (id: string) => Promise<void>;
   exportToCSV: () => string;
+  exportToJSON: () => string;
   addMember: (name: string, avatar?: string) => Promise<void>;
   updateMember: (id: string, name: string, avatar: string) => Promise<boolean>;
   deleteMember: (id: string, transferToId?: string) => Promise<boolean | void>;
@@ -2202,17 +2203,56 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  // 匯出為 CSV 格式
+  // 匯出為 CSV 格式 (自帶 UTF-8 BOM，防止 Windows Excel 雙擊開啟出現繁體中文亂碼)
   const exportToCSV = (): string => {
+    const BOM = '\uFEFF';
     const headers = ['日期', '類型', '分類', '金額', '付款人', '備註'];
     const rows = transactions.map(t => {
       const cat = getCategoryById(t.category_id, t.category)?.name || '未分類';
       const payer = getMemberById(t.paid_by)?.display_name || t.payer_profile?.display_name || '家庭成員';
       const typeStr = t.type === 'expense' ? '支出' : '收入';
-      const dateStr = new Date(t.transacted_at).toLocaleDateString('zh-TW');
+      const dateStr = t.transacted_at ? new Date(t.transacted_at).toLocaleDateString('zh-TW') : '';
       return `"${dateStr}","${typeStr}","${cat}",${t.amount},"${payer}","${(t.note || '').replace(/"/g, '""')}"`;
     });
-    return [headers.join(','), ...rows].join('\n');
+    return BOM + [headers.join(','), ...rows].join('\n');
+  };
+
+  // 匯出為完整 JSON 結構備份檔 (包含帳本資訊、家庭成員、自訂分類、所有記帳明細)
+  const exportToJSON = (): string => {
+    const backupData = {
+      app: '甜心記帳本',
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      ledger: {
+        id: currentLedger.id,
+        name: currentLedger.name,
+        invite_code: inviteCode,
+      },
+      members: members.map(m => ({
+        id: m.id,
+        display_name: m.display_name,
+        avatar_url: m.avatar_url,
+        role: m.role,
+      })),
+      categories: categories.map(c => ({
+        id: c.id,
+        name: c.name,
+        icon: c.icon,
+        color: c.color,
+        type: c.type,
+        sort_order: c.sort_order,
+      })),
+      transactions: transactions.map(t => ({
+        id: t.id,
+        amount: t.amount,
+        type: t.type,
+        category_id: t.category_id,
+        paid_by: t.paid_by,
+        transacted_at: t.transacted_at,
+        note: t.note,
+      })),
+    };
+    return JSON.stringify(backupData, null, 2);
   };
 
   // 計算結算與統計資訊
@@ -2749,6 +2789,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updateTransaction,
         deleteTransaction,
         exportToCSV,
+        exportToJSON,
         addMember,
         updateMember,
         deleteMember,
