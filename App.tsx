@@ -17,6 +17,7 @@ import { LedgerProvider, useLedger } from './src/context/LedgerContext';
 import { TransactionItem } from './src/components/TransactionItem';
 import { AddTransactionModal } from './src/components/AddTransactionModal';
 import { EditTransactionModal } from './src/components/EditTransactionModal';
+import { CategoryManageModal } from './src/components/CategoryManageModal';
 import { Transaction, Profile } from './src/types/database';
 import { getCategoryIcon } from './src/lib/icons';
 import * as Updates from 'expo-updates';
@@ -157,6 +158,9 @@ function MainApp() {
   // 應用程式版本與熱更新狀態
   const APP_VERSION = appConfig.expo.version || '1.0.0';
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+
+  // 記帳分類管理狀態
+  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
 
   // 帳本更名狀態
   const [editLedgerModalVisible, setEditLedgerModalVisible] = useState(false);
@@ -1795,6 +1799,45 @@ function MainApp() {
               </TouchableOpacity>
             </View>
 
+            {/* 記帳分類項目管理入口 (僅管理員可增修) */}
+            <View style={styles.cardSection}>
+              <View style={styles.sectionHeaderRow}>
+                <View style={styles.sectionHeaderLeft}>
+                  <Text style={styles.cardSectionTitle} maxFontSizeMultiplier={1.2}>🏷️ 記帳分類項目 ({categories.length})</Text>
+                  <Text style={styles.sectionHeaderDesc} maxFontSizeMultiplier={1.2}>
+                    {isOwner ? '管理員可自訂支出與收入分類項目、圖示及代表顏色' : '查看目前記帳分類項目（僅帳本管理員可新增或修改）'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.manageCategoryBtn}
+                  onPress={() => setCategoryModalVisible(true)}
+                >
+                  <Text style={styles.manageCategoryBtnText} maxFontSizeMultiplier={1.2}>
+                    {isOwner ? '⚙️ 管理分類' : '👀 查看分類'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.categoryPreviewRow}>
+                {categories.slice(0, 10).map(cat => (
+                  <View key={cat.id} style={[styles.categoryPreviewChip, { borderColor: `${cat.color || '#4F46E5'}40` }]}>
+                    <Text style={styles.categoryPreviewIcon}>{getCategoryIcon(cat.icon)}</Text>
+                    <Text style={styles.categoryPreviewText} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+                      {cat.name}
+                    </Text>
+                  </View>
+                ))}
+                {categories.length > 10 && (
+                  <TouchableOpacity
+                    style={styles.categoryMoreChip}
+                    onPress={() => setCategoryModalVisible(true)}
+                  >
+                    <Text style={styles.categoryMoreText} maxFontSizeMultiplier={1.2}>+{categories.length - 10} 更多...</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
             {/* 資料備份與匯出 */}
             <View style={styles.cardSection}>
               <Text style={styles.cardSectionTitle}>🛡️ 資料備份與掌控</Text>
@@ -1913,6 +1956,12 @@ function MainApp() {
         visible={!!editingTransaction}
         transaction={editingTransaction}
         onClose={() => setEditingTransaction(null)}
+      />
+
+      {/* 記帳分類項目管理彈窗 (僅管理員可增修) */}
+      <CategoryManageModal
+        visible={categoryModalVisible}
+        onClose={() => setCategoryModalVisible(false)}
       />
 
       {/* 匯出資料展示彈窗 */}
@@ -3404,5 +3453,55 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#334155',
+  },
+  manageCategoryBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  manageCategoryBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#4F46E5',
+  },
+  categoryPreviewRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 10,
+  },
+  categoryPreviewChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    maxWidth: '48%',
+  },
+  categoryPreviewIcon: {
+    fontSize: 13,
+    marginRight: 4,
+  },
+  categoryPreviewText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#334155',
+  },
+  categoryMoreChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#F1F5F9',
+    justifyContent: 'center',
+  },
+  categoryMoreText: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '600',
   },
 });

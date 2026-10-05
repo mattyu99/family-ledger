@@ -135,9 +135,9 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         <View style={styles.sheet}>
           {/* 頂部把手與標題 */}
           <View style={styles.header}>
-            <Text style={styles.title}>✏️ 編輯記帳明細</Text>
+            <Text style={styles.title} maxFontSizeMultiplier={1.15}>✏️ 編輯記帳明細</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Text style={styles.closeText}>✕</Text>
+              <Text style={styles.closeText} maxFontSizeMultiplier={1.15}>✕</Text>
             </TouchableOpacity>
           </View>
 
@@ -148,7 +148,10 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 style={[styles.typeBtn, type === 'expense' && styles.typeBtnActive]}
                 onPress={() => setType('expense')}
               >
-                <Text style={[styles.typeText, type === 'expense' && styles.typeTextActive]}>
+                <Text
+                  style={[styles.typeText, type === 'expense' && styles.typeTextActive]}
+                  maxFontSizeMultiplier={1.15}
+                >
                   支出
                 </Text>
               </TouchableOpacity>
@@ -156,16 +159,19 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 style={[styles.typeBtn, type === 'income' && styles.typeBtnActiveIncome]}
                 onPress={() => setType('income')}
               >
-                <Text style={[styles.typeText, type === 'income' && styles.typeTextActive]}>
+                <Text
+                  style={[styles.typeText, type === 'income' && styles.typeTextActive]}
+                  maxFontSizeMultiplier={1.15}
+                >
                   收入
                 </Text>
               </TouchableOpacity>
             </View>
 
             {/* 金額輸入 */}
-            <Text style={styles.sectionLabel}>金額 (TWD)</Text>
+            <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>金額 (TWD)</Text>
             <View style={styles.amountContainer}>
-              <Text style={styles.currencySymbol}>$</Text>
+              <Text style={styles.currencySymbol} maxFontSizeMultiplier={1.15}>$</Text>
               <TextInput
                 style={styles.amountInput}
                 placeholder="0"
@@ -174,11 +180,12 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 value={amount}
                 onChangeText={setAmount}
                 autoFocus={false}
+                maxFontSizeMultiplier={1.15}
               />
             </View>
 
             {/* 分類選擇 */}
-            <Text style={styles.sectionLabel}>分類</Text>
+            <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>分類</Text>
             <View style={styles.categoryGrid}>
               {availableCategories.map(cat => {
                 const isSelected = selectedCategoryId === cat.id;
@@ -197,6 +204,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                         styles.categoryChipText,
                         isSelected && { color: cat.color, fontWeight: '700' },
                       ]}
+                      maxFontSizeMultiplier={1.15}
                     >
                       {cat.name}
                     </Text>
@@ -206,7 +214,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             </View>
 
             {/* 付款人選擇 */}
-            <Text style={styles.sectionLabel}>誰先付款 / 代墊</Text>
+            <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>誰先付款 / 代墊</Text>
             <View style={styles.payerRow}>
               {members.map(member => {
                 const isSelected = paidBy === member.id;
@@ -220,7 +228,10 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                     onPress={() => setPaidBy(member.id)}
                   >
                     <Text style={styles.payerAvatar}>{member.avatar_url}</Text>
-                    <Text style={[styles.payerName, isSelected && styles.payerNameActive]}>
+                    <Text
+                      style={[styles.payerName, isSelected && styles.payerNameActive]}
+                      maxFontSizeMultiplier={1.15}
+                    >
                       {member.display_name}
                       {isMe ? ' (我)' : ''}
                     </Text>
@@ -230,22 +241,23 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             </View>
 
             {/* 備註說明 */}
-            <Text style={styles.sectionLabel}>備註說明</Text>
+            <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>備註說明</Text>
             <TextInput
               style={styles.noteInput}
               placeholder="例如：好市多牛肉、加滿油、水電費..."
               placeholderTextColor="#9CA3AF"
               value={note}
               onChangeText={setNote}
+              maxFontSizeMultiplier={1.15}
             />
 
             {/* 操作按鈕群 */}
             <View style={styles.btnRow}>
               <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
-                <Text style={styles.deleteBtnText}>🗑️ 刪除紀錄</Text>
+                <Text style={styles.deleteBtnText} maxFontSizeMultiplier={1.15}>🗑️ 刪除紀錄</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
-                <Text style={styles.submitBtnText}>儲存修改</Text>
+                <Text style={styles.submitBtnText} maxFontSizeMultiplier={1.15}>儲存修改</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -258,17 +270,18 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'flex-end',
+    width: '100%',
   },
   sheet: {
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingTop: 16,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
-    paddingHorizontal: 20,
-    maxHeight: Math.min(SCREEN_HEIGHT * 0.88, 720),
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 14,
+    paddingBottom: Platform.OS === 'ios' ? 32 : 16,
+    paddingHorizontal: 16,
+    maxHeight: Math.min(SCREEN_HEIGHT * 0.9, 740),
     width: '100%',
     maxWidth: 600,
     alignSelf: 'center',
@@ -277,23 +290,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 10,
+    width: '100%',
   },
   title: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: '#111827',
   },
   closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
     backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   closeText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#6B7280',
     fontWeight: '700',
   },
@@ -303,34 +315,34 @@ const styles = StyleSheet.create({
   typeToggle: {
     flexDirection: 'row',
     backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    padding: 4,
-    marginBottom: 20,
+    borderRadius: 10,
+    padding: 3,
+    marginBottom: 10,
   },
   typeBtn: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 7,
     alignItems: 'center',
     borderRadius: 8,
   },
   typeBtnActive: {
     backgroundColor: '#FFFFFF',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowRadius: 2,
+    elevation: 1,
   },
   typeBtnActiveIncome: {
     backgroundColor: '#10B981',
     shadowColor: '#10B981',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 1,
   },
   typeText: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
     color: '#6B7280',
   },
@@ -339,41 +351,42 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   sectionLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: '#6B7280',
-    marginBottom: 8,
-    marginTop: 4,
+    marginBottom: 6,
+    marginTop: 2,
   },
   amountContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F9FAFB',
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginBottom: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    marginBottom: 12,
   },
   currencySymbol: {
-    fontSize: 26,
+    fontSize: 18,
     fontWeight: '700',
     color: '#4F46E5',
-    marginRight: 8,
+    marginRight: 6,
   },
   amountInput: {
     flex: 1,
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '700',
     color: '#111827',
     minWidth: 0,
+    height: 34,
   },
   categoryGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 20,
+    gap: 6,
+    marginBottom: 12,
   },
   categoryChip: {
     flexDirection: 'row',
@@ -381,25 +394,24 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB',
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    marginBottom: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 14,
   },
   categoryChipIcon: {
-    fontSize: 16,
-    marginRight: 6,
+    fontSize: 13,
+    marginRight: 4,
   },
   categoryChipText: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#4B5563',
     fontWeight: '500',
   },
   payerRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 20,
+    gap: 6,
+    marginBottom: 12,
   },
   payerChip: {
     flexDirection: 'row',
@@ -407,20 +419,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB',
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 14,
   },
   payerChipActive: {
     backgroundColor: '#EEF2FF',
     borderColor: '#4F46E5',
   },
   payerAvatar: {
-    fontSize: 16,
-    marginRight: 6,
+    fontSize: 14,
+    marginRight: 4,
   },
   payerName: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#4B5563',
     fontWeight: '500',
   },
@@ -430,28 +442,28 @@ const styles = StyleSheet.create({
   },
   noteInput: {
     backgroundColor: '#F9FAFB',
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    fontSize: 13,
     color: '#111827',
-    marginBottom: 24,
+    marginBottom: 14,
     width: '100%',
-    minWidth: 0,
+    minHeight: 38,
   },
   btnRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
     marginBottom: 10,
   },
   deleteBtn: {
     backgroundColor: '#FEE2E2',
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -459,25 +471,25 @@ const styles = StyleSheet.create({
   },
   deleteBtnText: {
     color: '#DC2626',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
   },
   submitBtn: {
     flex: 1,
     backgroundColor: '#4F46E5',
-    borderRadius: 14,
-    paddingVertical: 14,
+    borderRadius: 12,
+    paddingVertical: 10,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#4F46E5',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   submitBtnText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
   },
 });

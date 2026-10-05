@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Platform, Alert, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Transaction, Category, Ledger, Profile, TransactionType } from '../types/database';
+import { Transaction, Category, Ledger, Profile, TransactionType, CategoryType } from '../types/database';
 import { supabase, isConfigured } from '../lib/supabase';
 import { generateUUID } from '../lib/uuid';
 
@@ -185,6 +185,22 @@ interface LedgerContextType {
   getMemberById: (id?: string) => Profile | undefined;
   memberAliasMap: Record<string, Profile>;
   getCategoryById: (categoryId?: string, txCategory?: Category) => Category;
+  addCategory: (data: {
+    name: string;
+    icon: string;
+    color: string;
+    type: CategoryType;
+  }) => Promise<boolean>;
+  updateCategory: (
+    id: string,
+    data: {
+      name?: string;
+      icon?: string;
+      color?: string;
+      type?: CategoryType;
+    }
+  ) => Promise<boolean>;
+  deleteCategory: (id: string) => Promise<{ success: boolean; error?: string }>;
   refreshLedger: () => Promise<void>;
 }
 
@@ -707,6 +723,32 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
           } catch (err) {
             console.warn('Realtime 依 Profile 刷新成員失敗:', err);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'categories',
+        },
+        async () => {
+          // 當有分類被新增、修改或刪除時，即時重整全體成員的手機分類清單
+          try {
+            const { data: catRows } = await supabase
+              .from('categories')
+              .select('*')
+              .or(`ledger_id.eq.${ledgerId},ledger_id.is.null`)
+              .order('sort_order', { ascending: true });
+
+            if (catRows && catRows.length > 0) {
+              setCategories(catRows);
+              AsyncStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(catRows));
+              AsyncStorage.setItem(`${STORAGE_KEYS.CATEGORIES}_${ledgerId}`, JSON.stringify(catRows));
+            }
+          } catch (err) {
+            console.warn('Realtime 刷新分類失敗:', err);
           }
         }
       )
@@ -2388,6 +2430,152 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return true;
   };
 
+  // 新增記帳分類 (僅管理員權限呼叫)
+  const addCategory = async (data: {
+    name: string;
+    icon: string;
+    color: string;
+    type: CategoryType;
+  }): Promise<boolean> => {
+    try {
+      const trimmedName = data.name.trim();
+      if (!trimmedName) return false;
+
+      const newCatId = generateUUID();
+      const newCat: Category = {
+        id: newCatId,
+        ledger_id: currentLedger.id,
+        name: trimmedName,
+        icon: data.icon.trim() || '📝',
+        color: data.color || '#4F46E5',
+        type: data.type,
+        sort_order: categories.length + 1,
+      };
+
+      const updated = [...categories, newCat];
+      setCategories(updated);
+      await AsyncStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(updated));
+      await AsyncStorage.setItem(`${STORAGE_KEYS.CATEGORIES}_${currentLedger.id}`, JSON.stringify(updated));
+
+      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+        const { error } = await supabase.from('categories').insert({
+          id: newCat.id,
+          ledger_id: currentLedger.id,
+          name: newCat.name,
+          icon: newCat.icon,
+          color: newCat.color,
+          type: newCat.type,
+          sort_order: newCat.sort_order,
+        });
+        if (error) {
+          console.warn('雲端新增分類失敗:', error.message);
+          return false;
+        }
+      }
+      return true;
+    } catch (err) {
+      console.error('新增分類發生異常:', err);
+      return false;
+    }
+  };
+
+  // 修改編輯記帳分類 (僅管理員權限呼叫)
+  const updateCategory = async (
+    id: string,
+    data: {
+      name?: string;
+      icon?: string;
+      color?: string;
+      type?: CategoryType;
+    }
+  ): Promise<boolean> => {
+    try {
+      const updated = categories.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              ...data,
+              name: data.name !== undefined ? data.name.trim() : c.name,
+              icon: data.icon !== undefined ? data.icon.trim() : c.icon,
+            }
+          : c
+      );
+      setCategories(updated);
+      await AsyncStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(updated));
+      await AsyncStorage.setItem(`${STORAGE_KEYS.CATEGORIES}_${currentLedger.id}`, JSON.stringify(updated));
+
+      // 同步更新當前交易中的 category 引用
+      const targetCat = updated.find((c) => c.id === id);
+      if (targetCat) {
+        setTransactions((prev) =>
+          prev.map((t) => (t.category_id === id ? { ...t, category: targetCat } : t))
+        );
+      }
+
+      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+        const updatePayload: any = {};
+        if (data.name !== undefined) updatePayload.name = data.name.trim();
+        if (data.icon !== undefined) updatePayload.icon = data.icon.trim();
+        if (data.color !== undefined) updatePayload.color = data.color;
+        if (data.type !== undefined) updatePayload.type = data.type;
+
+        const { error } = await supabase
+          .from('categories')
+          .update(updatePayload)
+          .eq('id', id);
+        if (error) {
+          console.warn('雲端更新分類失敗:', error.message);
+          return false;
+        }
+      }
+      return true;
+    } catch (err) {
+      console.error('更新分類發生異常:', err);
+      return false;
+    }
+  };
+
+  // 刪除記帳分類 (僅管理員權限呼叫)
+  const deleteCategory = async (id: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const updated = categories.filter((c) => c.id !== id);
+      setCategories(updated);
+      await AsyncStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(updated));
+      await AsyncStorage.setItem(`${STORAGE_KEYS.CATEGORIES}_${currentLedger.id}`, JSON.stringify(updated));
+
+      // 更新現有交易中指向此分類的項目為 fallback 分類
+      setTransactions((prev) =>
+        prev.map((t) =>
+          t.category_id === id
+            ? {
+                ...t,
+                category: {
+                  id,
+                  name: '其他',
+                  icon: '📝',
+                  color: '#6B7280',
+                  type: t.type === 'income' ? 'income' : 'expense',
+                  sort_order: 99,
+                },
+              }
+            : t
+        )
+      );
+
+      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+        const { error } = await supabase.from('categories').delete().eq('id', id);
+        if (error) {
+          console.warn('雲端刪除分類失敗:', error.message);
+          return { success: false, error: error.message };
+        }
+      }
+      return { success: true };
+    } catch (err: any) {
+      console.error('刪除分類發生異常:', err);
+      return { success: false, error: err.message || '刪除分類失敗' };
+    }
+  };
+
   // 將當前裝置綁定至指定家庭成員（長輩防呆專用）
   const bindDeviceToMember = async (member: Profile) => {
     setCurrentUser(member);
@@ -2561,6 +2749,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         getMemberById,
         memberAliasMap,
         getCategoryById,
+        addCategory,
+        updateCategory,
+        deleteCategory,
         refreshLedger,
       }}
     >
