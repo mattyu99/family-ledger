@@ -202,6 +202,13 @@ interface LedgerContextType {
   ) => Promise<boolean>;
   deleteCategory: (id: string) => Promise<{ success: boolean; error?: string }>;
   refreshLedger: () => Promise<void>;
+  previewMember: Profile | null;
+  isPreviewMode: boolean;
+  startMemberPreview: (member: Profile) => void;
+  exitMemberPreview: () => void;
+  realCurrentUser: Profile;
+  realIsOwner: boolean;
+  realUserRole: 'owner' | 'admin' | 'member';
 }
 
 const LedgerContext = createContext<LedgerContextType | null>(null);
@@ -398,8 +405,29 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     [categories]
   );
 
+  // 角色預覽模式（供管理員測試一般成員視角使用）
+  const [previewMember, setPreviewMember] = useState<Profile | null>(null);
+
+  const startMemberPreview = (member: Profile) => {
+    setPreviewMember(member);
+  };
+
+  const exitMemberPreview = () => {
+    setPreviewMember(null);
+  };
+
   // 帳本管理員包含建立者 (owner) 與共同管理員 (admin)
   const isOwner = userRole === 'owner' || userRole === 'admin';
+
+  // 有效身分與權限（若啟動預覽模式，全 App 視角模擬該預覽成員）
+  const effectiveCurrentUser = previewMember || currentUser;
+  const isPreviewMode = !!previewMember;
+  const effectiveUserRole: 'owner' | 'admin' | 'member' = previewMember
+    ? (previewMember.role === 'owner' || previewMember.role === 'admin'
+        ? (previewMember.role as 'owner' | 'admin')
+        : 'member')
+    : userRole;
+  const effectiveIsOwner = effectiveUserRole === 'owner' || effectiveUserRole === 'admin';
   const channelRef = useRef<any>(null);
 
   // 1. 初始化本地快取（Local-First: 先離線秒開，再非同步接雲端）
@@ -1594,11 +1622,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         ? claimedMember.avatar_url
         : (avatar || (isCreator ? '👨' : '👩'));
 
-      await supabase.from('profiles').upsert({
-        id: authUserId,
-        display_name: finalDisplayName,
-        avatar_url: finalAvatar,
-      });
+      if (!isCreator || !claimedMember) {
+        await supabase.from('profiles').upsert({
+          id: authUserId,
+          display_name: finalDisplayName,
+          avatar_url: finalAvatar,
+        });
+      }
 
       const updatedMe: Profile = {
         id: claimedMember ? claimedMember.id : authUserId,
@@ -1988,15 +2018,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const { data: { session } } = await supabase.auth.getSession();
     const authUserId = session?.user?.id;
-    let validCreatorId = authUserId || currentUser.id;
-    if (!isValidUUID(validCreatorId)) {
-      validCreatorId = members.find(m => isValidUUID(m.id))?.id || DEMO_USER_DAD;
-    }
+    let validCreatorId: string =
+      effectiveCurrentUser?.id && isValidUUID(effectiveCurrentUser.id)
+        ? effectiveCurrentUser.id
+        : (authUserId && isValidUUID(authUserId)
+            ? authUserId
+            : (members.find(m => isValidUUID(m.id))?.id || DEMO_USER_DAD));
 
-    let validPaidBy = data.paid_by;
-    if (!isValidUUID(validPaidBy)) {
-      validPaidBy = validCreatorId;
-    }
+    let validPaidBy: string =
+      data.paid_by && isValidUUID(data.paid_by)
+        ? data.paid_by
+        : ((effectiveCurrentUser?.id && isValidUUID(effectiveCurrentUser.id))
+            ? effectiveCurrentUser.id
+            : validCreatorId);
 
     let validLedgerId = currentLedger.id;
     if (!isValidUUID(validLedgerId)) {
@@ -2706,7 +2740,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         members,
         categories,
         transactions,
-        currentUser,
+        currentUser: effectiveCurrentUser,
         setCurrentUser: (u: Profile) => {
           setCurrentUser(u);
           AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(u));
@@ -2727,7 +2761,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         isCloudSynced,
         settlementInfo,
         hasJoinedLedger,
-        isOwner,
+        isOwner: effectiveIsOwner,
+        previewMember,
+        isPreviewMode,
+        startMemberPreview,
+        exitMemberPreview,
+        realCurrentUser: currentUser,
+        realIsOwner: isOwner,
+        realUserRole: userRole,
         inviteCode,
         adminPin,
         updateAdminPin,

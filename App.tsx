@@ -152,6 +152,12 @@ function MainApp() {
     getMemberById,
     getCategoryById,
     refreshLedger,
+    isPreviewMode,
+    previewMember,
+    startMemberPreview,
+    exitMemberPreview,
+    realIsOwner,
+    realCurrentUser,
   } = useLedger();
 
   const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'family'>('transactions');
@@ -581,6 +587,31 @@ function MainApp() {
                   {isSavingEdit ? '正在儲存...' : '💾 儲存修改'}
                 </Text>
               </TouchableOpacity>
+
+              {/* 角色預覽與測試視角：僅管理員且對象非自己時可使用 */}
+              {realIsOwner && !isCurrent && targetMember && (
+                <View style={styles.modalMemberAdminSection}>
+                  <View style={styles.memberSectionDivider} />
+
+                  <Text style={styles.formLabel}>👀 測試與角色體驗</Text>
+                  <Text style={styles.modalSubHint}>
+                    您可以暫時切換為「{targetMember.display_name}」的視角，測試各項功能對一般成員的影響。測試中隨時可在頂部橫幅一鍵切回管理員。
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.modalPreviewBtn}
+                    onPress={() => {
+                      setEditMemberModalVisible(false);
+                      startMemberPreview(targetMember);
+                      showAlert(
+                        '已進入成員預覽模式',
+                        `目前已切換為「${targetMember.display_name}」視角！\n\n・全 App 介面已模擬為一般成員權限\n・記帳時付款人將預設帶入「${targetMember.display_name}」\n・測試完畢後，點擊畫面頂部橫幅「結束預覽」即可瞬間切回管理員。`
+                      );
+                    }}
+                  >
+                    <Text style={styles.modalPreviewBtnText}>👀 以此成員視角預覽 (測試功能)</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
               {/* 共同管理員角色切換與刪除：僅管理員且對象非自己、非建立者時可調整 */}
               {isOwner && !isCurrent && !isCreator && (
@@ -1559,6 +1590,33 @@ function MainApp() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
+
+      {/* 角色預覽模式頂部橫幅 */}
+      {isPreviewMode && previewMember && (
+        <View style={styles.previewModeBanner}>
+          <View style={styles.previewModeBannerLeft}>
+            <Text style={styles.previewModeBannerIcon}>👀</Text>
+            <View style={{ flex: 1, marginRight: 8 }}>
+              <Text style={styles.previewModeBannerTitle} numberOfLines={1}>
+                正在預覽：{previewMember.display_name}
+              </Text>
+              <Text style={styles.previewModeBannerSub} numberOfLines={1}>
+                模擬一般成員視角中・記帳預設以其付款
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.exitPreviewBtn}
+            activeOpacity={0.8}
+            onPress={() => {
+              exitMemberPreview();
+              showAlert('已結束預覽', '已安全切回管理員身分！');
+            }}
+          >
+            <Text style={styles.exitPreviewBtnText}>✕ 結束預覽</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* 頂部導航列 */}
       <View style={styles.topBar}>
@@ -3950,5 +4008,60 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#64748B',
     fontWeight: '600',
+  },
+  previewModeBanner: {
+    backgroundColor: '#FFFBEB',
+    borderBottomWidth: 1.5,
+    borderBottomColor: '#FDE68A',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    zIndex: 999,
+  },
+  previewModeBannerLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  previewModeBannerIcon: {
+    fontSize: 22,
+    marginRight: 10,
+  },
+  previewModeBannerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  previewModeBannerSub: {
+    fontSize: 11,
+    color: '#B45309',
+    marginTop: 1,
+  },
+  exitPreviewBtn: {
+    backgroundColor: '#D97706',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  exitPreviewBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  modalPreviewBtn: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1.5,
+    borderColor: '#FCD34D',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  modalPreviewBtnText: {
+    color: '#92400E',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });
