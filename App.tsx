@@ -1908,7 +1908,7 @@ function MainApp() {
                 <View style={styles.sectionHeaderLeft}>
                   <Text style={styles.cardSectionTitle}>👨‍👩‍👧 家庭成員名單 ({members.length})</Text>
                   <Text style={styles.sectionHeaderDesc}>
-                    每位家人使用自己的手機進入，記帳時預設自動帶入個人身分
+                    點擊成員可開啟設定；記帳時預設自動帶入個人身分
                   </Text>
                 </View>
                 {isOwner && (
@@ -1950,40 +1950,28 @@ function MainApp() {
                         }
                       }}
                     >
-                      {/* 管理員徽章 */}
-                      {isMemberAdmin && (
+                      <Text style={styles.userAvatar}>{member.avatar_url}</Text>
+                      <Text
+                        style={[styles.userTitle, isCurrent && styles.userTitleActive]}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                      >
+                        {member.display_name}
+                      </Text>
+                      {isCreator ? (
                         <View style={styles.memberRoleBadge}>
-                          <Text style={styles.memberRoleBadgeText}>
-                            {isCreator ? '👑 創建者' : '👑 管理員'}
-                          </Text>
+                          <Text style={styles.memberRoleBadgeText}>👑 創建者</Text>
                         </View>
+                      ) : isMemberAdmin ? (
+                        <View style={styles.memberRoleBadge}>
+                          <Text style={styles.memberRoleBadgeText}>👑 管理員</Text>
+                        </View>
+                      ) : null}
+                      {isCurrent && (
+                        <Text style={styles.activeTag}>我</Text>
                       )}
-
-                      <View style={styles.userChipClickable}>
-                        <Text style={styles.userAvatar}>{member.avatar_url}</Text>
-                        <Text
-                          style={[styles.userTitle, isCurrent && styles.userTitleActive]}
-                          numberOfLines={1}
-                          ellipsizeMode="tail"
-                        >
-                          {member.display_name}
-                        </Text>
-                        {isCurrent && (
-                          <Text style={styles.activeTag}>
-                            📱 我 (本機)
-                          </Text>
-                        )}
-                      </View>
-
-                      {/* 點擊進入設定或僅顯示 */}
-                      {canEdit ? (
-                        <View style={styles.memberEditHintBadge}>
-                          <Text style={styles.memberEditHintText}>⚙️ 點擊設定</Text>
-                        </View>
-                      ) : (
-                        <View style={styles.memberReadOnlyBadge}>
-                          <Text style={styles.memberReadOnlyText}>僅供檢視</Text>
-                        </View>
+                      {canEdit && (
+                        <Text style={styles.memberEditHintIcon}>✏️</Text>
                       )}
                     </TouchableOpacity>
                   );
@@ -2750,68 +2738,46 @@ const styles = StyleSheet.create({
   userSwitchRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    gap: 8,
     width: '100%',
   },
   userChip: {
-    width: '48%',
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 6,
-    marginBottom: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 11,
     backgroundColor: '#F8FAFC',
-    borderRadius: 14,
+    borderRadius: 20,
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
-    position: 'relative',
+    maxWidth: '100%',
   },
   userChipActive: {
     backgroundColor: '#EEF2FF',
     borderColor: '#6366F1',
   },
   userChipDisabled: {
-    opacity: 0.85,
-    backgroundColor: '#F8FAFC',
+    opacity: 0.75,
+    backgroundColor: '#F1F5F9',
     borderColor: '#E2E8F0',
   },
-  memberEditHintBadge: {
-    marginTop: 6,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    backgroundColor: '#EEF2FF',
-    borderWidth: 1,
-    borderColor: '#C7D2FE',
-  },
-  memberEditHintText: {
-    fontSize: 11,
-    color: '#4F46E5',
-    fontWeight: '600',
-  },
-  memberReadOnlyBadge: {
-    marginTop: 6,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    backgroundColor: '#F1F5F9',
-  },
-  memberReadOnlyText: {
-    fontSize: 11,
-    color: '#94A3B8',
-    fontWeight: '500',
-  },
   userAvatar: {
-    fontSize: 24,
-    marginBottom: 4,
+    fontSize: 18,
+    marginRight: 6,
   },
   userTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#64748B',
+    color: '#334155',
   },
   userTitleActive: {
     color: '#4F46E5',
     fontWeight: '700',
+  },
+  memberEditHintIcon: {
+    fontSize: 11,
+    marginLeft: 5,
+    opacity: 0.65,
   },
   inviteBox: {
     flexDirection: 'row',
@@ -3000,10 +2966,10 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#4F46E5',
     backgroundColor: '#E0E7FF',
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 4,
-    marginTop: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+    marginLeft: 5,
     fontWeight: '700',
   },
   deleteMemberBtn: {
@@ -3024,16 +2990,13 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   memberRoleBadge: {
-    position: 'absolute',
-    top: 4,
-    left: 6,
     backgroundColor: '#FEF3C7',
     paddingHorizontal: 5,
-    paddingVertical: 1,
+    paddingVertical: 1.5,
     borderRadius: 6,
+    marginLeft: 5,
     borderWidth: 0.5,
     borderColor: '#FDE68A',
-    zIndex: 5,
   },
   memberRoleBadgeText: {
     fontSize: 9,
