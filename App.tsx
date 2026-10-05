@@ -509,58 +509,165 @@ function MainApp() {
     }
   };
 
-  const renderEditMemberModal = () => (
-    <Modal visible={editMemberModalVisible} animationType="fade" transparent>
-      <View style={styles.exportOverlay}>
-        <View style={styles.exportCard}>
-          <View style={styles.modalHeaderRow}>
-            <Text style={styles.exportTitle}>✏️ 編輯成員稱謂與頭像</Text>
-            <TouchableOpacity onPress={() => setEditMemberModalVisible(false)} style={styles.closeBtn}>
-              <Text style={styles.closeText}>✕</Text>
-            </TouchableOpacity>
+  const renderEditMemberModal = () => {
+    if (!editMemberModalVisible || !editingMemberId) return null;
+    const targetMember = members.find(m => m.id === editingMemberId);
+    if (!targetMember) return null;
+
+    const isCurrent =
+      editingMemberId === currentUser.id ||
+      (!!targetMember && !!currentUser.display_name && targetMember.display_name === currentUser.display_name);
+    const isCreator = currentLedger.created_by === targetMember.id;
+    const isMemberAdmin =
+      targetMember.role === 'owner' ||
+      targetMember.role === 'admin' ||
+      currentLedger.created_by === targetMember.id;
+
+    return (
+      <Modal visible={editMemberModalVisible} animationType="fade" transparent onRequestClose={() => setEditMemberModalVisible(false)}>
+        <View style={styles.exportOverlay}>
+          <View style={styles.exportCard}>
+            <View style={styles.modalHeaderRow}>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={styles.exportTitle}>👤 成員資訊與設定</Text>
+                <Text style={styles.formHint}>
+                  {isCurrent
+                    ? '📱 這是您在本機登入的家庭身分'
+                    : isCreator
+                    ? '👑 此成員為帳本原始創建者'
+                    : isMemberAdmin
+                    ? '👑 此成員為共同管理員'
+                    : '此成員為一般家庭成員'}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setEditMemberModalVisible(false)} style={styles.closeBtn}>
+                <Text style={styles.closeText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
+              <Text style={styles.formLabel}>成員暱稱 / 稱謂</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="例如：張三、爸爸、媽媽..."
+                placeholderTextColor="#9CA3AF"
+                value={editingMemberName}
+                onChangeText={setEditingMemberName}
+                autoFocus={false}
+              />
+
+              <Text style={styles.formLabel}>選擇專屬頭像</Text>
+              <View style={styles.avatarGrid}>
+                {AVATAR_OPTIONS.map(avatar => {
+                  const isSelected = editingMemberAvatar === avatar;
+                  return (
+                    <TouchableOpacity
+                      key={avatar}
+                      style={[styles.avatarChip, isSelected && styles.avatarChipActive]}
+                      onPress={() => setEditingMemberAvatar(avatar)}
+                    >
+                      <Text style={styles.avatarEmoji}>{avatar}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <TouchableOpacity
+                style={styles.submitMemberBtn}
+                disabled={isSavingEdit}
+                onPress={handleSaveEditMember}
+              >
+                <Text style={styles.submitMemberBtnText}>
+                  {isSavingEdit ? '正在儲存...' : '💾 儲存修改'}
+                </Text>
+              </TouchableOpacity>
+
+              {/* 共同管理員角色切換與刪除：僅管理員且對象非自己、非建立者時可調整 */}
+              {isOwner && !isCurrent && !isCreator && (
+                <View style={styles.modalMemberAdminSection}>
+                  <View style={styles.memberSectionDivider} />
+
+                  <Text style={styles.formLabel}>管理員權限設定</Text>
+                  <Text style={styles.modalSubHint}>
+                    {isMemberAdmin
+                      ? '該成員目前具備管理員權限，可協助管理帳本、編輯成員與邀請碼。'
+                      : '設為共同管理員後，該成員也可以協助管理帳本與成員。'}
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.modalRoleToggleBtn,
+                      isMemberAdmin ? styles.modalRoleToggleBtnDemote : styles.modalRoleToggleBtnPromote,
+                    ]}
+                    onPress={() => {
+                      if (isMemberAdmin) {
+                        showConfirm(
+                          '取消管理員權限',
+                          `確定要將「${targetMember.display_name}」降為一般成員嗎？`,
+                          async () => {
+                            await updateMemberRole(targetMember.id, 'member');
+                            setEditMemberModalVisible(false);
+                            showAlert('更新成功', `已將「${targetMember.display_name}」降為一般成員。`);
+                          }
+                        );
+                      } else {
+                        showConfirm(
+                          '設為共同管理員',
+                          `確定要將「${targetMember.display_name}」設為這本帳本的共同管理員嗎？\n成為管理員後，該成員也可以刪除成員並管理家庭邀請碼。`,
+                          async () => {
+                            await updateMemberRole(targetMember.id, 'owner');
+                            setEditMemberModalVisible(false);
+                            showAlert('設定成功', `已將「${targetMember.display_name}」設為共同管理員！`);
+                          }
+                        );
+                      }
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.modalRoleToggleBtnText,
+                        isMemberAdmin ? styles.modalRoleToggleBtnTextDemote : styles.modalRoleToggleBtnTextPromote,
+                      ]}
+                    >
+                      {isMemberAdmin ? '⬇️ 降為一般成員' : '👑 設為共同管理員'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* 刪除成員：身為管理員且對象非自己、非建立者、成員數 > 1 */}
+                  {members.length > 1 && (
+                    <View style={{ marginTop: 14 }}>
+                      <Text style={styles.formLabel}>移除家庭成員</Text>
+                      <TouchableOpacity
+                        style={styles.modalDeleteBtn}
+                        onPress={() => {
+                          setEditMemberModalVisible(false);
+                          const paidTxs = transactions.filter(
+                            t => (getMemberById(t.paid_by)?.id || t.paid_by) === targetMember.id
+                          );
+                          const paidTotal = paidTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+                          if (paidTotal > 0) {
+                            setMemberToDelete(targetMember);
+                            setTransferRecipientId(currentUser.id);
+                          } else {
+                            showConfirm(
+                              '刪除成員',
+                              `確定要將「${targetMember.display_name}」從家庭名冊移除嗎？`,
+                              () => deleteMember(targetMember.id)
+                            );
+                          }
+                        }}
+                      >
+                        <Text style={styles.modalDeleteBtnText}>🗑️ 移轉帳目並從家庭移除</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              )}
+            </ScrollView>
           </View>
-
-          <Text style={styles.formHint}>修改後，所有家人的手機與歷史記帳紀錄皆會即時同步更新為新稱謂。</Text>
-
-          <Text style={styles.formLabel}>成員暱稱 / 稱謂</Text>
-          <TextInput
-            style={styles.modalInput}
-            placeholder="例如：張三、爸爸、媽媽..."
-            placeholderTextColor="#9CA3AF"
-            value={editingMemberName}
-            onChangeText={setEditingMemberName}
-            autoFocus={Platform.OS !== 'web'}
-          />
-
-          <Text style={styles.formLabel}>選擇專屬頭像</Text>
-          <View style={styles.avatarGrid}>
-            {AVATAR_OPTIONS.map(avatar => {
-              const isSelected = editingMemberAvatar === avatar;
-              return (
-                <TouchableOpacity
-                  key={avatar}
-                  style={[styles.avatarChip, isSelected && styles.avatarChipActive]}
-                  onPress={() => setEditingMemberAvatar(avatar)}
-                >
-                  <Text style={styles.avatarEmoji}>{avatar}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <TouchableOpacity
-            style={styles.submitMemberBtn}
-            disabled={isSavingEdit}
-            onPress={handleSaveEditMember}
-          >
-            <Text style={styles.submitMemberBtnText}>
-              {isSavingEdit ? '正在儲存...' : '💾 儲存修改'}
-            </Text>
-          </TouchableOpacity>
         </View>
-      </View>
-    </Modal>
-  );
+      </Modal>
+    );
+  };
 
   const renderTransferDeleteModal = () => {
     if (!memberToDelete) return null;
@@ -1739,22 +1846,49 @@ function MainApp() {
 
               <View style={styles.userSwitchRow}>
                 {members.map(member => {
-                  const isCurrent = currentUser.id === member.id || (!!currentUser.display_name && currentUser.display_name === member.display_name);
-                  const isMemberAdmin = member.role === 'owner' || member.role === 'admin' || currentLedger.created_by === member.id;
+                  const isCurrent =
+                    currentUser.id === member.id ||
+                    (!!currentUser.display_name && currentUser.display_name === member.display_name);
+                  const isMemberAdmin =
+                    member.role === 'owner' ||
+                    member.role === 'admin' ||
+                    currentLedger.created_by === member.id;
                   const isCreator = currentLedger.created_by === member.id;
+                  // 管理員可對所有成員點擊；一般成員只能點自己本機成員
+                  const canEdit = isOwner || isCurrent;
 
                   return (
-                    <View key={member.id} style={[styles.userChip, isCurrent && styles.userChipActive]}>
+                    <TouchableOpacity
+                      key={member.id}
+                      style={[
+                        styles.userChip,
+                        isCurrent && styles.userChipActive,
+                        !canEdit && styles.userChipDisabled,
+                      ]}
+                      activeOpacity={canEdit ? 0.7 : 1}
+                      disabled={!canEdit}
+                      onPress={() => {
+                        if (canEdit) {
+                          handleStartEditMember(member);
+                        }
+                      }}
+                    >
                       {/* 管理員徽章 */}
                       {isMemberAdmin && (
                         <View style={styles.memberRoleBadge}>
-                          <Text style={styles.memberRoleBadgeText}>{isCreator ? '👑 創建者' : '👑 管理員'}</Text>
+                          <Text style={styles.memberRoleBadgeText}>
+                            {isCreator ? '👑 創建者' : '👑 管理員'}
+                          </Text>
                         </View>
                       )}
 
                       <View style={styles.userChipClickable}>
                         <Text style={styles.userAvatar}>{member.avatar_url}</Text>
-                        <Text style={[styles.userTitle, isCurrent && styles.userTitleActive]} numberOfLines={1} ellipsizeMode="tail">
+                        <Text
+                          style={[styles.userTitle, isCurrent && styles.userTitleActive]}
+                          numberOfLines={1}
+                          ellipsizeMode="tail"
+                        >
                           {member.display_name}
                         </Text>
                         {isCurrent && (
@@ -1764,69 +1898,17 @@ function MainApp() {
                         )}
                       </View>
 
-                      {/* 編輯稱謂與頭像按鈕：只有本機成員或管理員允許編輯 */}
-                      {(isCurrent || isOwner) && (
-                        <TouchableOpacity
-                          style={styles.editMemberBtn}
-                          onPress={() => handleStartEditMember(member)}
-                        >
-                          <Text style={styles.editMemberBtnText}>✏️ 編輯稱謂</Text>
-                        </TouchableOpacity>
+                      {/* 點擊進入設定或僅顯示 */}
+                      {canEdit ? (
+                        <View style={styles.memberEditHintBadge}>
+                          <Text style={styles.memberEditHintText}>⚙️ 點擊設定</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.memberReadOnlyBadge}>
+                          <Text style={styles.memberReadOnlyText}>僅供檢視</Text>
+                        </View>
                       )}
-
-                      {/* 共同管理員角色切換：身為管理員且對象非自己、非原始建立者時可調整 */}
-                      {isOwner && !isCurrent && !isCreator && (
-                        <TouchableOpacity
-                          style={[styles.roleToggleBtn, isMemberAdmin ? styles.roleToggleBtnDemote : styles.roleToggleBtnPromote]}
-                          onPress={() => {
-                            if (isMemberAdmin) {
-                              showConfirm(
-                                '取消管理員權限',
-                                `確定要將「${member.display_name}」降為一般成員嗎？`,
-                                () => updateMemberRole(member.id, 'member')
-                              );
-                            } else {
-                              showConfirm(
-                                '設為共同管理員',
-                                `確定要將「${member.display_name}」設為這本帳本的共同管理員嗎？\n成為管理員後，該成員也可以刪除成員並管理家庭邀請碼。`,
-                                () => updateMemberRole(member.id, 'owner')
-                              );
-                            }
-                          }}
-                        >
-                          <Text style={[styles.roleToggleBtnText, isMemberAdmin ? styles.roleToggleBtnTextDemote : styles.roleToggleBtnTextPromote]}>
-                            {isMemberAdmin ? '降為成員' : '👑 設為管理員'}
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-
-                      {/* 刪除成員按鈕：僅管理員且非本人、非創建者可刪除 */}
-                      {isOwner && !isCurrent && members.length > 1 && !isCreator && (
-                        <TouchableOpacity
-                          style={styles.deleteMemberBtn}
-                          onPress={() => {
-                            if (!isOwner) {
-                              showAlert('權限不足', '只有帳本管理員才能刪除家庭成員');
-                              return;
-                            }
-                            const paidTxs = transactions.filter(t => (getMemberById(t.paid_by)?.id || t.paid_by) === member.id);
-                            const paidTotal = paidTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
-                            if (paidTotal > 0) {
-                              setMemberToDelete(member);
-                              setTransferRecipientId(currentUser.id);
-                            } else {
-                              showConfirm(
-                                '刪除成員',
-                                `確定要將「${member.display_name}」從家庭名冊移除嗎？`,
-                                () => deleteMember(member.id)
-                              );
-                            }
-                          }}
-                        >
-                          <Text style={styles.deleteMemberText}>✕</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
+                    </TouchableOpacity>
                   );
                 })}
               </View>
@@ -2609,6 +2691,37 @@ const styles = StyleSheet.create({
     backgroundColor: '#EEF2FF',
     borderColor: '#6366F1',
   },
+  userChipDisabled: {
+    opacity: 0.85,
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+  },
+  memberEditHintBadge: {
+    marginTop: 6,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  memberEditHintText: {
+    fontSize: 11,
+    color: '#4F46E5',
+    fontWeight: '600',
+  },
+  memberReadOnlyBadge: {
+    marginTop: 6,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
+  },
+  memberReadOnlyText: {
+    fontSize: 11,
+    color: '#94A3B8',
+    fontWeight: '500',
+  },
   userAvatar: {
     fontSize: 24,
     marginBottom: 4,
@@ -2942,6 +3055,62 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
+  },
+  modalMemberAdminSection: {
+    marginTop: 16,
+  },
+  memberSectionDivider: {
+    height: 1,
+    backgroundColor: '#E2E8F0',
+    marginBottom: 14,
+  },
+  modalSubHint: {
+    fontSize: 12,
+    color: '#64748B',
+    marginBottom: 8,
+    lineHeight: 18,
+  },
+  modalRoleToggleBtn: {
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  modalRoleToggleBtnPromote: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#C7D2FE',
+  },
+  modalRoleToggleBtnDemote: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FDE68A',
+  },
+  modalRoleToggleBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  modalRoleToggleBtnTextPromote: {
+    color: '#4F46E5',
+  },
+  modalRoleToggleBtnTextDemote: {
+    color: '#B45309',
+  },
+  modalDeleteBtn: {
+    backgroundColor: '#FEE2E2',
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    marginTop: 6,
+  },
+  modalDeleteBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#DC2626',
   },
   topBarTitleRow: {
     flexDirection: 'row',
