@@ -236,6 +236,9 @@ function MainApp() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
 
+  // 統計分頁之收支分類排行榜切換 ('expense' | 'income')
+  const [analyticsCategoryType, setAnalyticsCategoryType] = useState<'expense' | 'income'>('expense');
+
   // 統計分頁選定時間之交易紀錄
   const analyticsTransactions = useMemo(() => {
     if (analyticsMonth === 'all') return transactions;
@@ -293,10 +296,14 @@ function MainApp() {
     return found ? found.label : analyticsMonth;
   }, [analyticsMonth, currentMonthYm, lastMonthYm, availableMonths]);
 
-  // 統計分頁之支出分類排行榜 (依金額由高到低降序排列，包含容錯保護)
+  // 統計分頁之分類排行榜 (支援支出與收入切換，依金額由高到低降序排列，包含容錯保護)
   const analyticsCategoryRanking = useMemo(() => {
-    const totalExp = analyticsSummary.totalExpense;
-    if (totalExp === 0) return [];
+    const totalAmount =
+      analyticsCategoryType === 'expense'
+        ? analyticsSummary.totalExpense
+        : analyticsSummary.totalIncome;
+
+    if (totalAmount === 0) return [];
 
     const categoryMap = new Map<string, {
       id: string;
@@ -308,7 +315,7 @@ function MainApp() {
     }>();
 
     analyticsTransactions.forEach(t => {
-      if (t.type === 'expense') {
+      if (t.type === analyticsCategoryType) {
         const amt = Number(t.amount) || 0;
         if (amt <= 0) return;
 
@@ -317,7 +324,7 @@ function MainApp() {
           name: '其他未分類',
           icon: 'tag',
           color: '#94A3B8',
-          type: 'expense' as const,
+          type: analyticsCategoryType,
           sort_order: 999,
         };
 
@@ -331,7 +338,7 @@ function MainApp() {
             id: key,
             name: resolvedCat.name || '其他未分類',
             icon: resolvedCat.icon || 'tag',
-            color: resolvedCat.color || '#6366F1',
+            color: resolvedCat.color || (analyticsCategoryType === 'income' ? '#10B981' : '#6366F1'),
             amount: amt,
             count: 1,
           });
@@ -342,14 +349,14 @@ function MainApp() {
     return Array.from(categoryMap.values())
       .sort((a, b) => b.amount - a.amount)
       .map((item, index) => {
-        const percentage = totalExp > 0 ? Number(((item.amount / totalExp) * 100).toFixed(1)) : 0;
+        const percentage = totalAmount > 0 ? Number(((item.amount / totalAmount) * 100).toFixed(1)) : 0;
         return {
           ...item,
           rank: index + 1,
           percentage,
         };
       });
-  }, [analyticsTransactions, analyticsSummary.totalExpense, getCategoryById]);
+  }, [analyticsTransactions, analyticsCategoryType, analyticsSummary.totalExpense, analyticsSummary.totalIncome, getCategoryById]);
 
   // 統計分頁之平均每日支出試算
   const dailyAverageExpense = useMemo(() => {
@@ -2289,23 +2296,71 @@ function MainApp() {
               </View>
             </View>
 
-            {/* 分類支出排行 */}
+            {/* 分類收支排行 */}
             <View style={styles.cardSection}>
               <View style={styles.sectionHeaderRow}>
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, marginRight: 8 }}>
                   <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.cardSectionTitle}>
-                    📊 支出分類排行 {analyticsCategoryRanking.length > 0 ? `(${analyticsCategoryRanking.length}項)` : ''}
+                    {analyticsCategoryType === 'expense' ? '📊 支出分類排行' : '💰 收入分類排行'}
+                    {analyticsCategoryRanking.length > 0 ? ` (${analyticsCategoryRanking.length}項)` : ''}
                   </Text>
                   <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.cardSectionDesc}>
-                    依開銷金額由高到低自動排序，掌握最大花費去向
+                    {analyticsCategoryType === 'expense'
+                      ? '依開銷金額由高到低自動排序，掌握最大花費去向'
+                      : '依進帳金額由高到低自動排序，掌握家庭資金來源'}
                   </Text>
+                </View>
+
+                {/* 支出 / 收入 切換按鈕 */}
+                <View style={styles.typeToggleContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.typeToggleBtn,
+                      analyticsCategoryType === 'expense' && styles.typeToggleBtnActiveExpense,
+                    ]}
+                    onPress={() => setAnalyticsCategoryType('expense')}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      allowFontScaling={false}
+                      maxFontSizeMultiplier={1.08}
+                      style={[
+                        styles.typeToggleText,
+                        analyticsCategoryType === 'expense' && styles.typeToggleTextActive,
+                      ]}
+                    >
+                      支出
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.typeToggleBtn,
+                      analyticsCategoryType === 'income' && styles.typeToggleBtnActiveIncome,
+                    ]}
+                    onPress={() => setAnalyticsCategoryType('income')}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      allowFontScaling={false}
+                      maxFontSizeMultiplier={1.08}
+                      style={[
+                        styles.typeToggleText,
+                        analyticsCategoryType === 'income' && styles.typeToggleTextActive,
+                      ]}
+                    >
+                      收入
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </View>
 
               {analyticsCategoryRanking.length === 0 ? (
                 <View style={styles.analyticsEmptyBox}>
                   <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.analyticsEmptyEmoji}>🍃</Text>
-                  <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.analyticsEmptyText}>本期尚無支出紀錄</Text>
+                  <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.analyticsEmptyText}>
+                    {analyticsCategoryType === 'expense' ? '本期尚無支出紀錄' : '本期尚無收入紀錄'}
+                  </Text>
                 </View>
               ) : (
                 analyticsCategoryRanking.map(item => {
@@ -2336,9 +2391,23 @@ function MainApp() {
                             ({item.count}筆)
                           </Text>
                         </View>
-                        <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.catAmount}>
+                        <Text
+                          allowFontScaling={false}
+                          maxFontSizeMultiplier={1.08}
+                          style={[
+                            styles.catAmount,
+                            analyticsCategoryType === 'income' && styles.incomeColor,
+                          ]}
+                        >
                           NT$ {item.amount.toLocaleString()}{' '}
-                          <Text style={styles.catPercentage}>({item.percentage}%)</Text>
+                          <Text
+                            style={[
+                              styles.catPercentage,
+                              analyticsCategoryType === 'income' && styles.incomeColor,
+                            ]}
+                          >
+                            ({item.percentage}%)
+                          </Text>
                         </Text>
                       </View>
                       <View style={styles.progressBarBg}>
@@ -2347,7 +2416,9 @@ function MainApp() {
                             styles.progressBarFill,
                             {
                               width: `${Math.min(100, Math.max(3, item.percentage))}%`,
-                              backgroundColor: item.color || '#4F46E5',
+                              backgroundColor:
+                                item.color ||
+                                (analyticsCategoryType === 'income' ? '#10B981' : '#4F46E5'),
                             },
                           ]}
                         />
@@ -3347,6 +3418,34 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#94A3B8',
     marginTop: 2,
+  },
+  typeToggleContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    padding: 3,
+    alignItems: 'center',
+  },
+  typeToggleBtn: {
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 9,
+    backgroundColor: 'transparent',
+  },
+  typeToggleBtnActiveExpense: {
+    backgroundColor: '#EF4444',
+  },
+  typeToggleBtnActiveIncome: {
+    backgroundColor: '#10B981',
+  },
+  typeToggleText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  typeToggleTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   categoryStatRow: {
     marginBottom: 12,
