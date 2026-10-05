@@ -38,6 +38,7 @@ import { AddTransactionModal } from './src/components/AddTransactionModal';
 import { EditTransactionModal } from './src/components/EditTransactionModal';
 import { CategoryManageModal } from './src/components/CategoryManageModal';
 import { TransactionFilterModal } from './src/components/TransactionFilterModal';
+import { MonthPickerModal } from './src/components/MonthPickerModal';
 import { AvatarPicker, ALL_AVATAR_OPTIONS } from './src/components/AvatarPicker';
 import { Transaction, Profile } from './src/types/database';
 import { getCategoryIcon } from './src/lib/icons';
@@ -236,6 +237,9 @@ function MainApp() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
 
+  // 統計分頁任意月份選擇彈窗可見性
+  const [monthPickerVisible, setMonthPickerVisible] = useState(false);
+
   // 統計分頁之收支分類排行榜切換 ('expense' | 'income')
   const [analyticsCategoryType, setAnalyticsCategoryType] = useState<'expense' | 'income'>('expense');
 
@@ -293,7 +297,12 @@ function MainApp() {
       return `上月 (${parts[0]}年${parseInt(parts[1], 10)}月)`;
     }
     const found = availableMonths.find(m => m.ym === analyticsMonth);
-    return found ? found.label : analyticsMonth;
+    if (found) return found.label;
+    if (analyticsMonth && analyticsMonth.includes('-')) {
+      const parts = analyticsMonth.split('-');
+      return `${parts[0]} 年 ${parseInt(parts[1], 10)} 月`;
+    }
+    return analyticsMonth;
   }, [analyticsMonth, currentMonthYm, lastMonthYm, availableMonths]);
 
   // 統計分頁之分類排行榜 (支援支出與收入切換，依金額由高到低降序排列，包含容錯保護)
@@ -2094,6 +2103,26 @@ function MainApp() {
                   </Text>
                 </TouchableOpacity>
 
+                {/* 若選中了特定月份 (且非本月/上月/全部，且不在 availableMonths 中)，顯示選中標籤 */}
+                {analyticsMonth !== currentMonthYm &&
+                  analyticsMonth !== lastMonthYm &&
+                  analyticsMonth !== 'all' &&
+                  !availableMonths.some(m => m.ym === analyticsMonth) && (
+                    <TouchableOpacity
+                      style={[styles.analyticsFilterChip, styles.analyticsFilterChipActive]}
+                      onPress={() => setMonthPickerVisible(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        allowFontScaling={false}
+                        maxFontSizeMultiplier={1.08}
+                        style={[styles.analyticsFilterText, styles.analyticsFilterTextActive]}
+                      >
+                        📅 {analyticsMonthLabel} ✓
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
                 {/* 其他歷史月份 */}
                 {availableMonths
                   .filter(m => m.ym !== currentMonthYm && m.ym !== lastMonthYm)
@@ -2119,14 +2148,39 @@ function MainApp() {
                       </Text>
                     </TouchableOpacity>
                   ))}
+
+                {/* 選擇特定月份按鈕 (任意年份/12個月網格彈窗) */}
+                <TouchableOpacity
+                  style={[
+                    styles.analyticsFilterChip,
+                    styles.analyticsFilterSelectMoreChip,
+                  ]}
+                  onPress={() => setMonthPickerVisible(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    allowFontScaling={false}
+                    maxFontSizeMultiplier={1.08}
+                    style={styles.analyticsFilterSelectMoreText}
+                  >
+                    🔍 選擇特定月份 ▾
+                  </Text>
+                </TouchableOpacity>
               </ScrollView>
 
-              {/* 當前選中期間提示 */}
-              <View style={styles.analyticsFilterStatusRow}>
+              {/* 當前選中期間提示 & 快速切換按鈕 */}
+              <TouchableOpacity
+                style={styles.analyticsFilterStatusRow}
+                onPress={() => setMonthPickerVisible(true)}
+                activeOpacity={0.7}
+              >
                 <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.analyticsFilterStatusText}>
                   📊 統計範圍：{analyticsMonthLabel}（共 {analyticsSummary.count} 筆記帳）
                 </Text>
-              </View>
+                <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.analyticsFilterChangeBtnText}>
+                  切換 ▾
+                </Text>
+              </TouchableOpacity>
             </View>
 
             {/* 統計總覽指標卡 */}
@@ -2841,6 +2895,15 @@ function MainApp() {
         getMemberById={getMemberById}
       />
 
+      {/* 統計分析任意月份選擇彈窗 */}
+      <MonthPickerModal
+        visible={monthPickerVisible}
+        onClose={() => setMonthPickerVisible(false)}
+        selectedMonth={analyticsMonth}
+        onSelectMonth={setAnalyticsMonth}
+        availableMonths={availableMonths}
+      />
+
       {/* 匯出資料展示彈窗 */}
       <Modal visible={exportModalVisible} animationType="fade" transparent>
         <View style={styles.exportOverlay}>
@@ -3212,12 +3275,31 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
   analyticsFilterStatusText: {
     fontSize: 12,
     color: '#6366F1',
     fontWeight: '600',
+    flex: 1,
+  },
+  analyticsFilterChangeBtnText: {
+    fontSize: 12,
+    color: '#4F46E5',
+    fontWeight: '700',
+    marginLeft: 6,
+  },
+  analyticsFilterSelectMoreChip: {
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  analyticsFilterSelectMoreText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#4F46E5',
   },
   analyticsEmptyBox: {
     alignItems: 'center',
