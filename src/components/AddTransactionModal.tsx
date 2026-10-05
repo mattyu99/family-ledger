@@ -1,16 +1,34 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
+  Text as RNText,
   Modal,
   StyleSheet,
-  TextInput,
+  TextInput as RNTextInput,
   TouchableOpacity,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
   Dimensions,
+  TextProps,
+  TextInputProps,
 } from 'react-native';
+
+const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
+  <RNText
+    allowFontScaling={allowFontScaling}
+    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
+    {...rest}
+  />
+);
+
+const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
+  <RNTextInput
+    allowFontScaling={allowFontScaling}
+    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
+    {...rest}
+  />
+);
 import { useLedger } from '../context/LedgerContext';
 import { TransactionType } from '../types/database';
 import { getCategoryIcon } from '../lib/icons';

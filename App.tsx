@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   SafeAreaView,
   View,
-  Text,
+  Text as RNText,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
@@ -10,9 +10,28 @@ import {
   Alert,
   Modal,
   Platform,
-  TextInput,
+  TextInput as RNTextInput,
   RefreshControl,
+  TextProps,
+  TextInputProps,
 } from 'react-native';
+
+// 全域文字防禦包裝：徹底防止 Android 系統無障礙/大字體放大導致全 App 各頁面文字截斷與跑版
+const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
+  <RNText
+    allowFontScaling={allowFontScaling}
+    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
+    {...rest}
+  />
+);
+
+const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
+  <RNTextInput
+    allowFontScaling={allowFontScaling}
+    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
+    {...rest}
+  />
+);
 import { LedgerProvider, useLedger } from './src/context/LedgerContext';
 import { TransactionItem } from './src/components/TransactionItem';
 import { AddTransactionModal } from './src/components/AddTransactionModal';
@@ -1844,15 +1863,19 @@ function MainApp() {
               <Text style={styles.cardSectionDesc}>隨時匯出整本帳簿 Excel / CSV 格式，保存至個人硬碟</Text>
 
               <TouchableOpacity style={styles.exportBtn} onPress={handleExport}>
-                <Text style={styles.exportBtnText}>📥 一鍵匯出 CSV / Excel 備份檔</Text>
+                <Text style={styles.exportBtnText} numberOfLines={1} adjustsFontSizeToFit>
+                  📥 一鍵匯出 CSV / Excel 備份檔
+                </Text>
               </TouchableOpacity>
             </View>
 
             {/* 系統版本與更新狀態卡片 */}
             <View style={styles.cardSection}>
               <View style={styles.versionHeaderRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cardSectionTitle}>📱 應用程式版本資訊</Text>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={styles.cardSectionTitle} numberOfLines={1} adjustsFontSizeToFit>
+                    📱 應用程式版本資訊
+                  </Text>
                   <Text style={styles.cardSectionDesc}>甜心記帳本跨平台系統</Text>
                 </View>
                 <View style={styles.versionTagBadge}>
@@ -1863,7 +1886,7 @@ function MainApp() {
               <View style={styles.versionDetailBox}>
                 <View style={styles.versionDetailRow}>
                   <Text style={styles.versionDetailLabel}>運行環境：</Text>
-                  <Text style={styles.versionDetailValue} numberOfLines={1}>
+                  <Text style={styles.versionDetailValue}>
                     {Platform.OS === 'web'
                       ? '🌐 Web 網頁版'
                       : Platform.OS === 'ios'
@@ -1874,7 +1897,7 @@ function MainApp() {
 
                 <View style={styles.versionDetailRow}>
                   <Text style={styles.versionDetailLabel}>更新機制：</Text>
-                  <Text style={styles.versionDetailValue} numberOfLines={1}>
+                  <Text style={styles.versionDetailValue}>
                     {Platform.OS === 'web'
                       ? '🌐 網頁即時快取'
                       : (Updates.isEnabled ? '⚡ EAS 雲端熱更新' : '📦 獨立安裝版 (APK)')}
@@ -1884,7 +1907,7 @@ function MainApp() {
                 {Platform.OS !== 'web' && !!Updates.updateId && (
                   <View style={styles.versionDetailRow}>
                     <Text style={styles.versionDetailLabel}>更新代碼：</Text>
-                    <Text style={[styles.versionDetailValue, styles.monoText]} numberOfLines={1}>
+                    <Text style={[styles.versionDetailValue, styles.monoText]}>
                       {Updates.updateId.slice(0, 8)}
                     </Text>
                   </View>
@@ -1893,7 +1916,7 @@ function MainApp() {
                 {Platform.OS !== 'web' && !!Updates.createdAt && (
                   <View style={styles.versionDetailRow}>
                     <Text style={styles.versionDetailLabel}>更新時間：</Text>
-                    <Text style={styles.versionDetailValue} numberOfLines={1}>
+                    <Text style={styles.versionDetailValue}>
                       {new Date(Updates.createdAt).toLocaleString('zh-TW', { hour12: false })}
                     </Text>
                   </View>
@@ -1905,7 +1928,7 @@ function MainApp() {
                 onPress={handleCheckForUpdates}
                 disabled={isCheckingUpdate}
               >
-                <Text style={styles.checkUpdateBtnText}>
+                <Text style={styles.checkUpdateBtnText} numberOfLines={1} adjustsFontSizeToFit>
                   {isCheckingUpdate ? '⏳ 正在檢查雲端更新...' : '🔄 檢查並載入最新版本'}
                 </Text>
               </TouchableOpacity>
@@ -2236,7 +2259,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   cardSectionTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: '#0F172A',
   },
@@ -2374,12 +2397,14 @@ const styles = StyleSheet.create({
   exportBtn: {
     backgroundColor: '#10B981',
     borderRadius: 12,
-    paddingVertical: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   exportBtnText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
   },
   fab: {
@@ -3421,13 +3446,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   versionDetailLabel: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#64748B',
     fontWeight: '500',
     flexShrink: 0,
   },
   versionDetailValue: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#1E293B',
     fontWeight: '600',
     flex: 1,
