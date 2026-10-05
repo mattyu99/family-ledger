@@ -385,6 +385,41 @@ function MainApp() {
     return Math.round(analyticsSummary.totalExpense / 30);
   }, [analyticsSummary.totalExpense, analyticsMonth, currentMonthYm, analyticsTransactions]);
 
+  // 統計分頁之各成員付款排行與佔比 (依付款金額由高到低降序排列)
+  const analyticsMemberPaymentRanking = useMemo(() => {
+    const totalExp = analyticsSummary.totalExpense;
+
+    // 給成員分配專屬調和色彩
+    const MEMBER_PALETTE = ['#4F46E5', '#06B6D4', '#EC4899', '#F59E0B', '#10B981', '#8B5CF6', '#3B82F6', '#14B8A6'];
+
+    return members
+      .map((member, idx) => {
+        const paid = analyticsSummary.paidByMembers[member.id] || 0;
+        const ratioNum = totalExp > 0 ? (paid / totalExp) * 100 : 0;
+        const ratio = ratioNum.toFixed(1);
+        const color = MEMBER_PALETTE[idx % MEMBER_PALETTE.length];
+        const isCurrent =
+          currentUser.id === member.id ||
+          (!!currentUser.display_name && currentUser.display_name === member.display_name);
+
+        return {
+          id: member.id,
+          display_name: member.display_name,
+          avatar_url: member.avatar_url,
+          paid,
+          ratioNum,
+          ratio,
+          color,
+          isCurrent,
+        };
+      })
+      .sort((a, b) => b.paid - a.paid)
+      .map((item, index) => ({
+        ...item,
+        rank: index + 1,
+      }));
+  }, [members, analyticsSummary.paidByMembers, analyticsSummary.totalExpense, currentUser]);
+
   // 依據選取的月份與成員進行即時篩選
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
@@ -2152,25 +2187,101 @@ function MainApp() {
 
             {/* 各成員付款支出比例 */}
             <View style={styles.cardSection}>
-              <Text style={styles.cardSectionTitle}>👨‍👩‍👧 各成員付款支出比例</Text>
-              <Text style={styles.cardSectionDesc}>掌握每位家庭成員在家庭開銷中的付款金額與佔比</Text>
+              <View style={styles.sectionHeaderRow}>
+                <View style={{ flex: 1 }}>
+                  <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.cardSectionTitle}>
+                    👨‍👩‍👧 各成員付款支出比例
+                  </Text>
+                  <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.cardSectionDesc}>
+                    依付款金額由高到低排序，掌握家庭開銷的付款貢獻
+                  </Text>
+                </View>
+              </View>
 
               <View style={styles.memberPayList}>
-                {members.map(member => {
-                  const paid = analyticsSummary.paidByMembers[member.id] || 0;
-                  const ratio = analyticsSummary.totalExpense > 0 
-                    ? ((paid / analyticsSummary.totalExpense) * 100).toFixed(1) 
-                    : '0';
+                {analyticsMemberPaymentRanking.map(member => {
+                  const hasPaid = member.paid > 0;
+                  const rankBadge =
+                    member.paid > 0
+                      ? member.rank === 1
+                        ? '🥇'
+                        : member.rank === 2
+                        ? '🥈'
+                        : member.rank === 3
+                        ? '🥉'
+                        : `#${member.rank}`
+                      : '-';
 
                   return (
-                    <View key={member.id} style={styles.memberPayRow}>
-                      <View style={styles.memberInfo}>
-                        <Text style={styles.memberAvatar}>{member.avatar_url}</Text>
-                        <Text style={styles.memberName}>{member.display_name}</Text>
+                    <View
+                      key={member.id}
+                      style={[
+                        styles.memberPayCard,
+                        !hasPaid && styles.memberPayCardZero,
+                      ]}
+                    >
+                      <View style={styles.memberPayTopRow}>
+                        <View style={styles.memberInfo}>
+                          <Text
+                            allowFontScaling={false}
+                            maxFontSizeMultiplier={1.08}
+                            style={[styles.memberRankText, member.rank <= 3 && hasPaid && styles.memberRankTextTop]}
+                          >
+                            {rankBadge}
+                          </Text>
+                          <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.memberAvatar}>
+                            {member.avatar_url || '👤'}
+                          </Text>
+                          <Text
+                            allowFontScaling={false}
+                            maxFontSizeMultiplier={1.08}
+                            style={styles.memberName}
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
+                          >
+                            {member.display_name}
+                          </Text>
+                          {member.isCurrent && (
+                            <View style={styles.meBadge}>
+                              <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.meBadgeText}>
+                                我
+                              </Text>
+                            </View>
+                          )}
+                          {member.rank === 1 && hasPaid && (
+                            <View style={styles.topPayerBadge}>
+                              <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.topPayerBadgeText}>
+                                👑 付款主力
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+
+                        <View style={styles.memberAmountBox}>
+                          <Text
+                            allowFontScaling={false}
+                            maxFontSizeMultiplier={1.08}
+                            style={[styles.memberAmount, !hasPaid && styles.memberAmountZero]}
+                          >
+                            NT$ {member.paid.toLocaleString()}
+                          </Text>
+                          <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.memberRatio}>
+                            {member.ratio}%
+                          </Text>
+                        </View>
                       </View>
-                      <View style={styles.memberAmountBox}>
-                        <Text style={styles.memberAmount}>NT$ {paid.toLocaleString()}</Text>
-                        <Text style={styles.memberRatio}>{ratio}%</Text>
+
+                      {/* 彩色進度比例長條圖 */}
+                      <View style={styles.progressBarBg}>
+                        <View
+                          style={[
+                            styles.progressBarFill,
+                            {
+                              width: `${Math.min(100, Math.max(hasPaid ? 3 : 0, member.ratioNum))}%`,
+                              backgroundColor: hasPaid ? member.color : '#E2E8F0',
+                            },
+                          ]}
+                        />
                       </View>
                     </View>
                   );
@@ -3146,6 +3257,62 @@ const styles = StyleSheet.create({
   },
   memberPayList: {
     gap: 12,
+  },
+  memberPayCard: {
+    backgroundColor: '#F8FAFC',
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  memberPayCardZero: {
+    backgroundColor: '#FAFAFA',
+    borderColor: '#F1F5F9',
+    opacity: 0.75,
+  },
+  memberPayTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  memberRankText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#94A3B8',
+    minWidth: 18,
+    textAlign: 'center',
+    marginRight: 4,
+  },
+  memberRankTextTop: {
+    fontSize: 15,
+  },
+  topPayerBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginLeft: 6,
+  },
+  topPayerBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#B45309',
+  },
+  meBadge: {
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 6,
+    marginLeft: 4,
+  },
+  meBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#4F46E5',
+  },
+  memberAmountZero: {
+    color: '#94A3B8',
   },
   memberPayRow: {
     flexDirection: 'row',
