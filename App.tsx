@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   SafeAreaView,
   View,
@@ -37,6 +37,7 @@ import { TransactionItem } from './src/components/TransactionItem';
 import { AddTransactionModal } from './src/components/AddTransactionModal';
 import { EditTransactionModal } from './src/components/EditTransactionModal';
 import { CategoryManageModal } from './src/components/CategoryManageModal';
+import { TransactionFilterModal } from './src/components/TransactionFilterModal';
 import { Transaction, Profile } from './src/types/database';
 import { getCategoryIcon } from './src/lib/icons';
 import * as Updates from 'expo-updates';
@@ -177,6 +178,104 @@ function MainApp() {
   // 應用程式版本與熱更新狀態
   const APP_VERSION = appConfig.expo.version || '1.0.0';
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+
+  // 收支明細篩選狀態 (月份與成員)
+  const [filterMonth, setFilterMonth] = useState<string>('all');
+  const [filterMemberId, setFilterMemberId] = useState<string>('all');
+  const [filterModalType, setFilterModalType] = useState<'month' | 'member' | null>(null);
+
+  // 提取所有有記帳紀錄的歷史月份
+  const availableMonths = useMemo(() => {
+    const monthMap = new Map<string, number>();
+    const now = new Date();
+    const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    monthMap.set(currentYm, 0);
+
+    transactions.forEach(t => {
+      if (t.transacted_at) {
+        const d = new Date(t.transacted_at);
+        if (!isNaN(d.getTime())) {
+          const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          monthMap.set(ym, (monthMap.get(ym) || 0) + 1);
+        }
+      }
+    });
+
+    return Array.from(monthMap.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([ym, count]) => ({
+        ym,
+        label: `${ym.split('-')[0]} 年 ${parseInt(ym.split('-')[1], 10)} 月`,
+        count,
+      }));
+  }, [transactions]);
+
+  // 依據選取的月份與成員進行即時篩選
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter(t => {
+      // 1. 月份篩選
+      if (filterMonth !== 'all') {
+        if (!t.transacted_at) return false;
+        const d = new Date(t.transacted_at);
+        if (isNaN(d.getTime())) return false;
+        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        if (ym !== filterMonth) return false;
+      }
+
+      // 2. 成員篩選
+      if (filterMemberId !== 'all') {
+        const payer = getMemberById(t.paid_by) || t.payer_profile;
+        const isMatch = (payer && payer.id === filterMemberId) || t.paid_by === filterMemberId;
+        if (!isMatch) return false;
+      }
+
+      return true;
+    });
+  }, [transactions, filterMonth, filterMemberId, getMemberById]);
+
+  const isFiltered = filterMonth !== 'all' || filterMemberId !== 'all';
+
+  // 篩選模式下的收支總計
+  const activeFilterSummary = useMemo(() => {
+    let totalExpense = 0;
+    let totalIncome = 0;
+
+    filteredTransactions.forEach(t => {
+      if (t.type === 'expense') {
+        totalExpense += Number(t.amount);
+      } else if (t.type === 'income') {
+        totalIncome += Number(t.amount);
+      }
+    });
+
+    return {
+      totalExpense,
+      totalIncome,
+      netBalance: totalIncome - totalExpense,
+    };
+  }, [filteredTransactions]);
+
+  const displaySummary = isFiltered ? activeFilterSummary : settlementInfo;
+
+  const selectedMember = members.find(m => m.id === filterMemberId);
+  const selectedMonthObj = availableMonths.find(m => m.ym === filterMonth);
+
+  const summaryCardTitle = useMemo(() => {
+    if (!isFiltered) return '本月家庭總覽';
+    const parts: string[] = [];
+    if (filterMonth !== 'all' && selectedMonthObj) {
+      parts.push(selectedMonthObj.label);
+    }
+    if (filterMemberId !== 'all' && selectedMember) {
+      parts.push(selectedMember.display_name);
+    }
+    return `${parts.join(' ‧ ')} 總覽`;
+  }, [isFiltered, filterMonth, filterMemberId, selectedMonthObj, selectedMember]);
+
+  const resetFilters = () => {
+    setFilterMonth('all');
+    setFilterMemberId('all');
+  };
 
   // 記帳分類管理狀態
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
@@ -1419,8 +1518,10 @@ function MainApp() {
             {/* 本月收支摘要卡片 */}
             <View style={styles.summaryCard}>
               <View style={styles.summaryHeader}>
-                <Text style={styles.summaryTitle} maxFontSizeMultiplier={1.2}>本月家庭總覽</Text>
-                <Text style={styles.currencyLabel} maxFontSizeMultiplier={1.2}>TWD (新台幣)</Text>
+                <Text style={styles.summaryTitle} maxFontSizeMultiplier={1.2}>{summaryCardTitle}</Text>
+                <Text style={styles.currencyLabel} maxFontSizeMultiplier={1.2}>
+                  {isFiltered ? '🔍 已套用篩選' : 'TWD (新台幣)'}
+                </Text>
               </View>
 
               <View style={styles.summaryGrid}>
@@ -1432,7 +1533,7 @@ function MainApp() {
                     numberOfLines={1}
                     adjustsFontSizeToFit
                   >
-                    -NT$ {settlementInfo.totalExpense.toLocaleString()}
+                    -NT$ {displaySummary.totalExpense.toLocaleString()}
                   </Text>
                 </View>
 
@@ -1446,7 +1547,7 @@ function MainApp() {
                     numberOfLines={1}
                     adjustsFontSizeToFit
                   >
-                    +NT$ {settlementInfo.totalIncome.toLocaleString()}
+                    +NT$ {displaySummary.totalIncome.toLocaleString()}
                   </Text>
                 </View>
 
@@ -1460,7 +1561,7 @@ function MainApp() {
                     numberOfLines={1}
                     adjustsFontSizeToFit
                   >
-                    NT$ {settlementInfo.netBalance.toLocaleString()}
+                    NT$ {displaySummary.netBalance.toLocaleString()}
                   </Text>
                 </View>
               </View>
@@ -1468,8 +1569,58 @@ function MainApp() {
 
             {/* 交易列表標題 */}
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>近期收支明細 ({transactions.length})</Text>
+              <Text style={styles.sectionTitle}>
+                近期收支明細 ({filteredTransactions.length}{isFiltered ? ` / ${transactions.length}` : ''})
+              </Text>
               <Text style={styles.sectionSubtitle}>點擊明細可直接修改或刪除 ✍️</Text>
+            </View>
+
+            {/* 篩選工具列 (月份與成員) */}
+            <View style={styles.filterToolbar}>
+              {/* 月份篩選按鈕 */}
+              <TouchableOpacity
+                activeOpacity={0.7}
+                style={[styles.filterChip, filterMonth !== 'all' && styles.filterChipActive]}
+                onPress={() => setFilterModalType('month')}
+              >
+                <Text style={styles.filterChipIcon}>📅</Text>
+                <Text
+                  style={[styles.filterChipText, filterMonth !== 'all' && styles.filterChipTextActive]}
+                  numberOfLines={1}
+                >
+                  {filterMonth === 'all' ? '全部月份' : (selectedMonthObj?.label || filterMonth)}
+                </Text>
+                <Text style={[styles.filterChipArrow, filterMonth !== 'all' && styles.filterChipArrowActive]}>▾</Text>
+              </TouchableOpacity>
+
+              {/* 成員篩選按鈕 */}
+              <TouchableOpacity
+                activeOpacity={0.7}
+                style={[styles.filterChip, filterMemberId !== 'all' && styles.filterChipActive]}
+                onPress={() => setFilterModalType('member')}
+              >
+                <Text style={styles.filterChipIcon}>👤</Text>
+                <Text
+                  style={[styles.filterChipText, filterMemberId !== 'all' && styles.filterChipTextActive]}
+                  numberOfLines={1}
+                >
+                  {filterMemberId === 'all'
+                    ? '全部成員'
+                    : (selectedMember?.display_name || '指定成員')}
+                </Text>
+                <Text style={[styles.filterChipArrow, filterMemberId !== 'all' && styles.filterChipArrowActive]}>▾</Text>
+              </TouchableOpacity>
+
+              {/* 重設篩選按鈕 (若有任一篩選啟動時顯示) */}
+              {isFiltered && (
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  style={styles.filterResetChip}
+                  onPress={resetFilters}
+                >
+                  <Text style={styles.filterResetText}>重設 ✕</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* 交易清單 */}
@@ -1479,8 +1630,17 @@ function MainApp() {
                 <Text style={styles.emptyText}>目前還沒有記帳紀錄</Text>
                 <Text style={styles.emptySubtext}>點擊右下角「+」開始記錄家庭第一筆花費</Text>
               </View>
+            ) : filteredTransactions.length === 0 ? (
+              <View style={styles.emptyBox}>
+                <Text style={styles.emptyIcon}>🔍</Text>
+                <Text style={styles.emptyText}>沒有符合篩選條件的明細</Text>
+                <Text style={styles.emptySubtext}>請嘗試切換其他月份或成員</Text>
+                <TouchableOpacity style={styles.filterEmptyResetBtn} onPress={resetFilters}>
+                  <Text style={styles.filterEmptyResetText}>清除篩選條件</Text>
+                </TouchableOpacity>
+              </View>
             ) : (
-              transactions.map(item => (
+              filteredTransactions.map(item => (
                 <TransactionItem
                   key={item.id}
                   transaction={item}
@@ -1987,6 +2147,22 @@ function MainApp() {
         onClose={() => setCategoryModalVisible(false)}
       />
 
+      {/* 收支明細月份/成員篩選彈窗 */}
+      <TransactionFilterModal
+        visible={!!filterModalType}
+        type={filterModalType}
+        onClose={() => setFilterModalType(null)}
+        selectedMonth={filterMonth}
+        onSelectMonth={setFilterMonth}
+        selectedMemberId={filterMemberId}
+        onSelectMember={setFilterMemberId}
+        availableMonths={availableMonths}
+        members={members}
+        currentUser={currentUser}
+        transactions={transactions}
+        getMemberById={getMemberById}
+      />
+
       {/* 匯出資料展示彈窗 */}
       <Modal visible={exportModalVisible} animationType="fade" transparent>
         <View style={styles.exportOverlay}>
@@ -2229,6 +2405,82 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6366F1',
     fontWeight: '500',
+  },
+  filterToolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+    flexWrap: 'wrap',
+  },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
+    gap: 5,
+  },
+  filterChipActive: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#6366F1',
+  },
+  filterChipIcon: {
+    fontSize: 13,
+  },
+  filterChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  filterChipTextActive: {
+    color: '#4338CA',
+    fontWeight: '700',
+  },
+  filterChipArrow: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginLeft: 2,
+  },
+  filterChipArrowActive: {
+    color: '#6366F1',
+  },
+  filterResetChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  filterResetText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#DC2626',
+  },
+  filterEmptyResetBtn: {
+    marginTop: 12,
+    backgroundColor: '#EEF2FF',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  filterEmptyResetText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#4F46E5',
   },
   emptyBox: {
     alignItems: 'center',
