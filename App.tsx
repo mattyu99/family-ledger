@@ -38,12 +38,13 @@ import { AddTransactionModal } from './src/components/AddTransactionModal';
 import { EditTransactionModal } from './src/components/EditTransactionModal';
 import { CategoryManageModal } from './src/components/CategoryManageModal';
 import { TransactionFilterModal } from './src/components/TransactionFilterModal';
+import { AvatarPicker, ALL_AVATAR_OPTIONS } from './src/components/AvatarPicker';
 import { Transaction, Profile } from './src/types/database';
 import { getCategoryIcon } from './src/lib/icons';
 import * as Updates from 'expo-updates';
 import appConfig from './app.json';
 
-const AVATAR_OPTIONS = ['👨', '👩', '👦', '👧', '👴', '👵', '👶', '👱', '🐶', '🐱'];
+const AVATAR_OPTIONS = ALL_AVATAR_OPTIONS;
 
 // 注入 Web 專用重設樣式，徹底防止手機瀏覽器水平超出或縮放跑版
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -563,20 +564,10 @@ function MainApp() {
               />
 
               <Text style={styles.formLabel}>選擇專屬頭像</Text>
-              <View style={styles.avatarGrid}>
-                {AVATAR_OPTIONS.map(avatar => {
-                  const isSelected = editingMemberAvatar === avatar;
-                  return (
-                    <TouchableOpacity
-                      key={avatar}
-                      style={[styles.avatarChip, isSelected && styles.avatarChipActive]}
-                      onPress={() => setEditingMemberAvatar(avatar)}
-                    >
-                      <Text style={styles.avatarEmoji}>{avatar}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+              <AvatarPicker
+                selectedAvatar={editingMemberAvatar}
+                onSelectAvatar={setEditingMemberAvatar}
+              />
 
               <TouchableOpacity
                 style={styles.submitMemberBtn}
@@ -863,45 +854,37 @@ function MainApp() {
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.formHint}>建立專屬帳本後，您將成為管理員，可隨時分享邀請碼給家人加入。</Text>
+          <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
+            <Text style={styles.formHint}>建立專屬帳本後，您將成為管理員，可隨時分享邀請碼給家人加入。</Text>
 
-          <Text style={styles.formLabel}>公帳名稱</Text>
-          <TextInput
-            style={styles.modalInput}
-            placeholder="例如：幸福家庭公帳、我們這一家"
-            placeholderTextColor="#9CA3AF"
-            value={newLedgerName}
-            onChangeText={setNewLedgerName}
-          />
+            <Text style={styles.formLabel}>公帳名稱</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="例如：幸福家庭公帳、我們這一家"
+              placeholderTextColor="#9CA3AF"
+              value={newLedgerName}
+              onChangeText={setNewLedgerName}
+            />
 
-          <Text style={styles.formLabel}>您的暱稱 / 稱謂</Text>
-          <TextInput
-            style={styles.modalInput}
-            placeholder="例如：爸爸、媽媽、大寶..."
-            placeholderTextColor="#9CA3AF"
-            value={creatorNickname}
-            onChangeText={setCreatorNickname}
-          />
+            <Text style={styles.formLabel}>您的暱稱 / 稱謂</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="例如：爸爸、媽媽、大寶..."
+              placeholderTextColor="#9CA3AF"
+              value={creatorNickname}
+              onChangeText={setCreatorNickname}
+            />
 
-          <Text style={styles.formLabel}>選擇您的頭像</Text>
-          <View style={styles.avatarGrid}>
-            {AVATAR_OPTIONS.map(avatar => {
-              const isSelected = creatorAvatar === avatar;
-              return (
-                <TouchableOpacity
-                  key={avatar}
-                  style={[styles.avatarChip, isSelected && styles.avatarChipActive]}
-                  onPress={() => setCreatorAvatar(avatar)}
-                >
-                  <Text style={styles.avatarEmoji}>{avatar}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+            <Text style={styles.formLabel}>選擇您的頭像</Text>
+            <AvatarPicker
+              selectedAvatar={creatorAvatar}
+              onSelectAvatar={setCreatorAvatar}
+            />
 
-          <TouchableOpacity style={styles.submitMemberBtn} onPress={handleCreateLedger}>
-            <Text style={styles.submitMemberBtnText}>🚀 確認建立並進入帳本</Text>
-          </TouchableOpacity>
+            <TouchableOpacity style={styles.submitMemberBtn} onPress={handleCreateLedger}>
+              <Text style={styles.submitMemberBtnText}>🚀 確認建立並進入帳本</Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -918,7 +901,8 @@ function MainApp() {
             </TouchableOpacity>
           </View>
 
-          {/* 帳本名稱預覽或代碼輸入 */}
+          <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
+            {/* 帳本名稱預覽或代碼輸入 */}
           {previewLedgerName ? (
             <View style={styles.invitePreviewHeader}>
               <View style={styles.invitePreviewIconBox}>
@@ -1114,20 +1098,10 @@ function MainApp() {
               />
 
               <Text style={styles.formLabel}>選擇您的頭像</Text>
-              <View style={styles.avatarGrid}>
-                {AVATAR_OPTIONS.map(avatar => {
-                  const isSelected = joinAvatar === avatar;
-                  return (
-                    <TouchableOpacity
-                      key={avatar}
-                      style={[styles.avatarChip, isSelected && styles.avatarChipActive]}
-                      onPress={() => setJoinAvatar(avatar)}
-                    >
-                      <Text style={styles.avatarEmoji}>{avatar}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+              <AvatarPicker
+                selectedAvatar={joinAvatar}
+                onSelectAvatar={setJoinAvatar}
+              />
 
               <TouchableOpacity
                 style={styles.submitMemberBtn}
@@ -1158,6 +1132,7 @@ function MainApp() {
               </TouchableOpacity>
             </View>
           )}
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -2337,35 +2312,27 @@ function MainApp() {
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.formLabel}>成員暱稱 / 稱謂</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="例如：奶奶、爺爺、姊姊、弟弟..."
-              placeholderTextColor="#9CA3AF"
-              value={newMemberName}
-              onChangeText={setNewMemberName}
-              autoFocus={Platform.OS !== 'web'}
-            />
+            <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
+              <Text style={styles.formLabel}>成員暱稱 / 稱謂</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="例如：奶奶、爺爺、姊姊、弟弟..."
+                placeholderTextColor="#9CA3AF"
+                value={newMemberName}
+                onChangeText={setNewMemberName}
+                autoFocus={Platform.OS !== 'web'}
+              />
 
-            <Text style={styles.formLabel}>選擇專屬頭像</Text>
-            <View style={styles.avatarGrid}>
-              {AVATAR_OPTIONS.map(avatar => {
-                const isSelected = selectedAvatar === avatar;
-                return (
-                  <TouchableOpacity
-                    key={avatar}
-                    style={[styles.avatarChip, isSelected && styles.avatarChipActive]}
-                    onPress={() => setSelectedAvatar(avatar)}
-                  >
-                    <Text style={styles.avatarEmoji}>{avatar}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+              <Text style={styles.formLabel}>選擇專屬頭像</Text>
+              <AvatarPicker
+                selectedAvatar={selectedAvatar}
+                onSelectAvatar={setSelectedAvatar}
+              />
 
-            <TouchableOpacity style={styles.submitMemberBtn} onPress={handleAddMember}>
-              <Text style={styles.submitMemberBtnText}>確認新增成員</Text>
-            </TouchableOpacity>
+              <TouchableOpacity style={styles.submitMemberBtn} onPress={handleAddMember}>
+                <Text style={styles.submitMemberBtnText}>確認新增成員</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
