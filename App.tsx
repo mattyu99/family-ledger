@@ -14,6 +14,7 @@ import {
   RefreshControl,
   TextProps,
   TextInputProps,
+  Share,
 } from 'react-native';
 
 // 全域文字防禦包裝：徹底防止 Android 系統無障礙/大字體放大導致全 App 各頁面文字截斷與跑版
@@ -670,28 +671,48 @@ function MainApp() {
     );
   };
 
-  const handleDownloadExportFile = () => {
+  const handleShareToCloud = async () => {
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    if (exportTab === 'csv') {
-      const filename = `甜心記帳本_${currentLedger.name || '家庭公帳'}_${dateStr}.csv`;
-      if (Platform.OS === 'web') {
-        downloadWebFile(filename, csvContent, 'text/csv;charset=utf-8;');
-      } else {
-        copyToClipboard(
-          csvContent,
-          `已為您複製全部 CSV 文字！可直接貼至備忘錄或 LINE 儲存備份。\n建議檔名：${filename}`
-        );
+    const isCsv = exportTab === 'csv';
+    const filename = isCsv
+      ? `甜心記帳本_${currentLedger.name || '家庭公帳'}_${dateStr}.csv`
+      : `甜心記帳本_${currentLedger.name || '家庭公帳'}_完整備份_${dateStr}.json`;
+    const content = isCsv ? csvContent : jsonContent;
+    const mimeType = isCsv ? 'text/csv;charset=utf-8;' : 'application/json;charset=utf-8;';
+
+    // 1. Web 環境
+    if (Platform.OS === 'web') {
+      // 若為支援 Web Share API 的手機瀏覽器 (如手機 Chrome 或 Safari)
+      if (typeof navigator !== 'undefined' && typeof File !== 'undefined' && (navigator as any).canShare) {
+        try {
+          const file = new File([content], filename, { type: mimeType });
+          if ((navigator as any).canShare({ files: [file] })) {
+            await navigator.share({
+              files: [file],
+              title: filename,
+              text: `甜心記帳本備份檔：${filename}`,
+            });
+            return;
+          }
+        } catch (e: any) {
+          if (e.name === 'AbortError') return;
+        }
       }
-    } else {
-      const filename = `甜心記帳本_${currentLedger.name || '家庭公帳'}_完整備份_${dateStr}.json`;
-      if (Platform.OS === 'web') {
-        downloadWebFile(filename, jsonContent, 'application/json;charset=utf-8;');
-      } else {
-        copyToClipboard(
-          jsonContent,
-          `已為您複製全部 JSON 文字！可直接貼至備忘錄或雲端硬碟儲存備份。\n建議檔名：${filename}`
-        );
-      }
+
+      // 電腦版或不支援 Web Share 的瀏覽器，直接下載檔案至電腦
+      downloadWebFile(filename, content, mimeType);
+      return;
+    }
+
+    // 2. 原生手機 App (Android / iOS) - 直接觸發系統面板存入 Google 雲端硬碟、iCloud 或 LINE
+    try {
+      await Share.share({
+        title: filename,
+        message: content,
+      });
+    } catch (err) {
+      console.warn('原生呼叫分享失敗:', err);
+      copyToClipboard(content, `已將備份內容複製到剪貼簿！可直接貼至 Google 雲端硬碟或備忘錄。`);
     }
   };
 
@@ -3141,6 +3162,11 @@ function MainApp() {
                   ? '💡 格式通用於微軟 Excel、Google 試算表與 Apple Numbers，已注入 UTF-8 BOM 繁體中文防亂碼保護。'
                   : '💡 包含帳本基本資料、全體成員稱謂頭像、自訂分類顏色及每筆交易明細之高精度結構封包。'}
               </Text>
+              {Platform.OS !== 'web' && (
+                <Text style={styles.exportTipSubtext}>
+                  📱 手機端點擊下方「☁️ 存到雲端硬碟 / 分享」，可在系統選單直接點選「Google 雲端硬碟」或「儲存到檔案」即時備份。
+                </Text>
+              )}
             </View>
 
             {/* 內容預覽 */}
@@ -3156,11 +3182,11 @@ function MainApp() {
                 <Text style={styles.exportCopyBtnText}>📋 一鍵複製全部文字</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.exportDownloadBtn} onPress={handleDownloadExportFile} activeOpacity={0.8}>
+              <TouchableOpacity style={styles.exportDownloadBtn} onPress={handleShareToCloud} activeOpacity={0.8}>
                 <Text style={styles.exportDownloadBtnText}>
                   {Platform.OS === 'web'
                     ? (exportTab === 'csv' ? '💾 下載 .csv 檔案' : '💾 下載 .json 檔案')
-                    : '📤 儲存 / 分享備份'}
+                    : '☁️ 存到雲端硬碟 / 分享'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -4156,6 +4182,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#475569',
     lineHeight: 16,
+  },
+  exportTipSubtext: {
+    fontSize: 11,
+    color: '#4F46E5',
+    lineHeight: 16,
+    marginTop: 4,
+    fontWeight: '600',
   },
   csvBox: {
     backgroundColor: '#F8FAFC',
