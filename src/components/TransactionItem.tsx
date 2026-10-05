@@ -17,7 +17,7 @@ interface TransactionItemProps {
   onPress?: (transaction: Transaction) => void;
 }
 
-export const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onPress }) => {
+export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ transaction, onPress }) => {
   const { getMemberById, getCategoryById } = useLedger();
 
   const category = getCategoryById(transaction.category_id, transaction.category);
@@ -88,7 +88,9 @@ export const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, o
       <Text style={styles.cardArrow} maxFontSizeMultiplier={1.1}>›</Text>
     </TouchableOpacity>
   );
-};
+});
+
+TransactionItem.displayName = 'TransactionItem';
 
 const styles = StyleSheet.create({
   card: {

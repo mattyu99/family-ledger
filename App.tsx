@@ -187,10 +187,35 @@ function MainApp() {
   const APP_VERSION = appConfig.expo.version || '1.0.0';
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
 
-  // 收支明細篩選狀態 (月份與成員)
-  const [filterMonth, setFilterMonth] = useState<string>('all');
+  // 當前與上一月份字串
+  const currentMonthYm = useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
+
+  const lastMonthYm = useMemo(() => {
+    const now = new Date();
+    now.setDate(1);
+    now.setMonth(now.getMonth() - 1);
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
+
+  // 收支明細篩選狀態 (方案 C：預設以當前月份為核心視角)
+  const [filterMonth, setFilterMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
   const [filterMemberId, setFilterMemberId] = useState<string>('all');
   const [filterModalType, setFilterModalType] = useState<'month' | 'member' | null>(null);
+
+  // 方案 A：收支明細分批動態載入控制 (預設每批 40 筆，避免一次渲染大量元件導致掉幀)
+  const PAGE_SIZE = 40;
+  const [displayCount, setDisplayCount] = useState<number>(PAGE_SIZE);
+
+  // 篩選條件改變時，自動重設顯示筆數回初始值
+  useEffect(() => {
+    setDisplayCount(PAGE_SIZE);
+  }, [filterMonth, filterMemberId]);
 
   // 提取所有有記帳紀錄的歷史月份
   const availableMonths = useMemo(() => {
@@ -217,19 +242,6 @@ function MainApp() {
         count,
       }));
   }, [transactions]);
-
-  // 當前與上一月份字串
-  const currentMonthYm = useMemo(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  }, []);
-
-  const lastMonthYm = useMemo(() => {
-    const now = new Date();
-    now.setDate(1);
-    now.setMonth(now.getMonth() - 1);
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  }, []);
 
   // 統計分頁之時間篩選狀態 (預設當前月份)
   const [analyticsMonth, setAnalyticsMonth] = useState<string>(() => {
@@ -459,9 +471,15 @@ function MainApp() {
     });
   }, [transactions, filterMonth, filterMemberId, getMemberById]);
 
-  const isFiltered = filterMonth !== 'all' || filterMemberId !== 'all';
+  // 方案 A：依分批上限動態切片明細清單 (避免一次渲染過多元件)
+  const displayedTransactions = useMemo(() => {
+    return filteredTransactions.slice(0, displayCount);
+  }, [filteredTransactions, displayCount]);
 
-  // 篩選模式下的收支總計
+  // 判定是否偏離預設視角（預設視角為：當前月份 + 全部成員）
+  const isFiltered = filterMonth !== currentMonthYm || filterMemberId !== 'all';
+
+  // 當前檢視範圍之收支總計 (完全精確連動當前月份或指定篩選範圍)
   const activeFilterSummary = useMemo(() => {
     let totalExpense = 0;
     let totalIncome = 0;
@@ -481,25 +499,35 @@ function MainApp() {
     };
   }, [filteredTransactions]);
 
-  const displaySummary = isFiltered ? activeFilterSummary : settlementInfo;
+  const displaySummary = activeFilterSummary;
 
   const selectedMember = members.find(m => m.id === filterMemberId);
   const selectedMonthObj = availableMonths.find(m => m.ym === filterMonth);
 
   const summaryCardTitle = useMemo(() => {
-    if (!isFiltered) return '本月家庭總覽';
+    if (filterMonth === currentMonthYm && filterMemberId === 'all') {
+      return '本月家庭總覽';
+    }
+    if (filterMonth === 'all' && filterMemberId === 'all') {
+      return '全部歷史總覽';
+    }
     const parts: string[] = [];
-    if (filterMonth !== 'all' && selectedMonthObj) {
+    if (filterMonth === 'all') {
+      parts.push('全部歷史');
+    } else if (selectedMonthObj) {
       parts.push(selectedMonthObj.label);
+    } else if (filterMonth && filterMonth.includes('-')) {
+      const p = filterMonth.split('-');
+      parts.push(`${p[0]} 年 ${parseInt(p[1], 10)} 月`);
     }
     if (filterMemberId !== 'all' && selectedMember) {
       parts.push(selectedMember.display_name);
     }
     return `${parts.join(' ‧ ')} 總覽`;
-  }, [isFiltered, filterMonth, filterMemberId, selectedMonthObj, selectedMember]);
+  }, [filterMonth, filterMemberId, currentMonthYm, selectedMonthObj, selectedMember]);
 
   const resetFilters = () => {
-    setFilterMonth('all');
+    setFilterMonth(currentMonthYm);
     setFilterMemberId('all');
   };
 
@@ -1892,6 +1920,19 @@ function MainApp() {
                 tintColor="#4F46E5"
               />
             }
+            onScroll={({ nativeEvent }) => {
+              const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+              const paddingToBottom = 160;
+              if (
+                layoutMeasurement.height + contentOffset.y >=
+                contentSize.height - paddingToBottom
+              ) {
+                if (displayCount < filteredTransactions.length) {
+                  setDisplayCount(prev => Math.min(prev + PAGE_SIZE, filteredTransactions.length));
+                }
+              }
+            }}
+            scrollEventThrottle={200}
           >
             {/* 本月收支摘要卡片 */}
             <View style={styles.summaryCard}>
@@ -1948,7 +1989,7 @@ function MainApp() {
             {/* 交易列表標題 */}
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>
-                近期收支明細 ({filteredTransactions.length}{isFiltered ? ` / ${transactions.length}` : ''})
+                近期收支明細 ({displayedTransactions.length < filteredTransactions.length ? `${displayedTransactions.length} / ` : ''}{filteredTransactions.length}{isFiltered ? ` / 總 ${transactions.length}` : ''})
               </Text>
               <Text style={styles.sectionSubtitle}>點擊明細可直接修改或刪除 ✍️</Text>
             </View>
@@ -1958,17 +1999,21 @@ function MainApp() {
               {/* 月份篩選按鈕 */}
               <TouchableOpacity
                 activeOpacity={0.7}
-                style={[styles.filterChip, filterMonth !== 'all' && styles.filterChipActive]}
+                style={[styles.filterChip, filterMonth !== currentMonthYm && styles.filterChipActive]}
                 onPress={() => setFilterModalType('month')}
               >
                 <Text style={styles.filterChipIcon}>📅</Text>
                 <Text
-                  style={[styles.filterChipText, filterMonth !== 'all' && styles.filterChipTextActive]}
+                  style={[styles.filterChipText, filterMonth !== currentMonthYm && styles.filterChipTextActive]}
                   numberOfLines={1}
                 >
-                  {filterMonth === 'all' ? '全部月份' : (selectedMonthObj?.label || filterMonth)}
+                  {filterMonth === 'all'
+                    ? '全部月份'
+                    : filterMonth === currentMonthYm
+                    ? `本月 (${parseInt(currentMonthYm.split('-')[1], 10)}月)`
+                    : (selectedMonthObj?.label || filterMonth)}
                 </Text>
-                <Text style={[styles.filterChipArrow, filterMonth !== 'all' && styles.filterChipArrowActive]}>▾</Text>
+                <Text style={[styles.filterChipArrow, filterMonth !== currentMonthYm && styles.filterChipArrowActive]}>▾</Text>
               </TouchableOpacity>
 
               {/* 成員篩選按鈕 */}
@@ -1989,14 +2034,14 @@ function MainApp() {
                 <Text style={[styles.filterChipArrow, filterMemberId !== 'all' && styles.filterChipArrowActive]}>▾</Text>
               </TouchableOpacity>
 
-              {/* 重設篩選按鈕 (若有任一篩選啟動時顯示) */}
+              {/* 重設篩選按鈕 (若非預設本月狀態時顯示) */}
               {isFiltered && (
                 <TouchableOpacity
                   activeOpacity={0.7}
                   style={styles.filterResetChip}
                   onPress={resetFilters}
                 >
-                  <Text style={styles.filterResetText}>重設 ✕</Text>
+                  <Text style={styles.filterResetText}>回到本月 ↺</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -2014,17 +2059,55 @@ function MainApp() {
                 <Text style={styles.emptyText}>沒有符合篩選條件的明細</Text>
                 <Text style={styles.emptySubtext}>請嘗試切換其他月份或成員</Text>
                 <TouchableOpacity style={styles.filterEmptyResetBtn} onPress={resetFilters}>
-                  <Text style={styles.filterEmptyResetText}>清除篩選條件</Text>
+                  <Text style={styles.filterEmptyResetText}>回到本月</Text>
                 </TouchableOpacity>
               </View>
             ) : (
-              filteredTransactions.map(item => (
-                <TransactionItem
-                  key={item.id}
-                  transaction={item}
-                  onPress={tx => setEditingTransaction(tx)}
-                />
-              ))
+              <>
+                {displayedTransactions.map(item => (
+                  <TransactionItem
+                    key={item.id}
+                    transaction={item}
+                    onPress={tx => setEditingTransaction(tx)}
+                  />
+                ))}
+
+                {/* 方案 A：分批動態載入控制列 */}
+                {filteredTransactions.length > displayCount && (
+                  <View style={styles.loadMoreContainer}>
+                    <TouchableOpacity
+                      style={styles.loadMoreBtn}
+                      onPress={() => setDisplayCount(prev => Math.min(prev + PAGE_SIZE, filteredTransactions.length))}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.loadMoreBtnText}>
+                        載入更多明細 (+{Math.min(PAGE_SIZE, filteredTransactions.length - displayCount)} 筆) ▾
+                      </Text>
+                      <Text style={styles.loadMoreSubtext}>
+                        已顯示 {displayedTransactions.length} / {filteredTransactions.length} 筆
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* 若剩餘超過一頁，提供一鍵展開全部 */}
+                    {filteredTransactions.length - displayCount > PAGE_SIZE && (
+                      <TouchableOpacity
+                        style={styles.loadAllBtn}
+                        onPress={() => setDisplayCount(filteredTransactions.length)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.loadAllBtnText}>直接全部展開 ({filteredTransactions.length} 筆)</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+
+                {/* 全部已載入完畢指示器 */}
+                {filteredTransactions.length > PAGE_SIZE && displayedTransactions.length >= filteredTransactions.length && (
+                  <View style={styles.listEndIndicator}>
+                    <Text style={styles.listEndText}>✨ 已顯示全部 {filteredTransactions.length} 筆明細</Text>
+                  </View>
+                )}
+              </>
             )}
           </ScrollView>
         )}
@@ -3191,16 +3274,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 6,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     borderRadius: 16,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: '#EEF2FF',
     borderWidth: 1,
-    borderColor: '#FECACA',
+    borderColor: '#C7D2FE',
   },
   filterResetText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#DC2626',
+    fontWeight: '700',
+    color: '#4F46E5',
   },
   filterEmptyResetBtn: {
     marginTop: 12,
@@ -3215,6 +3298,58 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#4F46E5',
+  },
+  loadMoreContainer: {
+    marginTop: 12,
+    marginBottom: 8,
+    alignItems: 'center',
+    gap: 8,
+  },
+  loadMoreBtn: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  loadMoreBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#4F46E5',
+  },
+  loadMoreSubtext: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 3,
+    fontWeight: '600',
+  },
+  loadAllBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  loadAllBtnText: {
+    fontSize: 12,
+    color: '#64748B',
+    textDecorationLine: 'underline',
+    fontWeight: '600',
+  },
+  listEndIndicator: {
+    marginTop: 14,
+    marginBottom: 8,
+    alignItems: 'center',
+  },
+  listEndText: {
+    fontSize: 12,
+    color: '#94A3B8',
+    fontWeight: '500',
   },
   emptyBox: {
     alignItems: 'center',
