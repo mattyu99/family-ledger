@@ -256,3 +256,4 @@ const styles = StyleSheet.create({
     color: '#4F46E5',
   },
 });
+

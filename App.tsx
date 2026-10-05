@@ -293,6 +293,64 @@ function MainApp() {
     return found ? found.label : analyticsMonth;
   }, [analyticsMonth, currentMonthYm, lastMonthYm, availableMonths]);
 
+  // 統計分頁之支出分類排行榜 (依金額由高到低降序排列，包含容錯保護)
+  const analyticsCategoryRanking = useMemo(() => {
+    const totalExp = analyticsSummary.totalExpense;
+    if (totalExp === 0) return [];
+
+    const categoryMap = new Map<string, {
+      id: string;
+      name: string;
+      icon: string;
+      color: string;
+      amount: number;
+      count: number;
+    }>();
+
+    analyticsTransactions.forEach(t => {
+      if (t.type === 'expense') {
+        const amt = Number(t.amount) || 0;
+        if (amt <= 0) return;
+
+        const resolvedCat = getCategoryById(t.category_id, t.category) || {
+          id: 'uncategorized',
+          name: '其他未分類',
+          icon: 'tag',
+          color: '#94A3B8',
+          type: 'expense' as const,
+          sort_order: 999,
+        };
+
+        const key = resolvedCat.id || resolvedCat.name || 'uncategorized';
+        const existing = categoryMap.get(key);
+        if (existing) {
+          existing.amount += amt;
+          existing.count += 1;
+        } else {
+          categoryMap.set(key, {
+            id: key,
+            name: resolvedCat.name || '其他未分類',
+            icon: resolvedCat.icon || 'tag',
+            color: resolvedCat.color || '#6366F1',
+            amount: amt,
+            count: 1,
+          });
+        }
+      }
+    });
+
+    return Array.from(categoryMap.values())
+      .sort((a, b) => b.amount - a.amount)
+      .map((item, index) => {
+        const percentage = totalExp > 0 ? Number(((item.amount / totalExp) * 100).toFixed(1)) : 0;
+        return {
+          ...item,
+          rank: index + 1,
+          percentage,
+        };
+      });
+  }, [analyticsTransactions, analyticsSummary.totalExpense, getCategoryById]);
+
   // 依據選取的月份與成員進行即時篩選
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
@@ -2025,41 +2083,70 @@ function MainApp() {
 
             {/* 分類支出排行 */}
             <View style={styles.cardSection}>
-              <Text style={styles.cardSectionTitle}>📊 支出分類排行</Text>
-              {analyticsSummary.totalExpense === 0 ? (
+              <View style={styles.sectionHeaderRow}>
+                <View style={{ flex: 1 }}>
+                  <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.cardSectionTitle}>
+                    📊 支出分類排行 {analyticsCategoryRanking.length > 0 ? `(${analyticsCategoryRanking.length}項)` : ''}
+                  </Text>
+                  <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.cardSectionDesc}>
+                    依開銷金額由高到低自動排序，掌握最大花費去向
+                  </Text>
+                </View>
+              </View>
+
+              {analyticsCategoryRanking.length === 0 ? (
                 <View style={styles.analyticsEmptyBox}>
-                  <Text style={styles.analyticsEmptyEmoji}>🍃</Text>
-                  <Text style={styles.analyticsEmptyText}>本期尚無支出紀錄</Text>
+                  <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.analyticsEmptyEmoji}>🍃</Text>
+                  <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.analyticsEmptyText}>本期尚無支出紀錄</Text>
                 </View>
               ) : (
-                categories
-                  .filter(c => c.type === 'expense')
-                  .map(cat => {
-                    const catTotal = analyticsTransactions
-                      .filter(t => {
-                        const c = getCategoryById(t.category_id, t.category);
-                        return (c.id === cat.id || c.name === cat.name) && t.type === 'expense';
-                      })
-                      .reduce((sum, t) => sum + Number(t.amount), 0);
-                    
-                    if (catTotal === 0) return null;
+                analyticsCategoryRanking.map(item => {
+                  const rankIcon =
+                    item.rank === 1 ? '🥇' : item.rank === 2 ? '🥈' : item.rank === 3 ? '🥉' : `#${item.rank}`;
 
-                    const percentage = analyticsSummary.totalExpense > 0
-                      ? Math.round((catTotal / analyticsSummary.totalExpense) * 100)
-                      : 0;
-
-                    return (
-                      <View key={cat.id} style={styles.categoryStatRow}>
-                        <View style={styles.catHeader}>
-                          <Text style={styles.catName}>{getCategoryIcon(cat.icon)} {cat.name}</Text>
-                          <Text style={styles.catAmount}>NT$ {catTotal.toLocaleString()} ({percentage}%)</Text>
+                  return (
+                    <View key={item.id} style={styles.categoryStatRow}>
+                      <View style={styles.catHeader}>
+                        <View style={styles.catNameRow}>
+                          <Text
+                            allowFontScaling={false}
+                            maxFontSizeMultiplier={1.08}
+                            style={[styles.catRankBadge, item.rank <= 3 && styles.catRankBadgeTop]}
+                          >
+                            {rankIcon}
+                          </Text>
+                          <Text
+                            allowFontScaling={false}
+                            maxFontSizeMultiplier={1.08}
+                            style={styles.catName}
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
+                          >
+                            {getCategoryIcon(item.icon)} {item.name}
+                          </Text>
+                          <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.catCountText}>
+                            ({item.count}筆)
+                          </Text>
                         </View>
-                        <View style={styles.progressBarBg}>
-                          <View style={[styles.progressBarFill, { width: `${percentage}%`, backgroundColor: cat.color }]} />
-                        </View>
+                        <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.catAmount}>
+                          NT$ {item.amount.toLocaleString()}{' '}
+                          <Text style={styles.catPercentage}>({item.percentage}%)</Text>
+                        </Text>
                       </View>
-                    );
-                  })
+                      <View style={styles.progressBarBg}>
+                        <View
+                          style={[
+                            styles.progressBarFill,
+                            {
+                              width: `${Math.min(100, Math.max(3, item.percentage))}%`,
+                              backgroundColor: item.color || '#4F46E5',
+                            },
+                          ]}
+                        />
+                      </View>
+                    </View>
+                  );
+                })
               )}
             </View>
           </ScrollView>
@@ -2938,10 +3025,37 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#334155',
   },
+  catNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    marginRight: 8,
+  },
+  catRankBadge: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#94A3B8',
+    minWidth: 20,
+    textAlign: 'center',
+  },
+  catRankBadgeTop: {
+    fontSize: 15,
+  },
+  catCountText: {
+    fontSize: 11,
+    color: '#94A3B8',
+    fontWeight: '500',
+  },
   catAmount: {
     fontSize: 13,
     fontWeight: '600',
     color: '#64748B',
+  },
+  catPercentage: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#4F46E5',
   },
   progressBarBg: {
     height: 8,
