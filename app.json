@@ -2,7 +2,7 @@
   "expo": {
     "name": "甜心記帳本",
     "slug": "family-ledger",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "runtimeVersion": "1.0.0",
     "updates": {
       "url": "https://u.expo.dev/c85782b1-d64f-4182-a947-5d8363892f4c"

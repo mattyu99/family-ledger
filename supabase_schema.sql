@@ -62,16 +62,16 @@ CREATE TABLE IF NOT EXISTS public.transactions (
     category_id UUID REFERENCES public.categories(id) ON DELETE SET NULL,
     amount NUMERIC(12, 2) NOT NULL,
     type TEXT CHECK (type IN ('expense', 'income', 'transfer')) DEFAULT 'expense' NOT NULL,
-    paid_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL, -- 實際付款人/代墊人
+    paid_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL, -- 實際付款人
     transacted_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     note TEXT,
     image_url TEXT, -- 收據或發票照片網址
-    is_settled BOOLEAN DEFAULT FALSE NOT NULL, -- 針對代墊款是否已結清
+    is_settled BOOLEAN DEFAULT FALSE NOT NULL, -- 款項是否已結清
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 6. 分帳/拆帳明細表 (代墊與分攤)
+-- 6. 分帳/拆帳明細表 (共同分攤)
 CREATE TABLE IF NOT EXISTS public.transaction_splits (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     transaction_id UUID NOT NULL REFERENCES public.transactions(id) ON DELETE CASCADE,
