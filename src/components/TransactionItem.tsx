@@ -83,6 +83,9 @@ export const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, o
           </View>
         </View>
       </View>
+
+      {/* 點擊編輯指示箭頭 */}
+      <Text style={styles.cardArrow} maxFontSizeMultiplier={1.1}>›</Text>
     </TouchableOpacity>
   );
 };
@@ -170,5 +173,13 @@ const styles = StyleSheet.create({
   dateText: {
     fontSize: 12,
     color: '#9CA3AF',
+  },
+  cardArrow: {
+    fontSize: 20,
+    fontWeight: '300',
+    color: '#CBD5E1',
+    marginLeft: 6,
+    marginRight: -2,
+    alignSelf: 'center',
   },
 });

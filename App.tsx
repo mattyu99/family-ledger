@@ -1469,7 +1469,7 @@ function MainApp() {
             {/* 交易列表標題 */}
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>近期收支明細 ({transactions.length})</Text>
-              <Text style={styles.sectionSubtitle}>即時自動同步</Text>
+              <Text style={styles.sectionSubtitle}>點擊明細可直接修改或刪除 ✍️</Text>
             </View>
 
             {/* 交易清單 */}
@@ -2227,7 +2227,8 @@ const styles = StyleSheet.create({
   },
   sectionSubtitle: {
     fontSize: 12,
-    color: '#94A3B8',
+    color: '#6366F1',
+    fontWeight: '500',
   },
   emptyBox: {
     alignItems: 'center',

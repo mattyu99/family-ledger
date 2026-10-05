@@ -54,6 +54,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [paidBy, setPaidBy] = useState<string>('');
   const [note, setNote] = useState<string>('');
+  const [transactedAt, setTransactedAt] = useState<string>('');
 
   const availableCategories = categories.filter(c => c.type === type);
 
@@ -68,8 +69,18 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       const canonicalPayer = getMemberById(transaction.paid_by);
       setPaidBy(canonicalPayer ? canonicalPayer.id : (transaction.paid_by || ''));
       setNote(transaction.note || '');
+      setTransactedAt(transaction.transacted_at || new Date().toISOString());
     }
   }, [visible, transaction, getMemberById, categories, getCategoryById]);
+
+  const origDate = transaction?.transacted_at ? new Date(transaction.transacted_at) : new Date();
+  const origDateFormatted = `${origDate.getMonth() + 1}/${origDate.getDate()}`;
+
+  const curDate = transactedAt ? new Date(transactedAt) : origDate;
+  const isOriginal = Math.abs(curDate.getTime() - origDate.getTime()) < 60000;
+
+  const today = new Date();
+  const isToday = curDate.toDateString() === today.toDateString();
 
   // 切換支出/收入時，若當前分類不符，自動調整至該類型的第一個分類
   useEffect(() => {
@@ -107,6 +118,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         category_id: targetCategory.id,
         paid_by: targetPayer,
         note,
+        transacted_at: transactedAt || transaction.transacted_at,
       });
 
       if (success) {
@@ -153,7 +165,12 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         <View style={styles.sheet}>
           {/* 頂部把手與標題 */}
           <View style={styles.header}>
-            <Text style={styles.title} maxFontSizeMultiplier={1.15}>✏️ 編輯記帳明細</Text>
+            <View>
+              <Text style={styles.title} maxFontSizeMultiplier={1.15}>✏️ 編輯記帳明細</Text>
+              <Text style={styles.headerDateBadge} maxFontSizeMultiplier={1.15}>
+                記帳日期：{curDate.getMonth() + 1}/{curDate.getDate()}
+              </Text>
+            </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <Text style={styles.closeText} maxFontSizeMultiplier={1.15}>✕</Text>
             </TouchableOpacity>
@@ -258,6 +275,34 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               })}
             </View>
 
+            {/* 記帳日期調整 */}
+            <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記帳日期</Text>
+            <View style={styles.dateRow}>
+              <TouchableOpacity
+                style={[styles.dateChip, isOriginal && styles.dateChipActive]}
+                onPress={() => setTransactedAt(transaction.transacted_at)}
+              >
+                <Text
+                  style={[styles.dateChipText, isOriginal && styles.dateChipTextActive]}
+                  maxFontSizeMultiplier={1.15}
+                >
+                  📅 原日期 ({origDateFormatted})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.dateChip, isToday && !isOriginal && styles.dateChipActive]}
+                onPress={() => setTransactedAt(new Date().toISOString())}
+              >
+                <Text
+                  style={[styles.dateChipText, isToday && !isOriginal && styles.dateChipTextActive]}
+                  maxFontSizeMultiplier={1.15}
+                >
+                  今天 ({today.getMonth() + 1}/{today.getDate()})
+                </Text>
+              </TouchableOpacity>
+            </View>
+
             {/* 備註說明 */}
             <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>備註說明</Text>
             <TextInput
@@ -315,6 +360,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#111827',
+  },
+  headerDateBadge: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+    fontWeight: '500',
   },
   closeBtn: {
     paddingHorizontal: 6,
@@ -455,6 +506,32 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   payerNameActive: {
+    color: '#4F46E5',
+    fontWeight: '700',
+  },
+  dateRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  dateChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  dateChipActive: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#6366F1',
+  },
+  dateChipText: {
+    fontSize: 12,
+    color: '#4B5563',
+    fontWeight: '500',
+  },
+  dateChipTextActive: {
     color: '#4F46E5',
     fontWeight: '700',
   },
