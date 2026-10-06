@@ -88,13 +88,22 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 }) => {
   const { categories, members, currentUser, updateTransaction, deleteTransaction, getMemberById, getCategoryById, recentMerchants } = useLedger();
 
-  const [type, setType] = useState<TransactionType>('expense');
-  const [amount, setAmount] = useState<string>('');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
-  const [paidBy, setPaidBy] = useState<string>('');
-  const [merchant, setMerchant] = useState<string>('');
-  const [note, setNote] = useState<string>('');
-  const [transactedAt, setTransactedAt] = useState<string>('');
+  const [type, setType] = useState<TransactionType>(() => transaction?.type || 'expense');
+  const [amount, setAmount] = useState<string>(() => (transaction?.amount ? String(transaction.amount) : ''));
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>(() => {
+    if (!transaction) return '';
+    const cat = getCategoryById(transaction.category_id, transaction.category);
+    const match = categories.find(c => c.id === transaction.category_id || (cat && (c.id === cat.id || c.name === cat.name)));
+    return match?.id || transaction.category_id || cat?.id || '';
+  });
+  const [paidBy, setPaidBy] = useState<string>(() => {
+    if (!transaction) return '';
+    const canonicalPayer = getMemberById(transaction.paid_by);
+    return canonicalPayer ? canonicalPayer.id : (transaction.paid_by || '');
+  });
+  const [merchant, setMerchant] = useState<string>(() => transaction?.merchant || '');
+  const [note, setNote] = useState<string>(() => transaction?.note || '');
+  const [transactedAt, setTransactedAt] = useState<string>(() => transaction?.transacted_at || new Date().toISOString());
   const [datePickerVisible, setDatePickerVisible] = useState<boolean>(false);
 
   const availableCategories = categories.filter(c => c.type === type);
@@ -118,8 +127,9 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       setType(transaction.type);
       setAmount(transaction.amount ? String(transaction.amount) : '');
       const cat = getCategoryById(transaction.category_id, transaction.category);
-      const match = categories.find(c => c.id === cat.id || c.name === cat.name) || categories[0];
-      setSelectedCategoryId(match?.id || transaction.category_id || '');
+      const match = categories.find(c => c.id === transaction.category_id || (cat && (c.id === cat.id || c.name === cat.name)));
+      const targetCatId = match?.id || transaction.category_id || cat?.id || '';
+      setSelectedCategoryId(targetCatId);
       const canonicalPayer = getMemberById(transaction.paid_by);
       setPaidBy(canonicalPayer ? canonicalPayer.id : (transaction.paid_by || ''));
       setMerchant(transaction.merchant || '');
@@ -128,6 +138,15 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       setDatePickerVisible(false);
     }
   }, [visible, transaction, getMemberById, categories, getCategoryById]);
+
+  // 切換支出/收入時，若當前分類不屬於新類型，才調整為新類型的第一個分類
+  const handleTypeChange = (newType: TransactionType) => {
+    setType(newType);
+    const activeCats = categories.filter(c => c.type === newType);
+    if (!activeCats.some(c => c.id === selectedCategoryId)) {
+      if (activeCats[0]) setSelectedCategoryId(activeCats[0].id);
+    }
+  };
 
   const today = React.useMemo(() => new Date(), []);
   const yesterday = React.useMemo(() => {
@@ -169,16 +188,6 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     d.setHours(orig.getHours(), orig.getMinutes(), orig.getSeconds(), orig.getMilliseconds());
     setTransactedAt(d.toISOString());
   };
-
-  // 切換支出/收入時，若當前分類不符，自動調整至該類型的第一個分類
-  useEffect(() => {
-    if (visible) {
-      const activeCats = categories.filter(c => c.type === type);
-      if (activeCats.length > 0 && !activeCats.some(c => c.id === selectedCategoryId)) {
-        setSelectedCategoryId(activeCats[0].id);
-      }
-    }
-  }, [type, visible, categories, selectedCategoryId]);
 
   const handleSubmit = async () => {
     if (!transaction) return;
@@ -270,7 +279,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             <View style={styles.typeToggle}>
               <TouchableOpacity
                 style={[styles.typeBtn, type === 'expense' && styles.typeBtnActive]}
-                onPress={() => setType('expense')}
+                onPress={() => handleTypeChange('expense')}
               >
                 <Text
                   style={[styles.typeText, type === 'expense' && styles.typeTextActive]}
@@ -281,7 +290,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.typeBtn, type === 'income' && styles.typeBtnActiveIncome]}
-                onPress={() => setType('income')}
+                onPress={() => handleTypeChange('income')}
               >
                 <Text
                   style={[styles.typeText, type === 'income' && styles.typeTextActive]}

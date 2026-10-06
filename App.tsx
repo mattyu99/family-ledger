@@ -3394,6 +3394,7 @@ function MainApp() {
 
       {/* 編輯記帳明細彈窗 */}
       <EditTransactionModal
+        key={editingTransaction?.id || 'edit-tx-modal'}
         visible={!!editingTransaction}
         transaction={editingTransaction}
         onClose={() => setEditingTransaction(null)}
