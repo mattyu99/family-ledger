@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS public.transactions (
     amount NUMERIC(12, 2) NOT NULL,
     type TEXT CHECK (type IN ('expense', 'income', 'transfer')) DEFAULT 'expense' NOT NULL,
     paid_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL, -- 實際付款人
+    merchant TEXT, -- 店家 / 付款對象 (選填)
     transacted_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     note TEXT,
     image_url TEXT, -- 收據或發票照片網址
@@ -70,6 +71,9 @@ CREATE TABLE IF NOT EXISTS public.transactions (
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- 為 transactions 表新增 merchant 欄位（店家/付款對象）
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS merchant TEXT;
 
 -- 6. 分帳/拆帳明細表 (共同分攤)
 CREATE TABLE IF NOT EXISTS public.transaction_splits (

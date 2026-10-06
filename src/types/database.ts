@@ -59,6 +59,7 @@ export interface Transaction {
   type: TransactionType;
   paid_by: string;
   transacted_at: string;
+  merchant?: string; // 店家 / 付款對象 (例如：全聯、好市多、中油...)
   note?: string;
   image_url?: string;
   is_settled: boolean;

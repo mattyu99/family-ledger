@@ -41,14 +41,23 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
       {/* 項目與細節 */}
       <View style={styles.infoBox}>
         <View style={styles.topRow}>
-          <Text
-            style={styles.categoryName}
-            numberOfLines={1}
-            ellipsizeMode="tail"
-            maxFontSizeMultiplier={1.2}
-          >
-            {category?.name || '其他'}
-          </Text>
+          <View style={styles.categoryTitleGroup}>
+            <Text
+              style={styles.categoryName}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              maxFontSizeMultiplier={1.2}
+            >
+              {category?.name || '其他'}
+            </Text>
+            {!!transaction.merchant && (
+              <View style={styles.merchantBadge}>
+                <Text style={styles.merchantBadgeText} numberOfLines={1} maxFontSizeMultiplier={1.08}>
+                  {transaction.merchant}
+                </Text>
+              </View>
+            )}
+          </View>
           <Text
             style={[styles.amountText, isExpense ? styles.expenseColor : styles.incomeColor]}
             maxFontSizeMultiplier={1.2}
@@ -128,11 +137,31 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     gap: 8,
   },
+  categoryTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 1,
+  },
   categoryName: {
     fontSize: 15,
     fontWeight: '600',
     color: '#1F2937',
     flexShrink: 1,
+  },
+  merchantBadge: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+    borderWidth: 0.5,
+    borderColor: '#E2E8F0',
+    maxWidth: 100,
+  },
+  merchantBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#475569',
   },
   amountText: {
     fontSize: 16,

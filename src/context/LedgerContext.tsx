@@ -131,6 +131,7 @@ interface LedgerContextType {
     type: TransactionType;
     category_id: string;
     paid_by: string;
+    merchant?: string;
     note?: string;
     transacted_at?: string;
     splitWithIds?: string[];
@@ -142,11 +143,14 @@ interface LedgerContextType {
       type?: TransactionType;
       category_id?: string;
       paid_by?: string;
+      merchant?: string;
       note?: string;
       transacted_at?: string;
     }
   ) => Promise<boolean>;
   deleteTransaction: (id: string) => Promise<void>;
+  recentMerchants: string[];
+  recordMerchant: (merchant: string) => Promise<void>;
   exportToCSV: () => string;
   exportToJSON: () => string;
   lastBackupAt: string | null;
@@ -316,7 +320,22 @@ const STORAGE_KEYS = {
   DELETED_TX_IDS: '@family_ledger_deleted_tx_ids',
   LAST_BACKUP_AT: '@family_ledger_last_backup_at',
   AUTO_BACKUP_CONFIG: '@family_ledger_auto_backup_config',
+  RECENT_MERCHANTS: '@family_ledger_recent_merchants',
 };
+
+// 預設常用店家快捷建議清單（涵蓋台灣家庭最普遍的日常採買店家）
+export const DEFAULT_POPULAR_MERCHANTS = [
+  '全聯',
+  '好市多',
+  '7-11',
+  '全家',
+  '家樂福',
+  '中油',
+  '蝦皮',
+  '大潤發',
+  '美而美',
+  '50嵐',
+];
 
 // 已知雲端資料庫分類 UUID 映射表（確保本機離線或 cold start 時舊交易分類 100% 完整解析）
 export const KNOWN_CATEGORY_UUIDS: Record<string, Partial<Category>> = {
@@ -387,6 +406,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       );
     } catch {}
   };
+
+  // 智慧店家 / 對象自學習名單與雲端欄位探測
+  const [recentMerchants, setRecentMerchants] = useState<string[]>(DEFAULT_POPULAR_MERCHANTS);
+  const hasMerchantColumnRef = useRef<boolean>(false);
+
+  const recordMerchant = React.useCallback(async (m: string) => {
+    const clean = (m || '').trim();
+    if (!clean) return;
+    setRecentMerchants((prev) => {
+      const filtered = prev.filter(item => item.toLowerCase() !== clean.toLowerCase());
+      const updated = [clean, ...filtered].slice(0, 50);
+      AsyncStorage.setItem(STORAGE_KEYS.RECENT_MERCHANTS, JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
+  }, []);
 
   // 透過 ID 取得標準成員資料（自動穿透多裝置 UUID、別名表、歷史示範常數）
   const getMemberById = React.useCallback(
@@ -529,8 +563,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     }
                   : null) ||
                 t.category;
+              let parsedMerchant = t.merchant;
+              let parsedNote = t.note;
+              if (!parsedMerchant && t.note) {
+                const match = t.note.match(/^\[(.*?)\]\s*(.*)$/);
+                if (match) {
+                  parsedMerchant = match[1];
+                  parsedNote = match[2];
+                }
+              }
               return {
                 ...t,
+                merchant: parsedMerchant || undefined,
+                note: parsedNote || '',
                 category: matchedCat || t.category,
               };
             });
@@ -604,6 +649,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             if ([7, 14, 30].includes(parsed.intervalDays)) setAutoBackupInterval(parsed.intervalDays);
           } catch {}
         }
+
+        const savedRecentMerchants = await AsyncStorage.getItem(STORAGE_KEYS.RECENT_MERCHANTS);
+        if (savedRecentMerchants) {
+          try {
+            const parsed = JSON.parse(savedRecentMerchants);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setRecentMerchants(parsed);
+            }
+          } catch {}
+        }
       } catch (err) {
         console.warn('載入本地記帳快取失敗:', err);
       }
@@ -630,11 +685,25 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         (payload) => {
           const newRow = payload.new as any;
           if (!newRow) return;
+          let parsedMerchant = newRow.merchant;
+          let parsedNote = newRow.note;
+          if (!parsedMerchant && newRow.note) {
+            const match = newRow.note.match(/^\[(.*?)\]\s*(.*)$/);
+            if (match) {
+              parsedMerchant = match[1];
+              parsedNote = match[2];
+            }
+          }
+          if (parsedMerchant) {
+            recordMerchant(parsedMerchant);
+          }
           setTransactions((prev) => {
             if (prev.some((t) => t.id === newRow.id)) return prev;
             const canonicalPayer = getMemberById(newRow.paid_by);
             const item: Transaction = {
               ...newRow,
+              merchant: parsedMerchant || undefined,
+              note: parsedNote || '',
               amount: Number(newRow.amount),
               payer_profile: canonicalPayer || newRow.payer_profile,
             };
@@ -654,6 +723,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const cat = getCategoryById(newRow.category_id);
             const isIncome = newRow.type === 'income';
             const amountStr = Number(newRow.amount).toLocaleString();
+            const displayDetail = [parsedMerchant ? `[${parsedMerchant}]` : '', parsedNote || ''].filter(Boolean).join(' ');
 
             setLiveToast({
               id: `insert-${newRow.id}-${Date.now()}`,
@@ -661,7 +731,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               actorName,
               avatar: actorAvatar,
               title: `🎉 ${actorName} 剛記了一筆！`,
-              message: `${cat.icon} ${cat.name} ${isIncome ? '+' : '-'}NT$ ${amountStr}${newRow.note ? ` (${newRow.note})` : ''}`,
+              message: `${cat.icon} ${cat.name} ${isIncome ? '+' : '-'}NT$ ${amountStr}${displayDetail ? ` (${displayDetail})` : ''}`,
               amount: Number(newRow.amount),
               createdAt: Date.now(),
             });
@@ -679,12 +749,26 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         (payload) => {
           const updatedRow = payload.new as any;
           if (!updatedRow) return;
+          let parsedMerchant = updatedRow.merchant;
+          let parsedNote = updatedRow.note;
+          if (!parsedMerchant && updatedRow.note) {
+            const match = updatedRow.note.match(/^\[(.*?)\]\s*(.*)$/);
+            if (match) {
+              parsedMerchant = match[1];
+              parsedNote = match[2];
+            }
+          }
+          if (parsedMerchant) {
+            recordMerchant(parsedMerchant);
+          }
           setTransactions((prev) => {
             const canonicalPayer = getMemberById(updatedRow.paid_by);
             const updated = prev.map((t) =>
               t.id === updatedRow.id
                 ? {
                     ...updatedRow,
+                    merchant: parsedMerchant || undefined,
+                    note: parsedNote || '',
                     amount: Number(updatedRow.amount),
                     payer_profile: canonicalPayer || updatedRow.payer_profile || t.payer_profile,
                   }
@@ -705,6 +789,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const cat = getCategoryById(updatedRow.category_id);
             const isIncome = updatedRow.type === 'income';
             const amountStr = Number(updatedRow.amount).toLocaleString();
+            const displayDetail = [parsedMerchant ? `[${parsedMerchant}]` : '', parsedNote || ''].filter(Boolean).join(' ');
 
             setLiveToast({
               id: `update-${updatedRow.id}-${Date.now()}`,
@@ -712,7 +797,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               actorName,
               avatar: actorAvatar,
               title: `✏️ ${actorName} 更新了帳目`,
-              message: `${cat.icon} ${cat.name} ${isIncome ? '+' : '-'}NT$ ${amountStr}${updatedRow.note ? ` (${updatedRow.note})` : ''}`,
+              message: `${cat.icon} ${cat.name} ${isIncome ? '+' : '-'}NT$ ${amountStr}${displayDetail ? ` (${displayDetail})` : ''}`,
               amount: Number(updatedRow.amount),
               createdAt: Date.now(),
             });
@@ -1123,6 +1208,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await AsyncStorage.setItem(STORAGE_KEYS.ALIAS_MAP, JSON.stringify(aliasMap));
     await AsyncStorage.setItem(`${STORAGE_KEYS.ALIAS_MAP}_${targetLedger.id}`, JSON.stringify(aliasMap));
 
+    // 探測 Supabase transactions 表是否已有 merchant 欄位
+    if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        const { error: probeErr } = await supabase.from('transactions').select('merchant').limit(1);
+        hasMerchantColumnRef.current = !probeErr;
+      } catch {
+        hasMerchantColumnRef.current = false;
+      }
+    }
+
     const healList: { id: string; paid_by: string }[] = [];
     let finalTx: Transaction[] = [];
     if (txRows) {
@@ -1139,8 +1234,23 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           healList.push({ id: t.id, paid_by: canonicalPayer.id });
         }
 
+        let parsedMerchant = t.merchant;
+        let parsedNote = t.note;
+        if (!parsedMerchant && t.note) {
+          const match = t.note.match(/^\[(.*?)\]\s*(.*)$/);
+          if (match) {
+            parsedMerchant = match[1];
+            parsedNote = match[2];
+          }
+        }
+        if (parsedMerchant) {
+          recordMerchant(parsedMerchant);
+        }
+
         return {
           ...t,
+          merchant: parsedMerchant || undefined,
+          note: parsedNote || '',
           amount: Number(t.amount),
           paid_by: correctedPaidBy,
           payer_profile: canonicalPayer || t.payer_profile,
@@ -2141,11 +2251,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     type: TransactionType;
     category_id: string;
     paid_by: string;
+    merchant?: string;
     note?: string;
     transacted_at?: string;
     splitWithIds?: string[];
   }) => {
     const txId = generateUUID();
+    const cleanMerchant = data.merchant ? data.merchant.trim() : undefined;
+    if (cleanMerchant) {
+      recordMerchant(cleanMerchant);
+    }
 
     const { data: { session } } = await supabase.auth.getSession();
     const authUserId = session?.user?.id;
@@ -2184,6 +2299,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       amount: data.amount,
       type: data.type,
       paid_by: validPaidBy,
+      merchant: cleanMerchant,
       note: data.note || '',
       transacted_at: data.transacted_at || new Date().toISOString(),
       is_settled: false,
@@ -2209,7 +2325,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // 若雲端已連線且為正式雲端帳本，推送至 Supabase PostgreSQL
     if (isOnlinePublishing) {
       try {
-        const { error: txError } = await supabase.from('transactions').insert({
+        const insertPayload: any = {
           id: newTx.id,
           ledger_id: newTx.ledger_id,
           creator_id: newTx.creator_id,
@@ -2218,9 +2334,30 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           type: newTx.type,
           paid_by: newTx.paid_by,
           transacted_at: newTx.transacted_at,
-          note: newTx.note,
           is_settled: newTx.is_settled,
-        });
+        };
+
+        if (hasMerchantColumnRef.current) {
+          insertPayload.merchant = newTx.merchant || null;
+          insertPayload.note = newTx.note;
+        } else {
+          insertPayload.note = newTx.merchant
+            ? `[${newTx.merchant}] ${newTx.note || ''}`.trim()
+            : newTx.note;
+        }
+
+        let { error: txError } = await supabase.from('transactions').insert(insertPayload);
+
+        // 如果雲端尚未執行 ALTER TABLE 加欄位導致 42703 (column does not exist)，自動切換回相容模式重試
+        if (txError && txError.code === '42703') {
+          hasMerchantColumnRef.current = false;
+          delete insertPayload.merchant;
+          insertPayload.note = newTx.merchant
+            ? `[${newTx.merchant}] ${newTx.note || ''}`.trim()
+            : newTx.note;
+          const retryRes = await supabase.from('transactions').insert(insertPayload);
+          txError = retryRes.error;
+        }
 
         if (txError) {
           console.warn('雲端寫入交易失敗:', txError.message);
@@ -2285,11 +2422,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       type?: TransactionType;
       category_id?: string;
       paid_by?: string;
+      merchant?: string;
       note?: string;
       transacted_at?: string;
     }
   ): Promise<boolean> => {
     try {
+      const cleanMerchant = data.merchant !== undefined ? (data.merchant ? data.merchant.trim() : undefined) : undefined;
+      if (cleanMerchant) {
+        recordMerchant(cleanMerchant);
+      }
+      const targetTx = transactions.find(t => t.id === id);
+
       const updatedTxs = transactions.map(t => {
         if (t.id === id) {
           const effectivePaidBy = data.paid_by !== undefined ? data.paid_by : t.paid_by;
@@ -2297,6 +2441,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           return {
             ...t,
             ...data,
+            merchant: data.merchant !== undefined ? cleanMerchant : t.merchant,
             category: data.category_id ? getCategoryById(data.category_id, t.category) : t.category,
             payer_profile: canonicalPayer || t.payer_profile,
           };
@@ -2312,14 +2457,39 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (data.type !== undefined) updatePayload.type = data.type;
         if (data.category_id !== undefined) updatePayload.category_id = data.category_id;
         if (data.paid_by !== undefined) updatePayload.paid_by = data.paid_by;
-        if (data.note !== undefined) updatePayload.note = data.note;
         if (data.transacted_at !== undefined) updatePayload.transacted_at = data.transacted_at;
         updatePayload.updated_at = new Date().toISOString();
 
-        const { error } = await supabase
+        if (hasMerchantColumnRef.current) {
+          if (data.merchant !== undefined) updatePayload.merchant = cleanMerchant || null;
+          if (data.note !== undefined) updatePayload.note = data.note;
+        } else {
+          // 若雲端無 merchant 欄位，包裝進 note
+          const effectiveMerchant = data.merchant !== undefined ? cleanMerchant : targetTx?.merchant;
+          const effectiveNote = data.note !== undefined ? data.note : (targetTx?.note || '');
+          if (data.merchant !== undefined || data.note !== undefined) {
+            updatePayload.note = effectiveMerchant
+              ? `[${effectiveMerchant}] ${effectiveNote}`.trim()
+              : effectiveNote;
+          }
+        }
+
+        let { error } = await supabase
           .from('transactions')
           .update(updatePayload)
           .eq('id', id);
+
+        if (error && error.code === '42703') {
+          hasMerchantColumnRef.current = false;
+          delete updatePayload.merchant;
+          const effectiveMerchant = data.merchant !== undefined ? cleanMerchant : targetTx?.merchant;
+          const effectiveNote = data.note !== undefined ? data.note : (targetTx?.note || '');
+          updatePayload.note = effectiveMerchant
+            ? `[${effectiveMerchant}] ${effectiveNote}`.trim()
+            : effectiveNote;
+          const retryRes = await supabase.from('transactions').update(updatePayload).eq('id', id);
+          error = retryRes.error;
+        }
 
         if (error) {
           console.warn('雲端更新交易失敗:', error);
@@ -2336,13 +2506,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // 匯出為 CSV 格式 (自帶 UTF-8 BOM，防止 Windows Excel 雙擊開啟出現繁體中文亂碼)
   const exportToCSV = (): string => {
     const BOM = '\uFEFF';
-    const headers = ['日期', '類型', '分類', '金額', '付款人', '備註'];
+    const headers = ['日期', '類型', '分類', '金額', '付款人', '店家/對象', '備註'];
     const rows = transactions.map(t => {
       const cat = getCategoryById(t.category_id, t.category)?.name || '未分類';
       const payer = getMemberById(t.paid_by)?.display_name || t.payer_profile?.display_name || '家庭成員';
       const typeStr = t.type === 'expense' ? '支出' : '收入';
       const dateStr = t.transacted_at ? new Date(t.transacted_at).toLocaleDateString('zh-TW') : '';
-      return `"${dateStr}","${typeStr}","${cat}",${t.amount},"${payer}","${(t.note || '').replace(/"/g, '""')}"`;
+      return `"${dateStr}","${typeStr}","${cat}",${t.amount},"${payer}","${(t.merchant || '').replace(/"/g, '""')}","${(t.note || '').replace(/"/g, '""')}"`;
     });
     return BOM + [headers.join(','), ...rows].join('\n');
   };
@@ -2379,6 +2549,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         category_id: t.category_id,
         paid_by: t.paid_by,
         transacted_at: t.transacted_at,
+        merchant: t.merchant,
         note: t.note,
       })),
     };
@@ -2918,6 +3089,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addTransaction,
         updateTransaction,
         deleteTransaction,
+        recentMerchants,
+        recordMerchant,
         exportToCSV,
         exportToJSON,
         lastBackupAt,

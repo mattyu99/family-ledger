@@ -36,18 +36,57 @@ import { DatePickerModal } from './DatePickerModal';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+const CATEGORY_MERCHANT_PRESETS: Record<string, string[]> = {
+  food: ['全聯', '麥當勞', '50嵐', '美而美', '八方雲集', '星巴克', '摩斯', '路易莎', '7-11', '全家'],
+  supermarket: ['全聯', '好市多', '家樂福', '大潤發', '愛買', '7-11', '全家', '蝦皮', '屈臣氏', '康是美'],
+  transport: ['中油', '台塑', '悠遊卡', '高鐵', '台鐵', 'Uber', '捷運', '嘟嘟房'],
+  housing: ['台電', '自來水', '瓦斯公司', '中華電信', '特力屋', 'IKEA', '管理費'],
+  entertainment: ['威秀影城', 'Netflix', 'Spotify', 'KTV', 'Steam', 'YouTube'],
+  medical: ['診所', '大樹藥局', '屈臣氏', '康是美', '醫院', '健保局'],
+  education: ['幼兒園', '安親班', '誠品', '金石堂', '補習班'],
+  income: ['公司薪資', '年終獎金', '股票股利', '銀行利息', '副業兼職'],
+};
+
+const getCategoryPresetMerchants = (catName?: string, type?: TransactionType): string[] => {
+  const name = (catName || '').toLowerCase();
+  if (type === 'income') return CATEGORY_MERCHANT_PRESETS.income;
+  if (name.includes('餐') || name.includes('伙') || name.includes('食') || name.includes('吃') || name.includes('喝')) {
+    return CATEGORY_MERCHANT_PRESETS.food;
+  }
+  if (name.includes('超') || name.includes('市') || name.includes('購') || name.includes('買') || name.includes('生鮮')) {
+    return CATEGORY_MERCHANT_PRESETS.supermarket;
+  }
+  if (name.includes('交') || name.includes('油') || name.includes('車') || name.includes('行')) {
+    return CATEGORY_MERCHANT_PRESETS.transport;
+  }
+  if (name.includes('水') || name.includes('電') || name.includes('居') || name.includes('家') || name.includes('住')) {
+    return CATEGORY_MERCHANT_PRESETS.housing;
+  }
+  if (name.includes('娛') || name.includes('玩') || name.includes('樂') || name.includes('休')) {
+    return CATEGORY_MERCHANT_PRESETS.entertainment;
+  }
+  if (name.includes('醫') || name.includes('藥') || name.includes('健')) {
+    return CATEGORY_MERCHANT_PRESETS.medical;
+  }
+  if (name.includes('教') || name.includes('育') || name.includes('學') || name.includes('書')) {
+    return CATEGORY_MERCHANT_PRESETS.education;
+  }
+  return ['全聯', '好市多', '7-11', '全家', '家樂福', '中油', '蝦皮', '麥當勞'];
+};
+
 interface AddTransactionModalProps {
   visible: boolean;
   onClose: () => void;
 }
 
 export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visible, onClose }) => {
-  const { categories, members, currentUser, addTransaction, getMemberById } = useLedger();
+  const { categories, members, currentUser, addTransaction, getMemberById, recentMerchants } = useLedger();
 
   const [type, setType] = useState<TransactionType>('expense');
   const [amount, setAmount] = useState<string>('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [paidBy, setPaidBy] = useState<string>('');
+  const [merchant, setMerchant] = useState<string>('');
   const [note, setNote] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
   const [datePickerVisible, setDatePickerVisible] = useState<boolean>(false);
@@ -76,11 +115,25 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
   const isDayBeforeYesterday = isSameDay(selectedDate, dayBeforeYesterday);
   const isCustomDate = !isToday && !isYesterday && !isDayBeforeYesterday;
 
+  // 智慧店家快捷建議標籤列表 (結合自學習 recentMerchants + 分類推薦 + 關鍵字即時比對)
+  const suggestedMerchants = React.useMemo(() => {
+    const currentCats = categories.filter(c => c.type === type);
+    const targetCategory = currentCats.find(c => c.id === selectedCategoryId) || currentCats[0];
+    const categoryPresets = getCategoryPresetMerchants(targetCategory?.name, type);
+    const pool = Array.from(new Set([...(recentMerchants || []), ...categoryPresets]));
+    const query = (merchant || '').trim().toLowerCase();
+    if (!query) {
+      return pool.slice(0, 12);
+    }
+    return pool.filter(m => m.toLowerCase().includes(query)).slice(0, 10);
+  }, [categories, type, selectedCategoryId, recentMerchants, merchant]);
+
   // 當彈窗開啟、或成員/分類/當前使用者載入時，自動同步預設選中值
   React.useEffect(() => {
     if (visible) {
       setSelectedDate(new Date());
       setDatePickerVisible(false);
+      setMerchant('');
 
       const activeMember = members.find(m => m.id === currentUser.id)
         || getMemberById(currentUser.id)
@@ -125,6 +178,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
         type,
         category_id: targetCategory.id,
         paid_by: targetPayer,
+        merchant: merchant.trim() || undefined,
         note,
         transacted_at,
         splitWithIds: type === 'expense' ? members.map(m => m.id) : undefined,
@@ -132,6 +186,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
 
       // 重設表單並關閉
       setAmount('');
+      setMerchant('');
       setNote('');
       setSelectedDate(new Date());
       onClose();
@@ -343,6 +398,61 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {/* 店家 / 對象 (選填) */}
+            <View style={styles.sectionLabelRow}>
+              <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>店家 / 付款對象 (選填)</Text>
+              {!!merchant && (
+                <TouchableOpacity onPress={() => setMerchant('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={styles.clearMerchantText} maxFontSizeMultiplier={1.08}>清除</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.merchantInputWrapper}>
+              <Text style={styles.merchantInputIcon}>🏪</Text>
+              <TextInput
+                style={styles.merchantInput}
+                placeholder="例如：全聯、好市多、麥當勞、中油..."
+                placeholderTextColor="#9CA3AF"
+                value={merchant}
+                onChangeText={setMerchant}
+                maxFontSizeMultiplier={1.15}
+              />
+              {!!merchant && (
+                <TouchableOpacity onPress={() => setMerchant('')} style={styles.merchantClearBtn}>
+                  <Text style={styles.merchantClearBtnText}>✕</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* 智慧自學習快捷膠囊標籤 */}
+            {suggestedMerchants.length > 0 && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.merchantChipsRow}
+                keyboardShouldPersistTaps="handled"
+              >
+                {suggestedMerchants.map((item) => {
+                  const isSelected = merchant.trim().toLowerCase() === item.toLowerCase();
+                  return (
+                    <TouchableOpacity
+                      key={item}
+                      style={[styles.merchantChip, isSelected && styles.merchantChipActive]}
+                      onPress={() => setMerchant(isSelected ? '' : item)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[styles.merchantChipText, isSelected && styles.merchantChipTextActive]}
+                        maxFontSizeMultiplier={1.08}
+                      >
+                        {isSelected ? `✓ ${item}` : item}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
 
             {/* 備註說明 */}
             <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>備註說明</Text>
@@ -611,6 +721,66 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   dateMoreBtnTextSelected: {
+    fontWeight: '700',
+  },
+  clearMerchantText: {
+    fontSize: 12,
+    color: '#6366F1',
+    fontWeight: '500',
+  },
+  merchantInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 10,
+    marginBottom: 8,
+    minHeight: 38,
+  },
+  merchantInputIcon: {
+    fontSize: 15,
+    marginRight: 6,
+  },
+  merchantInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#111827',
+    paddingVertical: 7,
+  },
+  merchantClearBtn: {
+    padding: 4,
+  },
+  merchantClearBtnText: {
+    fontSize: 14,
+    color: '#9CA3AF',
+  },
+  merchantChipsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingBottom: 10,
+    paddingHorizontal: 1,
+  },
+  merchantChip: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  merchantChipActive: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#6366F1',
+  },
+  merchantChipText: {
+    fontSize: 12,
+    color: '#4B5563',
+    fontWeight: '500',
+  },
+  merchantChipTextActive: {
+    color: '#4F46E5',
     fontWeight: '700',
   },
   noteInput: {
