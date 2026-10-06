@@ -71,7 +71,12 @@
 * **溫馨不打擾設計**：無推播干擾，僅在 App 開啟中呈現，展示成員頭像、動作、類別與金額，點擊或 4 秒後自動滑出淡出。
 * **內建即時模擬測試**：家庭分頁底部版本資訊卡新增「🔔 測試即時動態泡泡通知」按鈕，單機即可隨時體驗效果。
 
-#### 6. 🎨 品牌視覺與移動端體驗重構
+#### 6. 🤖 Supabase 永不休眠保活 ＋ LINE 群組每日收支日報（方案 2）
+* **Supabase 永不休眠（Keep-Alive）**：透過 GitHub Actions 每天定時對 Supabase 進行外部 API 存取打卡，重設 7 天休眠計時器，徹底杜絕免費版資料庫因無人使用而被暫停（Paused）的風險。
+* **LINE 原生高質感 Flex 卡片日報**：每天 21:30 定時運算當日收支與月度累計，以 LINE 官方 Flex Message 原生卡片推播至家庭 LINE 群組（或個人 LINE），版面自帶圓角卡片與嚴格對齊，手機閱讀絕對不折行、不破版。
+* **智慧單一帳本自動鎖定**：即使資料庫有多本測試帳本，系統自動比對最近活躍記錄，每晚只發送剛好 1 則訊息，絕不重複騷擾洗版。
+
+#### 7. 🎨 品牌視覺與移動端體驗重構
 * **全域字型縮放防禦（Typography Defense）**：全 App 採用 `allowFontScaling={false}` 與 `maxFontSizeMultiplier={1.08}`，徹底根絕長輩機/大字體模式下金額文字被截斷、換行破版問題。
 * **甜心記帳本專屬品牌視覺**：3D 黏土風（Claymorphism）小豬存錢筒與溫馨小屋高解析度 Adaptive App Icon。
 * **分類趣味頭像庫（AvatarPicker）**：涵蓋家庭成員、萌寵、寶可夢三大群組豐富 Emoji 頭像。
@@ -117,6 +122,11 @@ family-ledger/
 │       ├── LiveToastBanner.tsx # 跨裝置即時動態感知泡泡通知 (方案 A 動畫彈窗)
 │       ├── AvatarPicker.tsx    # 分類趣味頭像挑選器 (家庭成員、萌寵、寶可夢)
 │       └── MonthPickerModal.tsx# 歷年月份任意挑選彈窗 (年份切換 + 12個月網格)
+├── .github/
+│   └── workflows/
+│       └── daily-report-keepalive.yml # GitHub Actions 每日定時防休眠與 LINE 日報排程
+├── scripts/
+│   └── daily-report.mjs          # 每日收支計算、Supabase 保活與 LINE Flex 卡片生成腳本
 └── assets/                     # 甜心記帳本 3D 黏土風圖示、自適應啟動圖與 Favicon
 ```
 
@@ -135,6 +145,46 @@ family-ledger/
    EXPO_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_xxxxxxxxxxxxxxxxxxxxxxxx
    ```
 5. 重新啟動 App 或重新整理網頁，頂部的狀態徽章將立即轉為 **🟢 雲端已同步**！
+
+---
+
+## 🤖 LINE 機器人每日收支日報 ＆ Supabase 永不休眠（Keep-Alive）指南
+
+系統內建了全自動化的 **GitHub Actions 雲端守護排程**，每天台灣時間 **21:30 (UTC 13:30)** 自動喚醒執行，達成兩大核心效益：
+1. **Supabase 永不休眠（Keep-Alive）**：向 Supabase 進行真實 API 存取打卡，重設 7 天休眠計時器，徹底杜絕免費版資料庫被暫停（Paused）的風險。
+2. **LINE 原生高質感 Flex 卡片日報**：統計全家今日開銷、成員貢獻與本月進度，推播至家庭 LINE 共同群組（或個人），排版嚴格對齊、永不破版折行。
+
+### 📋 快速串接 4 步驟指南
+
+#### 步驟 1：建立免費 LINE 官方帳號並啟用 Messaging API
+1. 前往 [LINE Developers Console](https://developers.line.biz/)，點擊「Create a LINE Official Account」建立官方帳號（名稱可取為「甜心記帳本小幫手」）。
+2. 在 LINE 官方帳號管理後台點選 **設定 ➜ Messaging API ➜ 啟用 Messaging API**，選擇您的 Provider 並確認啟用。
+3. 回到 LINE Developers 控制台進入該頻道 ➜ **Messaging API** 頁籤最下方 ➜ 點擊 **Issue** 複製 **Channel Access Token**。
+
+#### 步驟 2：取得家庭群組 Group ID（30 秒免註冊工具）
+1. 用電腦打開免註冊測試工具 [https://webhook.site](https://webhook.site)，點擊頂部 **Copy** 複製專屬網址。
+2. 在 LINE Developers 的 **Messaging API** 頁籤中：
+   * 找到 **Webhook URL** ➜ 貼上該網址並儲存。
+   * 將 **Use webhook** 開關切換為**開啟（綠色）**。
+3. 打開手機 LINE，將「甜心記帳本小幫手」邀請加入全家人的 **LINE 家庭群組**（若已在群組，在群組隨便發一句話如 `123`）。
+4. 查看 Webhook.site 網頁，在接收到的內容中找到 `"groupId": "Cxxxxxxxx..."`，複製該 **`C` 開頭代碼**。
+
+#### 步驟 3：設定 GitHub 倉庫 Secrets
+前往您的 GitHub 專案：**Settings ➜ Secrets and variables ➜ Actions ➜ New repository secret**，填入以下密鑰：
+
+| Secret 名稱 | 說明與填寫內容 | 必要性 |
+| :--- | :--- | :--- |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase 後台 **Project Settings ➜ API** 複製的 `service_role` (secret) 金鑰 | **強烈建議**（穿透 RLS 安全機制讀取帳本明細） |
+| `LINE_CHANNEL_ACCESS_TOKEN` | 步驟 1 取得的 LINE Channel Access Token | 啟用 LINE 推播必填 |
+| `LINE_TARGET_ID` | 步驟 2 取得的家庭群組 `Group ID`（`C...`）或個人 `User ID`（`U...`） | 啟用 LINE 推播必填 |
+| `LEDGER_ID` | （選填）指定帳本 UUID。若不填系統會自動智慧鎖定最近活躍的單一主帳本 | 選填 |
+
+#### 步驟 4：測試與驗證
+* **GitHub 網頁手動觸發**：前往 GitHub 專案的 **Actions ➜ Supabase Keep-Alive & Daily Report ➜ Run workflow**，20 秒內 LINE 群組即可收到卡片！
+* **本地終端機測試**：在本地 `.env` 填入上述變數後，執行：
+  ```bash
+  npm run report:daily
+  ```
 
 ---
 
