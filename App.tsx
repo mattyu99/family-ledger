@@ -40,6 +40,7 @@ import { EditTransactionModal } from './src/components/EditTransactionModal';
 import { CategoryManageModal } from './src/components/CategoryManageModal';
 import { TransactionFilterModal } from './src/components/TransactionFilterModal';
 import { MonthPickerModal } from './src/components/MonthPickerModal';
+import { LiveToastBanner } from './src/components/LiveToastBanner';
 import { AvatarPicker, ALL_AVATAR_OPTIONS } from './src/components/AvatarPicker';
 import { Transaction, Profile } from './src/types/database';
 import { getCategoryIcon } from './src/lib/icons';
@@ -167,6 +168,9 @@ function MainApp() {
     autoBackupInterval,
     recordBackupComplete,
     updateAutoBackupConfig,
+    liveToast,
+    dismissLiveToast,
+    triggerLiveToast,
   } = useLedger();
 
   const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'family'>('transactions');
@@ -1972,6 +1976,9 @@ function MainApp() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
 
+      {/* 方案 A: App 內即時溫馨動態泡泡 */}
+      <LiveToastBanner toast={liveToast} onDismiss={dismissLiveToast} />
+
       {/* 頂部導航列 */}
       <View style={styles.topBar}>
         <View style={{ flex: 1, marginRight: 8 }}>
@@ -3203,6 +3210,27 @@ function MainApp() {
               >
                 <Text style={styles.checkUpdateBtnText} numberOfLines={1} adjustsFontSizeToFit>
                   {isCheckingUpdate ? '⏳ 正在檢查雲端更新...' : '🔄 檢查並載入最新版本'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.testToastBtn}
+                onPress={() => {
+                  triggerLiveToast({
+                    id: `demo-${Date.now()}`,
+                    type: 'insert',
+                    actorName: '媽媽',
+                    avatar: '👩',
+                    title: '🎉 媽媽 剛記了一筆！',
+                    message: '🛒 全聯生鮮超市 -NT$ 680 (鮮乳、有機蛋)',
+                    amount: 680,
+                    createdAt: Date.now(),
+                  });
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.testToastBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                  🔔 測試即時動態泡泡通知
                 </Text>
               </TouchableOpacity>
             </View>
@@ -5745,6 +5773,21 @@ const styles = StyleSheet.create({
   modalPreviewBtnText: {
     color: '#92400E',
     fontSize: 14,
+    fontWeight: '700',
+  },
+  testToastBtn: {
+    marginTop: 8,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  testToastBtnText: {
+    color: '#4F46E5',
+    fontSize: 12,
     fontWeight: '700',
   },
 });

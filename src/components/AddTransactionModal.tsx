@@ -367,7 +367,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
         visible={datePickerVisible}
         onClose={() => setDatePickerVisible(false)}
         selectedDate={selectedDate}
-        onSelectDate={(newDate) => setSelectedDate(newDate)}
+        onSelectDate={(newDate: Date) => setSelectedDate(newDate)}
       />
     </Modal>
   );

@@ -107,6 +107,17 @@ const INITIAL_TRANSACTIONS: Transaction[] = [
   },
 ];
 
+export interface LiveToastNotification {
+  id: string;
+  type: 'insert' | 'update' | 'delete' | 'info';
+  actorName: string;
+  avatar: string;
+  title: string;
+  message: string;
+  amount?: number;
+  createdAt: number;
+}
+
 interface LedgerContextType {
   currentLedger: Ledger;
   ledgers: Ledger[];
@@ -143,6 +154,9 @@ interface LedgerContextType {
   autoBackupInterval: 7 | 14 | 30;
   recordBackupComplete: () => Promise<void>;
   updateAutoBackupConfig: (enabled: boolean, intervalDays: 7 | 14 | 30) => Promise<void>;
+  liveToast: LiveToastNotification | null;
+  dismissLiveToast: () => void;
+  triggerLiveToast: (toast: LiveToastNotification) => void;
   addMember: (name: string, avatar?: string) => Promise<void>;
   updateMember: (id: string, name: string, avatar: string) => Promise<boolean>;
   deleteMember: (id: string, transferToId?: string) => Promise<boolean | void>;
@@ -333,6 +347,22 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [adminPin, setAdminPin] = useState<string>('8888');
   const [userRole, setUserRole] = useState<'owner' | 'admin' | 'member'>('member');
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
+
+  // 方案 A：即時 App 內通知泡泡 (In-App Toast Notification)
+  const [liveToast, setLiveToast] = useState<LiveToastNotification | null>(null);
+  const currentUserRef = useRef<Profile>(currentUser);
+
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
+  const dismissLiveToast = React.useCallback(() => {
+    setLiveToast(null);
+  }, []);
+
+  const triggerLiveToast = React.useCallback((toast: LiveToastNotification) => {
+    setLiveToast(toast);
+  }, []);
 
   // 定期備份設定與上次備份記錄
   const [lastBackupAt, setLastBackupAt] = useState<string | null>(null);
@@ -613,6 +643,29 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${ledgerId}`, JSON.stringify(updated));
             return updated;
           });
+
+          // 方案 A：若這筆記帳由其他裝置寫入，觸發即時通知泡泡
+          const myId = currentUserRef.current?.id;
+          const isFromOther = !myId || (newRow.creator_id && newRow.creator_id !== myId);
+          if (isFromOther) {
+            const actor = getMemberById(newRow.paid_by) || getMemberById(newRow.creator_id);
+            const actorName = actor?.display_name || '家人';
+            const actorAvatar = actor?.avatar_url || '👤';
+            const cat = getCategoryById(newRow.category_id);
+            const isIncome = newRow.type === 'income';
+            const amountStr = Number(newRow.amount).toLocaleString();
+
+            setLiveToast({
+              id: `insert-${newRow.id}-${Date.now()}`,
+              type: 'insert',
+              actorName,
+              avatar: actorAvatar,
+              title: `🎉 ${actorName} 剛記了一筆！`,
+              message: `${cat.icon} ${cat.name} ${isIncome ? '+' : '-'}NT$ ${amountStr}${newRow.note ? ` (${newRow.note})` : ''}`,
+              amount: Number(newRow.amount),
+              createdAt: Date.now(),
+            });
+          }
         }
       )
       .on(
@@ -641,6 +694,29 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${ledgerId}`, JSON.stringify(updated));
             return updated;
           });
+
+          // 方案 A：若更新由其他裝置發起，觸發即時通知泡泡
+          const myId = currentUserRef.current?.id;
+          const isFromOther = !myId || (updatedRow.creator_id && updatedRow.creator_id !== myId);
+          if (isFromOther) {
+            const actor = getMemberById(updatedRow.paid_by) || getMemberById(updatedRow.creator_id);
+            const actorName = actor?.display_name || '家人';
+            const actorAvatar = actor?.avatar_url || '✏️';
+            const cat = getCategoryById(updatedRow.category_id);
+            const isIncome = updatedRow.type === 'income';
+            const amountStr = Number(updatedRow.amount).toLocaleString();
+
+            setLiveToast({
+              id: `update-${updatedRow.id}-${Date.now()}`,
+              type: 'update',
+              actorName,
+              avatar: actorAvatar,
+              title: `✏️ ${actorName} 更新了帳目`,
+              message: `${cat.icon} ${cat.name} ${isIncome ? '+' : '-'}NT$ ${amountStr}${updatedRow.note ? ` (${updatedRow.note})` : ''}`,
+              amount: Number(updatedRow.amount),
+              createdAt: Date.now(),
+            });
+          }
         }
       )
       .on(
@@ -670,6 +746,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
               AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${ledgerId}`, JSON.stringify(updated));
               return updated;
+            });
+
+            // 方案 A：即時通知泡泡
+            setLiveToast({
+              id: `delete-${oldRow.id}-${Date.now()}`,
+              type: 'delete',
+              actorName: '家人',
+              avatar: '🗑️',
+              title: '🗑️ 家人刪除了一筆記帳',
+              message: '該筆明細已從全體裝置同步移除',
+              createdAt: Date.now(),
             });
           }
         }
@@ -2838,6 +2925,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         autoBackupInterval,
         recordBackupComplete,
         updateAutoBackupConfig,
+        liveToast,
+        dismissLiveToast,
+        triggerLiveToast,
         addMember,
         updateMember,
         deleteMember,
