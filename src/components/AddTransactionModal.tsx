@@ -32,6 +32,7 @@ const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFont
 import { useLedger } from '../context/LedgerContext';
 import { TransactionType } from '../types/database';
 import { getCategoryIcon } from '../lib/icons';
+import { DatePickerModal } from './DatePickerModal';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -48,12 +49,39 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [paidBy, setPaidBy] = useState<string>('');
   const [note, setNote] = useState<string>('');
+  const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
+  const [datePickerVisible, setDatePickerVisible] = useState<boolean>(false);
 
   const availableCategories = categories.filter(c => c.type === type);
+
+  const today = React.useMemo(() => new Date(), []);
+  const yesterday = React.useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d;
+  }, []);
+  const dayBeforeYesterday = React.useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 2);
+    return d;
+  }, []);
+
+  const isSameDay = (d1: Date, d2: Date) =>
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate();
+
+  const isToday = isSameDay(selectedDate, today);
+  const isYesterday = isSameDay(selectedDate, yesterday);
+  const isDayBeforeYesterday = isSameDay(selectedDate, dayBeforeYesterday);
+  const isCustomDate = !isToday && !isYesterday && !isDayBeforeYesterday;
 
   // 當彈窗開啟、或成員/分類/當前使用者載入時，自動同步預設選中值
   React.useEffect(() => {
     if (visible) {
+      setSelectedDate(new Date());
+      setDatePickerVisible(false);
+
       const activeMember = members.find(m => m.id === currentUser.id)
         || getMemberById(currentUser.id)
         || members.find(m => (m.display_name || '').trim().toLowerCase() === (currentUser.display_name || '').trim().toLowerCase())
@@ -86,18 +114,26 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
     }
 
     try {
+      const now = new Date();
+      const txDate = new Date(selectedDate);
+      // 保留當下時間的時間戳，以利時間排序
+      txDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+      const transacted_at = txDate.toISOString();
+
       await addTransaction({
         amount: numAmount,
         type,
         category_id: targetCategory.id,
         paid_by: targetPayer,
         note,
+        transacted_at,
         splitWithIds: type === 'expense' ? members.map(m => m.id) : undefined,
       });
 
       // 重設表單並關閉
       setAmount('');
       setNote('');
+      setSelectedDate(new Date());
       onClose();
     } catch (err: any) {
       alert(err.message || '儲存記帳時發生錯誤');
@@ -229,6 +265,85 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
               })}
             </View>
 
+            {/* 記帳日期選擇 */}
+            <View style={styles.sectionLabelRow}>
+              <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記帳日期</Text>
+              {!isToday && (
+                <Text style={styles.dateHintText} maxFontSizeMultiplier={1.15}>
+                  (補記：{selectedDate.getFullYear()}/{selectedDate.getMonth() + 1}/{selectedDate.getDate()})
+                </Text>
+              )}
+            </View>
+            <View style={styles.dateRow}>
+              <TouchableOpacity
+                style={[styles.dateChip, isToday && styles.dateChipActive]}
+                onPress={() => setSelectedDate(today)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[styles.dateChipText, isToday && styles.dateChipTextActive]}
+                  maxFontSizeMultiplier={1.15}
+                >
+                  📍 今天 ({today.getMonth() + 1}/{today.getDate()})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.dateChip, isYesterday && styles.dateChipActive]}
+                onPress={() => setSelectedDate(yesterday)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[styles.dateChipText, isYesterday && styles.dateChipTextActive]}
+                  maxFontSizeMultiplier={1.15}
+                >
+                  昨天 ({yesterday.getMonth() + 1}/{yesterday.getDate()})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.dateChip, isDayBeforeYesterday && styles.dateChipActive]}
+                onPress={() => setSelectedDate(dayBeforeYesterday)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[styles.dateChipText, isDayBeforeYesterday && styles.dateChipTextActive]}
+                  maxFontSizeMultiplier={1.15}
+                >
+                  前天 ({dayBeforeYesterday.getMonth() + 1}/{dayBeforeYesterday.getDate()})
+                </Text>
+              </TouchableOpacity>
+
+              {/* 若選擇了更早的自訂日期，單獨顯示高亮 Chip */}
+              {isCustomDate && (
+                <TouchableOpacity
+                  style={[styles.dateChip, styles.dateChipActive, styles.dateChipCustom]}
+                  onPress={() => setDatePickerVisible(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[styles.dateChipText, styles.dateChipTextActive]}
+                    maxFontSizeMultiplier={1.15}
+                  >
+                    🗓️ {selectedDate.getMonth() + 1}/{selectedDate.getDate()} (自訂)
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                style={[styles.dateMoreBtn, isCustomDate && styles.dateMoreBtnSelected]}
+                onPress={() => setDatePickerVisible(true)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[styles.dateMoreBtnText, isCustomDate && styles.dateMoreBtnTextSelected]}
+                  maxFontSizeMultiplier={1.15}
+                >
+                  {isCustomDate ? '✏️ 改選' : '🗓️ 更多...'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
             {/* 備註說明 */}
             <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>備註說明</Text>
             <TextInput
@@ -247,6 +362,13 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
+
+      <DatePickerModal
+        visible={datePickerVisible}
+        onClose={() => setDatePickerVisible(false)}
+        selectedDate={selectedDate}
+        onSelectDate={(newDate) => setSelectedDate(newDate)}
+      />
     </Modal>
   );
 };
@@ -422,6 +544,73 @@ const styles = StyleSheet.create({
   },
   payerNameActive: {
     color: '#4F46E5',
+    fontWeight: '700',
+  },
+  sectionLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  dateHintText: {
+    fontSize: 12,
+    color: '#EA580C',
+    fontWeight: '700',
+    marginLeft: 6,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 12,
+    width: '100%',
+  },
+  dateChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  dateChipActive: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#6366F1',
+  },
+  dateChipCustom: {
+    backgroundColor: '#FFF7ED',
+    borderColor: '#F97316',
+  },
+  dateChipText: {
+    fontSize: 12,
+    color: '#4B5563',
+    fontWeight: '500',
+  },
+  dateChipTextActive: {
+    color: '#4F46E5',
+    fontWeight: '700',
+  },
+  dateMoreBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dateMoreBtnSelected: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#6366F1',
+    borderStyle: 'solid',
+  },
+  dateMoreBtnText: {
+    fontSize: 12,
+    color: '#4F46E5',
+    fontWeight: '600',
+  },
+  dateMoreBtnTextSelected: {
     fontWeight: '700',
   },
   noteInput: {

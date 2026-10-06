@@ -33,6 +33,7 @@ const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFont
 import { useLedger } from '../context/LedgerContext';
 import { Transaction, TransactionType } from '../types/database';
 import { getCategoryIcon } from '../lib/icons';
+import { DatePickerModal } from './DatePickerModal';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -55,6 +56,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const [paidBy, setPaidBy] = useState<string>('');
   const [note, setNote] = useState<string>('');
   const [transactedAt, setTransactedAt] = useState<string>('');
+  const [datePickerVisible, setDatePickerVisible] = useState<boolean>(false);
 
   const availableCategories = categories.filter(c => c.type === type);
 
@@ -70,17 +72,50 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       setPaidBy(canonicalPayer ? canonicalPayer.id : (transaction.paid_by || ''));
       setNote(transaction.note || '');
       setTransactedAt(transaction.transacted_at || new Date().toISOString());
+      setDatePickerVisible(false);
     }
   }, [visible, transaction, getMemberById, categories, getCategoryById]);
+
+  const today = React.useMemo(() => new Date(), []);
+  const yesterday = React.useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d;
+  }, []);
+  const dayBeforeYesterday = React.useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 2);
+    return d;
+  }, []);
+
+  const isSameDay = (d1: Date, d2: Date) =>
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate();
 
   const origDate = transaction?.transacted_at ? new Date(transaction.transacted_at) : new Date();
   const origDateFormatted = `${origDate.getMonth() + 1}/${origDate.getDate()}`;
 
   const curDate = transactedAt ? new Date(transactedAt) : origDate;
-  const isOriginal = Math.abs(curDate.getTime() - origDate.getTime()) < 60000;
+  const isOriginal = isSameDay(curDate, origDate);
+  const isToday = isSameDay(curDate, today);
+  const isYesterday = isSameDay(curDate, yesterday);
+  const isDayBeforeYesterday = isSameDay(curDate, dayBeforeYesterday);
+  const isCustomDate = !isOriginal && !isToday && !isYesterday && !isDayBeforeYesterday;
 
-  const today = new Date();
-  const isToday = curDate.toDateString() === today.toDateString();
+  const setQuickDate = (targetDate: Date) => {
+    const orig = transaction?.transacted_at ? new Date(transaction.transacted_at) : new Date();
+    const d = new Date(targetDate);
+    d.setHours(orig.getHours(), orig.getMinutes(), orig.getSeconds(), orig.getMilliseconds());
+    setTransactedAt(d.toISOString());
+  };
+
+  const handleSelectDate = (newDate: Date) => {
+    const orig = transaction?.transacted_at ? new Date(transaction.transacted_at) : new Date();
+    const d = new Date(newDate);
+    d.setHours(orig.getHours(), orig.getMinutes(), orig.getSeconds(), orig.getMilliseconds());
+    setTransactedAt(d.toISOString());
+  };
 
   // 切換支出/收入時，若當前分類不符，自動調整至該類型的第一個分類
   useEffect(() => {
@@ -277,11 +312,19 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             </View>
 
             {/* 記帳日期調整 */}
-            <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記帳日期</Text>
+            <View style={styles.sectionLabelRow}>
+              <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記帳日期</Text>
+              {!isOriginal && (
+                <Text style={styles.dateHintText} maxFontSizeMultiplier={1.15}>
+                  (已改為：{curDate.getFullYear()}/{curDate.getMonth() + 1}/{curDate.getDate()})
+                </Text>
+              )}
+            </View>
             <View style={styles.dateRow}>
               <TouchableOpacity
                 style={[styles.dateChip, isOriginal && styles.dateChipActive]}
                 onPress={() => setTransactedAt(transaction.transacted_at)}
+                activeOpacity={0.7}
               >
                 <Text
                   style={[styles.dateChipText, isOriginal && styles.dateChipTextActive]}
@@ -293,13 +336,56 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
               <TouchableOpacity
                 style={[styles.dateChip, isToday && !isOriginal && styles.dateChipActive]}
-                onPress={() => setTransactedAt(new Date().toISOString())}
+                onPress={() => setQuickDate(today)}
+                activeOpacity={0.7}
               >
                 <Text
                   style={[styles.dateChipText, isToday && !isOriginal && styles.dateChipTextActive]}
                   maxFontSizeMultiplier={1.15}
                 >
                   今天 ({today.getMonth() + 1}/{today.getDate()})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.dateChip, isYesterday && !isOriginal && styles.dateChipActive]}
+                onPress={() => setQuickDate(yesterday)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[styles.dateChipText, isYesterday && !isOriginal && styles.dateChipTextActive]}
+                  maxFontSizeMultiplier={1.15}
+                >
+                  昨天 ({yesterday.getMonth() + 1}/{yesterday.getDate()})
+                </Text>
+              </TouchableOpacity>
+
+              {/* 若選擇了其他自訂日期 */}
+              {isCustomDate && (
+                <TouchableOpacity
+                  style={[styles.dateChip, styles.dateChipActive, styles.dateChipCustom]}
+                  onPress={() => setDatePickerVisible(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[styles.dateChipText, styles.dateChipTextActive]}
+                    maxFontSizeMultiplier={1.15}
+                  >
+                    🗓️ {curDate.getMonth() + 1}/{curDate.getDate()} (自訂)
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                style={[styles.dateMoreBtn, isCustomDate && styles.dateMoreBtnSelected]}
+                onPress={() => setDatePickerVisible(true)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[styles.dateMoreBtnText, isCustomDate && styles.dateMoreBtnTextSelected]}
+                  maxFontSizeMultiplier={1.15}
+                >
+                  {isCustomDate ? '✏️ 改選' : '🗓️ 更多...'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -327,6 +413,13 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
+
+      <DatePickerModal
+        visible={datePickerVisible}
+        onClose={() => setDatePickerVisible(false)}
+        selectedDate={curDate}
+        onSelectDate={handleSelectDate}
+      />
     </Modal>
   );
 };
@@ -514,14 +607,26 @@ const styles = StyleSheet.create({
     color: '#4F46E5',
     fontWeight: '700',
   },
+  sectionLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  dateHintText: {
+    fontSize: 12,
+    color: '#EA580C',
+    fontWeight: '700',
+    marginLeft: 6,
+  },
   dateRow: {
     flexDirection: 'row',
-    gap: 8,
+    flexWrap: 'wrap',
+    gap: 6,
     marginBottom: 12,
   },
   dateChip: {
     paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     borderRadius: 8,
     backgroundColor: '#F3F4F6',
     borderWidth: 1,
@@ -531,6 +636,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#EEF2FF',
     borderColor: '#6366F1',
   },
+  dateChipCustom: {
+    backgroundColor: '#FFF7ED',
+    borderColor: '#F97316',
+  },
   dateChipText: {
     fontSize: 12,
     color: '#4B5563',
@@ -538,6 +647,30 @@ const styles = StyleSheet.create({
   },
   dateChipTextActive: {
     color: '#4F46E5',
+    fontWeight: '700',
+  },
+  dateMoreBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dateMoreBtnSelected: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#6366F1',
+    borderStyle: 'solid',
+  },
+  dateMoreBtnText: {
+    fontSize: 12,
+    color: '#4F46E5',
+    fontWeight: '600',
+  },
+  dateMoreBtnTextSelected: {
     fontWeight: '700',
   },
   noteInput: {
