@@ -1,0 +1,37 @@
+name: Supabase Keep-Alive & Daily Report
+
+on:
+  schedule:
+    # 每天台灣時間 21:30 執行 (UTC 13:30)
+    - cron: '30 13 * * *'
+  workflow_dispatch: # 支援在 GitHub 網頁一鍵手動觸發測試
+
+jobs:
+  daily-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 📥 檢出程式碼
+        uses: actions/checkout@v4
+
+      - name: ⚙️ 設定 Node.js 環境 (v22 LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: 📦 安裝相依套件
+        run: npm install --prefer-offline --no-audit
+
+      - name: 🚀 執行防休眠打卡與收支日報
+        env:
+          # Supabase 連線資訊 (優先讀取 Secrets，若未設定則自動使用專案預設值)
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://babpppaxzszieropeouh.supabase.co' }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || secrets.SUPABASE_KEY || secrets.SUPABASE_ANON_KEY || 'sb_publishable_nxHZUg651sBAJ387bZgZIQ_GuEfpAuZ' }}
+
+          # LINE 官方帳號機器人推播設定 (選填：至 GitHub Settings -> Secrets 設定即可啟用)
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_TARGET_ID: ${{ secrets.LINE_TARGET_ID || secrets.LINE_GROUP_ID }}
+          LEDGER_ID: ${{ secrets.LEDGER_ID }}
+        run: node scripts/daily-report.mjs
