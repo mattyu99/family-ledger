@@ -171,11 +171,13 @@ function MainApp() {
     liveToast,
     dismissLiveToast,
     triggerLiveToast,
+    recentMerchants,
   } = useLedger();
 
   const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'family'>('transactions');
   const [modalVisible, setModalVisible] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [exportModalVisible, setExportModalVisible] = useState(false);
   const [memberModalVisible, setMemberModalVisible] = useState(false);
   const [newMemberName, setNewMemberName] = useState('');
@@ -271,7 +273,7 @@ function MainApp() {
   // 篩選條件改變時，自動重設顯示筆數回初始值
   useEffect(() => {
     setDisplayCount(PAGE_SIZE);
-  }, [filterMonth, filterMemberId]);
+  }, [filterMonth, filterMemberId, searchQuery]);
 
   // 提取所有有記帳紀錄的歷史月份
   const availableMonths = useMemo(() => {
@@ -504,8 +506,29 @@ function MainApp() {
       }));
   }, [members, analyticsSummary.paidByMembers, analyticsSummary.totalExpense, currentUser]);
 
-  // 依據選取的月份與成員進行即時篩選
+  // 提取此帳本現有紀錄中的店家清單（供 1 鍵快速篩選）
+  const activeMerchantsInLedger = useMemo(() => {
+    const counts = new Map<string, number>();
+    transactions.forEach(t => {
+      const m = (t.merchant || '').trim();
+      if (m) {
+        counts.set(m, (counts.get(m) || 0) + 1);
+      }
+    });
+    // 依出現頻率降序排列
+    const fromTx = Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([m]) => m);
+
+    // 補上常用自學習店家
+    const combined = Array.from(new Set([...fromTx, ...(recentMerchants || [])]));
+    return combined.slice(0, 15);
+  }, [transactions, recentMerchants]);
+
+  // 依據選取的月份、成員與店家關鍵字進行即時篩選
   const filteredTransactions = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+
     return transactions.filter(t => {
       // 1. 月份篩選
       if (filterMonth !== 'all') {
@@ -523,17 +546,26 @@ function MainApp() {
         if (!isMatch) return false;
       }
 
+      // 3. 店家與關鍵字即時搜尋
+      if (q) {
+        const mMatch = t.merchant && t.merchant.toLowerCase().includes(q);
+        const nMatch = t.note && t.note.toLowerCase().includes(q);
+        const cat = getCategoryById(t.category_id, t.category);
+        const cMatch = cat && cat.name.toLowerCase().includes(q);
+        if (!mMatch && !nMatch && !cMatch) return false;
+      }
+
       return true;
     });
-  }, [transactions, filterMonth, filterMemberId, getMemberById]);
+  }, [transactions, filterMonth, filterMemberId, searchQuery, getMemberById, getCategoryById]);
 
   // 方案 A：依分批上限動態切片明細清單 (避免一次渲染過多元件)
   const displayedTransactions = useMemo(() => {
     return filteredTransactions.slice(0, displayCount);
   }, [filteredTransactions, displayCount]);
 
-  // 判定是否偏離預設視角（預設視角為：當前月份 + 全部成員）
-  const isFiltered = filterMonth !== currentMonthYm || filterMemberId !== 'all';
+  // 判定是否偏離預設視角（預設視角為：當前月份 + 全部成員 + 無搜尋）
+  const isFiltered = filterMonth !== currentMonthYm || filterMemberId !== 'all' || !!searchQuery.trim();
 
   // 當前檢視範圍之收支總計 (完全精確連動當前月份或指定篩選範圍)
   const activeFilterSummary = useMemo(() => {
@@ -561,6 +593,9 @@ function MainApp() {
   const selectedMonthObj = availableMonths.find(m => m.ym === filterMonth);
 
   const summaryCardTitle = useMemo(() => {
+    if (searchQuery.trim()) {
+      return `🔍「${searchQuery.trim()}」消費總覽`;
+    }
     if (filterMonth === currentMonthYm && filterMemberId === 'all') {
       return '本月家庭總覽';
     }
@@ -580,11 +615,12 @@ function MainApp() {
       parts.push(selectedMember.display_name);
     }
     return `${parts.join(' ‧ ')} 總覽`;
-  }, [filterMonth, filterMemberId, currentMonthYm, selectedMonthObj, selectedMember]);
+  }, [filterMonth, filterMemberId, searchQuery, currentMonthYm, selectedMonthObj, selectedMember]);
 
   const resetFilters = () => {
     setFilterMonth(currentMonthYm);
     setFilterMemberId('all');
+    setSearchQuery('');
   };
 
   // 記帳分類管理狀態
@@ -2183,6 +2219,59 @@ function MainApp() {
               <Text style={styles.sectionSubtitle}>點擊明細可直接修改或刪除 ✍️</Text>
             </View>
 
+            {/* 🔍 店家 / 關鍵字即時搜尋列 */}
+            <View style={styles.searchBarContainer}>
+              <View style={styles.searchBarInner}>
+                <Text style={styles.searchBarIcon}>🔍</Text>
+                <TextInput
+                  style={styles.searchBarInput}
+                  placeholder="搜尋店家或備註 (例如：好市多、全聯、加油...)"
+                  placeholderTextColor="#9CA3AF"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  returnKeyType="search"
+                />
+                {!!searchQuery && (
+                  <TouchableOpacity
+                    style={styles.searchClearBtn}
+                    onPress={() => setSearchQuery('')}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={styles.searchClearText}>✕</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {/* 🏷️ 店家 1 鍵快速篩選膠囊橫向列 */}
+            {activeMerchantsInLedger.length > 0 && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.merchantFilterScroll}
+                keyboardShouldPersistTaps="handled"
+              >
+                {activeMerchantsInLedger.map((mName) => {
+                  const isSelected = searchQuery.trim().toLowerCase() === mName.toLowerCase();
+                  return (
+                    <TouchableOpacity
+                      key={mName}
+                      style={[styles.merchantFilterChip, isSelected && styles.merchantFilterChipActive]}
+                      onPress={() => setSearchQuery(isSelected ? '' : mName)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[styles.merchantFilterChipText, isSelected && styles.merchantFilterChipTextActive]}
+                        maxFontSizeMultiplier={1.08}
+                      >
+                        {isSelected ? `✓ ${mName}` : mName}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
+
             {/* 篩選工具列 (月份與成員) */}
             <View style={styles.filterToolbar}>
               {/* 月份篩選按鈕 */}
@@ -2223,6 +2312,18 @@ function MainApp() {
                 <Text style={[styles.filterChipArrow, filterMemberId !== 'all' && styles.filterChipArrowActive]}>▾</Text>
               </TouchableOpacity>
 
+              {/* 若在搜尋狀態下且非查全部月份，提供 1 鍵切換至全部月份 */}
+              {!!searchQuery.trim() && filterMonth !== 'all' && (
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  style={[styles.filterChip, { borderColor: '#818CF8', backgroundColor: '#EEF2FF' }]}
+                  onPress={() => setFilterMonth('all')}
+                >
+                  <Text style={styles.filterChipIcon}>🌐</Text>
+                  <Text style={[styles.filterChipText, { color: '#4F46E5', fontWeight: '700' }]}>改查全部月份</Text>
+                </TouchableOpacity>
+              )}
+
               {/* 重設篩選按鈕 (若非預設本月狀態時顯示) */}
               {isFiltered && (
                 <TouchableOpacity
@@ -2230,7 +2331,7 @@ function MainApp() {
                   style={styles.filterResetChip}
                   onPress={resetFilters}
                 >
-                  <Text style={styles.filterResetText}>回到本月 ↺</Text>
+                  <Text style={styles.filterResetText}>清除篩選 ↺</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -2245,11 +2346,27 @@ function MainApp() {
             ) : filteredTransactions.length === 0 ? (
               <View style={styles.emptyBox}>
                 <Text style={styles.emptyIcon}>🔍</Text>
-                <Text style={styles.emptyText}>沒有符合篩選條件的明細</Text>
-                <Text style={styles.emptySubtext}>請嘗試切換其他月份或成員</Text>
-                <TouchableOpacity style={styles.filterEmptyResetBtn} onPress={resetFilters}>
-                  <Text style={styles.filterEmptyResetText}>回到本月</Text>
-                </TouchableOpacity>
+                <Text style={styles.emptyText}>
+                  {searchQuery.trim() ? `查無「${searchQuery.trim()}」的相關紀錄` : '沒有符合篩選條件的明細'}
+                </Text>
+                <Text style={styles.emptySubtext}>
+                  {searchQuery.trim() && filterMonth !== 'all'
+                    ? '目前僅搜尋指定月份，您可以點擊下方按鈕改查「全部月份」'
+                    : '請嘗試更換店家關鍵字或重設篩選'}
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+                  {searchQuery.trim() && filterMonth !== 'all' && (
+                    <TouchableOpacity
+                      style={[styles.filterEmptyResetBtn, { backgroundColor: '#EEF2FF', borderColor: '#6366F1' }]}
+                      onPress={() => setFilterMonth('all')}
+                    >
+                      <Text style={[styles.filterEmptyResetText, { color: '#4F46E5' }]}>🗓️ 改查全部月份</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity style={styles.filterEmptyResetBtn} onPress={resetFilters}>
+                    <Text style={styles.filterEmptyResetText}>重設所有篩選</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             ) : (
               <>
@@ -3619,6 +3736,70 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6366F1',
     fontWeight: '500',
+  },
+  searchBarContainer: {
+    marginBottom: 8,
+  },
+  searchBarInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === 'ios' ? 8 : 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  searchBarIcon: {
+    fontSize: 14,
+    marginRight: 8,
+  },
+  searchBarInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#1E293B',
+    paddingVertical: 4,
+  },
+  searchClearBtn: {
+    padding: 4,
+    marginLeft: 4,
+  },
+  searchClearText: {
+    fontSize: 14,
+    color: '#94A3B8',
+    fontWeight: '600',
+  },
+  merchantFilterScroll: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingBottom: 8,
+    paddingHorizontal: 2,
+  },
+  merchantFilterChip: {
+    backgroundColor: '#F8FAFC',
+    paddingVertical: 5,
+    paddingHorizontal: 11,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  merchantFilterChipActive: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#6366F1',
+  },
+  merchantFilterChipText: {
+    fontSize: 12,
+    color: '#475569',
+    fontWeight: '500',
+  },
+  merchantFilterChipTextActive: {
+    color: '#4F46E5',
+    fontWeight: '700',
   },
   filterToolbar: {
     flexDirection: 'row',
