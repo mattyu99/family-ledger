@@ -142,11 +142,28 @@ async function main() {
       .maybeSingle();
     if (specificLedger) ledgersToReport = [specificLedger];
   } else {
+    // 智慧防騷擾機制：若未指定帳本，自動挑選「最近有交易活動」或「最新建立」的單一主帳本，避免多發騷擾 LINE
     const { data: allLedgers } = await supabase
       .from('ledgers')
-      .select('id, name')
-      .limit(10);
-    ledgersToReport = allLedgers || [];
+      .select('id, name, created_at')
+      .order('created_at', { ascending: false });
+
+    if (allLedgers && allLedgers.length > 0) {
+      if (allLedgers.length === 1) {
+        ledgersToReport = allLedgers;
+      } else {
+        // 檢查哪一本帳本最近有交易紀錄
+        const { data: recentTx } = await supabase
+          .from('transactions')
+          .select('ledger_id')
+          .order('transacted_at', { ascending: false })
+          .limit(1);
+
+        const activeLedgerId = recentTx?.[0]?.ledger_id;
+        const matched = activeLedgerId && allLedgers.find(l => l.id === activeLedgerId);
+        ledgersToReport = [matched || allLedgers[0]];
+      }
+    }
   }
 
   // 3. 獲取全體分類表 (用於對應圖示與名稱)
