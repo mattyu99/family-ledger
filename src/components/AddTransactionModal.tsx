@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text as RNText,
@@ -12,6 +12,7 @@ import {
   Dimensions,
   TextProps,
   TextInputProps,
+  Keyboard,
 } from 'react-native';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
@@ -93,6 +94,59 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
   const [note, setNote] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
   const [datePickerVisible, setDatePickerVisible] = useState<boolean>(false);
+  const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
+  const scrollViewRef = useRef<ScrollView>(null);
+
+  // 監聽鍵盤高度 (Android, iOS 與 Mobile Web)
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      const h = e?.endCoordinates?.height || 280;
+      setKeyboardOffset(h);
+    });
+
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardOffset(0);
+    });
+
+    let removeViewportListener: (() => void) | undefined;
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.visualViewport) {
+      const handleViewportResize = () => {
+        if (!window.visualViewport) return;
+        const windowHeight = window.innerHeight;
+        const viewportHeight = window.visualViewport.height;
+        const diff = windowHeight - viewportHeight;
+        if (diff > 120) {
+          setKeyboardOffset(diff);
+        } else {
+          setKeyboardOffset(0);
+        }
+      };
+      window.visualViewport.addEventListener('resize', handleViewportResize);
+      removeViewportListener = () => {
+        window.visualViewport?.removeEventListener('resize', handleViewportResize);
+      };
+    }
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+      if (removeViewportListener) removeViewportListener();
+    };
+  }, []);
+
+  // 點選店家或備註欄時，自動平滑滑動到底部可見安全區域
+  const handleInputFocus = (delay = 120) => {
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, delay);
+  };
+
+  const dynamicBottomPadding = keyboardOffset > 0
+    ? (Platform.OS === 'ios' ? 40 : keyboardOffset + 90)
+    : 30;
 
   const availableCategories = categories.filter(c => c.type === type);
   const creditCards = React.useMemo(() => paymentAccounts.filter(a => a.type === 'credit_card'), [paymentAccounts]);
@@ -234,10 +288,15 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
           </View>
 
           <ScrollView
+            ref={scrollViewRef}
             showsVerticalScrollIndicator={false}
             style={styles.scrollArea}
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: dynamicBottomPadding }
+            ]}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
           >
             {/* 支出 / 收入 切換鈕 */}
             <View style={styles.typeSelector}>
@@ -554,6 +613,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
                 placeholderTextColor="#9CA3AF"
                 value={merchant}
                 onChangeText={setMerchant}
+                onFocus={() => handleInputFocus()}
+                returnKeyType="next"
                 maxFontSizeMultiplier={1.15}
               />
               {!!merchant && (
@@ -593,13 +654,23 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
             )}
 
             {/* 備註說明 */}
-            <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>備註說明</Text>
+            <View style={styles.sectionLabelRow}>
+              <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>備註說明</Text>
+              {keyboardOffset > 0 && (
+                <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             <TextInput
               style={styles.noteInput}
               placeholder="例如：好市多牛肉、加滿油、水電費..."
               placeholderTextColor="#9CA3AF"
               value={note}
               onChangeText={setNote}
+              onFocus={() => handleInputFocus()}
+              returnKeyType="done"
+              onSubmitEditing={Keyboard.dismiss}
               maxFontSizeMultiplier={1.15}
             />
 
@@ -865,6 +936,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6366F1',
     fontWeight: '500',
+  },
+  dismissKeyboardText: {
+    fontSize: 12,
+    color: '#4F46E5',
+    fontWeight: '600',
+    marginLeft: 'auto',
   },
   merchantInputWrapper: {
     flexDirection: 'row',
