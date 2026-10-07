@@ -39,17 +39,28 @@ interface StoredValueWidgetProps {
 }
 
 export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAccounts }) => {
-  const { paymentAccounts, topUpAccountBalance, adjustAccountBalance, getMemberById, isOwner, currentUser } = useLedger();
+  const { paymentAccounts, topUpAccountBalance, adjustAccountBalance, getMemberById, isOwner, currentUser, members } = useLedger();
 
   const storedValueCards = React.useMemo(
     () => sortAccountsByUser(paymentAccounts.filter(a => a.type === 'stored_value'), currentUser?.id),
     [paymentAccounts, currentUser]
   );
 
+  const creditCards = React.useMemo(
+    () => paymentAccounts.filter(a => a.type === 'credit_card'),
+    [paymentAccounts]
+  );
+
   const [activeModalAccount, setActiveModalAccount] = useState<PaymentAccount | null>(null);
   const [modalMode, setModalMode] = useState<'topup' | 'adjust'>('topup');
   const [customAmount, setCustomAmount] = useState<string>('');
   const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
+
+  // 加值扣款來源設定
+  const [topUpSourceType, setTopUpSourceType] = useState<'cash' | 'credit_card' | 'transfer'>('cash');
+  const [topUpCreditCardId, setTopUpCreditCardId] = useState<string>('');
+  const [topUpPayerId, setTopUpPayerId] = useState<string>('');
+  const [recordExpense, setRecordExpense] = useState<boolean>(true);
 
   // 監聽鍵盤高度 (Android, iOS 與 Mobile Web)
   useEffect(() => {
@@ -99,6 +110,11 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAc
     setActiveModalAccount(acc);
     setModalMode('topup');
     setCustomAmount('500');
+    setTopUpSourceType('cash');
+    setTopUpCreditCardId(creditCards[0]?.id || '');
+    const matchedMember = acc.user_id && members.find(m => m.id === acc.user_id);
+    setTopUpPayerId(matchedMember ? matchedMember.id : (currentUser?.id || members[0]?.id || ''));
+    setRecordExpense(true);
   };
 
   const handleOpenAdjust = (acc: PaymentAccount) => {
@@ -122,7 +138,12 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAc
     }
 
     if (modalMode === 'topup') {
-      const success = await topUpAccountBalance(activeModalAccount.id, num);
+      const success = await topUpAccountBalance(activeModalAccount.id, num, {
+        sourceType: topUpSourceType,
+        sourceAccountId: topUpSourceType === 'credit_card' ? topUpCreditCardId : undefined,
+        payerId: topUpPayerId,
+        recordExpense: recordExpense,
+      });
       if (success) {
         setActiveModalAccount(null);
       }
@@ -233,79 +254,154 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAc
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.modalCardName}>
-              卡片：{activeModalAccount?.name}
-            </Text>
-            <Text style={styles.modalCardSub}>
-              目前餘額：NT$ {activeModalAccount?.balance.toLocaleString()}
-            </Text>
+            <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 6 }}>
+              <Text style={styles.modalCardName}>
+                卡片：{activeModalAccount?.name}
+              </Text>
+              <Text style={styles.modalCardSub}>
+                目前餘額：NT$ {activeModalAccount?.balance.toLocaleString()}
+              </Text>
 
-            {modalMode === 'topup' ? (
-              <>
-                <View style={styles.inputLabelRow}>
-                  <Text style={styles.inputLabel}>選擇加值金額</Text>
-                  {keyboardOffset > 0 && (
-                    <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <Text style={styles.dismissKeyboardText}>收起鍵盤 ▾</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <View style={styles.presetAmountsRow}>
-                  {[100, 200, 500, 1000].map(val => (
+              {modalMode === 'topup' ? (
+                <>
+                  <View style={styles.inputLabelRow}>
+                    <Text style={styles.inputLabel}>選擇加值金額</Text>
+                    {keyboardOffset > 0 && (
+                      <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Text style={styles.dismissKeyboardText}>收起鍵盤 ▾</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  <View style={styles.presetAmountsRow}>
+                    {[100, 200, 500, 1000].map(val => (
+                      <TouchableOpacity
+                        key={val}
+                        style={[styles.presetChip, customAmount === String(val) && styles.presetChipActive]}
+                        onPress={() => setCustomAmount(String(val))}
+                      >
+                        <Text style={[styles.presetChipText, customAmount === String(val) && styles.presetChipTextActive]}>
+                          +${val}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <View style={styles.amountInputRow}>
+                    <Text style={styles.currencySymbol}>$</Text>
+                    <TextInput
+                      style={styles.amountInput}
+                      value={customAmount}
+                      onChangeText={setCustomAmount}
+                      keyboardType="numeric"
+                      placeholder="輸入自訂加值金額"
+                      returnKeyType="done"
+                      onSubmitEditing={Keyboard.dismiss}
+                    />
+                  </View>
+
+                  {/* 扣款出資來源 */}
+                  <Text style={[styles.inputLabel, { marginTop: 4 }]}>扣款出資來源</Text>
+                  <View style={styles.sourceChipsRow}>
                     <TouchableOpacity
-                      key={val}
-                      style={[styles.presetChip, customAmount === String(val) && styles.presetChipActive]}
-                      onPress={() => setCustomAmount(String(val))}
+                      style={[styles.sourceChip, topUpSourceType === 'cash' && styles.sourceChipActive]}
+                      onPress={() => setTopUpSourceType('cash')}
                     >
-                      <Text style={[styles.presetChipText, customAmount === String(val) && styles.presetChipTextActive]}>
-                        +${val}
+                      <Text style={[styles.sourceChipText, topUpSourceType === 'cash' && styles.sourceChipTextActive]}>
+                        💵 皮夾現金
                       </Text>
                     </TouchableOpacity>
-                  ))}
-                </View>
-                <View style={styles.amountInputRow}>
-                  <Text style={styles.currencySymbol}>$</Text>
-                  <TextInput
-                    style={styles.amountInput}
-                    value={customAmount}
-                    onChangeText={setCustomAmount}
-                    keyboardType="numeric"
-                    placeholder="輸入自訂加值金額"
-                    returnKeyType="done"
-                    onSubmitEditing={Keyboard.dismiss}
-                  />
-                </View>
-                <Text style={styles.modalHint}>
-                  💡 加值完成後將自動扣減皮夾現金並為家庭記錄一筆加值明細。
-                </Text>
-              </>
-            ) : (
-              <>
-                <View style={styles.inputLabelRow}>
-                  <Text style={styles.inputLabel}>實體卡片當前正確餘額</Text>
-                  {keyboardOffset > 0 && (
-                    <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <Text style={styles.dismissKeyboardText}>收起鍵盤 ▾</Text>
+                    {creditCards.map(cc => {
+                      const isCcActive = topUpSourceType === 'credit_card' && topUpCreditCardId === cc.id;
+                      return (
+                        <TouchableOpacity
+                          key={cc.id}
+                          style={[styles.sourceChip, isCcActive && styles.sourceChipActive]}
+                          onPress={() => {
+                            setTopUpSourceType('credit_card');
+                            setTopUpCreditCardId(cc.id);
+                          }}
+                        >
+                          <Text style={[styles.sourceChipText, isCcActive && styles.sourceChipTextActive]}>
+                            💳 {cc.name}{cc.last_four_digits ? ` (*${cc.last_four_digits})` : ''}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                    <TouchableOpacity
+                      style={[styles.sourceChip, topUpSourceType === 'transfer' && styles.sourceChipActive]}
+                      onPress={() => setTopUpSourceType('transfer')}
+                    >
+                      <Text style={[styles.sourceChipText, topUpSourceType === 'transfer' && styles.sourceChipTextActive]}>
+                        🏦 銀行轉帳
+                      </Text>
                     </TouchableOpacity>
-                  )}
-                </View>
-                <View style={styles.amountInputRow}>
-                  <Text style={styles.currencySymbol}>$</Text>
-                  <TextInput
-                    style={styles.amountInput}
-                    value={customAmount}
-                    onChangeText={setCustomAmount}
-                    keyboardType="numeric"
-                    placeholder="輸入實際餘額"
-                    returnKeyType="done"
-                    onSubmitEditing={Keyboard.dismiss}
-                  />
-                </View>
-                <Text style={styles.modalHint}>
-                  💡 當悠遊卡在捷運逼卡發現金額有出入時，可直接在此調整為最新餘額。
-                </Text>
-              </>
-            )}
+                  </View>
+
+                  {/* 出資付款人 */}
+                  <Text style={[styles.inputLabel, { marginTop: 4 }]}>出資付款人</Text>
+                  <View style={styles.payerChipsRow}>
+                    {members.map(m => {
+                      const isSelected = topUpPayerId === m.id;
+                      return (
+                        <TouchableOpacity
+                          key={m.id}
+                          style={[styles.payerChip, isSelected && styles.payerChipActive]}
+                          onPress={() => setTopUpPayerId(m.id)}
+                        >
+                          <Text style={styles.payerChipAvatar}>{m.avatar_url || '👤'}</Text>
+                          <Text style={[styles.payerChipName, isSelected && styles.payerChipNameActive]}>
+                            {m.display_name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {/* 自動記帳開關 */}
+                  <TouchableOpacity
+                    style={styles.toggleRow}
+                    activeOpacity={0.8}
+                    onPress={() => setRecordExpense(prev => !prev)}
+                  >
+                    <Text style={styles.toggleCheckbox}>{recordExpense ? '☑️' : '⬜'}</Text>
+                    <Text style={styles.toggleLabel}>自動為家庭記錄一筆資金扣款明細</Text>
+                  </TouchableOpacity>
+
+                  <Text style={styles.modalHint}>
+                    {recordExpense
+                      ? (topUpSourceType === 'credit_card'
+                          ? `💡 將從【${creditCards.find(c => c.id === topUpCreditCardId)?.name || '信用卡'}】扣款 NT$ ${Number(customAmount || 0).toLocaleString()}（自動納入當期信用卡帳單對帳），【${activeModalAccount?.name}】餘額增加 +NT$ ${Number(customAmount || 0).toLocaleString()}。`
+                          : `💡 將從【${topUpSourceType === 'cash' ? '💵 現金' : '🏦 銀行轉帳'}】扣款 NT$ ${Number(customAmount || 0).toLocaleString()}，【${activeModalAccount?.name}】餘額增加 +NT$ ${Number(customAmount || 0).toLocaleString()}。`)
+                      : `💡 僅增加【${activeModalAccount?.name}】卡片餘額 +NT$ ${Number(customAmount || 0).toLocaleString()}，不重複記為家庭支出（適合平時每筆搭車都會逐筆記帳者）。`}
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <View style={styles.inputLabelRow}>
+                    <Text style={styles.inputLabel}>實體卡片當前正確餘額</Text>
+                    {keyboardOffset > 0 && (
+                      <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Text style={styles.dismissKeyboardText}>收起鍵盤 ▾</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  <View style={styles.amountInputRow}>
+                    <Text style={styles.currencySymbol}>$</Text>
+                    <TextInput
+                      style={styles.amountInput}
+                      value={customAmount}
+                      onChangeText={setCustomAmount}
+                      keyboardType="numeric"
+                      placeholder="輸入實際餘額"
+                      returnKeyType="done"
+                      onSubmitEditing={Keyboard.dismiss}
+                    />
+                  </View>
+                  <Text style={styles.modalHint}>
+                    💡 當悠遊卡在捷運逼卡發現金額有出入時，可直接在此調整為最新餘額。
+                  </Text>
+                </>
+              )}
+            </ScrollView>
 
             <View style={styles.modalActions}>
               <TouchableOpacity
@@ -581,6 +677,81 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#0F172A',
+  },
+  sourceChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 10,
+  },
+  sourceChip: {
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  sourceChipActive: {
+    backgroundColor: '#E0F2FE',
+    borderColor: '#0284C7',
+  },
+  sourceChipText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  sourceChipTextActive: {
+    color: '#0284C7',
+    fontWeight: '700',
+  },
+  payerChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 10,
+  },
+  payerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  payerChipActive: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#4F46E5',
+  },
+  payerChipAvatar: {
+    fontSize: 12,
+  },
+  payerChipName: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  payerChipNameActive: {
+    color: '#4F46E5',
+    fontWeight: '700',
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+    marginTop: 2,
+  },
+  toggleCheckbox: {
+    fontSize: 14,
+  },
+  toggleLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#334155',
   },
   modalHint: {
     fontSize: 11,

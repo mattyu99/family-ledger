@@ -188,7 +188,17 @@ interface LedgerContextType {
   updatePaymentAccount: (id: string, data: Partial<PaymentAccount>) => Promise<boolean>;
   deletePaymentAccount: (id: string) => Promise<boolean>;
   restoreDefaultAccounts: () => Promise<void>;
-  topUpAccountBalance: (id: string, amount: number, note?: string) => Promise<boolean>;
+  topUpAccountBalance: (
+    id: string,
+    amount: number,
+    options?: {
+      sourceType?: 'cash' | 'credit_card' | 'transfer';
+      sourceAccountId?: string;
+      payerId?: string;
+      recordExpense?: boolean;
+      note?: string;
+    } | string
+  ) => Promise<boolean>;
   adjustAccountBalance: (id: string, newBalance: number) => Promise<boolean>;
   toggleReconcileTransaction: (transactionId: string) => Promise<boolean>;
   getAccountById: (id?: string) => PaymentAccount | undefined;
@@ -2700,11 +2710,26 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  // 快速加值悠遊卡/儲值卡（更新卡片餘額並自動記錄一筆加值明細）
-  const topUpAccountBalance = async (id: string, topUpAmount: number, customNote?: string): Promise<boolean> => {
+  // 快速加值悠遊卡/儲值卡（更新卡片餘額並可自動記錄一筆出資扣款明細）
+  const topUpAccountBalance = async (
+    id: string,
+    topUpAmount: number,
+    options?: {
+      sourceType?: 'cash' | 'credit_card' | 'transfer';
+      sourceAccountId?: string;
+      payerId?: string;
+      recordExpense?: boolean;
+      note?: string;
+    } | string
+  ): Promise<boolean> => {
     try {
       const targetAcc = paymentAccounts.find(a => a.id === id);
       if (!targetAcc) return false;
+
+      const opts = typeof options === 'string' ? { note: options } : (options || {});
+      const recordExpense = opts.recordExpense !== false;
+      const sourceType = opts.sourceType || 'cash';
+      const sourceAccountId = sourceType === 'credit_card' ? opts.sourceAccountId : undefined;
 
       const newBalance = Number((targetAcc.balance + topUpAmount).toFixed(2));
       const updatedAccounts = paymentAccounts.map(a => a.id === id ? { ...a, balance: newBalance } : a);
@@ -2715,28 +2740,40 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         supabase.from('payment_accounts').update({ balance: newBalance }).eq('id', id).then();
       }
 
-      // 自動記錄一筆加值交易
-      const trafficCat = categories.find(c => c.name.includes('交通') || c.name.includes('儲值'))
-        || categories[0]
-        || DEFAULT_CATEGORIES[0];
+      if (recordExpense) {
+        // 自動記錄一筆扣款出資交易
+        const trafficCat = categories.find(c => c.name.includes('交通') || c.name.includes('儲值'))
+          || categories[0]
+          || DEFAULT_CATEGORIES[0];
 
-      // 嚴格確保 validPaidBy 存在於當前家庭成員名冊，避免觸發 Supabase 外鍵報錯
-      const matchedPayer = (targetAcc.user_id && members.find(m => m.id === targetAcc.user_id))
-        || members.find(m => m.id === currentUser.id)
-        || members[0];
-      const validPaidBy = matchedPayer?.id || currentUser.id;
+        // 嚴格確保 validPaidBy 存在於當前家庭成員名冊，避免觸發 Supabase 外鍵報錯
+        const candidatePayerId = opts.payerId || targetAcc.user_id || currentUser.id;
+        const matchedPayer = members.find(m => m.id === candidatePayerId)
+          || members.find(m => m.id === currentUser.id)
+          || members[0];
+        const validPaidBy = matchedPayer?.id || currentUser.id;
 
-      await addTransaction({
-        amount: topUpAmount,
-        type: 'expense',
-        category_id: trafficCat ? trafficCat.id : categories[0]?.id,
-        paid_by: validPaidBy,
-        merchant: `${targetAcc.name}加值`,
-        payment_method: 'cash',
-        account_id: targetAcc.id && !targetAcc.id.startsWith('50000000') ? targetAcc.id : undefined,
-        note: customNote || `${targetAcc.name} 快速加值 NT$ ${topUpAmount.toLocaleString()}`,
-        transacted_at: new Date().toISOString(),
-      });
+        // 取得扣款出資來源顯示文字
+        let sourceLabel = '現金';
+        if (sourceType === 'credit_card' && sourceAccountId) {
+          const matchedCard = paymentAccounts.find(a => a.id === sourceAccountId);
+          sourceLabel = matchedCard ? matchedCard.name : '信用卡';
+        } else if (sourceType === 'transfer') {
+          sourceLabel = '銀行轉帳';
+        }
+
+        await addTransaction({
+          amount: topUpAmount,
+          type: 'expense',
+          category_id: trafficCat ? trafficCat.id : categories[0]?.id,
+          paid_by: validPaidBy,
+          merchant: `${targetAcc.name}儲值`,
+          payment_method: sourceType,
+          account_id: sourceAccountId, // 扣款信用卡 ID；若為現金或轉帳則為 undefined（絕不能設為悠遊卡 ID）
+          note: opts.note || `存入【${targetAcc.name}】（自 ${sourceLabel} 扣除 NT$ ${topUpAmount.toLocaleString()}）`,
+          transacted_at: new Date().toISOString(),
+        });
+      }
 
       return true;
     } catch (e) {
