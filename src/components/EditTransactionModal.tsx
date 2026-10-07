@@ -31,7 +31,8 @@ const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFont
   />
 );
 import { useLedger } from '../context/LedgerContext';
-import { Transaction, TransactionType } from '../types/database';
+import { Transaction, TransactionType, PaymentMethod } from '../types/database';
+import { PAYMENT_METHOD_OPTIONS } from '../lib/payment';
 import { getCategoryIcon } from '../lib/icons';
 import { DatePickerModal } from './DatePickerModal';
 
@@ -86,7 +87,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   transaction,
   onClose,
 }) => {
-  const { categories, members, currentUser, updateTransaction, deleteTransaction, getMemberById, getCategoryById, recentMerchants } = useLedger();
+  const { categories, members, currentUser, updateTransaction, deleteTransaction, getMemberById, getCategoryById, recentMerchants, paymentAccounts } = useLedger();
 
   const [type, setType] = useState<TransactionType>(() => transaction?.type || 'expense');
   const [amount, setAmount] = useState<string>(() => (transaction?.amount ? String(transaction.amount) : ''));
@@ -101,12 +102,16 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     const canonicalPayer = getMemberById(transaction.paid_by);
     return canonicalPayer ? canonicalPayer.id : (transaction.paid_by || '');
   });
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(() => transaction?.payment_method || 'cash');
+  const [selectedAccountId, setSelectedAccountId] = useState<string>(() => transaction?.account_id || '');
   const [merchant, setMerchant] = useState<string>(() => transaction?.merchant || '');
   const [note, setNote] = useState<string>(() => transaction?.note || '');
   const [transactedAt, setTransactedAt] = useState<string>(() => transaction?.transacted_at || new Date().toISOString());
   const [datePickerVisible, setDatePickerVisible] = useState<boolean>(false);
 
   const availableCategories = categories.filter(c => c.type === type);
+  const creditCards = React.useMemo(() => paymentAccounts.filter(a => a.type === 'credit_card'), [paymentAccounts]);
+  const storedValueCards = React.useMemo(() => paymentAccounts.filter(a => a.type === 'stored_value'), [paymentAccounts]);
 
   // 智慧店家快捷建議標籤列表 (結合自學習 recentMerchants + 分類推薦 + 關鍵字即時比對)
   const suggestedMerchants = React.useMemo(() => {
@@ -132,6 +137,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       setSelectedCategoryId(targetCatId);
       const canonicalPayer = getMemberById(transaction.paid_by);
       setPaidBy(canonicalPayer ? canonicalPayer.id : (transaction.paid_by || ''));
+      setPaymentMethod(transaction.payment_method || 'cash');
+      setSelectedAccountId(transaction.account_id || '');
       setMerchant(transaction.merchant || '');
       setNote(transaction.note || '');
       setTransactedAt(transaction.transacted_at || new Date().toISOString());
@@ -145,6 +152,20 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     const activeCats = categories.filter(c => c.type === newType);
     if (!activeCats.some(c => c.id === selectedCategoryId)) {
       if (activeCats[0]) setSelectedCategoryId(activeCats[0].id);
+    }
+  };
+
+  // 切換付款方式
+  const handleMethodChange = (method: PaymentMethod) => {
+    setPaymentMethod(method);
+    if (method === 'credit_card' || method === 'line_pay') {
+      const userCard = creditCards.find(c => c.user_id === paidBy) || creditCards[0];
+      if (userCard) setSelectedAccountId(userCard.id);
+    } else if (method === 'stored_value') {
+      const userCard = storedValueCards.find(c => c.user_id === paidBy) || storedValueCards[0];
+      if (userCard) setSelectedAccountId(userCard.id);
+    } else {
+      setSelectedAccountId('');
     }
   };
 
@@ -215,6 +236,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         category_id: targetCategory.id,
         paid_by: targetPayer,
         merchant: merchant.trim() || undefined,
+        payment_method: paymentMethod,
+        account_id: selectedAccountId || undefined,
         note,
         transacted_at: transactedAt || transaction.transacted_at,
       });
@@ -373,6 +396,121 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 );
               })}
             </View>
+
+            {/* 付款方式與卡片 */}
+            <View style={styles.sectionLabelRow}>
+              <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>付款方式</Text>
+              <Text style={styles.dateHintText} maxFontSizeMultiplier={1.15}>
+                {paymentMethod === 'credit_card'
+                  ? '(可選信用卡便於對帳)'
+                  : paymentMethod === 'stored_value'
+                  ? '(連動悠遊卡扣餘額)'
+                  : ''}
+              </Text>
+            </View>
+            <View style={styles.methodRow}>
+              {PAYMENT_METHOD_OPTIONS.map((opt) => {
+                const isSelected = paymentMethod === opt.key;
+                return (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[styles.methodChip, isSelected && styles.methodChipActive]}
+                    onPress={() => handleMethodChange(opt.key)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.methodChipIcon}>{opt.icon}</Text>
+                    <Text
+                      style={[styles.methodChipText, isSelected && styles.methodChipTextActive]}
+                      maxFontSizeMultiplier={1.15}
+                    >
+                      {opt.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* 子層：當選擇信用卡或 LINE Pay 時，展開關聯信用卡列表 */}
+            {(paymentMethod === 'credit_card' || paymentMethod === 'line_pay') && creditCards.length > 0 && (
+              <View style={styles.subCardContainer}>
+                <Text style={styles.subCardLabel} maxFontSizeMultiplier={1.15}>
+                  💳 選擇卡片 (對帳核算使用)：
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
+                  {creditCards.map(card => {
+                    const isCardSelected = selectedAccountId === card.id;
+                    const cardholder = getMemberById(card.user_id);
+                    return (
+                      <TouchableOpacity
+                        key={card.id}
+                        style={[
+                          styles.cardChip,
+                          isCardSelected && { borderColor: card.color || '#3B82F6', backgroundColor: '#EFF6FF' },
+                        ]}
+                        onPress={() => setSelectedAccountId(isCardSelected ? '' : card.id)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.cardChipIcon}>💳</Text>
+                        <View>
+                          <Text
+                            style={[styles.cardChipName, isCardSelected && { color: card.color || '#1E40AF', fontWeight: '700' }]}
+                            maxFontSizeMultiplier={1.15}
+                          >
+                            {card.name}{card.last_four_digits ? ` (*${card.last_four_digits})` : ''}
+                          </Text>
+                          {cardholder && (
+                            <Text style={styles.cardChipSub} maxFontSizeMultiplier={1.15}>
+                              {cardholder.display_name} · 每月{card.billing_cycle_date || 15}日結帳
+                            </Text>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* 子層：當選擇悠遊卡時，展開儲值卡列表 */}
+            {paymentMethod === 'stored_value' && storedValueCards.length > 0 && (
+              <View style={styles.subCardContainer}>
+                <Text style={styles.subCardLabel} maxFontSizeMultiplier={1.15}>
+                  🚌 選擇儲值卡 (將自動扣減餘額)：
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
+                  {storedValueCards.map(card => {
+                    const isCardSelected = selectedAccountId === card.id;
+                    const cardholder = getMemberById(card.user_id);
+                    return (
+                      <TouchableOpacity
+                        key={card.id}
+                        style={[
+                          styles.cardChip,
+                          isCardSelected && { borderColor: card.color || '#0284C7', backgroundColor: '#F0F9FF' },
+                        ]}
+                        onPress={() => setSelectedAccountId(card.id)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.cardChipIcon}>{card.icon || '🚌'}</Text>
+                        <View>
+                          <Text
+                            style={[styles.cardChipName, isCardSelected && { color: card.color || '#0284C7', fontWeight: '700' }]}
+                            maxFontSizeMultiplier={1.15}
+                          >
+                            {card.name} (餘額: ${card.balance.toLocaleString()})
+                          </Text>
+                          {cardholder && (
+                            <Text style={styles.cardChipSub} maxFontSizeMultiplier={1.15}>
+                              持卡人：{cardholder.display_name}
+                            </Text>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
 
             {/* 記帳日期調整 */}
             <View style={styles.sectionLabelRow}>
@@ -902,5 +1040,80 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
+  },
+  methodRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  methodChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    gap: 4,
+  },
+  methodChipActive: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#4F46E5',
+  },
+  methodChipIcon: {
+    fontSize: 13,
+  },
+  methodChipText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#4B5563',
+  },
+  methodChipTextActive: {
+    color: '#4F46E5',
+    fontWeight: '700',
+  },
+  subCardContainer: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  subCardLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B',
+    marginBottom: 8,
+  },
+  cardScroll: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  cardChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    gap: 6,
+  },
+  cardChipIcon: {
+    fontSize: 16,
+  },
+  cardChipName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  cardChipSub: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 1,
   },
 });

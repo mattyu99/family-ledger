@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Platform, Alert, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Transaction, Category, Ledger, Profile, TransactionType, CategoryType } from '../types/database';
+import { Transaction, Category, Ledger, Profile, TransactionType, CategoryType, PaymentMethod, PaymentAccount, AccountType } from '../types/database';
 import { supabase, isConfigured } from '../lib/supabase';
 import { generateUUID } from '../lib/uuid';
+import { DEMO_PAYMENT_ACCOUNTS } from '../lib/payment';
 
 const safeAlert = (title: string, message: string) => {
   if (Platform.OS === 'web') {
@@ -61,9 +62,13 @@ const INITIAL_TRANSACTIONS: Transaction[] = [
     amount: 1450,
     type: 'expense',
     paid_by: DEMO_USER_DAD,
+    merchant: '好市多',
+    payment_method: 'credit_card',
+    account_id: '50000000-0000-4000-8000-000000000001', // 富邦 Costco
     transacted_at: new Date(Date.now() - 3600000 * 4).toISOString(),
     note: 'Costco 週末採買牛奶與生鮮',
     is_settled: false,
+    is_reconciled: false,
     created_at: new Date().toISOString(),
   },
   {
@@ -74,8 +79,28 @@ const INITIAL_TRANSACTIONS: Transaction[] = [
     amount: 680,
     type: 'expense',
     paid_by: DEMO_USER_MOM,
+    merchant: '日式料理',
+    payment_method: 'line_pay',
+    account_id: '50000000-0000-4000-8000-000000000002', // 國泰 CUBE 卡
     transacted_at: new Date(Date.now() - 3600000 * 20).toISOString(),
     note: '全家日式定食晚餐',
+    is_settled: false,
+    is_reconciled: false,
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: '40000000-0000-4000-8000-000000000005',
+    ledger_id: DEMO_LEDGER_ID,
+    creator_id: DEMO_USER_DAD,
+    category_id: DEFAULT_CATEGORIES[3].id,
+    amount: 35,
+    type: 'expense',
+    paid_by: DEMO_USER_DAD,
+    merchant: '台北捷運',
+    payment_method: 'stored_value',
+    account_id: '50000000-0000-4000-8000-000000000003', // 爸爸悠遊卡
+    transacted_at: new Date(Date.now() - 3600000 * 30).toISOString(),
+    note: '上班捷運通勤',
     is_settled: false,
     created_at: new Date().toISOString(),
   },
@@ -87,6 +112,8 @@ const INITIAL_TRANSACTIONS: Transaction[] = [
     amount: 2340,
     type: 'expense',
     paid_by: DEMO_USER_DAD,
+    merchant: '台灣電力公司',
+    payment_method: 'transfer',
     transacted_at: new Date(Date.now() - 3600000 * 48).toISOString(),
     note: '台電夏季電費代繳',
     is_settled: false,
@@ -100,6 +127,7 @@ const INITIAL_TRANSACTIONS: Transaction[] = [
     amount: 65000,
     type: 'income',
     paid_by: DEMO_USER_DAD,
+    payment_method: 'transfer',
     transacted_at: new Date(Date.now() - 3600000 * 72).toISOString(),
     note: '本月薪資入帳',
     is_settled: true,
@@ -134,6 +162,9 @@ interface LedgerContextType {
     merchant?: string;
     note?: string;
     transacted_at?: string;
+    payment_method?: PaymentMethod;
+    account_id?: string;
+    is_reconciled?: boolean;
     splitWithIds?: string[];
   }) => Promise<void>;
   updateTransaction: (
@@ -146,9 +177,20 @@ interface LedgerContextType {
       merchant?: string;
       note?: string;
       transacted_at?: string;
+      payment_method?: PaymentMethod;
+      account_id?: string;
+      is_reconciled?: boolean;
     }
   ) => Promise<boolean>;
   deleteTransaction: (id: string) => Promise<void>;
+  paymentAccounts: PaymentAccount[];
+  addPaymentAccount: (account: Omit<PaymentAccount, 'id' | 'ledger_id' | 'created_at'>) => Promise<PaymentAccount>;
+  updatePaymentAccount: (id: string, data: Partial<PaymentAccount>) => Promise<boolean>;
+  deletePaymentAccount: (id: string) => Promise<boolean>;
+  topUpAccountBalance: (id: string, amount: number, note?: string) => Promise<boolean>;
+  adjustAccountBalance: (id: string, newBalance: number) => Promise<boolean>;
+  toggleReconcileTransaction: (transactionId: string) => Promise<boolean>;
+  getAccountById: (id?: string) => PaymentAccount | undefined;
   recentMerchants: string[];
   recordMerchant: (merchant: string) => Promise<void>;
   exportToCSV: () => string;
@@ -321,6 +363,7 @@ const STORAGE_KEYS = {
   LAST_BACKUP_AT: '@family_ledger_last_backup_at',
   AUTO_BACKUP_CONFIG: '@family_ledger_auto_backup_config',
   RECENT_MERCHANTS: '@family_ledger_recent_merchants',
+  PAYMENT_ACCOUNTS: '@family_ledger_payment_accounts',
 };
 
 // 預設常用店家快捷建議清單（涵蓋台灣家庭最普遍的日常採買店家）
@@ -358,6 +401,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [memberAliasMap, setMemberAliasMap] = useState<Record<string, Profile>>({});
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
+  const [paymentAccounts, setPaymentAccounts] = useState<PaymentAccount[]>(DEMO_PAYMENT_ACCOUNTS);
   const [currentUser, setCurrentUser] = useState<Profile>(DEFAULT_MEMBERS[0]);
   const [isCloudSynced, setIsCloudSynced] = useState<boolean>(false);
   const [isDeviceBound, setIsDeviceBound] = useState<boolean>(false);
@@ -656,6 +700,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const parsed = JSON.parse(savedRecentMerchants);
             if (Array.isArray(parsed) && parsed.length > 0) {
               setRecentMerchants(parsed);
+            }
+          } catch {}
+        }
+
+        const savedAccounts = await AsyncStorage.getItem(STORAGE_KEYS.PAYMENT_ACCOUNTS);
+        if (savedAccounts) {
+          try {
+            const parsed = JSON.parse(savedAccounts);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setPaymentAccounts(parsed);
             }
           } catch {}
         }
@@ -1320,7 +1374,31 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(finalTx));
     setIsCloudSynced(true);
 
-    // (E) Realtime 訂閱
+    // (E) 載入付款帳戶與卡片
+    try {
+      const { data: accountRows, error: accErr } = await supabase
+        .from('payment_accounts')
+        .select('*')
+        .eq('ledger_id', targetLedger.id)
+        .order('sort_order', { ascending: true });
+
+      if (!accErr && accountRows && accountRows.length > 0) {
+        setPaymentAccounts(accountRows);
+        await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify(accountRows));
+        await AsyncStorage.setItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${targetLedger.id}`, JSON.stringify(accountRows));
+      } else if (targetLedger.id === DEMO_LEDGER_ID) {
+        const savedDemo = await AsyncStorage.getItem(STORAGE_KEYS.PAYMENT_ACCOUNTS);
+        if (savedDemo) {
+          try { setPaymentAccounts(JSON.parse(savedDemo)); } catch {}
+        } else {
+          setPaymentAccounts(DEMO_PAYMENT_ACCOUNTS);
+        }
+      }
+    } catch (accLoadErr) {
+      console.warn('載入雲端付款帳戶失敗，使用本地快取:', accLoadErr);
+    }
+
+    // (F) Realtime 訂閱
     setupRealtimeSubscription(targetLedger.id);
   };
 
@@ -2245,6 +2323,162 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  // 儲存付款帳戶至本地快取
+  const savePaymentAccountsToStorage = async (accounts: PaymentAccount[]) => {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify(accounts));
+      if (currentLedger?.id) {
+        await AsyncStorage.setItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${currentLedger.id}`, JSON.stringify(accounts));
+      }
+    } catch (e) {
+      console.warn('儲存付款帳戶快取失敗:', e);
+    }
+  };
+
+  // 新增付款帳戶 / 信用卡 / 儲值卡
+  const addPaymentAccount = async (accountData: Omit<PaymentAccount, 'id' | 'ledger_id' | 'created_at'>): Promise<PaymentAccount> => {
+    const newAcc: PaymentAccount = {
+      ...accountData,
+      id: generateUUID(),
+      ledger_id: currentLedger.id,
+      created_at: new Date().toISOString(),
+      balance: accountData.balance ?? 0,
+    };
+    const updated = [...paymentAccounts, newAcc];
+    setPaymentAccounts(updated);
+    await savePaymentAccountsToStorage(updated);
+
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        await supabase.from('payment_accounts').insert(newAcc);
+      } catch (e) {
+        console.warn('雲端新增付款帳戶連線失敗 (已保留本地):', e);
+      }
+    }
+    return newAcc;
+  };
+
+  // 修改付款帳戶
+  const updatePaymentAccount = async (id: string, data: Partial<PaymentAccount>): Promise<boolean> => {
+    const updated = paymentAccounts.map(a => a.id === id ? { ...a, ...data } : a);
+    setPaymentAccounts(updated);
+    await savePaymentAccountsToStorage(updated);
+
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        await supabase.from('payment_accounts').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id);
+      } catch (e) {
+        console.warn('雲端更新付款帳戶失敗:', e);
+      }
+    }
+    return true;
+  };
+
+  // 刪除付款帳戶
+  const deletePaymentAccount = async (id: string): Promise<boolean> => {
+    const updated = paymentAccounts.filter(a => a.id !== id);
+    setPaymentAccounts(updated);
+    await savePaymentAccountsToStorage(updated);
+
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        await supabase.from('payment_accounts').delete().eq('id', id);
+      } catch (e) {
+        console.warn('雲端刪除付款帳戶失敗:', e);
+      }
+    }
+    return true;
+  };
+
+  // 快速加值悠遊卡/儲值卡（更新卡片餘額並自動記錄一筆加值明細）
+  const topUpAccountBalance = async (id: string, topUpAmount: number, customNote?: string): Promise<boolean> => {
+    try {
+      const targetAcc = paymentAccounts.find(a => a.id === id);
+      if (!targetAcc) return false;
+
+      const newBalance = Number((targetAcc.balance + topUpAmount).toFixed(2));
+      const updatedAccounts = paymentAccounts.map(a => a.id === id ? { ...a, balance: newBalance } : a);
+      setPaymentAccounts(updatedAccounts);
+      await savePaymentAccountsToStorage(updatedAccounts);
+
+      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+        supabase.from('payment_accounts').update({ balance: newBalance }).eq('id', id).then();
+      }
+
+      // 自動記錄一筆加值交易
+      const trafficCat = categories.find(c => c.name.includes('交通') || c.name.includes('儲值')) || categories[0];
+      const validPaidBy = targetAcc.user_id || currentUser.id || members[0]?.id;
+      await addTransaction({
+        amount: topUpAmount,
+        type: 'expense',
+        category_id: trafficCat ? trafficCat.id : categories[0]?.id,
+        paid_by: validPaidBy,
+        merchant: `${targetAcc.name}加值`,
+        payment_method: 'cash',
+        account_id: targetAcc.id,
+        note: customNote || `${targetAcc.name} 快速加值 NT$ ${topUpAmount.toLocaleString()}`,
+        transacted_at: new Date().toISOString(),
+      });
+
+      return true;
+    } catch (e) {
+      console.warn('加值失敗:', e);
+      return false;
+    }
+  };
+
+  // 直接校正儲值卡餘額
+  const adjustAccountBalance = async (id: string, newBalance: number): Promise<boolean> => {
+    try {
+      const updatedAccounts = paymentAccounts.map(a => a.id === id ? { ...a, balance: Number(newBalance.toFixed(2)) } : a);
+      setPaymentAccounts(updatedAccounts);
+      await savePaymentAccountsToStorage(updatedAccounts);
+
+      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+        supabase.from('payment_accounts').update({ balance: Number(newBalance.toFixed(2)) }).eq('id', id).then();
+      }
+      return true;
+    } catch (e) {
+      console.warn('校正餘額失敗:', e);
+      return false;
+    }
+  };
+
+  // 切換特定交易的信用卡對帳核銷狀態 (is_reconciled)
+  const toggleReconcileTransaction = async (transactionId: string): Promise<boolean> => {
+    try {
+      let nextReconciled = false;
+      const updated = transactions.map(t => {
+        if (t.id === transactionId) {
+          nextReconciled = !t.is_reconciled;
+          return { ...t, is_reconciled: nextReconciled };
+        }
+        return t;
+      });
+      setTransactions(updated);
+      await saveTransactionsToStorage(updated);
+
+      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+        try {
+          await supabase.from('transactions').update({ is_reconciled: nextReconciled }).eq('id', transactionId);
+        } catch {}
+      }
+      return true;
+    } catch (e) {
+      console.warn('切換對帳狀態失敗:', e);
+      return false;
+    }
+  };
+
+  // 透過 ID 取得卡片帳戶資料
+  const getAccountById = React.useCallback(
+    (id?: string): PaymentAccount | undefined => {
+      if (!id) return undefined;
+      return paymentAccounts.find(a => a.id === id);
+    },
+    [paymentAccounts]
+  );
+
   // 新增交易（兼顧樂觀更新與雲端同步）
   const addTransaction = async (data: {
     amount: number;
@@ -2254,6 +2488,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     merchant?: string;
     note?: string;
     transacted_at?: string;
+    payment_method?: PaymentMethod;
+    account_id?: string;
+    is_reconciled?: boolean;
     splitWithIds?: string[];
   }) => {
     const txId = generateUUID();
@@ -2289,6 +2526,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     const resolvedCategory = getCategoryById(validCategoryId);
+    const resolvedAccount = data.account_id ? getAccountById(data.account_id) : undefined;
 
     const newTx: Transaction = {
       id: txId,
@@ -2300,6 +2538,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       type: data.type,
       paid_by: validPaidBy,
       merchant: cleanMerchant,
+      payment_method: data.payment_method || 'cash',
+      account_id: data.account_id || undefined,
+      payment_account: resolvedAccount,
+      is_reconciled: data.is_reconciled || false,
       note: data.note || '',
       transacted_at: data.transacted_at || new Date().toISOString(),
       is_settled: false,
@@ -2312,6 +2554,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         is_settled: false,
       })),
     };
+
+    // 若為儲值卡消費 (stored_value) 且指定了 account_id，自動扣減該卡餘額
+    if (data.type === 'expense' && data.payment_method === 'stored_value' && data.account_id) {
+      setPaymentAccounts((prev) => {
+        const updated = prev.map(acc => {
+          if (acc.id === data.account_id) {
+            return { ...acc, balance: Number((acc.balance - data.amount).toFixed(2)) };
+          }
+          return acc;
+        });
+        savePaymentAccountsToStorage(updated).catch(() => {});
+        return updated;
+      });
+    }
 
     // 樂觀更新本地畫面
     const isOnlinePublishing = isConfigured && isCloudSynced && newTx.ledger_id !== DEMO_LEDGER_ID;
@@ -2346,12 +2602,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             : newTx.note;
         }
 
+        if (newTx.payment_method) insertPayload.payment_method = newTx.payment_method;
+        if (newTx.account_id) insertPayload.account_id = newTx.account_id;
+        if (newTx.is_reconciled !== undefined) insertPayload.is_reconciled = newTx.is_reconciled;
+
         let { error: txError } = await supabase.from('transactions').insert(insertPayload);
 
         // 如果雲端尚未執行 ALTER TABLE 加欄位導致 42703 (column does not exist)，自動切換回相容模式重試
         if (txError && txError.code === '42703') {
           hasMerchantColumnRef.current = false;
           delete insertPayload.merchant;
+          delete insertPayload.payment_method;
+          delete insertPayload.account_id;
+          delete insertPayload.is_reconciled;
           insertPayload.note = newTx.merchant
             ? `[${newTx.merchant}] ${newTx.note || ''}`.trim()
             : newTx.note;
@@ -2385,6 +2648,22 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // 刪除交易
   const deleteTransaction = async (id: string) => {
+    const targetTx = transactions.find(t => t.id === id);
+
+    // 若為儲值卡消費，恢復卡片餘額
+    if (targetTx && targetTx.type === 'expense' && targetTx.payment_method === 'stored_value' && targetTx.account_id) {
+      setPaymentAccounts((prev) => {
+        const updated = prev.map(acc => {
+          if (acc.id === targetTx.account_id) {
+            return { ...acc, balance: Number((acc.balance + targetTx.amount).toFixed(2)) };
+          }
+          return acc;
+        });
+        savePaymentAccountsToStorage(updated).catch(() => {});
+        return updated;
+      });
+    }
+
     // 1. 本地立即清除
     const updated = transactions.filter(t => t.id !== id);
     setTransactions(updated);
@@ -2425,6 +2704,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       merchant?: string;
       note?: string;
       transacted_at?: string;
+      payment_method?: PaymentMethod;
+      account_id?: string;
+      is_reconciled?: boolean;
     }
   ): Promise<boolean> => {
     try {
@@ -2434,16 +2716,49 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
       const targetTx = transactions.find(t => t.id === id);
 
+      // 儲值卡餘額連動校正
+      const oldAmount = targetTx?.amount || 0;
+      const oldMethod = targetTx?.payment_method;
+      const oldAccId = targetTx?.account_id;
+      const oldType = targetTx?.type;
+
+      const newAmount = data.amount !== undefined ? data.amount : oldAmount;
+      const newMethod = data.payment_method !== undefined ? data.payment_method : oldMethod;
+      const newAccId = data.account_id !== undefined ? data.account_id : oldAccId;
+      const newType = data.type !== undefined ? data.type : oldType;
+
+      if (oldType === 'expense' && oldMethod === 'stored_value' && oldAccId) {
+        // 退回舊扣款
+        setPaymentAccounts((prev) => {
+          let updated = prev.map(acc => acc.id === oldAccId ? { ...acc, balance: Number((acc.balance + oldAmount).toFixed(2)) } : acc);
+          if (newType === 'expense' && newMethod === 'stored_value' && newAccId) {
+            updated = updated.map(acc => acc.id === newAccId ? { ...acc, balance: Number((acc.balance - newAmount).toFixed(2)) } : acc);
+          }
+          savePaymentAccountsToStorage(updated).catch(() => {});
+          return updated;
+        });
+      } else if (newType === 'expense' && newMethod === 'stored_value' && newAccId) {
+        // 應用新扣款
+        setPaymentAccounts((prev) => {
+          const updated = prev.map(acc => acc.id === newAccId ? { ...acc, balance: Number((acc.balance - newAmount).toFixed(2)) } : acc);
+          savePaymentAccountsToStorage(updated).catch(() => {});
+          return updated;
+        });
+      }
+
       const updatedTxs = transactions.map(t => {
         if (t.id === id) {
           const effectivePaidBy = data.paid_by !== undefined ? data.paid_by : t.paid_by;
           const canonicalPayer = getMemberById(effectivePaidBy);
+          const effectiveAccId = data.account_id !== undefined ? data.account_id : t.account_id;
+          const resolvedAccount = effectiveAccId ? getAccountById(effectiveAccId) : undefined;
           return {
             ...t,
             ...data,
             merchant: data.merchant !== undefined ? cleanMerchant : t.merchant,
             category: data.category_id ? getCategoryById(data.category_id, t.category) : t.category,
             payer_profile: canonicalPayer || t.payer_profile,
+            payment_account: resolvedAccount || t.payment_account,
           };
         }
         return t;
@@ -2458,6 +2773,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (data.category_id !== undefined) updatePayload.category_id = data.category_id;
         if (data.paid_by !== undefined) updatePayload.paid_by = data.paid_by;
         if (data.transacted_at !== undefined) updatePayload.transacted_at = data.transacted_at;
+        if (data.payment_method !== undefined) updatePayload.payment_method = data.payment_method;
+        if (data.account_id !== undefined) updatePayload.account_id = data.account_id;
+        if (data.is_reconciled !== undefined) updatePayload.is_reconciled = data.is_reconciled;
         updatePayload.updated_at = new Date().toISOString();
 
         if (hasMerchantColumnRef.current) {
@@ -2482,6 +2800,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (error && error.code === '42703') {
           hasMerchantColumnRef.current = false;
           delete updatePayload.merchant;
+          delete updatePayload.payment_method;
+          delete updatePayload.account_id;
+          delete updatePayload.is_reconciled;
           const effectiveMerchant = data.merchant !== undefined ? cleanMerchant : targetTx?.merchant;
           const effectiveNote = data.note !== undefined ? data.note : (targetTx?.note || '');
           updatePayload.note = effectiveMerchant
@@ -3146,6 +3467,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updateCategory,
         deleteCategory,
         refreshLedger,
+        paymentAccounts,
+        addPaymentAccount,
+        updatePaymentAccount,
+        deletePaymentAccount,
+        topUpAccountBalance,
+        adjustAccountBalance,
+        toggleReconcileTransaction,
+        getAccountById,
       }}
     >
       {children}

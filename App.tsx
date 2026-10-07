@@ -42,6 +42,9 @@ import { TransactionFilterModal } from './src/components/TransactionFilterModal'
 import { MonthPickerModal } from './src/components/MonthPickerModal';
 import { LiveToastBanner } from './src/components/LiveToastBanner';
 import { AvatarPicker, ALL_AVATAR_OPTIONS } from './src/components/AvatarPicker';
+import { StoredValueWidget } from './src/components/StoredValueWidget';
+import { CreditCardReconciliationModal } from './src/components/CreditCardReconciliationModal';
+import { PaymentAccountsManageModal } from './src/components/PaymentAccountsManageModal';
 import { Transaction, Profile } from './src/types/database';
 import { getCategoryIcon } from './src/lib/icons';
 import * as Updates from 'expo-updates';
@@ -172,11 +175,14 @@ function MainApp() {
     dismissLiveToast,
     triggerLiveToast,
     recentMerchants,
+    paymentAccounts,
   } = useLedger();
 
   const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'family'>('transactions');
   const [modalVisible, setModalVisible] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [reconcileModalVisible, setReconcileModalVisible] = useState(false);
+  const [accountsManageModalVisible, setAccountsManageModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [exportModalVisible, setExportModalVisible] = useState(false);
   const [memberModalVisible, setMemberModalVisible] = useState(false);
@@ -2211,6 +2217,9 @@ function MainApp() {
               </View>
             </View>
 
+            {/* 悠遊卡 / 一卡通 即時餘額與快捷儲值小工具 */}
+            <StoredValueWidget onManageAccounts={() => setAccountsManageModalVisible(true)} />
+
             {/* 交易列表標題 */}
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>
@@ -2310,6 +2319,16 @@ function MainApp() {
                     : (selectedMember?.display_name || '指定成員')}
                 </Text>
                 <Text style={[styles.filterChipArrow, filterMemberId !== 'all' && styles.filterChipArrowActive]}>▾</Text>
+              </TouchableOpacity>
+
+              {/* 💳 信用卡帳單結帳日核對入口 */}
+              <TouchableOpacity
+                activeOpacity={0.7}
+                style={[styles.filterChip, { borderColor: '#818CF8', backgroundColor: '#EEF2FF' }]}
+                onPress={() => setReconcileModalVisible(true)}
+              >
+                <Text style={styles.filterChipIcon}>💳</Text>
+                <Text style={[styles.filterChipText, { color: '#4F46E5', fontWeight: '700' }]}>帳單對帳</Text>
               </TouchableOpacity>
 
               {/* 若在搜尋狀態下且非查全部月份，提供 1 鍵切換至全部月份 */}
@@ -3138,6 +3157,96 @@ function MainApp() {
               </View>
             </View>
 
+            {/* 支付卡片與帳戶管理 (信用卡結帳日 / 悠遊卡即時餘額) */}
+            <View style={styles.cardSection}>
+              <View style={styles.sectionHeaderRow}>
+                <View style={styles.sectionHeaderLeft}>
+                  <Text style={styles.cardSectionTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    💳 支付卡片與帳戶 ({paymentAccounts.length})
+                  </Text>
+                  <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    管理信用卡結帳週期、悠遊卡/一卡通餘額與帳單對帳
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  <TouchableOpacity
+                    style={[styles.manageCategoryBtn, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}
+                    onPress={() => setReconcileModalVisible(true)}
+                  >
+                    <Text style={[styles.manageCategoryBtnText, { color: '#4F46E5' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      📊 對帳
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.manageCategoryBtn}
+                    onPress={() => setAccountsManageModalVisible(true)}
+                  >
+                    <Text style={styles.manageCategoryBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      ⚙️ 管理
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.categoryPreviewRow}>
+                {paymentAccounts.map(acc => {
+                  const isCard = acc.type === 'credit_card';
+                  return (
+                    <TouchableOpacity
+                      key={acc.id}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        if (isCard) {
+                          setReconcileModalVisible(true);
+                        } else {
+                          setAccountsManageModalVisible(true);
+                        }
+                      }}
+                      style={[
+                        styles.categoryPreviewChip,
+                        { borderColor: `${acc.color || '#4F46E5'}40`, backgroundColor: `${acc.color || '#4F46E5'}10` },
+                      ]}
+                    >
+                      <Text style={styles.categoryPreviewIcon} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                        {acc.icon || (isCard ? '💳' : '🚌')}
+                      </Text>
+                      <Text
+                        style={styles.categoryPreviewText}
+                        numberOfLines={1}
+                        allowFontScaling={false}
+                        maxFontSizeMultiplier={1.08}
+                      >
+                        {acc.name}{acc.last_four_digits ? ` (*${acc.last_four_digits})` : ''}
+                      </Text>
+                      {isCard && acc.billing_cycle_date ? (
+                        <View style={{ backgroundColor: '#EEF2FF', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, marginLeft: 4 }}>
+                          <Text style={{ fontSize: 10, color: '#4F46E5', fontWeight: '700' }} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                            每月{acc.billing_cycle_date}日結
+                          </Text>
+                        </View>
+                      ) : !isCard ? (
+                        <View style={{ backgroundColor: '#ECFDF5', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, marginLeft: 4 }}>
+                          <Text style={{ fontSize: 10, color: '#047857', fontWeight: '700' }} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                            ${(acc.balance || 0).toLocaleString()}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                })}
+                {paymentAccounts.length === 0 && (
+                  <TouchableOpacity
+                    style={[styles.categoryPreviewChip, { borderStyle: 'dashed' }]}
+                    onPress={() => setAccountsManageModalVisible(true)}
+                  >
+                    <Text style={styles.categoryPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      ＋ 新增第一張信用卡或悠遊卡
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
             {/* 資料備份與掌控 */}
             <View style={styles.cardSection}>
               <View style={styles.sectionHeaderRow}>
@@ -3429,6 +3538,19 @@ function MainApp() {
         selectedMonth={analyticsMonth}
         onSelectMonth={setAnalyticsMonth}
         availableMonths={availableMonths}
+      />
+
+      {/* 💳 信用卡帳單結帳日核對工具 */}
+      <CreditCardReconciliationModal
+        visible={reconcileModalVisible}
+        onClose={() => setReconcileModalVisible(false)}
+        onEditTransaction={tx => setEditingTransaction(tx)}
+      />
+
+      {/* 💳 支付卡片與帳戶管理彈窗 */}
+      <PaymentAccountsManageModal
+        visible={accountsManageModalVisible}
+        onClose={() => setAccountsManageModalVisible(false)}
       />
 
       {/* 匯出資料展示彈窗 */}

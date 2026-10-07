@@ -3,6 +3,7 @@ import { View, Text as RNText, StyleSheet, TouchableOpacity, TextProps } from 'r
 import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { getCategoryIcon } from '../lib/icons';
+import { formatPaymentLabel } from '../lib/payment';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
   <RNText
@@ -18,7 +19,7 @@ interface TransactionItemProps {
 }
 
 export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ transaction, onPress }) => {
-  const { getMemberById, getCategoryById } = useLedger();
+  const { getMemberById, getCategoryById, getAccountById } = useLedger();
 
   const category = getCategoryById(transaction.category_id, transaction.category);
   const payer = getMemberById(transaction.paid_by) || transaction.payer_profile;
@@ -26,6 +27,9 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
 
   const date = new Date(transaction.transacted_at);
   const formattedDate = `${date.getMonth() + 1}/${date.getDate()}`;
+
+  const account = transaction.payment_account || (transaction.account_id ? getAccountById(transaction.account_id) : undefined);
+  const paymentLabel = formatPaymentLabel(transaction.payment_method, account);
 
   return (
     <TouchableOpacity
@@ -83,6 +87,23 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
             >
               {payer?.avatar_url || '👤'} {payer?.display_name || '成員'}
             </Text>
+            {!!paymentLabel && (
+              <View style={[styles.paymentBadge, { borderColor: `${paymentLabel.color}35`, backgroundColor: `${paymentLabel.color}12` }]}>
+                <Text style={styles.paymentBadgeIcon}>{paymentLabel.icon}</Text>
+                <Text
+                  style={[styles.paymentBadgeText, { color: paymentLabel.color }]}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={1.08}
+                >
+                  {paymentLabel.text}
+                </Text>
+              </View>
+            )}
+            {transaction.is_reconciled && (
+              <View style={styles.reconciledBadge}>
+                <Text style={styles.reconciledBadgeText} maxFontSizeMultiplier={1.08}>✓ 已核對</Text>
+              </View>
+            )}
             <Text
               style={styles.dateText}
               maxFontSizeMultiplier={1.2}
@@ -212,5 +233,35 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     marginRight: -2,
     alignSelf: 'center',
+  },
+  paymentBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 0.5,
+    gap: 3,
+    maxWidth: 130,
+  },
+  paymentBadgeIcon: {
+    fontSize: 10,
+  },
+  paymentBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  reconciledBadge: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+    borderWidth: 0.5,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 5,
+  },
+  reconciledBadgeText: {
+    fontSize: 9.5,
+    fontWeight: '600',
+    color: '#059669',
   },
 });

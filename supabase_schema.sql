@@ -75,7 +75,29 @@ CREATE TABLE IF NOT EXISTS public.transactions (
 -- 為 transactions 表新增 merchant 欄位（店家/付款對象）
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS merchant TEXT;
 
--- 6. 分帳/拆帳明細表 (共同分攤)
+-- 為 transactions 表新增 payment_method (付款方式), account_id (卡片/帳戶ID), is_reconciled (是否已對帳)
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'cash';
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS account_id UUID;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS is_reconciled BOOLEAN DEFAULT FALSE;
+
+-- 6. 付款卡片與資產帳戶表 (信用卡、悠遊卡、儲值錢包)
+CREATE TABLE IF NOT EXISTS public.payment_accounts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    ledger_id UUID NOT NULL REFERENCES public.ledgers(id) ON DELETE CASCADE,
+    name TEXT NOT NULL, -- 如：富邦 Costco 卡, 國泰 CUBE 卡, 爸爸悠遊卡
+    type TEXT CHECK (type IN ('credit_card', 'stored_value', 'cash', 'bank', 'other')) NOT NULL,
+    user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL, -- 持卡人 / 歸屬成員
+    last_four_digits TEXT, -- 末四碼 (如 8829)
+    billing_cycle_date INT CHECK (billing_cycle_date BETWEEN 1 AND 31), -- 結帳日 (每月 1~31 號)
+    balance NUMERIC(12, 2) DEFAULT 0 NOT NULL, -- 儲值卡/帳戶餘額 (悠遊卡使用)
+    color TEXT DEFAULT '#3B82F6',
+    icon TEXT DEFAULT '💳',
+    sort_order INT DEFAULT 0 NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 7. 分帳/拆帳明細表 (共同分攤)
 CREATE TABLE IF NOT EXISTS public.transaction_splits (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     transaction_id UUID NOT NULL REFERENCES public.transactions(id) ON DELETE CASCADE,
@@ -85,7 +107,7 @@ CREATE TABLE IF NOT EXISTS public.transaction_splits (
     settled_at TIMESTAMPTZ
 );
 
--- 7. 帳本邀請碼表 (家人快速加入)
+-- 8. 帳本邀請碼表 (家人快速加入)
 CREATE TABLE IF NOT EXISTS public.ledger_invites (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     ledger_id UUID NOT NULL REFERENCES public.ledgers(id) ON DELETE CASCADE,
@@ -107,6 +129,7 @@ ALTER TABLE public.ledgers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ledger_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payment_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transaction_splits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ledger_invites ENABLE ROW LEVEL SECURITY;
 
@@ -192,6 +215,15 @@ CREATE POLICY "Members can update transactions" ON public.transactions FOR UPDAT
 
 DROP POLICY IF EXISTS "Members can delete transactions" ON public.transactions;
 CREATE POLICY "Members can delete transactions" ON public.transactions FOR DELETE 
+  USING (public.is_ledger_member(ledger_id));
+
+-- Payment Accounts 規則：只有成員能看與增修卡片帳戶
+DROP POLICY IF EXISTS "Members can view payment accounts" ON public.payment_accounts;
+CREATE POLICY "Members can view payment accounts" ON public.payment_accounts FOR SELECT 
+  USING (public.is_ledger_member(ledger_id));
+
+DROP POLICY IF EXISTS "Members can manage payment accounts" ON public.payment_accounts;
+CREATE POLICY "Members can manage payment accounts" ON public.payment_accounts FOR ALL 
   USING (public.is_ledger_member(ledger_id));
 
 -- Splits 規則
