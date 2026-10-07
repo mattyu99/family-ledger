@@ -217,3 +217,4 @@ export const formatPaymentLabel = (
       return { icon: '💵', text: '現金', color: '#6B7280' };
   }
 };
+

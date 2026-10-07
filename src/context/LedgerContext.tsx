@@ -454,6 +454,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // 智慧店家 / 對象自學習名單與雲端欄位探測
   const [recentMerchants, setRecentMerchants] = useState<string[]>(DEFAULT_POPULAR_MERCHANTS);
   const hasMerchantColumnRef = useRef<boolean>(false);
+  const hasPaymentColumnsRef = useRef<boolean>(false);
 
   const recordMerchant = React.useCallback(async (m: string) => {
     const clean = (m || '').trim();
@@ -704,7 +705,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } catch {}
         }
 
-        const savedAccounts = await AsyncStorage.getItem(STORAGE_KEYS.PAYMENT_ACCOUNTS);
+        const ledgerId = savedLedger ? JSON.parse(savedLedger)?.id : null;
+        const savedAccounts = (ledgerId && await AsyncStorage.getItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${ledgerId}`)) || await AsyncStorage.getItem(STORAGE_KEYS.PAYMENT_ACCOUNTS);
         if (savedAccounts) {
           try {
             const parsed = JSON.parse(savedAccounts);
@@ -1188,6 +1190,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setRawMembers(loadedMembers);
     const dedupedMembers = deduplicateMembers(loadedMembers);
     let aliasMap = buildMemberAliasMap(dedupedMembers, loadedMembers);
+    let canonicalMe: Profile | undefined = undefined;
 
     if (dedupedMembers.length > 0) {
       setMembers(dedupedMembers);
@@ -1199,7 +1202,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const myDisplayName = (myMemberRow?.profiles as any)?.display_name;
 
       // 尋找此裝置對應的成員（優先比對 authUserId，若名冊已去重則比對相同 display_name 的主要成員）
-      let canonicalMe = dedupedMembers.find(
+      canonicalMe = dedupedMembers.find(
         m => m.id === authUserId || (myDisplayName && (m.display_name || '').trim().toLowerCase() === myDisplayName.trim().toLowerCase())
       );
       if (!canonicalMe) {
@@ -1262,13 +1265,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await AsyncStorage.setItem(STORAGE_KEYS.ALIAS_MAP, JSON.stringify(aliasMap));
     await AsyncStorage.setItem(`${STORAGE_KEYS.ALIAS_MAP}_${targetLedger.id}`, JSON.stringify(aliasMap));
 
-    // 探測 Supabase transactions 表是否已有 merchant 欄位
+    // 探測 Supabase transactions 表是否已有 merchant, payment_method 等欄位
     if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
       try {
         const { error: probeErr } = await supabase.from('transactions').select('merchant').limit(1);
         hasMerchantColumnRef.current = !probeErr;
       } catch {
         hasMerchantColumnRef.current = false;
+      }
+      try {
+        const { error: payErr } = await supabase.from('transactions').select('payment_method, account_id, is_reconciled').limit(1);
+        hasPaymentColumnsRef.current = !payErr;
+      } catch {
+        hasPaymentColumnsRef.current = false;
       }
     }
 
@@ -1324,7 +1333,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       });
     }
 
-    // 檢查本地是否有離線建立、尚未成功送至雲端的交易（注意：僅同步有 _isPendingSync 標記的交易，絕不復活已被刪除的交易）
+    // 檢查本地是否有離線建立、尚未成功送至雲端的交易（絕不復活已被刪除的交易）
     const localSavedTxStr = await AsyncStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
     if (localSavedTxStr && targetLedger.id !== DEMO_LEDGER_ID) {
       try {
@@ -1338,31 +1347,59 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           lt.ledger_id === targetLedger.id &&
           !finalTx.some(ct => ct.id === lt.id) &&
           !deletedList.includes(lt.id) &&
-          !lt.id.startsWith('40000000-0000-4000-8000') &&
-          (lt as any)._isPendingSync === true
+          !lt.id.startsWith('40000000-0000-4000-8000')
         );
 
         for (const ut of unsyncedTx) {
           try {
-            const { error: insErr } = await supabase.from('transactions').insert({
+            const safePaidBy = members.some(m => m.id === ut.paid_by)
+              ? ut.paid_by
+              : (canonicalMe?.id || members[0]?.id || authUserId);
+            const safeCatId = categories.some(c => c.id === ut.category_id)
+              ? ut.category_id
+              : (categories[0]?.id || null);
+
+            const syncPayload: any = {
               id: ut.id,
               ledger_id: ut.ledger_id,
-              creator_id: ut.creator_id,
-              category_id: ut.category_id,
+              creator_id: ut.creator_id && !ut.creator_id.startsWith('20000000') ? ut.creator_id : authUserId,
+              category_id: safeCatId,
               amount: ut.amount,
               type: ut.type,
-              paid_by: ut.paid_by,
+              paid_by: safePaidBy,
               transacted_at: ut.transacted_at,
               note: ut.note,
               is_settled: ut.is_settled,
-            });
+            };
+
+            if (hasMerchantColumnRef.current && ut.merchant) {
+              syncPayload.merchant = ut.merchant;
+            } else if (ut.merchant && !syncPayload.note?.startsWith(`[${ut.merchant}]`)) {
+              syncPayload.note = `[${ut.merchant}] ${ut.note || ''}`.trim();
+            }
+
+            if (hasPaymentColumnsRef.current) {
+              if (ut.payment_method) syncPayload.payment_method = ut.payment_method;
+              if (ut.account_id && !ut.account_id.startsWith('50000000')) syncPayload.account_id = ut.account_id;
+              if (ut.is_reconciled !== undefined) syncPayload.is_reconciled = ut.is_reconciled;
+            }
+
+            const { error: insErr } = await supabase.from('transactions').insert(syncPayload);
             if (!insErr) {
               delete (ut as any)._isPendingSync;
-              finalTx.push(ut);
+            } else {
+              console.warn('補同步本地交易至雲端重試失敗:', insErr.message);
             }
           } catch (e) {
             console.warn('補同步本地交易至雲端失敗:', ut.id, e);
           }
+          // 關鍵保證：無論當前雲端補同步是否成功，本地此筆明細均保留在 finalTx，絕不在刷新後遺失！
+          finalTx.push({
+            ...ut,
+            category: getCategoryById(ut.category_id, ut.category),
+            payer_profile: aliasMap[ut.paid_by] || dedupedMembers.find(m => m.id === ut.paid_by) || ut.payer_profile,
+            payment_account: ut.account_id ? getAccountById(ut.account_id) : undefined,
+          });
         }
       } catch (err) {
         console.warn('解析本地交易快取失敗:', err);
@@ -1376,6 +1413,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // (E) 載入付款帳戶與卡片
     try {
+      const ledgerSpecificKey = `${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${targetLedger.id}`;
+      const savedLedgerAccounts = await AsyncStorage.getItem(ledgerSpecificKey);
+
+      let loadedCloudAccounts: PaymentAccount[] = [];
       const { data: accountRows, error: accErr } = await supabase
         .from('payment_accounts')
         .select('*')
@@ -1383,15 +1424,66 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .order('sort_order', { ascending: true });
 
       if (!accErr && accountRows && accountRows.length > 0) {
-        setPaymentAccounts(accountRows);
-        await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify(accountRows));
-        await AsyncStorage.setItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${targetLedger.id}`, JSON.stringify(accountRows));
+        loadedCloudAccounts = accountRows;
+      }
+
+      if (loadedCloudAccounts.length > 0) {
+        setPaymentAccounts(loadedCloudAccounts);
+        await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify(loadedCloudAccounts));
+        await AsyncStorage.setItem(ledgerSpecificKey, JSON.stringify(loadedCloudAccounts));
+      } else if (savedLedgerAccounts) {
+        try {
+          const parsed = JSON.parse(savedLedgerAccounts);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setPaymentAccounts(parsed);
+          }
+        } catch {}
       } else if (targetLedger.id === DEMO_LEDGER_ID) {
         const savedDemo = await AsyncStorage.getItem(STORAGE_KEYS.PAYMENT_ACCOUNTS);
         if (savedDemo) {
           try { setPaymentAccounts(JSON.parse(savedDemo)); } catch {}
         } else {
           setPaymentAccounts(DEMO_PAYMENT_ACCOUNTS);
+        }
+      } else {
+        // 真實雲端帳本初次進入：為該帳本初始化一組歸屬於當前帳本與當前成員的預設卡片
+        const defaultOwnerId = canonicalMe?.id || authUserId;
+        const initialLedgerAccounts: PaymentAccount[] = [
+          {
+            id: generateUUID(),
+            ledger_id: targetLedger.id,
+            name: '主要信用卡',
+            type: 'credit_card',
+            user_id: defaultOwnerId,
+            last_four_digits: '8888',
+            billing_cycle_date: 15,
+            balance: 0,
+            color: '#1E40AF',
+            icon: '💳',
+            sort_order: 1,
+            created_at: new Date().toISOString(),
+          },
+          {
+            id: generateUUID(),
+            ledger_id: targetLedger.id,
+            name: `${canonicalMe?.display_name || '我的'}悠遊卡`,
+            type: 'stored_value',
+            user_id: defaultOwnerId,
+            last_four_digits: '',
+            balance: 350,
+            color: '#0284C7',
+            icon: '🚌',
+            sort_order: 2,
+            created_at: new Date().toISOString(),
+          },
+        ];
+        setPaymentAccounts(initialLedgerAccounts);
+        await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify(initialLedgerAccounts));
+        await AsyncStorage.setItem(ledgerSpecificKey, JSON.stringify(initialLedgerAccounts));
+        if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+          try {
+            await supabase.from('payment_accounts').insert(initialLedgerAccounts);
+          } catch {}
         }
       }
     } catch (accLoadErr) {
@@ -2401,13 +2493,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setPaymentAccounts(updatedAccounts);
       await savePaymentAccountsToStorage(updatedAccounts);
 
-      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID && !id.startsWith('50000000')) {
         supabase.from('payment_accounts').update({ balance: newBalance }).eq('id', id).then();
       }
 
       // 自動記錄一筆加值交易
-      const trafficCat = categories.find(c => c.name.includes('交通') || c.name.includes('儲值')) || categories[0];
-      const validPaidBy = targetAcc.user_id || currentUser.id || members[0]?.id;
+      const trafficCat = categories.find(c => c.name.includes('交通') || c.name.includes('儲值'))
+        || categories[0]
+        || DEFAULT_CATEGORIES[0];
+
+      // 嚴格確保 validPaidBy 存在於當前家庭成員名冊，避免觸發 Supabase 外鍵報錯
+      const matchedPayer = (targetAcc.user_id && members.find(m => m.id === targetAcc.user_id))
+        || members.find(m => m.id === currentUser.id)
+        || members[0];
+      const validPaidBy = matchedPayer?.id || currentUser.id;
+
       await addTransaction({
         amount: topUpAmount,
         type: 'expense',
@@ -2415,7 +2515,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         paid_by: validPaidBy,
         merchant: `${targetAcc.name}加值`,
         payment_method: 'cash',
-        account_id: targetAcc.id,
+        account_id: targetAcc.id && !targetAcc.id.startsWith('50000000') ? targetAcc.id : undefined,
         note: customNote || `${targetAcc.name} 快速加值 NT$ ${topUpAmount.toLocaleString()}`,
         transacted_at: new Date().toISOString(),
       });
@@ -2434,7 +2534,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setPaymentAccounts(updatedAccounts);
       await savePaymentAccountsToStorage(updatedAccounts);
 
-      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID && !id.startsWith('50000000')) {
         supabase.from('payment_accounts').update({ balance: Number(newBalance.toFixed(2)) }).eq('id', id).then();
       }
       return true;
@@ -2502,27 +2602,37 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const { data: { session } } = await supabase.auth.getSession();
     const authUserId = session?.user?.id;
     let validCreatorId: string =
-      effectiveCurrentUser?.id && isValidUUID(effectiveCurrentUser.id)
+      effectiveCurrentUser?.id && isValidUUID(effectiveCurrentUser.id) && !effectiveCurrentUser.id.startsWith('20000000')
         ? effectiveCurrentUser.id
         : (authUserId && isValidUUID(authUserId)
             ? authUserId
-            : (members.find(m => isValidUUID(m.id))?.id || DEMO_USER_DAD));
+            : (members.find(m => isValidUUID(m.id) && !m.id.startsWith('20000000'))?.id || DEMO_USER_DAD));
 
-    let validPaidBy: string =
-      data.paid_by && isValidUUID(data.paid_by)
-        ? data.paid_by
-        : ((effectiveCurrentUser?.id && isValidUUID(effectiveCurrentUser.id))
-            ? effectiveCurrentUser.id
-            : validCreatorId);
+    // 嚴格確保 validPaidBy 存在於當前家庭成員名冊，避免觸發 Supabase 外鍵約束失敗
+    let candidatePaidBy = data.paid_by;
+    let matchedPayer = members.find(m => m.id === candidatePaidBy);
+    if (!matchedPayer && candidatePaidBy) {
+      const alias = memberAliasMap[candidatePaidBy];
+      if (alias) matchedPayer = alias;
+    }
+    if (!matchedPayer) {
+      matchedPayer = members.find(m => m.id === effectiveCurrentUser?.id) || members[0];
+    }
+    const validPaidBy = matchedPayer?.id || validCreatorId;
 
     let validLedgerId = currentLedger.id;
     if (!isValidUUID(validLedgerId)) {
       validLedgerId = DEMO_LEDGER_ID;
     }
 
+    // 嚴格確保 validCategoryId 存在於分類列表，避免觸發 Supabase 外鍵約束失敗
     let validCategoryId = data.category_id;
-    if (!isValidUUID(validCategoryId)) {
-      validCategoryId = categories.find(c => isValidUUID(c.id))?.id || DEFAULT_CATEGORIES[0].id;
+    const catExists = categories.some(c => c.id === validCategoryId);
+    if (!catExists) {
+      const fallbackCat = categories.find(c => isValidUUID(c.id) && !c.id.startsWith('30000000')) || categories[0];
+      if (fallbackCat) {
+        validCategoryId = fallbackCat.id;
+      }
     }
 
     const resolvedCategory = getCategoryById(validCategoryId);
@@ -2569,11 +2679,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       });
     }
 
-    // 樂觀更新本地畫面
+    // 樂觀更新本地畫面（預先標記 _isPendingSync，確保在收到雲端成功回執前若重新整理頁面絕不遺失）
     const isOnlinePublishing = isConfigured && isCloudSynced && newTx.ledger_id !== DEMO_LEDGER_ID;
-    if (!isOnlinePublishing) {
-      (newTx as any)._isPendingSync = true;
-    }
+    (newTx as any)._isPendingSync = true;
     const updated = [newTx, ...transactions];
     setTransactions(updated);
     await saveTransactionsToStorage(updated);
@@ -2602,15 +2710,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             : newTx.note;
         }
 
-        if (newTx.payment_method) insertPayload.payment_method = newTx.payment_method;
-        if (newTx.account_id) insertPayload.account_id = newTx.account_id;
-        if (newTx.is_reconciled !== undefined) insertPayload.is_reconciled = newTx.is_reconciled;
+        if (hasPaymentColumnsRef.current) {
+          if (newTx.payment_method) insertPayload.payment_method = newTx.payment_method;
+          if (newTx.account_id && !newTx.account_id.startsWith('50000000')) {
+            insertPayload.account_id = newTx.account_id;
+          }
+          if (newTx.is_reconciled !== undefined) insertPayload.is_reconciled = newTx.is_reconciled;
+        }
 
         let { error: txError } = await supabase.from('transactions').insert(insertPayload);
 
-        // 如果雲端尚未執行 ALTER TABLE 加欄位導致 42703 (column does not exist)，自動切換回相容模式重試
-        if (txError && txError.code === '42703') {
+        // 如果雲端尚未執行 ALTER TABLE 加欄位導致 42703 (column does not exist) 或 PGRST204，自動切換回相容模式重試
+        if (txError && (txError.code === '42703' || txError.code === 'PGRST204' || txError.message?.includes('column') || txError.message?.includes('schema cache'))) {
           hasMerchantColumnRef.current = false;
+          hasPaymentColumnsRef.current = false;
           delete insertPayload.merchant;
           delete insertPayload.payment_method;
           delete insertPayload.account_id;
@@ -2622,26 +2735,37 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           txError = retryRes.error;
         }
 
+        // 若因外鍵 (23503) 約束報錯，自動修正為安全成員與預設分類並重試
+        if (txError && (txError.code === '23503' || txError.message?.includes('foreign key'))) {
+          delete insertPayload.account_id;
+          insertPayload.paid_by = validCreatorId || authUserId;
+          insertPayload.category_id = null;
+          const retryFkRes = await supabase.from('transactions').insert(insertPayload);
+          txError = retryFkRes.error;
+        }
+
         if (txError) {
-          console.warn('雲端寫入交易失敗:', txError.message);
-          (newTx as any)._isPendingSync = true;
-          await saveTransactionsToStorage([newTx, ...transactions.filter(t => t.id !== newTx.id)]);
-        } else if (newTx.splits && newTx.splits.length > 0) {
-          // 同步分攤明細至 transaction_splits
-          await supabase.from('transaction_splits').insert(
-            newTx.splits.map(s => ({
-              id: s.id,
-              transaction_id: newTx.id,
-              user_id: s.user_id,
-              split_amount: s.split_amount,
-              is_settled: s.is_settled,
-            }))
-          );
+          console.warn('雲端寫入交易失敗 (保留本地待補同步):', txError.message);
+        } else {
+          // 雲端確認成功寫入，解除待同步標記並更新快取
+          delete (newTx as any)._isPendingSync;
+          saveTransactionsToStorage([newTx, ...transactions.filter(t => t.id !== newTx.id)]).catch(() => {});
+
+          if (newTx.splits && newTx.splits.length > 0) {
+            // 同步分攤明細至 transaction_splits
+            await supabase.from('transaction_splits').insert(
+              newTx.splits.map(s => ({
+                id: s.id,
+                transaction_id: newTx.id,
+                user_id: s.user_id,
+                split_amount: s.split_amount,
+                is_settled: s.is_settled,
+              }))
+            );
+          }
         }
       } catch (err) {
         console.warn('雲端新增交易連線延遲，已保存於本機稍後重試:', err);
-        (newTx as any)._isPendingSync = true;
-        await saveTransactionsToStorage([newTx, ...transactions.filter(t => t.id !== newTx.id)]);
       }
     }
   };
@@ -2797,8 +2921,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           .update(updatePayload)
           .eq('id', id);
 
-        if (error && error.code === '42703') {
+        if (error && (error.code === '42703' || error.code === 'PGRST204' || error.message?.includes('column') || error.message?.includes('schema cache'))) {
           hasMerchantColumnRef.current = false;
+          hasPaymentColumnsRef.current = false;
           delete updatePayload.merchant;
           delete updatePayload.payment_method;
           delete updatePayload.account_id;
