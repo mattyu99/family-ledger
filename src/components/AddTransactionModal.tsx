@@ -14,6 +14,7 @@ import {
   TextInputProps,
   Keyboard,
 } from 'react-native';
+import { HorizontalScrollView } from './HorizontalScrollView';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
   <RNText
@@ -441,7 +442,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
                 <Text style={styles.subCardLabel} maxFontSizeMultiplier={1.15}>
                   💳 選擇卡片 (對帳核算使用)：
                 </Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
+                <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
                   {creditCards.map(card => {
                     const isCardSelected = selectedAccountId === card.id;
                     const cardholder = getMemberById(card.user_id);
@@ -472,7 +473,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
                       </TouchableOpacity>
                     );
                   })}
-                </ScrollView>
+                </HorizontalScrollView>
               </View>
             )}
 
@@ -482,7 +483,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
                 <Text style={styles.subCardLabel} maxFontSizeMultiplier={1.15}>
                   🚌 選擇儲值卡 (將自動扣減餘額)：
                 </Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
+                <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
                   {storedValueCards.map(card => {
                     const isCardSelected = selectedAccountId === card.id;
                     const cardholder = getMemberById(card.user_id);
@@ -513,7 +514,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
                       </TouchableOpacity>
                     );
                   })}
-                </ScrollView>
+                </HorizontalScrollView>
               </View>
             )}
 
@@ -626,8 +627,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
 
             {/* 智慧自學習快捷膠囊標籤 */}
             {suggestedMerchants.length > 0 && (
-              <ScrollView
-                horizontal
+              <HorizontalScrollView
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.merchantChipsRow}
                 keyboardShouldPersistTaps="handled"
@@ -650,7 +650,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
                     </TouchableOpacity>
                   );
                 })}
-              </ScrollView>
+              </HorizontalScrollView>
             )}
 
             {/* 備註說明 */}

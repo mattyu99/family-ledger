@@ -13,6 +13,7 @@ import { PaymentAccount, Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { getCreditCardBillingCycles, isDateInBillingCycle, BillingCycleOption } from '../lib/payment';
 import { getCategoryIcon } from '../lib/icons';
+import { HorizontalScrollView } from './HorizontalScrollView';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
   <RNText
@@ -118,7 +119,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
             <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
               {/* 卡片選擇標籤橫向滑軌 */}
               <Text style={styles.sectionHeader} maxFontSizeMultiplier={1.15}>選擇核對的信用卡</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardSelectorScroll}>
+              <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardSelectorScroll}>
                 {creditCards.map(card => {
                   const isSelected = (currentCard?.id || creditCards[0]?.id) === card.id;
                   const cardholder = getMemberById(card.user_id);
@@ -150,11 +151,11 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                     </TouchableOpacity>
                   );
                 })}
-              </ScrollView>
+              </HorizontalScrollView>
 
               {/* 帳單週期選擇器 */}
               <Text style={styles.sectionHeader} maxFontSizeMultiplier={1.15}>選擇帳單期 (依結帳日動態切分)</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cycleSelectorScroll}>
+              <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cycleSelectorScroll}>
                 {billingCycles.map(cycle => {
                   const isSelected = (currentCycle?.key || billingCycles[0]?.key) === cycle.key;
                   return (
@@ -173,7 +174,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                     </TouchableOpacity>
                   );
                 })}
-              </ScrollView>
+              </HorizontalScrollView>
 
               {/* 本期對帳看板卡片 */}
               {currentCycle && (

@@ -49,6 +49,7 @@ import { AvatarPicker, ALL_AVATAR_OPTIONS } from './src/components/AvatarPicker'
 import { StoredValueWidget } from './src/components/StoredValueWidget';
 import { CreditCardReconciliationModal } from './src/components/CreditCardReconciliationModal';
 import { PaymentAccountsManageModal } from './src/components/PaymentAccountsManageModal';
+import { HorizontalScrollView } from './src/components/HorizontalScrollView';
 import { Transaction, Profile } from './src/types/database';
 import { getCategoryIcon } from './src/lib/icons';
 import * as Updates from 'expo-updates';
@@ -2425,8 +2426,7 @@ function MainApp() {
 
             {/* 🏷️ 店家 1 鍵快速篩選膠囊橫向列 */}
             {activeMerchantsInLedger.length > 0 && (
-              <ScrollView
-                horizontal
+              <HorizontalScrollView
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.merchantFilterScroll}
                 keyboardShouldPersistTaps="handled"
@@ -2449,7 +2449,7 @@ function MainApp() {
                     </TouchableOpacity>
                   );
                 })}
-              </ScrollView>
+              </HorizontalScrollView>
             )}
 
             {/* 篩選工具列 (月份與成員) */}
@@ -2612,8 +2612,7 @@ function MainApp() {
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollPadding}>
             {/* 時間維度切換器 */}
             <View style={styles.analyticsFilterBox}>
-              <ScrollView
-                horizontal
+              <HorizontalScrollView
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.analyticsFilterScroll}
               >
@@ -2745,7 +2744,7 @@ function MainApp() {
                     🔍 選擇特定月份 ▾
                   </Text>
                 </TouchableOpacity>
-              </ScrollView>
+              </HorizontalScrollView>
 
               {/* 當前選中期間提示 & 快速切換按鈕 */}
               <TouchableOpacity

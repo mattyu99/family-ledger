@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { PaymentAccount } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
+import { HorizontalScrollView } from './HorizontalScrollView';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
   <RNText
@@ -151,8 +152,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAc
         )}
       </View>
 
-      <ScrollView
-        horizontal
+      <HorizontalScrollView
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
@@ -208,7 +208,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAc
             </View>
           );
         })}
-      </ScrollView>
+      </HorizontalScrollView>
 
       {/* 加值 / 校正彈窗 */}
       <Modal
