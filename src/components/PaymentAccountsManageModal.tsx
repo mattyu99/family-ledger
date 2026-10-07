@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text as RNText,
@@ -12,6 +12,7 @@ import {
   Alert,
   TextProps,
   TextInputProps,
+  Keyboard,
 } from 'react-native';
 import { PaymentAccount, AccountType } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
@@ -66,6 +67,58 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
 
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
+  const formScrollRef = useRef<ScrollView>(null);
+
+  // 監聽鍵盤高度 (Android, iOS 與 Mobile Web)
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      const h = e?.endCoordinates?.height || 280;
+      setKeyboardOffset(h);
+    });
+
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardOffset(0);
+    });
+
+    let removeViewportListener: (() => void) | undefined;
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.visualViewport) {
+      const handleViewportResize = () => {
+        if (!window.visualViewport) return;
+        const windowHeight = window.innerHeight;
+        const viewportHeight = window.visualViewport.height;
+        const diff = windowHeight - viewportHeight;
+        if (diff > 120) {
+          setKeyboardOffset(diff);
+        } else {
+          setKeyboardOffset(0);
+        }
+      };
+      window.visualViewport.addEventListener('resize', handleViewportResize);
+      removeViewportListener = () => {
+        window.visualViewport?.removeEventListener('resize', handleViewportResize);
+      };
+    }
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+      if (removeViewportListener) removeViewportListener();
+    };
+  }, []);
+
+  const handleInputFocus = (delay = 120) => {
+    setTimeout(() => {
+      formScrollRef.current?.scrollToEnd({ animated: true });
+    }, delay);
+  };
+
+  const dynamicBottomPadding = keyboardOffset > 0
+    ? (Platform.OS === 'ios' ? 40 : keyboardOffset + 90)
+    : 30;
 
   // 表單狀態
   const [formType, setFormType] = useState<AccountType>('credit_card');
@@ -202,7 +255,10 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
-        <View style={styles.sheet}>
+        <View style={[
+          styles.sheet,
+          keyboardOffset > 0 && { maxHeight: Math.min(SCREEN_HEIGHT * 0.95, 780), minHeight: undefined }
+        ]}>
           {/* 標頭 */}
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
@@ -222,10 +278,27 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
 
           {isEditing ? (
             /* 編輯 / 新增表單 */
-            <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false}>
-              <Text style={styles.formSectionTitle}>
-                {editingId ? '編輯卡片設定' : '新增卡片或帳戶'}
-              </Text>
+            <ScrollView
+              ref={formScrollRef}
+              style={styles.formScroll}
+              contentContainerStyle={[
+                styles.formScrollContent,
+                { paddingBottom: dynamicBottomPadding },
+              ]}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+            >
+              <View style={styles.formHeaderRow}>
+                <Text style={styles.formSectionTitle}>
+                  {editingId ? '編輯卡片設定' : '新增卡片或帳戶'}
+                </Text>
+                {keyboardOffset > 0 && (
+                  <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
 
               {/* 類型選擇 */}
               <View style={styles.typeToggle}>
@@ -254,6 +327,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                 value={formName}
                 onChangeText={setFormName}
                 placeholder={formType === 'credit_card' ? '例如：富邦 Costco 聯名卡' : '例如：爸爸悠遊卡'}
+                onFocus={() => handleInputFocus()}
+                returnKeyType="next"
               />
 
               {/* 持卡人 */}
@@ -287,6 +362,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     placeholder="例如：8829"
                     keyboardType="numeric"
                     maxLength={4}
+                    onFocus={() => handleInputFocus()}
+                    returnKeyType="next"
                   />
 
                   {/* 結帳日 */}
@@ -297,6 +374,9 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     onChangeText={setFormCycleDate}
                     placeholder="15"
                     keyboardType="numeric"
+                    onFocus={() => handleInputFocus()}
+                    returnKeyType="done"
+                    onSubmitEditing={Keyboard.dismiss}
                   />
                   <Text style={styles.fieldHint}>
                     💡 設定結帳日後，每月對帳時系統會精確鎖定上月{parseInt(formCycleDate, 10) + 1 || 16}日到本月{formCycleDate || 15}日的帳單消費。
@@ -312,6 +392,9 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     onChangeText={setFormBalance}
                     placeholder="0"
                     keyboardType="numeric"
+                    onFocus={() => handleInputFocus()}
+                    returnKeyType="done"
+                    onSubmitEditing={Keyboard.dismiss}
                   />
                 </>
               )}
@@ -625,11 +708,25 @@ const styles = StyleSheet.create({
     flex: 1,
     marginTop: 12,
   },
+  formScrollContent: {
+    paddingBottom: 20,
+  },
+  formHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  dismissKeyboardText: {
+    fontSize: 12,
+    color: '#4F46E5',
+    fontWeight: '600',
+    marginLeft: 'auto',
+  },
   formSectionTitle: {
     fontSize: 14,
     fontWeight: '700',
     color: '#0F172A',
-    marginBottom: 10,
   },
   typeToggle: {
     flexDirection: 'row',

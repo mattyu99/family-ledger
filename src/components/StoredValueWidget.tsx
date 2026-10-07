@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text as RNText,
@@ -11,6 +11,7 @@ import {
   TextInputProps,
   Alert,
   Platform,
+  Keyboard,
 } from 'react-native';
 import { PaymentAccount } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
@@ -46,6 +47,47 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAc
   const [activeModalAccount, setActiveModalAccount] = useState<PaymentAccount | null>(null);
   const [modalMode, setModalMode] = useState<'topup' | 'adjust'>('topup');
   const [customAmount, setCustomAmount] = useState<string>('');
+  const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
+
+  // 監聽鍵盤高度 (Android, iOS 與 Mobile Web)
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      const h = e?.endCoordinates?.height || 280;
+      setKeyboardOffset(h);
+    });
+
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardOffset(0);
+    });
+
+    let removeViewportListener: (() => void) | undefined;
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.visualViewport) {
+      const handleViewportResize = () => {
+        if (!window.visualViewport) return;
+        const windowHeight = window.innerHeight;
+        const viewportHeight = window.visualViewport.height;
+        const diff = windowHeight - viewportHeight;
+        if (diff > 120) {
+          setKeyboardOffset(diff);
+        } else {
+          setKeyboardOffset(0);
+        }
+      };
+      window.visualViewport.addEventListener('resize', handleViewportResize);
+      removeViewportListener = () => {
+        window.visualViewport?.removeEventListener('resize', handleViewportResize);
+      };
+    }
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+      if (removeViewportListener) removeViewportListener();
+    };
+  }, []);
 
   if (storedValueCards.length === 0) {
     return null;
@@ -175,7 +217,11 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAc
         animationType="fade"
         onRequestClose={() => setActiveModalAccount(null)}
       >
-        <View style={styles.modalOverlay}>
+        <View style={[
+          styles.modalOverlay,
+          keyboardOffset > 0 && { justifyContent: 'flex-start', paddingTop: Platform.OS === 'ios' ? 44 : 24 }
+        ]}>
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
@@ -195,7 +241,14 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAc
 
             {modalMode === 'topup' ? (
               <>
-                <Text style={styles.inputLabel}>選擇加值金額</Text>
+                <View style={styles.inputLabelRow}>
+                  <Text style={styles.inputLabel}>選擇加值金額</Text>
+                  {keyboardOffset > 0 && (
+                    <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Text style={styles.dismissKeyboardText}>收起鍵盤 ▾</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
                 <View style={styles.presetAmountsRow}>
                   {[100, 200, 500, 1000].map(val => (
                     <TouchableOpacity
@@ -217,6 +270,8 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAc
                     onChangeText={setCustomAmount}
                     keyboardType="numeric"
                     placeholder="輸入自訂加值金額"
+                    returnKeyType="done"
+                    onSubmitEditing={Keyboard.dismiss}
                   />
                 </View>
                 <Text style={styles.modalHint}>
@@ -225,7 +280,14 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAc
               </>
             ) : (
               <>
-                <Text style={styles.inputLabel}>實體卡片當前正確餘額</Text>
+                <View style={styles.inputLabelRow}>
+                  <Text style={styles.inputLabel}>實體卡片當前正確餘額</Text>
+                  {keyboardOffset > 0 && (
+                    <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Text style={styles.dismissKeyboardText}>收起鍵盤 ▾</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
                 <View style={styles.amountInputRow}>
                   <Text style={styles.currencySymbol}>$</Text>
                   <TextInput
@@ -234,6 +296,8 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAc
                     onChangeText={setCustomAmount}
                     keyboardType="numeric"
                     placeholder="輸入實際餘額"
+                    returnKeyType="done"
+                    onSubmitEditing={Keyboard.dismiss}
                   />
                 </View>
                 <Text style={styles.modalHint}>
@@ -402,6 +466,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
   modalContent: {
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
@@ -441,6 +512,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748B',
     marginBottom: 14,
+  },
+  inputLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  dismissKeyboardText: {
+    fontSize: 12,
+    color: '#0284C7',
+    fontWeight: '600',
+    marginLeft: 'auto',
   },
   inputLabel: {
     fontSize: 12,

@@ -15,7 +15,11 @@ import {
   TextProps,
   TextInputProps,
   Share,
+  Keyboard,
+  Dimensions,
 } from 'react-native';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // 全域文字防禦包裝：徹底防止 Android 系統無障礙/大字體放大導致全 App 各頁面文字截斷與跑版
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
@@ -191,6 +195,47 @@ function MainApp() {
   const [csvContent, setCsvContent] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isReminderDismissed, setIsReminderDismissed] = useState(false);
+  const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
+
+  // 監聽鍵盤高度 (Android, iOS 與 Mobile Web)
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      const h = e?.endCoordinates?.height || 280;
+      setKeyboardOffset(h);
+    });
+
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardOffset(0);
+    });
+
+    let removeViewportListener: (() => void) | undefined;
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.visualViewport) {
+      const handleViewportResize = () => {
+        if (!window.visualViewport) return;
+        const windowHeight = window.innerHeight;
+        const viewportHeight = window.visualViewport.height;
+        const diff = windowHeight - viewportHeight;
+        if (diff > 120) {
+          setKeyboardOffset(diff);
+        } else {
+          setKeyboardOffset(0);
+        }
+      };
+      window.visualViewport.addEventListener('resize', handleViewportResize);
+      removeViewportListener = () => {
+        window.visualViewport?.removeEventListener('resize', handleViewportResize);
+      };
+    }
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+      if (removeViewportListener) removeViewportListener();
+    };
+  }, []);
 
   // 定期備份計算與過期檢測 (Option B)
   const daysSinceLastBackup = useMemo(() => {
@@ -966,8 +1011,15 @@ function MainApp() {
 
     return (
       <Modal visible={editMemberModalVisible} animationType="fade" transparent onRequestClose={() => setEditMemberModalVisible(false)}>
-        <View style={styles.exportOverlay}>
-          <View style={styles.exportCard}>
+        <View style={[
+          styles.exportOverlay,
+          keyboardOffset > 0 && styles.exportOverlayKeyboardActive
+        ]}>
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
+          <View style={[
+            styles.exportCard,
+            keyboardOffset > 0 && { maxHeight: Math.min(SCREEN_HEIGHT - keyboardOffset - 40, 560) }
+          ]}>
             <View style={styles.modalHeaderRow}>
               <View style={{ flex: 1, marginRight: 8 }}>
                 <Text style={styles.exportTitle}>👤 成員資訊與設定</Text>
@@ -986,8 +1038,20 @@ function MainApp() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
-              <Text style={styles.formLabel}>成員暱稱 / 稱謂</Text>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              style={{ width: '100%' }}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+            >
+              <View style={styles.formLabelRow}>
+                <Text style={styles.formLabel}>成員暱稱 / 稱謂</Text>
+                {keyboardOffset > 0 && (
+                  <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
               <TextInput
                 style={styles.modalInput}
                 placeholder="例如：張三、爸爸、媽媽..."
@@ -995,6 +1059,8 @@ function MainApp() {
                 value={editingMemberName}
                 onChangeText={setEditingMemberName}
                 autoFocus={false}
+                returnKeyType="done"
+                onSubmitEditing={Keyboard.dismiss}
               />
 
               <Text style={styles.formLabel}>選擇專屬頭像</Text>
@@ -1278,9 +1344,16 @@ function MainApp() {
   };
 
   const renderCreateLedgerModal = () => (
-    <Modal visible={createLedgerModalVisible} animationType="fade" transparent>
-      <View style={styles.exportOverlay}>
-        <View style={styles.exportCard}>
+    <Modal visible={createLedgerModalVisible} animationType="fade" transparent onRequestClose={() => setCreateLedgerModalVisible(false)}>
+      <View style={[
+        styles.exportOverlay,
+        keyboardOffset > 0 && styles.exportOverlayKeyboardActive
+      ]}>
+        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
+        <View style={[
+          styles.exportCard,
+          keyboardOffset > 0 && { maxHeight: Math.min(SCREEN_HEIGHT - keyboardOffset - 40, 560) }
+        ]}>
           <View style={styles.modalHeaderRow}>
             <Text style={styles.exportTitle}>🏠 建立新的家庭公帳</Text>
             <TouchableOpacity onPress={() => setCreateLedgerModalVisible(false)} style={styles.closeBtn}>
@@ -1288,16 +1361,29 @@ function MainApp() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            style={{ width: '100%' }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
             <Text style={styles.formHint}>建立專屬帳本後，您將成為管理員，可隨時分享邀請碼給家人加入。</Text>
 
-            <Text style={styles.formLabel}>公帳名稱</Text>
+            <View style={styles.formLabelRow}>
+              <Text style={styles.formLabel}>公帳名稱</Text>
+              {keyboardOffset > 0 && (
+                <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             <TextInput
               style={styles.modalInput}
               placeholder="例如：幸福家庭公帳、我們這一家"
               placeholderTextColor="#9CA3AF"
               value={newLedgerName}
               onChangeText={setNewLedgerName}
+              returnKeyType="next"
             />
 
             <Text style={styles.formLabel}>您的暱稱 / 稱謂</Text>
@@ -1307,6 +1393,8 @@ function MainApp() {
               placeholderTextColor="#9CA3AF"
               value={creatorNickname}
               onChangeText={setCreatorNickname}
+              returnKeyType="done"
+              onSubmitEditing={Keyboard.dismiss}
             />
 
             <Text style={styles.formLabel}>選擇您的頭像</Text>
@@ -1325,9 +1413,16 @@ function MainApp() {
   );
 
   const renderJoinLedgerModal = () => (
-    <Modal visible={joinLedgerModalVisible} animationType="fade" transparent>
-      <View style={styles.exportOverlay}>
-        <View style={styles.exportCard}>
+    <Modal visible={joinLedgerModalVisible} animationType="fade" transparent onRequestClose={() => setJoinLedgerModalVisible(false)}>
+      <View style={[
+        styles.exportOverlay,
+        keyboardOffset > 0 && styles.exportOverlayKeyboardActive
+      ]}>
+        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
+        <View style={[
+          styles.exportCard,
+          keyboardOffset > 0 && { maxHeight: Math.min(SCREEN_HEIGHT - keyboardOffset - 40, 560) }
+        ]}>
           <View style={styles.modalHeaderRow}>
             <Text style={styles.exportTitle}>🔗 加入家庭公帳</Text>
             <TouchableOpacity onPress={() => setJoinLedgerModalVisible(false)} style={styles.closeBtn}>
@@ -1335,7 +1430,12 @@ function MainApp() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            style={{ width: '100%' }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
             {/* 帳本名稱預覽或代碼輸入 */}
           {previewLedgerName ? (
             <View style={styles.invitePreviewHeader}>
@@ -1608,9 +1708,16 @@ function MainApp() {
   );
 
   const renderEditLedgerModal = () => (
-    <Modal visible={editLedgerModalVisible} animationType="fade" transparent>
-      <View style={styles.exportOverlay}>
-        <View style={styles.exportCard}>
+    <Modal visible={editLedgerModalVisible} animationType="fade" transparent onRequestClose={() => setEditLedgerModalVisible(false)}>
+      <View style={[
+        styles.exportOverlay,
+        keyboardOffset > 0 && styles.exportOverlayKeyboardActive
+      ]}>
+        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
+        <View style={[
+          styles.exportCard,
+          keyboardOffset > 0 && { maxHeight: Math.min(SCREEN_HEIGHT - keyboardOffset - 40, 560) }
+        ]}>
           <View style={styles.modalHeaderRow}>
             <Text style={styles.exportTitle}>✏️ 修改家庭公帳名稱</Text>
             <TouchableOpacity onPress={() => setEditLedgerModalVisible(false)} style={styles.closeBtn}>
@@ -1622,7 +1729,14 @@ function MainApp() {
             身為管理員，您可以隨時更新帳本名稱。修改後，所有已加入此帳本的家人手機都會即時同步更新。
           </Text>
 
-          <Text style={styles.formLabel}>新帳本名稱 (例如：陳家幸福公帳)</Text>
+          <View style={styles.formLabelRow}>
+            <Text style={styles.formLabel}>新帳本名稱 (例如：陳家幸福公帳)</Text>
+            {keyboardOffset > 0 && (
+              <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           <TextInput
             style={styles.modalInput}
             placeholder="請輸入新帳本名稱"
@@ -1630,6 +1744,8 @@ function MainApp() {
             value={editLedgerNameInput}
             onChangeText={setEditLedgerNameInput}
             maxLength={30}
+            returnKeyType="done"
+            onSubmitEditing={Keyboard.dismiss}
           />
 
           <TouchableOpacity
@@ -1654,9 +1770,16 @@ function MainApp() {
   );
 
   const renderCustomCodeModal = () => (
-    <Modal visible={customCodeModalVisible} animationType="fade" transparent>
-      <View style={styles.exportOverlay}>
-        <View style={styles.exportCard}>
+    <Modal visible={customCodeModalVisible} animationType="fade" transparent onRequestClose={() => setCustomCodeModalVisible(false)}>
+      <View style={[
+        styles.exportOverlay,
+        keyboardOffset > 0 && styles.exportOverlayKeyboardActive
+      ]}>
+        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
+        <View style={[
+          styles.exportCard,
+          keyboardOffset > 0 && { maxHeight: Math.min(SCREEN_HEIGHT - keyboardOffset - 40, 560) }
+        ]}>
           <View style={styles.modalHeaderRow}>
             <Text style={styles.exportTitle}>✏️ 自訂專屬邀請碼</Text>
             <TouchableOpacity onPress={() => setCustomCodeModalVisible(false)} style={styles.closeBtn}>
@@ -1668,7 +1791,14 @@ function MainApp() {
             身為發起人，您可以將邀請碼改成好記的英數字（3～15 個字元），例如 SWEETHOME、OURFAMILY。
           </Text>
 
-          <Text style={styles.formLabel}>新邀請碼 (自動轉為大寫)</Text>
+          <View style={styles.formLabelRow}>
+            <Text style={styles.formLabel}>新邀請碼 (自動轉為大寫)</Text>
+            {keyboardOffset > 0 && (
+              <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           <TextInput
             style={styles.modalInput}
             placeholder="例如：SWEETHOME"
@@ -1676,6 +1806,8 @@ function MainApp() {
             value={customCodeInput}
             autoCapitalize="characters"
             onChangeText={(t) => setCustomCodeInput(t.toUpperCase().replace(/[^A-Z0-9-]/g, ''))}
+            returnKeyType="done"
+            onSubmitEditing={Keyboard.dismiss}
           />
 
           <TouchableOpacity
@@ -1700,9 +1832,16 @@ function MainApp() {
   );
 
   const renderChangePinModal = () => (
-    <Modal visible={changePinModalVisible} animationType="fade" transparent>
-      <View style={styles.exportOverlay}>
-        <View style={styles.exportCard}>
+    <Modal visible={changePinModalVisible} animationType="fade" transparent onRequestClose={() => setChangePinModalVisible(false)}>
+      <View style={[
+        styles.exportOverlay,
+        keyboardOffset > 0 && styles.exportOverlayKeyboardActive
+      ]}>
+        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
+        <View style={[
+          styles.exportCard,
+          keyboardOffset > 0 && { maxHeight: Math.min(SCREEN_HEIGHT - keyboardOffset - 40, 560) }
+        ]}>
           <View style={styles.modalHeaderRow}>
             <Text style={styles.exportTitle}>🔐 修改管理員安全 PIN 碼</Text>
             <TouchableOpacity onPress={() => setChangePinModalVisible(false)} style={styles.closeBtn}>
@@ -1714,7 +1853,14 @@ function MainApp() {
             請設定 4 至 8 位數字 PIN 碼。未來在其他手機或新電腦以「👑 管理員」身分認領時，需輸入此 PIN 碼，防止他人誤認領或奪權。
           </Text>
 
-          <Text style={styles.formLabel}>新管理員 PIN 碼 (4~8 位純數字)</Text>
+          <View style={styles.formLabelRow}>
+            <Text style={styles.formLabel}>新管理員 PIN 碼 (4~8 位純數字)</Text>
+            {keyboardOffset > 0 && (
+              <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           <TextInput
             style={styles.modalInput}
             placeholder="例如：1234 或 8888"
@@ -1723,6 +1869,8 @@ function MainApp() {
             keyboardType="number-pad"
             maxLength={8}
             onChangeText={(t) => setNewPinInput(t.replace(/[^0-9]/g, ''))}
+            returnKeyType="done"
+            onSubmitEditing={Keyboard.dismiss}
           />
 
           <TouchableOpacity
@@ -1747,9 +1895,16 @@ function MainApp() {
   );
 
   const renderClaimAdminModal = () => (
-    <Modal visible={claimAdminModalVisible} animationType="fade" transparent>
-      <View style={styles.exportOverlay}>
-        <View style={styles.exportCard}>
+    <Modal visible={claimAdminModalVisible} animationType="fade" transparent onRequestClose={() => setClaimAdminModalVisible(false)}>
+      <View style={[
+        styles.exportOverlay,
+        keyboardOffset > 0 && styles.exportOverlayKeyboardActive
+      ]}>
+        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
+        <View style={[
+          styles.exportCard,
+          keyboardOffset > 0 && { maxHeight: Math.min(SCREEN_HEIGHT - keyboardOffset - 40, 560) }
+        ]}>
           <View style={styles.modalHeaderRow}>
             <Text style={styles.exportTitle}>🔐 取得/恢復管理員權限</Text>
             <TouchableOpacity onPress={() => setClaimAdminModalVisible(false)} style={styles.closeBtn}>
@@ -1761,7 +1916,14 @@ function MainApp() {
             請輸入本家庭公帳的 4 位數管理員安全 PIN 碼（預設為 8888）。驗證通過後，此手機將立即獲得管理員特權。
           </Text>
 
-          <Text style={styles.formLabel}>管理員安全 PIN 碼</Text>
+          <View style={styles.formLabelRow}>
+            <Text style={styles.formLabel}>管理員安全 PIN 碼</Text>
+            {keyboardOffset > 0 && (
+              <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           <TextInput
             style={styles.modalInput}
             placeholder="請輸入 4 位數 PIN 碼 (預設 8888)"
@@ -1771,6 +1933,8 @@ function MainApp() {
             maxLength={8}
             secureTextEntry
             onChangeText={setClaimAdminPinInput}
+            returnKeyType="done"
+            onSubmitEditing={Keyboard.dismiss}
           />
 
           <TouchableOpacity
@@ -1798,9 +1962,16 @@ function MainApp() {
   );
 
   const renderSwitchLedgerModal = () => (
-    <Modal visible={switchLedgerModalVisible} animationType="fade" transparent>
-      <View style={styles.exportOverlay}>
-        <View style={styles.exportCard}>
+    <Modal visible={switchLedgerModalVisible} animationType="fade" transparent onRequestClose={() => setSwitchLedgerModalVisible(false)}>
+      <View style={[
+        styles.exportOverlay,
+        keyboardOffset > 0 && styles.exportOverlayKeyboardActive
+      ]}>
+        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
+        <View style={[
+          styles.exportCard,
+          keyboardOffset > 0 && { maxHeight: Math.min(SCREEN_HEIGHT - keyboardOffset - 40, 560) }
+        ]}>
           <View style={styles.modalHeaderRow}>
             <Text style={styles.exportTitle}>🚪 加入或切換家庭公帳</Text>
             <TouchableOpacity onPress={() => setSwitchLedgerModalVisible(false)} style={styles.closeBtn}>
@@ -1808,7 +1979,12 @@ function MainApp() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={{ maxHeight: 420 }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
             {ledgers.length > 1 && (
               <View style={{ marginBottom: 16 }}>
                 <Text style={styles.formLabel}>📚 您已加入的帳本清單 (點擊可切換)</Text>
@@ -3651,9 +3827,16 @@ function MainApp() {
       </Modal>
 
       {/* 新增家庭成員彈窗 */}
-      <Modal visible={memberModalVisible} animationType="fade" transparent>
-        <View style={styles.exportOverlay}>
-          <View style={styles.exportCard}>
+      <Modal visible={memberModalVisible} animationType="fade" transparent onRequestClose={() => setMemberModalVisible(false)}>
+        <View style={[
+          styles.exportOverlay,
+          keyboardOffset > 0 && styles.exportOverlayKeyboardActive
+        ]}>
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
+          <View style={[
+            styles.exportCard,
+            keyboardOffset > 0 && { maxHeight: Math.min(SCREEN_HEIGHT - keyboardOffset - 40, 560) }
+          ]}>
             <View style={styles.modalHeaderRow}>
               <Text style={styles.exportTitle}>➕ 新增家庭成員</Text>
               <TouchableOpacity onPress={() => setMemberModalVisible(false)} style={styles.closeBtn}>
@@ -3661,8 +3844,20 @@ function MainApp() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
-              <Text style={styles.formLabel}>成員暱稱 / 稱謂</Text>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              style={{ width: '100%' }}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+            >
+              <View style={styles.formLabelRow}>
+                <Text style={styles.formLabel}>成員暱稱 / 稱謂</Text>
+                {keyboardOffset > 0 && (
+                  <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
               <TextInput
                 style={styles.modalInput}
                 placeholder="例如：奶奶、爺爺、姊姊、弟弟..."
@@ -3670,6 +3865,8 @@ function MainApp() {
                 value={newMemberName}
                 onChangeText={setNewMemberName}
                 autoFocus={Platform.OS !== 'web'}
+                returnKeyType="done"
+                onSubmitEditing={Keyboard.dismiss}
               />
 
               <Text style={styles.formLabel}>選擇專屬頭像</Text>
@@ -4838,6 +5035,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+  },
+  exportOverlayKeyboardActive: {
+    justifyContent: 'flex-start',
+    paddingTop: Platform.OS === 'ios' ? 44 : 24,
+  },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  formLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  dismissKeyboardText: {
+    fontSize: 12,
+    color: '#4F46E5',
+    fontWeight: '600',
+    marginLeft: 'auto',
   },
   exportCard: {
     width: '100%',

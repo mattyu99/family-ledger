@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text as RNText,
@@ -13,6 +13,7 @@ import {
   Dimensions,
   TextProps,
   TextInputProps,
+  Keyboard,
 } from 'react-native';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
@@ -74,6 +75,58 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({ visibl
   const [color, setColor] = useState<string>('#EF4444');
   const [categoryType, setCategoryType] = useState<CategoryType>('expense');
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
+  const scrollViewRef = useRef<ScrollView>(null);
+
+  // 監聽鍵盤高度 (Android, iOS 與 Mobile Web)
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      const h = e?.endCoordinates?.height || 280;
+      setKeyboardOffset(h);
+    });
+
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardOffset(0);
+    });
+
+    let removeViewportListener: (() => void) | undefined;
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.visualViewport) {
+      const handleViewportResize = () => {
+        if (!window.visualViewport) return;
+        const windowHeight = window.innerHeight;
+        const viewportHeight = window.visualViewport.height;
+        const diff = windowHeight - viewportHeight;
+        if (diff > 120) {
+          setKeyboardOffset(diff);
+        } else {
+          setKeyboardOffset(0);
+        }
+      };
+      window.visualViewport.addEventListener('resize', handleViewportResize);
+      removeViewportListener = () => {
+        window.visualViewport?.removeEventListener('resize', handleViewportResize);
+      };
+    }
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+      if (removeViewportListener) removeViewportListener();
+    };
+  }, []);
+
+  const handleInputFocus = (delay = 120) => {
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, delay);
+  };
+
+  const dynamicBottomPadding = keyboardOffset > 0
+    ? (Platform.OS === 'ios' ? 40 : keyboardOffset + 90)
+    : 30;
 
   // 跨平台確認彈窗
   const showConfirm = (title: string, message: string, onConfirm: () => void) => {
@@ -232,10 +285,15 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({ visibl
           </View>
 
           <ScrollView
+            ref={scrollViewRef}
             showsVerticalScrollIndicator={false}
             style={styles.scrollArea}
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: dynamicBottomPadding },
+            ]}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
           >
             {isEditingMode ? (
               /* ===== 編輯 / 新增 表單模式 ===== */
@@ -281,7 +339,14 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({ visibl
                 </View>
 
                 {/* 分類名稱 */}
-                <Text style={styles.inputLabel} maxFontSizeMultiplier={1.15}>分類名稱</Text>
+                <View style={styles.inputLabelRow}>
+                  <Text style={styles.inputLabel} maxFontSizeMultiplier={1.15}>分類名稱</Text>
+                  {keyboardOffset > 0 && (
+                    <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
                 <TextInput
                   style={styles.textInput}
                   placeholder="例如：寵物開銷、水電瓦斯、保險..."
@@ -289,6 +354,9 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({ visibl
                   value={name}
                   onChangeText={setName}
                   maxLength={12}
+                  onFocus={() => handleInputFocus()}
+                  returnKeyType="done"
+                  onSubmitEditing={Keyboard.dismiss}
                   maxFontSizeMultiplier={1.15}
                 />
 
@@ -614,6 +682,19 @@ const styles = StyleSheet.create({
   },
   formContainer: {
     width: '100%',
+  },
+  inputLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+    marginTop: 8,
+  },
+  dismissKeyboardText: {
+    fontSize: 12,
+    color: '#4F46E5',
+    fontWeight: '600',
+    marginLeft: 'auto',
   },
   inputLabel: {
     fontSize: 12,
