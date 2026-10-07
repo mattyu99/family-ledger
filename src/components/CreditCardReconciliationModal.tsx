@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text as RNText,
@@ -45,17 +45,25 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
 
   const [selectedCardId, setSelectedCardId] = useState<string>('');
   const [selectedCycleKey, setSelectedCycleKey] = useState<string>('');
+  const [cycleCount, setCycleCount] = useState<number>(6);
+
+  // 當彈窗關閉時重設為預設最近 6 期
+  useEffect(() => {
+    if (!visible) {
+      setCycleCount(6);
+    }
+  }, [visible]);
 
   // 預設選中第一張信用卡
   const currentCard = useMemo(() => {
     return creditCards.find(c => c.id === selectedCardId) || creditCards[0];
   }, [creditCards, selectedCardId]);
 
-  // 計算該信用卡的帳單週期清單
+  // 計算該信用卡的帳單週期清單 (依 cycleCount 動態展開)
   const billingCycles = useMemo(() => {
     if (!currentCard) return [];
-    return getCreditCardBillingCycles(currentCard.billing_cycle_date || 15, new Date(), 6);
-  }, [currentCard]);
+    return getCreditCardBillingCycles(currentCard.billing_cycle_date || 15, new Date(), cycleCount);
+  }, [currentCard, cycleCount]);
 
   // 當前選中的帳單週期
   const currentCycle = useMemo(() => {
@@ -154,7 +162,16 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
               </HorizontalScrollView>
 
               {/* 帳單週期選擇器 */}
-              <Text style={styles.sectionHeader} maxFontSizeMultiplier={1.15}>選擇帳單期 (依結帳日動態切分)</Text>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionHeader} maxFontSizeMultiplier={1.15}>
+                  選擇帳單期 (依結帳日動態切分)
+                </Text>
+                {cycleCount > 6 && (
+                  <Text style={styles.cycleCountBadge} maxFontSizeMultiplier={1.15}>
+                    已展開至最近 {cycleCount} 期
+                  </Text>
+                )}
+              </View>
               <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cycleSelectorScroll}>
                 {billingCycles.map(cycle => {
                   const isSelected = (currentCycle?.key || billingCycles[0]?.key) === cycle.key;
@@ -174,6 +191,44 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                     </TouchableOpacity>
                   );
                 })}
+
+                {/* 動態載入更多帳單期數按鈕 */}
+                {cycleCount < 36 ? (
+                  <TouchableOpacity
+                    style={styles.loadMoreCycleChip}
+                    onPress={() => setCycleCount(prev => Math.min(prev + 6, 36))}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.loadMoreCycleText} maxFontSizeMultiplier={1.15}>
+                      + 查看更早帳單
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.maxCycleChip}>
+                    <Text style={styles.maxCycleText} maxFontSizeMultiplier={1.15}>
+                      已顯示上限 36 期
+                    </Text>
+                  </View>
+                )}
+
+                {/* 展開超過 6 期時提供收起按鈕 */}
+                {cycleCount > 6 && (
+                  <TouchableOpacity
+                    style={styles.collapseCycleChip}
+                    onPress={() => {
+                      setCycleCount(6);
+                      const recent6 = billingCycles.slice(0, 6);
+                      if (!recent6.some(c => c.key === selectedCycleKey)) {
+                        setSelectedCycleKey('');
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.collapseCycleText} maxFontSizeMultiplier={1.15}>
+                      收回至最近 6 期 ▴
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </HorizontalScrollView>
 
               {/* 本期對帳看板卡片 */}
@@ -337,8 +392,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#475569',
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginTop: 8,
     marginBottom: 8,
+  },
+  cycleCountBadge: {
+    fontSize: 10.5,
+    color: '#2563EB',
+    fontWeight: '600',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
   },
   cardSelectorScroll: {
     flexDirection: 'row',
@@ -394,6 +463,49 @@ const styles = StyleSheet.create({
   cycleChipTextActive: {
     color: '#1D4ED8',
     fontWeight: '700',
+  },
+  loadMoreCycleChip: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1.5,
+    borderColor: '#93C5FD',
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadMoreCycleText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#2563EB',
+  },
+  collapseCycleChip: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  collapseCycleText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  maxCycleChip: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  maxCycleText: {
+    fontSize: 11,
+    color: '#94A3B8',
   },
   summaryCard: {
     backgroundColor: '#F8FAFC',
