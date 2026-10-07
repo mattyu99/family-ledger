@@ -125,7 +125,7 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({ visibl
   };
 
   const dynamicBottomPadding = keyboardOffset > 0
-    ? (Platform.OS === 'ios' ? 30 : 60)
+    ? (keyboardOffset + 24)
     : 30;
 
   // 跨平台確認彈窗

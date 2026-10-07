@@ -111,20 +111,20 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     };
   }, []);
 
-  const handleInputFocus = (field?: 'top' | 'bottom') => {
-    if (field === 'bottom') {
-      setTimeout(() => {
-        formScrollRef.current?.scrollTo({ y: 130, animated: true });
-      }, 100);
-    } else if (field === 'top') {
-      setTimeout(() => {
-        formScrollRef.current?.scrollTo({ y: 0, animated: true });
-      }, 100);
-    }
+  const handleInputFocus = (field: 'name' | 'lastFour' | 'cycleDate' | 'balance') => {
+    const scrollMap: Record<string, number> = {
+      name: 0,
+      lastFour: 110,
+      cycleDate: 190,
+      balance: 140,
+    };
+    setTimeout(() => {
+      formScrollRef.current?.scrollTo({ y: scrollMap[field] ?? 0, animated: true });
+    }, 120);
   };
 
   const dynamicBottomPadding = keyboardOffset > 0
-    ? (Platform.OS === 'ios' ? 30 : 60)
+    ? (keyboardOffset + 24)
     : 30;
 
   // 表單狀態
@@ -334,7 +334,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                 value={formName}
                 onChangeText={setFormName}
                 placeholder={formType === 'credit_card' ? '例如：富邦 Costco 聯名卡' : '例如：爸爸悠遊卡'}
-                onFocus={() => handleInputFocus('top')}
+                onFocus={() => handleInputFocus('name')}
                 returnKeyType="next"
               />
 
@@ -369,7 +369,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     placeholder="例如：8829"
                     keyboardType="numeric"
                     maxLength={4}
-                    onFocus={() => handleInputFocus('top')}
+                    onFocus={() => handleInputFocus('lastFour')}
                     returnKeyType="next"
                   />
 
@@ -381,7 +381,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     onChangeText={setFormCycleDate}
                     placeholder="15"
                     keyboardType="numeric"
-                    onFocus={() => handleInputFocus('bottom')}
+                    onFocus={() => handleInputFocus('cycleDate')}
                     returnKeyType="done"
                     onSubmitEditing={Keyboard.dismiss}
                   />
@@ -399,7 +399,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     onChangeText={setFormBalance}
                     placeholder="0"
                     keyboardType="numeric"
-                    onFocus={() => handleInputFocus('bottom')}
+                    onFocus={() => handleInputFocus('balance')}
                     returnKeyType="done"
                     onSubmitEditing={Keyboard.dismiss}
                   />
@@ -568,6 +568,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
     width: '100%',
+    height: '100%',
   },
   backdrop: {
     position: 'absolute',
@@ -580,8 +581,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
+    height: Math.min(SCREEN_HEIGHT * 0.85, 650),
     maxHeight: Math.min(SCREEN_HEIGHT * 0.9, 720),
-    minHeight: Math.min(SCREEN_HEIGHT * 0.65, 480),
     paddingTop: 16,
     paddingHorizontal: 16,
     paddingBottom: Platform.OS === 'ios' ? 24 : 16,
