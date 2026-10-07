@@ -54,7 +54,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   visible,
   onClose,
 }) => {
-  const { paymentAccounts, addPaymentAccount, updatePaymentAccount, deletePaymentAccount, members, currentUser } = useLedger();
+  const { paymentAccounts, addPaymentAccount, updatePaymentAccount, deletePaymentAccount, restoreDefaultAccounts, members, currentUser } = useLedger();
 
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -145,6 +145,26 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
       Alert.alert('刪除確認', confirmMessage, [
         { text: '取消', style: 'cancel' },
         { text: '刪除', style: 'destructive', onPress: () => deletePaymentAccount(acc.id) },
+      ]);
+    }
+  };
+
+  const handleRestoreDefaults = async () => {
+    const confirmMessage = '確定要補齊預設示範卡片（富邦 Costco、國泰 CUBE、悠遊卡）嗎？您已建立的自訂卡片不會受到影響。';
+    const doRestore = async () => {
+      await restoreDefaultAccounts();
+      if (Platform.OS === 'web') alert('已成功恢復預設卡片！');
+      else Alert.alert('完成', '已成功恢復預設卡片！');
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(confirmMessage)) {
+        await doRestore();
+      }
+    } else {
+      Alert.alert('恢復預設卡片', confirmMessage, [
+        { text: '取消', style: 'cancel' },
+        { text: '確定補齊', onPress: doRestore },
       ]);
     }
   };
@@ -382,6 +402,18 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                   );
                 })
               )}
+
+              {/* 恢復預設示範卡片按鈕 */}
+              <TouchableOpacity
+                style={styles.restoreDefaultsBtn}
+                onPress={handleRestoreDefaults}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.restoreDefaultsText} maxFontSizeMultiplier={1.15}>
+                  ↺ 一鍵補齊 / 恢復預設示範卡片組合
+                </Text>
+              </TouchableOpacity>
+
               <View style={{ height: 30 }} />
             </ScrollView>
           )}
@@ -677,6 +709,24 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
+  },
+  restoreDefaultsBtn: {
+    marginTop: 24,
+    marginBottom: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderStyle: 'dashed',
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  restoreDefaultsText: {
+    fontSize: 13,
+    color: '#64748B',
+    fontWeight: '600',
   },
 });
 

@@ -3188,7 +3188,7 @@ function MainApp() {
                 </View>
               </View>
 
-              <View style={styles.categoryPreviewRow}>
+              <View style={styles.paymentAccountPreviewRow}>
                 {paymentAccounts.map(acc => {
                   const isCard = acc.type === 'credit_card';
                   return (
@@ -3203,15 +3203,15 @@ function MainApp() {
                         }
                       }}
                       style={[
-                        styles.categoryPreviewChip,
+                        styles.paymentAccountPreviewChip,
                         { borderColor: `${acc.color || '#4F46E5'}40`, backgroundColor: `${acc.color || '#4F46E5'}10` },
                       ]}
                     >
-                      <Text style={styles.categoryPreviewIcon} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      <Text style={styles.paymentAccountPreviewIcon} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                         {acc.icon || (isCard ? '💳' : '🚌')}
                       </Text>
                       <Text
-                        style={styles.categoryPreviewText}
+                        style={styles.paymentAccountPreviewText}
                         numberOfLines={1}
                         allowFontScaling={false}
                         maxFontSizeMultiplier={1.08}
@@ -3219,14 +3219,14 @@ function MainApp() {
                         {acc.name}{acc.last_four_digits ? ` (*${acc.last_four_digits})` : ''}
                       </Text>
                       {isCard && acc.billing_cycle_date ? (
-                        <View style={{ backgroundColor: '#EEF2FF', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, marginLeft: 4 }}>
-                          <Text style={{ fontSize: 10, color: '#4F46E5', fontWeight: '700' }} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                        <View style={[styles.paymentAccountBadge, { backgroundColor: '#EEF2FF' }]}>
+                          <Text style={[styles.paymentAccountBadgeText, { color: '#4F46E5' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                             每月{acc.billing_cycle_date}日結
                           </Text>
                         </View>
                       ) : !isCard ? (
-                        <View style={{ backgroundColor: '#ECFDF5', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, marginLeft: 4 }}>
-                          <Text style={{ fontSize: 10, color: '#047857', fontWeight: '700' }} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                        <View style={[styles.paymentAccountBadge, { backgroundColor: '#ECFDF5' }]}>
+                          <Text style={[styles.paymentAccountBadgeText, { color: '#047857' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                             ${(acc.balance || 0).toLocaleString()}
                           </Text>
                         </View>
@@ -3236,10 +3236,10 @@ function MainApp() {
                 })}
                 {paymentAccounts.length === 0 && (
                   <TouchableOpacity
-                    style={[styles.categoryPreviewChip, { borderStyle: 'dashed' }]}
+                    style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
                     onPress={() => setAccountsManageModalVisible(true)}
                   >
-                    <Text style={styles.categoryPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                       ＋ 新增第一張信用卡或悠遊卡
                     </Text>
                   </TouchableOpacity>
@@ -6023,6 +6023,45 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#64748B',
     fontWeight: '600',
+  },
+  paymentAccountPreviewRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  paymentAccountPreviewChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    maxWidth: '100%',
+    overflow: 'hidden',
+  },
+  paymentAccountPreviewIcon: {
+    fontSize: 14,
+    marginRight: 6,
+  },
+  paymentAccountPreviewText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#334155',
+    flexShrink: 1,
+    marginRight: 4,
+  },
+  paymentAccountBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    flexShrink: 0,
+    marginLeft: 2,
+  },
+  paymentAccountBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
   },
   previewModeBanner: {
     backgroundColor: '#FFFBEB',
