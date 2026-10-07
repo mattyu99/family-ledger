@@ -11,7 +11,13 @@ import {
 } from 'react-native';
 import { PaymentAccount, Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
-import { getCreditCardBillingCycles, isDateInBillingCycle, BillingCycleOption, sortAccountsByUser } from '../lib/payment';
+import {
+  getCreditCardBillingCycles,
+  getCalendarMonthCycles,
+  isDateInBillingCycle,
+  BillingCycleOption,
+  sortAccountsByUser,
+} from '../lib/payment';
 import { getCategoryIcon } from '../lib/icons';
 import { HorizontalScrollView } from './HorizontalScrollView';
 
@@ -25,45 +31,85 @@ const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultip
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-interface CreditCardReconciliationModalProps {
+export interface CreditCardReconciliationModalProps {
   visible: boolean;
   onClose: () => void;
   onEditTransaction?: (tx: Transaction) => void;
+  initialAccountType?: 'credit_card' | 'stored_value';
+  initialAccountId?: string;
 }
+
+// 輔助函式：判斷是否為悠遊卡/儲值卡加值存入紀錄
+const isTopUpTransaction = (t: Transaction, card: PaymentAccount): boolean => {
+  if (!card) return false;
+  if (t.merchant === `${card.name}儲值` || t.merchant === `${card.name}加值`) return true;
+  if (t.note?.includes(`存入【${card.name}】`)) return true;
+  if (t.note?.includes(`${card.name}儲值`) || t.note?.includes(`${card.name}加值`)) return true;
+  return false;
+};
 
 export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationModalProps> = ({
   visible,
   onClose,
   onEditTransaction,
+  initialAccountType,
+  initialAccountId,
 }) => {
   const { paymentAccounts, transactions, toggleReconcileTransaction, getCategoryById, getMemberById, currentUser } = useLedger();
+
+  const [accountType, setAccountType] = useState<'credit_card' | 'stored_value'>('credit_card');
+  const [selectedCardId, setSelectedCardId] = useState<string>('');
+  const [selectedCycleKey, setSelectedCycleKey] = useState<string>('');
+  const [cycleCount, setCycleCount] = useState<number>(6);
 
   const creditCards = useMemo(
     () => sortAccountsByUser(paymentAccounts.filter(a => a.type === 'credit_card'), currentUser?.id),
     [paymentAccounts, currentUser]
   );
 
-  const [selectedCardId, setSelectedCardId] = useState<string>('');
-  const [selectedCycleKey, setSelectedCycleKey] = useState<string>('');
-  const [cycleCount, setCycleCount] = useState<number>(6);
+  const storedValueCards = useMemo(
+    () => sortAccountsByUser(paymentAccounts.filter(a => a.type === 'stored_value'), currentUser?.id),
+    [paymentAccounts, currentUser]
+  );
 
-  // 當彈窗關閉時重設為預設最近 6 期
+  // 當彈窗開關或傳入初始參數時同步狀態
   useEffect(() => {
-    if (!visible) {
+    if (visible) {
+      if (initialAccountId) {
+        const target = paymentAccounts.find(a => a.id === initialAccountId);
+        if (target) {
+          setAccountType(target.type === 'stored_value' ? 'stored_value' : 'credit_card');
+          setSelectedCardId(target.id);
+          setSelectedCycleKey('');
+          return;
+        }
+      }
+      if (initialAccountType) {
+        setAccountType(initialAccountType);
+        setSelectedCardId('');
+        setSelectedCycleKey('');
+      }
+    } else {
       setCycleCount(6);
     }
-  }, [visible]);
+  }, [visible, initialAccountType, initialAccountId, paymentAccounts]);
 
-  // 預設選中第一張信用卡
+  const activeCards = accountType === 'credit_card' ? creditCards : storedValueCards;
+
+  // 預設選中當前分類中的卡片
   const currentCard = useMemo(() => {
-    return creditCards.find(c => c.id === selectedCardId) || creditCards[0];
-  }, [creditCards, selectedCardId]);
+    return activeCards.find(c => c.id === selectedCardId) || activeCards[0];
+  }, [activeCards, selectedCardId]);
 
-  // 計算該信用卡的帳單週期清單 (依 cycleCount 動態展開)
+  // 計算該卡片的帳單週期清單 (信用卡依結帳日動態計算，悠遊卡依自然月份計算)
   const billingCycles = useMemo(() => {
     if (!currentCard) return [];
-    return getCreditCardBillingCycles(currentCard.billing_cycle_date || 15, new Date(), cycleCount);
-  }, [currentCard, cycleCount]);
+    if (accountType === 'credit_card') {
+      return getCreditCardBillingCycles(currentCard.billing_cycle_date || 15, new Date(), cycleCount);
+    } else {
+      return getCalendarMonthCycles(new Date(), cycleCount);
+    }
+  }, [currentCard, accountType, cycleCount]);
 
   // 當前選中的帳單週期
   const currentCycle = useMemo(() => {
@@ -71,31 +117,90 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
     return billingCycles.find(c => c.key === selectedCycleKey) || billingCycles[0];
   }, [billingCycles, selectedCycleKey]);
 
-  // 篩選出落入此卡片與此帳單週期的所有消費
+  // 篩選出落入此卡片與此週期區間內的所有消費與加值
   const cycleTransactions = useMemo(() => {
     if (!currentCard || !currentCycle) return [];
     return transactions.filter(t => {
-      // 必須是該卡片（account_id 吻合，或選了信用卡但未指定 account_id 且付款人吻合）
-      const isCardMatch = t.account_id === currentCard.id || (t.payment_method === 'credit_card' && !t.account_id && t.paid_by === currentCard.user_id);
-      if (!isCardMatch) return false;
+      if (accountType === 'credit_card') {
+        const isCardMatch =
+          t.account_id === currentCard.id ||
+          (t.payment_method === 'credit_card' && !t.account_id && t.paid_by === currentCard.user_id);
+        if (!isCardMatch) return false;
+      } else {
+        // 悠遊卡模式：
+        // 1. 刷卡消費扣款
+        const isCardSpend =
+          t.account_id === currentCard.id ||
+          (t.payment_method === 'stored_value' && !t.account_id && t.paid_by === currentCard.user_id);
+        // 2. 加值存入
+        const isCardTopUp = isTopUpTransaction(t, currentCard);
+
+        if (!isCardSpend && !isCardTopUp) return false;
+      }
       return isDateInBillingCycle(t.transacted_at, currentCycle.startDate, currentCycle.endDate);
     });
-  }, [transactions, currentCard, currentCycle]);
+  }, [transactions, currentCard, currentCycle, accountType]);
 
-  // 本期統計：支出總額、已核對筆數
+  // 本期統計：支出總額、加值總額、已核對筆數
   const stats = useMemo(() => {
-    const totalAmount = cycleTransactions
-      .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
-    const reconciledCount = cycleTransactions.filter(t => t.is_reconciled).length;
-    const totalCount = cycleTransactions.length;
-    const progressPercent = totalCount > 0 ? Math.round((reconciledCount / totalCount) * 100) : 100;
-    const isAllReconciled = totalCount > 0 && reconciledCount === totalCount;
+    if (accountType === 'credit_card') {
+      const totalAmount = cycleTransactions
+        .filter(t => t.type === 'expense')
+        .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+      const reconciledCount = cycleTransactions.filter(t => t.is_reconciled).length;
+      const totalCount = cycleTransactions.length;
+      const progressPercent = totalCount > 0 ? Math.round((reconciledCount / totalCount) * 100) : 100;
+      const isAllReconciled = totalCount > 0 && reconciledCount === totalCount;
 
-    return { totalAmount, reconciledCount, totalCount, progressPercent, isAllReconciled };
-  }, [cycleTransactions]);
+      return {
+        totalAmount,
+        reconciledCount,
+        totalCount,
+        progressPercent,
+        isAllReconciled,
+        totalSpend: totalAmount,
+        spendCount: cycleTransactions.filter(t => t.type === 'expense').length,
+        totalTopUp: 0,
+        topUpCount: 0,
+      };
+    } else {
+      let totalSpend = 0;
+      let spendCount = 0;
+      let totalTopUp = 0;
+      let topUpCount = 0;
+
+      cycleTransactions.forEach(t => {
+        if (currentCard && isTopUpTransaction(t, currentCard)) {
+          totalTopUp += Number(t.amount || 0);
+          topUpCount += 1;
+        } else {
+          totalSpend += Number(t.amount || 0);
+          spendCount += 1;
+        }
+      });
+
+      const reconciledCount = cycleTransactions.filter(t => t.is_reconciled).length;
+      const totalCount = cycleTransactions.length;
+      const progressPercent = totalCount > 0 ? Math.round((reconciledCount / totalCount) * 100) : 100;
+      const isAllReconciled = totalCount > 0 && reconciledCount === totalCount;
+
+      return {
+        totalAmount: totalSpend,
+        reconciledCount,
+        totalCount,
+        progressPercent,
+        isAllReconciled,
+        totalSpend,
+        spendCount,
+        totalTopUp,
+        topUpCount,
+      };
+    }
+  }, [cycleTransactions, accountType, currentCard]);
 
   if (!visible) return null;
+
+  const isCredit = accountType === 'credit_card';
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -104,10 +209,14 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
         <View style={styles.sheet}>
           {/* 標頭 */}
           <View style={styles.header}>
-            <View>
-              <Text style={styles.title} maxFontSizeMultiplier={1.15}>💳 信用卡帳單精確對帳</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title} maxFontSizeMultiplier={1.15}>
+                {isCredit ? '💳 信用卡帳單精確對帳' : '🚌 悠遊卡自然月對帳'}
+              </Text>
               <Text style={styles.subtitle} maxFontSizeMultiplier={1.15}>
-                收到銀行電子帳單時，依結帳日精確比對每一筆消費
+                {isCredit
+                  ? '收到銀行電子帳單時，依結帳日精確比對每一筆消費'
+                  : '依自然月檢視悠遊卡每筆扣款與加值，精確掌握卡片餘額'}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -115,28 +224,68 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
             </TouchableOpacity>
           </View>
 
-          {creditCards.length === 0 ? (
+          {/* 模式分頁切換 Tab */}
+          <View style={styles.tabBar}>
+            <TouchableOpacity
+              style={[styles.tabItem, isCredit && styles.tabItemActive]}
+              onPress={() => {
+                setAccountType('credit_card');
+                setSelectedCardId('');
+                setSelectedCycleKey('');
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.tabItemText, isCredit && styles.tabItemTextActive]} maxFontSizeMultiplier={1.15}>
+                💳 信用卡 ({creditCards.length})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.tabItem, !isCredit && styles.tabItemActive]}
+              onPress={() => {
+                setAccountType('stored_value');
+                setSelectedCardId('');
+                setSelectedCycleKey('');
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.tabItemText, !isCredit && styles.tabItemTextActive]} maxFontSizeMultiplier={1.15}>
+                🚌 悠遊卡 ({storedValueCards.length})
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {activeCards.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyIcon}>💳</Text>
-              <Text style={styles.emptyText}>目前尚未設定任何信用卡</Text>
+              <Text style={styles.emptyIcon}>{isCredit ? '💳' : '🚌'}</Text>
+              <Text style={styles.emptyText}>
+                {isCredit ? '目前尚未設定任何信用卡' : '目前尚未設定任何悠遊卡或儲值卡'}
+              </Text>
               <Text style={styles.emptySubtext}>
-                請至「家庭與備份」設定家裡的信用卡與結帳日，即可開始智慧對帳！
+                {isCredit
+                  ? '請至「家庭與備份」設定家裡的信用卡與結帳日，即可開始智慧對帳！'
+                  : '請至「家庭與備份」新增家裡的悠遊卡或儲值卡，即可開始智慧對帳！'}
               </Text>
             </View>
           ) : (
             <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
               {/* 卡片選擇標籤橫向滑軌 */}
-              <Text style={styles.sectionHeader} maxFontSizeMultiplier={1.15}>選擇核對的信用卡</Text>
+              <Text style={styles.sectionHeader} maxFontSizeMultiplier={1.15}>
+                {isCredit ? '選擇核對的信用卡' : '選擇核對的悠遊卡 / 儲值卡'}
+              </Text>
               <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardSelectorScroll}>
-                {creditCards.map(card => {
-                  const isSelected = (currentCard?.id || creditCards[0]?.id) === card.id;
+                {activeCards.map(card => {
+                  const isSelected = (currentCard?.id || activeCards[0]?.id) === card.id;
                   const cardholder = getMemberById(card.user_id);
                   return (
                     <TouchableOpacity
                       key={card.id}
                       style={[
                         styles.cardSelectChip,
-                        isSelected && { borderColor: card.color || '#3B82F6', backgroundColor: '#EFF6FF' },
+                        isSelected && {
+                          borderColor: card.color || (isCredit ? '#3B82F6' : '#0284C7'),
+                          backgroundColor: isCredit ? '#EFF6FF' : '#F0F9FF',
+                        },
                       ]}
                       onPress={() => {
                         setSelectedCardId(card.id);
@@ -144,16 +293,25 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                       }}
                       activeOpacity={0.7}
                     >
-                      <Text style={styles.cardSelectIcon}>💳</Text>
+                      <Text style={styles.cardSelectIcon}>{card.icon || (isCredit ? '💳' : '🚌')}</Text>
                       <View>
                         <Text
-                          style={[styles.cardSelectName, isSelected && { color: card.color || '#1E40AF', fontWeight: '700' }]}
+                          style={[
+                            styles.cardSelectName,
+                            isSelected && {
+                              color: card.color || (isCredit ? '#1E40AF' : '#0369A1'),
+                              fontWeight: '700',
+                            },
+                          ]}
                           maxFontSizeMultiplier={1.15}
                         >
-                          {card.name}{card.last_four_digits ? ` (*${card.last_four_digits})` : ''}
+                          {card.name}{isCredit && card.last_four_digits ? ` (*${card.last_four_digits})` : ''}
                         </Text>
                         <Text style={styles.cardSelectCycle} maxFontSizeMultiplier={1.15}>
-                          {cardholder ? `${cardholder.display_name} · ` : '全家通用 · '}每月 {card.billing_cycle_date || 15} 號結帳
+                          {cardholder ? `${cardholder.display_name} · ` : '全家通用 · '}
+                          {isCredit
+                            ? `每月 ${card.billing_cycle_date || 15} 號結帳`
+                            : `餘額 NT$ ${card.balance.toLocaleString()}`}
                         </Text>
                       </View>
                     </TouchableOpacity>
@@ -161,14 +319,14 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                 })}
               </HorizontalScrollView>
 
-              {/* 帳單週期選擇器 */}
+              {/* 週期 / 自然月份選擇器 */}
               <View style={styles.sectionHeaderRow}>
                 <Text style={styles.sectionHeader} maxFontSizeMultiplier={1.15}>
-                  選擇帳單期 (依結帳日動態切分)
+                  {isCredit ? '選擇帳單期 (依結帳日動態切分)' : '選擇對帳月份 (自然月 1 號至月底)'}
                 </Text>
                 {cycleCount > 6 && (
                   <Text style={styles.cycleCountBadge} maxFontSizeMultiplier={1.15}>
-                    已展開至最近 {cycleCount} 期
+                    已展開至最近 {cycleCount} {isCredit ? '期' : '個月'}
                   </Text>
                 )}
               </View>
@@ -192,7 +350,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                   );
                 })}
 
-                {/* 動態載入更多帳單期數按鈕 */}
+                {/* 動態載入更多期數按鈕 */}
                 {cycleCount < 36 ? (
                   <TouchableOpacity
                     style={styles.loadMoreCycleChip}
@@ -200,7 +358,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                     activeOpacity={0.7}
                   >
                     <Text style={styles.loadMoreCycleText} maxFontSizeMultiplier={1.15}>
-                      + 查看更早帳單
+                      {isCredit ? '+ 查看更早帳單' : '+ 查看更早月份'}
                     </Text>
                   </TouchableOpacity>
                 ) : (
@@ -225,26 +383,55 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                     activeOpacity={0.7}
                   >
                     <Text style={styles.collapseCycleText} maxFontSizeMultiplier={1.15}>
-                      收回至最近 6 期 ▴
+                      {isCredit ? '收回至最近 6 期 ▴' : '收回至最近 6 個月 ▴'}
                     </Text>
                   </TouchableOpacity>
                 )}
               </HorizontalScrollView>
 
-              {/* 本期對帳看板卡片 */}
-              {currentCycle && (
+              {/* 本期 / 本月對帳看板卡片 */}
+              {currentCycle && currentCard && (
                 <View style={styles.summaryCard}>
                   <View style={styles.summaryTopRow}>
-                    <View>
+                    <View style={{ flex: 1, marginRight: 8 }}>
                       <Text style={styles.summaryCycleName}>{currentCycle.cycleName}</Text>
-                      <Text style={styles.summaryDateRange}>週期：{currentCycle.rangeText}</Text>
-                    </View>
-                    <View style={styles.summaryAmountBox}>
-                      <Text style={styles.summaryAmountLabel}>本期累積應繳</Text>
-                      <Text style={styles.summaryAmountValue}>
-                        NT$ {stats.totalAmount.toLocaleString()}
+                      <Text style={styles.summaryDateRange}>
+                        {isCredit ? '帳單週期：' : '自然月份：'}{currentCycle.rangeText}
                       </Text>
+                      {!isCredit && (
+                        <View style={styles.currentBalancePill}>
+                          <Text style={styles.currentBalanceLabel}>卡片即時餘額</Text>
+                          <Text style={styles.currentBalanceValue}>NT$ {currentCard.balance.toLocaleString()}</Text>
+                        </View>
+                      )}
                     </View>
+
+                    {isCredit ? (
+                      <View style={styles.summaryAmountBox}>
+                        <Text style={styles.summaryAmountLabel}>本期累積應繳</Text>
+                        <Text style={styles.summaryAmountValue}>
+                          NT$ {stats.totalAmount.toLocaleString()}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.storedValueStatsBox}>
+                        <View style={styles.storedValueStatRow}>
+                          <Text style={styles.storedValueStatLabel}>本月刷卡扣款</Text>
+                          <Text style={styles.storedValueSpendValue}>
+                            -NT$ {stats.totalSpend.toLocaleString()}
+                          </Text>
+                        </View>
+                        <Text style={styles.storedValueStatSub}>共 {stats.spendCount} 筆消費</Text>
+
+                        <View style={[styles.storedValueStatRow, { marginTop: 5 }]}>
+                          <Text style={styles.storedValueStatLabel}>本月加值存入</Text>
+                          <Text style={styles.storedValueTopUpValue}>
+                            +NT$ {stats.totalTopUp.toLocaleString()}
+                          </Text>
+                        </View>
+                        <Text style={styles.storedValueStatSub}>共 {stats.topUpCount} 次加值</Text>
+                      </View>
+                    )}
                   </View>
 
                   {/* 進度條 */}
@@ -263,7 +450,9 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                           styles.progressBarFill,
                           {
                             width: `${stats.progressPercent}%`,
-                            backgroundColor: stats.isAllReconciled ? '#10B981' : '#3B82F6',
+                            backgroundColor: stats.isAllReconciled
+                              ? '#10B981'
+                              : (isCredit ? '#3B82F6' : '#0284C7'),
                           },
                         ]}
                       />
@@ -275,39 +464,64 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
               {/* 明細清單 */}
               <View style={styles.txListHeader}>
                 <Text style={styles.txListTitle}>
-                  本期消費明細 ({cycleTransactions.length} 筆)
+                  {isCredit
+                    ? `本期消費明細 (${cycleTransactions.length} 筆)`
+                    : `當月收支與加值明細 (${cycleTransactions.length} 筆)`}
                 </Text>
                 <Text style={styles.txListHint}>核對無誤請點擊右側按鈕打勾 ✍️</Text>
               </View>
 
               {cycleTransactions.length === 0 ? (
                 <View style={styles.emptyTxBox}>
-                  <Text style={styles.emptyTxText}>本期帳單週期內尚無此信用卡的刷卡紀錄</Text>
+                  <Text style={styles.emptyTxText}>
+                    {isCredit
+                      ? '本期帳單週期內尚無此信用卡的刷卡紀錄'
+                      : '本月份內尚無此悠遊卡的扣款或加值紀錄'}
+                  </Text>
                 </View>
               ) : (
                 cycleTransactions.map(tx => {
+                  const isTopUp = !isCredit && currentCard && isTopUpTransaction(tx, currentCard);
                   const cat = getCategoryById(tx.category_id, tx.category);
                   const d = new Date(tx.transacted_at);
                   const dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
                   return (
                     <View key={tx.id} style={[styles.txRow, tx.is_reconciled && styles.txRowReconciled]}>
                       {/* 類別圖示 */}
-                      <View style={[styles.catIconBox, { backgroundColor: `${cat?.color || '#3B82F6'}20` }]}>
-                        <Text style={styles.catIcon}>{getCategoryIcon(cat?.icon)}</Text>
+                      <View
+                        style={[
+                          styles.catIconBox,
+                          { backgroundColor: isTopUp ? '#ECFDF5' : `${cat?.color || '#3B82F6'}20` },
+                        ]}
+                      >
+                        <Text style={styles.catIcon}>
+                          {isTopUp ? '💰' : getCategoryIcon(cat?.icon)}
+                        </Text>
                       </View>
 
-                      {/* 消費內容 */}
+                      {/* 消費/加值內容 */}
                       <TouchableOpacity
                         style={styles.txInfoCol}
                         onPress={() => onEditTransaction?.(tx)}
                         activeOpacity={0.7}
                       >
                         <View style={styles.txTitleRow}>
-                          <Text style={styles.txMerchantName} numberOfLines={1}>
-                            {tx.merchant || cat?.name || '消費'}
-                          </Text>
-                          <Text style={styles.txAmountText}>
-                            -NT$ {Number(tx.amount).toLocaleString()}
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 6 }}>
+                            {isTopUp && (
+                              <View style={styles.topUpBadge}>
+                                <Text style={styles.topUpBadgeText}>加值</Text>
+                              </View>
+                            )}
+                            <Text style={styles.txMerchantName} numberOfLines={1}>
+                              {isTopUp
+                                ? (tx.merchant || `${currentCard.name}儲值`)
+                                : (tx.merchant || cat?.name || (isCredit ? '消費' : '悠遊卡扣款'))}
+                            </Text>
+                          </View>
+                          <Text style={[styles.txAmountText, isTopUp && styles.txAmountTopUp]}>
+                            {isTopUp
+                              ? `+NT$ ${Number(tx.amount).toLocaleString()}`
+                              : `-NT$ ${Number(tx.amount).toLocaleString()}`}
                           </Text>
                         </View>
                         <View style={styles.txSubRow}>
@@ -341,6 +555,8 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
   );
 };
 
+export const CardReconciliationModal = CreditCardReconciliationModal;
+
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
@@ -363,7 +579,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    paddingBottom: 12,
+    paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
@@ -384,9 +600,40 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#94A3B8',
   },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    padding: 3,
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  tabItem: {
+    flex: 1,
+    paddingVertical: 7,
+    alignItems: 'center',
+    borderRadius: 9,
+  },
+  tabItemActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  tabItemText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  tabItemTextActive: {
+    color: '#1E293B',
+    fontWeight: '700',
+  },
   scrollArea: {
     flex: 1,
-    marginTop: 10,
+    marginTop: 6,
   },
   sectionHeader: {
     fontSize: 12,
@@ -397,7 +644,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 10,
     marginBottom: 8,
   },
   cycleCountBadge: {
@@ -412,6 +659,7 @@ const styles = StyleSheet.create({
   cardSelectorScroll: {
     flexDirection: 'row',
     gap: 8,
+    paddingTop: 6,
     paddingBottom: 4,
   },
   cardSelectChip: {
@@ -531,6 +779,27 @@ const styles = StyleSheet.create({
     color: '#64748B',
     marginTop: 2,
   },
+  currentBalancePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E0F2FE',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginTop: 6,
+    gap: 6,
+  },
+  currentBalanceLabel: {
+    fontSize: 10.5,
+    color: '#0369A1',
+    fontWeight: '600',
+  },
+  currentBalanceValue: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0284C7',
+  },
   summaryAmountBox: {
     alignItems: 'flex-end',
   },
@@ -542,6 +811,39 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     color: '#EF4444',
+  },
+  storedValueStatsBox: {
+    alignItems: 'flex-end',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  storedValueStatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  storedValueStatLabel: {
+    fontSize: 10.5,
+    color: '#64748B',
+  },
+  storedValueSpendValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#EF4444',
+  },
+  storedValueTopUpValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#10B981',
+  },
+  storedValueStatSub: {
+    fontSize: 9.5,
+    color: '#94A3B8',
+    marginTop: 1,
   },
   progressSection: {
     marginTop: 4,
@@ -632,6 +934,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  topUpBadge: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+    marginRight: 4,
+  },
+  topUpBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#15803D',
+  },
   txMerchantName: {
     fontSize: 13,
     fontWeight: '600',
@@ -642,6 +956,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#EF4444',
+  },
+  txAmountTopUp: {
+    color: '#10B981',
   },
   txSubRow: {
     flexDirection: 'row',
@@ -700,4 +1017,3 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 });
-

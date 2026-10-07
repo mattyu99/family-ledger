@@ -36,9 +36,10 @@ const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFont
 
 interface StoredValueWidgetProps {
   onManageAccounts?: () => void;
+  onOpenReconcile?: (account?: PaymentAccount) => void;
 }
 
-export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAccounts }) => {
+export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAccounts, onOpenReconcile }) => {
   const { paymentAccounts, topUpAccountBalance, adjustAccountBalance, getMemberById, isOwner, currentUser, members } = useLedger();
 
   const storedValueCards = React.useMemo(
@@ -167,11 +168,18 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAc
           <Text style={styles.titleIcon}>🚌</Text>
           <Text style={styles.titleText}>悠遊卡 / 儲值卡即時餘額</Text>
         </View>
-        {onManageAccounts && (
-          <TouchableOpacity onPress={onManageAccounts} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.manageLinkText}>{isOwner ? '管理卡片 ›' : '查看卡片 ›'}</Text>
-          </TouchableOpacity>
-        )}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          {onOpenReconcile && (
+            <TouchableOpacity onPress={() => onOpenReconcile()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={styles.reconcileLinkText}>📊 對帳</Text>
+            </TouchableOpacity>
+          )}
+          {onManageAccounts && (
+            <TouchableOpacity onPress={onManageAccounts} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={styles.manageLinkText}>{isOwner ? '管理卡片 ›' : '查看卡片 ›'}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <HorizontalScrollView
@@ -210,12 +218,22 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAc
               {/* 操作按鈕群 */}
               <View style={styles.actionRow}>
                 <TouchableOpacity
-                  style={[styles.quickTopUpBtn, { backgroundColor: card.color || '#0284C7' }, !isOwner && { flex: 1 }]}
+                  style={[styles.quickTopUpBtn, { backgroundColor: card.color || '#0284C7' }]}
                   onPress={() => handleOpenTopUp(card)}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.quickTopUpText}>+ 快速加值</Text>
+                  <Text style={styles.quickTopUpText}>+ 加值</Text>
                 </TouchableOpacity>
+
+                {onOpenReconcile && (
+                  <TouchableOpacity
+                    style={styles.reconcileBtn}
+                    onPress={() => onOpenReconcile(card)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.reconcileBtnText}>📊 對帳</Text>
+                  </TouchableOpacity>
+                )}
 
                 {isOwner && (
                   <TouchableOpacity
@@ -223,7 +241,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAc
                     onPress={() => handleOpenAdjust(card)}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.adjustText}>校正餘額</Text>
+                    <Text style={styles.adjustText}>校正</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -462,8 +480,17 @@ const styles = StyleSheet.create({
   },
   manageLinkText: {
     fontSize: 11.5,
-    color: '#0284C7',
+    color: '#64748B',
     fontWeight: '600',
+  },
+  reconcileLinkText: {
+    fontSize: 11.5,
+    color: '#0284C7',
+    fontWeight: '700',
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
   },
   scrollContent: {
     flexDirection: 'row',
@@ -471,7 +498,7 @@ const styles = StyleSheet.create({
     paddingRight: 6,
   },
   cardItem: {
-    width: 200,
+    width: 215,
     backgroundColor: '#F8FAFC',
     borderRadius: 12,
     padding: 10,
@@ -527,10 +554,10 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 5,
   },
   quickTopUpBtn: {
-    flex: 1,
+    flex: 1.1,
     paddingVertical: 5,
     borderRadius: 8,
     alignItems: 'center',
@@ -538,14 +565,29 @@ const styles = StyleSheet.create({
   },
   quickTopUpText: {
     color: '#FFFFFF',
-    fontSize: 11,
+    fontSize: 10.5,
+    fontWeight: '700',
+  },
+  reconcileBtn: {
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    paddingHorizontal: 6,
+    paddingVertical: 5,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reconcileBtnText: {
+    color: '#0284C7',
+    fontSize: 10.5,
     fontWeight: '700',
   },
   adjustBtn: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#CBD5E1',
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     paddingVertical: 5,
     borderRadius: 8,
     alignItems: 'center',
@@ -553,7 +595,7 @@ const styles = StyleSheet.create({
   },
   adjustText: {
     color: '#475569',
-    fontSize: 10.5,
+    fontSize: 10,
     fontWeight: '600',
   },
   modalOverlay: {

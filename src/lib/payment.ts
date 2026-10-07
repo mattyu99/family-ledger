@@ -161,6 +161,54 @@ export const getCreditCardBillingCycles = (
 };
 
 /**
+ * 依據自然月份 (1號 00:00:00 ~ 當月最後一日 23:59:59)，計算過去與當期的自然月週期
+ * 適用於悠遊卡/儲值卡對帳 (沒有結帳日，以自然月份為單位)
+ */
+export const getCalendarMonthCycles = (
+  refDate: Date = new Date(),
+  cycleCount: number = 6
+): BillingCycleOption[] => {
+  const cycles: BillingCycleOption[] = [];
+  const nowYear = refDate.getFullYear();
+  const nowMonth = refDate.getMonth(); // 0-indexed
+
+  for (let i = 0; i < cycleCount; i++) {
+    const targetMonthDate = new Date(nowYear, nowMonth - i, 1);
+    const targetYear = targetMonthDate.getFullYear();
+    const targetMonth = targetMonthDate.getMonth(); // 0-indexed
+
+    const startDate = new Date(targetYear, targetMonth, 1, 0, 0, 0, 0);
+    const maxDays = getDaysInMonth(targetYear, targetMonth);
+    const endDate = new Date(targetYear, targetMonth, maxDays, 23, 59, 59, 999);
+
+    const isCurrent = refDate >= startDate && refDate <= endDate;
+    const isClosed = refDate > endDate;
+
+    const startText = `${targetMonth + 1}/01`;
+    const endText = `${targetMonth + 1}/${String(maxDays).padStart(2, '0')}`;
+    const rangeText = `${startText} ~ ${endText}`;
+
+    const cycleYear = targetYear;
+    const cycleMonthNum = targetMonth + 1;
+    const cycleName = `${cycleYear}年${cycleMonthNum}月份`;
+    const label = `${cycleMonthNum}月份 (${rangeText})${isCurrent ? ' [本月]' : ''}`;
+
+    cycles.push({
+      key: `${targetYear}-${String(cycleMonthNum).padStart(2, '0')}`,
+      label,
+      cycleName,
+      rangeText,
+      startDate,
+      endDate,
+      isCurrent,
+      isClosed,
+    });
+  }
+
+  return cycles;
+};
+
+/**
  * 檢查交易日期是否落入某個帳單區間內
  */
 export const isDateInBillingCycle = (
