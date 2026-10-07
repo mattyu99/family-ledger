@@ -1016,10 +1016,7 @@ function MainApp() {
           keyboardOffset > 0 && styles.exportOverlayKeyboardActive
         ]}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
-          <View style={[
-            styles.exportCard,
-            keyboardOffset > 0 && { maxHeight: Math.min(SCREEN_HEIGHT - keyboardOffset - 40, 560) }
-          ]}>
+          <View style={styles.exportCard}>
             <View style={styles.modalHeaderRow}>
               <View style={{ flex: 1, marginRight: 8 }}>
                 <Text style={styles.exportTitle}>👤 成員資訊與設定</Text>
@@ -1350,10 +1347,7 @@ function MainApp() {
         keyboardOffset > 0 && styles.exportOverlayKeyboardActive
       ]}>
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
-        <View style={[
-          styles.exportCard,
-          keyboardOffset > 0 && { maxHeight: Math.min(SCREEN_HEIGHT - keyboardOffset - 40, 560) }
-        ]}>
+        <View style={styles.exportCard}>
           <View style={styles.modalHeaderRow}>
             <Text style={styles.exportTitle}>🏠 建立新的家庭公帳</Text>
             <TouchableOpacity onPress={() => setCreateLedgerModalVisible(false)} style={styles.closeBtn}>
@@ -1419,10 +1413,7 @@ function MainApp() {
         keyboardOffset > 0 && styles.exportOverlayKeyboardActive
       ]}>
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
-        <View style={[
-          styles.exportCard,
-          keyboardOffset > 0 && { maxHeight: Math.min(SCREEN_HEIGHT - keyboardOffset - 40, 560) }
-        ]}>
+        <View style={styles.exportCard}>
           <View style={styles.modalHeaderRow}>
             <Text style={styles.exportTitle}>🔗 加入家庭公帳</Text>
             <TouchableOpacity onPress={() => setJoinLedgerModalVisible(false)} style={styles.closeBtn}>
@@ -1714,10 +1705,7 @@ function MainApp() {
         keyboardOffset > 0 && styles.exportOverlayKeyboardActive
       ]}>
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
-        <View style={[
-          styles.exportCard,
-          keyboardOffset > 0 && { maxHeight: Math.min(SCREEN_HEIGHT - keyboardOffset - 40, 560) }
-        ]}>
+        <View style={styles.exportCard}>
           <View style={styles.modalHeaderRow}>
             <Text style={styles.exportTitle}>✏️ 修改家庭公帳名稱</Text>
             <TouchableOpacity onPress={() => setEditLedgerModalVisible(false)} style={styles.closeBtn}>
@@ -1776,10 +1764,7 @@ function MainApp() {
         keyboardOffset > 0 && styles.exportOverlayKeyboardActive
       ]}>
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
-        <View style={[
-          styles.exportCard,
-          keyboardOffset > 0 && { maxHeight: Math.min(SCREEN_HEIGHT - keyboardOffset - 40, 560) }
-        ]}>
+        <View style={styles.exportCard}>
           <View style={styles.modalHeaderRow}>
             <Text style={styles.exportTitle}>✏️ 自訂專屬邀請碼</Text>
             <TouchableOpacity onPress={() => setCustomCodeModalVisible(false)} style={styles.closeBtn}>
@@ -1838,10 +1823,7 @@ function MainApp() {
         keyboardOffset > 0 && styles.exportOverlayKeyboardActive
       ]}>
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
-        <View style={[
-          styles.exportCard,
-          keyboardOffset > 0 && { maxHeight: Math.min(SCREEN_HEIGHT - keyboardOffset - 40, 560) }
-        ]}>
+        <View style={styles.exportCard}>
           <View style={styles.modalHeaderRow}>
             <Text style={styles.exportTitle}>🔐 修改管理員安全 PIN 碼</Text>
             <TouchableOpacity onPress={() => setChangePinModalVisible(false)} style={styles.closeBtn}>
@@ -1901,10 +1883,7 @@ function MainApp() {
         keyboardOffset > 0 && styles.exportOverlayKeyboardActive
       ]}>
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
-        <View style={[
-          styles.exportCard,
-          keyboardOffset > 0 && { maxHeight: Math.min(SCREEN_HEIGHT - keyboardOffset - 40, 560) }
-        ]}>
+        <View style={styles.exportCard}>
           <View style={styles.modalHeaderRow}>
             <Text style={styles.exportTitle}>🔐 取得/恢復管理員權限</Text>
             <TouchableOpacity onPress={() => setClaimAdminModalVisible(false)} style={styles.closeBtn}>
@@ -1968,10 +1947,7 @@ function MainApp() {
         keyboardOffset > 0 && styles.exportOverlayKeyboardActive
       ]}>
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
-        <View style={[
-          styles.exportCard,
-          keyboardOffset > 0 && { maxHeight: Math.min(SCREEN_HEIGHT - keyboardOffset - 40, 560) }
-        ]}>
+        <View style={styles.exportCard}>
           <View style={styles.modalHeaderRow}>
             <Text style={styles.exportTitle}>🚪 加入或切換家庭公帳</Text>
             <TouchableOpacity onPress={() => setSwitchLedgerModalVisible(false)} style={styles.closeBtn}>
@@ -3833,10 +3809,7 @@ function MainApp() {
           keyboardOffset > 0 && styles.exportOverlayKeyboardActive
         ]}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
-          <View style={[
-            styles.exportCard,
-            keyboardOffset > 0 && { maxHeight: Math.min(SCREEN_HEIGHT - keyboardOffset - 40, 560) }
-          ]}>
+          <View style={styles.exportCard}>
             <View style={styles.modalHeaderRow}>
               <Text style={styles.exportTitle}>➕ 新增家庭成員</Text>
               <TouchableOpacity onPress={() => setMemberModalVisible(false)} style={styles.closeBtn}>
@@ -5037,8 +5010,8 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   exportOverlayKeyboardActive: {
-    justifyContent: 'flex-start',
-    paddingTop: Platform.OS === 'ios' ? 44 : 24,
+    justifyContent: 'center',
+    paddingBottom: 80,
   },
   modalBackdrop: {
     position: 'absolute',

@@ -219,7 +219,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAc
       >
         <View style={[
           styles.modalOverlay,
-          keyboardOffset > 0 && { justifyContent: 'flex-start', paddingTop: Platform.OS === 'ios' ? 44 : 24 }
+          keyboardOffset > 0 && { justifyContent: 'center', paddingBottom: 80 }
         ]}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
           <View style={styles.modalContent}>

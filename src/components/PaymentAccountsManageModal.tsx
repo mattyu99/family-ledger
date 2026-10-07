@@ -13,6 +13,7 @@ import {
   TextProps,
   TextInputProps,
   Keyboard,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { PaymentAccount, AccountType } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
@@ -110,14 +111,20 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     };
   }, []);
 
-  const handleInputFocus = (delay = 120) => {
-    setTimeout(() => {
-      formScrollRef.current?.scrollToEnd({ animated: true });
-    }, delay);
+  const handleInputFocus = (field?: 'top' | 'bottom') => {
+    if (field === 'bottom') {
+      setTimeout(() => {
+        formScrollRef.current?.scrollTo({ y: 130, animated: true });
+      }, 100);
+    } else if (field === 'top') {
+      setTimeout(() => {
+        formScrollRef.current?.scrollTo({ y: 0, animated: true });
+      }, 100);
+    }
   };
 
   const dynamicBottomPadding = keyboardOffset > 0
-    ? (Platform.OS === 'ios' ? 40 : keyboardOffset + 90)
+    ? (Platform.OS === 'ios' ? 30 : 60)
     : 30;
 
   // 表單狀態
@@ -253,12 +260,12 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.overlay}
+      >
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
-        <View style={[
-          styles.sheet,
-          keyboardOffset > 0 && { maxHeight: Math.min(SCREEN_HEIGHT * 0.95, 780), minHeight: undefined }
-        ]}>
+        <View style={styles.sheet}>
           {/* 標頭 */}
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
@@ -327,7 +334,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                 value={formName}
                 onChangeText={setFormName}
                 placeholder={formType === 'credit_card' ? '例如：富邦 Costco 聯名卡' : '例如：爸爸悠遊卡'}
-                onFocus={() => handleInputFocus()}
+                onFocus={() => handleInputFocus('top')}
                 returnKeyType="next"
               />
 
@@ -362,7 +369,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     placeholder="例如：8829"
                     keyboardType="numeric"
                     maxLength={4}
-                    onFocus={() => handleInputFocus()}
+                    onFocus={() => handleInputFocus('top')}
                     returnKeyType="next"
                   />
 
@@ -374,7 +381,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     onChangeText={setFormCycleDate}
                     placeholder="15"
                     keyboardType="numeric"
-                    onFocus={() => handleInputFocus()}
+                    onFocus={() => handleInputFocus('bottom')}
                     returnKeyType="done"
                     onSubmitEditing={Keyboard.dismiss}
                   />
@@ -392,7 +399,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     onChangeText={setFormBalance}
                     placeholder="0"
                     keyboardType="numeric"
-                    onFocus={() => handleInputFocus()}
+                    onFocus={() => handleInputFocus('bottom')}
                     returnKeyType="done"
                     onSubmitEditing={Keyboard.dismiss}
                   />
@@ -550,7 +557,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
             </ScrollView>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -560,18 +567,27 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
+    width: '100%',
   },
   backdrop: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   sheet: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: SCREEN_HEIGHT * 0.9,
-    minHeight: SCREEN_HEIGHT * 0.65,
+    maxHeight: Math.min(SCREEN_HEIGHT * 0.9, 720),
+    minHeight: Math.min(SCREEN_HEIGHT * 0.65, 480),
     paddingTop: 16,
     paddingHorizontal: 16,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 16,
+    width: '100%',
+    maxWidth: 600,
+    alignSelf: 'center',
   },
   header: {
     flexDirection: 'row',

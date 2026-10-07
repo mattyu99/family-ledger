@@ -125,7 +125,7 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({ visibl
   };
 
   const dynamicBottomPadding = keyboardOffset > 0
-    ? (Platform.OS === 'ios' ? 40 : keyboardOffset + 90)
+    ? (Platform.OS === 'ios' ? 30 : 60)
     : 30;
 
   // 跨平台確認彈窗
@@ -354,7 +354,6 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({ visibl
                   value={name}
                   onChangeText={setName}
                   maxLength={12}
-                  onFocus={() => handleInputFocus()}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                   maxFontSizeMultiplier={1.15}

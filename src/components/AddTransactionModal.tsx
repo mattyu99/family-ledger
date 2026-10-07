@@ -145,7 +145,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
   };
 
   const dynamicBottomPadding = keyboardOffset > 0
-    ? (Platform.OS === 'ios' ? 40 : keyboardOffset + 90)
+    ? (Platform.OS === 'ios' ? 30 : 60)
     : 30;
 
   const availableCategories = categories.filter(c => c.type === type);
