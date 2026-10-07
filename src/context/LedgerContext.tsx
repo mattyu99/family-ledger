@@ -2507,6 +2507,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // 新增付款帳戶 / 信用卡 / 儲值卡
   const addPaymentAccount = async (accountData: Omit<PaymentAccount, 'id' | 'ledger_id' | 'created_at'>): Promise<PaymentAccount> => {
+    if (!effectiveIsOwner) {
+      safeAlert('權限不足', '只有帳本管理員才能新增支付卡片與帳戶');
+      throw new Error('只有帳本管理員才能新增支付卡片與帳戶');
+    }
+
     const newAcc: PaymentAccount = {
       ...accountData,
       id: generateUUID(),
@@ -2530,6 +2535,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // 修改付款帳戶
   const updatePaymentAccount = async (id: string, data: Partial<PaymentAccount>): Promise<boolean> => {
+    if (!effectiveIsOwner) {
+      safeAlert('權限不足', '只有帳本管理員才能修改支付卡片與帳戶');
+      return false;
+    }
+
     const updated = paymentAccounts.map(a => a.id === id ? { ...a, ...data } : a);
     setPaymentAccounts(updated);
     await savePaymentAccountsToStorage(updated);
@@ -2546,6 +2556,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // 刪除付款帳戶
   const deletePaymentAccount = async (id: string): Promise<boolean> => {
+    if (!effectiveIsOwner) {
+      safeAlert('權限不足', '只有帳本管理員才能刪除支付卡片與帳戶');
+      return false;
+    }
+
     const deletedAcc = paymentAccounts.find(a => a.id === id);
     const updated = paymentAccounts.filter(a => a.id !== id);
     setPaymentAccounts(updated);
@@ -2579,6 +2594,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // 一鍵補齊 / 恢復預設示範卡片組合
   const restoreDefaultAccounts = async () => {
+    if (!effectiveIsOwner) {
+      safeAlert('權限不足', '只有帳本管理員才能恢復預設支付卡片');
+      return;
+    }
     if (!currentLedger?.id) return;
     try {
       const deletedKey = `${STORAGE_KEYS.DELETED_ACCOUNT_IDS}_${currentLedger.id}`;
@@ -2711,8 +2730,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  // 直接校正儲值卡餘額
+  // 直接校正儲值卡餘額 (僅管理員可操作)
   const adjustAccountBalance = async (id: string, newBalance: number): Promise<boolean> => {
+    if (!effectiveIsOwner) {
+      safeAlert('權限不足', '只有帳本管理員才能校正卡片餘額');
+      return false;
+    }
     try {
       const updatedAccounts = paymentAccounts.map(a => a.id === id ? { ...a, balance: Number(newBalance.toFixed(2)) } : a);
       setPaymentAccounts(updatedAccounts);

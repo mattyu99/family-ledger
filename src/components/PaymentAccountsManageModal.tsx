@@ -54,7 +54,15 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   visible,
   onClose,
 }) => {
-  const { paymentAccounts, addPaymentAccount, updatePaymentAccount, deletePaymentAccount, restoreDefaultAccounts, members, currentUser } = useLedger();
+  const { paymentAccounts, addPaymentAccount, updatePaymentAccount, deletePaymentAccount, restoreDefaultAccounts, members, currentUser, isOwner } = useLedger();
+
+  const showAlert = (title: string, message: string) => {
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined') window.alert(`${title}\n\n${message}`);
+    } else {
+      Alert.alert(title, message);
+    }
+  };
 
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -72,6 +80,10 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   const storedValueCards = paymentAccounts.filter(a => a.type === 'stored_value');
 
   const handleOpenAdd = (type: AccountType) => {
+    if (!isOwner) {
+      showAlert('權限不足', '只有帳本管理員才能新增支付卡片與帳戶');
+      return;
+    }
     setIsEditing(true);
     setEditingId(null);
     setFormType(type);
@@ -84,6 +96,10 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   };
 
   const handleOpenEdit = (acc: PaymentAccount) => {
+    if (!isOwner) {
+      showAlert('權限不足', '只有帳本管理員才能編輯支付卡片與帳戶');
+      return;
+    }
     setIsEditing(true);
     setEditingId(acc.id);
     setFormType(acc.type);
@@ -96,10 +112,13 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   };
 
   const handleSaveForm = async () => {
+    if (!isOwner) {
+      showAlert('權限不足', '只有帳本管理員才能儲存卡片設定');
+      return;
+    }
     const cleanName = formName.trim();
     if (!cleanName) {
-      if (Platform.OS === 'web') alert('請輸入卡片或帳戶名稱');
-      else Alert.alert('提示', '請輸入卡片或帳戶名稱');
+      showAlert('提示', '請輸入卡片或帳戶名稱');
       return;
     }
 
@@ -136,6 +155,10 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   };
 
   const handleDelete = (acc: PaymentAccount) => {
+    if (!isOwner) {
+      showAlert('權限不足', '只有帳本管理員才能刪除支付卡片與帳戶');
+      return;
+    }
     const confirmMessage = `確定要刪除「${acc.name}」嗎？此操作不會刪除歷史記帳明細。`;
     if (Platform.OS === 'web') {
       if (window.confirm(confirmMessage)) {
@@ -150,6 +173,10 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   };
 
   const handleRestoreDefaults = async () => {
+    if (!isOwner) {
+      showAlert('權限不足', '只有帳本管理員才能恢復預設支付卡片');
+      return;
+    }
     const confirmMessage = '確定要補齊預設示範卡片（富邦 Costco、國泰 CUBE、悠遊卡）嗎？您已建立的自訂卡片不會受到影響。';
     const doRestore = async () => {
       await restoreDefaultAccounts();
@@ -178,10 +205,14 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
         <View style={styles.sheet}>
           {/* 標頭 */}
           <View style={styles.header}>
-            <View>
-              <Text style={styles.title} maxFontSizeMultiplier={1.15}>💳 管理家庭卡片與帳戶</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title} maxFontSizeMultiplier={1.15}>
+                {isOwner ? '💳 管理家庭卡片與帳戶' : '💳 家庭卡片與帳戶一覽'}
+              </Text>
               <Text style={styles.subtitle} maxFontSizeMultiplier={1.15}>
-                設定全家的信用卡（含結帳日）與悠遊卡
+                {isOwner
+                  ? '設定全家的信用卡（含結帳日）與悠遊卡'
+                  : '家庭成員瀏覽模式（僅帳本管理員可新增、修改或刪除卡片）'}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -316,16 +347,26 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
           ) : (
             /* 卡片清單列表 */
             <ScrollView style={styles.listScroll} showsVerticalScrollIndicator={false}>
+              {!isOwner && (
+                <View style={styles.memberNoticeBox}>
+                  <Text style={styles.memberNoticeText} maxFontSizeMultiplier={1.15}>
+                    🔒 只有帳本管理員才能新增、修改或刪除卡片與帳戶
+                  </Text>
+                </View>
+              )}
+
               {/* 信用卡區塊 */}
               <View style={styles.sectionHeaderRow}>
                 <Text style={styles.sectionTitle}>💳 信用卡清單 ({creditCards.length})</Text>
-                <TouchableOpacity
-                  style={styles.addMiniBtn}
-                  onPress={() => handleOpenAdd('credit_card')}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.addMiniText}>+ 新增信用卡</Text>
-                </TouchableOpacity>
+                {isOwner && (
+                  <TouchableOpacity
+                    style={styles.addMiniBtn}
+                    onPress={() => handleOpenAdd('credit_card')}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.addMiniText}>+ 新增信用卡</Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
               {creditCards.length === 0 ? (
@@ -349,14 +390,16 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                           每月 {card.billing_cycle_date || 15} 號結帳
                         </Text>
                       </View>
-                      <View style={styles.cardActionGroup}>
-                        <TouchableOpacity style={styles.editBtn} onPress={() => handleOpenEdit(card)}>
-                          <Text style={styles.editText}>編輯</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.delBtn} onPress={() => handleDelete(card)}>
-                          <Text style={styles.delText}>刪除</Text>
-                        </TouchableOpacity>
-                      </View>
+                      {isOwner && (
+                        <View style={styles.cardActionGroup}>
+                          <TouchableOpacity style={styles.editBtn} onPress={() => handleOpenEdit(card)}>
+                            <Text style={styles.editText}>編輯</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={styles.delBtn} onPress={() => handleDelete(card)}>
+                            <Text style={styles.delText}>刪除</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
                   );
                 })
@@ -365,13 +408,15 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
               {/* 悠遊卡/儲值卡區塊 */}
               <View style={[styles.sectionHeaderRow, { marginTop: 20 }]}>
                 <Text style={styles.sectionTitle}>🚌 悠遊卡 / 儲值卡 ({storedValueCards.length})</Text>
-                <TouchableOpacity
-                  style={styles.addMiniBtn}
-                  onPress={() => handleOpenAdd('stored_value')}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.addMiniText}>+ 新增儲值卡</Text>
-                </TouchableOpacity>
+                {isOwner && (
+                  <TouchableOpacity
+                    style={styles.addMiniBtn}
+                    onPress={() => handleOpenAdd('stored_value')}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.addMiniText}>+ 新增儲值卡</Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
               {storedValueCards.length === 0 ? (
@@ -390,29 +435,33 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                           {cardholder ? `${cardholder.avatar_url || '👤'} ${cardholder.display_name}` : '全家通用'}
                         </Text>
                       </View>
-                      <View style={styles.cardActionGroup}>
-                        <TouchableOpacity style={styles.editBtn} onPress={() => handleOpenEdit(card)}>
-                          <Text style={styles.editText}>編輯</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.delBtn} onPress={() => handleDelete(card)}>
-                          <Text style={styles.delText}>刪除</Text>
-                        </TouchableOpacity>
-                      </View>
+                      {isOwner && (
+                        <View style={styles.cardActionGroup}>
+                          <TouchableOpacity style={styles.editBtn} onPress={() => handleOpenEdit(card)}>
+                            <Text style={styles.editText}>編輯</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={styles.delBtn} onPress={() => handleDelete(card)}>
+                            <Text style={styles.delText}>刪除</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
                   );
                 })
               )}
 
               {/* 恢復預設示範卡片按鈕 */}
-              <TouchableOpacity
-                style={styles.restoreDefaultsBtn}
-                onPress={handleRestoreDefaults}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.restoreDefaultsText} maxFontSizeMultiplier={1.15}>
-                  ↺ 一鍵補齊 / 恢復預設示範卡片組合
-                </Text>
-              </TouchableOpacity>
+              {isOwner && (
+                <TouchableOpacity
+                  style={styles.restoreDefaultsBtn}
+                  onPress={handleRestoreDefaults}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.restoreDefaultsText} maxFontSizeMultiplier={1.15}>
+                    ↺ 一鍵補齊 / 恢復預設示範卡片組合
+                  </Text>
+                </TouchableOpacity>
+              )}
 
               <View style={{ height: 30 }} />
             </ScrollView>
@@ -725,6 +774,21 @@ const styles = StyleSheet.create({
   },
   restoreDefaultsText: {
     fontSize: 13,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  memberNoticeBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  memberNoticeText: {
+    fontSize: 12,
     color: '#64748B',
     fontWeight: '600',
   },

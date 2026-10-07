@@ -36,7 +36,7 @@ interface StoredValueWidgetProps {
 }
 
 export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAccounts }) => {
-  const { paymentAccounts, topUpAccountBalance, adjustAccountBalance, getMemberById } = useLedger();
+  const { paymentAccounts, topUpAccountBalance, adjustAccountBalance, getMemberById, isOwner } = useLedger();
 
   const storedValueCards = React.useMemo(
     () => paymentAccounts.filter(a => a.type === 'stored_value'),
@@ -58,6 +58,11 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAc
   };
 
   const handleOpenAdjust = (acc: PaymentAccount) => {
+    if (!isOwner) {
+      if (Platform.OS === 'web') alert('權限不足：只有帳本管理員才能校正卡片餘額');
+      else Alert.alert('權限不足', '只有帳本管理員才能校正卡片餘額');
+      return;
+    }
     setActiveModalAccount(acc);
     setModalMode('adjust');
     setCustomAmount(String(acc.balance));
@@ -78,6 +83,11 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAc
         setActiveModalAccount(null);
       }
     } else {
+      if (!isOwner) {
+        if (Platform.OS === 'web') alert('權限不足：只有帳本管理員才能校正卡片餘額');
+        else Alert.alert('權限不足', '只有帳本管理員才能校正卡片餘額');
+        return;
+      }
       const success = await adjustAccountBalance(activeModalAccount.id, num);
       if (success) {
         setActiveModalAccount(null);
@@ -94,7 +104,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAc
         </View>
         {onManageAccounts && (
           <TouchableOpacity onPress={onManageAccounts} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.manageLinkText}>管理卡片 ›</Text>
+            <Text style={styles.manageLinkText}>{isOwner ? '管理卡片 ›' : '查看卡片 ›'}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -136,20 +146,22 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAc
               {/* 操作按鈕群 */}
               <View style={styles.actionRow}>
                 <TouchableOpacity
-                  style={[styles.quickTopUpBtn, { backgroundColor: card.color || '#0284C7' }]}
+                  style={[styles.quickTopUpBtn, { backgroundColor: card.color || '#0284C7' }, !isOwner && { flex: 1 }]}
                   onPress={() => handleOpenTopUp(card)}
                   activeOpacity={0.8}
                 >
                   <Text style={styles.quickTopUpText}>+ 快速加值</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.adjustBtn}
-                  onPress={() => handleOpenAdjust(card)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.adjustText}>校正餘額</Text>
-                </TouchableOpacity>
+                {isOwner && (
+                  <TouchableOpacity
+                    style={styles.adjustBtn}
+                    onPress={() => handleOpenAdjust(card)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.adjustText}>校正餘額</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           );

@@ -3165,7 +3165,9 @@ function MainApp() {
                     💳 支付卡片與帳戶 ({paymentAccounts.length})
                   </Text>
                   <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    管理信用卡結帳週期、悠遊卡/一卡通餘額與帳單對帳
+                    {isOwner
+                      ? '管理信用卡結帳週期、悠遊卡/一卡通餘額與帳單對帳'
+                      : '查看全家信用卡結帳日與悠遊卡即時餘額（僅管理員可增修）'}
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 6 }}>
@@ -3182,7 +3184,7 @@ function MainApp() {
                     onPress={() => setAccountsManageModalVisible(true)}
                   >
                     <Text style={styles.manageCategoryBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                      ⚙️ 管理
+                      {isOwner ? '⚙️ 管理' : '👀 查看'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -3235,14 +3237,22 @@ function MainApp() {
                   );
                 })}
                 {paymentAccounts.length === 0 && (
-                  <TouchableOpacity
-                    style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
-                    onPress={() => setAccountsManageModalVisible(true)}
-                  >
-                    <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                      ＋ 新增第一張信用卡或悠遊卡
-                    </Text>
-                  </TouchableOpacity>
+                  isOwner ? (
+                    <TouchableOpacity
+                      style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
+                      onPress={() => setAccountsManageModalVisible(true)}
+                    >
+                      <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                        ＋ 新增第一張信用卡或悠遊卡
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}>
+                      <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                        尚無支付卡片或帳戶
+                      </Text>
+                    </View>
+                  )
                 )}
               </View>
             </View>
