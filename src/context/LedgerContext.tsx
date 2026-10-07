@@ -366,6 +366,7 @@ const STORAGE_KEYS = {
   RECENT_MERCHANTS: '@family_ledger_recent_merchants',
   PAYMENT_ACCOUNTS: '@family_ledger_payment_accounts',
   DELETED_ACCOUNT_IDS: '@family_ledger_deleted_account_ids',
+  ACCOUNTS_INITIALIZED: '@family_ledger_accounts_initialized',
 };
 
 // 預設常用店家快捷建議清單（涵蓋台灣家庭最普遍的日常採買店家）
@@ -1457,14 +1458,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       if (targetLedger.id === DEMO_LEDGER_ID) {
-        const savedDemo = await AsyncStorage.getItem(STORAGE_KEYS.PAYMENT_ACCOUNTS);
+        const savedDemo = (await AsyncStorage.getItem(ledgerSpecificKey)) || (await AsyncStorage.getItem(STORAGE_KEYS.PAYMENT_ACCOUNTS));
         if (savedDemo) {
           try { setPaymentAccounts(JSON.parse(savedDemo)); } catch {}
         } else {
           setPaymentAccounts(DEMO_PAYMENT_ACCOUNTS);
         }
       } else {
-        // 真實雲端帳本：確保包含標準卡片（若使用者未主動刪除）
+        const initKey = `${STORAGE_KEYS.ACCOUNTS_INITIALIZED}_${targetLedger.id}`;
+        const hasInitialized = await AsyncStorage.getItem(initKey);
+
         const deletedKey = `${STORAGE_KEYS.DELETED_ACCOUNT_IDS}_${targetLedger.id}`;
         let deletedAccountIds: string[] = [];
         try {
@@ -1472,96 +1475,99 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (savedDeletedStr) deletedAccountIds = JSON.parse(savedDeletedStr);
         } catch {}
 
-        const defaultOwnerId = canonicalMe?.id || authUserId;
-        const secondOwner = dedupedMembers.find(m => m.id !== defaultOwnerId);
-        const secondOwnerId = secondOwner?.id || defaultOwnerId;
-
-        // 定義家庭預設常用卡片組合
-        const defaultPresets: Omit<PaymentAccount, 'id' | 'ledger_id' | 'created_at'>[] = [
-          {
-            name: '富邦 Costco 聯名卡',
-            type: 'credit_card',
-            user_id: defaultOwnerId,
-            last_four_digits: '8829',
-            billing_cycle_date: 15,
-            balance: 0,
-            color: '#1E40AF',
-            icon: '💳',
-            sort_order: 1,
-          },
-          {
-            name: '國泰 CUBE 卡',
-            type: 'credit_card',
-            user_id: secondOwnerId,
-            last_four_digits: '1234',
-            billing_cycle_date: 27,
-            balance: 0,
-            color: '#047857',
-            icon: '💳',
-            sort_order: 2,
-          },
-          {
-            name: '爸爸悠遊卡',
-            type: 'stored_value',
-            user_id: defaultOwnerId,
-            last_four_digits: '',
-            balance: 350,
-            color: '#0284C7',
-            icon: '🚌',
-            sort_order: 3,
-          },
-          {
-            name: '媽媽悠遊卡',
-            type: 'stored_value',
-            user_id: secondOwnerId,
-            last_four_digits: '',
-            balance: 500,
-            color: '#EC4899',
-            icon: '🚌',
-            sort_order: 4,
-          },
-        ];
-
-        // 檢查是否有尚未建立且未被使用者手動刪除的預設卡片
-        const accountsToInsert: PaymentAccount[] = [];
-        for (const preset of defaultPresets) {
-          const alreadyExists = loadedCloudAccounts.some(
-            a => a.name.trim() === preset.name.trim() ||
-                 (preset.last_four_digits && a.last_four_digits === preset.last_four_digits)
-          );
-          const wasDeleted = deletedAccountIds.includes(preset.name) || deletedAccountIds.includes(`default_${preset.name}`);
-
-          if (!alreadyExists && !wasDeleted) {
-            accountsToInsert.push({
-              ...preset,
-              id: generateUUID(),
-              ledger_id: targetLedger.id,
-              created_at: new Date().toISOString(),
-            });
-          }
-        }
-
-        if (accountsToInsert.length > 0 && isConfigured) {
-          try {
-            await supabase.from('payment_accounts').insert(accountsToInsert);
-          } catch (insertErr) {
-            console.warn('雲端寫入預設付款卡片失敗:', insertErr);
-          }
-          loadedCloudAccounts = [...loadedCloudAccounts, ...accountsToInsert];
-        }
-
-        // 若雲端或補齊後有卡片，以其為準；若完全沒有則檢查本地快取
         if (loadedCloudAccounts.length > 0) {
+          // 雲端已有卡片（無論更名、新增或刪除過），以雲端為唯一真實來源，絕不自動復活預設示範卡片
           setPaymentAccounts(loadedCloudAccounts);
           await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify(loadedCloudAccounts));
           await AsyncStorage.setItem(ledgerSpecificKey, JSON.stringify(loadedCloudAccounts));
+          await AsyncStorage.setItem(initKey, 'true');
+        } else if (hasInitialized === 'true' || deletedAccountIds.length > 0) {
+          // 雲端無卡片且使用者先前已清空/刪除過所有卡片，尊重使用者的決定保持空清單
+          setPaymentAccounts([]);
+          await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify([]));
+          await AsyncStorage.setItem(ledgerSpecificKey, JSON.stringify([]));
         } else if (savedLedgerAccounts) {
+          // 離線快取卡片
           try {
             const parsed = JSON.parse(savedLedgerAccounts);
             if (Array.isArray(parsed) && parsed.length > 0) {
               setPaymentAccounts(parsed);
             }
           } catch {}
+        } else {
+          // 全新建立的帳本首次載入（雲端完全為空且從未初始化過），寫入預設示範卡片組合
+          const defaultOwnerId = canonicalMe?.id || authUserId;
+          const secondOwner = dedupedMembers.find(m => m.id !== defaultOwnerId);
+          const secondOwnerId = secondOwner?.id || defaultOwnerId;
+
+          const defaultPresets: PaymentAccount[] = [
+            {
+              id: generateUUID(),
+              ledger_id: targetLedger.id,
+              name: '富邦 Costco 聯名卡',
+              type: 'credit_card',
+              user_id: defaultOwnerId,
+              last_four_digits: '8829',
+              billing_cycle_date: 15,
+              balance: 0,
+              color: '#1E40AF',
+              icon: '💳',
+              sort_order: 1,
+              created_at: new Date().toISOString(),
+            },
+            {
+              id: generateUUID(),
+              ledger_id: targetLedger.id,
+              name: '國泰 CUBE 卡',
+              type: 'credit_card',
+              user_id: secondOwnerId,
+              last_four_digits: '1234',
+              billing_cycle_date: 27,
+              balance: 0,
+              color: '#047857',
+              icon: '💳',
+              sort_order: 2,
+              created_at: new Date().toISOString(),
+            },
+            {
+              id: generateUUID(),
+              ledger_id: targetLedger.id,
+              name: '爸爸悠遊卡',
+              type: 'stored_value',
+              user_id: defaultOwnerId,
+              last_four_digits: '',
+              balance: 350,
+              color: '#0284C7',
+              icon: '🚌',
+              sort_order: 3,
+              created_at: new Date().toISOString(),
+            },
+            {
+              id: generateUUID(),
+              ledger_id: targetLedger.id,
+              name: '媽媽悠遊卡',
+              type: 'stored_value',
+              user_id: secondOwnerId,
+              last_four_digits: '',
+              balance: 500,
+              color: '#EC4899',
+              icon: '🚌',
+              sort_order: 4,
+              created_at: new Date().toISOString(),
+            },
+          ];
+
+          if (isConfigured) {
+            try {
+              await supabase.from('payment_accounts').insert(defaultPresets);
+            } catch (insertErr) {
+              console.warn('雲端初始化預設付款卡片失敗:', insertErr);
+            }
+          }
+          setPaymentAccounts(defaultPresets);
+          await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify(defaultPresets));
+          await AsyncStorage.setItem(ledgerSpecificKey, JSON.stringify(defaultPresets));
+          await AsyncStorage.setItem(initKey, 'true');
         }
       }
     } catch (accLoadErr) {
@@ -2523,6 +2529,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setPaymentAccounts(updated);
     await savePaymentAccountsToStorage(updated);
 
+    if (currentLedger?.id) {
+      AsyncStorage.setItem(`${STORAGE_KEYS.ACCOUNTS_INITIALIZED}_${currentLedger.id}`, 'true').catch(() => {});
+    }
+
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
         await supabase.from('payment_accounts').insert(newAcc);
@@ -2543,6 +2553,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const updated = paymentAccounts.map(a => a.id === id ? { ...a, ...data } : a);
     setPaymentAccounts(updated);
     await savePaymentAccountsToStorage(updated);
+
+    if (currentLedger?.id) {
+      AsyncStorage.setItem(`${STORAGE_KEYS.ACCOUNTS_INITIALIZED}_${currentLedger.id}`, 'true').catch(() => {});
+    }
 
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
@@ -2577,6 +2591,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           deletedList.push(deletedAcc.name);
         }
         await AsyncStorage.setItem(deletedKey, JSON.stringify(deletedList));
+        await AsyncStorage.setItem(`${STORAGE_KEYS.ACCOUNTS_INITIALIZED}_${currentLedger.id}`, 'true');
       } catch (err) {
         console.warn('紀錄刪除卡片失敗:', err);
       }
