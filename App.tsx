@@ -2501,20 +2501,6 @@ function MainApp() {
                 <Text style={[styles.filterChipArrow, filterMemberId !== 'all' && styles.filterChipArrowActive]}>▾</Text>
               </TouchableOpacity>
 
-              {/* 💳 信用卡與悠遊卡對帳入口 */}
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={[styles.filterChip, { borderColor: '#818CF8', backgroundColor: '#EEF2FF' }]}
-                onPress={() => {
-                  setReconcileAccountType('credit_card');
-                  setReconcileAccountId(undefined);
-                  setReconcileModalVisible(true);
-                }}
-              >
-                <Text style={styles.filterChipIcon}>💳</Text>
-                <Text style={[styles.filterChipText, { color: '#4F46E5', fontWeight: '700' }]}>卡片對帳</Text>
-              </TouchableOpacity>
-
               {/* 若在搜尋狀態下且非查全部月份，提供 1 鍵切換至全部月份 */}
               {!!searchQuery.trim() && filterMonth !== 'all' && (
                 <TouchableOpacity
