@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { PaymentAccount, AccountType } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
+import { sortAccountsByUser } from '../lib/payment';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
   <RNText
@@ -136,8 +137,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   const [formBalance, setFormBalance] = useState<string>('0');
   const [formColor, setFormColor] = useState<string>(COLOR_PALETTE[0]);
 
-  const creditCards = paymentAccounts.filter(a => a.type === 'credit_card');
-  const storedValueCards = paymentAccounts.filter(a => a.type === 'stored_value');
+  const creditCards = sortAccountsByUser(paymentAccounts.filter(a => a.type === 'credit_card'), currentUser.id);
+  const storedValueCards = sortAccountsByUser(paymentAccounts.filter(a => a.type === 'stored_value'), currentUser.id);
 
   const handleOpenAdd = (type: AccountType) => {
     if (!isOwner) {

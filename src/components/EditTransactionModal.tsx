@@ -34,7 +34,7 @@ const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFont
 );
 import { useLedger } from '../context/LedgerContext';
 import { Transaction, TransactionType, PaymentMethod } from '../types/database';
-import { PAYMENT_METHOD_OPTIONS } from '../lib/payment';
+import { PAYMENT_METHOD_OPTIONS, sortAccountsByUser } from '../lib/payment';
 import { getCategoryIcon } from '../lib/icons';
 import { DatePickerModal } from './DatePickerModal';
 
@@ -165,8 +165,15 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     : 30;
 
   const availableCategories = categories.filter(c => c.type === type);
-  const creditCards = React.useMemo(() => paymentAccounts.filter(a => a.type === 'credit_card'), [paymentAccounts]);
-  const storedValueCards = React.useMemo(() => paymentAccounts.filter(a => a.type === 'stored_value'), [paymentAccounts]);
+  const targetPayerId = paidBy || currentUser?.id;
+  const creditCards = React.useMemo(
+    () => sortAccountsByUser(paymentAccounts.filter(a => a.type === 'credit_card'), targetPayerId),
+    [paymentAccounts, targetPayerId]
+  );
+  const storedValueCards = React.useMemo(
+    () => sortAccountsByUser(paymentAccounts.filter(a => a.type === 'stored_value'), targetPayerId),
+    [paymentAccounts, targetPayerId]
+  );
 
   // 智慧店家快捷建議標籤列表 (結合自學習 recentMerchants + 分類推薦 + 關鍵字即時比對)
   const suggestedMerchants = React.useMemo(() => {

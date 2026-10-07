@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { PaymentAccount, Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
-import { getCreditCardBillingCycles, isDateInBillingCycle, BillingCycleOption } from '../lib/payment';
+import { getCreditCardBillingCycles, isDateInBillingCycle, BillingCycleOption, sortAccountsByUser } from '../lib/payment';
 import { getCategoryIcon } from '../lib/icons';
 import { HorizontalScrollView } from './HorizontalScrollView';
 
@@ -36,11 +36,11 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
   onClose,
   onEditTransaction,
 }) => {
-  const { paymentAccounts, transactions, toggleReconcileTransaction, getCategoryById, getMemberById } = useLedger();
+  const { paymentAccounts, transactions, toggleReconcileTransaction, getCategoryById, getMemberById, currentUser } = useLedger();
 
   const creditCards = useMemo(
-    () => paymentAccounts.filter(a => a.type === 'credit_card'),
-    [paymentAccounts]
+    () => sortAccountsByUser(paymentAccounts.filter(a => a.type === 'credit_card'), currentUser?.id),
+    [paymentAccounts, currentUser]
   );
 
   const [selectedCardId, setSelectedCardId] = useState<string>('');

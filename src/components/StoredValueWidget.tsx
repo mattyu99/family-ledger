@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { PaymentAccount } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
+import { sortAccountsByUser } from '../lib/payment';
 import { HorizontalScrollView } from './HorizontalScrollView';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
@@ -38,11 +39,11 @@ interface StoredValueWidgetProps {
 }
 
 export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAccounts }) => {
-  const { paymentAccounts, topUpAccountBalance, adjustAccountBalance, getMemberById, isOwner } = useLedger();
+  const { paymentAccounts, topUpAccountBalance, adjustAccountBalance, getMemberById, isOwner, currentUser } = useLedger();
 
   const storedValueCards = React.useMemo(
-    () => paymentAccounts.filter(a => a.type === 'stored_value'),
-    [paymentAccounts]
+    () => sortAccountsByUser(paymentAccounts.filter(a => a.type === 'stored_value'), currentUser?.id),
+    [paymentAccounts, currentUser]
   );
 
   const [activeModalAccount, setActiveModalAccount] = useState<PaymentAccount | null>(null);

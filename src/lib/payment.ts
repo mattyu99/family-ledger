@@ -218,3 +218,21 @@ export const formatPaymentLabel = (
   }
 };
 
+/**
+ * 將支付卡片/帳戶列表排序：優先將本機使用成員 (或當前選定付款人) 的卡片排在最前面以利優先選取
+ */
+export const sortAccountsByUser = (
+  accounts: PaymentAccount[],
+  preferredUserId?: string
+): PaymentAccount[] => {
+  if (!accounts || accounts.length === 0) return [];
+  return [...accounts].sort((a, b) => {
+    const aIsPreferred = preferredUserId && a.user_id === preferredUserId ? 1 : 0;
+    const bIsPreferred = preferredUserId && b.user_id === preferredUserId ? 1 : 0;
+    if (aIsPreferred !== bIsPreferred) {
+      return bIsPreferred - aIsPreferred; // 本機使用成員或優先成員排在最前面
+    }
+    return (a.sort_order || 0) - (b.sort_order || 0);
+  });
+};
+
