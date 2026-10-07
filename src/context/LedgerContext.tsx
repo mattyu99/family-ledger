@@ -3323,22 +3323,186 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return { success: false, message: '備份檔中缺少交易明細資料 (transactions)' };
       }
 
-      // 1. 還原/合併 自訂分類
+      const isRealCloud = isConfigured && currentLedger?.id && currentLedger.id !== DEMO_LEDGER_ID;
+
+      // 1. 還原/合併 家庭成員 (Members)
+      let nextMembers = [...members];
+      const memberIdMap: Record<string, string> = {};
+
+      // 預設將現有成員自身的 ID 映射給自己
+      nextMembers.forEach(m => {
+        if (m.id) {
+          memberIdMap[m.id] = m.id;
+        }
+      });
+
+      if (Array.isArray(backup.members) && backup.members.length > 0) {
+        const validBackupMembers = backup.members.filter(
+          (m: any) => m && (m.display_name || m.name)
+        );
+
+        if (mode === 'overwrite') {
+          // 覆蓋模式：以備份成員名冊為骨幹，但嚴格保留當前裝置操作者 currentUser
+          const newMemberList: Profile[] = [];
+          if (currentUser?.id) {
+            newMemberList.push({ ...currentUser });
+            memberIdMap[currentUser.id] = currentUser.id;
+          }
+
+          for (const bm of validBackupMembers) {
+            const rawName = (bm.display_name || bm.name || '').trim();
+            const nameKey = rawName.toLowerCase();
+            const backupId = bm.id;
+
+            // 檢查是否與已加入清單（如 currentUser）重名或同 ID
+            const existing = newMemberList.find(
+              m => (backupId && m.id === backupId) ||
+                   (m.display_name || '').trim().toLowerCase() === nameKey
+            );
+
+            if (existing) {
+              if (backupId) {
+                memberIdMap[backupId] = existing.id;
+              }
+              if (bm.avatar_url && !existing.avatar_url) {
+                existing.avatar_url = bm.avatar_url;
+              }
+            } else {
+              const isDemoConst = backupId?.startsWith('20000000');
+              const targetId = (backupId && isValidUUID(backupId) && (!isRealCloud || !isDemoConst))
+                ? backupId
+                : generateUUID();
+
+              const restoredProf: Profile = {
+                id: targetId,
+                display_name: rawName,
+                avatar_url: bm.avatar_url || '😊',
+                role: bm.role || 'member',
+                email: bm.email || `${rawName.toLowerCase()}@family.local`,
+              };
+              newMemberList.push(restoredProf);
+              if (backupId) {
+                memberIdMap[backupId] = targetId;
+              }
+            }
+          }
+          nextMembers = deduplicateMembers(newMemberList);
+        } else {
+          // 合併模式 (merge)：保留現有名冊，去重補入備份檔中不存在的新成員
+          for (const bm of validBackupMembers) {
+            const rawName = (bm.display_name || bm.name || '').trim();
+            const nameKey = rawName.toLowerCase();
+            const backupId = bm.id;
+
+            const existing = nextMembers.find(
+              m => (backupId && m.id === backupId) ||
+                   (m.display_name || '').trim().toLowerCase() === nameKey
+            );
+
+            if (existing) {
+              if (backupId) {
+                memberIdMap[backupId] = existing.id;
+              }
+            } else {
+              const isDemoConst = backupId?.startsWith('20000000');
+              const targetId = (backupId && isValidUUID(backupId) && (!isRealCloud || !isDemoConst))
+                ? backupId
+                : generateUUID();
+
+              const newProf: Profile = {
+                id: targetId,
+                display_name: rawName,
+                avatar_url: bm.avatar_url || '😊',
+                role: bm.role || 'member',
+                email: bm.email || `${rawName.toLowerCase()}@family.local`,
+              };
+              nextMembers.push(newProf);
+              if (backupId) {
+                memberIdMap[backupId] = targetId;
+              }
+            }
+          }
+          nextMembers = deduplicateMembers(nextMembers);
+        }
+
+        setMembers(nextMembers);
+        await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(nextMembers));
+        if (currentLedger?.id) {
+          await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${currentLedger.id}`, JSON.stringify(nextMembers));
+        }
+
+        // 若為已連線之 Supabase 雲端帳本，同步建立 profiles 與 ledger_members
+        if (isRealCloud) {
+          try {
+            for (const m of nextMembers) {
+              await supabase.from('profiles').upsert({
+                id: m.id,
+                display_name: m.display_name,
+                avatar_url: m.avatar_url || '😊',
+                email: m.email || `${(m.display_name || 'member').toLowerCase()}@family.local`,
+              });
+              await supabase.from('ledger_members').upsert({
+                ledger_id: currentLedger.id,
+                user_id: m.id,
+                role: m.role || 'member',
+              });
+            }
+          } catch (e) {
+            console.warn('雲端還原同步成員名冊失敗:', e);
+          }
+        }
+
+        // 重新構建成員別名映射表
+        const updatedAliasMap = buildMemberAliasMap(nextMembers, nextMembers);
+        setMemberAliasMap(updatedAliasMap);
+        await AsyncStorage.setItem(STORAGE_KEYS.ALIAS_MAP, JSON.stringify(updatedAliasMap));
+      }
+
+      // 2. 還原/合併 自訂分類
       let nextCategories = [...categories];
+      const categoryIdMap: Record<string, string> = {};
+
+      nextCategories.forEach(c => {
+        if (c.id) categoryIdMap[c.id] = c.id;
+      });
+
       if (Array.isArray(backup.categories) && backup.categories.length > 0) {
         if (mode === 'overwrite') {
-          nextCategories = backup.categories.filter((c: any) => c && c.name && c.id);
-        } else {
-          backup.categories.forEach((bc: any) => {
-            if (bc && bc.id && !nextCategories.some(c => c.id === bc.id || c.name === bc.name)) {
-              nextCategories.push({
+          const validBackupCats = backup.categories.filter((c: any) => c && c.name && c.id);
+          if (validBackupCats.length > 0) {
+            nextCategories = validBackupCats.map((bc: any) => {
+              if (bc.id) categoryIdMap[bc.id] = bc.id;
+              return {
                 id: bc.id,
                 name: bc.name,
                 icon: bc.icon || '📝',
                 color: bc.color || '#6B7280',
                 type: bc.type || 'expense',
+                sort_order: bc.sort_order || 1,
+              };
+            });
+          }
+        } else {
+          backup.categories.forEach((bc: any) => {
+            if (!bc || !bc.name) return;
+            const existing = nextCategories.find(c => c.id === bc.id || c.name === bc.name);
+            if (existing) {
+              if (bc.id) categoryIdMap[bc.id] = existing.id;
+            } else {
+              const isDemoConst = bc.id?.startsWith('30000000');
+              const targetId = (bc.id && isValidUUID(bc.id) && (!isRealCloud || !isDemoConst))
+                ? bc.id
+                : generateUUID();
+              const newCat = {
+                id: targetId,
+                name: bc.name,
+                icon: bc.icon || '📝',
+                color: bc.color || '#6B7280',
+                type: bc.type || 'expense',
                 sort_order: bc.sort_order || nextCategories.length + 1,
-              });
+              };
+              nextCategories.push(newCat);
+              if (bc.id) categoryIdMap[bc.id] = targetId;
             }
           });
         }
@@ -3349,50 +3513,139 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
-      // 2. 還原/合併 支付卡片與帳戶
+      // 3. 還原/合併 支付卡片與帳戶
       let nextAccounts = [...paymentAccounts];
+      const accountIdMap: Record<string, string> = {};
+
+      nextAccounts.forEach(a => {
+        if (a.id) accountIdMap[a.id] = a.id;
+      });
+
       if (Array.isArray(backup.payment_accounts) && backup.payment_accounts.length > 0) {
-        if (mode === 'overwrite') {
-          nextAccounts = backup.payment_accounts.filter((a: any) => a && a.name && a.id).map((a: any) => ({
-            ...a,
+        const processAccount = (ba: any) => {
+          let mappedUserId = ba.user_id;
+          if (ba.user_id) {
+            if (memberIdMap[ba.user_id]) {
+              mappedUserId = memberIdMap[ba.user_id];
+            } else if (!nextMembers.some(m => m.id === ba.user_id)) {
+              const matchedMember = nextMembers.find(m => m.display_name && ba.name?.includes(m.display_name));
+              mappedUserId = matchedMember ? matchedMember.id : undefined;
+            }
+          }
+
+          const isDemoConst = ba.id?.startsWith('50000000');
+          const targetId = (ba.id && isValidUUID(ba.id) && (!isRealCloud || !isDemoConst))
+            ? ba.id
+            : generateUUID();
+
+          if (ba.id) {
+            accountIdMap[ba.id] = targetId;
+          }
+
+          return {
+            ...ba,
+            id: targetId,
+            user_id: mappedUserId,
             ledger_id: currentLedger.id,
-          }));
+          };
+        };
+
+        if (mode === 'overwrite') {
+          nextAccounts = backup.payment_accounts
+            .filter((a: any) => a && a.name)
+            .map(processAccount);
         } else {
           backup.payment_accounts.forEach((ba: any) => {
-            if (ba && ba.id && !nextAccounts.some(a => a.id === ba.id)) {
-              nextAccounts.push({
-                ...ba,
-                ledger_id: currentLedger.id,
-              });
+            if (!ba || !ba.name) return;
+            const existing = nextAccounts.find(
+              a => a.id === ba.id || (a.name === ba.name && a.last_four_digits === ba.last_four_digits)
+            );
+            if (existing) {
+              if (ba.id) accountIdMap[ba.id] = existing.id;
+            } else {
+              nextAccounts.push(processAccount(ba));
             }
           });
         }
         setPaymentAccounts(nextAccounts);
         await savePaymentAccountsToStorage(nextAccounts);
+
+        // 同步卡片至 Supabase 雲端 (若為已連線雲端帳本)
+        if (isRealCloud) {
+          try {
+            const accountsToSync = nextAccounts.map(acc => ({
+              id: acc.id,
+              ledger_id: currentLedger.id,
+              name: acc.name,
+              type: acc.type,
+              user_id: acc.user_id && nextMembers.some(m => m.id === acc.user_id) ? acc.user_id : null,
+              last_four_digits: acc.last_four_digits || '',
+              billing_cycle_date: acc.billing_cycle_date || 1,
+              balance: acc.balance || 0,
+              color: acc.color || '#3B82F6',
+              icon: acc.icon || '💳',
+              sort_order: acc.sort_order || 1,
+            }));
+            await supabase.from('payment_accounts').upsert(accountsToSync);
+          } catch (e) {
+            console.warn('雲端還原同步卡片帳戶失敗:', e);
+          }
+        }
       }
 
-      // 3. 還原/合併 交易明細
+      // 4. 還原/合併 交易明細
       const backupTxs = backup.transactions;
       const targetLedgerId = currentLedger.id;
-      const validPaidBy = currentUser?.id || members[0]?.id || 'unknown';
+      const fallbackPayerId = currentUser?.id || nextMembers[0]?.id || 'unknown';
 
       const sanitizedTxs: Transaction[] = backupTxs
         .filter((t: any) => t && !isNaN(Number(t.amount)))
         .map((t: any) => {
-          const matchedCategory = nextCategories.find(c => c.id === t.category_id) || nextCategories[0];
+          // 分類對齊
+          const targetCatId = t.category_id && categoryIdMap[t.category_id] ? categoryIdMap[t.category_id] : t.category_id;
+          const matchedCategory = nextCategories.find(c => c.id === targetCatId) || nextCategories[0];
+
+          // 付款人對齊
+          let resolvedPaidBy = fallbackPayerId;
+          if (t.paid_by) {
+            if (memberIdMap[t.paid_by]) {
+              resolvedPaidBy = memberIdMap[t.paid_by];
+            } else if (nextMembers.some(m => m.id === t.paid_by)) {
+              resolvedPaidBy = t.paid_by;
+            } else if (memberAliasMap[t.paid_by]) {
+              resolvedPaidBy = memberAliasMap[t.paid_by].id;
+            }
+          }
+
+          // 建立者對齊
+          let resolvedCreatorId = currentUser?.id;
+          if (t.creator_id) {
+            if (memberIdMap[t.creator_id]) {
+              resolvedCreatorId = memberIdMap[t.creator_id];
+            } else if (nextMembers.some(m => m.id === t.creator_id)) {
+              resolvedCreatorId = t.creator_id;
+            }
+          }
+
+          // 扣款卡片對齊
+          let resolvedAccountId = t.account_id;
+          if (resolvedAccountId && accountIdMap[resolvedAccountId]) {
+            resolvedAccountId = accountIdMap[resolvedAccountId];
+          }
+
           return {
             id: t.id && isValidUUID(t.id) ? t.id : generateUUID(),
             ledger_id: targetLedgerId,
-            creator_id: t.creator_id || currentUser?.id,
-            category_id: t.category_id || matchedCategory?.id,
+            creator_id: resolvedCreatorId,
+            category_id: matchedCategory?.id || targetCatId,
             amount: Number(t.amount),
             type: (t.type === 'income' ? 'income' : 'expense') as 'income' | 'expense',
-            paid_by: members.some(m => m.id === t.paid_by) ? t.paid_by : validPaidBy,
+            paid_by: resolvedPaidBy,
             transacted_at: t.transacted_at || new Date().toISOString(),
             merchant: t.merchant || undefined,
             note: t.note || '',
             payment_method: t.payment_method || 'cash',
-            account_id: t.account_id || undefined,
+            account_id: resolvedAccountId || undefined,
             is_reconciled: Boolean(t.is_reconciled),
             category: matchedCategory,
           };
@@ -3412,9 +3665,55 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setTransactions(finalTxs);
       await saveTransactionsToStorage(finalTxs);
 
+      // 同步還原交易至 Supabase 雲端 (若為已連線雲端帳本)
+      if (isRealCloud) {
+        try {
+          const txsToUpsert = sanitizedTxs.map(t => {
+            const p: any = {
+              id: t.id,
+              ledger_id: t.ledger_id,
+              creator_id: t.creator_id || currentUser?.id,
+              category_id: t.category_id,
+              amount: t.amount,
+              type: t.type,
+              paid_by: t.paid_by,
+              transacted_at: t.transacted_at,
+              is_settled: t.is_settled || false,
+              note: t.note || '',
+            };
+            if (hasMerchantColumnRef.current) {
+              p.merchant = t.merchant || null;
+            }
+            if (hasPaymentColumnsRef.current) {
+              if (t.payment_method) p.payment_method = t.payment_method;
+              if (t.account_id && !t.account_id.startsWith('50000000')) p.account_id = t.account_id;
+              if (t.is_reconciled !== undefined) p.is_reconciled = t.is_reconciled;
+            }
+            return p;
+          });
+
+          for (let i = 0; i < txsToUpsert.length; i += 50) {
+            await supabase.from('transactions').upsert(txsToUpsert.slice(i, i + 50));
+          }
+        } catch (cloudErr) {
+          console.warn('雲端還原同步交易失敗:', cloudErr);
+        }
+      }
+
+      const parts: string[] = [`${sanitizedTxs.length} 筆明細`];
+      if (Array.isArray(backup.members) && backup.members.length > 0) {
+        parts.push(`${nextMembers.length} 位成員`);
+      }
+      if (Array.isArray(backup.payment_accounts) && backup.payment_accounts.length > 0) {
+        parts.push(`${nextAccounts.length} 張卡片`);
+      }
+      if (Array.isArray(backup.categories) && backup.categories.length > 0) {
+        parts.push(`${nextCategories.length} 個分類`);
+      }
+
       return {
         success: true,
-        message: `成功還原！${mode === 'overwrite' ? '已覆蓋還原' : '已合併補入'} ${sanitizedTxs.length} 筆明細。`,
+        message: `成功還原！${mode === 'overwrite' ? '已覆蓋還原' : '已合併補入'} ${parts.join('、')}。`,
         restoredCount: sanitizedTxs.length,
       };
     } catch (err: any) {

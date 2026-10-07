@@ -857,12 +857,12 @@ function MainApp() {
 
     if (restoreMode === 'overwrite') {
       if (Platform.OS === 'web') {
-        const confirmed = window.confirm('⚠️ 注意：您選擇了「完全覆蓋」，這將以備份檔資料為準覆蓋現有明細。確定要繼續嗎？');
+        const confirmed = window.confirm('⚠️ 注意：您選擇了「完全覆蓋」，這將以備份檔資料為準覆蓋現有成員名冊、卡片與明細。確定要繼續嗎？');
         if (confirmed) await doRestore();
       } else {
         Alert.alert(
           '⚠️ 確認完全覆蓋？',
-          '這將以備份檔資料為準覆蓋現有明細，確定要繼續嗎？',
+          '這將以備份檔資料為準覆蓋現有成員名冊、卡片與明細，確定要繼續嗎？',
           [
             { text: '取消', style: 'cancel' },
             { text: '確定覆蓋', style: 'destructive', onPress: doRestore },
@@ -3998,7 +3998,7 @@ function MainApp() {
                           🔄 安全合併 (推薦)
                         </Text>
                         <Text style={styles.restoreModeOptionDesc}>
-                          保留現有資料，僅補入備份檔中缺少的歷史明細（依 ID 自動去重，安全不重複）
+                          保留現有成員與資料，補入備份檔中缺少的家庭成員、卡片與歷史明細（依 ID 自動去重，安全不重複）
                         </Text>
                       </TouchableOpacity>
 
@@ -4011,7 +4011,7 @@ function MainApp() {
                           ⚠️ 完全覆蓋
                         </Text>
                         <Text style={styles.restoreModeOptionDesc}>
-                          以備份檔資料為準，完全還原至備份當時的明細狀態
+                          以備份檔資料為準，完全還原至備份當時的成員名冊、卡片與明細狀態（當前登入者身分將受到保護）
                         </Text>
                       </TouchableOpacity>
                     </View>
