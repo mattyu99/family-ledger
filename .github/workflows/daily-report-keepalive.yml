@@ -2,8 +2,9 @@ name: Supabase Keep-Alive & Daily Report
 
 on:
   schedule:
-    # 每天台灣時間 21:30 執行 (UTC 13:30)
-    - cron: '30 13 * * *'
+    # 每天台灣時間 21:18 執行 (UTC 13:18)
+    # 使用冷門奇數分鐘 (:18)，大幅避開全球大量在 :00 及 :30 觸發的排程擁塞佇列
+    - cron: '18 13 * * *'
   workflow_dispatch: # 支援在 GitHub 網頁一鍵手動觸發測試
 
 jobs:

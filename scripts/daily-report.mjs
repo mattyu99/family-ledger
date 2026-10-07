@@ -46,16 +46,31 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   realtime: { transport: DummyWS },
 });
 
-// 計算台灣時間 (UTC+8) 的今日起訖時間與月份起訖
+// 計算台灣時間 (UTC+8) 的收支日報統計區間與月份起訖
 function getTaiwanTimeRanges() {
   const now = new Date();
   // 轉換為 UTC+8 時間
   const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
-  const twDate = new Date(utcMs + 8 * 3600000);
+  const currentTwDate = new Date(utcMs + 8 * 3600000);
+  const currentHours = currentTwDate.getHours();
 
-  const year = twDate.getFullYear();
-  const month = twDate.getMonth(); // 0-11
-  const date = twDate.getDate();
+  // 跨午夜延遲防呆機制：
+  // 每日收支日報預設於每晚 21:18~21:30 觸發。
+  // 若因 GitHub Actions 排程佇列延誤，導致執行時間落在凌晨 (00:00 ~ 05:59)，
+  // 自動將統計基準日回推至「前一日 (昨日)」，確保統計的是完整前一日收支而非清晨空白數據。
+  const isDelayedOvernight = currentHours < 6;
+  const targetTwDate = new Date(currentTwDate);
+  if (isDelayedOvernight) {
+    targetTwDate.setDate(targetTwDate.getDate() - 1);
+    console.log(
+      `ℹ️ [排程延遲防呆] 偵測到目前執行時間為台灣凌晨 ${String(currentHours).padStart(2, '0')}:${String(currentTwDate.getMinutes()).padStart(2, '0')}，` +
+      `自動將日報統計區間回推為昨日 (${targetTwDate.getFullYear()}/${targetTwDate.getMonth() + 1}/${targetTwDate.getDate()})。`
+    );
+  }
+
+  const year = targetTwDate.getFullYear();
+  const month = targetTwDate.getMonth(); // 0-11
+  const date = targetTwDate.getDate();
 
   // 本日開始 (00:00:00 UTC+8 換算回 UTC)
   const startOfDayUtc = new Date(Date.UTC(year, month, date, 0 - 8, 0, 0, 0));
@@ -66,19 +81,22 @@ function getTaiwanTimeRanges() {
   const startOfMonthUtc = new Date(Date.UTC(year, month, 1, 0 - 8, 0, 0, 0));
 
   const daysOfWeek = ['日', '一', '二', '三', '四', '五', '六'];
-  const dayStr = daysOfWeek[twDate.getDay()];
+  const dayStr = daysOfWeek[targetTwDate.getDay()];
   const yyyy = year;
   const mm = String(month + 1).padStart(2, '0');
   const dd = String(date).padStart(2, '0');
-  const hh = String(twDate.getHours()).padStart(2, '0');
-  const min = String(twDate.getMinutes()).padStart(2, '0');
+  const hh = String(currentTwDate.getHours()).padStart(2, '0');
+  const min = String(currentTwDate.getMinutes()).padStart(2, '0');
+
+  const reportDateTag = isDelayedOvernight ? ' (昨夜收支)' : '';
 
   return {
     startOfDayIso: startOfDayUtc.toISOString(),
     endOfDayIso: endOfDayUtc.toISOString(),
     startOfMonthIso: startOfMonthUtc.toISOString(),
-    formattedDate: `${yyyy}/${mm}/${dd} (${dayStr}) ${hh}:${min}`,
+    formattedDate: `${yyyy}/${mm}/${dd} (${dayStr})${reportDateTag} · ${hh}:${min} 發送`,
     yearMonthStr: `${month + 1}月`,
+    isDelayedOvernight,
   };
 }
 
