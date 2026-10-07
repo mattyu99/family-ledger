@@ -832,6 +832,10 @@ function MainApp() {
   };
 
   const handleConfirmRestore = async () => {
+    if (!isOwner) {
+      showAlert('🔒 權限不足', '只有帳本管理員才能回復帳本資料');
+      return;
+    }
     if (!restoreJsonInput.trim() || !parsedBackupPreview) {
       showAlert('提示', '請先貼上或選擇有效的備份內容');
       return;
@@ -898,6 +902,33 @@ function MainApp() {
   };
 
   const handleOpenExportModal = (tab: 'csv' | 'json' | 'restore' = 'csv') => {
+    if (tab === 'restore' && !isOwner) {
+      if (Platform.OS === 'web') {
+        const wantClaim = window.confirm(
+          '🔒 權限不足：只有帳本管理員才能回復帳本資料。\n\n您是否要現在輸入管理員 PIN 碼升為管理員？'
+        );
+        if (wantClaim) {
+          setClaimAdminPinInput('');
+          setClaimAdminModalVisible(true);
+        }
+      } else {
+        Alert.alert(
+          '🔒 權限不足',
+          '只有帳本管理員才能回復帳本資料。\n\n若您為管理員，可輸入 4 位數 PIN 碼立即取回管理員權限。',
+          [
+            { text: '取消', style: 'cancel' },
+            {
+              text: '🔐 輸入 PIN 碼升級',
+              onPress: () => {
+                setClaimAdminPinInput('');
+                setClaimAdminModalVisible(true);
+              },
+            },
+          ]
+        );
+      }
+      return;
+    }
     const csv = exportToCSV();
     const json = exportToJSON();
     setCsvContent(csv);
@@ -3656,8 +3687,21 @@ function MainApp() {
                 onPress={() => handleOpenExportModal('restore')}
                 activeOpacity={0.8}
               >
-                <Text style={styles.restoreEntryBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>📥 從備份檔回復資料 (還原)</Text>
-                <Text style={styles.restoreEntryBtnSub} allowFontScaling={false} maxFontSizeMultiplier={1.08}>支援上傳 .json 備份檔或直接貼上代碼安全還原</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={styles.restoreEntryBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    {isOwner ? '📥 從備份檔回復資料 (還原)' : '🔒 從備份檔回復資料 (僅管理員)'}
+                  </Text>
+                  {!isOwner && (
+                    <View style={styles.adminOnlyMiniBadge}>
+                      <Text style={styles.adminOnlyMiniBadgeText}>管理員</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.restoreEntryBtnSub} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                  {isOwner
+                    ? '支援上傳 .json 備份檔或直接貼上代碼安全還原'
+                    : '此操作具有覆蓋全帳本之影響，需管理員權限'}
+                </Text>
               </TouchableOpacity>
             </View>
 
@@ -3881,18 +3925,47 @@ function MainApp() {
 
               <TouchableOpacity
                 style={[styles.exportTabBtn, exportTab === 'restore' && styles.exportTabBtnActive]}
-                onPress={() => setExportTab('restore')}
+                onPress={() => {
+                  if (!isOwner) {
+                    showAlert(
+                      '🔒 權限不足',
+                      '只有帳本管理員才能回復帳本資料。\n\n若需回復，請先於家庭設定中點擊「🔐 升為管理員」驗證 PIN 碼。'
+                    );
+                    return;
+                  }
+                  setExportTab('restore');
+                }}
                 activeOpacity={0.7}
               >
                 <Text style={[styles.exportTabBtnText, exportTab === 'restore' && styles.exportTabBtnTextActive]}>
-                  📥 回復資料
+                  {isOwner ? '📥 回復資料' : '🔒 回復資料'}
                 </Text>
               </TouchableOpacity>
             </View>
 
             {exportTab === 'restore' ? (
-              <ScrollView style={styles.restoreScrollArea} showsVerticalScrollIndicator={false}>
-                <View style={styles.exportTipBox}>
+              !isOwner ? (
+                <View style={styles.restoreLockedBox}>
+                  <Text style={styles.restoreLockedIcon}>🔒</Text>
+                  <Text style={styles.restoreLockedTitle}>僅限帳本管理員使用</Text>
+                  <Text style={styles.restoreLockedDesc}>
+                    回復備份將大範圍更新家庭帳本的成員名冊、卡片與歷史明細。為保護帳本資料安全，此操作僅限帳本管理員執行。
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.claimAdminBtnMini}
+                    onPress={() => {
+                      setExportModalVisible(false);
+                      setClaimAdminPinInput('');
+                      setClaimAdminModalVisible(true);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.claimAdminBtnMiniText}>🔐 輸入 PIN 碼升為管理員</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <ScrollView style={styles.restoreScrollArea} showsVerticalScrollIndicator={false}>
+                  <View style={styles.exportTipBox}>
                   <Text style={styles.exportTipText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                     💡 支援由甜心記帳本匯出的 .json 備份檔。您可選擇上傳備份檔案或貼上 JSON 備份代碼，安全還原家庭帳本明細與卡片。
                   </Text>
@@ -4034,7 +4107,7 @@ function MainApp() {
                   </View>
                 ) : null}
               </ScrollView>
-            ) : (
+            )) : (
               <>
                 {/* 說明橫幅 */}
                 <View style={styles.exportTipBox}>
@@ -5661,6 +5734,56 @@ const styles = StyleSheet.create({
   invalidJsonText: {
     fontSize: 11,
     color: '#DC2626',
+  },
+  adminOnlyMiniBadge: {
+    backgroundColor: '#FEF08A',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 5,
+    marginLeft: 6,
+  },
+  adminOnlyMiniBadgeText: {
+    color: '#854D0E',
+    fontSize: 9.5,
+    fontWeight: '800',
+  },
+  restoreLockedBox: {
+    backgroundColor: '#FEF2F2',
+    borderRadius: 14,
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    marginVertical: 12,
+  },
+  restoreLockedIcon: {
+    fontSize: 36,
+    marginBottom: 8,
+  },
+  restoreLockedTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#991B1B',
+    marginBottom: 6,
+  },
+  restoreLockedDesc: {
+    fontSize: 12,
+    color: '#B91C1C',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  claimAdminBtnMini: {
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 10,
+  },
+  claimAdminBtnMiniText: {
+    color: '#FFFFFF',
+    fontSize: 12.5,
+    fontWeight: '700',
   },
   sectionHeaderRow: {
     flexDirection: 'row',

@@ -3302,6 +3302,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     jsonStr: string,
     options?: { mode?: 'merge' | 'overwrite' }
   ): Promise<{ success: boolean; message: string; restoredCount?: number }> => {
+    if (!effectiveIsOwner) {
+      return { success: false, message: '權限不足：只有帳本管理員才能回復帳本資料' };
+    }
     const mode = options?.mode || 'merge';
     try {
       if (!jsonStr || typeof jsonStr !== 'string' || !jsonStr.trim()) {
