@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   SafeAreaView,
   View,
@@ -196,6 +196,7 @@ function MainApp() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isReminderDismissed, setIsReminderDismissed] = useState(false);
   const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
+  const transactionScrollRef = useRef<ScrollView>(null);
 
   // 監聽鍵盤高度 (Android, iOS 與 Mobile Web)
   useEffect(() => {
@@ -2252,8 +2253,14 @@ function MainApp() {
       <View style={styles.content}>
         {activeTab === 'transactions' && (
           <ScrollView
+            ref={transactionScrollRef}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollPadding}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            contentContainerStyle={[
+              styles.scrollPadding,
+              keyboardOffset > 0 && { paddingBottom: keyboardOffset + 90 }
+            ]}
             refreshControl={
               <RefreshControl
                 refreshing={isRefreshing}
@@ -2377,7 +2384,13 @@ function MainApp() {
               <Text style={styles.sectionTitle}>
                 近期收支明細 ({displayedTransactions.length < filteredTransactions.length ? `${displayedTransactions.length} / ` : ''}{filteredTransactions.length}{isFiltered ? ` / 總 ${transactions.length}` : ''})
               </Text>
-              <Text style={styles.sectionSubtitle}>點擊明細可直接修改或刪除 ✍️</Text>
+              {keyboardOffset > 0 ? (
+                <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={styles.sectionSubtitle}>點擊明細可直接修改或刪除 ✍️</Text>
+              )}
             </View>
 
             {/* 🔍 店家 / 關鍵字即時搜尋列 */}
@@ -2391,6 +2404,12 @@ function MainApp() {
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                   returnKeyType="search"
+                  onSubmitEditing={Keyboard.dismiss}
+                  onFocus={() => {
+                    setTimeout(() => {
+                      transactionScrollRef.current?.scrollTo({ y: 260, animated: true });
+                    }, 120);
+                  }}
                 />
                 {!!searchQuery && (
                   <TouchableOpacity
