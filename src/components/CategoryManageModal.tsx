@@ -78,6 +78,14 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({ visibl
   const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
   const scrollViewRef = useRef<ScrollView>(null);
 
+  // 當彈窗關閉時，自動重設為瀏覽清單狀態，防止下次進入時殘留編輯畫面
+  useEffect(() => {
+    if (!visible) {
+      setIsEditingMode(false);
+      setEditingCategory(null);
+    }
+  }, [visible]);
+
   // 監聽鍵盤高度 (Android, iOS 與 Mobile Web)
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';

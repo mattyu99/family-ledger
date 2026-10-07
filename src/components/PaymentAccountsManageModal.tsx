@@ -72,6 +72,14 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
   const formScrollRef = useRef<ScrollView>(null);
 
+  // 當彈窗關閉時，自動重設為瀏覽清單狀態，防止下次進入時殘留編輯畫面
+  useEffect(() => {
+    if (!visible) {
+      setIsEditing(false);
+      setEditingId(null);
+    }
+  }, [visible]);
+
   // 監聽鍵盤高度 (Android, iOS 與 Mobile Web)
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -271,16 +279,32 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
               <Text style={styles.title} maxFontSizeMultiplier={1.15}>
-                {isOwner ? '💳 管理家庭卡片與帳戶' : '💳 家庭卡片與帳戶一覽'}
+                {isEditing
+                  ? (editingId ? '✏️ 編輯卡片設定' : '＋ 新增卡片或帳戶')
+                  : (isOwner ? '💳 管理家庭卡片與帳戶' : '💳 家庭卡片與帳戶一覽')}
               </Text>
               <Text style={styles.subtitle} maxFontSizeMultiplier={1.15}>
-                {isOwner
-                  ? '設定全家的信用卡（含結帳日）與悠遊卡'
-                  : '家庭成員瀏覽模式（僅帳本管理員可新增、修改或刪除卡片）'}
+                {isEditing
+                  ? '設定卡片名稱、持卡人與每月結帳日'
+                  : (isOwner
+                    ? '設定全家的信用卡（含結帳日）與悠遊卡'
+                    : '家庭成員瀏覽模式（僅帳本管理員可新增、修改或刪除卡片）')}
               </Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Text style={styles.closeText} maxFontSizeMultiplier={1.15}>✕</Text>
+            <TouchableOpacity
+              onPress={() => {
+                if (isEditing) {
+                  setIsEditing(false);
+                  setEditingId(null);
+                } else {
+                  onClose();
+                }
+              }}
+              style={styles.closeBtn}
+            >
+              <Text style={styles.closeText} maxFontSizeMultiplier={1.15}>
+                {isEditing ? '返回' : '✕'}
+              </Text>
             </TouchableOpacity>
           </View>
 
