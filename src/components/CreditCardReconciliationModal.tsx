@@ -153,7 +153,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                           {card.name}{card.last_four_digits ? ` (*${card.last_four_digits})` : ''}
                         </Text>
                         <Text style={styles.cardSelectCycle} maxFontSizeMultiplier={1.15}>
-                          {cardholder ? `${cardholder.display_name} · ` : ''}每月 {card.billing_cycle_date || 15} 號結帳
+                          {cardholder ? `${cardholder.display_name} · ` : '全家通用 · '}每月 {card.billing_cycle_date || 15} 號結帳
                         </Text>
                       </View>
                     </TouchableOpacity>

@@ -512,7 +512,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                           )}
                         </View>
                         <Text style={styles.cardSubText}>
-                          {cardholder ? `${cardholder.avatar_url || '👤'} ${cardholder.display_name} · ` : ''}
+                          {cardholder ? `${cardholder.avatar_url || '👤'} ${cardholder.display_name} · ` : '🏠 全家通用 · '}
                           每月 {card.billing_cycle_date || 15} 號結帳
                         </Text>
                       </View>
@@ -558,7 +558,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                           <Text style={styles.balanceTag}>餘額: NT$ {Number(card.balance).toLocaleString()}</Text>
                         </View>
                         <Text style={styles.cardSubText}>
-                          {cardholder ? `${cardholder.avatar_url || '👤'} ${cardholder.display_name}` : '全家通用'}
+                          {cardholder ? `${cardholder.avatar_url || '👤'} ${cardholder.display_name}` : '🏠 全家通用'}
                         </Text>
                       </View>
                       {isOwner && (

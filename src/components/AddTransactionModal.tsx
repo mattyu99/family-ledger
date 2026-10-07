@@ -471,11 +471,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
                           >
                             {card.name}{card.last_four_digits ? ` (*${card.last_four_digits})` : ''}
                           </Text>
-                          {cardholder && (
-                            <Text style={styles.cardChipSub} maxFontSizeMultiplier={1.15}>
-                              {cardholder.display_name} · 每月{card.billing_cycle_date || 15}日結帳
-                            </Text>
-                          )}
+                          <Text style={styles.cardChipSub} maxFontSizeMultiplier={1.15}>
+                            {cardholder ? cardholder.display_name : '全家通用'} · 每月{card.billing_cycle_date || 15}日結帳
+                          </Text>
                         </View>
                       </TouchableOpacity>
                     );
@@ -512,11 +510,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({ visibl
                           >
                             {card.name} (餘額: ${card.balance.toLocaleString()})
                           </Text>
-                          {cardholder && (
-                            <Text style={styles.cardChipSub} maxFontSizeMultiplier={1.15}>
-                              持卡人：{cardholder.display_name}
-                            </Text>
-                          )}
+                          <Text style={styles.cardChipSub} maxFontSizeMultiplier={1.15}>
+                            持卡人：{cardholder ? cardholder.display_name : '全家通用'}
+                          </Text>
                         </View>
                       </TouchableOpacity>
                     );
