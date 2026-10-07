@@ -157,7 +157,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     setEditingId(null);
     setFormType(type);
     setFormName(type === 'credit_card' ? '富邦 Costco 卡' : '悠遊卡');
-    setFormUserId(currentUser.id);
+    setFormUserId(currentUser?.id || '');
     setFormLastFour('');
     setFormCycleDate('15');
     setFormBalance('0');
@@ -169,11 +169,12 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
       showAlert('權限不足', '只有帳本管理員才能編輯支付卡片與帳戶');
       return;
     }
+    const matchedMember = acc.user_id && members.find(m => m.id === acc.user_id);
     setIsEditing(true);
     setEditingId(acc.id);
     setFormType(acc.type);
     setFormName(acc.name);
-    setFormUserId(acc.user_id || currentUser.id);
+    setFormUserId(matchedMember ? matchedMember.id : '');
     setFormLastFour(acc.last_four_digits || '');
     setFormCycleDate(String(acc.billing_cycle_date || 15));
     setFormBalance(String(acc.balance || 0));
@@ -194,12 +195,13 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     const cycleNum = parseInt(formCycleDate, 10);
     const validCycle = isNaN(cycleNum) ? 15 : Math.max(1, Math.min(31, cycleNum));
     const balanceNum = parseFloat(formBalance) || 0;
+    const targetUserId = formUserId ? formUserId : (null as any);
 
     if (editingId) {
       await updatePaymentAccount(editingId, {
         name: cleanName,
         type: formType,
-        user_id: formUserId,
+        user_id: targetUserId,
         last_four_digits: formLastFour.trim() || undefined,
         billing_cycle_date: formType === 'credit_card' ? validCycle : undefined,
         balance: formType === 'stored_value' ? balanceNum : 0,
@@ -209,7 +211,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
       await addPaymentAccount({
         name: cleanName,
         type: formType,
-        user_id: formUserId,
+        user_id: targetUserId,
         last_four_digits: formLastFour.trim() || undefined,
         billing_cycle_date: formType === 'credit_card' ? validCycle : undefined,
         balance: formType === 'stored_value' ? balanceNum : 0,
@@ -366,6 +368,15 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
               {/* 持卡人 */}
               <Text style={styles.fieldLabel}>持卡人 / 歸屬家庭成員</Text>
               <View style={styles.memberChipsRow}>
+                <TouchableOpacity
+                  style={[styles.memberChip, !formUserId && styles.memberChipActive]}
+                  onPress={() => setFormUserId('')}
+                >
+                  <Text style={styles.memberChipAvatar}>🏠</Text>
+                  <Text style={[styles.memberChipName, !formUserId && styles.memberChipNameActive]}>
+                    全家通用
+                  </Text>
+                </TouchableOpacity>
                 {members.map(m => {
                   const isSelected = formUserId === m.id;
                   return (
