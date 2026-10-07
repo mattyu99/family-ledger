@@ -206,6 +206,10 @@ interface LedgerContextType {
   recordMerchant: (merchant: string) => Promise<void>;
   exportToCSV: () => string;
   exportToJSON: () => string;
+  restoreFromJSON: (
+    jsonStr: string,
+    options?: { mode?: 'merge' | 'overwrite' }
+  ) => Promise<{ success: boolean; message: string; restoredCount?: number }>;
   lastBackupAt: string | null;
   autoBackupEnabled: boolean;
   autoBackupInterval: 7 | 14 | 30;
@@ -3239,11 +3243,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return BOM + [headers.join(','), ...rows].join('\n');
   };
 
-  // 匯出為完整 JSON 結構備份檔 (包含帳本資訊、家庭成員、自訂分類、所有記帳明細)
+  // 匯出為完整 JSON 結構備份檔 (包含帳本資訊、家庭成員、自訂分類、支付卡片帳戶、所有記帳明細)
   const exportToJSON = (): string => {
     const backupData = {
       app: '甜心記帳本',
-      version: '1.0',
+      version: '1.0.3',
       exported_at: new Date().toISOString(),
       ledger: {
         id: currentLedger.id,
@@ -3264,6 +3268,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         type: c.type,
         sort_order: c.sort_order,
       })),
+      payment_accounts: paymentAccounts.map(a => ({
+        id: a.id,
+        name: a.name,
+        type: a.type,
+        user_id: a.user_id,
+        last_four_digits: a.last_four_digits,
+        billing_cycle_date: a.billing_cycle_date,
+        balance: a.balance,
+        color: a.color,
+        icon: a.icon,
+        sort_order: a.sort_order,
+      })),
       transactions: transactions.map(t => ({
         id: t.id,
         amount: t.amount,
@@ -3273,9 +3289,138 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         transacted_at: t.transacted_at,
         merchant: t.merchant,
         note: t.note,
+        payment_method: t.payment_method,
+        account_id: t.account_id,
+        is_reconciled: t.is_reconciled,
       })),
     };
     return JSON.stringify(backupData, null, 2);
+  };
+
+  // 從完整 JSON 結構備份檔還原資料
+  const restoreFromJSON = async (
+    jsonStr: string,
+    options?: { mode?: 'merge' | 'overwrite' }
+  ): Promise<{ success: boolean; message: string; restoredCount?: number }> => {
+    const mode = options?.mode || 'merge';
+    try {
+      if (!jsonStr || typeof jsonStr !== 'string' || !jsonStr.trim()) {
+        return { success: false, message: '請提供有效的 JSON 備份內容' };
+      }
+
+      let backup: any;
+      try {
+        backup = JSON.parse(jsonStr.trim());
+      } catch {
+        return { success: false, message: 'JSON 格式解析錯誤，請確認文字內容完整' };
+      }
+
+      if (!backup || typeof backup !== 'object') {
+        return { success: false, message: '備份檔內容格式不正確' };
+      }
+
+      if (!Array.isArray(backup.transactions)) {
+        return { success: false, message: '備份檔中缺少交易明細資料 (transactions)' };
+      }
+
+      // 1. 還原/合併 自訂分類
+      let nextCategories = [...categories];
+      if (Array.isArray(backup.categories) && backup.categories.length > 0) {
+        if (mode === 'overwrite') {
+          nextCategories = backup.categories.filter((c: any) => c && c.name && c.id);
+        } else {
+          backup.categories.forEach((bc: any) => {
+            if (bc && bc.id && !nextCategories.some(c => c.id === bc.id || c.name === bc.name)) {
+              nextCategories.push({
+                id: bc.id,
+                name: bc.name,
+                icon: bc.icon || '📝',
+                color: bc.color || '#6B7280',
+                type: bc.type || 'expense',
+                sort_order: bc.sort_order || nextCategories.length + 1,
+              });
+            }
+          });
+        }
+        setCategories(nextCategories);
+        await AsyncStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(nextCategories));
+        if (currentLedger?.id) {
+          await AsyncStorage.setItem(`${STORAGE_KEYS.CATEGORIES}_${currentLedger.id}`, JSON.stringify(nextCategories));
+        }
+      }
+
+      // 2. 還原/合併 支付卡片與帳戶
+      let nextAccounts = [...paymentAccounts];
+      if (Array.isArray(backup.payment_accounts) && backup.payment_accounts.length > 0) {
+        if (mode === 'overwrite') {
+          nextAccounts = backup.payment_accounts.filter((a: any) => a && a.name && a.id).map((a: any) => ({
+            ...a,
+            ledger_id: currentLedger.id,
+          }));
+        } else {
+          backup.payment_accounts.forEach((ba: any) => {
+            if (ba && ba.id && !nextAccounts.some(a => a.id === ba.id)) {
+              nextAccounts.push({
+                ...ba,
+                ledger_id: currentLedger.id,
+              });
+            }
+          });
+        }
+        setPaymentAccounts(nextAccounts);
+        await savePaymentAccountsToStorage(nextAccounts);
+      }
+
+      // 3. 還原/合併 交易明細
+      const backupTxs = backup.transactions;
+      const targetLedgerId = currentLedger.id;
+      const validPaidBy = currentUser?.id || members[0]?.id || 'unknown';
+
+      const sanitizedTxs: Transaction[] = backupTxs
+        .filter((t: any) => t && !isNaN(Number(t.amount)))
+        .map((t: any) => {
+          const matchedCategory = nextCategories.find(c => c.id === t.category_id) || nextCategories[0];
+          return {
+            id: t.id && isValidUUID(t.id) ? t.id : generateUUID(),
+            ledger_id: targetLedgerId,
+            creator_id: t.creator_id || currentUser?.id,
+            category_id: t.category_id || matchedCategory?.id,
+            amount: Number(t.amount),
+            type: (t.type === 'income' ? 'income' : 'expense') as 'income' | 'expense',
+            paid_by: members.some(m => m.id === t.paid_by) ? t.paid_by : validPaidBy,
+            transacted_at: t.transacted_at || new Date().toISOString(),
+            merchant: t.merchant || undefined,
+            note: t.note || '',
+            payment_method: t.payment_method || 'cash',
+            account_id: t.account_id || undefined,
+            is_reconciled: Boolean(t.is_reconciled),
+            category: matchedCategory,
+          };
+        });
+
+      let finalTxs: Transaction[];
+      if (mode === 'overwrite') {
+        finalTxs = sanitizedTxs;
+      } else {
+        const existingIds = new Set(transactions.map(t => t.id));
+        const newRestored = sanitizedTxs.filter(st => !existingIds.has(st.id));
+        finalTxs = [...transactions, ...newRestored];
+      }
+
+      finalTxs.sort((a, b) => new Date(b.transacted_at).getTime() - new Date(a.transacted_at).getTime());
+
+      setTransactions(finalTxs);
+      await saveTransactionsToStorage(finalTxs);
+
+      return {
+        success: true,
+        message: `成功還原！${mode === 'overwrite' ? '已覆蓋還原' : '已合併補入'} ${sanitizedTxs.length} 筆明細。`,
+        restoredCount: sanitizedTxs.length,
+      };
+    } catch (err: any) {
+      console.error('restoreFromJSON 錯誤:', err);
+      return { success: false, message: `還原失敗: ${err?.message || '未知錯誤'}` };
+    }
   };
 
   // 計算結算與統計資訊
@@ -3815,6 +3960,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         recordMerchant,
         exportToCSV,
         exportToJSON,
+        restoreFromJSON,
         lastBackupAt,
         autoBackupEnabled,
         autoBackupInterval,

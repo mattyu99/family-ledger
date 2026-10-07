@@ -181,6 +181,7 @@ function MainApp() {
     triggerLiveToast,
     recentMerchants,
     paymentAccounts,
+    restoreFromJSON,
   } = useLedger();
 
   const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'family'>('transactions');
@@ -772,7 +773,106 @@ function MainApp() {
   }, [pendingInviteCode, hasJoinedLedger]);
 
   const [jsonContent, setJsonContent] = useState('');
-  const [exportTab, setExportTab] = useState<'csv' | 'json'>('csv');
+  const [exportTab, setExportTab] = useState<'csv' | 'json' | 'restore'>('csv');
+  const [restoreJsonInput, setRestoreJsonInput] = useState('');
+  const [restoreMode, setRestoreMode] = useState<'merge' | 'overwrite'>('merge');
+  const [isRestoring, setIsRestoring] = useState(false);
+
+  const parsedBackupPreview = useMemo(() => {
+    if (!restoreJsonInput.trim()) return null;
+    try {
+      const data = JSON.parse(restoreJsonInput.trim());
+      if (!data || typeof data !== 'object') return null;
+      if (!Array.isArray(data.transactions)) return null;
+      return {
+        isValid: true,
+        appName: data.app || '甜心記帳本',
+        exportedAt: data.exported_at ? new Date(data.exported_at).toLocaleString() : '未知',
+        txCount: data.transactions.length,
+        memberCount: Array.isArray(data.members) ? data.members.length : 0,
+        categoryCount: Array.isArray(data.categories) ? data.categories.length : 0,
+        cardCount: Array.isArray(data.payment_accounts) ? data.payment_accounts.length : 0,
+      };
+    } catch {
+      return null;
+    }
+  }, [restoreJsonInput]);
+
+  const handleWebFileSelect = (event: any) => {
+    const file = event.target?.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      if (text) {
+        setRestoreJsonInput(text);
+        showAlert('讀取成功', `已載入備份檔案「${file.name}」！`);
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  };
+
+  const handlePasteClipboard = async () => {
+    if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          setRestoreJsonInput(text);
+          showAlert('貼上成功', '已從剪貼簿讀取並帶入備份內容！');
+        } else {
+          showAlert('提示', '剪貼簿中無內容，請先複製備份代碼');
+        }
+      } catch {
+        showAlert('提示', '請在文字框中長按或使用 Ctrl+V 貼上備份內容');
+      }
+    } else {
+      showAlert('提示', '請直接在下方文字框中長按並選擇「貼上」');
+    }
+  };
+
+  const handleConfirmRestore = async () => {
+    if (!restoreJsonInput.trim() || !parsedBackupPreview) {
+      showAlert('提示', '請先貼上或選擇有效的備份內容');
+      return;
+    }
+
+    const doRestore = async () => {
+      setIsRestoring(true);
+      try {
+        const result = await restoreFromJSON(restoreJsonInput, { mode: restoreMode });
+        if (result.success) {
+          showAlert('🎉 資料還原成功', result.message);
+          setRestoreJsonInput('');
+          setExportModalVisible(false);
+        } else {
+          showAlert('還原失敗', result.message);
+        }
+      } catch (err: any) {
+        showAlert('還原失敗', err?.message || '發生未知錯誤');
+      } finally {
+        setIsRestoring(false);
+      }
+    };
+
+    if (restoreMode === 'overwrite') {
+      if (Platform.OS === 'web') {
+        const confirmed = window.confirm('⚠️ 注意：您選擇了「完全覆蓋」，這將以備份檔資料為準覆蓋現有明細。確定要繼續嗎？');
+        if (confirmed) await doRestore();
+      } else {
+        Alert.alert(
+          '⚠️ 確認完全覆蓋？',
+          '這將以備份檔資料為準覆蓋現有明細，確定要繼續嗎？',
+          [
+            { text: '取消', style: 'cancel' },
+            { text: '確定覆蓋', style: 'destructive', onPress: doRestore },
+          ]
+        );
+      }
+    } else {
+      await doRestore();
+    }
+  };
 
   // Web 端自動觸發檔案下載
   const downloadWebFile = (filename: string, content: string, mimeType: string) => {
@@ -797,7 +897,7 @@ function MainApp() {
     return false;
   };
 
-  const handleOpenExportModal = (tab: 'csv' | 'json' = 'csv') => {
+  const handleOpenExportModal = (tab: 'csv' | 'json' | 'restore' = 'csv') => {
     const csv = exportToCSV();
     const json = exportToJSON();
     setCsvContent(csv);
@@ -3550,6 +3650,15 @@ function MainApp() {
                   <Text style={styles.exportBtnSubtext} allowFontScaling={false} maxFontSizeMultiplier={1.08}>包含成員頭像與自訂分類</Text>
                 </TouchableOpacity>
               </View>
+
+              <TouchableOpacity
+                style={styles.restoreEntryBtn}
+                onPress={() => handleOpenExportModal('restore')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.restoreEntryBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>📥 從備份檔回復資料 (還原)</Text>
+                <Text style={styles.restoreEntryBtnSub} allowFontScaling={false} maxFontSizeMultiplier={1.08}>支援上傳 .json 備份檔或直接貼上代碼安全還原</Text>
+              </TouchableOpacity>
             </View>
 
             {/* 系統版本與更新狀態卡片 */}
@@ -3742,13 +3851,13 @@ function MainApp() {
         <View style={styles.exportOverlay}>
           <View style={styles.exportCard}>
             <View style={styles.modalHeaderRow}>
-              <Text style={styles.exportTitle}>🛡️ 帳本資料備份與匯出</Text>
+              <Text style={styles.exportTitle}>🛡️ 帳本資料備份與還原</Text>
               <TouchableOpacity onPress={() => setExportModalVisible(false)} style={styles.closeBtn}>
                 <Text style={styles.closeText}>✕</Text>
               </TouchableOpacity>
             </View>
 
-            {/* 格式切換頁籤 (CSV vs JSON) */}
+            {/* 格式切換頁籤 (CSV vs JSON vs 回復) */}
             <View style={styles.exportTabRow}>
               <TouchableOpacity
                 style={[styles.exportTabBtn, exportTab === 'csv' && styles.exportTabBtnActive]}
@@ -3756,7 +3865,7 @@ function MainApp() {
                 activeOpacity={0.7}
               >
                 <Text style={[styles.exportTabBtnText, exportTab === 'csv' && styles.exportTabBtnTextActive]}>
-                  📊 CSV 報表 (Excel)
+                  📊 CSV 報表
                 </Text>
               </TouchableOpacity>
 
@@ -3766,51 +3875,209 @@ function MainApp() {
                 activeOpacity={0.7}
               >
                 <Text style={[styles.exportTabBtnText, exportTab === 'json' && styles.exportTabBtnTextActive]}>
-                  📦 JSON 完整結構
+                  📦 JSON 備份
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.exportTabBtn, exportTab === 'restore' && styles.exportTabBtnActive]}
+                onPress={() => setExportTab('restore')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.exportTabBtnText, exportTab === 'restore' && styles.exportTabBtnTextActive]}>
+                  📥 回復資料
                 </Text>
               </TouchableOpacity>
             </View>
 
-            {/* 說明橫幅 */}
-            <View style={styles.exportTipBox}>
-              <Text style={styles.exportTipText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                {exportTab === 'csv'
-                  ? '💡 格式通用於微軟 Excel、Google 試算表與 Apple Numbers，已注入 UTF-8 BOM 繁體中文防亂碼保護。'
-                  : '💡 包含帳本基本資料、全體成員稱謂頭像、自訂分類顏色及每筆交易明細之高精度結構封包。'}
-              </Text>
-              {Platform.OS !== 'web' && (
-                <Text style={styles.exportTipSubtext} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                  📱 手機端點擊下方「☁️ 存到雲端硬碟 / 分享」，可在系統選單直接點選「Google 雲端硬碟」或「儲存到檔案」即時備份。
-                </Text>
-              )}
-              <View style={styles.exportLastBackupRow}>
-                <Text style={styles.exportLastBackupText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                  ⏱️ 上次備份記錄：{formatLastBackupText(lastBackupAt)}
-                </Text>
-              </View>
-            </View>
+            {exportTab === 'restore' ? (
+              <ScrollView style={styles.restoreScrollArea} showsVerticalScrollIndicator={false}>
+                <View style={styles.exportTipBox}>
+                  <Text style={styles.exportTipText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    💡 支援由甜心記帳本匯出的 .json 備份檔。您可選擇上傳備份檔案或貼上 JSON 備份代碼，安全還原家庭帳本明細與卡片。
+                  </Text>
+                </View>
 
-            {/* 內容預覽 */}
-            <ScrollView style={styles.csvBox}>
-              <Text style={styles.csvText} selectable>
-                {exportTab === 'csv' ? csvContent : jsonContent}
-              </Text>
-            </ScrollView>
+                {/* 方式一：選擇備份檔案 (Web 環境) */}
+                {Platform.OS === 'web' && (
+                  <View style={styles.restoreFileSection}>
+                    <TouchableOpacity
+                      style={styles.selectFileBtn}
+                      onPress={() => {
+                        if (typeof document !== 'undefined') {
+                          const el = document.getElementById('backup-file-input');
+                          el?.click();
+                        }
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.selectFileBtnIcon}>📂</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.selectFileBtnText}>選擇本機 .json 備份檔案</Text>
+                        <Text style={styles.selectFileBtnSub}>點擊自動載入並解析備份內容</Text>
+                      </View>
+                    </TouchableOpacity>
+                    {Platform.OS === 'web' && (
+                      <input
+                        id="backup-file-input"
+                        type="file"
+                        accept=".json,application/json"
+                        style={{ display: 'none' }}
+                        onChange={handleWebFileSelect}
+                      />
+                    )}
+                  </View>
+                )}
 
-            {/* 操作按鈕群 */}
-            <View style={styles.exportActionRow}>
-              <TouchableOpacity style={styles.exportCopyBtn} onPress={handleCopyExportContent} activeOpacity={0.8}>
-                <Text style={styles.exportCopyBtnText}>📋 一鍵複製全部文字</Text>
-              </TouchableOpacity>
+                {/* 方式二：貼上備份內容 */}
+                <View style={styles.restoreInputSection}>
+                  <View style={styles.restoreInputHeader}>
+                    <Text style={styles.restoreInputLabel}>貼上 JSON 備份文字：</Text>
+                    <TouchableOpacity onPress={handlePasteClipboard} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Text style={styles.pasteClipboardText}>📋 讀取剪貼簿貼上</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TextInput
+                    multiline
+                    style={styles.restoreTextInput}
+                    placeholder="請在此貼上 JSON 備份內容，或長按選擇貼上..."
+                    placeholderTextColor="#94A3B8"
+                    value={restoreJsonInput}
+                    onChangeText={setRestoreJsonInput}
+                    textAlignVertical="top"
+                  />
+                  {restoreJsonInput.trim().length > 0 && (
+                    <TouchableOpacity
+                      style={styles.clearRestoreInputBtn}
+                      onPress={() => setRestoreJsonInput('')}
+                    >
+                      <Text style={styles.clearRestoreInputText}>✕ 清除內容</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
 
-              <TouchableOpacity style={styles.exportDownloadBtn} onPress={handleShareToCloud} activeOpacity={0.8}>
-                <Text style={styles.exportDownloadBtnText}>
-                  {Platform.OS === 'web'
-                    ? (exportTab === 'csv' ? '💾 下載 .csv 檔案' : '💾 下載 .json 檔案')
-                    : '☁️ 存到雲端硬碟 / 分享'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+                {/* 備份資訊預覽 */}
+                {parsedBackupPreview ? (
+                  <View style={styles.previewCard}>
+                    <View style={styles.previewCardHeader}>
+                      <Text style={styles.previewCardTitle}>📦 備份檔解析成功</Text>
+                      <View style={styles.previewBadge}>
+                        <Text style={styles.previewBadgeText}>格式驗證通過 ✓</Text>
+                      </View>
+                    </View>
+                    <View style={styles.previewGrid}>
+                      <View style={styles.previewGridItem}>
+                        <Text style={styles.previewItemLabel}>備份時間</Text>
+                        <Text style={styles.previewItemValue}>{parsedBackupPreview.exportedAt}</Text>
+                      </View>
+                      <View style={styles.previewGridItem}>
+                        <Text style={styles.previewItemLabel}>交易明細筆數</Text>
+                        <Text style={[styles.previewItemValue, { color: '#0284C7', fontWeight: '800' }]}>
+                          {parsedBackupPreview.txCount} 筆
+                        </Text>
+                      </View>
+                      <View style={styles.previewGridItem}>
+                        <Text style={styles.previewItemLabel}>家庭成員</Text>
+                        <Text style={styles.previewItemValue}>{parsedBackupPreview.memberCount} 位</Text>
+                      </View>
+                      <View style={styles.previewGridItem}>
+                        <Text style={styles.previewItemLabel}>支付卡片與帳戶</Text>
+                        <Text style={styles.previewItemValue}>{parsedBackupPreview.cardCount} 張</Text>
+                      </View>
+                    </View>
+
+                    {/* 還原模式選擇 */}
+                    <Text style={styles.restoreModeTitle}>選擇還原方式：</Text>
+                    <View style={styles.restoreModeRow}>
+                      <TouchableOpacity
+                        style={[styles.restoreModeOption, restoreMode === 'merge' && styles.restoreModeOptionActive]}
+                        onPress={() => setRestoreMode('merge')}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.restoreModeOptionTitle, restoreMode === 'merge' && styles.restoreModeOptionTitleActive]}>
+                          🔄 安全合併 (推薦)
+                        </Text>
+                        <Text style={styles.restoreModeOptionDesc}>
+                          保留現有資料，僅補入備份檔中缺少的歷史明細（依 ID 自動去重，安全不重複）
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[styles.restoreModeOption, restoreMode === 'overwrite' && styles.restoreModeOptionActiveDanger]}
+                        onPress={() => setRestoreMode('overwrite')}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.restoreModeOptionTitle, restoreMode === 'overwrite' && styles.restoreModeOptionTitleActiveDanger]}>
+                          ⚠️ 完全覆蓋
+                        </Text>
+                        <Text style={styles.restoreModeOptionDesc}>
+                          以備份檔資料為準，完全還原至備份當時的明細狀態
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* 開始還原按鈕 */}
+                    <TouchableOpacity
+                      style={[styles.confirmRestoreBtn, isRestoring && { opacity: 0.7 }]}
+                      onPress={handleConfirmRestore}
+                      disabled={isRestoring}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.confirmRestoreBtnText}>
+                        {isRestoring ? '⏳ 正在還原中...' : '🚀 確認開始回復資料'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : restoreJsonInput.trim().length > 0 ? (
+                  <View style={styles.invalidJsonBox}>
+                    <Text style={styles.invalidJsonText}>⚠️ 無法解析此內容為有效的甜心記帳本備份格式，請確認 JSON 是否完整</Text>
+                  </View>
+                ) : null}
+              </ScrollView>
+            ) : (
+              <>
+                {/* 說明橫幅 */}
+                <View style={styles.exportTipBox}>
+                  <Text style={styles.exportTipText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    {exportTab === 'csv'
+                      ? '💡 格式通用於微軟 Excel、Google 試算表與 Apple Numbers，已注入 UTF-8 BOM 繁體中文防亂碼保護。'
+                      : '💡 包含帳本基本資料、全體成員稱謂頭像、自訂分類顏色及每筆交易明細之高精度結構封包。'}
+                  </Text>
+                  {Platform.OS !== 'web' && (
+                    <Text style={styles.exportTipSubtext} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      📱 手機端點擊下方「☁️ 存到雲端硬碟 / 分享」，可在系統選單直接點選「Google 雲端硬碟」或「儲存到檔案」即時備份。
+                    </Text>
+                  )}
+                  <View style={styles.exportLastBackupRow}>
+                    <Text style={styles.exportLastBackupText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      ⏱️ 上次備份記錄：{formatLastBackupText(lastBackupAt)}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* 內容預覽 */}
+                <ScrollView style={styles.csvBox}>
+                  <Text style={styles.csvText} selectable>
+                    {exportTab === 'csv' ? csvContent : jsonContent}
+                  </Text>
+                </ScrollView>
+
+                {/* 操作按鈕群 */}
+                <View style={styles.exportActionRow}>
+                  <TouchableOpacity style={styles.exportCopyBtn} onPress={handleCopyExportContent} activeOpacity={0.8}>
+                    <Text style={styles.exportCopyBtnText}>📋 一鍵複製全部文字</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.exportDownloadBtn} onPress={handleShareToCloud} activeOpacity={0.8}>
+                    <Text style={styles.exportDownloadBtnText}>
+                      {Platform.OS === 'web'
+                        ? (exportTab === 'csv' ? '💾 下載 .csv 檔案' : '💾 下載 .json 檔案')
+                        : '☁️ 存到雲端硬碟 / 分享'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
 
             <TouchableOpacity style={styles.closeExportBtn} onPress={() => setExportModalVisible(false)} activeOpacity={0.8}>
               <Text style={styles.closeExportBtnText}>關閉</Text>
@@ -5055,7 +5322,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: 20,
-    maxHeight: '75%',
+    maxHeight: '88%',
   },
   exportTitle: {
     fontSize: 18,
@@ -5178,6 +5445,222 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontSize: 14,
     fontWeight: '600',
+  },
+  restoreEntryBtn: {
+    backgroundColor: '#F5F3FF',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#C4B5FD',
+    marginTop: 8,
+  },
+  restoreEntryBtnText: {
+    color: '#6D28D9',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  restoreEntryBtnSub: {
+    color: '#8B5CF6',
+    fontSize: 10,
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  restoreScrollArea: {
+    maxHeight: 380,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  restoreFileSection: {
+    marginBottom: 10,
+  },
+  selectFileBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1.5,
+    borderColor: '#818CF8',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 12,
+  },
+  selectFileBtnIcon: {
+    fontSize: 22,
+  },
+  selectFileBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#4F46E5',
+  },
+  selectFileBtnSub: {
+    fontSize: 10.5,
+    color: '#6366F1',
+    marginTop: 2,
+  },
+  restoreInputSection: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 10,
+  },
+  restoreInputHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  restoreInputLabel: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  pasteClipboardText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#4F46E5',
+  },
+  restoreTextInput: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    padding: 8,
+    fontSize: 11.5,
+    color: '#1E293B',
+    height: 85,
+  },
+  clearRestoreInputBtn: {
+    alignSelf: 'flex-end',
+    marginTop: 4,
+  },
+  clearRestoreInputText: {
+    fontSize: 10.5,
+    color: '#94A3B8',
+  },
+  previewCard: {
+    backgroundColor: '#F0FDF4',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+    marginBottom: 10,
+  },
+  previewCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  previewCardTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  previewBadge: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  previewBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#15803D',
+  },
+  previewGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  previewGridItem: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 8,
+    width: '48%',
+    borderWidth: 1,
+    borderColor: '#DCFCE7',
+  },
+  previewItemLabel: {
+    fontSize: 10,
+    color: '#64748B',
+    marginBottom: 2,
+  },
+  previewItemValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  restoreModeTitle: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#166534',
+    marginBottom: 6,
+  },
+  restoreModeRow: {
+    gap: 6,
+    marginBottom: 10,
+  },
+  restoreModeOption: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  restoreModeOptionActive: {
+    borderColor: '#10B981',
+    backgroundColor: '#F0FDF4',
+  },
+  restoreModeOptionActiveDanger: {
+    borderColor: '#EF4444',
+    backgroundColor: '#FEF2F2',
+  },
+  restoreModeOptionTitle: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  restoreModeOptionTitleActive: {
+    color: '#059669',
+  },
+  restoreModeOptionTitleActiveDanger: {
+    color: '#DC2626',
+  },
+  restoreModeOptionDesc: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  confirmRestoreBtn: {
+    backgroundColor: '#10B981',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmRestoreBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  invalidJsonBox: {
+    backgroundColor: '#FEF2F2',
+    borderRadius: 8,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    marginBottom: 10,
+  },
+  invalidJsonText: {
+    fontSize: 11,
+    color: '#DC2626',
   },
   sectionHeaderRow: {
     flexDirection: 'row',
