@@ -59,11 +59,33 @@ export const TransactionFilterModal: React.FC<TransactionFilterModalProps> = ({
 }) => {
   if (!visible || !type) return null;
 
-  // 計算特定成員的記帳筆數
-  const getMemberTxCount = (memberId: string) => {
+  // 取得當前選定月份之中文標籤
+  const selectedMonthObj = availableMonths.find(m => m.ym === selectedMonth);
+  const selectedMonthLabel = selectedMonth === 'all'
+    ? '全部月份'
+    : (selectedMonthObj?.label || (selectedMonth.includes('-') ? `${selectedMonth.split('-')[0]} 年 ${parseInt(selectedMonth.split('-')[1], 10)} 月` : selectedMonth));
+
+  // 依當前選取的月份設定範圍篩選交易明細（連動月份篩選範圍）
+  const monthScopedTransactions = React.useMemo(() => {
+    if (selectedMonth === 'all') return transactions;
     return transactions.filter(t => {
+      if (!t.transacted_at) return false;
+      const d = new Date(t.transacted_at);
+      if (isNaN(d.getTime())) return false;
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      return ym === selectedMonth;
+    });
+  }, [transactions, selectedMonth]);
+
+  // 計算特定成員在當前月份設定範圍內的記帳筆數
+  const getMemberTxCount = (memberId: string) => {
+    const targetMember = members.find(m => m.id === memberId);
+    return monthScopedTransactions.filter(t => {
       const payer = getMemberById(t.paid_by) || t.payer_profile;
-      return (payer && payer.id === memberId) || t.paid_by === memberId;
+      if (payer && payer.id === memberId) return true;
+      if (t.paid_by === memberId) return true;
+      if (targetMember && (payer?.display_name === targetMember.display_name || (t as any).payer_name === targetMember.display_name)) return true;
+      return false;
     }).length;
   };
 
@@ -81,7 +103,9 @@ export const TransactionFilterModal: React.FC<TransactionFilterModalProps> = ({
                 {isMonth ? '📅 選擇篩選月份' : '👤 選擇付款成員'}
               </Text>
               <Text style={styles.subtitle} maxFontSizeMultiplier={1.15}>
-                {isMonth ? '只顯示特定月份的記帳紀錄' : '只顯示特定家庭成員的記帳紀錄'}
+                {isMonth
+                  ? '只顯示特定月份的記帳紀錄'
+                  : `只顯示「${selectedMonthLabel}」特定家庭成員的記帳紀錄`}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -168,11 +192,13 @@ export const TransactionFilterModal: React.FC<TransactionFilterModalProps> = ({
                       <Text style={[styles.optionLabel, selectedMemberId === 'all' && styles.optionLabelActive]}>
                         全部成員
                       </Text>
-                      <Text style={styles.optionSublabel}>全體家庭成員紀錄</Text>
+                      <Text style={styles.optionSublabel}>
+                        {selectedMonth === 'all' ? '全體家庭成員歷史紀錄' : `${selectedMonthLabel} 全體成員紀錄`}
+                      </Text>
                     </View>
                   </View>
                   <View style={styles.optionRight}>
-                    <Text style={styles.countBadge}>{transactions.length} 筆</Text>
+                    <Text style={styles.countBadge}>{monthScopedTransactions.length} 筆</Text>
                     {selectedMemberId === 'all' && <Text style={styles.checkIcon}>✓</Text>}
                   </View>
                 </TouchableOpacity>
@@ -201,7 +227,7 @@ export const TransactionFilterModal: React.FC<TransactionFilterModalProps> = ({
                         <View>
                           <Text style={[styles.optionLabel, isSelected && styles.optionLabelActive]}>
                             {member.display_name}
-                            {isMe ? ' (我)' : ''}
+                            {isMe ? ' (本機使用成員)' : ''}
                           </Text>
                           <Text style={styles.optionSublabel}>
                             {member.role === 'owner' ? '👑 帳本主人' : member.role === 'admin' ? '🛡️ 管理員' : '一般成員'}

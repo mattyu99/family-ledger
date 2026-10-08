@@ -314,13 +314,21 @@ function MainApp() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   }, []);
 
-  // 收支明細篩選狀態 (方案 C：預設以當前月份為核心視角)
+  // 收支明細篩選狀態 (預設以當前月份為核心視角，成員預設為本機使用成員)
   const [filterMonth, setFilterMonth] = useState<string>(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
-  const [filterMemberId, setFilterMemberId] = useState<string>('all');
+  const [filterMemberId, setFilterMemberId] = useState<string>(() => currentUser?.id || 'all');
+  const [hasManuallySelectedMember, setHasManuallySelectedMember] = useState<boolean>(false);
   const [filterModalType, setFilterModalType] = useState<'month' | 'member' | null>(null);
+
+  // 當本機使用者身分載入或切換時，若使用者尚未手動指定其他成員，自動同步預設為本機成員
+  useEffect(() => {
+    if (!hasManuallySelectedMember && currentUser?.id) {
+      setFilterMemberId(currentUser.id);
+    }
+  }, [currentUser?.id, hasManuallySelectedMember]);
 
   // 方案 A：收支明細分批動態載入控制 (預設每批 40 筆，避免一次渲染大量元件導致掉幀)
   const PAGE_SIZE = 40;
@@ -598,7 +606,11 @@ function MainApp() {
       // 2. 成員篩選
       if (filterMemberId !== 'all') {
         const payer = getMemberById(t.paid_by) || t.payer_profile;
-        const isMatch = (payer && payer.id === filterMemberId) || t.paid_by === filterMemberId;
+        const targetMember = members.find(m => m.id === filterMemberId) || (currentUser?.id === filterMemberId ? currentUser : undefined);
+        const isMatch =
+          (payer && payer.id === filterMemberId) ||
+          t.paid_by === filterMemberId ||
+          (targetMember && (payer?.display_name === targetMember.display_name || (t as any).payer_name === targetMember.display_name));
         if (!isMatch) return false;
       }
 
@@ -613,15 +625,18 @@ function MainApp() {
 
       return true;
     });
-  }, [transactions, filterMonth, filterMemberId, searchQuery, getMemberById, getCategoryById]);
+  }, [transactions, filterMonth, filterMemberId, searchQuery, getMemberById, getCategoryById, members, currentUser]);
 
   // 方案 A：依分批上限動態切片明細清單 (避免一次渲染過多元件)
   const displayedTransactions = useMemo(() => {
     return filteredTransactions.slice(0, displayCount);
   }, [filteredTransactions, displayCount]);
 
-  // 判定是否偏離預設視角（預設視角為：當前月份 + 全部成員 + 無搜尋）
-  const isFiltered = filterMonth !== currentMonthYm || filterMemberId !== 'all' || !!searchQuery.trim();
+  // 預設成員篩選視角為本機使用成員
+  const defaultMemberId = currentUser?.id || 'all';
+
+  // 判定是否偏離預設視角（預設視角為：當前月份 + 本機使用成員 + 無搜尋）
+  const isFiltered = filterMonth !== currentMonthYm || filterMemberId !== defaultMemberId || !!searchQuery.trim();
 
   // 當前檢視範圍之收支總計 (完全精確連動當前月份或指定篩選範圍)
   const activeFilterSummary = useMemo(() => {
@@ -652,11 +667,18 @@ function MainApp() {
     if (searchQuery.trim()) {
       return `🔍「${searchQuery.trim()}」消費總覽`;
     }
+    const isMe = filterMemberId === currentUser?.id;
     if (filterMonth === currentMonthYm && filterMemberId === 'all') {
-      return '本月家庭總覽';
+      return '本月全家總覽';
+    }
+    if (filterMonth === currentMonthYm && isMe) {
+      return `本月「${currentUser?.display_name || '我'}」收支總覽`;
     }
     if (filterMonth === 'all' && filterMemberId === 'all') {
-      return '全部歷史總覽';
+      return '全部歷史家庭總覽';
+    }
+    if (filterMonth === 'all' && isMe) {
+      return `全部歷史「${currentUser?.display_name || '我'}」總覽`;
     }
     const parts: string[] = [];
     if (filterMonth === 'all') {
@@ -667,15 +689,22 @@ function MainApp() {
       const p = filterMonth.split('-');
       parts.push(`${p[0]} 年 ${parseInt(p[1], 10)} 月`);
     }
-    if (filterMemberId !== 'all' && selectedMember) {
-      parts.push(selectedMember.display_name);
+    if (filterMemberId !== 'all') {
+      if (isMe) {
+        parts.push(`${currentUser?.display_name || '我'} (本機)`);
+      } else if (selectedMember) {
+        parts.push(selectedMember.display_name);
+      }
+    } else {
+      parts.push('全體成員');
     }
     return `${parts.join(' ‧ ')} 總覽`;
-  }, [filterMonth, filterMemberId, searchQuery, currentMonthYm, selectedMonthObj, selectedMember]);
+  }, [filterMonth, filterMemberId, searchQuery, currentMonthYm, selectedMonthObj, selectedMember, currentUser]);
 
   const resetFilters = () => {
     setFilterMonth(currentMonthYm);
-    setFilterMemberId('all');
+    setFilterMemberId(currentUser?.id || 'all');
+    setHasManuallySelectedMember(false);
     setSearchQuery('');
   };
 
@@ -2617,19 +2646,25 @@ function MainApp() {
               {/* 成員篩選按鈕 */}
               <TouchableOpacity
                 activeOpacity={0.7}
-                style={[styles.filterChip, filterMemberId !== 'all' && styles.filterChipActive]}
+                style={[styles.filterChip, filterMemberId !== defaultMemberId && styles.filterChipActive]}
                 onPress={() => setFilterModalType('member')}
               >
-                <Text style={styles.filterChipIcon}>👤</Text>
+                <Text style={styles.filterChipIcon}>
+                  {filterMemberId === 'all'
+                    ? '👨‍👩‍👧'
+                    : (selectedMember?.avatar_url || currentUser?.avatar_url || '👤')}
+                </Text>
                 <Text
-                  style={[styles.filterChipText, filterMemberId !== 'all' && styles.filterChipTextActive]}
+                  style={[styles.filterChipText, filterMemberId !== defaultMemberId && styles.filterChipTextActive]}
                   numberOfLines={1}
                 >
                   {filterMemberId === 'all'
                     ? '全部成員'
+                    : filterMemberId === currentUser?.id
+                    ? `${currentUser?.display_name || '我'} (本機)`
                     : (selectedMember?.display_name || '指定成員')}
                 </Text>
-                <Text style={[styles.filterChipArrow, filterMemberId !== 'all' && styles.filterChipArrowActive]}>▾</Text>
+                <Text style={[styles.filterChipArrow, filterMemberId !== defaultMemberId && styles.filterChipArrowActive]}>▾</Text>
               </TouchableOpacity>
 
               {/* 若在搜尋狀態下且非查全部月份，提供 1 鍵切換至全部月份 */}
@@ -3853,7 +3888,10 @@ function MainApp() {
         selectedMonth={filterMonth}
         onSelectMonth={setFilterMonth}
         selectedMemberId={filterMemberId}
-        onSelectMember={setFilterMemberId}
+        onSelectMember={(mId) => {
+          setFilterMemberId(mId);
+          setHasManuallySelectedMember(true);
+        }}
         availableMonths={availableMonths}
         members={members}
         currentUser={currentUser}
