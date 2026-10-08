@@ -89,7 +89,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   transaction,
   onClose,
 }) => {
-  const { categories, members, currentUser, updateTransaction, deleteTransaction, getMemberById, getCategoryById, recentMerchants, paymentAccounts } = useLedger();
+  const { categories, members, currentUser, isOwner, updateTransaction, deleteTransaction, getMemberById, getCategoryById, recentMerchants, paymentAccounts } = useLedger();
 
   const [type, setType] = useState<TransactionType>(() => transaction?.type || 'expense');
   const [amount, setAmount] = useState<string>(() => (transaction?.amount ? String(transaction.amount) : ''));
@@ -184,11 +184,13 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
   const canEdit = React.useMemo(() => {
     if (!transaction || !currentUser?.id) return false;
+    // 帳本管理者擁有全域編輯與刪除權限
+    if (isOwner) return true;
     const payerId = txPayerProfile ? txPayerProfile.id : transaction.paid_by;
     const isPayerIdMatch = payerId === currentUser.id;
     const isPayerNameMatch = !!txPayerProfile?.display_name && !!currentUser.display_name && txPayerProfile.display_name === currentUser.display_name;
     return Boolean(isPayerIdMatch || isPayerNameMatch);
-  }, [transaction, currentUser, txPayerProfile]);
+  }, [transaction, currentUser, txPayerProfile, isOwner]);
 
   // 智慧店家快捷建議標籤列表 (結合自學習 recentMerchants + 分類推薦 + 關鍵字即時比對)
   const suggestedMerchants = React.useMemo(() => {
@@ -291,7 +293,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     if (!transaction) return;
 
     if (!canEdit) {
-      const msg = `權限不足：此筆記帳由「${txPayerName}」付款，僅付款人有權修改。`;
+      const msg = `權限不足：此筆記帳由「${txPayerName}」付款，僅付款人或帳本管理者有權修改。`;
       if (Platform.OS === 'web') alert(msg);
       else Alert.alert('權限不足', msg);
       return;
@@ -340,7 +342,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     if (!transaction) return;
 
     if (!canEdit) {
-      const msg = `權限不足：此筆記帳由「${txPayerName}」付款，僅付款人有權刪除。`;
+      const msg = `權限不足：此筆記帳由「${txPayerName}」付款，僅付款人或帳本管理者有權刪除。`;
       if (Platform.OS === 'web') alert(msg);
       else Alert.alert('權限不足', msg);
       return;
@@ -382,9 +384,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 {canEdit ? '✏️ 編輯記帳明細' : '👀 查看記帳明細'}
               </Text>
               <Text style={styles.headerDateBadge} maxFontSizeMultiplier={1.15}>
-                {canEdit
-                  ? `記帳日期：${curDate.getMonth() + 1}/${curDate.getDate()}`
-                  : `付款成員：${txPayerName} · 唯讀檢視`}
+                記帳日期：{curDate.getMonth() + 1}/{curDate.getDate()}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -403,21 +403,6 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
-            {/* 唯讀權限提示條 */}
-            {!canEdit && (
-              <View style={styles.readOnlyBanner}>
-                <Text style={styles.readOnlyBannerIcon}>🔒</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.readOnlyBannerTitle} maxFontSizeMultiplier={1.15}>
-                    僅能查看明細
-                  </Text>
-                  <Text style={styles.readOnlyBannerText} maxFontSizeMultiplier={1.15}>
-                    此筆記帳由「{txPayerName}」付款，僅付款人有權修改或刪除。
-                  </Text>
-                </View>
-              </View>
-            )}
-
             {/* 類型切換 (支出 / 收入) */}
             <View style={[styles.typeToggle, !canEdit && styles.disabledContainer]}>
               <TouchableOpacity
@@ -827,7 +812,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   <Text style={styles.readOnlyCloseBtnText} maxFontSizeMultiplier={1.15}>關閉明細</Text>
                 </TouchableOpacity>
                 <Text style={styles.readOnlyFooterHint} maxFontSizeMultiplier={1.08}>
-                  🔒 僅付款成員「{txPayerName}」本人具有編輯與刪除此筆記帳的權限
+                  🔒 僅付款成員「{txPayerName}」本人或帳本管理者具有編輯與刪除此筆記帳的權限
                 </Text>
               </View>
             )}
@@ -1290,32 +1275,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#64748B',
     marginTop: 1,
-  },
-  readOnlyBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    gap: 10,
-  },
-  readOnlyBannerIcon: {
-    fontSize: 20,
-  },
-  readOnlyBannerTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#334155',
-    marginBottom: 2,
-  },
-  readOnlyBannerText: {
-    fontSize: 11.5,
-    color: '#64748B',
-    lineHeight: 16,
   },
   disabledContainer: {
     opacity: 0.85,
