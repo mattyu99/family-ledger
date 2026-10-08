@@ -1444,6 +1444,33 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     if (txRows) {
+      // 自動偵測雲端是否存在「本機已記錄刪除、但先前被舊客戶端誤復活」的歷史殘留殭屍明細，主動為全家清除並記回墓碑表
+      const zombiesInCloud = txRows.filter((t: any) => deletedSet.has(t.id));
+      if (zombiesInCloud.length > 0 && isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+        const zombieIds = zombiesInCloud.map((t: any) => t.id);
+        console.log('偵測到雲端存在歷史被誤復活之殘留明細，主動為全家徹底清除:', zombieIds);
+        Promise.resolve(
+          supabase.from('deleted_transactions').upsert(
+            zombieIds.map(id => ({ id, ledger_id: targetLedger.id }))
+          )
+        ).catch(() => {});
+        Promise.resolve(
+          supabase.from('transactions').delete().in('id', zombieIds)
+        ).then(() => {
+          if (channelRef.current) {
+            zombieIds.forEach(id => {
+              try {
+                channelRef.current.send({
+                  type: 'broadcast',
+                  event: 'TX_DELETED',
+                  payload: { id, actorName: '系統同步清理', ledgerId: targetLedger.id },
+                });
+              } catch {}
+            });
+          }
+        }).catch(() => {});
+      }
+
       finalTx = txRows
         .filter((t: any) => !deletedSet.has(t.id))
         .map((t: any) => {
