@@ -175,6 +175,21 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     [paymentAccounts, targetPayerId]
   );
 
+  // 該筆交易的付款人資料與權限判定（僅付款人為本機使用成員才有權限修改或刪除）
+  const txPayerProfile = React.useMemo(() => {
+    return transaction?.paid_by ? getMemberById(transaction.paid_by) : undefined;
+  }, [transaction?.paid_by, getMemberById]);
+
+  const txPayerName = txPayerProfile?.display_name || transaction?.payer_profile?.display_name || '付款成員';
+
+  const canEdit = React.useMemo(() => {
+    if (!transaction || !currentUser?.id) return false;
+    const payerId = txPayerProfile ? txPayerProfile.id : transaction.paid_by;
+    const isPayerIdMatch = payerId === currentUser.id;
+    const isPayerNameMatch = !!txPayerProfile?.display_name && !!currentUser.display_name && txPayerProfile.display_name === currentUser.display_name;
+    return Boolean(isPayerIdMatch || isPayerNameMatch);
+  }, [transaction, currentUser, txPayerProfile]);
+
   // 智慧店家快捷建議標籤列表 (結合自學習 recentMerchants + 分類推薦 + 關鍵字即時比對)
   const suggestedMerchants = React.useMemo(() => {
     const currentCats = categories.filter(c => c.type === type);
@@ -275,6 +290,13 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const handleSubmit = async () => {
     if (!transaction) return;
 
+    if (!canEdit) {
+      const msg = `權限不足：此筆記帳由「${txPayerName}」付款，僅付款人有權修改。`;
+      if (Platform.OS === 'web') alert(msg);
+      else Alert.alert('權限不足', msg);
+      return;
+    }
+
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount <= 0) {
       alert('請輸入有效金額');
@@ -317,6 +339,13 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const handleDelete = () => {
     if (!transaction) return;
 
+    if (!canEdit) {
+      const msg = `權限不足：此筆記帳由「${txPayerName}」付款，僅付款人有權刪除。`;
+      if (Platform.OS === 'web') alert(msg);
+      else Alert.alert('權限不足', msg);
+      return;
+    }
+
     if (Platform.OS === 'web') {
       if (window.confirm('確定要刪除這筆記帳紀錄嗎？')) {
         deleteTransaction(transaction.id);
@@ -349,9 +378,13 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           {/* 頂部把手與標題 */}
           <View style={styles.header}>
             <View>
-              <Text style={styles.title} maxFontSizeMultiplier={1.15}>✏️ 編輯記帳明細</Text>
+              <Text style={styles.title} maxFontSizeMultiplier={1.15}>
+                {canEdit ? '✏️ 編輯記帳明細' : '👀 查看記帳明細'}
+              </Text>
               <Text style={styles.headerDateBadge} maxFontSizeMultiplier={1.15}>
-                記帳日期：{curDate.getMonth() + 1}/{curDate.getDate()}
+                {canEdit
+                  ? `記帳日期：${curDate.getMonth() + 1}/${curDate.getDate()}`
+                  : `付款成員：${txPayerName} · 唯讀檢視`}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -370,9 +403,25 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
+            {/* 唯讀權限提示條 */}
+            {!canEdit && (
+              <View style={styles.readOnlyBanner}>
+                <Text style={styles.readOnlyBannerIcon}>🔒</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.readOnlyBannerTitle} maxFontSizeMultiplier={1.15}>
+                    僅能查看明細
+                  </Text>
+                  <Text style={styles.readOnlyBannerText} maxFontSizeMultiplier={1.15}>
+                    此筆記帳由「{txPayerName}」付款，僅付款人有權修改或刪除。
+                  </Text>
+                </View>
+              </View>
+            )}
+
             {/* 類型切換 (支出 / 收入) */}
-            <View style={styles.typeToggle}>
+            <View style={[styles.typeToggle, !canEdit && styles.disabledContainer]}>
               <TouchableOpacity
+                disabled={!canEdit}
                 style={[styles.typeBtn, type === 'expense' && styles.typeBtnActive]}
                 onPress={() => handleTypeChange('expense')}
               >
@@ -384,6 +433,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
+                disabled={!canEdit}
                 style={[styles.typeBtn, type === 'income' && styles.typeBtnActiveIncome]}
                 onPress={() => handleTypeChange('income')}
               >
@@ -398,15 +448,16 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
             {/* 金額輸入 */}
             <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>金額 (TWD)</Text>
-            <View style={styles.amountContainer}>
-              <Text style={styles.currencySymbol} maxFontSizeMultiplier={1.15}>$</Text>
+            <View style={[styles.amountContainer, !canEdit && styles.readOnlyAmountContainer]}>
+              <Text style={[styles.currencySymbol, !canEdit && styles.readOnlyTextMuted]} maxFontSizeMultiplier={1.15}>$</Text>
               <TextInput
-                style={styles.amountInput}
+                style={[styles.amountInput, !canEdit && styles.readOnlyAmountInput]}
                 placeholder="0"
                 placeholderTextColor="#D1D5DB"
                 keyboardType="numeric"
                 value={amount}
                 onChangeText={setAmount}
+                editable={canEdit}
                 autoFocus={false}
                 maxFontSizeMultiplier={1.15}
                 underlineColorAndroid="transparent"
@@ -421,9 +472,11 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 return (
                   <TouchableOpacity
                     key={cat.id}
+                    disabled={!canEdit}
                     style={[
                       styles.categoryChip,
                       isSelected && { backgroundColor: `${cat.color}25`, borderColor: cat.color },
+                      !canEdit && !isSelected && styles.readOnlyUnselectedChip,
                     ]}
                     onPress={() => setSelectedCategoryId(cat.id)}
                   >
@@ -453,7 +506,12 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 return (
                   <TouchableOpacity
                     key={member.id}
-                    style={[styles.payerChip, isSelected && styles.payerChipActive]}
+                    disabled={!canEdit}
+                    style={[
+                      styles.payerChip,
+                      isSelected && styles.payerChipActive,
+                      !canEdit && !isSelected && styles.readOnlyUnselectedChip,
+                    ]}
                     onPress={() => setPaidBy(member.id)}
                   >
                     <Text style={styles.payerAvatar}>{member.avatar_url}</Text>
@@ -486,7 +544,12 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 return (
                   <TouchableOpacity
                     key={opt.key}
-                    style={[styles.methodChip, isSelected && styles.methodChipActive]}
+                    disabled={!canEdit}
+                    style={[
+                      styles.methodChip,
+                      isSelected && styles.methodChipActive,
+                      !canEdit && !isSelected && styles.readOnlyUnselectedChip,
+                    ]}
                     onPress={() => handleMethodChange(opt.key)}
                     activeOpacity={0.7}
                   >
@@ -515,9 +578,11 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                     return (
                       <TouchableOpacity
                         key={card.id}
+                        disabled={!canEdit}
                         style={[
                           styles.cardChip,
                           isCardSelected && { borderColor: card.color || '#3B82F6', backgroundColor: '#EFF6FF' },
+                          !canEdit && !isCardSelected && styles.readOnlyUnselectedChip,
                         ]}
                         onPress={() => setSelectedAccountId(isCardSelected ? '' : card.id)}
                         activeOpacity={0.7}
@@ -554,9 +619,11 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                     return (
                       <TouchableOpacity
                         key={card.id}
+                        disabled={!canEdit}
                         style={[
                           styles.cardChip,
                           isCardSelected && { borderColor: card.color || '#0284C7', backgroundColor: '#F0F9FF' },
+                          !canEdit && !isCardSelected && styles.readOnlyUnselectedChip,
                         ]}
                         onPress={() => setSelectedAccountId(card.id)}
                         activeOpacity={0.7}
@@ -591,7 +658,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             </View>
             <View style={styles.dateRow}>
               <TouchableOpacity
-                style={[styles.dateChip, isOriginal && styles.dateChipActive]}
+                disabled={!canEdit}
+                style={[styles.dateChip, isOriginal && styles.dateChipActive, !canEdit && !isOriginal && styles.readOnlyUnselectedChip]}
                 onPress={() => setTransactedAt(transaction.transacted_at)}
                 activeOpacity={0.7}
               >
@@ -604,7 +672,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.dateChip, isToday && !isOriginal && styles.dateChipActive]}
+                disabled={!canEdit}
+                style={[styles.dateChip, isToday && !isOriginal && styles.dateChipActive, !canEdit && !(isToday && !isOriginal) && styles.readOnlyUnselectedChip]}
                 onPress={() => setQuickDate(today)}
                 activeOpacity={0.7}
               >
@@ -617,7 +686,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.dateChip, isYesterday && !isOriginal && styles.dateChipActive]}
+                disabled={!canEdit}
+                style={[styles.dateChip, isYesterday && !isOriginal && styles.dateChipActive, !canEdit && !(isYesterday && !isOriginal) && styles.readOnlyUnselectedChip]}
                 onPress={() => setQuickDate(yesterday)}
                 activeOpacity={0.7}
               >
@@ -632,8 +702,9 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               {/* 若選擇了其他自訂日期 */}
               {isCustomDate && (
                 <TouchableOpacity
+                  disabled={!canEdit}
                   style={[styles.dateChip, styles.dateChipActive, styles.dateChipCustom]}
-                  onPress={() => setDatePickerVisible(true)}
+                  onPress={() => canEdit && setDatePickerVisible(true)}
                   activeOpacity={0.7}
                 >
                   <Text
@@ -645,50 +716,53 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 </TouchableOpacity>
               )}
 
-              <TouchableOpacity
-                style={[styles.dateMoreBtn, isCustomDate && styles.dateMoreBtnSelected]}
-                onPress={() => setDatePickerVisible(true)}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={[styles.dateMoreBtnText, isCustomDate && styles.dateMoreBtnTextSelected]}
-                  maxFontSizeMultiplier={1.15}
+              {canEdit && (
+                <TouchableOpacity
+                  style={[styles.dateMoreBtn, isCustomDate && styles.dateMoreBtnSelected]}
+                  onPress={() => setDatePickerVisible(true)}
+                  activeOpacity={0.7}
                 >
-                  {isCustomDate ? '✏️ 改選' : '🗓️ 更多...'}
-                </Text>
-              </TouchableOpacity>
+                  <Text
+                    style={[styles.dateMoreBtnText, isCustomDate && styles.dateMoreBtnTextSelected]}
+                    maxFontSizeMultiplier={1.15}
+                  >
+                    {isCustomDate ? '✏️ 改選' : '🗓️ 更多...'}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* 店家 / 對象 (選填) */}
             <View style={styles.sectionLabelRow}>
               <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>店家 / 付款對象 (選填)</Text>
-              {!!merchant && (
+              {canEdit && !!merchant && (
                 <TouchableOpacity onPress={() => setMerchant('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <Text style={styles.clearMerchantText} maxFontSizeMultiplier={1.08}>清除</Text>
                 </TouchableOpacity>
               )}
             </View>
-            <View style={styles.merchantInputWrapper}>
+            <View style={[styles.merchantInputWrapper, !canEdit && styles.readOnlyInputWrapper]}>
               <Text style={styles.merchantInputIcon}>🏪</Text>
               <TextInput
-                style={styles.merchantInput}
-                placeholder="例如：全聯、好市多、麥當勞、中油..."
+                style={[styles.merchantInput, !canEdit && styles.readOnlyTextInput]}
+                placeholder={canEdit ? "例如：全聯、好市多、麥當勞、中油..." : "未填寫店家"}
                 placeholderTextColor="#9CA3AF"
                 value={merchant}
                 onChangeText={setMerchant}
+                editable={canEdit}
                 onFocus={() => handleInputFocus()}
                 returnKeyType="next"
                 maxFontSizeMultiplier={1.15}
               />
-              {!!merchant && (
+              {canEdit && !!merchant && (
                 <TouchableOpacity onPress={() => setMerchant('')} style={styles.merchantClearBtn}>
                   <Text style={styles.merchantClearBtnText}>✕</Text>
                 </TouchableOpacity>
               )}
             </View>
 
-            {/* 智慧自學習快捷膠囊標籤 */}
-            {suggestedMerchants.length > 0 && (
+            {/* 智慧自學習快捷膠囊標籤 (唯讀模式下不需顯示快捷推薦) */}
+            {canEdit && suggestedMerchants.length > 0 && (
               <HorizontalScrollView
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.merchantChipsRow}
@@ -718,18 +792,19 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             {/* 備註說明 */}
             <View style={styles.sectionLabelRow}>
               <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>備註說明</Text>
-              {keyboardOffset > 0 && (
+              {canEdit && keyboardOffset > 0 && (
                 <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
                 </TouchableOpacity>
               )}
             </View>
             <TextInput
-              style={styles.noteInput}
-              placeholder="例如：好市多牛肉、加滿油、水電費..."
+              style={[styles.noteInput, !canEdit && styles.readOnlyNoteInput]}
+              placeholder={canEdit ? "例如：好市多牛肉、加滿油、水電費..." : "無備註"}
               placeholderTextColor="#9CA3AF"
               value={note}
               onChangeText={setNote}
+              editable={canEdit}
               onFocus={() => handleInputFocus()}
               returnKeyType="done"
               onSubmitEditing={Keyboard.dismiss}
@@ -737,14 +812,25 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             />
 
             {/* 操作按鈕群 */}
-            <View style={styles.btnRow}>
-              <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
-                <Text style={styles.deleteBtnText} maxFontSizeMultiplier={1.15}>🗑️ 刪除紀錄</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
-                <Text style={styles.submitBtnText} maxFontSizeMultiplier={1.15}>儲存修改</Text>
-              </TouchableOpacity>
-            </View>
+            {canEdit ? (
+              <View style={styles.btnRow}>
+                <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
+                  <Text style={styles.deleteBtnText} maxFontSizeMultiplier={1.15}>🗑️ 刪除紀錄</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
+                  <Text style={styles.submitBtnText} maxFontSizeMultiplier={1.15}>儲存修改</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.readOnlyBtnRow}>
+                <TouchableOpacity style={styles.readOnlyCloseBtn} onPress={onClose} activeOpacity={0.8}>
+                  <Text style={styles.readOnlyCloseBtnText} maxFontSizeMultiplier={1.15}>關閉明細</Text>
+                </TouchableOpacity>
+                <Text style={styles.readOnlyFooterHint} maxFontSizeMultiplier={1.08}>
+                  🔒 僅付款成員「{txPayerName}」本人具有編輯與刪除此筆記帳的權限
+                </Text>
+              </View>
+            )}
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
@@ -1204,5 +1290,83 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#64748B',
     marginTop: 1,
+  },
+  readOnlyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 10,
+  },
+  readOnlyBannerIcon: {
+    fontSize: 20,
+  },
+  readOnlyBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#334155',
+    marginBottom: 2,
+  },
+  readOnlyBannerText: {
+    fontSize: 11.5,
+    color: '#64748B',
+    lineHeight: 16,
+  },
+  disabledContainer: {
+    opacity: 0.85,
+  },
+  readOnlyUnselectedChip: {
+    opacity: 0.45,
+  },
+  readOnlyAmountContainer: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+  },
+  readOnlyAmountInput: {
+    color: '#334155',
+  },
+  readOnlyTextMuted: {
+    color: '#64748B',
+  },
+  readOnlyInputWrapper: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+  },
+  readOnlyTextInput: {
+    color: '#334155',
+  },
+  readOnlyNoteInput: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+    color: '#334155',
+  },
+  readOnlyBtnRow: {
+    marginTop: 20,
+    alignItems: 'center',
+  },
+  readOnlyCloseBtn: {
+    width: '100%',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  readOnlyCloseBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  readOnlyFooterHint: {
+    fontSize: 11.5,
+    color: '#64748B',
+    marginTop: 8,
+    textAlign: 'center',
   },
 });
