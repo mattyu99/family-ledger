@@ -637,3 +637,13 @@ CREATE TRIGGER tr_prevent_transaction_resurrection
     BEFORE INSERT ON public.transactions
     FOR EACH ROW EXECUTE FUNCTION public.prevent_transaction_resurrection();
 
+-- ==============================================================================
+-- 9. 付款方式 (Payment Methods) 架構說明：
+-- transactions.payment_method 欄位為 TEXT 型別，原生支援自訂付款方式代碼：
+-- - 系統預設核心代碼：'cash', 'credit_card', 'line_pay', 'px_pay', 'easycard_pay', 'jkopay', 'stored_value', 'transfer'
+-- - 使用者自訂代碼：例如 'custom_1728399999999'
+-- - 電子支付若綁定信用卡，款項會記錄 transactions.payment_method = 'px_pay' 並在 account_id 記錄信用卡 UUID
+-- - 信用卡對帳系統是以 account_id (UUID) 精確過濾，因此所有綁卡交易皆能 100% 正確歸戶與對帳
+-- ==============================================================================
+
+

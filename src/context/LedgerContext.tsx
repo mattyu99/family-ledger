@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Platform, Alert, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Transaction, Category, Ledger, Profile, TransactionType, CategoryType, PaymentMethod, PaymentAccount, AccountType } from '../types/database';
+import { Transaction, Category, Ledger, Profile, TransactionType, CategoryType, PaymentMethod, PaymentAccount, AccountType, CustomPaymentMethod } from '../types/database';
 import { supabase, isConfigured } from '../lib/supabase';
 import { generateUUID } from '../lib/uuid';
-import { DEMO_PAYMENT_ACCOUNTS } from '../lib/payment';
+import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS } from '../lib/payment';
 
 const safeAlert = (title: string, message: string) => {
   if (Platform.OS === 'web') {
@@ -245,6 +245,14 @@ interface LedgerContextType {
   updatePaymentAccount: (id: string, data: Partial<PaymentAccount>) => Promise<boolean>;
   deletePaymentAccount: (id: string) => Promise<boolean>;
   restoreDefaultAccounts: () => Promise<void>;
+  paymentMethods: CustomPaymentMethod[];
+  addPaymentMethod: (data: Omit<CustomPaymentMethod, 'id' | 'sort_order'>) => Promise<CustomPaymentMethod>;
+  updatePaymentMethod: (id: string, data: Partial<CustomPaymentMethod>) => Promise<boolean>;
+  deletePaymentMethod: (id: string) => Promise<boolean>;
+  togglePaymentMethodEnabled: (id: string) => Promise<boolean>;
+  reorderPaymentMethods: (methods: CustomPaymentMethod[]) => Promise<void>;
+  restoreDefaultPaymentMethods: () => Promise<void>;
+  getPaymentMethodById: (id?: string) => CustomPaymentMethod | undefined;
   topUpAccountBalance: (
     id: string,
     amount: number,
@@ -438,6 +446,7 @@ const STORAGE_KEYS = {
   PAYMENT_ACCOUNTS: '@family_ledger_payment_accounts',
   DELETED_ACCOUNT_IDS: '@family_ledger_deleted_account_ids',
   ACCOUNTS_INITIALIZED: '@family_ledger_accounts_initialized',
+  PAYMENT_METHODS: '@family_ledger_payment_methods',
 };
 
 // 預設常用店家快捷建議清單（涵蓋台灣家庭最普遍的日常採買店家）
@@ -477,6 +486,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const [paymentAccounts, setPaymentAccounts] = useState<PaymentAccount[]>(DEMO_PAYMENT_ACCOUNTS);
+  const [paymentMethods, setPaymentMethods] = useState<CustomPaymentMethod[]>(DEFAULT_PAYMENT_METHODS);
   const [currentUser, setCurrentUser] = useState<Profile>(DEFAULT_MEMBERS[0]);
   const [isCloudSynced, setIsCloudSynced] = useState<boolean>(false);
   const [isDeviceBound, setIsDeviceBound] = useState<boolean>(false);
@@ -821,6 +831,24 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               setPaymentAccounts(parsed);
             }
           } catch {}
+        }
+
+        const savedMethods = (ledgerId && await AsyncStorage.getItem(`${STORAGE_KEYS.PAYMENT_METHODS}_${ledgerId}`)) || await AsyncStorage.getItem(STORAGE_KEYS.PAYMENT_METHODS);
+        if (savedMethods) {
+          try {
+            const parsed = JSON.parse(savedMethods);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const merged = [...parsed];
+              DEFAULT_PAYMENT_METHODS.forEach(defM => {
+                if (!merged.some(m => m.id === defM.id)) {
+                  merged.push(defM);
+                }
+              });
+              setPaymentMethods(merged);
+            }
+          } catch {}
+        } else {
+          setPaymentMethods(DEFAULT_PAYMENT_METHODS);
         }
       } catch (err) {
         console.warn('載入本地記帳快取失敗:', err);
@@ -1813,6 +1841,32 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     } catch (accLoadErr) {
       console.warn('載入雲端付款帳戶失敗，使用本地快取:', accLoadErr);
+    }
+
+    // (E-2) 載入自訂/常用付款方式
+    try {
+      const methodLedgerKey = `${STORAGE_KEYS.PAYMENT_METHODS}_${targetLedger.id}`;
+      const savedMethodsStr = (await AsyncStorage.getItem(methodLedgerKey)) || (await AsyncStorage.getItem(STORAGE_KEYS.PAYMENT_METHODS));
+      let loadedMethods: CustomPaymentMethod[] = DEFAULT_PAYMENT_METHODS;
+      if (savedMethodsStr) {
+        try {
+          const parsed = JSON.parse(savedMethodsStr);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const merged = [...parsed];
+            DEFAULT_PAYMENT_METHODS.forEach(defM => {
+              if (!merged.some(m => m.id === defM.id)) {
+                merged.push(defM);
+              }
+            });
+            loadedMethods = merged;
+          }
+        } catch {}
+      }
+      setPaymentMethods(loadedMethods);
+      await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_METHODS, JSON.stringify(loadedMethods));
+      await AsyncStorage.setItem(methodLedgerKey, JSON.stringify(loadedMethods));
+    } catch (methodErr) {
+      console.warn('載入付款方式失敗:', methodErr);
     }
 
     // (F) Realtime 訂閱
@@ -2939,6 +2993,90 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch (err) {
       console.warn('恢復預設卡片失敗:', err);
     }
+  };
+
+  const savePaymentMethodsToStorage = async (methods: CustomPaymentMethod[]) => {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_METHODS, JSON.stringify(methods));
+      if (currentLedger?.id) {
+        await AsyncStorage.setItem(`${STORAGE_KEYS.PAYMENT_METHODS}_${currentLedger.id}`, JSON.stringify(methods));
+      }
+    } catch (e) {
+      console.warn('儲存付款方式快取失敗:', e);
+    }
+  };
+
+  // 新增自訂付款方式
+  const addPaymentMethod = async (
+    data: Omit<CustomPaymentMethod, 'id' | 'sort_order'>
+  ): Promise<CustomPaymentMethod> => {
+    const newId = generateUUID();
+    const maxOrder = paymentMethods.reduce((max, m) => Math.max(max, m.sort_order || 0), 0);
+    const newMethod: CustomPaymentMethod = {
+      ...data,
+      id: newId,
+      ledger_id: currentLedger.id,
+      sort_order: maxOrder + 1,
+      is_enabled: data.is_enabled ?? true,
+      is_system: false,
+      created_at: new Date().toISOString(),
+    };
+
+    const updated = [...paymentMethods, newMethod];
+    setPaymentMethods(updated);
+    await savePaymentMethodsToStorage(updated);
+    return newMethod;
+  };
+
+  // 編輯付款方式
+  const updatePaymentMethod = async (
+    id: string,
+    data: Partial<CustomPaymentMethod>
+  ): Promise<boolean> => {
+    const updated = paymentMethods.map(m => (m.id === id ? { ...m, ...data } : m));
+    setPaymentMethods(updated);
+    await savePaymentMethodsToStorage(updated);
+    return true;
+  };
+
+  // 刪除付款方式 (系統預設項目不可刪除，但可停用)
+  const deletePaymentMethod = async (id: string): Promise<boolean> => {
+    const target = paymentMethods.find(m => m.id === id);
+    if (target?.is_system) {
+      safeAlert('無法刪除', '系統預設的付款方式不可刪除，但您可以將其開關切換為「停用/隱藏」！');
+      return false;
+    }
+    const updated = paymentMethods.filter(m => m.id !== id);
+    setPaymentMethods(updated);
+    await savePaymentMethodsToStorage(updated);
+    return true;
+  };
+
+  // 切換啟用/停用
+  const togglePaymentMethodEnabled = async (id: string): Promise<boolean> => {
+    const updated = paymentMethods.map(m => (m.id === id ? { ...m, is_enabled: !m.is_enabled } : m));
+    setPaymentMethods(updated);
+    await savePaymentMethodsToStorage(updated);
+    return true;
+  };
+
+  // 調整排序
+  const reorderPaymentMethods = async (methods: CustomPaymentMethod[]): Promise<void> => {
+    const reordered = methods.map((m, idx) => ({ ...m, sort_order: idx + 1 }));
+    setPaymentMethods(reordered);
+    await savePaymentMethodsToStorage(reordered);
+  };
+
+  // 恢復預設付款方式清單
+  const restoreDefaultPaymentMethods = async (): Promise<void> => {
+    setPaymentMethods(DEFAULT_PAYMENT_METHODS);
+    await savePaymentMethodsToStorage(DEFAULT_PAYMENT_METHODS);
+  };
+
+  // 取得付款方式資訊輔助函式
+  const getPaymentMethodById = (id?: string): CustomPaymentMethod | undefined => {
+    if (!id) return undefined;
+    return paymentMethods.find(m => m.id === id) || DEFAULT_PAYMENT_METHODS.find(m => m.id === id);
   };
 
   // 快速加值悠遊卡/儲值卡（更新卡片餘額並可自動記錄一筆出資扣款明細）
@@ -4808,6 +4946,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updatePaymentAccount,
         deletePaymentAccount,
         restoreDefaultAccounts,
+        paymentMethods,
+        addPaymentMethod,
+        updatePaymentMethod,
+        deletePaymentMethod,
+        togglePaymentMethodEnabled,
+        reorderPaymentMethods,
+        restoreDefaultPaymentMethods,
+        getPaymentMethodById,
         topUpAccountBalance,
         adjustAccountBalance,
         toggleReconcileTransaction,

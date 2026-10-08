@@ -1,4 +1,4 @@
-import { PaymentMethod, PaymentAccount, AccountType } from '../types/database';
+import { PaymentMethod, PaymentAccount, AccountType, CustomPaymentMethod } from '../types/database';
 
 export interface PaymentMethodOption {
   key: PaymentMethod;
@@ -8,13 +8,104 @@ export interface PaymentMethodOption {
   description: string;
 }
 
-export const PAYMENT_METHOD_OPTIONS: PaymentMethodOption[] = [
-  { key: 'cash', name: '現金', icon: '💵', color: '#10B981', description: '錢包現鈔、零錢' },
-  { key: 'credit_card', name: '信用卡', icon: '💳', color: '#3B82F6', description: '實體卡、Apple Pay 刷卡' },
-  { key: 'line_pay', name: 'LINE Pay', icon: '🟢', color: '#06C755', description: 'LINE Pay 條碼 / 行動支付' },
-  { key: 'stored_value', name: '悠遊卡/儲值卡', icon: '🚌', color: '#0284C7', description: '悠遊卡、一卡通、儲值錢包' },
-  { key: 'transfer', name: '銀行轉帳', icon: '🏦', color: '#8B5CF6', description: '網銀轉帳、自動扣繳' },
+export const DEFAULT_PAYMENT_METHODS: CustomPaymentMethod[] = [
+  {
+    id: 'cash',
+    name: '現金',
+    icon: '💵',
+    color: '#10B981',
+    type: 'cash',
+    supports_credit_card: false,
+    is_enabled: true,
+    is_system: true,
+    sort_order: 1,
+  },
+  {
+    id: 'credit_card',
+    name: '信用卡',
+    icon: '💳',
+    color: '#3B82F6',
+    type: 'credit_card',
+    supports_credit_card: true,
+    is_enabled: true,
+    is_system: true,
+    sort_order: 2,
+  },
+  {
+    id: 'line_pay',
+    name: 'LINE Pay',
+    icon: '🟢',
+    color: '#06C755',
+    type: 'e_wallet',
+    supports_credit_card: true,
+    is_enabled: true,
+    is_system: true,
+    sort_order: 3,
+  },
+  {
+    id: 'px_pay',
+    name: '全支付',
+    icon: '🔵',
+    color: '#0055B8',
+    type: 'e_wallet',
+    supports_credit_card: true,
+    is_enabled: true,
+    is_system: true,
+    sort_order: 4,
+  },
+  {
+    id: 'easycard_pay',
+    name: '悠遊付',
+    icon: '🩵',
+    color: '#00A3E0',
+    type: 'e_wallet',
+    supports_credit_card: true,
+    is_enabled: true,
+    is_system: true,
+    sort_order: 5,
+  },
+  {
+    id: 'jkopay',
+    name: '街口支付',
+    icon: '🟣',
+    color: '#D8232A',
+    type: 'e_wallet',
+    supports_credit_card: true,
+    is_enabled: true,
+    is_system: true,
+    sort_order: 6,
+  },
+  {
+    id: 'stored_value',
+    name: '悠遊卡/儲值卡',
+    icon: '🚌',
+    color: '#0284C7',
+    type: 'stored_value',
+    supports_credit_card: false,
+    is_enabled: true,
+    is_system: true,
+    sort_order: 7,
+  },
+  {
+    id: 'transfer',
+    name: '銀行轉帳',
+    icon: '🏦',
+    color: '#8B5CF6',
+    type: 'bank',
+    supports_credit_card: false,
+    is_enabled: true,
+    is_system: true,
+    sort_order: 8,
+  },
 ];
+
+export const PAYMENT_METHOD_OPTIONS: PaymentMethodOption[] = DEFAULT_PAYMENT_METHODS.map(m => ({
+  key: m.id,
+  name: m.name,
+  icon: m.icon,
+  color: m.color,
+  description: m.supports_credit_card ? '可綁定信用卡或帳戶扣款' : '直接扣款',
+}));
 
 export const DEMO_PAYMENT_ACCOUNTS: PaymentAccount[] = [
   {
@@ -221,19 +312,58 @@ export const isDateInBillingCycle = (
 };
 
 /**
- * 格式化顯示付款標籤 (包含圖示與卡片末四碼)
+ * 取得精簡的卡片識別名稱 (用於在有限的手機標籤空間中顯示)
+ * 例如：「富邦 Costco 聯名卡」->「富邦 Costco」或「國泰 CUBE 卡」->「國泰 CUBE」
+ */
+export const getShortCardName = (fullName: string): string => {
+  if (!fullName) return '';
+  let clean = fullName.replace(/聯名卡|信用卡|卡片/g, '').trim();
+  if (clean.endsWith('卡') && clean.length > 2) {
+    clean = clean.slice(0, -1).trim();
+  }
+  if (clean.length > 6) {
+    clean = clean.slice(0, 6);
+  }
+  return clean || fullName.slice(0, 4);
+};
+
+/**
+ * 格式化顯示付款標籤 (包含圖示與卡片末四碼或電支複合標籤)
  */
 export const formatPaymentLabel = (
   paymentMethod?: PaymentMethod,
-  account?: PaymentAccount
+  account?: PaymentAccount,
+  customMethods?: CustomPaymentMethod[]
 ): { icon: string; text: string; color: string } => {
+  const allMethods = customMethods && customMethods.length > 0 ? customMethods : DEFAULT_PAYMENT_METHODS;
+  const currentMethod = allMethods.find(m => m.id === paymentMethod);
+
   if (account) {
     if (account.type === 'credit_card') {
-      const lastFour = account.last_four_digits ? ` (*${account.last_four_digits})` : '';
+      const lastFour = account.last_four_digits ? `*${account.last_four_digits}` : '';
+      const isPureCreditCard = !paymentMethod || paymentMethod === 'credit_card';
+
+      if (isPureCreditCard) {
+        return {
+          icon: '💳',
+          text: `${account.name}${lastFour ? ` (${lastFour})` : ''}`,
+          color: account.color || '#3B82F6',
+        };
+      }
+
+      // 透過電子支付 (如 全支付, LINE Pay, 悠遊付, 街口 等) 綁定信用卡扣款：
+      // 精簡排版：如「🔵 全支付·國泰*1234」或「🟢 LINE Pay·富邦*8829」
+      const methodName = currentMethod ? currentMethod.name : (paymentMethod || '行動支付');
+      const methodIcon = currentMethod ? currentMethod.icon : '📱';
+      const methodColor = currentMethod ? currentMethod.color : (account.color || '#3B82F6');
+      const shortCard = getShortCardName(account.name);
+      const cardSuffix = lastFour ? `*${account.last_four_digits}` : shortCard;
+      const combinedText = `${methodName}·${cardSuffix}`;
+
       return {
-        icon: '💳',
-        text: `${account.name}${lastFour}`,
-        color: account.color || '#3B82F6',
+        icon: methodIcon,
+        text: combinedText,
+        color: methodColor,
       };
     }
     if (account.type === 'stored_value') {
@@ -250,11 +380,26 @@ export const formatPaymentLabel = (
     };
   }
 
+  // 無綁定卡片（純錢包餘額、純現金、純轉帳等）
+  if (currentMethod) {
+    return {
+      icon: currentMethod.icon,
+      text: currentMethod.name,
+      color: currentMethod.color,
+    };
+  }
+
   switch (paymentMethod) {
     case 'credit_card':
       return { icon: '💳', text: '信用卡', color: '#3B82F6' };
     case 'line_pay':
       return { icon: '🟢', text: 'LINE Pay', color: '#06C755' };
+    case 'px_pay':
+      return { icon: '🔵', text: '全支付', color: '#0055B8' };
+    case 'easycard_pay':
+      return { icon: '🩵', text: '悠遊付', color: '#00A3E0' };
+    case 'jkopay':
+      return { icon: '🟣', text: '街口支付', color: '#D8232A' };
     case 'stored_value':
       return { icon: '🚌', text: '悠遊卡', color: '#0284C7' };
     case 'transfer':
@@ -262,7 +407,7 @@ export const formatPaymentLabel = (
     case 'cash':
       return { icon: '💵', text: '現金', color: '#10B981' };
     default:
-      return { icon: '💵', text: '現金', color: '#6B7280' };
+      return { icon: '💵', text: paymentMethod || '現金', color: '#6B7280' };
   }
 };
 

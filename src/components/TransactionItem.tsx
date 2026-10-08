@@ -19,7 +19,7 @@ interface TransactionItemProps {
 }
 
 export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ transaction, onPress }) => {
-  const { getMemberById, getCategoryById, getAccountById } = useLedger();
+  const { getMemberById, getCategoryById, getAccountById, paymentMethods } = useLedger();
 
   const category = getCategoryById(transaction.category_id, transaction.category);
   const payer = getMemberById(transaction.paid_by) || transaction.payer_profile;
@@ -29,7 +29,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
   const formattedDate = `${date.getMonth() + 1}/${date.getDate()}`;
 
   const account = transaction.payment_account || (transaction.account_id ? getAccountById(transaction.account_id) : undefined);
-  const paymentLabel = formatPaymentLabel(transaction.payment_method, account);
+  const paymentLabel = formatPaymentLabel(transaction.payment_method, account, paymentMethods);
 
   return (
     <TouchableOpacity
@@ -242,7 +242,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 0.5,
     gap: 3,
-    maxWidth: 130,
+    maxWidth: 155,
   },
   paymentBadgeIcon: {
     fontSize: 10,

@@ -55,7 +55,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
   initialAccountType,
   initialAccountId,
 }) => {
-  const { paymentAccounts, transactions, toggleReconcileTransaction, getCategoryById, getMemberById, currentUser } = useLedger();
+  const { paymentAccounts, transactions, toggleReconcileTransaction, getCategoryById, getMemberById, currentUser, paymentMethods } = useLedger();
 
   const [accountType, setAccountType] = useState<'credit_card' | 'stored_value'>('credit_card');
   const [selectedCardId, setSelectedCardId] = useState<string>('');
@@ -512,6 +512,16 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                                 <Text style={styles.topUpBadgeText}>加值</Text>
                               </View>
                             )}
+                            {isCredit && !!tx.payment_method && tx.payment_method !== 'credit_card' && (() => {
+                              const pm = paymentMethods.find(m => m.id === tx.payment_method);
+                              return (
+                                <View style={[styles.payMethodTag, { borderColor: `${pm?.color || '#3B82F6'}35`, backgroundColor: `${pm?.color || '#3B82F6'}15` }]}>
+                                  <Text style={[styles.payMethodTagText, { color: pm?.color || '#3B82F6' }]}>
+                                    {pm?.icon || '📱'} {pm?.name || tx.payment_method}
+                                  </Text>
+                                </View>
+                              );
+                            })()}
                             <Text style={styles.txMerchantName} numberOfLines={1}>
                               {isTopUp
                                 ? (tx.merchant || `${currentCard.name}儲值`)
@@ -945,6 +955,17 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: '#15803D',
+  },
+  payMethodTag: {
+    paddingHorizontal: 4.5,
+    paddingVertical: 1,
+    borderRadius: 4,
+    borderWidth: 0.5,
+    marginRight: 4,
+  },
+  payMethodTagText: {
+    fontSize: 9.5,
+    fontWeight: '700',
   },
   txMerchantName: {
     fontSize: 13,

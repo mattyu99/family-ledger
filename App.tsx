@@ -49,6 +49,7 @@ import { AvatarPicker, ALL_AVATAR_OPTIONS } from './src/components/AvatarPicker'
 import { StoredValueWidget } from './src/components/StoredValueWidget';
 import { CreditCardReconciliationModal } from './src/components/CreditCardReconciliationModal';
 import { PaymentAccountsManageModal } from './src/components/PaymentAccountsManageModal';
+import { PaymentMethodsManageModal } from './src/components/PaymentMethodsManageModal';
 import { HorizontalScrollView } from './src/components/HorizontalScrollView';
 import { Transaction, Profile } from './src/types/database';
 import { getCategoryIcon } from './src/lib/icons';
@@ -181,6 +182,7 @@ function MainApp() {
     triggerLiveToast,
     recentMerchants,
     paymentAccounts,
+    paymentMethods,
     restoreFromJSON,
   } = useLedger();
 
@@ -193,6 +195,7 @@ function MainApp() {
   const [reconcileAccountType, setReconcileAccountType] = useState<'credit_card' | 'stored_value'>('credit_card');
   const [reconcileAccountId, setReconcileAccountId] = useState<string | undefined>(undefined);
   const [accountsManageModalVisible, setAccountsManageModalVisible] = useState(false);
+  const [paymentMethodsModalVisible, setPaymentMethodsModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [exportModalVisible, setExportModalVisible] = useState(false);
   const [memberModalVisible, setMemberModalVisible] = useState(false);
@@ -3627,6 +3630,51 @@ function MainApp() {
               </View>
             </View>
 
+            {/* 常用付款方式管理 (電子支付 / 信用卡 / 現金等自由開關與自訂) */}
+            <View style={styles.cardSection}>
+              <View style={styles.sectionHeaderRow}>
+                <View style={styles.sectionHeaderLeft}>
+                  <Text style={styles.cardSectionTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    📱 常用付款方式 ({(paymentMethods || []).filter(m => m.is_enabled !== false).length})
+                  </Text>
+                  <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    自訂日常記帳可用的支付工具（如 LINE Pay、全支付、悠遊付、街口等），可隨時新增或開關隱藏
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.manageCategoryBtn}
+                  onPress={() => setPaymentMethodsModalVisible(true)}
+                >
+                  <Text style={styles.manageCategoryBtnText} maxFontSizeMultiplier={1.2}>
+                    ⚙️ 管理付款方式
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.paymentAccountPreviewRow}>
+                {(paymentMethods || []).filter(m => m.is_enabled !== false).map(m => (
+                  <TouchableOpacity
+                    key={m.id}
+                    style={[styles.paymentAccountPreviewChip, { borderColor: `${m.color || '#3B82F6'}45` }]}
+                    onPress={() => setPaymentMethodsModalVisible(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.paymentAccountPreviewIcon}>{m.icon}</Text>
+                    <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      {m.name}
+                    </Text>
+                    {m.supports_credit_card && (
+                      <View style={[styles.paymentAccountBadge, { backgroundColor: '#EFF6FF' }]}>
+                        <Text style={[styles.paymentAccountBadgeText, { color: '#1D4ED8' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                          可綁卡
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
             {/* 資料備份與掌控 */}
             <View style={styles.cardSection}>
               <View style={styles.sectionHeaderRow}>
@@ -3973,6 +4021,12 @@ function MainApp() {
       <PaymentAccountsManageModal
         visible={accountsManageModalVisible}
         onClose={() => setAccountsManageModalVisible(false)}
+      />
+
+      {/* 📱 常用付款方式管理彈窗 */}
+      <PaymentMethodsManageModal
+        visible={paymentMethodsModalVisible}
+        onClose={() => setPaymentMethodsModalVisible(false)}
       />
 
       {/* 匯出資料展示彈窗 */}

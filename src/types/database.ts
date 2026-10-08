@@ -50,7 +50,32 @@ export interface TransactionSplit {
   user_name?: string;
 }
 
-export type PaymentMethod = 'cash' | 'credit_card' | 'line_pay' | 'stored_value' | 'transfer' | 'other';
+export type PaymentMethod =
+  | 'cash'
+  | 'credit_card'
+  | 'line_pay'
+  | 'px_pay'
+  | 'easycard_pay'
+  | 'jkopay'
+  | 'stored_value'
+  | 'transfer'
+  | 'other'
+  | (string & {});
+
+export interface CustomPaymentMethod {
+  id: string; // 例如：cash, credit_card, line_pay, px_pay, easycard_pay, jkopay, stored_value, transfer 或 UUID
+  ledger_id?: string;
+  name: string; // 例如：全支付, 悠遊付, 街口支付, 現金, 信用卡
+  icon: string; // 例如：🔵, 🩵, 🟣, 💵, 💳, 🚌, 🏦
+  color: string; // 識別色 (十六進位色碼)
+  type?: 'cash' | 'credit_card' | 'e_wallet' | 'stored_value' | 'bank' | 'other';
+  supports_credit_card?: boolean; // 是否支援綁定信用卡扣款（如 LINE Pay、全支付、街口、Apple Pay）
+  is_enabled: boolean; // 是否啟用/顯示於記帳選單（使用者可隨時隱藏不常用的）
+  is_system?: boolean; // 是否為系統預設項目（預設不可刪除，但可自由停用/隱藏與調整順序）
+  sort_order: number;
+  created_at?: string;
+}
+
 export type AccountType = 'credit_card' | 'stored_value' | 'cash' | 'bank' | 'other';
 
 export interface PaymentAccount {

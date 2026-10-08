@@ -34,9 +34,10 @@ const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFont
 );
 import { useLedger } from '../context/LedgerContext';
 import { Transaction, TransactionType, PaymentMethod } from '../types/database';
-import { PAYMENT_METHOD_OPTIONS, sortAccountsByUser } from '../lib/payment';
+import { PAYMENT_METHOD_OPTIONS, DEFAULT_PAYMENT_METHODS, sortAccountsByUser } from '../lib/payment';
 import { getCategoryIcon } from '../lib/icons';
 import { DatePickerModal } from './DatePickerModal';
+import { PaymentMethodsManageModal } from './PaymentMethodsManageModal';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -89,8 +90,9 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   transaction,
   onClose,
 }) => {
-  const { categories, members, currentUser, isOwner, updateTransaction, deleteTransaction, getMemberById, getCategoryById, recentMerchants, paymentAccounts } = useLedger();
+  const { categories, members, currentUser, isOwner, updateTransaction, deleteTransaction, getMemberById, getCategoryById, recentMerchants, paymentAccounts, paymentMethods } = useLedger();
 
+  const [paymentMethodsModalVisible, setPaymentMethodsModalVisible] = useState<boolean>(false);
   const [type, setType] = useState<TransactionType>(() => transaction?.type || 'expense');
   const [amount, setAmount] = useState<string>(() => (transaction?.amount ? String(transaction.amount) : ''));
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(() => {
@@ -175,6 +177,30 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     [paymentAccounts, targetPayerId]
   );
 
+  // 取得有效啟用的付款方式清單（若當前交易的付款方式被停用，仍保留顯示）
+  const activePaymentMethods = React.useMemo(() => {
+    const list = paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS;
+    const enabled = list.filter(m => m.is_enabled !== false);
+    if (paymentMethod && !enabled.some(m => m.id === paymentMethod)) {
+      const target = list.find(m => m.id === paymentMethod);
+      if (target) enabled.push(target);
+    }
+    return enabled.length > 0 ? enabled : list;
+  }, [paymentMethods, paymentMethod]);
+
+  const currentMethodObj = React.useMemo(() => {
+    const list = paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS;
+    return list.find(m => m.id === paymentMethod);
+  }, [paymentMethods, paymentMethod]);
+
+  const supportsCreditCard = currentMethodObj
+    ? !!currentMethodObj.supports_credit_card
+    : (paymentMethod === 'credit_card' || paymentMethod === 'line_pay' || paymentMethod === 'px_pay' || paymentMethod === 'easycard_pay' || paymentMethod === 'jkopay');
+
+  const isStoredValue = currentMethodObj
+    ? (currentMethodObj.type === 'stored_value' || currentMethodObj.id === 'stored_value')
+    : paymentMethod === 'stored_value';
+
   // 該筆交易的付款人資料與權限判定（僅付款人為本機使用成員才有權限修改或刪除）
   const txPayerProfile = React.useMemo(() => {
     return transaction?.paid_by ? getMemberById(transaction.paid_by) : undefined;
@@ -237,10 +263,14 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   // 切換付款方式
   const handleMethodChange = (method: PaymentMethod) => {
     setPaymentMethod(method);
-    if (method === 'credit_card' || method === 'line_pay') {
+    const mObj = (paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS).find(m => m.id === method);
+    const isCc = mObj ? !!mObj.supports_credit_card : (method === 'credit_card' || method === 'line_pay' || method === 'px_pay');
+    const isSv = mObj ? (mObj.type === 'stored_value' || mObj.id === 'stored_value') : method === 'stored_value';
+
+    if (isCc) {
       const userCard = creditCards.find(c => c.user_id === paidBy) || creditCards[0];
       if (userCard) setSelectedAccountId(userCard.id);
-    } else if (method === 'stored_value') {
+    } else if (isSv) {
       const userCard = storedValueCards.find(c => c.user_id === paidBy) || storedValueCards[0];
       if (userCard) setSelectedAccountId(userCard.id);
     } else {
@@ -514,33 +544,47 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
             {/* 付款方式與卡片 */}
             <View style={styles.sectionLabelRow}>
-              <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>付款方式</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>付款方式</Text>
+                {canEdit && (
+                  <TouchableOpacity
+                    style={styles.manageMethodsSmallBtn}
+                    onPress={() => setPaymentMethodsModalVisible(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.manageMethodsSmallBtnText} maxFontSizeMultiplier={1.08}>⚙️ 管理</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
               <Text style={styles.dateHintText} maxFontSizeMultiplier={1.15}>
-                {paymentMethod === 'credit_card'
+                {supportsCreditCard
                   ? '(可選信用卡便於對帳)'
-                  : paymentMethod === 'stored_value'
+                  : isStoredValue
                   ? '(連動悠遊卡扣餘額)'
                   : ''}
               </Text>
             </View>
             <View style={styles.methodRow}>
-              {PAYMENT_METHOD_OPTIONS.map((opt) => {
-                const isSelected = paymentMethod === opt.key;
+              {activePaymentMethods.map((opt) => {
+                const isSelected = paymentMethod === opt.id;
                 return (
                   <TouchableOpacity
-                    key={opt.key}
+                    key={opt.id}
                     disabled={!canEdit}
                     style={[
                       styles.methodChip,
-                      isSelected && styles.methodChipActive,
+                      isSelected && { borderColor: opt.color || '#4F46E5', backgroundColor: `${opt.color || '#4F46E5'}15` },
                       !canEdit && !isSelected && styles.readOnlyUnselectedChip,
                     ]}
-                    onPress={() => handleMethodChange(opt.key)}
+                    onPress={() => handleMethodChange(opt.id as any)}
                     activeOpacity={0.7}
                   >
                     <Text style={styles.methodChipIcon}>{opt.icon}</Text>
                     <Text
-                      style={[styles.methodChipText, isSelected && styles.methodChipTextActive]}
+                      style={[
+                        styles.methodChipText,
+                        isSelected && { color: opt.color || '#4F46E5', fontWeight: '700' },
+                      ]}
                       maxFontSizeMultiplier={1.15}
                     >
                       {opt.name}
@@ -550,8 +594,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               })}
             </View>
 
-            {/* 子層：當選擇信用卡或 LINE Pay 時，展開關聯信用卡列表 */}
-            {(paymentMethod === 'credit_card' || paymentMethod === 'line_pay') && creditCards.length > 0 && (
+            {/* 子層：當選擇信用卡或支援信用卡的行動支付時，展開關聯信用卡列表 */}
+            {supportsCreditCard && creditCards.length > 0 && (
               <View style={styles.subCardContainer}>
                 <Text style={styles.subCardLabel} maxFontSizeMultiplier={1.15}>
                   💳 選擇卡片 (對帳核算使用)：
@@ -591,8 +635,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               </View>
             )}
 
-            {/* 子層：當選擇悠遊卡時，展開儲值卡列表 */}
-            {paymentMethod === 'stored_value' && storedValueCards.length > 0 && (
+            {/* 子層：當選擇悠遊卡/儲值卡時，展開儲值卡列表 */}
+            {isStoredValue && storedValueCards.length > 0 && (
               <View style={styles.subCardContainer}>
                 <Text style={styles.subCardLabel} maxFontSizeMultiplier={1.15}>
                   🚌 選擇儲值卡 (將自動扣減餘額)：
@@ -825,6 +869,11 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         onClose={() => setDatePickerVisible(false)}
         selectedDate={curDate}
         onSelectDate={handleSelectDate}
+      />
+
+      <PaymentMethodsManageModal
+        visible={paymentMethodsModalVisible}
+        onClose={() => setPaymentMethodsModalVisible(false)}
       />
     </Modal>
   );
@@ -1200,6 +1249,19 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
+  },
+  manageMethodsSmallBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
+    borderWidth: 0.5,
+    borderColor: '#E5E7EB',
+  },
+  manageMethodsSmallBtnText: {
+    fontSize: 11,
+    color: '#4B5563',
+    fontWeight: '600',
   },
   methodRow: {
     flexDirection: 'row',
