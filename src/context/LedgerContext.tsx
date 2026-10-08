@@ -36,6 +36,7 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { id: '30000000-0000-4000-8000-000000000007', name: '育兒教育', icon: '👶', color: '#06B6D4', type: 'expense', sort_order: 7 },
   { id: '30000000-0000-4000-8000-000000000008', name: '薪資收入', icon: '💰', color: '#059669', type: 'income', sort_order: 8 },
   { id: '30000000-0000-4000-8000-000000000009', name: '投資理財', icon: '📈', color: '#2563EB', type: 'income', sort_order: 9 },
+  { id: '30000000-0000-4000-8000-000000000010', name: '零用錢', icon: '💵', color: '#10B981', type: 'income', sort_order: 10 },
 ];
 
 export const DEFAULT_MEMBERS: Profile[] = [
@@ -133,6 +134,51 @@ const INITIAL_TRANSACTIONS: Transaction[] = [
     is_settled: true,
     created_at: new Date().toISOString(),
   },
+  {
+    id: '40000000-0000-4000-8000-000000000006',
+    ledger_id: DEMO_LEDGER_ID,
+    creator_id: DEMO_USER_DAD,
+    category_id: DEFAULT_CATEGORIES[6].id,
+    amount: 1000,
+    type: 'expense',
+    paid_by: DEMO_USER_DAD,
+    merchant: '小寶',
+    payment_method: 'cash',
+    transacted_at: new Date(Date.now() - 3600000 * 96).toISOString(),
+    note: '給 小寶 零用錢',
+    is_settled: true,
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: '40000000-0000-4000-8000-000000000007',
+    ledger_id: DEMO_LEDGER_ID,
+    creator_id: DEMO_USER_DAD,
+    category_id: DEFAULT_CATEGORIES[9].id,
+    amount: 1000,
+    type: 'income',
+    paid_by: DEMO_USER_KID,
+    merchant: '爸爸',
+    payment_method: 'cash',
+    transacted_at: new Date(Date.now() - 3600000 * 96 + 1000).toISOString(),
+    note: '爸爸 給的零用錢',
+    is_settled: true,
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: '40000000-0000-4000-8000-000000000008',
+    ledger_id: DEMO_LEDGER_ID,
+    creator_id: DEMO_USER_KID,
+    category_id: DEFAULT_CATEGORIES[0].id,
+    amount: 120,
+    type: 'expense',
+    paid_by: DEMO_USER_KID,
+    merchant: '7-11',
+    payment_method: 'cash',
+    transacted_at: new Date(Date.now() - 3600000 * 12).toISOString(),
+    note: '放學點心麵包與牛奶',
+    is_settled: true,
+    created_at: new Date().toISOString(),
+  },
 ];
 
 export interface LiveToastNotification {
@@ -183,6 +229,17 @@ interface LedgerContextType {
     }
   ) => Promise<boolean>;
   deleteTransaction: (id: string) => Promise<void>;
+  transferAllowance: (data: {
+    amount: number;
+    fromMemberId: string;
+    toMemberId: string;
+    expenseCategoryId?: string;
+    incomeCategoryId?: string;
+    paymentMethod?: PaymentMethod;
+    accountId?: string;
+    transacted_at?: string;
+    note?: string;
+  }) => Promise<{ success: boolean; error?: string; parentTxId?: string; kidTxId?: string }>;
   paymentAccounts: PaymentAccount[];
   addPaymentAccount: (account: Omit<PaymentAccount, 'id' | 'ledger_id' | 'created_at'>) => Promise<PaymentAccount>;
   updatePaymentAccount: (id: string, data: Partial<PaymentAccount>) => Promise<boolean>;
@@ -408,6 +465,7 @@ export const KNOWN_CATEGORY_UUIDS: Record<string, Partial<Category>> = {
   '3b4258cb-f8c3-4eb0-958a-009a86d68a86': { name: '育兒教育', icon: '👶', color: '#06B6D4', type: 'expense' },
   '52678d37-fed9-4596-90dd-4f606bc62c0b': { name: '薪資收入', icon: '💰', color: '#059669', type: 'income' },
   'c5648d3b-dfcb-4aa0-b230-a9074bfa58f5': { name: '投資理財', icon: '📈', color: '#2563EB', type: 'income' },
+  '30000000-0000-4000-8000-000000000010': { name: '零用錢', icon: '💵', color: '#10B981', type: 'income' },
 };
 
 export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -600,6 +658,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           try {
             const parsed = JSON.parse(savedCategories);
             if (Array.isArray(parsed) && parsed.length > 0) {
+              if (!parsed.some((c: any) => c.type === 'income' && (c.name.includes('零用') || c.name === '零用錢'))) {
+                const allowanceCat = DEFAULT_CATEGORIES.find(c => c.name === '零用錢');
+                if (allowanceCat) parsed.push(allowanceCat);
+              }
               activeCategories = parsed;
               setCategories(parsed);
             }
@@ -1240,9 +1302,31 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       .order('sort_order', { ascending: true });
 
     if (catRows && catRows.length > 0) {
-      setCategories(catRows);
-      await AsyncStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(catRows));
-      await AsyncStorage.setItem(`${STORAGE_KEYS.CATEGORIES}_${targetLedger.id}`, JSON.stringify(catRows));
+      let finalCats = [...catRows];
+      const hasAllowance = finalCats.some(c => c.type === 'income' && (c.name.includes('零用') || c.name === '零用錢'));
+      if (!hasAllowance && isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+        const allowanceCat = {
+          id: generateUUID(),
+          ledger_id: targetLedger.id,
+          name: '零用錢',
+          icon: '💵',
+          color: '#10B981',
+          type: 'income' as CategoryType,
+          sort_order: (finalCats[finalCats.length - 1]?.sort_order || 9) + 1,
+        };
+        try {
+          supabase.from('categories').insert(allowanceCat).then(({ error }) => {
+            if (error) console.warn('自動同步零用錢分類失敗:', error.message);
+          });
+          finalCats.push(allowanceCat);
+        } catch {}
+      } else if (!hasAllowance) {
+        const defaultAllowance = DEFAULT_CATEGORIES.find(c => c.name === '零用錢');
+        if (defaultAllowance) finalCats.push(defaultAllowance);
+      }
+      setCategories(finalCats);
+      await AsyncStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(finalCats));
+      await AsyncStorage.setItem(`${STORAGE_KEYS.CATEGORIES}_${targetLedger.id}`, JSON.stringify(finalCats));
     } else {
       const catsToInsert = DEFAULT_CATEGORIES.map(c => ({
         id: generateUUID(),
@@ -3193,6 +3277,224 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  // 方案 D：家長一鍵撥款 / 轉帳記帳（一鍵自動產生「家長支出 + 小孩收入」兩筆紀錄）
+  const transferAllowance = async (data: {
+    amount: number;
+    fromMemberId: string;
+    toMemberId: string;
+    expenseCategoryId?: string;
+    incomeCategoryId?: string;
+    paymentMethod?: PaymentMethod;
+    accountId?: string;
+    transacted_at?: string;
+    note?: string;
+  }): Promise<{ success: boolean; error?: string; parentTxId?: string; kidTxId?: string }> => {
+    if (!data.amount || isNaN(data.amount) || data.amount <= 0) {
+      return { success: false, error: '請輸入大於 0 的有效金額' };
+    }
+
+    const fromMember = members.find(m => m.id === data.fromMemberId) || getMemberById(data.fromMemberId) || effectiveCurrentUser;
+    const toMember = members.find(m => m.id === data.toMemberId) || getMemberById(data.toMemberId);
+
+    if (!toMember) {
+      return { success: false, error: '請選擇受款成員' };
+    }
+    if (fromMember.id === toMember.id) {
+      return { success: false, error: '出資成員與受款成員不能相同' };
+    }
+
+    // 1. 解析出資方支出分類 (優先取指定分類、育兒教育、零用錢)
+    let expCat = (data.expenseCategoryId ? getCategoryById(data.expenseCategoryId) : undefined);
+    if (!expCat || expCat.type !== 'expense') {
+      expCat = categories.find(c => c.type === 'expense' && (c.name.includes('育兒') || c.name.includes('教育') || c.name.includes('零用')))
+        || categories.find(c => c.type === 'expense')
+        || DEFAULT_CATEGORIES.find(c => c.name === '育兒教育')
+        || DEFAULT_CATEGORIES[0];
+    }
+
+    // 2. 解析受款方收入分類 (優先取「零用錢」收入分類)
+    let incCat = (data.incomeCategoryId ? getCategoryById(data.incomeCategoryId) : undefined);
+    if (!incCat || incCat.type !== 'income') {
+      incCat = categories.find(c => c.type === 'income' && (c.name.includes('零用') || c.name === '零用錢'))
+        || categories.find(c => c.type === 'income')
+        || DEFAULT_CATEGORIES.find(c => c.name === '零用錢')
+        || DEFAULT_CATEGORIES[7];
+    }
+
+    const parentTxId = generateUUID();
+    const kidTxId = generateUUID();
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const authUserId = session?.user?.id;
+    let validCreatorId: string =
+      effectiveCurrentUser?.id && isValidUUID(effectiveCurrentUser.id) && !effectiveCurrentUser.id.startsWith('20000000')
+        ? effectiveCurrentUser.id
+        : (authUserId && isValidUUID(authUserId)
+            ? authUserId
+            : (members.find(m => isValidUUID(m.id) && !m.id.startsWith('20000000'))?.id || DEMO_USER_DAD));
+
+    let validLedgerId = currentLedger.id;
+    if (!isValidUUID(validLedgerId)) {
+      validLedgerId = DEMO_LEDGER_ID;
+    }
+
+    const baseDate = data.transacted_at ? new Date(data.transacted_at) : new Date();
+    const parentTransactedAt = !isNaN(baseDate.getTime()) ? baseDate.toISOString() : new Date().toISOString();
+    const kidTransactedAt = !isNaN(baseDate.getTime()) ? new Date(baseDate.getTime() + 1).toISOString() : new Date().toISOString();
+
+    const customNote = (data.note || '').trim();
+    const parentNote = customNote ? `給${toMember.display_name}零用錢: ${customNote}` : `給 ${toMember.display_name} 零用錢`;
+    const kidNote = customNote ? `${fromMember.display_name}給的零用錢: ${customNote}` : `${fromMember.display_name} 給的零用錢`;
+
+    const resolvedAccount = data.accountId ? getAccountById(data.accountId) : undefined;
+
+    const parentTx: Transaction = {
+      id: parentTxId,
+      ledger_id: validLedgerId,
+      creator_id: validCreatorId,
+      category_id: expCat.id,
+      category: expCat,
+      amount: data.amount,
+      type: 'expense',
+      paid_by: fromMember.id,
+      merchant: toMember.display_name,
+      payment_method: data.paymentMethod || 'cash',
+      account_id: data.accountId || undefined,
+      payment_account: resolvedAccount,
+      is_reconciled: false,
+      note: parentNote,
+      transacted_at: parentTransactedAt,
+      is_settled: false,
+      created_at: new Date().toISOString(),
+    };
+
+    const kidTx: Transaction = {
+      id: kidTxId,
+      ledger_id: validLedgerId,
+      creator_id: validCreatorId,
+      category_id: incCat.id,
+      category: incCat,
+      amount: data.amount,
+      type: 'income',
+      paid_by: toMember.id,
+      merchant: fromMember.display_name,
+      payment_method: data.paymentMethod || 'cash',
+      is_reconciled: false,
+      note: kidNote,
+      transacted_at: kidTransactedAt,
+      is_settled: true,
+      created_at: new Date().toISOString(),
+    };
+
+    // 若出資方式為儲值卡 (stored_value) 且有指定卡片，扣減該卡餘額
+    if (data.paymentMethod === 'stored_value' && data.accountId) {
+      setPaymentAccounts((prev) => {
+        const updated = prev.map(acc => {
+          if (acc.id === data.accountId) {
+            return { ...acc, balance: Number((acc.balance - data.amount).toFixed(2)) };
+          }
+          return acc;
+        });
+        savePaymentAccountsToStorage(updated).catch(() => {});
+        return updated;
+      });
+    }
+
+    // 樂觀更新本地畫面
+    const isOnlinePublishing = isConfigured && isCloudSynced && validLedgerId !== DEMO_LEDGER_ID;
+    (parentTx as any)._isPendingSync = true;
+    (kidTx as any)._isPendingSync = true;
+
+    setTransactions((prev) => {
+      const nextTx = [parentTx, kidTx, ...prev];
+      saveTransactionsToStorage(nextTx).catch(() => {});
+      return nextTx;
+    });
+
+    // 廣播即時通知
+    triggerLiveToast({
+      id: `allowance-${parentTxId}-${Date.now()}`,
+      type: 'insert',
+      actorName: fromMember.display_name,
+      avatar: fromMember.avatar_url || '🎁',
+      title: '🎁 發放零用錢',
+      message: `撥款 NT$ ${data.amount.toLocaleString()} 給 ${toMember.display_name}（已自動產生雙向紀錄）`,
+      amount: data.amount,
+      createdAt: Date.now(),
+    });
+
+    // 若正式雲端帳本，同步寫入 Supabase
+    if (isOnlinePublishing) {
+      try {
+        const makePayload = (tx: Transaction) => {
+          const payload: any = {
+            id: tx.id,
+            ledger_id: tx.ledger_id,
+            creator_id: tx.creator_id,
+            category_id: tx.category_id,
+            amount: tx.amount,
+            type: tx.type,
+            paid_by: tx.paid_by,
+            transacted_at: tx.transacted_at,
+            is_settled: tx.is_settled,
+          };
+          if (hasMerchantColumnRef.current) {
+            payload.merchant = tx.merchant || null;
+            payload.note = tx.note;
+          } else {
+            payload.note = tx.merchant ? `[${tx.merchant}] ${tx.note || ''}`.trim() : tx.note;
+          }
+          if (hasPaymentColumnsRef.current) {
+            if (tx.payment_method) payload.payment_method = tx.payment_method;
+            if (tx.account_id && !tx.account_id.startsWith('50000000')) payload.account_id = tx.account_id;
+            if (tx.is_reconciled !== undefined) payload.is_reconciled = tx.is_reconciled;
+          }
+          return payload;
+        };
+
+        const payloads = [makePayload(parentTx), makePayload(kidTx)];
+        let { error: txError } = await supabase.from('transactions').insert(payloads);
+
+        if (txError && (txError.code === '42703' || txError.code === 'PGRST204' || txError.message?.includes('column') || txError.message?.includes('schema cache'))) {
+          hasMerchantColumnRef.current = false;
+          hasPaymentColumnsRef.current = false;
+          const compatPayloads = payloads.map(p => {
+            const cp = { ...p };
+            delete cp.merchant;
+            delete cp.payment_method;
+            delete cp.account_id;
+            delete cp.is_reconciled;
+            return cp;
+          });
+          const retryRes = await supabase.from('transactions').insert(compatPayloads);
+          txError = retryRes.error;
+        }
+
+        if (txError && (txError.code === '23503' || txError.message?.includes('foreign key'))) {
+          const safePayloads = payloads.map(p => ({
+            ...p,
+            paid_by: validCreatorId || authUserId,
+            category_id: null,
+            account_id: null,
+          }));
+          const retryFkRes = await supabase.from('transactions').insert(safePayloads);
+          txError = retryFkRes.error;
+        }
+
+        if (txError) {
+          console.warn('雲端寫入零用錢雙向交易失敗 (保留本地待補同步):', txError.message);
+        } else {
+          delete (parentTx as any)._isPendingSync;
+          delete (kidTx as any)._isPendingSync;
+        }
+      } catch (err: any) {
+        console.warn('雲端推送零用錢交易異常:', err?.message || err);
+      }
+    }
+
+    return { success: true, parentTxId, kidTxId };
+  };
+
   // 刪除交易
   const deleteTransaction = async (id: string) => {
     deletedTxIdsRef.current.add(id);
@@ -4442,6 +4744,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addTransaction,
         updateTransaction,
         deleteTransaction,
+        transferAllowance,
         recentMerchants,
         recordMerchant,
         exportToCSV,

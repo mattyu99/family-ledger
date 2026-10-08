@@ -186,6 +186,8 @@ function MainApp() {
 
   const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'family'>('transactions');
   const [modalVisible, setModalVisible] = useState(false);
+  const [modalMode, setModalMode] = useState<'expense' | 'income' | 'allowance'>('expense');
+  const [modalRecipientId, setModalRecipientId] = useState<string | undefined>(undefined);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [reconcileModalVisible, setReconcileModalVisible] = useState(false);
   const [reconcileAccountType, setReconcileAccountType] = useState<'credit_card' | 'stored_value'>('credit_card');
@@ -2490,10 +2492,27 @@ function MainApp() {
             {/* 本月收支摘要卡片 */}
             <View style={styles.summaryCard}>
               <View style={styles.summaryHeader}>
-                <Text style={styles.summaryTitle} maxFontSizeMultiplier={1.2}>{summaryCardTitle}</Text>
-                <Text style={styles.currencyLabel} maxFontSizeMultiplier={1.2}>
-                  {isFiltered ? '🔍 已套用篩選' : 'TWD (新台幣)'}
-                </Text>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={styles.summaryTitle} maxFontSizeMultiplier={1.2}>{summaryCardTitle}</Text>
+                  <Text style={styles.currencyLabel} maxFontSizeMultiplier={1.2}>
+                    {isFiltered ? '🔍 已套用篩選' : 'TWD (新台幣)'}
+                  </Text>
+                </View>
+                {filterMemberId !== 'all' && filterMemberId !== currentUser?.id && (
+                  <TouchableOpacity
+                    style={styles.summaryAllowanceBtn}
+                    onPress={() => {
+                      setModalMode('allowance');
+                      setModalRecipientId(filterMemberId);
+                      setModalVisible(true);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.summaryAllowanceBtnText} maxFontSizeMultiplier={1.08}>
+                      🎁 撥零用錢
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
               <View style={styles.summaryGrid}>
@@ -3243,14 +3262,28 @@ function MainApp() {
                     點擊成員可開啟設定；記帳時預設自動帶入個人身分
                   </Text>
                 </View>
-                {isOwner && (
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                   <TouchableOpacity
-                    style={styles.addMemberBtn}
-                    onPress={() => setMemberModalVisible(true)}
+                    style={styles.allowanceQuickBtn}
+                    onPress={() => {
+                      setModalMode('allowance');
+                      setModalRecipientId(undefined);
+                      setModalVisible(true);
+                    }}
+                    activeOpacity={0.7}
                   >
-                    <Text style={styles.addMemberBtnText}>＋ 新增成員</Text>
+                    <Text style={styles.allowanceQuickBtnText} maxFontSizeMultiplier={1.08}>🎁 撥零用錢</Text>
                   </TouchableOpacity>
-                )}
+                  {isOwner && (
+                    <TouchableOpacity
+                      style={styles.addMemberBtn}
+                      onPress={() => setMemberModalVisible(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.addMemberBtnText}>＋ 新增成員</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
 
               <View style={styles.userSwitchRow}>
@@ -3835,7 +3868,14 @@ function MainApp() {
 
       {/* 浮動記帳按鈕 (FAB) - 僅在「明細」分頁顯示，避免遮擋家庭成員與設定操作 */}
       {activeTab === 'transactions' && (
-        <TouchableOpacity style={styles.fab} onPress={() => setModalVisible(true)}>
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={() => {
+            setModalMode('expense');
+            setModalRecipientId(undefined);
+            setModalVisible(true);
+          }}
+        >
           <Text style={styles.fabText}>＋</Text>
         </TouchableOpacity>
       )}
@@ -3868,7 +3908,15 @@ function MainApp() {
       </View>
 
       {/* 新增記帳彈窗 */}
-      <AddTransactionModal visible={modalVisible} onClose={() => setModalVisible(false)} />
+      <AddTransactionModal
+        visible={modalVisible}
+        initialMode={modalMode}
+        defaultRecipientId={modalRecipientId}
+        onClose={() => {
+          setModalVisible(false);
+          setModalRecipientId(undefined);
+        }}
+      />
 
       {/* 編輯記帳明細彈窗 */}
       <EditTransactionModal
@@ -5843,6 +5891,33 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748B',
     marginTop: 2,
+  },
+  allowanceQuickBtn: {
+    backgroundColor: '#8B5CF6',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  allowanceQuickBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  summaryAllowanceBtn: {
+    backgroundColor: '#8B5CF6',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  summaryAllowanceBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   addMemberBtn: {
     backgroundColor: '#EEF2FF',
