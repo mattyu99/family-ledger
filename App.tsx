@@ -2541,7 +2541,6 @@ function MainApp() {
 
             {/* 悠遊卡 / 一卡通 即時餘額與快捷儲值小工具 */}
             <StoredValueWidget
-              onManageAccounts={() => setAccountsManageModalVisible(true)}
               onOpenReconcile={(card) => {
                 setReconcileAccountType('stored_value');
                 setReconcileAccountId(card?.id);

@@ -51,11 +51,13 @@ const COLOR_PALETTE = [
 interface PaymentAccountsManageModalProps {
   visible: boolean;
   onClose: () => void;
+  initialTab?: 'credit_card' | 'stored_value';
 }
 
 export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProps> = ({
   visible,
   onClose,
+  initialTab,
 }) => {
   const { paymentAccounts, addPaymentAccount, updatePaymentAccount, deletePaymentAccount, restoreDefaultAccounts, members, currentUser, isOwner } = useLedger();
 
@@ -67,18 +69,21 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     }
   };
 
+  const [activeTab, setActiveTab] = useState<'credit_card' | 'stored_value'>(initialTab || 'credit_card');
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
   const formScrollRef = useRef<ScrollView>(null);
 
-  // 當彈窗關閉時，自動重設為瀏覽清單狀態，防止下次進入時殘留編輯畫面
+  // 當彈窗關閉時，自動重設為瀏覽清單狀態；開啟且有傳入 initialTab 時自動切換
   useEffect(() => {
     if (!visible) {
       setIsEditing(false);
       setEditingId(null);
+    } else if (initialTab) {
+      setActiveTab(initialTab);
     }
-  }, [visible]);
+  }, [visible, initialTab]);
 
   // 監聽鍵盤高度 (Android, iOS 與 Mobile Web)
   useEffect(() => {
@@ -153,6 +158,9 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
       showAlert('權限不足', '只有帳本管理員才能新增支付卡片與帳戶');
       return;
     }
+    if (type === 'stored_value' || type === 'credit_card') {
+      setActiveTab(type);
+    }
     setIsEditing(true);
     setEditingId(null);
     setFormType(type);
@@ -170,6 +178,9 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
       return;
     }
     const matchedMember = acc.user_id && members.find(m => m.id === acc.user_id);
+    if (acc.type === 'stored_value' || acc.type === 'credit_card') {
+      setActiveTab(acc.type);
+    }
     setIsEditing(true);
     setEditingId(acc.id);
     setFormType(acc.type);
@@ -221,6 +232,9 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
       });
     }
 
+    if (formType === 'stored_value' || formType === 'credit_card') {
+      setActiveTab(formType);
+    }
     setIsEditing(false);
     setEditingId(null);
   };
@@ -283,14 +297,20 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
               <Text style={styles.title} maxFontSizeMultiplier={1.15}>
                 {isEditing
                   ? (editingId ? '✏️ 編輯卡片設定' : '＋ 新增卡片或帳戶')
-                  : (isOwner ? '💳 管理家庭卡片與帳戶' : '💳 家庭卡片與帳戶一覽')}
+                  : activeTab === 'credit_card'
+                    ? (isOwner ? '💳 管理家庭信用卡' : '💳 家庭信用卡一覽')
+                    : (isOwner ? '🚌 管理家庭悠遊卡' : '🚌 家庭悠遊卡一覽')}
               </Text>
               <Text style={styles.subtitle} maxFontSizeMultiplier={1.15}>
                 {isEditing
                   ? '設定卡片名稱、持卡人與每月結帳日'
-                  : (isOwner
-                    ? '設定全家的信用卡（含結帳日）與悠遊卡'
-                    : '家庭成員瀏覽模式（僅帳本管理員可新增、修改或刪除卡片）')}
+                  : activeTab === 'credit_card'
+                    ? (isOwner
+                      ? '設定全家的信用卡、持卡人與每月結帳日'
+                      : '家庭成員瀏覽模式（僅帳本管理員可新增、修改或刪除信用卡）')
+                    : (isOwner
+                      ? '設定全家的悠遊卡 / 儲值卡與即時餘額'
+                      : '家庭成員瀏覽模式（僅帳本管理員可新增、修改或刪除悠遊卡）')}
               </Text>
             </View>
             <TouchableOpacity
@@ -309,6 +329,37 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
               </Text>
             </TouchableOpacity>
           </View>
+
+          {/* 模式分頁切換 Tab */}
+          {!isEditing && (
+            <View style={styles.tabBar}>
+              <TouchableOpacity
+                style={[styles.tabItem, activeTab === 'credit_card' && styles.tabItemActive]}
+                onPress={() => setActiveTab('credit_card')}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[styles.tabItemText, activeTab === 'credit_card' && styles.tabItemTextActive]}
+                  maxFontSizeMultiplier={1.15}
+                >
+                  💳 信用卡 ({creditCards.length})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.tabItem, activeTab === 'stored_value' && styles.tabItemActive]}
+                onPress={() => setActiveTab('stored_value')}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[styles.tabItemText, activeTab === 'stored_value' && styles.tabItemTextActive]}
+                  maxFontSizeMultiplier={1.15}
+                >
+                  🚌 悠遊卡 ({storedValueCards.length})
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           {isEditing ? (
             /* 編輯 / 新增表單 */
@@ -481,99 +532,127 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                 </View>
               )}
 
-              {/* 信用卡區塊 */}
-              <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionTitle}>💳 信用卡清單 ({creditCards.length})</Text>
-                {isOwner && (
-                  <TouchableOpacity
-                    style={styles.addMiniBtn}
-                    onPress={() => handleOpenAdd('credit_card')}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.addMiniText}>+ 新增信用卡</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+              {activeTab === 'credit_card' ? (
+                /* 💳 信用卡分頁 */
+                <>
+                  <View style={styles.sectionHeaderRow}>
+                    <Text style={styles.sectionTitle}>💳 信用卡清單 ({creditCards.length})</Text>
+                    {isOwner && (
+                      <TouchableOpacity
+                        style={styles.addMiniBtn}
+                        onPress={() => handleOpenAdd('credit_card')}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.addMiniText}>+ 新增信用卡</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
 
-              {creditCards.length === 0 ? (
-                <Text style={styles.emptyNotice}>尚未設定信用卡</Text>
-              ) : (
-                creditCards.map(card => {
-                  const cardholder = members.find(m => m.id === card.user_id);
-                  return (
-                    <View key={card.id} style={[styles.cardItemRow, { borderLeftColor: card.color || '#3B82F6' }]}>
-                      <View style={styles.cardInfoCol}>
-                        <View style={styles.cardNameRow}>
-                          <Text style={styles.cardNameText}>{card.name}</Text>
-                          {!!card.last_four_digits && (
-                            <View style={styles.tagBadge}>
-                              <Text style={styles.tagBadgeText}>*{card.last_four_digits}</Text>
+                  {creditCards.length === 0 ? (
+                    <View style={styles.emptyStateContainer}>
+                      <Text style={styles.emptyNotice}>尚未設定信用卡</Text>
+                      {isOwner && (
+                        <TouchableOpacity
+                          style={styles.emptyAddBtn}
+                          onPress={() => handleOpenAdd('credit_card')}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.emptyAddBtnText}>＋ 新增第一張信用卡</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ) : (
+                    creditCards.map(card => {
+                      const cardholder = members.find(m => m.id === card.user_id);
+                      return (
+                        <View key={card.id} style={[styles.cardItemRow, { borderLeftColor: card.color || '#3B82F6' }]}>
+                          <View style={styles.cardInfoCol}>
+                            <View style={styles.cardNameRow}>
+                              <Text style={styles.cardNameText}>{card.name}</Text>
+                              {!!card.last_four_digits && (
+                                <View style={styles.tagBadge}>
+                                  <Text style={styles.tagBadgeText}>*{card.last_four_digits}</Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text style={styles.cardSubText}>
+                              {cardholder ? `${cardholder.avatar_url || '👤'} ${cardholder.display_name} · ` : '🏠 全家通用 · '}
+                              每月 {card.billing_cycle_date || 15} 號結帳
+                            </Text>
+                          </View>
+                          {isOwner && (
+                            <View style={styles.cardActionGroup}>
+                              <TouchableOpacity style={styles.editBtn} onPress={() => handleOpenEdit(card)}>
+                                <Text style={styles.editText}>編輯</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity style={styles.delBtn} onPress={() => handleDelete(card)}>
+                                <Text style={styles.delText}>刪除</Text>
+                              </TouchableOpacity>
                             </View>
                           )}
                         </View>
-                        <Text style={styles.cardSubText}>
-                          {cardholder ? `${cardholder.avatar_url || '👤'} ${cardholder.display_name} · ` : '🏠 全家通用 · '}
-                          每月 {card.billing_cycle_date || 15} 號結帳
-                        </Text>
-                      </View>
-                      {isOwner && (
-                        <View style={styles.cardActionGroup}>
-                          <TouchableOpacity style={styles.editBtn} onPress={() => handleOpenEdit(card)}>
-                            <Text style={styles.editText}>編輯</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity style={styles.delBtn} onPress={() => handleDelete(card)}>
-                            <Text style={styles.delText}>刪除</Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
-                    </View>
-                  );
-                })
-              )}
-
-              {/* 悠遊卡/儲值卡區塊 */}
-              <View style={[styles.sectionHeaderRow, { marginTop: 20 }]}>
-                <Text style={styles.sectionTitle}>🚌 悠遊卡 / 儲值卡 ({storedValueCards.length})</Text>
-                {isOwner && (
-                  <TouchableOpacity
-                    style={styles.addMiniBtn}
-                    onPress={() => handleOpenAdd('stored_value')}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.addMiniText}>+ 新增儲值卡</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              {storedValueCards.length === 0 ? (
-                <Text style={styles.emptyNotice}>尚未設定儲值卡</Text>
+                      );
+                    })
+                  )}
+                </>
               ) : (
-                storedValueCards.map(card => {
-                  const cardholder = members.find(m => m.id === card.user_id);
-                  return (
-                    <View key={card.id} style={[styles.cardItemRow, { borderLeftColor: card.color || '#0284C7' }]}>
-                      <View style={styles.cardInfoCol}>
-                        <View style={styles.cardNameRow}>
-                          <Text style={styles.cardNameText}>{card.name}</Text>
-                          <Text style={styles.balanceTag}>餘額: NT$ {Number(card.balance).toLocaleString()}</Text>
-                        </View>
-                        <Text style={styles.cardSubText}>
-                          {cardholder ? `${cardholder.avatar_url || '👤'} ${cardholder.display_name}` : '🏠 全家通用'}
-                        </Text>
-                      </View>
+                /* 🚌 悠遊卡 / 儲值卡分頁 */
+                <>
+                  <View style={styles.sectionHeaderRow}>
+                    <Text style={styles.sectionTitle}>🚌 悠遊卡 / 儲值卡 ({storedValueCards.length})</Text>
+                    {isOwner && (
+                      <TouchableOpacity
+                        style={styles.addMiniBtn}
+                        onPress={() => handleOpenAdd('stored_value')}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.addMiniText}>+ 新增儲值卡</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {storedValueCards.length === 0 ? (
+                    <View style={styles.emptyStateContainer}>
+                      <Text style={styles.emptyNotice}>尚未設定儲值卡</Text>
                       {isOwner && (
-                        <View style={styles.cardActionGroup}>
-                          <TouchableOpacity style={styles.editBtn} onPress={() => handleOpenEdit(card)}>
-                            <Text style={styles.editText}>編輯</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity style={styles.delBtn} onPress={() => handleDelete(card)}>
-                            <Text style={styles.delText}>刪除</Text>
-                          </TouchableOpacity>
-                        </View>
+                        <TouchableOpacity
+                          style={styles.emptyAddBtn}
+                          onPress={() => handleOpenAdd('stored_value')}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.emptyAddBtnText}>＋ 新增第一張儲值卡</Text>
+                        </TouchableOpacity>
                       )}
                     </View>
-                  );
-                })
+                  ) : (
+                    storedValueCards.map(card => {
+                      const cardholder = members.find(m => m.id === card.user_id);
+                      return (
+                        <View key={card.id} style={[styles.cardItemRow, { borderLeftColor: card.color || '#0284C7' }]}>
+                          <View style={styles.cardInfoCol}>
+                            <View style={styles.cardNameRow}>
+                              <Text style={styles.cardNameText}>{card.name}</Text>
+                              <Text style={styles.balanceTag}>餘額: NT$ {Number(card.balance).toLocaleString()}</Text>
+                            </View>
+                            <Text style={styles.cardSubText}>
+                              {cardholder ? `${cardholder.avatar_url || '👤'} ${cardholder.display_name}` : '🏠 全家通用'}
+                            </Text>
+                          </View>
+                          {isOwner && (
+                            <View style={styles.cardActionGroup}>
+                              <TouchableOpacity style={styles.editBtn} onPress={() => handleOpenEdit(card)}>
+                                <Text style={styles.editText}>編輯</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity style={styles.delBtn} onPress={() => handleDelete(card)}>
+                                <Text style={styles.delText}>刪除</Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })
+                  )}
+                </>
               )}
 
               {/* 恢復預設示範卡片按鈕 */}
@@ -651,9 +730,40 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#94A3B8',
   },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    padding: 3,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  tabItem: {
+    flex: 1,
+    paddingVertical: 7,
+    alignItems: 'center',
+    borderRadius: 9,
+  },
+  tabItemActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  tabItemText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  tabItemTextActive: {
+    color: '#1E293B',
+    fontWeight: '700',
+  },
   listScroll: {
     flex: 1,
-    marginTop: 12,
+    marginTop: 8,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -677,11 +787,34 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     fontWeight: '700',
   },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 28,
+    paddingHorizontal: 16,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderStyle: 'dashed',
+    marginVertical: 8,
+  },
   emptyNotice: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#94A3B8',
-    paddingVertical: 10,
-    paddingHorizontal: 4,
+    marginBottom: 8,
+  },
+  emptyAddBtn: {
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  emptyAddBtnText: {
+    color: '#4F46E5',
+    fontSize: 12.5,
+    fontWeight: '700',
   },
   cardItemRow: {
     flexDirection: 'row',
