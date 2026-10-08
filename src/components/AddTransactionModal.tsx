@@ -45,7 +45,6 @@ import { TransactionType, PaymentMethod } from '../types/database';
 import { PAYMENT_METHOD_OPTIONS, DEFAULT_PAYMENT_METHODS, sortAccountsByUser } from '../lib/payment';
 import { getCategoryIcon } from '../lib/icons';
 import { DatePickerModal } from './DatePickerModal';
-import { PaymentMethodsManageModal } from './PaymentMethodsManageModal';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -113,7 +112,6 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     paymentMethods,
   } = useLedger();
 
-  const [paymentMethodsModalVisible, setPaymentMethodsModalVisible] = useState<boolean>(false);
   const [mode, setMode] = useState<'expense' | 'income' | 'allowance'>(initialMode);
   const [type, setType] = useState<TransactionType>('expense');
   const [amount, setAmount] = useState<string>('');
@@ -133,11 +131,15 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [allowanceRecipientId, setAllowanceRecipientId] = useState<string>('');
   const [allowanceExpenseCatId, setAllowanceExpenseCatId] = useState<string>('');
 
-  // 取得有效啟用的付款方式清單
+  // 取得有效啟用的付款方式清單（確保現金永遠存在不被全數隱藏）
   const activePaymentMethods = React.useMemo(() => {
     const list = paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS;
     const enabled = list.filter(m => m.is_enabled !== false);
-    return enabled.length > 0 ? enabled : list;
+    if (!enabled.some(m => m.id === 'cash')) {
+      const cashObj = list.find(m => m.id === 'cash') || DEFAULT_PAYMENT_METHODS[0];
+      enabled.unshift(cashObj);
+    }
+    return enabled;
   }, [paymentMethods]);
 
   const currentMethodObj = React.useMemo(() => {
@@ -662,16 +664,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
                 {/* 付款方式與卡片 */}
                 <View style={styles.sectionLabelRow}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>出資支付方式</Text>
-                    <TouchableOpacity
-                      style={styles.manageMethodsSmallBtn}
-                      onPress={() => setPaymentMethodsModalVisible(true)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.manageMethodsSmallBtnText} maxFontSizeMultiplier={1.08}>⚙️ 管理</Text>
-                    </TouchableOpacity>
-                  </View>
+                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>出資支付方式</Text>
                 </View>
                 <View style={styles.methodRow}>
                   {activePaymentMethods.map((opt) => {
@@ -879,16 +872,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
                 {/* 付款方式與卡片 */}
                 <View style={styles.sectionLabelRow}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>付款方式</Text>
-                    <TouchableOpacity
-                      style={styles.manageMethodsSmallBtn}
-                      onPress={() => setPaymentMethodsModalVisible(true)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.manageMethodsSmallBtnText} maxFontSizeMultiplier={1.08}>⚙️ 管理</Text>
-                    </TouchableOpacity>
-                  </View>
+                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>付款方式</Text>
                   <Text style={styles.dateHintText} maxFontSizeMultiplier={1.15}>
                     {supportsCreditCard
                       ? '(可選信用卡便於對帳)'
@@ -1179,11 +1163,6 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         onClose={() => setDatePickerVisible(false)}
         selectedDate={selectedDate}
         onSelectDate={(newDate: Date) => setSelectedDate(newDate)}
-      />
-
-      <PaymentMethodsManageModal
-        visible={paymentMethodsModalVisible}
-        onClose={() => setPaymentMethodsModalVisible(false)}
       />
     </Modal>
   );

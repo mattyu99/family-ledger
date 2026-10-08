@@ -37,7 +37,6 @@ import { Transaction, TransactionType, PaymentMethod } from '../types/database';
 import { PAYMENT_METHOD_OPTIONS, DEFAULT_PAYMENT_METHODS, sortAccountsByUser } from '../lib/payment';
 import { getCategoryIcon } from '../lib/icons';
 import { DatePickerModal } from './DatePickerModal';
-import { PaymentMethodsManageModal } from './PaymentMethodsManageModal';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -92,7 +91,6 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 }) => {
   const { categories, members, currentUser, isOwner, updateTransaction, deleteTransaction, getMemberById, getCategoryById, recentMerchants, paymentAccounts, paymentMethods } = useLedger();
 
-  const [paymentMethodsModalVisible, setPaymentMethodsModalVisible] = useState<boolean>(false);
   const [type, setType] = useState<TransactionType>(() => transaction?.type || 'expense');
   const [amount, setAmount] = useState<string>(() => (transaction?.amount ? String(transaction.amount) : ''));
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(() => {
@@ -177,15 +175,19 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     [paymentAccounts, targetPayerId]
   );
 
-  // 取得有效啟用的付款方式清單（若當前交易的付款方式被停用，仍保留顯示）
+  // 取得有效啟用的付款方式清單（現金永遠保留，若當前交易的付款方式被停用，仍保留顯示）
   const activePaymentMethods = React.useMemo(() => {
     const list = paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS;
     const enabled = list.filter(m => m.is_enabled !== false);
+    if (!enabled.some(m => m.id === 'cash')) {
+      const cashObj = list.find(m => m.id === 'cash') || DEFAULT_PAYMENT_METHODS[0];
+      enabled.unshift(cashObj);
+    }
     if (paymentMethod && !enabled.some(m => m.id === paymentMethod)) {
       const target = list.find(m => m.id === paymentMethod);
       if (target) enabled.push(target);
     }
-    return enabled.length > 0 ? enabled : list;
+    return enabled;
   }, [paymentMethods, paymentMethod]);
 
   const currentMethodObj = React.useMemo(() => {
@@ -544,18 +546,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
             {/* 付款方式與卡片 */}
             <View style={styles.sectionLabelRow}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>付款方式</Text>
-                {canEdit && (
-                  <TouchableOpacity
-                    style={styles.manageMethodsSmallBtn}
-                    onPress={() => setPaymentMethodsModalVisible(true)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.manageMethodsSmallBtnText} maxFontSizeMultiplier={1.08}>⚙️ 管理</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+              <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>付款方式</Text>
               <Text style={styles.dateHintText} maxFontSizeMultiplier={1.15}>
                 {supportsCreditCard
                   ? '(可選信用卡便於對帳)'
@@ -869,11 +860,6 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         onClose={() => setDatePickerVisible(false)}
         selectedDate={curDate}
         onSelectDate={handleSelectDate}
-      />
-
-      <PaymentMethodsManageModal
-        visible={paymentMethodsModalVisible}
-        onClose={() => setPaymentMethodsModalVisible(false)}
       />
     </Modal>
   );

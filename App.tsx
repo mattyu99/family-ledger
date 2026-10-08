@@ -3638,7 +3638,9 @@ function MainApp() {
                     📱 常用付款方式 ({(paymentMethods || []).filter(m => m.is_enabled !== false).length})
                   </Text>
                   <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    自訂日常記帳可用的支付工具（如 LINE Pay、全支付、悠遊付、街口等），可隨時新增或開關隱藏
+                    {isOwner
+                      ? '自訂日常記帳可用的支付工具（如 LINE Pay、全支付、悠遊付、街口等），可隨時新增或開關隱藏'
+                      : '查看目前日常記帳可用的支付工具（僅帳本管理員可新增或修改）'}
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -3646,7 +3648,7 @@ function MainApp() {
                   onPress={() => setPaymentMethodsModalVisible(true)}
                 >
                   <Text style={styles.manageCategoryBtnText} maxFontSizeMultiplier={1.2}>
-                    ⚙️ 管理付款方式
+                    {isOwner ? '⚙️ 管理付款方式' : '👀 查看付款方式'}
                   </Text>
                 </TouchableOpacity>
               </View>

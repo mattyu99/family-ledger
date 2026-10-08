@@ -844,7 +844,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                   merged.push(defM);
                 }
               });
-              setPaymentMethods(merged);
+              const sanitized = merged.map(m => m.id === 'cash' ? { ...m, is_enabled: true } : m);
+              setPaymentMethods(sanitized);
             }
           } catch {}
         } else {
@@ -1858,7 +1859,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 merged.push(defM);
               }
             });
-            loadedMethods = merged;
+            loadedMethods = merged.map(m => m.id === 'cash' ? { ...m, is_enabled: true } : m);
           }
         } catch {}
       }
@@ -3033,7 +3034,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     id: string,
     data: Partial<CustomPaymentMethod>
   ): Promise<boolean> => {
-    const updated = paymentMethods.map(m => (m.id === id ? { ...m, ...data } : m));
+    const updated = paymentMethods.map(m => {
+      if (m.id === id) {
+        return {
+          ...m,
+          ...data,
+          // 現金永遠保持啟用
+          is_enabled: id === 'cash' ? true : (data.is_enabled ?? m.is_enabled),
+        };
+      }
+      return m;
+    });
     setPaymentMethods(updated);
     await savePaymentMethodsToStorage(updated);
     return true;
@@ -3052,8 +3063,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return true;
   };
 
-  // 切換啟用/停用
+  // 切換啟用/停用（現金為基本項目不可隱藏）
   const togglePaymentMethodEnabled = async (id: string): Promise<boolean> => {
+    if (id === 'cash') {
+      safeAlert('不可隱藏', '💵 現金為系統最基本的付款方式，必須保留至少一種付款方式，無法隱藏。');
+      return false;
+    }
     const updated = paymentMethods.map(m => (m.id === id ? { ...m, is_enabled: !m.is_enabled } : m));
     setPaymentMethods(updated);
     await savePaymentMethodsToStorage(updated);
