@@ -37,9 +37,14 @@ const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFont
 interface StoredValueWidgetProps {
   onManageAccounts?: () => void;
   onOpenReconcile?: (account?: PaymentAccount) => void;
+  onOpenCreditCardReconcile?: () => void;
 }
 
-export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAccounts, onOpenReconcile }) => {
+export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
+  onManageAccounts,
+  onOpenReconcile,
+  onOpenCreditCardReconcile,
+}) => {
   const { paymentAccounts, topUpAccountBalance, adjustAccountBalance, getMemberById, isOwner, currentUser, members } = useLedger();
 
   const storedValueCards = React.useMemo(
@@ -169,9 +174,9 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({ onManageAc
           <Text style={styles.titleText}>悠遊卡 / 儲值卡即時餘額</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          {onOpenReconcile && (
-            <TouchableOpacity onPress={() => onOpenReconcile()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={styles.reconcileLinkText}>📊 對帳</Text>
+          {onOpenCreditCardReconcile && (
+            <TouchableOpacity onPress={onOpenCreditCardReconcile} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={styles.creditReconcileLinkText}>💳 信用卡對帳</Text>
             </TouchableOpacity>
           )}
           {onManageAccounts && (
@@ -491,6 +496,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 6,
+  },
+  creditReconcileLinkText: {
+    fontSize: 11.5,
+    color: '#4F46E5',
+    fontWeight: '700',
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E0E7FF',
   },
   scrollContent: {
     flexDirection: 'row',
