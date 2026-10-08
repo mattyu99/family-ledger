@@ -878,6 +878,45 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       )
       .on(
+        'broadcast',
+        { event: 'TX_DELETED' },
+        async (payload: any) => {
+          const deletedId = payload?.payload?.id;
+          const actorName = payload?.payload?.actorName || '家人';
+          if (!deletedId) return;
+
+          try {
+            const deletedKey = `${STORAGE_KEYS.DELETED_TX_IDS}_${ledgerId}`;
+            const savedDeletedStr = await AsyncStorage.getItem(deletedKey);
+            const deletedList: string[] = savedDeletedStr ? JSON.parse(savedDeletedStr) : [];
+            if (!deletedList.includes(deletedId)) {
+              deletedList.push(deletedId);
+              if (deletedList.length > 500) deletedList.shift();
+              await AsyncStorage.setItem(deletedKey, JSON.stringify(deletedList));
+            }
+          } catch {}
+
+          setTransactions((prev) => {
+            if (!prev.some((t) => t.id === deletedId)) return prev;
+            const updated = prev.filter((t) => t.id !== deletedId);
+            AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
+            AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${ledgerId}`, JSON.stringify(updated));
+            return updated;
+          });
+
+          // 方案 A：即時通知泡泡
+          setLiveToast({
+            id: `delete-${deletedId}-${Date.now()}`,
+            type: 'delete',
+            actorName,
+            avatar: '🗑️',
+            title: `🗑️ ${actorName} 刪除了一筆記帳`,
+            message: '該筆明細已從全體裝置同步移除',
+            createdAt: Date.now(),
+          });
+        }
+      )
+      .on(
         'postgres_changes',
         {
           event: 'DELETE',
@@ -886,21 +925,22 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         },
         async (payload) => {
           const oldRow = payload.old as any;
-          if (oldRow && oldRow.id) {
+          const deletedId = oldRow?.id;
+          if (deletedId) {
             try {
               const deletedKey = `${STORAGE_KEYS.DELETED_TX_IDS}_${ledgerId}`;
               const savedDeletedStr = await AsyncStorage.getItem(deletedKey);
               const deletedList: string[] = savedDeletedStr ? JSON.parse(savedDeletedStr) : [];
-              if (!deletedList.includes(oldRow.id)) {
-                deletedList.push(oldRow.id);
+              if (!deletedList.includes(deletedId)) {
+                deletedList.push(deletedId);
                 if (deletedList.length > 500) deletedList.shift();
                 await AsyncStorage.setItem(deletedKey, JSON.stringify(deletedList));
               }
             } catch {}
 
             setTransactions((prev) => {
-              if (!prev.some((t) => t.id === oldRow.id)) return prev;
-              const updated = prev.filter((t) => t.id !== oldRow.id);
+              if (!prev.some((t) => t.id === deletedId)) return prev;
+              const updated = prev.filter((t) => t.id !== deletedId);
               AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
               AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${ledgerId}`, JSON.stringify(updated));
               return updated;
@@ -908,7 +948,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             // 方案 A：即時通知泡泡
             setLiveToast({
-              id: `delete-${oldRow.id}-${Date.now()}`,
+              id: `delete-${deletedId}-${Date.now()}`,
               type: 'delete',
               actorName: '家人',
               avatar: '🗑️',
@@ -1327,43 +1367,55 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const healList: { id: string; paid_by: string }[] = [];
     let finalTx: Transaction[] = [];
+
+    // 排除本機已知已刪除之交易 ID（避免極端 Realtime 延遲時短暫重現）
+    const deletedKey = `${STORAGE_KEYS.DELETED_TX_IDS}_${targetLedger.id}`;
+    let deletedList: string[] = [];
+    try {
+      const savedDeletedStr = await AsyncStorage.getItem(deletedKey);
+      if (savedDeletedStr) deletedList = JSON.parse(savedDeletedStr);
+    } catch {}
+    const deletedSet = new Set(deletedList);
+
     if (txRows) {
-      finalTx = txRows.map((t: any) => {
-        const canonicalPayer = aliasMap[t.paid_by] || dedupedMembers.find(m => m.id === t.paid_by);
-        let correctedPaidBy = t.paid_by;
-        if (
-          canonicalPayer &&
-          isValidUUID(canonicalPayer.id) &&
-          !canonicalPayer.id.startsWith('20000000') &&
-          canonicalPayer.id !== t.paid_by
-        ) {
-          correctedPaidBy = canonicalPayer.id;
-          healList.push({ id: t.id, paid_by: canonicalPayer.id });
-        }
-
-        let parsedMerchant = t.merchant;
-        let parsedNote = t.note;
-        if (!parsedMerchant && t.note) {
-          const match = t.note.match(/^\[(.*?)\]\s*(.*)$/);
-          if (match) {
-            parsedMerchant = match[1];
-            parsedNote = match[2];
+      finalTx = txRows
+        .filter((t: any) => !deletedSet.has(t.id))
+        .map((t: any) => {
+          const canonicalPayer = aliasMap[t.paid_by] || dedupedMembers.find(m => m.id === t.paid_by);
+          let correctedPaidBy = t.paid_by;
+          if (
+            canonicalPayer &&
+            isValidUUID(canonicalPayer.id) &&
+            !canonicalPayer.id.startsWith('20000000') &&
+            canonicalPayer.id !== t.paid_by
+          ) {
+            correctedPaidBy = canonicalPayer.id;
+            healList.push({ id: t.id, paid_by: canonicalPayer.id });
           }
-        }
-        if (parsedMerchant) {
-          recordMerchant(parsedMerchant);
-        }
 
-        return {
-          ...t,
-          merchant: parsedMerchant || undefined,
-          note: parsedNote || '',
-          amount: Number(t.amount),
-          paid_by: correctedPaidBy,
-          payer_profile: canonicalPayer || t.payer_profile,
-          category: getCategoryById(t.category_id, t.category),
-        };
-      });
+          let parsedMerchant = t.merchant;
+          let parsedNote = t.note;
+          if (!parsedMerchant && t.note) {
+            const match = t.note.match(/^\[(.*?)\]\s*(.*)$/);
+            if (match) {
+              parsedMerchant = match[1];
+              parsedNote = match[2];
+            }
+          }
+          if (parsedMerchant) {
+            recordMerchant(parsedMerchant);
+          }
+
+          return {
+            ...t,
+            merchant: parsedMerchant || undefined,
+            note: parsedNote || '',
+            amount: Number(t.amount),
+            paid_by: correctedPaidBy,
+            payer_profile: canonicalPayer || t.payer_profile,
+            category: getCategoryById(t.category_id, t.category),
+          };
+        });
     }
 
     // 自動校正雲端 Supabase 中的歷史付款人 ID（背景執行）
@@ -1377,20 +1429,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       });
     }
 
-    // 檢查本地是否有離線建立、尚未成功送至雲端的交易（絕不復活已被刪除的交易）
+    // 檢查本地是否有離線建立、尚未成功送至雲端的交易（僅補同步真正標記為 _isPendingSync 的離線新明細，絕不復活已被刪除的舊交易）
     const localSavedTxStr = await AsyncStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
     if (localSavedTxStr && targetLedger.id !== DEMO_LEDGER_ID) {
       try {
-        const deletedKey = `${STORAGE_KEYS.DELETED_TX_IDS}_${targetLedger.id}`;
-        const savedDeletedStr = await AsyncStorage.getItem(deletedKey);
-        const deletedList: string[] = savedDeletedStr ? JSON.parse(savedDeletedStr) : [];
-
         const localTxList: Transaction[] = JSON.parse(localSavedTxStr);
         const unsyncedTx = localTxList.filter(
           lt => isValidUUID(lt.id) &&
           lt.ledger_id === targetLedger.id &&
+          Boolean((lt as any)._isPendingSync) &&
           !finalTx.some(ct => ct.id === lt.id) &&
-          !deletedList.includes(lt.id) &&
+          !deletedSet.has(lt.id) &&
           !lt.id.startsWith('40000000-0000-4000-8000')
         );
 
@@ -1453,6 +1502,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     finalTx.sort((a, b) => new Date(b.transacted_at).getTime() - new Date(a.transacted_at).getTime());
     setTransactions(finalTx);
     await AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(finalTx));
+    await AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${targetLedger.id}`, JSON.stringify(finalTx));
     setIsCloudSynced(true);
 
     // (E) 載入付款帳戶與卡片
@@ -3085,7 +3135,24 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     } catch {}
 
-    // 3. 雲端同步刪除
+    // 3. 即時廣播給所有已連線裝置（跨裝置毫秒級同步）
+    if (channelRef.current) {
+      try {
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'TX_DELETED',
+          payload: {
+            id,
+            actorName: effectiveCurrentUser?.display_name || '家人',
+            ledgerId: currentLedger.id,
+          },
+        });
+      } catch (err) {
+        console.warn('Realtime 廣播刪除事件失敗:', err);
+      }
+    }
+
+    // 4. 雲端同步刪除
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
         await supabase.from('transaction_splits').delete().eq('transaction_id', id);

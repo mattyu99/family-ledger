@@ -80,6 +80,9 @@ ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS payment_method TEXT DEF
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS account_id UUID;
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS is_reconciled BOOLEAN DEFAULT FALSE;
 
+-- 確保 Supabase Realtime DELETE 事件包含完整欄位（含 ledger_id 與 id），防止 RLS 阻斷 DELETE 推播
+ALTER TABLE public.transactions REPLICA IDENTITY FULL;
+
 -- 6. 付款卡片與資產帳戶表 (信用卡、悠遊卡、儲值錢包)
 CREATE TABLE IF NOT EXISTS public.payment_accounts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
