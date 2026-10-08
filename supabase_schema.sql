@@ -568,3 +568,72 @@ BEGIN
     WHEN others THEN NULL;
   END;
 END $$;
+
+-- ==============================================================================
+-- 終極防護：交易刪除墓碑表 (Tombstone) 與防復活觸發器 (Anti-Resurrection)
+-- 徹底防止任何未更新的舊版本客戶端將已刪除明細誤當「未同步交易」重新寫入 (Zombie Resurrect)
+-- ==============================================================================
+
+CREATE TABLE IF NOT EXISTS public.deleted_transactions (
+    id UUID PRIMARY KEY,
+    ledger_id UUID NOT NULL REFERENCES public.ledgers(id) ON DELETE CASCADE,
+    deleted_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 啟用 RLS 與開放帳本成員讀寫權限
+ALTER TABLE public.deleted_transactions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "帳本成員可檢視墓碑名單" ON public.deleted_transactions;
+CREATE POLICY "帳本成員可檢視墓碑名單" ON public.deleted_transactions
+    FOR SELECT USING (
+        ledger_id IN (SELECT ledger_id FROM public.ledger_members WHERE user_id = auth.uid())
+        OR auth.role() = 'anon'
+    );
+
+DROP POLICY IF EXISTS "帳本成員可記錄刪除墓碑" ON public.deleted_transactions;
+CREATE POLICY "帳本成員可記錄刪除墓碑" ON public.deleted_transactions
+    FOR INSERT WITH CHECK (
+        ledger_id IN (SELECT ledger_id FROM public.ledger_members WHERE user_id = auth.uid())
+        OR auth.role() = 'anon'
+    );
+
+DROP POLICY IF EXISTS "帳本成員可刪除墓碑(還原備份用)" ON public.deleted_transactions;
+CREATE POLICY "帳本成員可刪除墓碑(還原備份用)" ON public.deleted_transactions
+    FOR DELETE USING (
+        ledger_id IN (SELECT ledger_id FROM public.ledger_members WHERE user_id = auth.uid())
+        OR auth.role() = 'anon'
+    );
+
+-- 1. 當 transactions 有資料被刪除時，自動寫入 deleted_transactions 墓碑表
+CREATE OR REPLACE FUNCTION public.log_transaction_deletion()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.deleted_transactions (id, ledger_id)
+    VALUES (OLD.id, OLD.ledger_id)
+    ON CONFLICT (id) DO NOTHING;
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS tr_log_transaction_deletion ON public.transactions;
+CREATE TRIGGER tr_log_transaction_deletion
+    BEFORE DELETE ON public.transactions
+    FOR EACH ROW EXECUTE FUNCTION public.log_transaction_deletion();
+
+-- 2. 防復活觸發器：當任何舊版客戶端嘗試 INSERT 已在墓碑表中的 ID，直接靜默阻斷 (RETURN NULL)
+CREATE OR REPLACE FUNCTION public.prevent_transaction_resurrection()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM public.deleted_transactions WHERE id = NEW.id) THEN
+        -- 阻斷舊客戶端誤插已刪除明細，保護雲端資料庫不被復活污染
+        RETURN NULL;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS tr_prevent_transaction_resurrection ON public.transactions;
+CREATE TRIGGER tr_prevent_transaction_resurrection
+    BEFORE INSERT ON public.transactions
+    FOR EACH ROW EXECUTE FUNCTION public.prevent_transaction_resurrection();
+

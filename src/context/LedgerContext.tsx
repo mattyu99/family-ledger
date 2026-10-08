@@ -472,6 +472,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [recentMerchants, setRecentMerchants] = useState<string[]>(DEFAULT_POPULAR_MERCHANTS);
   const hasMerchantColumnRef = useRef<boolean>(false);
   const hasPaymentColumnsRef = useRef<boolean>(false);
+  const deletedTxIdsRef = useRef<Set<string>>(new Set());
 
   const recordMerchant = React.useCallback(async (m: string) => {
     const clean = (m || '').trim();
@@ -605,11 +606,38 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } catch {}
         }
 
+        const savedLedgerStr = await AsyncStorage.getItem(STORAGE_KEYS.LEDGER);
+        let parsedLedgerId: string | null = null;
+        if (savedLedgerStr) {
+          try { parsedLedgerId = JSON.parse(savedLedgerStr)?.id; } catch {}
+        }
+
+        const deletedSet = new Set<string>();
+        try {
+          const deletedKeys = [
+            STORAGE_KEYS.DELETED_TX_IDS,
+            parsedLedgerId ? `${STORAGE_KEYS.DELETED_TX_IDS}_${parsedLedgerId}` : null,
+          ].filter(Boolean) as string[];
+
+          for (const key of deletedKeys) {
+            const savedDeleted = await AsyncStorage.getItem(key);
+            if (savedDeleted) {
+              const arr = JSON.parse(savedDeleted);
+              if (Array.isArray(arr)) {
+                arr.forEach((id: string) => {
+                  deletedSet.add(id);
+                  deletedTxIdsRef.current.add(id);
+                });
+              }
+            }
+          }
+        } catch {}
+
         const savedTx = await AsyncStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
         if (savedTx) {
           const parsed = JSON.parse(savedTx);
           const validTx = parsed
-            .filter((t: any) => isValidUUID(t.id) && isValidUUID(t.ledger_id))
+            .filter((t: any) => isValidUUID(t.id) && isValidUUID(t.ledger_id) && !deletedSet.has(t.id))
             .map((t: any) => {
               const matchedCat =
                 activeCategories.find((c: any) => c.id === t.category_id) ||
@@ -758,6 +786,15 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         (payload) => {
           const newRow = payload.new as any;
           if (!newRow) return;
+
+          // 主動免疫防禦：若此交易已被本機記錄刪除（如舊版客戶端未更新而誤復活），攔截並主動清除雲端資料
+          if (deletedTxIdsRef.current.has(newRow.id)) {
+            console.warn('攔截到已被標記刪除之交易重複推播，略過並主動防禦清除:', newRow.id);
+            if (isConfigured && ledgerId !== DEMO_LEDGER_ID) {
+              Promise.resolve(supabase.from('transactions').delete().eq('id', newRow.id)).catch(() => {});
+            }
+            return;
+          }
           let parsedMerchant = newRow.merchant;
           let parsedNote = newRow.note;
           if (!parsedMerchant && newRow.note) {
@@ -885,6 +922,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const actorName = payload?.payload?.actorName || '家人';
           if (!deletedId) return;
 
+          deletedTxIdsRef.current.add(deletedId);
           try {
             const deletedKey = `${STORAGE_KEYS.DELETED_TX_IDS}_${ledgerId}`;
             const savedDeletedStr = await AsyncStorage.getItem(deletedKey);
@@ -927,6 +965,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const oldRow = payload.old as any;
           const deletedId = oldRow?.id;
           if (deletedId) {
+            deletedTxIdsRef.current.add(deletedId);
             try {
               const deletedKey = `${STORAGE_KEYS.DELETED_TX_IDS}_${ledgerId}`;
               const savedDeletedStr = await AsyncStorage.getItem(deletedKey);
@@ -1376,6 +1415,33 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (savedDeletedStr) deletedList = JSON.parse(savedDeletedStr);
     } catch {}
     const deletedSet = new Set(deletedList);
+    deletedList.forEach(id => deletedTxIdsRef.current.add(id));
+
+    // 查詢雲端墓碑表 (Tombstone)，同步全體裝置的刪除名單
+    if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        const { data: cloudDeletedRows } = await supabase
+          .from('deleted_transactions')
+          .select('id')
+          .eq('ledger_id', targetLedger.id)
+          .order('deleted_at', { ascending: false })
+          .limit(500);
+
+        if (cloudDeletedRows && cloudDeletedRows.length > 0) {
+          cloudDeletedRows.forEach((r: any) => {
+            if (r.id) {
+              deletedList.push(r.id);
+              deletedSet.add(r.id);
+              deletedTxIdsRef.current.add(r.id);
+            }
+          });
+          const dedupedDeleted = Array.from(deletedSet).slice(-500);
+          await AsyncStorage.setItem(deletedKey, JSON.stringify(dedupedDeleted));
+        }
+      } catch (e) {
+        // 雲端尚未建立 deleted_transactions 表時容錯略過
+      }
+    }
 
     if (txRows) {
       finalTx = txRows
@@ -3102,6 +3168,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // 刪除交易
   const deleteTransaction = async (id: string) => {
+    deletedTxIdsRef.current.add(id);
     const targetTx = transactions.find(t => t.id === id);
 
     // 若為儲值卡消費，恢復卡片餘額
@@ -3156,6 +3223,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
         await supabase.from('transaction_splits').delete().eq('transaction_id', id);
+        // 先寫入墓碑表以防舊裝置復活（即使資料庫尚未設定觸發器也具雙重防護）
+        try {
+          await supabase.from('deleted_transactions').insert({ id, ledger_id: currentLedger.id });
+        } catch {}
         const { error } = await supabase.from('transactions').delete().eq('id', id);
         if (error) console.warn('雲端刪除交易失敗:', error.message);
       } catch (err) {
@@ -3734,6 +3805,25 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       setTransactions(finalTxs);
       await saveTransactionsToStorage(finalTxs);
+
+      // 若有要還原的交易曾存在於墓碑表，先從墓碑表解除 (以免被防復活觸發器阻擋)
+      const restoredIds = sanitizedTxs.map(t => t.id).filter(isValidUUID);
+      if (restoredIds.length > 0) {
+        restoredIds.forEach(id => deletedTxIdsRef.current.delete(id));
+        try {
+          const deletedKey = `${STORAGE_KEYS.DELETED_TX_IDS}_${targetLedgerId}`;
+          const saved = await AsyncStorage.getItem(deletedKey);
+          if (saved) {
+            const arr = JSON.parse(saved).filter((id: string) => !restoredIds.includes(id));
+            await AsyncStorage.setItem(deletedKey, JSON.stringify(arr));
+          }
+        } catch {}
+        if (isRealCloud) {
+          try {
+            await supabase.from('deleted_transactions').delete().in('id', restoredIds);
+          } catch {}
+        }
+      }
 
       // 同步還原交易至 Supabase 雲端 (若為已連線雲端帳本)
       if (isRealCloud) {
