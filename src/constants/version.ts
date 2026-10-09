@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.3';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.3 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 26;
+export const APP_BUILD_REVISION = 27;
 
-// 完整版本字串 (例如 "1.0.3.26")
+// 完整版本字串 (例如 "1.0.3.27")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,19 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.3.27',
+    date: '2026-10-09',
+    title: '全新支援「按期分攤記錄」分期付款追蹤（自動編號、每期備註標記、全額繳清完結除役）',
+    highlights: [
+      '原生支援信用卡分期付款追蹤：建立週期規則時可一鍵切換為「📦 分期付款」模式，支援常見期數（3, 6, 12, 24, 30, 36 期）與自訂總期數。',
+      '總金額試算與每期金額換算：輸入商品/消費總額，系統自動試算每期應繳金額，反之亦可由每期金額反推總額。',
+      '待繳清單即時期數標籤：待繳核對卡片與確認按鈕清晰標註「📦 第 X/Y 期」以及剩餘未繳期數與尚欠待付總額。',
+      '自動備註與期數推進：確認記帳時自動於交易備註填入「(第 X/Y 期)」，入帳後自動前進至下一期。',
+      '全額繳清祝賀與自動完結除役：繳滿最後一期時彈出繳清祝賀通知，並將規則自動標記完結除役，不產生未來多餘帳單。',
+      '規則管理專屬進度條：提供視覺化分期進度條、已繳百分比、未繳金額統計，支援歷史備份 JSON 完整還原。',
+    ],
+  },
   {
     version: '1.0.3.26',
     date: '2026-10-09',

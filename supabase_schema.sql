@@ -652,10 +652,20 @@ CREATE TABLE IF NOT EXISTS public.recurring_rules (
     bimonthly_start_month INT CHECK (bimonthly_start_month IN (1, 2)),
     is_active BOOLEAN DEFAULT TRUE NOT NULL,
     last_recorded_period TEXT,
+    is_installment BOOLEAN DEFAULT FALSE NOT NULL,
+    total_installments INT,
+    current_installment INT DEFAULT 1,
+    installment_start_period TEXT,
     note TEXT,
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- 資料庫遷移：若資料表已存在，安全補齊分期付款欄位
+ALTER TABLE public.recurring_rules ADD COLUMN IF NOT EXISTS is_installment BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.recurring_rules ADD COLUMN IF NOT EXISTS total_installments INT;
+ALTER TABLE public.recurring_rules ADD COLUMN IF NOT EXISTS current_installment INT DEFAULT 1;
+ALTER TABLE public.recurring_rules ADD COLUMN IF NOT EXISTS installment_start_period TEXT;
 
 -- 啟用 RLS
 ALTER TABLE public.recurring_rules ENABLE ROW LEVEL SECURITY;

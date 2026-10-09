@@ -149,6 +149,11 @@ export interface RecurringRule {
   is_active: boolean; // 是否啟用
   last_recorded_period?: string; // 最後已記帳之週期標籤 (例如 "2026-10")，避免重複入帳
   note?: string; // 備註
+  // 📦 分期付款支援欄位
+  is_installment?: boolean; // 是否為分期付款 (例如：手機分期、家電、機車、保費分期)
+  total_installments?: number; // 總期數 (例如 12)
+  current_installment?: number; // 當前進行中 / 下一期應繳期數 (1-indexed，例如 3 代表第 3 期)
+  installment_start_period?: string; // 分期首期年月，格式 "YYYY-MM" (例如 "2026-10")
   created_at: string;
   updated_at: string;
 }

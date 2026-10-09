@@ -25,6 +25,7 @@ import {
   getFrequencyBadgeText,
   getBillDueDate,
   DEFAULT_RECURRING_PRESETS,
+  getInstallmentInfo,
 } from '../lib/recurring';
 import { getCategoryIcon } from '../lib/icons';
 
@@ -136,6 +137,13 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
   const [formIsActive, setFormIsActive] = useState<boolean>(true);
   const [formNote, setFormNote] = useState<string>('');
 
+  // 分期付款表單狀態
+  const [formIsInstallment, setFormIsInstallment] = useState<boolean>(false);
+  const [formTotalInstallments, setFormTotalInstallments] = useState<string>('12');
+  const [formCurrentInstallment, setFormCurrentInstallment] = useState<string>('1');
+  const [formInstallmentStartPeriod, setFormInstallmentStartPeriod] = useState<string>('');
+  const [formTotalPurchaseAmount, setFormTotalPurchaseAmount] = useState<string>('');
+
   // 常用範本選擇彈窗
   const [presetModalVisible, setPresetModalVisible] = useState<boolean>(false);
 
@@ -221,11 +229,17 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     }
   };
 
-  // 固定金額快速一鍵確認入帳
+  // 固定金額或分期付款快速一鍵確認入帳
   const handleQuickRecordFixed = async (rule: RecurringRule) => {
+    const instInfo = rule.is_installment ? getInstallmentInfo(rule, selectedDate) : null;
+    const confirmTitle = rule.is_installment ? '確認分期記帳' : '確認記帳';
+    const confirmMsg = rule.is_installment && instInfo
+      ? `確定將「${rule.name}」(${instInfo.labelText}) 本期金額 NT$ ${rule.default_amount.toLocaleString()} 寫入收支明細？`
+      : `確定將「${rule.name}」固定金額 NT$ ${rule.default_amount.toLocaleString()} 寫入收支明細？`;
+
     showConfirm(
-      '確認記帳',
-      `確定將「${rule.name}」固定金額 NT$ ${rule.default_amount.toLocaleString()} 寫入收支明細？`,
+      confirmTitle,
+      confirmMsg,
       async () => {
         try {
           const success = await recordRecurringBill(
@@ -259,6 +273,9 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
 
   // 開啟新增/編輯規則
   const handleOpenRuleModal = (rule?: RecurringRule) => {
+    const now = new Date();
+    const currPeriodStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
     if (rule) {
       setEditingRule(rule);
       setFormName(rule.name);
@@ -274,6 +291,16 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
       setFormAccountId(rule.account_id);
       setFormIsActive(rule.is_active);
       setFormNote(rule.note || '');
+
+      setFormIsInstallment(!!rule.is_installment);
+      setFormTotalInstallments(rule.total_installments ? String(rule.total_installments) : '12');
+      setFormCurrentInstallment(rule.current_installment ? String(rule.current_installment) : '1');
+      setFormInstallmentStartPeriod(rule.installment_start_period || currPeriodStr);
+      if (rule.total_installments && rule.default_amount > 0) {
+        setFormTotalPurchaseAmount(String(rule.total_installments * rule.default_amount));
+      } else {
+        setFormTotalPurchaseAmount('');
+      }
     } else {
       setEditingRule(null);
       setFormName('');
@@ -291,41 +318,90 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
       setFormAccountId(firstCard?.id);
       setFormIsActive(true);
       setFormNote('');
+
+      setFormIsInstallment(false);
+      setFormTotalInstallments('12');
+      setFormCurrentInstallment('1');
+      setFormInstallmentStartPeriod(currPeriodStr);
+      setFormTotalPurchaseAmount('');
     }
     setRuleModalVisible(true);
+  };
+
+  // 分期總金額變動試算
+  const handleTotalPurchaseAmountChange = (val: string) => {
+    setFormTotalPurchaseAmount(val);
+    const parsedTotalAmt = parseFloat(val);
+    const parsedPeriods = parseInt(formTotalInstallments, 10);
+    if (!isNaN(parsedTotalAmt) && parsedTotalAmt > 0 && !isNaN(parsedPeriods) && parsedPeriods > 0) {
+      setFormDefaultAmount(String(Math.round(parsedTotalAmt / parsedPeriods)));
+    }
+  };
+
+  // 分期期數變動試算
+  const handleTotalInstallmentsChange = (val: string) => {
+    setFormTotalInstallments(val);
+    const parsedPeriods = parseInt(val, 10);
+    const parsedTotalAmt = parseFloat(formTotalPurchaseAmount);
+    if (!isNaN(parsedTotalAmt) && parsedTotalAmt > 0 && !isNaN(parsedPeriods) && parsedPeriods > 0) {
+      setFormDefaultAmount(String(Math.round(parsedTotalAmt / parsedPeriods)));
+    }
   };
 
   // 儲存規則
   const handleSaveRule = async () => {
     if (!formName.trim()) {
-      showAlert('請輸入名稱', '請為週期項目設定名稱（例如：台電電費、自來水費）');
+      showAlert('請輸入名稱', '請為週期項目設定名稱（例如：台電電費、iPhone 16 分期）');
       return;
     }
 
     const defaultAmt = parseFloat(formDefaultAmount) || 0;
-    if (formAmountType === 'fixed' && defaultAmt <= 0) {
-      showAlert('請輸入固定金額', '固定金額項目請輸入大於 0 的金額數值');
+    if ((formAmountType === 'fixed' || formIsInstallment) && defaultAmt <= 0) {
+      showAlert('請輸入金額', '固定金額或分期項目請輸入大於 0 的每期金額數值');
       return;
     }
 
     const categoryId = formCategoryId || categories[0]?.id || '';
     const paidBy = formPaidBy || currentUser.id;
 
+    let totalInst: number | undefined = undefined;
+    let currInst: number | undefined = undefined;
+    let startPeriod: string | undefined = undefined;
+
+    if (formIsInstallment) {
+      const parsedTotal = parseInt(formTotalInstallments, 10);
+      if (isNaN(parsedTotal) || parsedTotal <= 0) {
+        showAlert('請輸入總期數', '分期付款請設定大於 0 的總期數（例如：12 期）');
+        return;
+      }
+      totalInst = parsedTotal;
+      currInst = parseInt(formCurrentInstallment, 10) || 1;
+      const now = new Date();
+      startPeriod = formInstallmentStartPeriod.trim() || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    const effectiveAmountType: RecurringAmountType = formIsInstallment ? 'fixed' : formAmountType;
+    const effectiveFrequency: RecurringFrequency = formIsInstallment ? 'monthly' : formFrequency;
+
     if (editingRule) {
       await updateRecurringRule(editingRule.id, {
         name: formName.trim(),
         merchant: formMerchant.trim() || undefined,
         category_id: categoryId,
-        amount_type: formAmountType,
+        amount_type: effectiveAmountType,
         default_amount: defaultAmt,
-        frequency: formFrequency,
-        bimonthly_start_month: formFrequency === 'bimonthly' ? formBimonthlyStartMonth : undefined,
+        frequency: effectiveFrequency,
+        bimonthly_start_month: !formIsInstallment && effectiveFrequency === 'bimonthly' ? formBimonthlyStartMonth : undefined,
         due_day: Math.min(Math.max(1, formDueDay), 31),
         paid_by: paidBy,
         payment_method: formPaymentMethod,
         account_id: formPaymentMethod === 'credit_card' ? formAccountId : undefined,
         is_active: formIsActive,
         note: formNote.trim() || undefined,
+        is_installment: formIsInstallment,
+        total_installments: totalInst,
+        current_installment: currInst,
+        installment_start_period: startPeriod,
       });
       showAlert('更新成功', `已更新「${formName.trim()}」設定。`);
     } else {
@@ -333,18 +409,22 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
         name: formName.trim(),
         merchant: formMerchant.trim() || undefined,
         category_id: categoryId,
-        amount_type: formAmountType,
+        amount_type: effectiveAmountType,
         default_amount: defaultAmt,
-        frequency: formFrequency,
-        bimonthly_start_month: formFrequency === 'bimonthly' ? formBimonthlyStartMonth : undefined,
+        frequency: effectiveFrequency,
+        bimonthly_start_month: !formIsInstallment && effectiveFrequency === 'bimonthly' ? formBimonthlyStartMonth : undefined,
         due_day: Math.min(Math.max(1, formDueDay), 31),
         paid_by: paidBy,
         payment_method: formPaymentMethod,
         account_id: formPaymentMethod === 'credit_card' ? formAccountId : undefined,
         is_active: formIsActive,
         note: formNote.trim() || undefined,
+        is_installment: formIsInstallment,
+        total_installments: totalInst,
+        current_installment: currInst,
+        installment_start_period: startPeriod,
       });
-      showAlert('新增成功', `已建立週期扣款規則「${formName.trim()}」！`);
+      showAlert('新增成功', `已建立「${formName.trim()}」${formIsInstallment ? '分期付款追蹤' : '週期扣款規則'}！`);
     }
 
     setRuleModalVisible(false);
@@ -524,15 +604,25 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                     const card = rule.account_id ? getAccountById(rule.account_id) : undefined;
                     const isFixed = rule.amount_type === 'fixed';
                     const periodLabel = getBillPeriodLabel(rule, selectedDate);
+                    const instInfo = rule.is_installment ? getInstallmentInfo(rule, selectedDate) : null;
 
                     return (
                       <View key={rule.id} style={styles.billCard}>
                         {/* 狀態與週期徽章列 */}
                         <View style={styles.cardHeaderRow}>
-                          <View style={[styles.dueBadge, { backgroundColor: dueBadge.bg }]}>
-                            <Text style={[styles.dueBadgeText, { color: dueBadge.color }]}>
-                              {dueBadge.text}
-                            </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <View style={[styles.dueBadge, { backgroundColor: dueBadge.bg }]}>
+                              <Text style={[styles.dueBadgeText, { color: dueBadge.color }]}>
+                                {dueBadge.text}
+                              </Text>
+                            </View>
+                            {rule.is_installment && (
+                              <View style={styles.installmentPendingBadge}>
+                                <Text style={styles.installmentPendingBadgeText}>
+                                  📦 分期 {instInfo ? instInfo.labelText : ''}
+                                </Text>
+                              </View>
+                            )}
                           </View>
                           <Text style={styles.periodLabelText}>{periodLabel}</Text>
                         </View>
@@ -563,7 +653,21 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
 
                           {/* 金額顯示 */}
                           <View style={styles.cardAmountContainer}>
-                            {isFixed ? (
+                            {rule.is_installment ? (
+                              <>
+                                <Text style={styles.fixedAmountText}>
+                                  ${rule.default_amount.toLocaleString()}
+                                </Text>
+                                <Text style={styles.amountSubText}>
+                                  {instInfo ? instInfo.labelText : '每期固定'}
+                                </Text>
+                                {instInfo && instInfo.remainingInstallments > 0 && (
+                                  <Text style={styles.installmentRemainingHint}>
+                                    尚欠 {instInfo.remainingInstallments} 期 (${instInfo.remainingAmount.toLocaleString()})
+                                  </Text>
+                                )}
+                              </>
+                            ) : isFixed ? (
                               <>
                                 <Text style={styles.fixedAmountText}>
                                   ${rule.default_amount.toLocaleString()}
@@ -592,7 +696,16 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                             <Text style={styles.skipButtonText}>略過本期</Text>
                           </TouchableOpacity>
 
-                          {isFixed ? (
+                          {rule.is_installment ? (
+                            <TouchableOpacity
+                              style={styles.recordPrimaryButton}
+                              onPress={() => handleQuickRecordFixed(rule)}
+                            >
+                              <Text style={styles.recordPrimaryButtonText}>
+                                ✅ 確認記帳 ({instInfo?.labelText || ''} NT$ {rule.default_amount.toLocaleString()})
+                              </Text>
+                            </TouchableOpacity>
+                          ) : isFixed ? (
                             <TouchableOpacity
                               style={styles.recordPrimaryButton}
                               onPress={() => handleQuickRecordFixed(rule)}
@@ -690,6 +803,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                     const payer = getMemberById(rule.paid_by);
                     const card = rule.account_id ? getAccountById(rule.account_id) : undefined;
                     const isFixed = rule.amount_type === 'fixed';
+                    const instInfo = rule.is_installment ? getInstallmentInfo(rule, new Date()) : null;
 
                     return (
                       <View
@@ -701,16 +815,25 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                             <Text style={styles.ruleIcon}>{getCategoryIcon(cat?.icon)}</Text>
                             <View>
                               <Text style={styles.ruleNameText}>{rule.name}</Text>
-                              <Text style={styles.ruleFrequencyText}>
-                                {getFrequencyBadgeText(rule)}
-                              </Text>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                                <Text style={styles.ruleFrequencyText}>
+                                  {getFrequencyBadgeText(rule)}
+                                </Text>
+                                {rule.is_installment && (
+                                  <View style={styles.installmentRuleTag}>
+                                    <Text style={styles.installmentRuleTagText}>
+                                      {instInfo?.isCompleted ? '🎉 已結清' : `📦 分期 ${instInfo ? instInfo.labelText : ''}`}
+                                    </Text>
+                                  </View>
+                                )}
+                              </View>
                             </View>
                           </View>
 
                           {/* 啟用開關 */}
                           <View style={styles.ruleSwitchContainer}>
                             <Text style={styles.ruleSwitchLabel}>
-                              {rule.is_active ? '啟用中' : '已停用'}
+                              {rule.is_active ? '啟用中' : (instInfo?.isCompleted ? '已結清' : '已停用')}
                             </Text>
                             <Switch
                               value={rule.is_active}
@@ -723,14 +846,51 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                           </View>
                         </View>
 
+                        {/* 分期付款專屬進度卡 */}
+                        {rule.is_installment && instInfo && (
+                          <View style={styles.installmentProgressCard}>
+                            <View style={styles.installmentProgressHeader}>
+                              <Text style={styles.installmentProgressTitle}>
+                                {instInfo.isCompleted
+                                  ? '🎉 分期已全數結清'
+                                  : `分期進度：已繳 ${Math.max(0, instInfo.currentInstallmentNumber - 1)} / ${instInfo.totalInstallments} 期`}
+                              </Text>
+                              <Text style={styles.installmentProgressPercent}>{instInfo.progressPercent}%</Text>
+                            </View>
+                            <View style={styles.progressBarTrack}>
+                              <View style={[styles.progressBarFill, { width: `${instInfo.progressPercent}%` }]} />
+                            </View>
+                            <View style={styles.installmentProgressFooter}>
+                              <Text style={styles.installmentFooterText}>
+                                {instInfo.isCompleted
+                                  ? '本分期項目已全額入帳結清，已自動完結除役'
+                                  : `尚欠 ${instInfo.remainingInstallments} 期 · 未繳待付 NT$ ${instInfo.remainingAmount.toLocaleString()}`}
+                              </Text>
+                            </View>
+                          </View>
+                        )}
+
                         {/* 規則屬性細節 */}
                         <View style={styles.ruleDetailsGrid}>
                           <View style={styles.ruleDetailItem}>
                             <Text style={styles.ruleDetailLabel}>金額模式：</Text>
                             <Text style={styles.ruleDetailValue}>
-                              {isFixed ? `固定 NT$ ${rule.default_amount.toLocaleString()}` : `浮動 (參考 $${rule.default_amount.toLocaleString()})`}
+                              {rule.is_installment
+                                ? `每期固定 NT$ ${rule.default_amount.toLocaleString()} (總額約 NT$ ${(rule.default_amount * (rule.total_installments || 1)).toLocaleString()})`
+                                : isFixed
+                                ? `固定 NT$ ${rule.default_amount.toLocaleString()}`
+                                : `浮動 (參考 $${rule.default_amount.toLocaleString()})`}
                             </Text>
                           </View>
+
+                          {rule.is_installment && rule.installment_start_period && (
+                            <View style={styles.ruleDetailItem}>
+                              <Text style={styles.ruleDetailLabel}>首期月份：</Text>
+                              <Text style={styles.ruleDetailValue}>
+                                {rule.installment_start_period} (共 {rule.total_installments} 期)
+                              </Text>
+                            </View>
+                          )}
 
                           <View style={styles.ruleDetailItem}>
                             <Text style={styles.ruleDetailLabel}>扣繳出資人：</Text>
@@ -746,7 +906,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                             </Text>
                           </View>
 
-                          {rule.frequency === 'bimonthly' && (
+                          {!rule.is_installment && rule.frequency === 'bimonthly' && (
                             <View style={styles.ruleDetailItem}>
                               <Text style={styles.ruleDetailLabel}>出帳月份：</Text>
                               <Text style={styles.ruleDetailValue}>
@@ -901,23 +1061,53 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                 </View>
 
                 <ScrollView style={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
+                  {/* 項目模式選擇：常規週期 vs 分期付款 */}
+                  <Text style={styles.formFieldLabel}>項目模式</Text>
+                  <View style={styles.modeToggleRow}>
+                    <TouchableOpacity
+                      style={[styles.modeToggleBtn, !formIsInstallment && styles.modeToggleBtnActive]}
+                      onPress={() => {
+                        setFormIsInstallment(false);
+                      }}
+                    >
+                      <Text style={[styles.modeToggleBtnText, !formIsInstallment && styles.modeToggleBtnTextActive]}>
+                        🔄 常規週期 (水電/月租)
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.modeToggleBtn, formIsInstallment && styles.modeToggleBtnActiveInstallment]}
+                      onPress={() => {
+                        setFormIsInstallment(true);
+                        setFormAmountType('fixed');
+                        setFormFrequency('monthly');
+                      }}
+                    >
+                      <Text style={[styles.modeToggleBtnText, formIsInstallment && styles.modeToggleBtnTextActiveInstallment]}>
+                        📦 分期付款 (信用卡分期)
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
                   {/* 規則名稱 */}
                   <Text style={styles.formFieldLabel}>
-                    項目名稱 <Text style={{ color: '#EF4444' }}>*</Text>
+                    {formIsInstallment ? '分期商品/項目名稱' : '項目名稱'} <Text style={{ color: '#EF4444' }}>*</Text>
                   </Text>
                   <TextInput
                     style={styles.formTextInput}
-                    placeholder="例如：台電電費、自來水費、手機月租"
+                    placeholder={formIsInstallment ? '例如：iPhone 16 Pro 分期、筆電 12 期' : '例如：台電電費、自來水費、手機月租'}
                     placeholderTextColor="#9CA3AF"
                     value={formName}
                     onChangeText={setFormName}
                   />
 
                   {/* 收費對象/店家 */}
-                  <Text style={styles.formFieldLabel}>付款機構/店家 (選填)</Text>
+                  <Text style={styles.formFieldLabel}>
+                    {formIsInstallment ? '扣款發卡銀行 / 商家 (選填)' : '付款機構/店家 (選填)'}
+                  </Text>
                   <TextInput
                     style={styles.formTextInput}
-                    placeholder="例如：台灣電力公司、中華電信"
+                    placeholder={formIsInstallment ? '例如：富邦銀行、Apple Store、PChome' : '例如：台灣電力公司、中華電信'}
                     placeholderTextColor="#9CA3AF"
                     value={formMerchant}
                     onChangeText={setFormMerchant}
@@ -945,109 +1135,221 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                       })}
                   </ScrollView>
 
-                  {/* 金額模式選擇 */}
-                  <Text style={styles.formFieldLabel}>金額類型</Text>
-                  <View style={styles.toggleRow}>
-                    <TouchableOpacity
-                      style={[styles.toggleBtn, formAmountType === 'variable' && styles.toggleBtnActive]}
-                      onPress={() => setFormAmountType('variable')}
-                    >
-                      <Text style={[styles.toggleBtnText, formAmountType === 'variable' && styles.toggleBtnTextActive]}>
-                        ⚡ 浮動金額 (水電瓦斯)
+                  {/* 分期付款專屬設定區塊 */}
+                  {formIsInstallment ? (
+                    <View style={styles.installmentConfigBox}>
+                      <View style={styles.installmentConfigHeader}>
+                        <Text style={styles.installmentConfigTitle}>📦 分期期數與金額設定</Text>
+                        <Text style={styles.installmentConfigSubtitle}>
+                          每期入帳自動推進期數並在備註註明「(第 X/Y 期)」
+                        </Text>
+                      </View>
+
+                      {/* 總期數快捷選取 */}
+                      <Text style={styles.installmentInnerLabel}>
+                        分期總期數 <Text style={{ color: '#EF4444' }}>*</Text>
                       </Text>
-                    </TouchableOpacity>
+                      <View style={styles.installmentChipsRow}>
+                        {[3, 6, 12, 24, 30, 36].map(periods => {
+                          const isSelected = formTotalInstallments === String(periods);
+                          return (
+                            <TouchableOpacity
+                              key={periods}
+                              style={[styles.installmentChip, isSelected && styles.installmentChipActive]}
+                              onPress={() => handleTotalInstallmentsChange(String(periods))}
+                            >
+                              <Text style={[styles.installmentChipText, isSelected && styles.installmentChipTextActive]}>
+                                {periods} 期
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                      <View style={styles.installmentInputRow}>
+                        <Text style={styles.installmentInputLabel}>自訂總期數：</Text>
+                        <TextInput
+                          style={styles.installmentSmallInput}
+                          keyboardType="numeric"
+                          value={formTotalInstallments}
+                          onChangeText={handleTotalInstallmentsChange}
+                          placeholder="12"
+                          placeholderTextColor="#9CA3AF"
+                        />
+                        <Text style={styles.installmentUnitText}>期</Text>
+                      </View>
 
-                    <TouchableOpacity
-                      style={[styles.toggleBtn, formAmountType === 'fixed' && styles.toggleBtnActive]}
-                      onPress={() => setFormAmountType('fixed')}
-                    >
-                      <Text style={[styles.toggleBtnText, formAmountType === 'fixed' && styles.toggleBtnTextActive]}>
-                        📌 固定金額 (通訊/管理費)
+                      {/* 商品總金額 (試算輔助) */}
+                      <Text style={styles.installmentInnerLabel}>
+                        商品/購買總額 (NT$) (選填，自動試算每期金額)
                       </Text>
-                    </TouchableOpacity>
-                  </View>
+                      <TextInput
+                        style={styles.formTextInput}
+                        keyboardType="numeric"
+                        value={formTotalPurchaseAmount}
+                        onChangeText={handleTotalPurchaseAmountChange}
+                        placeholder="例如：36000"
+                        placeholderTextColor="#9CA3AF"
+                      />
 
-                  {/* 金額輸入 */}
-                  <Text style={styles.formFieldLabel}>
-                    {formAmountType === 'fixed' ? '固定扣繳金額 (NT$)' : '預估參考金額 (NT$) (選填)'}
-                  </Text>
-                  <TextInput
-                    style={styles.formTextInput}
-                    keyboardType="numeric"
-                    placeholder={formAmountType === 'fixed' ? '例如：599、2200' : '例如：1800 (僅供參考)'}
-                    placeholderTextColor="#9CA3AF"
-                    value={formDefaultAmount}
-                    onChangeText={setFormDefaultAmount}
-                  />
-
-                  {/* 扣款週期頻率 */}
-                  <Text style={styles.formFieldLabel}>扣繳週期頻率</Text>
-                  <View style={styles.freqOptionsRow}>
-                    <TouchableOpacity
-                      style={[styles.freqOption, formFrequency === 'monthly' && styles.freqOptionActive]}
-                      onPress={() => setFormFrequency('monthly')}
-                    >
-                      <Text style={[styles.freqOptionText, formFrequency === 'monthly' && styles.freqOptionTextActive]}>
-                        每月繳
+                      {/* 每期應繳金額 */}
+                      <Text style={styles.installmentInnerLabel}>
+                        每期應繳金額 (NT$) <Text style={{ color: '#EF4444' }}>*</Text>
                       </Text>
-                    </TouchableOpacity>
+                      <TextInput
+                        style={styles.formTextInput}
+                        keyboardType="numeric"
+                        value={formDefaultAmount}
+                        onChangeText={val => {
+                          setFormDefaultAmount(val);
+                          const parsedAmt = parseFloat(val);
+                          const parsedPeriods = parseInt(formTotalInstallments, 10);
+                          if (!isNaN(parsedAmt) && parsedAmt > 0 && !isNaN(parsedPeriods) && parsedPeriods > 0) {
+                            setFormTotalPurchaseAmount(String(Math.round(parsedAmt * parsedPeriods)));
+                          }
+                        }}
+                        placeholder="例如：3000"
+                        placeholderTextColor="#9CA3AF"
+                      />
 
-                    <TouchableOpacity
-                      style={[styles.freqOption, formFrequency === 'bimonthly' && styles.freqOptionActive]}
-                      onPress={() => setFormFrequency('bimonthly')}
-                    >
-                      <Text style={[styles.freqOptionText, formFrequency === 'bimonthly' && styles.freqOptionTextActive]}>
-                        雙月繳
-                      </Text>
-                    </TouchableOpacity>
+                      {/* 首期年月 與 當前起始期數 */}
+                      <View style={styles.installmentRowTwoCol}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.installmentInnerLabel}>首期出帳月份 (YYYY-MM)</Text>
+                          <TextInput
+                            style={styles.formTextInput}
+                            value={formInstallmentStartPeriod}
+                            onChangeText={setFormInstallmentStartPeriod}
+                            placeholder="例如：2026-10"
+                            placeholderTextColor="#9CA3AF"
+                          />
+                        </View>
+                        <View style={{ width: 120 }}>
+                          <Text style={styles.installmentInnerLabel}>起始期數</Text>
+                          <TextInput
+                            style={styles.formTextInput}
+                            keyboardType="numeric"
+                            value={formCurrentInstallment}
+                            onChangeText={setFormCurrentInstallment}
+                            placeholder="1"
+                            placeholderTextColor="#9CA3AF"
+                          />
+                        </View>
+                      </View>
 
-                    <TouchableOpacity
-                      style={[styles.freqOption, formFrequency === 'quarterly' && styles.freqOptionActive]}
-                      onPress={() => setFormFrequency('quarterly')}
-                    >
-                      <Text style={[styles.freqOptionText, formFrequency === 'quarterly' && styles.freqOptionTextActive]}>
-                        每季繳
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.freqOption, formFrequency === 'yearly' && styles.freqOptionActive]}
-                      onPress={() => setFormFrequency('yearly')}
-                    >
-                      <Text style={[styles.freqOptionText, formFrequency === 'yearly' && styles.freqOptionTextActive]}>
-                        每年繳
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* 雙月繳之出帳月份設定 (用戶特定需求) */}
-                  {formFrequency === 'bimonthly' && (
-                    <View style={styles.bimonthlyBox}>
-                      <Text style={styles.bimonthlyTitle}>📆 雙月出帳月份設定 (台灣水電瓦斯專屬)</Text>
-                      <Text style={styles.bimonthlyDesc}>
-                        請依您家帳單通知單上的出帳月份設定，當月才會跳出待繳提醒：
-                      </Text>
-
-                      <View style={styles.bimonthlyToggleRow}>
+                      {/* 說明提示卡 */}
+                      <View style={styles.installmentTipBox}>
+                        <Text style={styles.installmentTipText}>
+                          💡 繳滿最後一期時系統將彈出繳清祝賀，並自動將此規則完結除役，不用手動刪除！
+                        </Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <>
+                      {/* 金額模式選擇 */}
+                      <Text style={styles.formFieldLabel}>金額類型</Text>
+                      <View style={styles.toggleRow}>
                         <TouchableOpacity
-                          style={[styles.bimonthlyBtn, formBimonthlyStartMonth === 1 && styles.bimonthlyBtnActive]}
-                          onPress={() => setFormBimonthlyStartMonth(1)}
+                          style={[styles.toggleBtn, formAmountType === 'variable' && styles.toggleBtnActive]}
+                          onPress={() => setFormAmountType('variable')}
                         >
-                          <Text style={[styles.bimonthlyBtnText, formBimonthlyStartMonth === 1 && styles.bimonthlyBtnTextActive]}>
-                            單數月出帳 (1, 3, 5, 7, 9, 11月)
+                          <Text style={[styles.toggleBtnText, formAmountType === 'variable' && styles.toggleBtnTextActive]}>
+                            ⚡ 浮動金額 (水電瓦斯)
                           </Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
-                          style={[styles.bimonthlyBtn, formBimonthlyStartMonth === 2 && styles.bimonthlyBtnActive]}
-                          onPress={() => setFormBimonthlyStartMonth(2)}
+                          style={[styles.toggleBtn, formAmountType === 'fixed' && styles.toggleBtnActive]}
+                          onPress={() => setFormAmountType('fixed')}
                         >
-                          <Text style={[styles.bimonthlyBtnText, formBimonthlyStartMonth === 2 && styles.bimonthlyBtnTextActive]}>
-                            雙數月出帳 (2, 4, 6, 8, 10, 12月)
+                          <Text style={[styles.toggleBtnText, formAmountType === 'fixed' && styles.toggleBtnTextActive]}>
+                            📌 固定金額 (通訊/管理費)
                           </Text>
                         </TouchableOpacity>
                       </View>
-                    </View>
+
+                      {/* 金額輸入 */}
+                      <Text style={styles.formFieldLabel}>
+                        {formAmountType === 'fixed' ? '固定扣繳金額 (NT$)' : '預估參考金額 (NT$) (選填)'}
+                      </Text>
+                      <TextInput
+                        style={styles.formTextInput}
+                        keyboardType="numeric"
+                        placeholder={formAmountType === 'fixed' ? '例如：599、2200' : '例如：1800 (僅供參考)'}
+                        placeholderTextColor="#9CA3AF"
+                        value={formDefaultAmount}
+                        onChangeText={setFormDefaultAmount}
+                      />
+
+                      {/* 扣款週期頻率 */}
+                      <Text style={styles.formFieldLabel}>扣繳週期頻率</Text>
+                      <View style={styles.freqOptionsRow}>
+                        <TouchableOpacity
+                          style={[styles.freqOption, formFrequency === 'monthly' && styles.freqOptionActive]}
+                          onPress={() => setFormFrequency('monthly')}
+                        >
+                          <Text style={[styles.freqOptionText, formFrequency === 'monthly' && styles.freqOptionTextActive]}>
+                            每月繳
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[styles.freqOption, formFrequency === 'bimonthly' && styles.freqOptionActive]}
+                          onPress={() => setFormFrequency('bimonthly')}
+                        >
+                          <Text style={[styles.freqOptionText, formFrequency === 'bimonthly' && styles.freqOptionTextActive]}>
+                            雙月繳
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[styles.freqOption, formFrequency === 'quarterly' && styles.freqOptionActive]}
+                          onPress={() => setFormFrequency('quarterly')}
+                        >
+                          <Text style={[styles.freqOptionText, formFrequency === 'quarterly' && styles.freqOptionTextActive]}>
+                            每季繳
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[styles.freqOption, formFrequency === 'yearly' && styles.freqOptionActive]}
+                          onPress={() => setFormFrequency('yearly')}
+                        >
+                          <Text style={[styles.freqOptionText, formFrequency === 'yearly' && styles.freqOptionTextActive]}>
+                            每年繳
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* 雙月繳之出帳月份設定 (用戶特定需求) */}
+                      {formFrequency === 'bimonthly' && (
+                        <View style={styles.bimonthlyBox}>
+                          <Text style={styles.bimonthlyTitle}>📆 雙月出帳月份設定 (台灣水電瓦斯專屬)</Text>
+                          <Text style={styles.bimonthlyDesc}>
+                            請依您家帳單通知單上的出帳月份設定，當月才會跳出待繳提醒：
+                          </Text>
+
+                          <View style={styles.bimonthlyToggleRow}>
+                            <TouchableOpacity
+                              style={[styles.bimonthlyBtn, formBimonthlyStartMonth === 1 && styles.bimonthlyBtnActive]}
+                              onPress={() => setFormBimonthlyStartMonth(1)}
+                            >
+                              <Text style={[styles.bimonthlyBtnText, formBimonthlyStartMonth === 1 && styles.bimonthlyBtnTextActive]}>
+                                單數月出帳 (1, 3, 5, 7, 9, 11月)
+                              </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={[styles.bimonthlyBtn, formBimonthlyStartMonth === 2 && styles.bimonthlyBtnActive]}
+                              onPress={() => setFormBimonthlyStartMonth(2)}
+                            >
+                              <Text style={[styles.bimonthlyBtnText, formBimonthlyStartMonth === 2 && styles.bimonthlyBtnTextActive]}>
+                                雙數月出帳 (2, 4, 6, 8, 10, 12月)
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      )}
+                    </>
                   )}
 
                   {/* 扣款日/帳單日 (1~31) */}
@@ -2209,5 +2511,220 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '700',
+  },
+  // 模式切換（常規週期 vs 分期付款）
+  modeToggleRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  modeToggleBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+  },
+  modeToggleBtnActive: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#2563EB',
+  },
+  modeToggleBtnActiveInstallment: {
+    backgroundColor: '#FAF5FF',
+    borderColor: '#9333EA',
+  },
+  modeToggleBtnText: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  modeToggleBtnTextActive: {
+    color: '#1D4ED8',
+    fontWeight: '700',
+  },
+  modeToggleBtnTextActiveInstallment: {
+    color: '#7E22CE',
+    fontWeight: '700',
+  },
+  // 待繳清單分期專屬樣式
+  installmentPendingBadge: {
+    backgroundColor: '#F3E8FF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  installmentPendingBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#7E22CE',
+  },
+  installmentRemainingHint: {
+    fontSize: 10,
+    color: '#7E22CE',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  // 規則清單分期進度卡
+  installmentRuleTag: {
+    backgroundColor: '#F3E8FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  installmentRuleTagText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#7E22CE',
+  },
+  installmentProgressCard: {
+    backgroundColor: '#FAF5FF',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E9D5FF',
+  },
+  installmentProgressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  installmentProgressTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6B21A8',
+  },
+  installmentProgressPercent: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#9333EA',
+  },
+  progressBarTrack: {
+    height: 7,
+    backgroundColor: '#E9D5FF',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 6,
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#9333EA',
+    borderRadius: 4,
+  },
+  installmentProgressFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  installmentFooterText: {
+    fontSize: 11,
+    color: '#7E22CE',
+    fontWeight: '500',
+  },
+  // 分期設定表單專屬區塊
+  installmentConfigBox: {
+    backgroundColor: '#FAF5FF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E9D5FF',
+    padding: 12,
+    marginBottom: 14,
+  },
+  installmentConfigHeader: {
+    marginBottom: 10,
+  },
+  installmentConfigTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#6B21A8',
+  },
+  installmentConfigSubtitle: {
+    fontSize: 11,
+    color: '#7E22CE',
+    marginTop: 2,
+  },
+  installmentInnerLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#4C1D95',
+    marginBottom: 6,
+    marginTop: 8,
+  },
+  installmentChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 8,
+  },
+  installmentChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D8B4FE',
+  },
+  installmentChipActive: {
+    backgroundColor: '#9333EA',
+    borderColor: '#7E22CE',
+  },
+  installmentChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B21A8',
+  },
+  installmentChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  installmentInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  installmentInputLabel: {
+    fontSize: 12,
+    color: '#6B21A8',
+    fontWeight: '600',
+    marginRight: 6,
+  },
+  installmentSmallInput: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D8B4FE',
+    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    fontSize: 13,
+    color: '#1E293B',
+    width: 60,
+    textAlign: 'center',
+    fontWeight: '700',
+  },
+  installmentUnitText: {
+    fontSize: 12,
+    color: '#6B21A8',
+    marginLeft: 6,
+  },
+  installmentRowTwoCol: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'flex-start',
+  },
+  installmentTipBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#E9D5FF',
+  },
+  installmentTipText: {
+    fontSize: 11,
+    color: '#6B21A8',
+    lineHeight: 16,
   },
 });

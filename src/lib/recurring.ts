@@ -9,6 +9,24 @@ import { RecurringRule, RecurringFrequency } from '../types/database';
 export const isBillDueInMonth = (rule: RecurringRule, year: number, month: number): boolean => {
   if (!rule.is_active) return false;
 
+  // 📦 分期付款檢查：確認是否在有效分期月份與未繳清期數內
+  if (rule.is_installment && rule.total_installments && rule.total_installments > 0) {
+    if (rule.installment_start_period) {
+      const [sYearStr, sMonthStr] = rule.installment_start_period.split('-');
+      const sY = parseInt(sYearStr, 10);
+      const sM = parseInt(sMonthStr, 10);
+      if (!isNaN(sY) && !isNaN(sM)) {
+        const monthOffset = (year - sY) * 12 + (month - sM);
+        if (monthOffset < 0 || monthOffset >= rule.total_installments) {
+          return false;
+        }
+      }
+    }
+    if ((rule.current_installment || 1) > rule.total_installments) {
+      return false;
+    }
+  }
+
   switch (rule.frequency) {
     case 'monthly':
       return true;
@@ -32,6 +50,61 @@ export const isBillDueInMonth = (rule: RecurringRule, year: number, month: numbe
     default:
       return true;
   }
+};
+
+/**
+ * 分期付款資訊介面
+ */
+export interface InstallmentInfo {
+  isInstallment: boolean;
+  currentInstallmentNumber: number; // 當前所屬/應繳期數 (例如 3)
+  totalInstallments: number; // 總期數 (例如 12)
+  remainingInstallments: number; // 剩餘期數 (例如 9)
+  remainingAmount: number; // 剩餘待繳總額
+  progressPercent: number; // 繳納進度百分比 (0~100)
+  isCompleted: boolean; // 是否已全額繳清完結
+  labelText: string; // 易讀標籤，例如："第 3/12 期"
+}
+
+/**
+ * 取得指定規則在特定月份的分期進度與金額資訊
+ */
+export const getInstallmentInfo = (rule: RecurringRule, date = new Date()): InstallmentInfo | null => {
+  if (!rule.is_installment || !rule.total_installments || rule.total_installments <= 0) {
+    return null;
+  }
+
+  const total = rule.total_installments;
+  let instNum = rule.current_installment || 1;
+
+  if (rule.installment_start_period) {
+    const [sYearStr, sMonthStr] = rule.installment_start_period.split('-');
+    const sY = parseInt(sYearStr, 10);
+    const sM = parseInt(sMonthStr, 10);
+    if (!isNaN(sY) && !isNaN(sM)) {
+      const diff = (date.getFullYear() - sY) * 12 + (date.getMonth() + 1 - sM);
+      if (diff >= 0 && diff < total) {
+        instNum = diff + 1;
+      }
+    }
+  }
+
+  const isCompleted = !rule.is_active || (rule.current_installment || 1) > total;
+  const remaining = Math.max(0, total - (instNum - 1));
+  const remainingAmount = remaining * (rule.default_amount || 0);
+  const paidCount = Math.max(0, Math.min(total, instNum - 1));
+  const progressPercent = Math.min(100, Math.round((paidCount / total) * 100));
+
+  return {
+    isInstallment: true,
+    currentInstallmentNumber: instNum,
+    totalInstallments: total,
+    remainingInstallments: remaining,
+    remainingAmount,
+    progressPercent,
+    isCompleted,
+    labelText: `第 ${instNum}/${total} 期`,
+  };
 };
 
 /**
@@ -67,20 +140,28 @@ export const isBillPaidForCurrentPeriod = (rule: RecurringRule, date = new Date(
 };
 
 /**
- * 取得週期週期的易讀中文說明 (例如："2026年10月" 或 "2026年 9~10月期")
+ * 取得週期週期的易讀中文說明 (例如："2026年10月" 或 "2026年 9~10月期"，分期則附帶 "第 3/12 期")
  */
 export const getBillPeriodLabel = (rule: RecurringRule, date = new Date()): string => {
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
 
+  let base = `${year}年 ${month}月份`;
   if (rule.frequency === 'bimonthly') {
     const isDue = isBillDueInMonth(rule, year, month);
     const activeMonth = isDue ? month : (month > 1 ? month - 1 : 12);
     const prevMonth = activeMonth > 1 ? activeMonth - 1 : 12;
-    return `${year}年 ${prevMonth}~${activeMonth}月期`;
+    base = `${year}年 ${prevMonth}~${activeMonth}月期`;
   }
 
-  return `${year}年 ${month}月份`;
+  if (rule.is_installment && rule.total_installments) {
+    const info = getInstallmentInfo(rule, date);
+    if (info) {
+      return `${base} (${info.labelText})`;
+    }
+  }
+
+  return base;
 };
 
 /**

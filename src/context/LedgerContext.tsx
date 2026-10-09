@@ -5,7 +5,7 @@ import { Transaction, Category, Ledger, Profile, TransactionType, CategoryType, 
 import { supabase, isConfigured } from '../lib/supabase';
 import { generateUUID } from '../lib/uuid';
 import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS } from '../lib/payment';
-import { DEFAULT_RECURRING_PRESETS, getCurrentPeriodKey, getBillPeriodLabel } from '../lib/recurring';
+import { DEFAULT_RECURRING_PRESETS, getCurrentPeriodKey, getBillPeriodLabel, getInstallmentInfo } from '../lib/recurring';
 
 const safeAlert = (title: string, message: string) => {
   if (Platform.OS === 'web') {
@@ -3510,11 +3510,27 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
 
     const periodKey = getCurrentPeriodKey(rule, new Date(txDate));
+    let nextCurrentInstallment = rule.current_installment;
+    let nextIsActive = rule.is_active;
+    let isFullyCompleted = false;
+
+    if (rule.is_installment && rule.total_installments && rule.total_installments > 0) {
+      const instInfo = getInstallmentInfo(rule, new Date(txDate));
+      const currentNumber = instInfo ? instInfo.currentInstallmentNumber : (rule.current_installment || 1);
+      nextCurrentInstallment = currentNumber + 1;
+      if (nextCurrentInstallment > rule.total_installments) {
+        nextIsActive = false; // 已全數繳納完畢，自動除役完結！
+        isFullyCompleted = true;
+      }
+    }
+
     const updated = recurringRules.map(r => {
       if (r.id === ruleId) {
         return {
           ...r,
           last_recorded_period: periodKey,
+          current_installment: nextCurrentInstallment,
+          is_active: nextIsActive,
           updated_at: new Date().toISOString(),
         };
       }
@@ -3527,10 +3543,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       try {
         await supabase.from('recurring_rules').update({
           last_recorded_period: periodKey,
+          current_installment: nextCurrentInstallment,
+          is_active: nextIsActive,
           updated_at: new Date().toISOString(),
         }).eq('id', ruleId);
       } catch {}
     }
+
+    if (isFullyCompleted) {
+      safeAlert(
+        '🎉 分期付款已全額繳清！',
+        `恭喜！「${rule.name}」共 ${rule.total_installments} 期已全數入帳結清，系統已自動將此規則完結除役，感謝您的細心記帳！`
+      );
+    }
+
     return true;
   };
 
@@ -3540,11 +3566,25 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!rule) return false;
 
     const targetPeriod = periodKey || getCurrentPeriodKey(rule, new Date());
+    let nextCurrentInstallment = rule.current_installment;
+    let nextIsActive = rule.is_active;
+
+    if (rule.is_installment && rule.total_installments && rule.total_installments > 0) {
+      const instInfo = getInstallmentInfo(rule, new Date());
+      const currentNumber = instInfo ? instInfo.currentInstallmentNumber : (rule.current_installment || 1);
+      nextCurrentInstallment = currentNumber + 1;
+      if (nextCurrentInstallment > rule.total_installments) {
+        nextIsActive = false;
+      }
+    }
+
     const updated = recurringRules.map(r => {
       if (r.id === ruleId) {
         return {
           ...r,
           last_recorded_period: targetPeriod,
+          current_installment: nextCurrentInstallment,
+          is_active: nextIsActive,
           updated_at: new Date().toISOString(),
         };
       }
@@ -3557,6 +3597,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       try {
         await supabase.from('recurring_rules').update({
           last_recorded_period: targetPeriod,
+          current_installment: nextCurrentInstallment,
+          is_active: nextIsActive,
           updated_at: new Date().toISOString(),
         }).eq('id', ruleId);
       } catch {}
@@ -4433,6 +4475,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         bimonthly_start_month: r.bimonthly_start_month,
         is_active: r.is_active,
         last_recorded_period: r.last_recorded_period,
+        is_installment: r.is_installment,
+        total_installments: r.total_installments,
+        current_installment: r.current_installment,
+        installment_start_period: r.installment_start_period,
         note: r.note,
       })),
     };
@@ -4766,6 +4812,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             paid_by: mappedPaidBy,
             category_id: mappedCategoryId || nextCategories[0]?.id || '',
             account_id: mappedAccountId,
+            is_installment: br.is_installment,
+            total_installments: br.total_installments,
+            current_installment: br.current_installment,
+            installment_start_period: br.installment_start_period,
             updated_at: new Date().toISOString(),
           };
         };
