@@ -31,6 +31,51 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
   const account = transaction.payment_account || (transaction.account_id ? getAccountById(transaction.account_id) : undefined);
   const paymentLabel = formatPaymentLabel(transaction.payment_method, account, paymentMethods);
 
+  if (transaction.type === 'memo') {
+    const reminderDate = transaction.reminder_date || (transaction.merchant?.startsWith('remind:') ? transaction.merchant.replace('remind:', '') : undefined);
+    return (
+      <TouchableOpacity
+        activeOpacity={0.7}
+        style={styles.memoCard}
+        onPress={() => onPress?.(transaction)}
+      >
+        <View style={styles.memoHeaderRow}>
+          <View style={styles.memoHeaderLeft}>
+            <View style={styles.memoIconBadge}>
+              <Text style={styles.memoIconText}>📌</Text>
+            </View>
+            <Text style={styles.memoTitleText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              {category?.name || '生活記事'}
+            </Text>
+            {!!reminderDate && (
+              <View style={styles.memoReminderBadge}>
+                <Text style={styles.memoReminderBadgeText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                  ⏰ 提醒：{reminderDate}
+                </Text>
+              </View>
+            )}
+          </View>
+          <Text style={styles.memoDateText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+            {formattedDate}
+          </Text>
+        </View>
+
+        <Text style={styles.memoContentText} allowFontScaling={false} maxFontSizeMultiplier={1.1}>
+          {transaction.note || '(無內容)'}
+        </Text>
+
+        <View style={styles.memoFooterRow}>
+          <Text style={styles.memoAuthorText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+            {payer?.avatar_url || '👤'} {payer?.display_name || '成員'} 記錄
+          </Text>
+          <Text style={styles.memoActionHint} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+            點擊查看 / 編輯 ›
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
   return (
     <TouchableOpacity
       activeOpacity={0.7}
@@ -263,5 +308,90 @@ const styles = StyleSheet.create({
     fontSize: 9.5,
     fontWeight: '600',
     color: '#059669',
+  },
+  memoCard: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: 14,
+    padding: 13,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderLeftWidth: 4,
+    borderLeftColor: '#F59E0B',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  memoHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  memoHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  memoIconBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#FEF3C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  memoIconText: {
+    fontSize: 12,
+  },
+  memoTitleText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  memoReminderBadge: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  memoReminderBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  memoDateText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: '#B45309',
+  },
+  memoContentText: {
+    fontSize: 14,
+    color: '#1E293B',
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+  memoFooterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 7,
+    borderTopWidth: 1,
+    borderTopColor: '#FEF3C7',
+  },
+  memoAuthorText: {
+    fontSize: 11,
+    color: '#78350F',
+    fontWeight: '500',
+  },
+  memoActionHint: {
+    fontSize: 11,
+    color: '#D97706',
+    fontWeight: '600',
   },
 });

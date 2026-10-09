@@ -201,7 +201,7 @@ function MainApp() {
 
   const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'bills' | 'family'>('transactions');
   const [modalVisible, setModalVisible] = useState(false);
-  const [modalMode, setModalMode] = useState<'expense' | 'income' | 'allowance'>('expense');
+  const [modalMode, setModalMode] = useState<'expense' | 'income' | 'allowance' | 'memo'>('expense');
   const [modalRecipientId, setModalRecipientId] = useState<string | undefined>(undefined);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [reconcileModalVisible, setReconcileModalVisible] = useState(false);
@@ -224,6 +224,16 @@ function MainApp() {
       return !isBillPaidForCurrentPeriod(rule, now);
     }).length;
   }, [recurringRules, currentLedger?.id]);
+
+  // 今日或到期待辦之生活記事備忘
+  const pendingMemos = useMemo(() => {
+    const todayYmd = new Date().toISOString().split('T')[0];
+    return transactions.filter(t => {
+      if (t.type !== 'memo') return false;
+      if (!t.reminder_date) return false;
+      return t.reminder_date <= todayYmd;
+    });
+  }, [transactions]);
   const [searchQuery, setSearchQuery] = useState('');
   const [exportModalVisible, setExportModalVisible] = useState(false);
   const [memberModalVisible, setMemberModalVisible] = useState(false);
@@ -2782,6 +2792,36 @@ function MainApp() {
                 <View style={styles.pendingRecurringAction}>
                   <Text style={styles.pendingRecurringActionText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                     核對記帳 ›
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
+            {/* 🔔 今日生活備忘與待辦提醒膠囊 */}
+            {pendingMemos.length > 0 && (
+              <TouchableOpacity
+                style={styles.pendingMemoBanner}
+                activeOpacity={0.8}
+                onPress={() => {
+                  const firstPending = pendingMemos[0];
+                  if (firstPending) {
+                    setEditingTransaction(firstPending);
+                  }
+                }}
+              >
+                <View style={styles.pendingMemoLeft}>
+                  <View style={styles.pendingMemoBadge}>
+                    <Text style={styles.pendingMemoBadgeText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      🔔 待辦
+                    </Text>
+                  </View>
+                  <Text style={styles.pendingMemoTitle} numberOfLines={1} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    今日有 <Text style={styles.pendingMemoCountHighlight}>{pendingMemos.length}</Text> 則生活待辦：{pendingMemos[0]?.note}
+                  </Text>
+                </View>
+                <View style={styles.pendingMemoAction}>
+                  <Text style={styles.pendingMemoActionText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    查看備忘 ›
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -5835,6 +5875,65 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#DC2626',
+  },
+
+  // 待辦記事提醒膠囊 (Home Screen)
+  pendingMemoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1.5,
+    borderColor: '#FDE68A',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  pendingMemoLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
+  pendingMemoBadge: {
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  pendingMemoBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  pendingMemoTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#92400E',
+    flex: 1,
+  },
+  pendingMemoCountHighlight: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#D97706',
+  },
+  pendingMemoAction: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  pendingMemoActionText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#B45309',
   },
 
   // Option B: 家庭頁面備份排程與狀態卡片樣式

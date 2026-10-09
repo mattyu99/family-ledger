@@ -108,8 +108,10 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const [selectedAccountId, setSelectedAccountId] = useState<string>(() => transaction?.account_id || '');
   const [merchant, setMerchant] = useState<string>(() => transaction?.merchant || '');
   const [note, setNote] = useState<string>(() => transaction?.note || '');
+  const [memoReminderDate, setMemoReminderDate] = useState<string>(() => transaction?.reminder_date || '');
   const [transactedAt, setTransactedAt] = useState<string>(() => transaction?.transacted_at || new Date().toISOString());
   const [datePickerVisible, setDatePickerVisible] = useState<boolean>(false);
+  const [reminderDatePickerVisible, setReminderDatePickerVisible] = useState<boolean>(false);
   const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -248,6 +250,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       setSelectedAccountId(transaction.account_id || '');
       setMerchant(transaction.merchant || '');
       setNote(transaction.note || '');
+      setMemoReminderDate(transaction.reminder_date || '');
+      setReminderDatePickerVisible(false);
       setTransactedAt(transaction.transacted_at || new Date().toISOString());
       setDatePickerVisible(false);
     }
@@ -281,6 +285,11 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   };
 
   const today = React.useMemo(() => new Date(), []);
+  const tomorrow = React.useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d;
+  }, []);
   const yesterday = React.useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() - 1);
@@ -291,6 +300,12 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     d.setDate(d.getDate() - 2);
     return d;
   }, []);
+
+  const formatYmd = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  const todayYmd = React.useMemo(() => formatYmd(new Date()), []);
+  const tomorrowYmd = React.useMemo(() => formatYmd(tomorrow), [tomorrow]);
 
   const isSameDay = (d1: Date, d2: Date) =>
     d1.getFullYear() === d2.getFullYear() &&
@@ -306,6 +321,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const isYesterday = isSameDay(curDate, yesterday);
   const isDayBeforeYesterday = isSameDay(curDate, dayBeforeYesterday);
   const isCustomDate = !isOriginal && !isToday && !isYesterday && !isDayBeforeYesterday;
+  const isCustomReminder = !!memoReminderDate && memoReminderDate !== todayYmd && memoReminderDate !== tomorrowYmd;
 
   const setQuickDate = (targetDate: Date) => {
     const orig = transaction?.transacted_at ? new Date(transaction.transacted_at) : new Date();
@@ -325,9 +341,39 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     if (!transaction) return;
 
     if (!canEdit) {
-      const msg = `權限不足：此筆記帳由「${txPayerName}」付款，僅付款人或帳本管理者有權修改。`;
+      const msg = `權限不足：此筆紀錄由「${txPayerName}」記錄，僅本人或帳本管理者有權修改。`;
       if (Platform.OS === 'web') alert(msg);
       else Alert.alert('權限不足', msg);
+      return;
+    }
+
+    if (transaction.type === 'memo') {
+      if (!note.trim()) {
+        alert('請輸入記事內容');
+        return;
+      }
+      const canonicalPayer = getMemberById(transaction.paid_by);
+      const targetPayer = paidBy || canonicalPayer?.id || currentUser.id || members[0]?.id;
+      try {
+        const success = await updateTransaction(transaction.id, {
+          amount: 0,
+          type: 'memo',
+          category_id: transaction.category_id || categories[0]?.id,
+          paid_by: targetPayer,
+          note: note.trim(),
+          reminder_date: memoReminderDate || undefined,
+          merchant: memoReminderDate ? `remind:${memoReminderDate}` : 'memo',
+          transacted_at: transactedAt || transaction.transacted_at,
+        });
+
+        if (success) {
+          onClose();
+        } else {
+          alert('更新失敗，請檢查網路連線');
+        }
+      } catch (err: any) {
+        alert(err.message || '更新記事時發生錯誤');
+      }
       return;
     }
 
@@ -374,19 +420,22 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     if (!transaction) return;
 
     if (!canEdit) {
-      const msg = `權限不足：此筆記帳由「${txPayerName}」付款，僅付款人或帳本管理者有權刪除。`;
+      const msg = `權限不足：此筆紀錄由「${txPayerName}」記錄，僅本人或帳本管理者有權刪除。`;
       if (Platform.OS === 'web') alert(msg);
       else Alert.alert('權限不足', msg);
       return;
     }
 
+    const title = transaction.type === 'memo' ? '刪除生活備忘' : '刪除記帳';
+    const message = transaction.type === 'memo' ? '確定要刪除這筆生活記事備忘嗎？' : '確定要刪除這筆記帳紀錄嗎？';
+
     if (Platform.OS === 'web') {
-      if (window.confirm('確定要刪除這筆記帳紀錄嗎？')) {
+      if (window.confirm(message)) {
         deleteTransaction(transaction.id);
         onClose();
       }
     } else {
-      Alert.alert('刪除記帳', '確定要刪除這筆記帳紀錄嗎？', [
+      Alert.alert(title, message, [
         { text: '取消', style: 'cancel' },
         {
           text: '刪除',
@@ -413,10 +462,12 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           <View style={styles.header}>
             <View>
               <Text style={styles.title} maxFontSizeMultiplier={1.15}>
-                {canEdit ? '✏️ 編輯記帳明細' : '👀 查看記帳明細'}
+                {canEdit
+                  ? (transaction.type === 'memo' ? '📝 編輯生活備忘' : '✏️ 編輯記帳明細')
+                  : (transaction.type === 'memo' ? '👀 查看生活備忘' : '👀 查看記帳明細')}
               </Text>
               <Text style={styles.headerDateBadge} maxFontSizeMultiplier={1.15}>
-                記帳日期：{curDate.getMonth() + 1}/{curDate.getDate()}
+                {transaction.type === 'memo' ? '記事日期' : '記帳日期'}：{curDate.getMonth() + 1}/{curDate.getDate()}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -435,20 +486,232 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
-            {/* 類型切換 (支出 / 收入) */}
-            <View style={[styles.typeToggle, !canEdit && styles.disabledContainer]}>
-              <TouchableOpacity
-                disabled={!canEdit}
-                style={[styles.typeBtn, type === 'expense' && styles.typeBtnActive]}
-                onPress={() => handleTypeChange('expense')}
-              >
-                <Text
-                  style={[styles.typeText, type === 'expense' && styles.typeTextActive]}
+            {transaction.type === 'memo' ? (
+              <>
+                {/* 生活備忘橫幅 */}
+                <View style={styles.memoBanner}>
+                  <Text style={styles.memoBannerIcon}>📌</Text>
+                  <View style={styles.memoBannerContent}>
+                    <Text style={styles.memoBannerTitle} maxFontSizeMultiplier={1.15}>家庭生活手帳與備忘</Text>
+                    <Text style={styles.memoBannerDesc} maxFontSizeMultiplier={1.08}>
+                      隨手記錄生活瑣事、採買清單或重要待辦。獨立於財務統計，支援到期提醒！
+                    </Text>
+                  </View>
+                </View>
+
+                {/* 記事內容多行輸入框 */}
+                <View style={styles.sectionLabelRow}>
+                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記事內容與備忘</Text>
+                  {keyboardOffset > 0 && (
+                    <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <TextInput
+                  style={[styles.memoContentInput, !canEdit && styles.readOnlyInput]}
+                  multiline
+                  numberOfLines={4}
+                  placeholder="記錄今天的事情、靈感、採買備忘或家庭待辦..."
+                  placeholderTextColor="#9CA3AF"
+                  value={note}
+                  onChangeText={setNote}
+                  editable={canEdit}
+                  onFocus={() => handleInputFocus()}
+                  textAlignVertical="top"
                   maxFontSizeMultiplier={1.15}
-                >
-                  支出
-                </Text>
-              </TouchableOpacity>
+                />
+
+                {/* 快捷情境標籤 (可編輯時提供快捷點選) */}
+                {canEdit && (
+                  <View style={styles.quickNoteRow}>
+                    {['📌 待辦清單', '🛒 採買清單', '💡 靈感筆記', '🏠 家居修繕', '🩺 健康用藥', '🎂 紀念日', '💼 重要備忘'].map(tag => (
+                      <TouchableOpacity
+                        key={tag}
+                        style={styles.quickNoteChip}
+                        onPress={() => {
+                          if (!note) {
+                            setNote(`[${tag}] `);
+                          } else if (!note.includes(tag)) {
+                            setNote(`[${tag}] ${note}`);
+                          }
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.quickNoteChipText} maxFontSizeMultiplier={1.08}>{tag}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+
+                {/* 記事日期 */}
+                <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記事日期</Text>
+                <View style={styles.dateRow}>
+                  <TouchableOpacity
+                    disabled={!canEdit}
+                    style={[styles.dateChip, isOriginal && styles.dateChipActive]}
+                    onPress={() => setQuickDate(origDate)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dateChipText, isOriginal && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                      原日期 ({origDateFormatted})
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    disabled={!canEdit}
+                    style={[styles.dateChip, !isOriginal && isToday && styles.dateChipActive]}
+                    onPress={() => setQuickDate(today)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dateChipText, !isOriginal && isToday && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                      今天 ({today.getMonth() + 1}/{today.getDate()})
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    disabled={!canEdit}
+                    style={[styles.dateChip, !isOriginal && isYesterday && styles.dateChipActive]}
+                    onPress={() => setQuickDate(yesterday)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dateChipText, !isOriginal && isYesterday && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                      昨天 ({yesterday.getMonth() + 1}/{yesterday.getDate()})
+                    </Text>
+                  </TouchableOpacity>
+
+                  {isCustomDate && (
+                    <TouchableOpacity
+                      disabled={!canEdit}
+                      style={[styles.dateChip, styles.dateChipActive, styles.dateChipCustom]}
+                      onPress={() => setDatePickerVisible(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.dateChipText, styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                        🗓️ {curDate.getMonth() + 1}/{curDate.getDate()} (自訂)
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {canEdit && (
+                    <TouchableOpacity
+                      style={[styles.dateMoreBtn, isCustomDate && styles.dateMoreBtnSelected]}
+                      onPress={() => setDatePickerVisible(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.dateMoreBtnText, isCustomDate && styles.dateMoreBtnTextSelected]} maxFontSizeMultiplier={1.15}>
+                        {isCustomDate ? '✏️ 改選' : '🗓️ 更多...'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* ⏰ 待辦提醒日期 (選填) */}
+                <View style={styles.sectionLabelRow}>
+                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>⏰ 待辦提醒日期 (選填)</Text>
+                  {canEdit && !!memoReminderDate && (
+                    <TouchableOpacity onPress={() => setMemoReminderDate('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Text style={styles.clearMerchantText} maxFontSizeMultiplier={1.08}>清除提醒 ✕</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <View style={styles.dateRow}>
+                  <TouchableOpacity
+                    disabled={!canEdit}
+                    style={[styles.dateChip, !memoReminderDate && styles.dateChipActive]}
+                    onPress={() => setMemoReminderDate('')}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dateChipText, !memoReminderDate && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                      不設提醒
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    disabled={!canEdit}
+                    style={[styles.dateChip, memoReminderDate === todayYmd && styles.dateChipActive]}
+                    onPress={() => setMemoReminderDate(todayYmd)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dateChipText, memoReminderDate === todayYmd && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                      今天 ({today.getMonth() + 1}/{today.getDate()})
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    disabled={!canEdit}
+                    style={[styles.dateChip, memoReminderDate === tomorrowYmd && styles.dateChipActive]}
+                    onPress={() => setMemoReminderDate(tomorrowYmd)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dateChipText, memoReminderDate === tomorrowYmd && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                      明天 ({tomorrow.getMonth() + 1}/{tomorrow.getDate()})
+                    </Text>
+                  </TouchableOpacity>
+                  {isCustomReminder && (
+                    <TouchableOpacity
+                      disabled={!canEdit}
+                      style={[styles.dateChip, styles.dateChipActive, styles.dateChipCustom]}
+                      onPress={() => setReminderDatePickerVisible(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.dateChipText, styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                        🗓️ {memoReminderDate}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  {canEdit && (
+                    <TouchableOpacity
+                      style={[styles.dateMoreBtn, isCustomReminder && styles.dateMoreBtnSelected]}
+                      onPress={() => setReminderDatePickerVisible(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.dateMoreBtnText, isCustomReminder && styles.dateMoreBtnTextSelected]} maxFontSizeMultiplier={1.15}>
+                        {isCustomReminder ? '✏️ 改選' : '🗓️ 指定...'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* 記錄成員 */}
+                <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記錄成員</Text>
+                <View style={styles.payerRow}>
+                  {members.map(member => {
+                    const isSelected = (paidBy || transaction.paid_by) === member.id;
+                    const isMe = member.id === currentUser.id || (!!currentUser.display_name && currentUser.display_name === member.display_name);
+                    return (
+                      <TouchableOpacity
+                        key={member.id}
+                        disabled={!canEdit}
+                        style={[styles.payerChip, isSelected && styles.payerChipActive]}
+                        onPress={() => setPaidBy(member.id)}
+                      >
+                        <Text style={styles.payerAvatar}>{member.avatar_url}</Text>
+                        <Text
+                          style={[styles.payerName, isSelected && styles.payerNameActive]}
+                          maxFontSizeMultiplier={1.15}
+                        >
+                          {member.display_name}{isMe ? ' (我)' : ''}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            ) : (
+              <>
+                {/* 類型切換 (支出 / 收入) */}
+                <View style={[styles.typeToggle, !canEdit && styles.disabledContainer]}>
+                  <TouchableOpacity
+                    disabled={!canEdit}
+                    style={[styles.typeBtn, type === 'expense' && styles.typeBtnActive]}
+                    onPress={() => handleTypeChange('expense')}
+                  >
+                    <Text
+                      style={[styles.typeText, type === 'expense' && styles.typeTextActive]}
+                      maxFontSizeMultiplier={1.15}
+                    >
+                      支出
+                    </Text>
+                  </TouchableOpacity>
               <TouchableOpacity
                 disabled={!canEdit}
                 style={[styles.typeBtn, type === 'income' && styles.typeBtnActiveIncome]}
@@ -830,38 +1093,53 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               onSubmitEditing={Keyboard.dismiss}
               maxFontSizeMultiplier={1.15}
             />
+          </>
+        )}
 
-            {/* 操作按鈕群 */}
-            {canEdit ? (
-              <View style={styles.btnRow}>
-                <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
-                  <Text style={styles.deleteBtnText} maxFontSizeMultiplier={1.15}>🗑️ 刪除紀錄</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
-                  <Text style={styles.submitBtnText} maxFontSizeMultiplier={1.15}>儲存修改</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={styles.readOnlyBtnRow}>
-                <TouchableOpacity style={styles.readOnlyCloseBtn} onPress={onClose} activeOpacity={0.8}>
-                  <Text style={styles.readOnlyCloseBtnText} maxFontSizeMultiplier={1.15}>關閉明細</Text>
-                </TouchableOpacity>
-                <Text style={styles.readOnlyFooterHint} maxFontSizeMultiplier={1.08}>
-                  🔒 僅付款成員「{txPayerName}」本人或帳本管理者具有編輯與刪除此筆記帳的權限
-                </Text>
-              </View>
-            )}
-          </ScrollView>
-        </View>
-      </KeyboardAvoidingView>
+        {/* 操作按鈕群 */}
+        {canEdit ? (
+          <View style={styles.btnRow}>
+            <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
+              <Text style={styles.deleteBtnText} maxFontSizeMultiplier={1.15}>
+                {transaction.type === 'memo' ? '🗑️ 刪除備忘' : '🗑️ 刪除紀錄'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
+              <Text style={styles.submitBtnText} maxFontSizeMultiplier={1.15}>儲存修改</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.readOnlyBtnRow}>
+            <TouchableOpacity style={styles.readOnlyCloseBtn} onPress={onClose} activeOpacity={0.8}>
+              <Text style={styles.readOnlyCloseBtnText} maxFontSizeMultiplier={1.15}>關閉明細</Text>
+            </TouchableOpacity>
+            <Text style={styles.readOnlyFooterHint} maxFontSizeMultiplier={1.08}>
+              🔒 僅成員「{txPayerName}」本人或帳本管理者具有編輯與刪除權限
+            </Text>
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  </KeyboardAvoidingView>
 
-      <DatePickerModal
-        visible={datePickerVisible}
-        onClose={() => setDatePickerVisible(false)}
-        selectedDate={curDate}
-        onSelectDate={handleSelectDate}
-      />
-    </Modal>
+  <DatePickerModal
+    visible={datePickerVisible}
+    onClose={() => setDatePickerVisible(false)}
+    selectedDate={curDate}
+    onSelectDate={handleSelectDate}
+  />
+
+  <DatePickerModal
+    visible={reminderDatePickerVisible}
+    onClose={() => setReminderDatePickerVisible(false)}
+    selectedDate={memoReminderDate ? new Date(memoReminderDate) : new Date()}
+    onSelectDate={(newDate: Date) => {
+      const ymd = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}-${String(newDate.getDate()).padStart(2, '0')}`;
+      setMemoReminderDate(ymd);
+      setReminderDatePickerVisible(false);
+    }}
+  />
+</Modal>
   );
 };
 
@@ -1375,5 +1653,68 @@ const styles = StyleSheet.create({
     color: '#64748B',
     marginTop: 8,
     textAlign: 'center',
+  },
+  memoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+  },
+  memoBannerIcon: {
+    fontSize: 22,
+    marginRight: 8,
+  },
+  memoBannerContent: {
+    flex: 1,
+  },
+  memoBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#92400E',
+    marginBottom: 2,
+  },
+  memoBannerDesc: {
+    fontSize: 11,
+    color: '#B45309',
+    lineHeight: 15,
+  },
+  memoContentInput: {
+    backgroundColor: '#FAFAFA',
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 15,
+    color: '#111827',
+    minHeight: 96,
+    marginBottom: 10,
+  },
+  readOnlyInput: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+    color: '#334155',
+  },
+  quickNoteRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 2,
+    marginBottom: 8,
+    flexWrap: 'wrap',
+  },
+  quickNoteChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  quickNoteChipText: {
+    fontSize: 11,
+    color: '#4B5563',
   },
 });

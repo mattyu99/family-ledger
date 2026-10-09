@@ -89,7 +89,7 @@ const getCategoryPresetMerchants = (catName?: string, type?: TransactionType): s
 interface AddTransactionModalProps {
   visible: boolean;
   onClose: () => void;
-  initialMode?: 'expense' | 'income' | 'allowance';
+  initialMode?: 'expense' | 'income' | 'allowance' | 'memo';
   defaultRecipientId?: string;
 }
 
@@ -112,7 +112,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     paymentMethods,
   } = useLedger();
 
-  const [mode, setMode] = useState<'expense' | 'income' | 'allowance'>(initialMode);
+  const [mode, setMode] = useState<'expense' | 'income' | 'allowance' | 'memo'>(initialMode);
   const [type, setType] = useState<TransactionType>('expense');
   const [amount, setAmount] = useState<string>('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
@@ -123,6 +123,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [note, setNote] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
   const [datePickerVisible, setDatePickerVisible] = useState<boolean>(false);
+  const [memoReminderDate, setMemoReminderDate] = useState<string>('');
+  const [reminderDatePickerVisible, setReminderDatePickerVisible] = useState<boolean>(false);
   const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -218,6 +220,11 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   );
 
   const today = React.useMemo(() => new Date(), []);
+  const tomorrow = React.useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d;
+  }, []);
   const yesterday = React.useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() - 1);
@@ -229,6 +236,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     return d;
   }, []);
 
+  const formatYmd = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  const todayYmd = React.useMemo(() => formatYmd(new Date()), []);
+  const tomorrowYmd = React.useMemo(() => formatYmd(tomorrow), [tomorrow]);
+
   const isSameDay = (d1: Date, d2: Date) =>
     d1.getFullYear() === d2.getFullYear() &&
     d1.getMonth() === d2.getMonth() &&
@@ -238,6 +251,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const isYesterday = isSameDay(selectedDate, yesterday);
   const isDayBeforeYesterday = isSameDay(selectedDate, dayBeforeYesterday);
   const isCustomDate = !isToday && !isYesterday && !isDayBeforeYesterday;
+  const isCustomReminder = !!memoReminderDate && memoReminderDate !== todayYmd && memoReminderDate !== tomorrowYmd;
 
   // 切換付款方式
   const handleMethodChange = (method: PaymentMethod) => {
@@ -276,10 +290,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       setSelectedDate(new Date());
       setDatePickerVisible(false);
       setMerchant('');
+      setMemoReminderDate('');
+      setReminderDatePickerVisible(false);
 
       const targetMode = initialMode || 'expense';
       setMode(targetMode);
-      if (targetMode === 'expense' || targetMode === 'income') {
+      if (targetMode === 'expense' || targetMode === 'income' || targetMode === 'memo') {
         setType(targetMode);
       }
 
@@ -389,9 +405,49 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     }
   };
 
+  // 生活記事與待辦備忘提交
+  const handleMemoSubmit = async () => {
+    if (!note.trim()) {
+      safeAlert('請輸入記事內容', '請填寫您想記錄的生活記事或備忘內容');
+      return;
+    }
+
+    const defaultMemoCat = categories.find(c => c.name.includes('其他') || c.name.includes('日常')) || categories[0];
+    const targetPayer = paidBy || currentUser.id || members[0]?.id;
+
+    try {
+      const now = new Date();
+      const txDate = new Date(selectedDate);
+      txDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+      const transacted_at = txDate.toISOString();
+
+      await addTransaction({
+        amount: 0,
+        type: 'memo',
+        category_id: defaultMemoCat?.id || categories[0]?.id,
+        paid_by: targetPayer,
+        note: note.trim(),
+        reminder_date: memoReminderDate || undefined,
+        transacted_at,
+      });
+
+      setAmount('');
+      setMerchant('');
+      setNote('');
+      setMemoReminderDate('');
+      setSelectedDate(new Date());
+      onClose();
+    } catch (err: any) {
+      safeAlert('儲存失敗', err?.message || '儲存生活記事時發生錯誤');
+    }
+  };
+
   const handleSubmit = async () => {
     if (mode === 'allowance') {
       return handleAllowanceSubmit();
+    }
+    if (mode === 'memo') {
+      return handleMemoSubmit();
     }
 
     const numAmount = parseFloat(amount);
@@ -452,7 +508,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           {/* 頂部把手與標題 */}
           <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={1.15}>
-              {mode === 'allowance' ? '🎁 撥發零用錢 (雙向記帳)' : mode === 'income' ? '新增一筆收入' : '新增一筆支出'}
+              {mode === 'allowance' ? '🎁 撥發零用錢 (雙向記帳)' : mode === 'income' ? '新增一筆收入' : mode === 'memo' ? '📝 新增生活記事與備忘' : '新增一筆支出'}
             </Text>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <Text style={styles.closeText} maxFontSizeMultiplier={1.15}>✕</Text>
@@ -470,7 +526,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
-            {/* 支出 / 收入 / 撥零用錢 切換鈕 */}
+            {/* 支出 / 收入 / 撥零用錢 / 記事 切換鈕 */}
             <View style={styles.typeSelector}>
               <TouchableOpacity
                 style={[styles.typeBtn, mode === 'expense' && styles.typeBtnActiveExpense]}
@@ -519,14 +575,215 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   🎁 撥零用錢
                 </Text>
               </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.typeBtn, mode === 'memo' && styles.typeBtnActiveMemo]}
+                onPress={() => {
+                  setMode('memo');
+                  setType('memo');
+                }}
+              >
+                <Text
+                  style={[styles.typeBtnText, mode === 'memo' && styles.typeBtnTextActiveMemo]}
+                  maxFontSizeMultiplier={1.15}
+                >
+                  📝 記事
+                </Text>
+              </TouchableOpacity>
             </View>
 
-            {/* 方案 D：撥零用錢專用說明橫幅 */}
-            {mode === 'allowance' && (
-              <View style={styles.allowanceBanner}>
-                <Text style={styles.allowanceBannerIcon}>💡</Text>
-                <View style={styles.allowanceBannerContent}>
-                  <Text style={styles.allowanceBannerTitle} maxFontSizeMultiplier={1.15}>一鍵雙向記帳機制</Text>
+            {mode === 'memo' ? (
+              <>
+                {/* 生活記事專用橫幅 */}
+                <View style={styles.memoBanner}>
+                  <Text style={styles.memoBannerIcon}>📌</Text>
+                  <View style={styles.memoBannerContent}>
+                    <Text style={styles.memoBannerTitle} maxFontSizeMultiplier={1.15}>家庭生活手帳與備忘</Text>
+                    <Text style={styles.memoBannerDesc} maxFontSizeMultiplier={1.08}>
+                      隨手記錄生活瑣事、採買清單或重要待辦。獨立於財務統計，支援到期提醒！
+                    </Text>
+                  </View>
+                </View>
+
+                {/* 記事內容多行輸入框 */}
+                <View style={styles.sectionLabelRow}>
+                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記事內容與備忘</Text>
+                  {keyboardOffset > 0 && (
+                    <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <TextInput
+                  style={styles.memoContentInput}
+                  multiline
+                  numberOfLines={4}
+                  placeholder="記錄今天的事情、靈感、採買備忘或家庭待辦..."
+                  placeholderTextColor="#9CA3AF"
+                  value={note}
+                  onChangeText={setNote}
+                  onFocus={() => handleInputFocus()}
+                  textAlignVertical="top"
+                  maxFontSizeMultiplier={1.15}
+                />
+
+                {/* 快捷情境標籤 */}
+                <View style={styles.quickNoteRow}>
+                  {['📌 待辦清單', '🛒 採買清單', '💡 靈感筆記', '🏠 家居修繕', '🩺 健康用藥', '🎂 紀念日', '💼 重要備忘'].map(tag => (
+                    <TouchableOpacity
+                      key={tag}
+                      style={styles.quickNoteChip}
+                      onPress={() => {
+                        if (!note) {
+                          setNote(`[${tag}] `);
+                        } else if (!note.includes(tag)) {
+                          setNote(`[${tag}] ${note}`);
+                        }
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.quickNoteChipText} maxFontSizeMultiplier={1.08}>{tag}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* 記事日期 */}
+                <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記事日期</Text>
+                <View style={styles.dateRow}>
+                  <TouchableOpacity
+                    style={[styles.dateChip, isToday && styles.dateChipActive]}
+                    onPress={() => setSelectedDate(today)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dateChipText, isToday && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                      今天 ({today.getMonth() + 1}/{today.getDate()})
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.dateChip, isYesterday && styles.dateChipActive]}
+                    onPress={() => setSelectedDate(yesterday)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dateChipText, isYesterday && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                      昨天 ({yesterday.getMonth() + 1}/{yesterday.getDate()})
+                    </Text>
+                  </TouchableOpacity>
+
+                  {isCustomDate && (
+                    <TouchableOpacity
+                      style={[styles.dateChip, styles.dateChipActive, styles.dateChipCustom]}
+                      onPress={() => setDatePickerVisible(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.dateChipText, styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                        🗓️ {selectedDate.getMonth() + 1}/{selectedDate.getDate()} (自訂)
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                  <TouchableOpacity
+                    style={[styles.dateMoreBtn, isCustomDate && styles.dateMoreBtnSelected]}
+                    onPress={() => setDatePickerVisible(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dateMoreBtnText, isCustomDate && styles.dateMoreBtnTextSelected]} maxFontSizeMultiplier={1.15}>
+                      {isCustomDate ? '✏️ 改選' : '🗓️ 更多...'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* ⏰ 待辦提醒日期 (選填) */}
+                <View style={styles.sectionLabelRow}>
+                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>⏰ 待辦提醒日期 (選填)</Text>
+                  {!!memoReminderDate && (
+                    <TouchableOpacity onPress={() => setMemoReminderDate('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Text style={styles.clearMerchantText} maxFontSizeMultiplier={1.08}>清除提醒 ✕</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <View style={styles.dateRow}>
+                  <TouchableOpacity
+                    style={[styles.dateChip, !memoReminderDate && styles.dateChipActive]}
+                    onPress={() => setMemoReminderDate('')}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dateChipText, !memoReminderDate && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                      不設提醒
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.dateChip, memoReminderDate === todayYmd && styles.dateChipActive]}
+                    onPress={() => setMemoReminderDate(todayYmd)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dateChipText, memoReminderDate === todayYmd && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                      今天 ({today.getMonth() + 1}/{today.getDate()})
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.dateChip, memoReminderDate === tomorrowYmd && styles.dateChipActive]}
+                    onPress={() => setMemoReminderDate(tomorrowYmd)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dateChipText, memoReminderDate === tomorrowYmd && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                      明天 ({tomorrow.getMonth() + 1}/{tomorrow.getDate()})
+                    </Text>
+                  </TouchableOpacity>
+                  {isCustomReminder && (
+                    <TouchableOpacity
+                      style={[styles.dateChip, styles.dateChipActive, styles.dateChipCustom]}
+                      onPress={() => setReminderDatePickerVisible(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.dateChipText, styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                        🗓️ {memoReminderDate}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={[styles.dateMoreBtn, isCustomReminder && styles.dateMoreBtnSelected]}
+                    onPress={() => setReminderDatePickerVisible(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dateMoreBtnText, isCustomReminder && styles.dateMoreBtnTextSelected]} maxFontSizeMultiplier={1.15}>
+                      {isCustomReminder ? '✏️ 改選' : '🗓️ 指定...'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* 記錄成員 */}
+                <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記錄成員</Text>
+                <View style={styles.payerRow}>
+                  {members.map(member => {
+                    const isSelected = paidBy === member.id;
+                    const isMe = member.id === currentUser.id || (!!currentUser.display_name && currentUser.display_name === member.display_name);
+                    return (
+                      <TouchableOpacity
+                        key={member.id}
+                        style={[styles.payerChip, isSelected && styles.payerChipActive]}
+                        onPress={() => setPaidBy(member.id)}
+                      >
+                        <Text style={styles.payerAvatar}>{member.avatar_url}</Text>
+                        <Text
+                          style={[styles.payerName, isSelected && styles.payerNameActive]}
+                          maxFontSizeMultiplier={1.15}
+                        >
+                          {member.display_name}{isMe ? ' (我)' : ''}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            ) : (
+              <>
+                {/* 方案 D：撥零用錢專用說明橫幅 */}
+                {mode === 'allowance' && (
+                  <View style={styles.allowanceBanner}>
+                    <Text style={styles.allowanceBannerIcon}>💡</Text>
+                    <View style={styles.allowanceBannerContent}>
+                      <Text style={styles.allowanceBannerTitle} maxFontSizeMultiplier={1.15}>一鍵雙向記帳機制</Text>
                   <Text style={styles.allowanceBannerDesc} maxFontSizeMultiplier={1.08}>
                     自動為出資家長記「支出」，並為受款小孩記「零用錢收入」。小孩首頁將具備正向結餘，維持家庭收支平衡！
                   </Text>
@@ -1144,27 +1401,48 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 />
               </>
             )}
+          </>
+        )}
 
-            {/* 儲存 / 一鍵撥款按鈕 */}
-            <TouchableOpacity
-              style={[styles.submitBtn, mode === 'allowance' && styles.submitBtnAllowance]}
-              onPress={handleSubmit}
-            >
-              <Text style={styles.submitBtnText} maxFontSizeMultiplier={1.15}>
-                {mode === 'allowance' ? '🎁 一鍵撥款 (自動建立雙向收支)' : '儲存記帳'}
-              </Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
-      </KeyboardAvoidingView>
+        {/* 儲存 / 一鍵撥款 / 儲存記事按鈕 */}
+        <TouchableOpacity
+          style={[
+            styles.submitBtn,
+            mode === 'allowance' && styles.submitBtnAllowance,
+            mode === 'memo' && styles.submitBtnMemo,
+          ]}
+          onPress={handleSubmit}
+        >
+          <Text style={styles.submitBtnText} maxFontSizeMultiplier={1.15}>
+            {mode === 'allowance'
+              ? '🎁 一鍵撥款 (自動建立雙向收支)'
+              : mode === 'memo'
+              ? '📌 儲存生活記事'
+              : '儲存記帳'}
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  </KeyboardAvoidingView>
 
-      <DatePickerModal
-        visible={datePickerVisible}
-        onClose={() => setDatePickerVisible(false)}
-        selectedDate={selectedDate}
-        onSelectDate={(newDate: Date) => setSelectedDate(newDate)}
-      />
-    </Modal>
+  <DatePickerModal
+    visible={datePickerVisible}
+    onClose={() => setDatePickerVisible(false)}
+    selectedDate={selectedDate}
+    onSelectDate={(newDate: Date) => setSelectedDate(newDate)}
+  />
+
+  <DatePickerModal
+    visible={reminderDatePickerVisible}
+    onClose={() => setReminderDatePickerVisible(false)}
+    selectedDate={memoReminderDate ? new Date(memoReminderDate) : new Date()}
+    onSelectDate={(newDate: Date) => {
+      const ymd = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}-${String(newDate.getDate()).padStart(2, '0')}`;
+      setMemoReminderDate(ymd);
+      setReminderDatePickerVisible(false);
+    }}
+  />
+</Modal>
   );
 };
 
@@ -1239,6 +1517,9 @@ const styles = StyleSheet.create({
   typeBtnActiveAllowance: {
     backgroundColor: '#8B5CF6',
   },
+  typeBtnActiveMemo: {
+    backgroundColor: '#F59E0B',
+  },
   typeBtnText: {
     fontSize: 13,
     fontWeight: '600',
@@ -1248,6 +1529,10 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   typeBtnTextActiveAllowance: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  typeBtnTextActiveMemo: {
     color: '#FFFFFF',
     fontWeight: '700',
   },
@@ -1738,5 +2023,47 @@ const styles = StyleSheet.create({
   },
   submitBtnAllowance: {
     backgroundColor: '#8B5CF6',
+  },
+  submitBtnMemo: {
+    backgroundColor: '#D97706',
+  },
+  memoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+  },
+  memoBannerIcon: {
+    fontSize: 22,
+    marginRight: 8,
+  },
+  memoBannerContent: {
+    flex: 1,
+  },
+  memoBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#92400E',
+    marginBottom: 2,
+  },
+  memoBannerDesc: {
+    fontSize: 11,
+    color: '#B45309',
+    lineHeight: 15,
+  },
+  memoContentInput: {
+    backgroundColor: '#FAFAFA',
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 15,
+    color: '#111827',
+    minHeight: 96,
+    marginBottom: 10,
   },
 });

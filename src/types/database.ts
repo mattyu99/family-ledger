@@ -1,5 +1,5 @@
 export type RoleType = 'owner' | 'admin' | 'member' | 'viewer';
-export type TransactionType = 'expense' | 'income' | 'transfer';
+export type TransactionType = 'expense' | 'income' | 'transfer' | 'memo';
 export type CategoryType = 'expense' | 'income';
 
 export interface Profile {
@@ -109,6 +109,7 @@ export interface Transaction {
   account_id?: string; // 具體卡片或儲值帳戶 ID
   is_reconciled?: boolean; // 信用卡對帳：是否已核對/已核銷
   note?: string;
+  reminder_date?: string; // 選填生活記事提醒日期 (YYYY-MM-DD)
   image_url?: string;
   is_settled: boolean;
   created_at: string;

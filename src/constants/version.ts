@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.3';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.3 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 30;
+export const APP_BUILD_REVISION = 31;
 
-// 完整版本字串 (例如 "1.0.3.30")
+// 完整版本字串 (例如 "1.0.3.31")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,18 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.3.31',
+    date: '2026-10-10',
+    title: '全新支援「📝 家庭生活記事與備忘」手帳模式（零金額無負擔、到期提醒與財務統計 100% 隔離）',
+    highlights: [
+      '新增「📝 生活記事」專屬模式：在新增彈窗可一鍵切換至記事模式，記錄生活雜記、靈感、採買清單或待辦備忘。',
+      '純文字零元不干擾財務：生活記事自動以 $0 建立，100% 排除於總支出、總收入、月度結餘與圖表統計，收支報表永遠精準。',
+      '⏰ 待辦提醒日期支援：可自訂或快捷指定提醒日期（今天、明天、指定日期），首頁頂部具備「🔔 今日生活待辦提醒」溫馨橫幅。',
+      '手帳便利貼專屬視覺：明細清單中以質感手帳卡片風格呈現，多行文字完整閱讀，清楚標註提醒日期與記錄成員。',
+      '雲端即時同步與全要素備份：完整納入 Supabase 跨裝置雙向同步與 JSON 備份還原，不佔資料空間且永久保存。',
+    ],
+  },
   {
     version: '1.0.3.30',
     date: '2026-10-09',

@@ -228,6 +228,7 @@ interface LedgerContextType {
     paid_by: string;
     merchant?: string;
     note?: string;
+    reminder_date?: string;
     transacted_at?: string;
     payment_method?: PaymentMethod;
     account_id?: string;
@@ -243,6 +244,7 @@ interface LedgerContextType {
       paid_by?: string;
       merchant?: string;
       note?: string;
+      reminder_date?: string;
       transacted_at?: string;
       payment_method?: PaymentMethod;
       account_id?: string;
@@ -1724,12 +1726,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               parsedNote = match[2];
             }
           }
-          if (parsedMerchant) {
+          let reminderDate: string | undefined = undefined;
+          let resolvedType: TransactionType = t.type;
+          if (parsedMerchant?.startsWith('remind:')) {
+            reminderDate = parsedMerchant.replace('remind:', '');
+            resolvedType = 'memo';
+          } else if (parsedMerchant === 'memo' || t.type === 'memo' || (t.type === 'transfer' && Number(t.amount) === 0)) {
+            resolvedType = 'memo';
+          } else if (parsedMerchant) {
             recordMerchant(parsedMerchant);
           }
 
           return {
             ...t,
+            type: resolvedType,
+            reminder_date: reminderDate || t.reminder_date,
             merchant: parsedMerchant || undefined,
             note: parsedNote || '',
             amount: Number(t.amount),
@@ -3792,6 +3803,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     paid_by: string;
     merchant?: string;
     note?: string;
+    reminder_date?: string;
     transacted_at?: string;
     payment_method?: PaymentMethod;
     account_id?: string;
@@ -3799,8 +3811,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     splitWithIds?: string[];
   }) => {
     const txId = generateUUID();
-    const cleanMerchant = data.merchant ? data.merchant.trim() : undefined;
-    if (cleanMerchant) {
+    let cleanMerchant = data.merchant ? data.merchant.trim() : undefined;
+    if (data.type === 'memo') {
+      if (data.reminder_date) {
+        cleanMerchant = `remind:${data.reminder_date}`;
+      } else if (!cleanMerchant) {
+        cleanMerchant = 'memo';
+      }
+    } else if (cleanMerchant) {
       recordMerchant(cleanMerchant);
     }
 
@@ -3849,8 +3867,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       creator_id: validCreatorId,
       category_id: validCategoryId,
       category: resolvedCategory,
-      amount: data.amount,
+      amount: data.type === 'memo' ? 0 : (data.amount || 0),
       type: data.type,
+      reminder_date: data.reminder_date,
       paid_by: validPaidBy,
       merchant: cleanMerchant,
       payment_method: data.payment_method || 'cash',
@@ -3924,6 +3943,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
 
         let { error: txError } = await supabase.from('transactions').insert(insertPayload);
+
+        // 若雲端 DB 尚未放寬 check constraint 允許 'memo' (23514)，自動退回為 'transfer' 重試
+        if (txError && (txError.code === '23514' || txError.message?.includes('check constraint') || txError.message?.includes('transactions_type_check'))) {
+          insertPayload.type = 'transfer';
+          const retryTypeRes = await supabase.from('transactions').insert(insertPayload);
+          txError = retryTypeRes.error;
+        }
 
         // 如果雲端尚未執行 ALTER TABLE 加欄位導致 42703 (column does not exist) 或 PGRST204，自動切換回相容模式重試
         if (txError && (txError.code === '42703' || txError.code === 'PGRST204' || txError.message?.includes('column') || txError.message?.includes('schema cache'))) {
@@ -4272,6 +4298,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       paid_by?: string;
       merchant?: string;
       note?: string;
+      reminder_date?: string;
       transacted_at?: string;
       payment_method?: PaymentMethod;
       account_id?: string;
@@ -4279,11 +4306,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   ): Promise<boolean> => {
     try {
-      const cleanMerchant = data.merchant !== undefined ? (data.merchant ? data.merchant.trim() : undefined) : undefined;
-      if (cleanMerchant) {
+      const targetTx = transactions.find(t => t.id === id);
+      const isTargetMemo = data.type === 'memo' || targetTx?.type === 'memo';
+      let cleanMerchant = data.merchant !== undefined ? (data.merchant ? data.merchant.trim() : undefined) : undefined;
+      if (isTargetMemo) {
+        if (data.reminder_date) {
+          cleanMerchant = `remind:${data.reminder_date}`;
+        } else if (data.reminder_date === '') {
+          cleanMerchant = 'memo';
+        }
+      } else if (cleanMerchant) {
         recordMerchant(cleanMerchant);
       }
-      const targetTx = transactions.find(t => t.id === id);
 
       // 儲值卡餘額連動校正
       const oldAmount = targetTx?.amount || 0;
@@ -4324,7 +4358,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           return {
             ...t,
             ...data,
-            merchant: data.merchant !== undefined ? cleanMerchant : t.merchant,
+            amount: isTargetMemo ? 0 : (data.amount !== undefined ? data.amount : t.amount),
+            reminder_date: data.reminder_date !== undefined ? (data.reminder_date || undefined) : t.reminder_date,
+            merchant: (data.merchant !== undefined || isTargetMemo) ? cleanMerchant : t.merchant,
             category: data.category_id ? getCategoryById(data.category_id, t.category) : t.category,
             payer_profile: canonicalPayer || t.payer_profile,
             payment_account: resolvedAccount || t.payment_account,
@@ -4337,7 +4373,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
         const updatePayload: any = {};
-        if (data.amount !== undefined) updatePayload.amount = data.amount;
+        if (data.amount !== undefined) updatePayload.amount = isTargetMemo ? 0 : data.amount;
         if (data.type !== undefined) updatePayload.type = data.type;
         if (data.category_id !== undefined) updatePayload.category_id = data.category_id;
         if (data.paid_by !== undefined) updatePayload.paid_by = data.paid_by;
@@ -4348,13 +4384,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updatePayload.updated_at = new Date().toISOString();
 
         if (hasMerchantColumnRef.current) {
-          if (data.merchant !== undefined) updatePayload.merchant = cleanMerchant || null;
+          if (data.merchant !== undefined || isTargetMemo) updatePayload.merchant = cleanMerchant || null;
           if (data.note !== undefined) updatePayload.note = data.note;
         } else {
           // 若雲端無 merchant 欄位，包裝進 note
-          const effectiveMerchant = data.merchant !== undefined ? cleanMerchant : targetTx?.merchant;
+          const effectiveMerchant = (data.merchant !== undefined || isTargetMemo) ? cleanMerchant : targetTx?.merchant;
           const effectiveNote = data.note !== undefined ? data.note : (targetTx?.note || '');
-          if (data.merchant !== undefined || data.note !== undefined) {
+          if (data.merchant !== undefined || data.note !== undefined || isTargetMemo) {
             updatePayload.note = effectiveMerchant
               ? `[${effectiveMerchant}] ${effectiveNote}`.trim()
               : effectiveNote;
@@ -4365,6 +4401,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           .from('transactions')
           .update(updatePayload)
           .eq('id', id);
+
+        if (error && (error.code === '23514' || error.message?.includes('check constraint') || error.message?.includes('transactions_type_check'))) {
+          updatePayload.type = 'transfer';
+          const retryTypeRes = await supabase.from('transactions').update(updatePayload).eq('id', id);
+          error = retryTypeRes.error;
+        }
 
         if (error && (error.code === '42703' || error.code === 'PGRST204' || error.message?.includes('column') || error.message?.includes('schema cache'))) {
           hasMerchantColumnRef.current = false;
@@ -4449,6 +4491,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         id: t.id,
         amount: t.amount,
         type: t.type,
+        reminder_date: t.reminder_date,
         category_id: t.category_id,
         paid_by: t.paid_by,
         transacted_at: t.transacted_at,
@@ -4971,13 +5014,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // 徹底根除任何客戶端或資料庫中舊 ID 的「歷史刪除標記」，確保 100% 不會被自動刪除
         const freshTxId = generateUUID();
 
+        const isBackupMemo = t.type === 'memo' || (t.type === 'transfer' && Number(t.amount) === 0) || t.merchant?.startsWith('remind:') || t.merchant === 'memo';
+        const restoredType: TransactionType = isBackupMemo ? 'memo' : (t.type === 'income' ? 'income' : 'expense');
+        const restoredReminder = t.reminder_date || (t.merchant?.startsWith('remind:') ? t.merchant.replace('remind:', '') : undefined);
+
         sanitizedTxs.push({
           id: freshTxId,
           ledger_id: targetLedgerId,
           creator_id: resolvedCreatorId,
           category_id: matchedCategory?.id || targetCatId,
-          amount: Number(t.amount),
-          type: (t.type === 'income' ? 'income' : 'expense') as 'income' | 'expense',
+          amount: isBackupMemo ? 0 : Number(t.amount),
+          type: restoredType,
+          reminder_date: restoredReminder,
           paid_by: resolvedPaidBy,
           transacted_at: t.transacted_at || new Date().toISOString(),
           merchant: t.merchant || undefined,
