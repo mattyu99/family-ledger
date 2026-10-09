@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.3';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.3 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 22;
+export const APP_BUILD_REVISION = 23;
 
-// 完整版本字串 (例如 "1.0.3.22")
+// 完整版本字串 (例如 "1.0.3.23")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.3.23',
+    date: '2026-10-09',
+    title: '徹底修復加入帳本新建身分時成員重複新增問題與名冊自動修復',
+    highlights: [
+      '修復以邀請碼加入帳本並建立新身分（如「媽媽」）時，原帳本舊身分（如「瑩媽」）與新身分同時被加入名冊之重大缺陷。',
+      '統一以當前裝置連線身分為唯一核心，嚴格保障進入帳本後名冊僅精準新增該使用者所建立的單一新稱謂。',
+      '加入既有身分認領自動移轉與清理機制，認領既有成員時自動移轉歷史帳目並徹底清理佔位紀錄，杜絕幽靈重複成員。',
+      '強化多帳本切換動態稱謂對齊與資料庫歷史殘留重複資料自動修復合併，各帳本稱謂隔離完整如初。',
+    ],
+  },
   {
     version: '1.0.3.22',
     date: '2026-10-09',

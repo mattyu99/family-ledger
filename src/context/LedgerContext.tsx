@@ -1420,6 +1420,41 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
 
+    // 讀取本地針對此帳本所記錄之專屬身分稱謂
+    const savedLedgerUserStr = await AsyncStorage.getItem(`${STORAGE_KEYS.CURRENT_USER}_${targetLedger.id}`);
+    let targetSavedUser: Profile | null = null;
+    if (savedLedgerUserStr) {
+      try { targetSavedUser = JSON.parse(savedLedgerUserStr); } catch {}
+    }
+
+    if (targetSavedUser && targetSavedUser.display_name) {
+      // 確保 loadedMembers 中此 authUserId 稱謂對齊本帳本專屬稱謂，絕不洩漏其他帳本舊稱謂
+      loadedMembers = loadedMembers.map(m => {
+        if (m.id === authUserId) {
+          return {
+            ...m,
+            display_name: targetSavedUser!.display_name,
+            avatar_url: targetSavedUser!.avatar_url || m.avatar_url,
+          };
+        }
+        return m;
+      });
+
+      // 自動修復：若目標帳本中曾因先前版本殘留同名獨立 Profile 佔位，在雲端合併帳目並清理
+      if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+        const duplicateOrphans = loadedMembers.filter(
+          m => m.id !== authUserId && (m.display_name || '').trim().toLowerCase() === targetSavedUser!.display_name.trim().toLowerCase()
+        );
+        if (duplicateOrphans.length > 0) {
+          for (const orphan of duplicateOrphans) {
+            supabase.from('transactions').update({ paid_by: authUserId }).eq('ledger_id', targetLedger.id).eq('paid_by', orphan.id).then();
+            supabase.from('ledger_members').delete().eq('ledger_id', targetLedger.id).eq('user_id', orphan.id).then();
+          }
+          loadedMembers = loadedMembers.filter(m => !duplicateOrphans.some(o => o.id === m.id));
+        }
+      }
+    }
+
     setRawMembers(loadedMembers);
     const dedupedMembers = deduplicateMembers(loadedMembers);
     let aliasMap = buildMemberAliasMap(dedupedMembers, loadedMembers);
@@ -2111,6 +2146,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             setUserRole(role);
             await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, role);
             if (!isMounted) return;
+
+            const activeSavedUserStr = await AsyncStorage.getItem(`${STORAGE_KEYS.CURRENT_USER}_${activeLedger.id}`);
+            if (activeSavedUserStr && isConfigured) {
+              try {
+                const au = JSON.parse(activeSavedUserStr);
+                if (au.display_name) {
+                  await supabase.from('profiles').update({
+                    display_name: au.display_name,
+                    avatar_url: au.avatar_url || '👩',
+                  }).eq('id', authUser.id);
+                }
+              } catch {}
+            }
+
             await loadLedgerData(activeLedger, authUser.id);
             setHasJoinedLedger(true);
             await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
@@ -2206,54 +2255,32 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       const chosenName = creatorName?.trim() || '爸爸 (我)';
       const chosenAvatar = avatar || '👨';
-      let creatorProfileId = authUserId;
-
       if (isConfigured) {
-        // 檢查此裝置之 authUserId 是否已在雲端存在 Profile 且名稱不同
-        // 若名稱不同（例如原為「智爸」，新帳本要叫「老闆」），絕不可直接覆蓋 authUserId 之 Profile，
-        // 否則會將舊帳本的成員稱謂一併竄改！我們為新帳本建立獨立的 Profile 記錄。
-        const { data: existingProfile } = await supabase
-          .from('profiles')
-          .select('id, display_name')
-          .eq('id', authUserId)
-          .maybeSingle();
-
-        if (existingProfile && existingProfile.display_name && existingProfile.display_name.trim().toLowerCase() !== chosenName.trim().toLowerCase()) {
-          // 稱謂不同：建立獨立 Profile，保護舊帳本稱謂不受污染
-          creatorProfileId = generateUUID();
-          await supabase.from('profiles').insert({
-            id: creatorProfileId,
-            display_name: chosenName,
-            avatar_url: chosenAvatar,
-          });
-        } else {
-          // 首次建立或稱謂相同：直接 upsert authUserId
-          await supabase.from('profiles').upsert({
-            id: authUserId,
-            display_name: chosenName,
-            avatar_url: chosenAvatar,
-          });
-        }
+        await supabase.from('profiles').upsert({
+          id: authUserId,
+          display_name: chosenName,
+          avatar_url: chosenAvatar,
+        });
 
         await supabase.from('ledgers').insert({
           id: newLedger.id,
           name: newLedger.name,
           description: newLedger.description,
           currency: newLedger.currency,
-          created_by: newLedger.created_by,
+          created_by: authUserId,
           admin_pin: '8888',
         });
 
         await supabase.from('ledger_members').insert({
           ledger_id: newLedger.id,
-          user_id: creatorProfileId,
+          user_id: authUserId,
           role: 'owner',
         });
 
         await supabase.from('ledger_invites').insert({
           ledger_id: newLedger.id,
           invite_code: newCode,
-          created_by: creatorProfileId,
+          created_by: authUserId,
           expires_at: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
         });
       }
@@ -2270,7 +2297,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setLedgers(prev => [{ ...newLedger, userRole: 'owner', userDisplayName: chosenName, userAvatar: chosenAvatar }, ...prev.filter(l => l.id !== newLedger.id)]);
 
       const updatedMe: Profile = {
-        id: creatorProfileId,
+        id: authUserId,
         display_name: chosenName,
         avatar_url: chosenAvatar,
         role: 'owner',
@@ -2430,12 +2457,6 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         ? 'owner'
         : (isClaimingAdmin ? (claimedMember?.role === 'admin' ? 'admin' : 'owner') : 'member');
 
-      await supabase.from('ledger_members').upsert({
-        ledger_id: targetLedger.id,
-        user_id: authUserId,
-        role: assignedRole,
-      }, { onConflict: 'ledger_id,user_id' });
-
       const finalDisplayName = claimedMember
         ? claimedMember.display_name
         : (memberName || (isCreator ? '爸爸 (我)' : '家庭成員'));
@@ -2443,40 +2464,71 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         ? claimedMember.avatar_url
         : (avatar || (isCreator ? '👨' : '👩'));
 
-      let memberProfileId = claimedMember ? claimedMember.id : authUserId;
+      if (isConfigured) {
+        // 1. 更新此用戶在 profiles 中的稱謂與頭像為新帳本之設定
+        await supabase.from('profiles').upsert({
+          id: authUserId,
+          display_name: finalDisplayName,
+          avatar_url: finalAvatar,
+        });
 
-      if (!claimedMember) {
-        // 若要建立新稱謂，檢查 authUserId 是否已在其他帳本使用不同稱謂
-        const { data: existingProfile } = await supabase
-          .from('profiles')
-          .select('id, display_name')
-          .eq('id', authUserId)
-          .maybeSingle();
+        // 2. 寫入 ledger_members 表（以 authUserId 為唯一成員識別碼）
+        await supabase.from('ledger_members').upsert({
+          ledger_id: targetLedger.id,
+          user_id: authUserId,
+          role: assignedRole,
+        }, { onConflict: 'ledger_id,user_id' });
 
-        if (existingProfile && existingProfile.display_name && existingProfile.display_name.trim().toLowerCase() !== finalDisplayName.trim().toLowerCase()) {
-          // 稱謂不同：建立獨立 Profile，保護其他帳本名冊不受影響
-          memberProfileId = generateUUID();
-          await supabase.from('profiles').insert({
-            id: memberProfileId,
-            display_name: finalDisplayName,
-            avatar_url: finalAvatar,
-          });
-          await supabase.from('ledger_members').upsert({
-            ledger_id: targetLedger.id,
-            user_id: memberProfileId,
-            role: assignedRole,
-          }, { onConflict: 'ledger_id,user_id' });
-        } else {
-          await supabase.from('profiles').upsert({
-            id: authUserId,
-            display_name: finalDisplayName,
-            avatar_url: finalAvatar,
-          });
+        // 3. 若為「認領既有身分」，將被認領之佔位成員的歷史帳目移轉至 authUserId，並自 ledger_members 移除該佔位紀錄，避免名冊重複
+        if (claimedMember && claimedMember.id && claimedMember.id !== authUserId) {
+          try {
+            await supabase
+              .from('transactions')
+              .update({ paid_by: authUserId })
+              .eq('ledger_id', targetLedger.id)
+              .eq('paid_by', claimedMember.id);
+            await supabase
+              .from('ledger_members')
+              .delete()
+              .eq('ledger_id', targetLedger.id)
+              .eq('user_id', claimedMember.id);
+          } catch (claimCleanErr) {
+            console.warn('移轉認領成員與清理佔位失敗:', claimCleanErr);
+          }
+        }
+
+        // 4. 清理目標帳本中殘留的同名獨立 Profile 佔位紀錄，避免雙重身分（如過去版本 bug 留下的幽靈成員）
+        try {
+          const { data: duplicateRows } = await supabase
+            .from('ledger_members')
+            .select('user_id, profiles(display_name)')
+            .eq('ledger_id', targetLedger.id)
+            .neq('user_id', authUserId);
+
+          if (duplicateRows && duplicateRows.length > 0) {
+            for (const dr of duplicateRows) {
+              const dName = (dr.profiles as any)?.display_name;
+              if (dName && dName.trim().toLowerCase() === finalDisplayName.trim().toLowerCase()) {
+                await supabase
+                  .from('transactions')
+                  .update({ paid_by: authUserId })
+                  .eq('ledger_id', targetLedger.id)
+                  .eq('paid_by', dr.user_id);
+                await supabase
+                  .from('ledger_members')
+                  .delete()
+                  .eq('ledger_id', targetLedger.id)
+                  .eq('user_id', dr.user_id);
+              }
+            }
+          }
+        } catch (dupCleanErr) {
+          console.warn('清理帳本重複同名成員失敗:', dupCleanErr);
         }
       }
 
       const updatedMe: Profile = {
-        id: memberProfileId,
+        id: authUserId,
         display_name: finalDisplayName,
         avatar_url: finalAvatar,
         role: assignedRole,
@@ -2840,6 +2892,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setUserRole(validRole);
         await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, validRole);
         await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(targetLedger));
+
+        // 切換帳本時，精準載入該目標帳本預先儲存的使用者專屬稱謂與頭像，並同步至雲端 profiles
+        const savedUserStr = await AsyncStorage.getItem(`${STORAGE_KEYS.CURRENT_USER}_${targetLedgerId}`);
+        if (savedUserStr && isConfigured) {
+          try {
+            const u = JSON.parse(savedUserStr);
+            if (u.display_name) {
+              await supabase.from('profiles').update({
+                display_name: u.display_name,
+                avatar_url: u.avatar_url || '👨',
+              }).eq('id', authUserId);
+            }
+          } catch {}
+        }
+
         await loadLedgerData(targetLedger, authUserId);
       }
     } catch (e) {
