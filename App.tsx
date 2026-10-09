@@ -2647,7 +2647,7 @@ function MainApp() {
             {/* 交易列表標題 */}
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>
-                近期收支明細 ({displayedTransactions.length < filteredTransactions.length ? `${displayedTransactions.length} / ` : ''}{filteredTransactions.length}{isFiltered ? ` / 總 ${transactions.length}` : ''})
+                近期收支明細 {filteredTransactions.length < transactions.length ? `(${filteredTransactions.length} / 總 ${transactions.length})` : `(總 ${transactions.length})`}
               </Text>
               {keyboardOffset > 0 ? (
                 <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
