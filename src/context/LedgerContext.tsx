@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Platform, Alert, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Transaction, Category, Ledger, Profile, TransactionType, CategoryType, PaymentMethod, PaymentAccount, AccountType, CustomPaymentMethod } from '../types/database';
+import { Transaction, Category, Ledger, Profile, TransactionType, CategoryType, PaymentMethod, PaymentAccount, AccountType, CustomPaymentMethod, RecurringRule } from '../types/database';
 import { supabase, isConfigured } from '../lib/supabase';
 import { generateUUID } from '../lib/uuid';
 import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS } from '../lib/payment';
+import { DEFAULT_RECURRING_PRESETS, getCurrentPeriodKey, getBillPeriodLabel } from '../lib/recurring';
 
 const safeAlert = (title: string, message: string) => {
   if (Platform.OS === 'web') {
@@ -53,6 +54,26 @@ export const DEFAULT_LEDGER: Ledger = {
   created_by: DEMO_USER_DAD,
   created_at: new Date().toISOString(),
 };
+
+export const DEMO_RECURRING_RULES: RecurringRule[] = DEFAULT_RECURRING_PRESETS.map((preset, index) => ({
+  id: `60000000-0000-4000-8000-00000000000${index + 1}`,
+  ledger_id: DEMO_LEDGER_ID,
+  name: preset.name,
+  amount_type: preset.amount_type,
+  default_amount: preset.default_amount,
+  category_id: DEFAULT_CATEGORIES[2].id, // 居家水電
+  merchant: preset.merchant,
+  paid_by: DEMO_USER_DAD,
+  payment_method: preset.payment_method,
+  account_id: preset.payment_method === 'credit_card' ? '50000000-0000-4000-8000-000000000001' : undefined,
+  frequency: preset.frequency,
+  due_day: preset.due_day,
+  bimonthly_start_month: (preset as any).bimonthly_start_month,
+  is_active: true,
+  last_recorded_period: undefined,
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+}));
 
 const INITIAL_TRANSACTIONS: Transaction[] = [
   {
@@ -253,6 +274,23 @@ interface LedgerContextType {
   reorderPaymentMethods: (methods: CustomPaymentMethod[]) => Promise<void>;
   restoreDefaultPaymentMethods: () => Promise<void>;
   getPaymentMethodById: (id?: string) => CustomPaymentMethod | undefined;
+  recurringRules: RecurringRule[];
+  addRecurringRule: (
+    rule: Omit<RecurringRule, 'id' | 'ledger_id' | 'created_at' | 'updated_at'>
+  ) => Promise<RecurringRule>;
+  updateRecurringRule: (
+    id: string,
+    data: Partial<Omit<RecurringRule, 'id' | 'ledger_id'>>
+  ) => Promise<boolean>;
+  deleteRecurringRule: (id: string) => Promise<boolean>;
+  recordRecurringBill: (
+    ruleId: string,
+    customAmount?: number,
+    transactedAt?: string,
+    note?: string
+  ) => Promise<boolean>;
+  skipRecurringBill: (ruleId: string, periodKey?: string) => Promise<boolean>;
+  restoreDefaultRecurringRules: () => Promise<void>;
   topUpAccountBalance: (
     id: string,
     amount: number,
@@ -447,6 +485,7 @@ const STORAGE_KEYS = {
   DELETED_ACCOUNT_IDS: '@family_ledger_deleted_account_ids',
   ACCOUNTS_INITIALIZED: '@family_ledger_accounts_initialized',
   PAYMENT_METHODS: '@family_ledger_payment_methods',
+  RECURRING_RULES: '@family_ledger_recurring_rules',
 };
 
 // 預設常用店家快捷建議清單（涵蓋台灣家庭最普遍的日常採買店家）
@@ -487,6 +526,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const [paymentAccounts, setPaymentAccounts] = useState<PaymentAccount[]>(DEMO_PAYMENT_ACCOUNTS);
   const [paymentMethods, setPaymentMethods] = useState<CustomPaymentMethod[]>(DEFAULT_PAYMENT_METHODS);
+  const [recurringRules, setRecurringRules] = useState<RecurringRule[]>(DEMO_RECURRING_RULES);
   const [currentUser, setCurrentUser] = useState<Profile>(DEFAULT_MEMBERS[0]);
   const [isCloudSynced, setIsCloudSynced] = useState<boolean>(false);
   const [isDeviceBound, setIsDeviceBound] = useState<boolean>(false);
@@ -851,6 +891,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } catch {}
         } else {
           setPaymentMethods(DEFAULT_PAYMENT_METHODS);
+        }
+
+        const savedRecurringStr = (ledgerId && await AsyncStorage.getItem(`${STORAGE_KEYS.RECURRING_RULES}_${ledgerId}`)) || await AsyncStorage.getItem(STORAGE_KEYS.RECURRING_RULES);
+        if (savedRecurringStr) {
+          try {
+            const parsed = JSON.parse(savedRecurringStr);
+            if (Array.isArray(parsed)) {
+              setRecurringRules(parsed);
+            }
+          } catch {}
+        } else if (ledgerId === DEMO_LEDGER_ID || !ledgerId) {
+          setRecurringRules(DEMO_RECURRING_RULES);
+        } else {
+          setRecurringRules([]);
         }
       } catch (err) {
         console.warn('載入本地記帳快取失敗:', err);
@@ -1899,6 +1953,28 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await AsyncStorage.setItem(methodLedgerKey, JSON.stringify(loadedMethods));
     } catch (methodErr) {
       console.warn('載入付款方式失敗:', methodErr);
+    }
+
+    // (E-3) 載入週期扣款規則
+    try {
+      const recurringLedgerKey = `${STORAGE_KEYS.RECURRING_RULES}_${targetLedger.id}`;
+      const savedRecurringStr = (await AsyncStorage.getItem(recurringLedgerKey)) || (await AsyncStorage.getItem(STORAGE_KEYS.RECURRING_RULES));
+      let loadedRules: RecurringRule[] = [];
+      if (savedRecurringStr) {
+        try {
+          const parsed = JSON.parse(savedRecurringStr);
+          if (Array.isArray(parsed)) {
+            loadedRules = parsed;
+          }
+        } catch {}
+      } else if (targetLedger.id === DEMO_LEDGER_ID) {
+        loadedRules = DEMO_RECURRING_RULES;
+      }
+      setRecurringRules(loadedRules);
+      await AsyncStorage.setItem(STORAGE_KEYS.RECURRING_RULES, JSON.stringify(loadedRules));
+      await AsyncStorage.setItem(recurringLedgerKey, JSON.stringify(loadedRules));
+    } catch (recErr) {
+      console.warn('載入週期扣款規則失敗:', recErr);
     }
 
     // (F) Realtime 訂閱
@@ -3257,6 +3333,160 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return paymentMethods.find(m => m.id === id) || DEFAULT_PAYMENT_METHODS.find(m => m.id === id);
   };
 
+  const saveRecurringRulesToStorage = async (rules: RecurringRule[]) => {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.RECURRING_RULES, JSON.stringify(rules));
+      if (currentLedger?.id) {
+        await AsyncStorage.setItem(`${STORAGE_KEYS.RECURRING_RULES}_${currentLedger.id}`, JSON.stringify(rules));
+      }
+    } catch (e) {
+      console.warn('儲存週期扣款規則快取失敗:', e);
+    }
+  };
+
+  // 新增自訂週期扣款規則
+  const addRecurringRule = async (
+    ruleData: Omit<RecurringRule, 'id' | 'ledger_id' | 'created_at' | 'updated_at'>
+  ): Promise<RecurringRule> => {
+    const newRule: RecurringRule = {
+      ...ruleData,
+      id: generateUUID(),
+      ledger_id: currentLedger.id,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const updated = [newRule, ...recurringRules];
+    setRecurringRules(updated);
+    await saveRecurringRulesToStorage(updated);
+    return newRule;
+  };
+
+  // 更新週期扣款規則
+  const updateRecurringRule = async (
+    id: string,
+    data: Partial<Omit<RecurringRule, 'id' | 'ledger_id'>>
+  ): Promise<boolean> => {
+    const updated = recurringRules.map(r => {
+      if (r.id === id) {
+        return {
+          ...r,
+          ...data,
+          updated_at: new Date().toISOString(),
+        };
+      }
+      return r;
+    });
+    setRecurringRules(updated);
+    await saveRecurringRulesToStorage(updated);
+    return true;
+  };
+
+  // 刪除週期扣款規則
+  const deleteRecurringRule = async (id: string): Promise<boolean> => {
+    const updated = recurringRules.filter(r => r.id !== id);
+    setRecurringRules(updated);
+    await saveRecurringRulesToStorage(updated);
+    return true;
+  };
+
+  // 確認記帳（方案 B：將待繳項目寫入記帳交易並標記本期已記帳）
+  const recordRecurringBill = async (
+    ruleId: string,
+    customAmount?: number,
+    transactedAt?: string,
+    note?: string
+  ): Promise<boolean> => {
+    const rule = recurringRules.find(r => r.id === ruleId);
+    if (!rule) return false;
+
+    const finalAmount = customAmount !== undefined && customAmount > 0 ? customAmount : rule.default_amount;
+    if (!finalAmount || finalAmount <= 0) {
+      safeAlert('金額錯誤', '請填寫大於 0 的正確金額');
+      return false;
+    }
+
+    const txDate = transactedAt || new Date().toISOString();
+    const periodLabel = getBillPeriodLabel(rule, new Date(txDate));
+    const autoNote = note !== undefined && note.trim() !== ''
+      ? note.trim()
+      : `[${rule.name}] ${periodLabel}`;
+
+    await addTransaction({
+      amount: finalAmount,
+      type: 'expense',
+      category_id: rule.category_id,
+      paid_by: rule.paid_by || currentUser.id,
+      merchant: rule.merchant || rule.name,
+      payment_method: rule.payment_method,
+      account_id: rule.account_id,
+      transacted_at: txDate,
+      note: autoNote,
+    });
+
+    const periodKey = getCurrentPeriodKey(rule, new Date(txDate));
+    const updated = recurringRules.map(r => {
+      if (r.id === ruleId) {
+        return {
+          ...r,
+          last_recorded_period: periodKey,
+          updated_at: new Date().toISOString(),
+        };
+      }
+      return r;
+    });
+    setRecurringRules(updated);
+    await saveRecurringRulesToStorage(updated);
+    return true;
+  };
+
+  // 略過本期帳單
+  const skipRecurringBill = async (ruleId: string, periodKey?: string): Promise<boolean> => {
+    const rule = recurringRules.find(r => r.id === ruleId);
+    if (!rule) return false;
+
+    const targetPeriod = periodKey || getCurrentPeriodKey(rule, new Date());
+    const updated = recurringRules.map(r => {
+      if (r.id === ruleId) {
+        return {
+          ...r,
+          last_recorded_period: targetPeriod,
+          updated_at: new Date().toISOString(),
+        };
+      }
+      return r;
+    });
+    setRecurringRules(updated);
+    await saveRecurringRulesToStorage(updated);
+    return true;
+  };
+
+  // 恢復/導入常用預設週期規則
+  const restoreDefaultRecurringRules = async (): Promise<void> => {
+    const utilityCategory = categories.find(c => c.name.includes('水電') || c.name.includes('居家')) || categories[0];
+    const defaultCard = paymentAccounts.find(a => a.type === 'credit_card');
+    const defaultRules: RecurringRule[] = DEFAULT_RECURRING_PRESETS.map((preset, index) => ({
+      id: generateUUID(),
+      ledger_id: currentLedger.id,
+      name: preset.name,
+      amount_type: preset.amount_type,
+      default_amount: preset.default_amount,
+      category_id: utilityCategory?.id || '',
+      merchant: preset.merchant,
+      paid_by: currentUser.id,
+      payment_method: preset.payment_method,
+      account_id: preset.payment_method === 'credit_card' ? defaultCard?.id : undefined,
+      frequency: preset.frequency,
+      due_day: preset.due_day,
+      bimonthly_start_month: (preset as any).bimonthly_start_month,
+      is_active: true,
+      last_recorded_period: undefined,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }));
+    setRecurringRules(defaultRules);
+    await saveRecurringRulesToStorage(defaultRules);
+  };
+
   // 快速加值悠遊卡/儲值卡（更新卡片餘額並可自動記錄一筆出資扣款明細）
   const topUpAccountBalance = async (
     id: string,
@@ -4076,6 +4306,23 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         account_id: t.account_id,
         is_reconciled: t.is_reconciled,
       })),
+      recurring_rules: recurringRules.map(r => ({
+        id: r.id,
+        name: r.name,
+        amount_type: r.amount_type,
+        default_amount: r.default_amount,
+        category_id: r.category_id,
+        merchant: r.merchant,
+        paid_by: r.paid_by,
+        payment_method: r.payment_method,
+        account_id: r.account_id,
+        frequency: r.frequency,
+        due_day: r.due_day,
+        bimonthly_start_month: r.bimonthly_start_month,
+        is_active: r.is_active,
+        last_recorded_period: r.last_recorded_period,
+        note: r.note,
+      })),
     };
     return JSON.stringify(backupData, null, 2);
   };
@@ -4379,6 +4626,55 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
+      // 3.5 還原/合併 週期扣款規則 (Recurring Rules)
+      let nextRecurringRules = [...recurringRules];
+      if (Array.isArray(backup.recurring_rules) && backup.recurring_rules.length > 0) {
+        const processRule = (br: any): RecurringRule => {
+          let mappedPaidBy = br.paid_by;
+          if (br.paid_by && memberIdMap[br.paid_by]) {
+            mappedPaidBy = memberIdMap[br.paid_by];
+          } else if (currentUser?.id) {
+            mappedPaidBy = currentUser.id;
+          }
+
+          let mappedCategoryId = br.category_id;
+          if (br.category_id && categoryIdMap[br.category_id]) {
+            mappedCategoryId = categoryIdMap[br.category_id];
+          }
+
+          let mappedAccountId = br.account_id;
+          if (br.account_id && accountIdMap[br.account_id]) {
+            mappedAccountId = accountIdMap[br.account_id];
+          }
+
+          return {
+            ...br,
+            id: br.id || generateUUID(),
+            ledger_id: currentLedger.id,
+            paid_by: mappedPaidBy,
+            category_id: mappedCategoryId || nextCategories[0]?.id || '',
+            account_id: mappedAccountId,
+            updated_at: new Date().toISOString(),
+          };
+        };
+
+        if (mode === 'overwrite') {
+          nextRecurringRules = backup.recurring_rules
+            .filter((r: any) => r && r.name)
+            .map(processRule);
+        } else {
+          backup.recurring_rules.forEach((br: any) => {
+            if (!br || !br.name) return;
+            const existing = nextRecurringRules.find(r => r.id === br.id || r.name === br.name);
+            if (!existing) {
+              nextRecurringRules.push(processRule(br));
+            }
+          });
+        }
+        setRecurringRules(nextRecurringRules);
+        await saveRecurringRulesToStorage(nextRecurringRules);
+      }
+
       // 4. 還原/合併 交易明細
       const backupTxs = Array.isArray(backup.transactions) ? backup.transactions : [];
       const targetLedgerId = currentLedger.id;
@@ -4530,6 +4826,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
       if (Array.isArray(backup.categories) && backup.categories.length > 0) {
         parts.push(`${nextCategories.length} 個分類`);
+      }
+      if (Array.isArray(backup.recurring_rules) && backup.recurring_rules.length > 0) {
+        parts.push(`${nextRecurringRules.length} 個週期規則`);
       }
 
       return {
@@ -5160,6 +5459,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         reorderPaymentMethods,
         restoreDefaultPaymentMethods,
         getPaymentMethodById,
+        recurringRules,
+        addRecurringRule,
+        updateRecurringRule,
+        deleteRecurringRule,
+        recordRecurringBill,
+        skipRecurringBill,
+        restoreDefaultRecurringRules,
         topUpAccountBalance,
         adjustAccountBalance,
         toggleReconcileTransaction,

@@ -53,6 +53,8 @@ import { StoredValueWidget } from './src/components/StoredValueWidget';
 import { CreditCardReconciliationModal } from './src/components/CreditCardReconciliationModal';
 import { PaymentAccountsManageModal } from './src/components/PaymentAccountsManageModal';
 import { PaymentMethodsManageModal } from './src/components/PaymentMethodsManageModal';
+import { RecurringBillsManageModal } from './src/components/RecurringBillsManageModal';
+import { isBillDueInMonth, isBillPaidForCurrentPeriod } from './src/lib/recurring';
 import { ChangelogModal } from './src/components/ChangelogModal';
 import { APP_FULL_VERSION } from './src/constants/version';
 import { HorizontalScrollView } from './src/components/HorizontalScrollView';
@@ -193,6 +195,7 @@ function MainApp() {
     recentMerchants,
     paymentAccounts,
     paymentMethods,
+    recurringRules,
     restoreFromJSON,
   } = useLedger();
 
@@ -206,6 +209,20 @@ function MainApp() {
   const [reconcileAccountId, setReconcileAccountId] = useState<string | undefined>(undefined);
   const [accountsManageModalVisible, setAccountsManageModalVisible] = useState(false);
   const [paymentMethodsModalVisible, setPaymentMethodsModalVisible] = useState(false);
+  const [recurringModalVisible, setRecurringModalVisible] = useState(false);
+  const [recurringModalInitialTab, setRecurringModalInitialTab] = useState<'pending' | 'rules'>('pending');
+
+  // 本期待繳帳單筆數 (方案 B: 到期需手動確認記帳之項目)
+  const pendingRecurringBillsCount = useMemo(() => {
+    const now = new Date();
+    const currYear = now.getFullYear();
+    const currMonth = now.getMonth() + 1;
+    return (recurringRules || []).filter(rule => {
+      if (!rule.is_active) return false;
+      if (!isBillDueInMonth(rule, currYear, currMonth)) return false;
+      return !isBillPaidForCurrentPeriod(rule, now);
+    }).length;
+  }, [recurringRules]);
   const [searchQuery, setSearchQuery] = useState('');
   const [exportModalVisible, setExportModalVisible] = useState(false);
   const [memberModalVisible, setMemberModalVisible] = useState(false);
@@ -2716,6 +2733,34 @@ function MainApp() {
               </View>
             </View>
 
+            {/* 🗓️ 待繳週期帳單提醒膠囊 (方案 B: 到期提醒核對入帳) */}
+            {pendingRecurringBillsCount > 0 && (
+              <TouchableOpacity
+                style={styles.pendingRecurringBanner}
+                activeOpacity={0.8}
+                onPress={() => {
+                  setRecurringModalInitialTab('pending');
+                  setRecurringModalVisible(true);
+                }}
+              >
+                <View style={styles.pendingRecurringLeft}>
+                  <View style={styles.pendingRecurringBadge}>
+                    <Text style={styles.pendingRecurringBadgeText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      🗓️ 待繳
+                    </Text>
+                  </View>
+                  <Text style={styles.pendingRecurringTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    本期有 <Text style={styles.pendingRecurringCountHighlight}>{pendingRecurringBillsCount}</Text> 筆週期帳單待確認
+                  </Text>
+                </View>
+                <View style={styles.pendingRecurringAction}>
+                  <Text style={styles.pendingRecurringActionText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    核對記帳 ›
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
             {/* 悠遊卡 / 一卡通 即時餘額與快捷儲值小工具 */}
             <StoredValueWidget
               onOpenCreditCardReconcile={() => {
@@ -3832,6 +3877,88 @@ function MainApp() {
               </View>
             </View>
 
+            {/* 🗓️ 週期扣款與固定帳單 (水電瓦斯、電信寬頻、定期帳單管理) */}
+            <View style={styles.cardSection}>
+              <View style={styles.sectionHeaderRow}>
+                <View style={styles.sectionHeaderLeft}>
+                  <Text style={styles.cardSectionTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    🗓️ 週期扣款與固定帳單 ({(recurringRules || []).length})
+                  </Text>
+                  <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    {isOwner
+                      ? '管理水電瓦斯、通訊管理費等定期週期項目，到期手動確認記帳'
+                      : '查看家庭固定週期扣款設定與出帳月份'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {pendingRecurringBillsCount > 0 && (
+                    <TouchableOpacity
+                      style={[styles.manageCategoryBtn, { backgroundColor: '#FEE2E2', borderColor: '#FECACA' }]}
+                      onPress={() => {
+                        setRecurringModalInitialTab('pending');
+                        setRecurringModalVisible(true);
+                      }}
+                    >
+                      <Text style={[styles.manageCategoryBtnText, { color: '#DC2626' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                        🔔 待核對 ({pendingRecurringBillsCount})
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={styles.manageCategoryBtn}
+                    onPress={() => {
+                      setRecurringModalInitialTab(pendingRecurringBillsCount > 0 ? 'pending' : 'rules');
+                      setRecurringModalVisible(true);
+                    }}
+                  >
+                    <Text style={styles.manageCategoryBtnText} maxFontSizeMultiplier={1.2}>
+                      {isOwner ? '⚙️ 管理規則' : '👀 查看規則'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.paymentAccountPreviewRow}>
+                {(recurringRules || []).filter(r => r.is_active).map(rule => {
+                  const cat = getCategoryById(rule.category_id);
+                  return (
+                    <TouchableOpacity
+                      key={rule.id}
+                      style={[styles.paymentAccountPreviewChip, { borderColor: '#E2E8F0' }]}
+                      onPress={() => {
+                        setRecurringModalInitialTab('pending');
+                        setRecurringModalVisible(true);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.paymentAccountPreviewIcon}>{getCategoryIcon(cat?.icon)}</Text>
+                      <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                        {rule.name}
+                      </Text>
+                      <View style={[styles.paymentAccountBadge, { backgroundColor: '#EFF6FF' }]}>
+                        <Text style={[styles.paymentAccountBadgeText, { color: '#1D4ED8' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                          {rule.due_day}日
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+                {(recurringRules || []).length === 0 && (
+                  <TouchableOpacity
+                    style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
+                    onPress={() => {
+                      setRecurringModalInitialTab('rules');
+                      setRecurringModalVisible(true);
+                    }}
+                  >
+                    <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      ＋ 新增水電瓦斯或定期帳單規則
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
             {/* 資料備份與掌控 */}
             <View style={styles.cardSection}>
               <View style={styles.sectionHeaderRow}>
@@ -4188,6 +4315,13 @@ function MainApp() {
       <PaymentMethodsManageModal
         visible={paymentMethodsModalVisible}
         onClose={() => setPaymentMethodsModalVisible(false)}
+      />
+
+      {/* 🗓️ 週期扣款與固定帳單管理彈窗 */}
+      <RecurringBillsManageModal
+        visible={recurringModalVisible}
+        initialTab={recurringModalInitialTab}
+        onClose={() => setRecurringModalVisible(false)}
       />
 
       {/* 📜 版本更新歷程彈窗 */}
@@ -5493,6 +5627,65 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '700',
+  },
+
+  // 待繳週期帳單提醒膠囊 (Home Screen)
+  pendingRecurringBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1.5,
+    borderColor: '#FECACA',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  pendingRecurringLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
+  pendingRecurringBadge: {
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  pendingRecurringBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  pendingRecurringTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#991B1B',
+    flex: 1,
+  },
+  pendingRecurringCountHighlight: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#DC2626',
+  },
+  pendingRecurringAction: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  pendingRecurringActionText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#DC2626',
   },
 
   // Option B: 家庭頁面備份排程與狀態卡片樣式

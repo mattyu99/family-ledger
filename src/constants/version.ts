@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.3';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.3 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 23;
+export const APP_BUILD_REVISION = 24;
 
-// 完整版本字串 (例如 "1.0.3.23")
+// 完整版本字串 (例如 "1.0.3.24")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,18 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.3.24',
+    date: '2026-10-09',
+    title: '全新支援「週期扣款與固定帳單」管理（水電瓦斯待繳清單手動核對記帳）',
+    highlights: [
+      '全新週期扣款管理模組：支援水費、電費、天然瓦斯、電信月租與社區管理費等定期固定與浮動支出。',
+      '落實「待繳核對清單（方案 B）」：到期帳單以待繳清單清晰呈現，固定項目一鍵確認入帳，水電瓦斯浮動項目可填寫本期金額後手動確認入帳。',
+      '雙月繳出帳月份自訂：精準契合台灣各區域台電、自來水、天然氣之雙月繳計費週期（單數月繳 1,3,5月 vs 雙數月繳 2,4,6月）。',
+      '首頁智慧待繳提醒膠囊：當月有待核對週期項目時在首頁醒目提示，點擊直達核對記帳。',
+      '支援常見週期範本一鍵導入、扣款信用卡連動對帳看板以及完整納入 JSON 資料備份還原。',
+    ],
+  },
   {
     version: '1.0.3.23',
     date: '2026-10-09',

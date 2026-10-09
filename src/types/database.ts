@@ -128,3 +128,28 @@ export interface LedgerInvite {
   used_count: number;
   created_at: string;
 }
+
+export type RecurringFrequency = 'monthly' | 'bimonthly' | 'quarterly' | 'yearly';
+export type RecurringAmountType = 'fixed' | 'variable';
+
+export interface RecurringRule {
+  id: string;
+  ledger_id: string;
+  name: string; // 例如：台灣電力公司 電費、中華電信 手機費、大樓管理費
+  amount_type: RecurringAmountType; // 'fixed' (固定金額) | 'variable' (浮動金額如水電瓦斯)
+  default_amount: number; // 固定金額或浮動預估參考值
+  category_id: string; // 分類 ID
+  merchant?: string; // 付款對象/機構 (如：台灣電力公司、中華電信)
+  paid_by: string; // 預設付款家庭成員 UUID
+  payment_method: PaymentMethod; // 付款方式
+  account_id?: string; // 扣款卡片/帳戶 ID
+  frequency: RecurringFrequency; // 週期：'monthly' (每月) | 'bimonthly' (雙月) | 'quarterly' (季) | 'yearly' (年)
+  due_day: number; // 扣款日 / 帳單日 (1~31)
+  bimonthly_start_month?: 1 | 2; // 雙月繳之出帳月份：1 (1,3,5,7,9,11月) 或 2 (2,4,6,8,10,12月)
+  is_active: boolean; // 是否啟用
+  last_recorded_period?: string; // 最後已記帳之週期標籤 (例如 "2026-10")，避免重複入帳
+  note?: string; // 備註
+  created_at: string;
+  updated_at: string;
+}
+
