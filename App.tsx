@@ -199,7 +199,7 @@ function MainApp() {
     restoreFromJSON,
   } = useLedger();
 
-  const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'family'>('transactions');
+  const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'bills' | 'family'>('transactions');
   const [modalVisible, setModalVisible] = useState(false);
   const [modalMode, setModalMode] = useState<'expense' | 'income' | 'allowance'>('expense');
   const [modalRecipientId, setModalRecipientId] = useState<string | undefined>(undefined);
@@ -3480,6 +3480,308 @@ function MainApp() {
           </ScrollView>
         )}
 
+        {activeTab === 'bills' && (
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollPadding}>
+            {/* 帳單與支付總覽 Hero 卡片 */}
+            <View style={styles.billsHeroCard}>
+              <View style={styles.billsHeroLeft}>
+                <Text style={styles.billsHeroTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                  💳 帳單與支付資產
+                </Text>
+                <Text style={styles.billsHeroDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                  定期扣款・分期攤提・信用卡結帳・悠遊卡與電子支付
+                </Text>
+              </View>
+              {pendingRecurringBillsCount > 0 ? (
+                <TouchableOpacity
+                  style={styles.billsHeroBadgeDue}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    setRecurringModalInitialTab('pending');
+                    setRecurringModalVisible(true);
+                  }}
+                >
+                  <Text style={styles.billsHeroBadgeTextDue} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    🔔 {pendingRecurringBillsCount} 筆待核對
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.billsHeroBadgeOk}>
+                  <Text style={styles.billsHeroBadgeTextOk} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    ✅ 帳單皆已核對
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* 🗓️ 週期扣款與固定帳單 (水電瓦斯、電信寬頻、定期帳單管理、分期付款) */}
+            <View style={styles.cardSection}>
+              <View style={styles.sectionHeaderRow}>
+                <View style={styles.sectionHeaderLeft}>
+                  <Text style={styles.cardSectionTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    🗓️ 週期扣款與固定帳單 ({(recurringRules || []).filter(r => !r.ledger_id || r.ledger_id === currentLedger?.id).length})
+                  </Text>
+                  <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    {isOwner
+                      ? '管理水電瓦斯、房租通訊、分期攤提等定期週期項目，到期手動確認記帳'
+                      : '查看家庭固定週期扣款設定與出帳月份'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {pendingRecurringBillsCount > 0 && (
+                    <TouchableOpacity
+                      style={[styles.manageCategoryBtn, { backgroundColor: '#FEE2E2', borderColor: '#FECACA' }]}
+                      onPress={() => {
+                        setRecurringModalInitialTab('pending');
+                        setRecurringModalVisible(true);
+                      }}
+                    >
+                      <Text style={[styles.manageCategoryBtnText, { color: '#DC2626' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                        🔔 待核對 ({pendingRecurringBillsCount})
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={styles.manageCategoryBtn}
+                    onPress={() => {
+                      setRecurringModalInitialTab(pendingRecurringBillsCount > 0 ? 'pending' : 'rules');
+                      setRecurringModalVisible(true);
+                    }}
+                  >
+                    <Text style={styles.manageCategoryBtnText} maxFontSizeMultiplier={1.2}>
+                      {isOwner ? '⚙️ 管理規則' : '👀 查看規則'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.paymentAccountPreviewRow}>
+                {(recurringRules || []).filter(r => (!r.ledger_id || r.ledger_id === currentLedger?.id) && r.is_active).map(rule => {
+                  const cat = getCategoryById(rule.category_id);
+                  return (
+                    <TouchableOpacity
+                      key={rule.id}
+                      style={[styles.paymentAccountPreviewChip, { borderColor: '#E2E8F0' }]}
+                      onPress={() => {
+                        setRecurringModalInitialTab('pending');
+                        setRecurringModalVisible(true);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.paymentAccountPreviewIcon}>{getCategoryIcon(cat?.icon)}</Text>
+                      <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                        {rule.name}
+                      </Text>
+                      <View style={[styles.paymentAccountBadge, { backgroundColor: '#EFF6FF' }]}>
+                        <Text style={[styles.paymentAccountBadgeText, { color: '#1D4ED8' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                          {rule.due_day}日
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+                {(recurringRules || []).filter(r => !r.ledger_id || r.ledger_id === currentLedger?.id).length === 0 && (
+                  <TouchableOpacity
+                    style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
+                    onPress={() => {
+                      setRecurringModalInitialTab('rules');
+                      setRecurringModalVisible(true);
+                    }}
+                  >
+                    <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      ＋ 新增水電瓦斯或定期帳單規則
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {/* 支付卡片與帳戶管理 (信用卡結帳日 / 悠遊卡即時餘額) */}
+            <View style={styles.cardSection}>
+              <View style={styles.sectionHeaderRow}>
+                <View style={styles.sectionHeaderLeft}>
+                  <Text style={styles.cardSectionTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    💳 支付卡片與帳戶 ({paymentAccounts.length})
+                  </Text>
+                  <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    {isOwner
+                      ? '管理信用卡結帳週期、悠遊卡/一卡通餘額與帳單對帳'
+                      : '查看全家信用卡結帳日與悠遊卡即時餘額（僅管理員可增修）'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  <TouchableOpacity
+                    style={[styles.manageCategoryBtn, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}
+                    onPress={() => setReconcileModalVisible(true)}
+                  >
+                    <Text style={[styles.manageCategoryBtnText, { color: '#4F46E5' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      📊 對帳
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.manageCategoryBtn}
+                    onPress={() => setAccountsManageModalVisible(true)}
+                  >
+                    <Text style={styles.manageCategoryBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      {isOwner ? '⚙️ 管理' : '👀 查看'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.paymentAccountPreviewRow}>
+                {paymentAccounts.map(acc => {
+                  const isCard = acc.type === 'credit_card';
+                  return (
+                    <TouchableOpacity
+                      key={acc.id}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        setReconcileAccountType(isCard ? 'credit_card' : 'stored_value');
+                        setReconcileAccountId(acc.id);
+                        setReconcileModalVisible(true);
+                      }}
+                      style={[
+                        styles.paymentAccountPreviewChip,
+                        { borderColor: `${acc.color || '#4F46E5'}40`, backgroundColor: `${acc.color || '#4F46E5'}10` },
+                      ]}
+                    >
+                      <Text style={styles.paymentAccountPreviewIcon} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                        {acc.icon || (isCard ? '💳' : '🚌')}
+                      </Text>
+                      <Text
+                        style={styles.paymentAccountPreviewText}
+                        numberOfLines={1}
+                        allowFontScaling={false}
+                        maxFontSizeMultiplier={1.08}
+                      >
+                        {acc.name}{acc.last_four_digits ? ` (*${acc.last_four_digits})` : ''}
+                      </Text>
+                      {isCard && acc.billing_cycle_date ? (
+                        <View style={[styles.paymentAccountBadge, { backgroundColor: '#EEF2FF' }]}>
+                          <Text style={[styles.paymentAccountBadgeText, { color: '#4F46E5' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                            每月{acc.billing_cycle_date}日結
+                          </Text>
+                        </View>
+                      ) : !isCard ? (
+                        <View style={[styles.paymentAccountBadge, { backgroundColor: '#ECFDF5' }]}>
+                          <Text style={[styles.paymentAccountBadgeText, { color: '#047857' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                            ${(acc.balance || 0).toLocaleString()}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                })}
+                {paymentAccounts.length === 0 && (
+                  isOwner ? (
+                    <TouchableOpacity
+                      style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
+                      onPress={() => setAccountsManageModalVisible(true)}
+                    >
+                      <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                        ＋ 新增第一張信用卡或悠遊卡
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}>
+                      <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                        尚無支付卡片或帳戶
+                      </Text>
+                    </View>
+                  )
+                )}
+              </View>
+            </View>
+
+            {/* 常用付款方式管理 (電子支付 / 信用卡 / 現金等自由開關與自訂) */}
+            <View style={styles.cardSection}>
+              <View style={styles.sectionHeaderRow}>
+                <View style={styles.sectionHeaderLeft}>
+                  <Text style={styles.cardSectionTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    📱 常用付款方式 ({(paymentMethods || []).filter(m => m.is_enabled !== false).length})
+                  </Text>
+                  <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    {isOwner
+                      ? '自訂日常記帳可用的支付工具（如 LINE Pay、全支付、悠遊付、街口等），可隨時新增或開關隱藏'
+                      : '查看目前日常記帳可用的支付工具（僅帳本管理員可新增或修改）'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.manageCategoryBtn}
+                  onPress={() => setPaymentMethodsModalVisible(true)}
+                >
+                  <Text style={styles.manageCategoryBtnText} maxFontSizeMultiplier={1.2}>
+                    {isOwner ? '⚙️ 管理付款方式' : '👀 查看付款方式'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.paymentAccountPreviewRow}>
+                {(paymentMethods || []).filter(m => m.is_enabled !== false).map(m => (
+                  <TouchableOpacity
+                    key={m.id}
+                    style={[styles.paymentAccountPreviewChip, { borderColor: `${m.color || '#3B82F6'}45` }]}
+                    onPress={() => setPaymentMethodsModalVisible(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.paymentAccountPreviewIcon}>{m.icon}</Text>
+                    <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      {m.name}
+                    </Text>
+                    {m.supports_credit_card && (
+                      <View style={[styles.paymentAccountBadge, { backgroundColor: '#EFF6FF' }]}>
+                        <Text style={[styles.paymentAccountBadgeText, { color: '#1D4ED8' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                          可綁卡
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* 記帳分類項目管理入口 (僅管理員可增修) */}
+            <View style={styles.cardSection}>
+              <View style={styles.sectionHeaderRow}>
+                <View style={styles.sectionHeaderLeft}>
+                  <Text style={styles.cardSectionTitle} maxFontSizeMultiplier={1.2}>🏷️ 記帳分類項目 ({categories.length})</Text>
+                  <Text style={styles.sectionHeaderDesc} maxFontSizeMultiplier={1.2}>
+                    {isOwner ? '管理員可自訂支出與收入分類項目、圖示及代表顏色' : '查看目前記帳分類項目（僅帳本管理員可新增或修改）'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.manageCategoryBtn}
+                  onPress={() => setCategoryModalVisible(true)}
+                >
+                  <Text style={styles.manageCategoryBtnText} maxFontSizeMultiplier={1.2}>
+                    {isOwner ? '⚙️ 管理分類' : '👀 查看分類'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.categoryPreviewRow}>
+                {categories.slice(0, 10).map(cat => (
+                  <View key={cat.id} style={[styles.categoryPreviewChip, { borderColor: `${cat.color || '#4F46E5'}40` }]}>
+                    <Text style={styles.categoryPreviewIcon}>{getCategoryIcon(cat.icon)}</Text>
+                    <Text style={styles.categoryPreviewText} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+                      {cat.name}
+                    </Text>
+                  </View>
+                ))}
+                {categories.length > 10 && (
+                  <TouchableOpacity
+                    style={styles.categoryMoreChip}
+                    onPress={() => setCategoryModalVisible(true)}
+                  >
+                    <Text style={styles.categoryMoreText} maxFontSizeMultiplier={1.2}>+{categories.length - 10} 更多...</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          </ScrollView>
+        )}
+
         {activeTab === 'family' && (
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollPadding}>
             {/* 家庭成員名冊與管理 */}
@@ -3717,272 +4019,6 @@ function MainApp() {
               >
                 <Text style={styles.switchLedgerEntryText}>🚪 加入或切換其他家庭公帳</Text>
               </TouchableOpacity>
-            </View>
-
-            {/* 記帳分類項目管理入口 (僅管理員可增修) */}
-            <View style={styles.cardSection}>
-              <View style={styles.sectionHeaderRow}>
-                <View style={styles.sectionHeaderLeft}>
-                  <Text style={styles.cardSectionTitle} maxFontSizeMultiplier={1.2}>🏷️ 記帳分類項目 ({categories.length})</Text>
-                  <Text style={styles.sectionHeaderDesc} maxFontSizeMultiplier={1.2}>
-                    {isOwner ? '管理員可自訂支出與收入分類項目、圖示及代表顏色' : '查看目前記帳分類項目（僅帳本管理員可新增或修改）'}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.manageCategoryBtn}
-                  onPress={() => setCategoryModalVisible(true)}
-                >
-                  <Text style={styles.manageCategoryBtnText} maxFontSizeMultiplier={1.2}>
-                    {isOwner ? '⚙️ 管理分類' : '👀 查看分類'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.categoryPreviewRow}>
-                {categories.slice(0, 10).map(cat => (
-                  <View key={cat.id} style={[styles.categoryPreviewChip, { borderColor: `${cat.color || '#4F46E5'}40` }]}>
-                    <Text style={styles.categoryPreviewIcon}>{getCategoryIcon(cat.icon)}</Text>
-                    <Text style={styles.categoryPreviewText} numberOfLines={1} maxFontSizeMultiplier={1.2}>
-                      {cat.name}
-                    </Text>
-                  </View>
-                ))}
-                {categories.length > 10 && (
-                  <TouchableOpacity
-                    style={styles.categoryMoreChip}
-                    onPress={() => setCategoryModalVisible(true)}
-                  >
-                    <Text style={styles.categoryMoreText} maxFontSizeMultiplier={1.2}>+{categories.length - 10} 更多...</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-
-            {/* 支付卡片與帳戶管理 (信用卡結帳日 / 悠遊卡即時餘額) */}
-            <View style={styles.cardSection}>
-              <View style={styles.sectionHeaderRow}>
-                <View style={styles.sectionHeaderLeft}>
-                  <Text style={styles.cardSectionTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    💳 支付卡片與帳戶 ({paymentAccounts.length})
-                  </Text>
-                  <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    {isOwner
-                      ? '管理信用卡結帳週期、悠遊卡/一卡通餘額與帳單對帳'
-                      : '查看全家信用卡結帳日與悠遊卡即時餘額（僅管理員可增修）'}
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 6 }}>
-                  <TouchableOpacity
-                    style={[styles.manageCategoryBtn, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}
-                    onPress={() => setReconcileModalVisible(true)}
-                  >
-                    <Text style={[styles.manageCategoryBtnText, { color: '#4F46E5' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                      📊 對帳
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.manageCategoryBtn}
-                    onPress={() => setAccountsManageModalVisible(true)}
-                  >
-                    <Text style={styles.manageCategoryBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                      {isOwner ? '⚙️ 管理' : '👀 查看'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <View style={styles.paymentAccountPreviewRow}>
-                {paymentAccounts.map(acc => {
-                  const isCard = acc.type === 'credit_card';
-                  return (
-                    <TouchableOpacity
-                      key={acc.id}
-                      activeOpacity={0.7}
-                      onPress={() => {
-                        setReconcileAccountType(isCard ? 'credit_card' : 'stored_value');
-                        setReconcileAccountId(acc.id);
-                        setReconcileModalVisible(true);
-                      }}
-                      style={[
-                        styles.paymentAccountPreviewChip,
-                        { borderColor: `${acc.color || '#4F46E5'}40`, backgroundColor: `${acc.color || '#4F46E5'}10` },
-                      ]}
-                    >
-                      <Text style={styles.paymentAccountPreviewIcon} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                        {acc.icon || (isCard ? '💳' : '🚌')}
-                      </Text>
-                      <Text
-                        style={styles.paymentAccountPreviewText}
-                        numberOfLines={1}
-                        allowFontScaling={false}
-                        maxFontSizeMultiplier={1.08}
-                      >
-                        {acc.name}{acc.last_four_digits ? ` (*${acc.last_four_digits})` : ''}
-                      </Text>
-                      {isCard && acc.billing_cycle_date ? (
-                        <View style={[styles.paymentAccountBadge, { backgroundColor: '#EEF2FF' }]}>
-                          <Text style={[styles.paymentAccountBadgeText, { color: '#4F46E5' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                            每月{acc.billing_cycle_date}日結
-                          </Text>
-                        </View>
-                      ) : !isCard ? (
-                        <View style={[styles.paymentAccountBadge, { backgroundColor: '#ECFDF5' }]}>
-                          <Text style={[styles.paymentAccountBadgeText, { color: '#047857' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                            ${(acc.balance || 0).toLocaleString()}
-                          </Text>
-                        </View>
-                      ) : null}
-                    </TouchableOpacity>
-                  );
-                })}
-                {paymentAccounts.length === 0 && (
-                  isOwner ? (
-                    <TouchableOpacity
-                      style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
-                      onPress={() => setAccountsManageModalVisible(true)}
-                    >
-                      <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                        ＋ 新增第一張信用卡或悠遊卡
-                      </Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <View style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}>
-                      <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                        尚無支付卡片或帳戶
-                      </Text>
-                    </View>
-                  )
-                )}
-              </View>
-            </View>
-
-            {/* 常用付款方式管理 (電子支付 / 信用卡 / 現金等自由開關與自訂) */}
-            <View style={styles.cardSection}>
-              <View style={styles.sectionHeaderRow}>
-                <View style={styles.sectionHeaderLeft}>
-                  <Text style={styles.cardSectionTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    📱 常用付款方式 ({(paymentMethods || []).filter(m => m.is_enabled !== false).length})
-                  </Text>
-                  <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    {isOwner
-                      ? '自訂日常記帳可用的支付工具（如 LINE Pay、全支付、悠遊付、街口等），可隨時新增或開關隱藏'
-                      : '查看目前日常記帳可用的支付工具（僅帳本管理員可新增或修改）'}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.manageCategoryBtn}
-                  onPress={() => setPaymentMethodsModalVisible(true)}
-                >
-                  <Text style={styles.manageCategoryBtnText} maxFontSizeMultiplier={1.2}>
-                    {isOwner ? '⚙️ 管理付款方式' : '👀 查看付款方式'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.paymentAccountPreviewRow}>
-                {(paymentMethods || []).filter(m => m.is_enabled !== false).map(m => (
-                  <TouchableOpacity
-                    key={m.id}
-                    style={[styles.paymentAccountPreviewChip, { borderColor: `${m.color || '#3B82F6'}45` }]}
-                    onPress={() => setPaymentMethodsModalVisible(true)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.paymentAccountPreviewIcon}>{m.icon}</Text>
-                    <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                      {m.name}
-                    </Text>
-                    {m.supports_credit_card && (
-                      <View style={[styles.paymentAccountBadge, { backgroundColor: '#EFF6FF' }]}>
-                        <Text style={[styles.paymentAccountBadgeText, { color: '#1D4ED8' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                          可綁卡
-                        </Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            {/* 🗓️ 週期扣款與固定帳單 (水電瓦斯、電信寬頻、定期帳單管理) */}
-            <View style={styles.cardSection}>
-              <View style={styles.sectionHeaderRow}>
-                <View style={styles.sectionHeaderLeft}>
-                  <Text style={styles.cardSectionTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    🗓️ 週期扣款與固定帳單 ({(recurringRules || []).filter(r => !r.ledger_id || r.ledger_id === currentLedger?.id).length})
-                  </Text>
-                  <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    {isOwner
-                      ? '管理水電瓦斯、通訊管理費等定期週期項目，到期手動確認記帳'
-                      : '查看家庭固定週期扣款設定與出帳月份'}
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 6 }}>
-                  {pendingRecurringBillsCount > 0 && (
-                    <TouchableOpacity
-                      style={[styles.manageCategoryBtn, { backgroundColor: '#FEE2E2', borderColor: '#FECACA' }]}
-                      onPress={() => {
-                        setRecurringModalInitialTab('pending');
-                        setRecurringModalVisible(true);
-                      }}
-                    >
-                      <Text style={[styles.manageCategoryBtnText, { color: '#DC2626' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                        🔔 待核對 ({pendingRecurringBillsCount})
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                  <TouchableOpacity
-                    style={styles.manageCategoryBtn}
-                    onPress={() => {
-                      setRecurringModalInitialTab(pendingRecurringBillsCount > 0 ? 'pending' : 'rules');
-                      setRecurringModalVisible(true);
-                    }}
-                  >
-                    <Text style={styles.manageCategoryBtnText} maxFontSizeMultiplier={1.2}>
-                      {isOwner ? '⚙️ 管理規則' : '👀 查看規則'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <View style={styles.paymentAccountPreviewRow}>
-                {(recurringRules || []).filter(r => (!r.ledger_id || r.ledger_id === currentLedger?.id) && r.is_active).map(rule => {
-                  const cat = getCategoryById(rule.category_id);
-                  return (
-                    <TouchableOpacity
-                      key={rule.id}
-                      style={[styles.paymentAccountPreviewChip, { borderColor: '#E2E8F0' }]}
-                      onPress={() => {
-                        setRecurringModalInitialTab('pending');
-                        setRecurringModalVisible(true);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.paymentAccountPreviewIcon}>{getCategoryIcon(cat?.icon)}</Text>
-                      <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                        {rule.name}
-                      </Text>
-                      <View style={[styles.paymentAccountBadge, { backgroundColor: '#EFF6FF' }]}>
-                        <Text style={[styles.paymentAccountBadgeText, { color: '#1D4ED8' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                          {rule.due_day}日
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-                {(recurringRules || []).filter(r => !r.ledger_id || r.ledger_id === currentLedger?.id).length === 0 && (
-                  <TouchableOpacity
-                    style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
-                    onPress={() => {
-                      setRecurringModalInitialTab('rules');
-                      setRecurringModalVisible(true);
-                    }}
-                  >
-                    <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                      ＋ 新增水電瓦斯或定期帳單規則
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
             </View>
 
             {/* 資料備份與掌控 */}
@@ -4261,11 +4297,22 @@ function MainApp() {
         </TouchableOpacity>
 
         <TouchableOpacity
+          style={[styles.navItem, activeTab === 'bills' && styles.navItemActive]}
+          onPress={() => setActiveTab('bills')}
+        >
+          <View style={{ position: 'relative' }}>
+            <Text style={styles.navIcon}>💳</Text>
+            {pendingRecurringBillsCount > 0 && <View style={styles.navBadgeDot} />}
+          </View>
+          <Text style={[styles.navText, activeTab === 'bills' && styles.navTextActive]}>帳單支付</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={[styles.navItem, activeTab === 'family' && styles.navItemActive]}
           onPress={() => setActiveTab('family')}
         >
-          <Text style={styles.navIcon}>👨‍👩‍👧</Text>
-          <Text style={[styles.navText, activeTab === 'family' && styles.navTextActive]}>家庭與備份</Text>
+          <Text style={styles.navIcon}>⚙️</Text>
+          <Text style={[styles.navText, activeTab === 'family' && styles.navTextActive]}>家庭設定</Text>
         </TouchableOpacity>
       </View>
 
@@ -5896,6 +5943,17 @@ const styles = StyleSheet.create({
     color: '#4F46E5',
     fontWeight: '700',
   },
+  navBadgeDot: {
+    position: 'absolute',
+    top: -2,
+    right: -4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
   exportOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -7522,5 +7580,62 @@ const styles = StyleSheet.create({
     color: '#4F46E5',
     fontSize: 12,
     fontWeight: '700',
+  },
+  billsHeroCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  billsHeroLeft: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  billsHeroTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 4,
+  },
+  billsHeroDesc: {
+    fontSize: 11,
+    color: '#64748B',
+    lineHeight: 16,
+  },
+  billsHeroBadgeDue: {
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  billsHeroBadgeTextDue: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
+  billsHeroBadgeOk: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  billsHeroBadgeTextOk: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#059669',
   },
 });
