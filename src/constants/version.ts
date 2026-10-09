@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.3';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.3 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 18;
+export const APP_BUILD_REVISION = 19;
 
-// 完整版本字串 (例如 "1.0.3.18")
+// 完整版本字串 (例如 "1.0.3.19")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -19,11 +19,12 @@ export interface ChangelogItem {
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
-    version: '1.0.3.18',
+    version: '1.0.3.19',
     date: '2026-10-09',
-    title: '版本小版號與更新日誌、跨平台備份還原全面升級',
+    title: '精簡版本卡片介面、小版號更新日誌與跨平台備份還原全面升級',
     highlights: [
-      '新增應用程式修訂小版號 (v1.0.3.18) 與更新日誌彈窗，點選版號即可隨時查看最新改動。',
+      '精簡版本卡片介面：專注保留標題右上角「v1.0.3.19 📜」膠囊點選入口，移除多餘重複按鈕，畫面維持清爽。',
+      '新增應用程式修訂小版號 (v1.0.3.19)，每次雲端熱更新版號同步遞增，點選膠囊即可查看各版詳細改動。',
       '全面接通手機原生系統剪貼簿 (React Native Clipboard)，匯出點「一鍵複製」真正寫入手機系統剪貼簿。',
       '還原資料支援手機端「📋 讀取剪貼簿貼上」，一鍵自動載入並解析 JSON 結構，告別繁複手動貼上。',
       '跨平台備份檔案選擇按鈕全開放，手機端提供清晰選檔指引與一鍵貼上快捷按鈕。',
@@ -84,3 +85,4 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
     ],
   },
 ];
+

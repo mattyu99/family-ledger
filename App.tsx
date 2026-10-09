@@ -3916,22 +3916,6 @@ function MainApp() {
 
               <View style={styles.versionDetailBox}>
                 <View style={styles.versionDetailRow}>
-                  <Text style={styles.versionDetailLabel}>目前版本：</Text>
-                  <TouchableOpacity
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
-                    onPress={() => setChangelogModalVisible(true)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.versionDetailValue, { color: '#4F46E5', fontWeight: '800' }]}>
-                      v{APP_VERSION}
-                    </Text>
-                    <Text style={{ fontSize: 11, color: '#6366F1', fontWeight: '600' }}>
-                      (點此看改動 📜)
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.versionDetailRow}>
                   <Text style={styles.versionDetailLabel}>運行環境：</Text>
                   <Text style={styles.versionDetailValue}>
                     {Platform.OS === 'web'
@@ -3969,14 +3953,6 @@ function MainApp() {
                   </View>
                 )}
               </View>
-
-              <TouchableOpacity
-                style={styles.changelogBtn}
-                onPress={() => setChangelogModalVisible(true)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.changelogBtnText}>📜 查看版本更新紀錄 (Changelog)</Text>
-              </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.checkUpdateBtn, isCheckingUpdate && styles.checkUpdateBtnDisabled]}
@@ -7060,20 +7036,6 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     fontWeight: '700',
     color: '#4F46E5',
-  },
-  changelogBtn: {
-    backgroundColor: '#EEF2FF',
-    borderWidth: 1,
-    borderColor: '#C7D2FE',
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  changelogBtnText: {
-    color: '#4F46E5',
-    fontSize: 13,
-    fontWeight: '700',
   },
   checkUpdateBtn: {
     backgroundColor: '#F1F5F9',
