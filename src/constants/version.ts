@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.3';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.3 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 25;
+export const APP_BUILD_REVISION = 26;
 
-// 完整版本字串 (例如 "1.0.3.25")
+// 完整版本字串 (例如 "1.0.3.26")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.3.26',
+    date: '2026-10-09',
+    title: '徹底隔離多帳本之週期扣款與固定帳單規則，阻斷跨帳本共享洩漏',
+    highlights: [
+      '修復週期扣款規則跨帳本洩漏問題：移除全域共享儲存鍵，改為全面依帳本 ID 獨立專屬儲存。',
+      '帳本切換時自動清空前一帳本規則快取，並於載入時自動過濾非屬當前帳本之規則，自動修復受污染之歷史快取。',
+      '支援每個家庭帳本擁有專屬之週期扣款與固定帳單設定，公帳與私帳完全隔離獨立。',
+      '擴充資料庫 Schema 週期規則表 (recurring_rules) 與即時推播監聽架構支援。',
+    ],
+  },
   {
     version: '1.0.3.25',
     date: '2026-10-09',

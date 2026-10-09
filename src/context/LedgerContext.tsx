@@ -526,7 +526,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const [paymentAccounts, setPaymentAccounts] = useState<PaymentAccount[]>(DEMO_PAYMENT_ACCOUNTS);
   const [paymentMethods, setPaymentMethods] = useState<CustomPaymentMethod[]>(DEFAULT_PAYMENT_METHODS);
-  const [recurringRules, setRecurringRules] = useState<RecurringRule[]>(DEMO_RECURRING_RULES);
+  const [recurringRules, setRecurringRules] = useState<RecurringRule[]>([]);
   const [currentUser, setCurrentUser] = useState<Profile>(DEFAULT_MEMBERS[0]);
   const [isCloudSynced, setIsCloudSynced] = useState<boolean>(false);
   const [isDeviceBound, setIsDeviceBound] = useState<boolean>(false);
@@ -893,12 +893,15 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           setPaymentMethods(DEFAULT_PAYMENT_METHODS);
         }
 
-        const savedRecurringStr = (ledgerId && await AsyncStorage.getItem(`${STORAGE_KEYS.RECURRING_RULES}_${ledgerId}`)) || await AsyncStorage.getItem(STORAGE_KEYS.RECURRING_RULES);
+        // 週期扣款規則：嚴格依帳本 ID 獨立載入，絕不讀取全域未隔離快取
+        const savedRecurringStr = ledgerId ? await AsyncStorage.getItem(`${STORAGE_KEYS.RECURRING_RULES}_${ledgerId}`) : null;
         if (savedRecurringStr) {
           try {
             const parsed = JSON.parse(savedRecurringStr);
             if (Array.isArray(parsed)) {
-              setRecurringRules(parsed);
+              // 雙重保證：過濾掉非此帳本之規則
+              const validRules = parsed.filter((r: any) => r.ledger_id === ledgerId);
+              setRecurringRules(validRules);
             }
           } catch {}
         } else if (ledgerId === DEMO_LEDGER_ID || !ledgerId) {
@@ -906,6 +909,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } else {
           setRecurringRules([]);
         }
+        // 清理歷史版本殘留之全域無前綴 key，防止跨帳本洩漏
+        AsyncStorage.removeItem(STORAGE_KEYS.RECURRING_RULES).catch(() => {});
       } catch (err) {
         console.warn('載入本地記帳快取失敗:', err);
       }
@@ -1317,6 +1322,31 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'recurring_rules',
+          filter: `ledger_id=eq.${ledgerId}`,
+        },
+        async () => {
+          try {
+            const { data: ruleRows } = await supabase
+              .from('recurring_rules')
+              .select('*')
+              .eq('ledger_id', ledgerId)
+              .order('created_at', { ascending: false });
+
+            if (ruleRows && Array.isArray(ruleRows)) {
+              setRecurringRules(ruleRows);
+              AsyncStorage.setItem(`${STORAGE_KEYS.RECURRING_RULES}_${ledgerId}`, JSON.stringify(ruleRows));
+            }
+          } catch (err) {
+            console.warn('Realtime 刷新週期扣款規則失敗:', err);
+          }
+        }
+      )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           setIsCloudSynced(true);
@@ -1329,6 +1359,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // 輔助函式：載入指定帳本的完整資料 (分類、成員、交易、即時推播)
   const loadLedgerData = async (targetLedger: Ledger, authUserId: string) => {
     setCurrentLedger(targetLedger);
+    setRecurringRules([]); // 先行清空記憶體中的週期規則，避免在非同步載入過程閃現上一本帳本之規則
     await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(targetLedger));
 
     // (A-0) 載入帳本 admin_pin
@@ -1955,23 +1986,46 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.warn('載入付款方式失敗:', methodErr);
     }
 
-    // (E-3) 載入週期扣款規則
+    // (E-3) 載入週期扣款規則 (嚴格綁定 targetLedger.id，絕不跨帳本共享)
     try {
       const recurringLedgerKey = `${STORAGE_KEYS.RECURRING_RULES}_${targetLedger.id}`;
-      const savedRecurringStr = (await AsyncStorage.getItem(recurringLedgerKey)) || (await AsyncStorage.getItem(STORAGE_KEYS.RECURRING_RULES));
       let loadedRules: RecurringRule[] = [];
-      if (savedRecurringStr) {
+
+      // 1. 若有雲端資料表支援，優先自雲端取得該帳本之週期規則
+      if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
         try {
-          const parsed = JSON.parse(savedRecurringStr);
-          if (Array.isArray(parsed)) {
-            loadedRules = parsed;
+          const { data: cloudRules, error: cloudErr } = await supabase
+            .from('recurring_rules')
+            .select('*')
+            .eq('ledger_id', targetLedger.id)
+            .order('created_at', { ascending: false });
+          if (!cloudErr && Array.isArray(cloudRules) && cloudRules.length > 0) {
+            loadedRules = cloudRules;
           }
         } catch {}
-      } else if (targetLedger.id === DEMO_LEDGER_ID) {
+      }
+
+      // 2. 若雲端未取得或無雲端表，自該帳本專屬本機快取讀取
+      if (loadedRules.length === 0) {
+        const savedRecurringStr = await AsyncStorage.getItem(recurringLedgerKey);
+        if (savedRecurringStr) {
+          try {
+            const parsed = JSON.parse(savedRecurringStr);
+            if (Array.isArray(parsed)) {
+              // 關鍵隔離防護：只保留明確歸屬於 targetLedger.id 的規則，排除任何跨帳本洩漏的規則
+              loadedRules = parsed.filter((r: any) => r.ledger_id === targetLedger.id);
+            }
+          } catch {}
+        }
+      }
+
+      // 3. 若為 DEMO 帳本且從無規則紀錄，提供預設示範規則；真實帳本則維持空白（使用者自訂或點擊預設導入）
+      if (loadedRules.length === 0 && targetLedger.id === DEMO_LEDGER_ID) {
         loadedRules = DEMO_RECURRING_RULES;
       }
+
       setRecurringRules(loadedRules);
-      await AsyncStorage.setItem(STORAGE_KEYS.RECURRING_RULES, JSON.stringify(loadedRules));
+      // 僅存入目標帳本專屬快取，絕不寫入全域無前綴 key，避免污染其他帳本
       await AsyncStorage.setItem(recurringLedgerKey, JSON.stringify(loadedRules));
     } catch (recErr) {
       console.warn('載入週期扣款規則失敗:', recErr);
@@ -2931,6 +2985,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // 依帳本 ID 直接在使用者已加入的帳本間無縫切換
   const switchLedgerById = async (targetLedgerId: string) => {
     try {
+      setRecurringRules([]); // 切換前立即清空前一帳本之週期規則，防止畫面殘留
       const { data: { session } } = await supabase.auth.getSession();
       const authUserId = session?.user?.id;
       if (!authUserId) return;
@@ -3334,11 +3389,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return paymentMethods.find(m => m.id === id) || DEFAULT_PAYMENT_METHODS.find(m => m.id === id);
   };
 
-  const saveRecurringRulesToStorage = async (rules: RecurringRule[]) => {
+  const saveRecurringRulesToStorage = async (rules: RecurringRule[], targetLedgerId?: string) => {
     try {
-      await AsyncStorage.setItem(STORAGE_KEYS.RECURRING_RULES, JSON.stringify(rules));
-      if (currentLedger?.id) {
-        await AsyncStorage.setItem(`${STORAGE_KEYS.RECURRING_RULES}_${currentLedger.id}`, JSON.stringify(rules));
+      const ledgerId = targetLedgerId || currentLedger?.id;
+      if (ledgerId) {
+        const scopedRules = rules.map(r => ({ ...r, ledger_id: ledgerId }));
+        await AsyncStorage.setItem(`${STORAGE_KEYS.RECURRING_RULES}_${ledgerId}`, JSON.stringify(scopedRules));
       }
     } catch (e) {
       console.warn('儲存週期扣款規則快取失敗:', e);
@@ -3356,9 +3412,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-    const updated = [newRule, ...recurringRules];
+    const currentScoped = recurringRules.filter(r => r.ledger_id === currentLedger.id);
+    const updated = [newRule, ...currentScoped];
     setRecurringRules(updated);
-    await saveRecurringRulesToStorage(updated);
+    await saveRecurringRulesToStorage(updated, currentLedger.id);
+
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        await supabase.from('recurring_rules').insert(newRule);
+      } catch (err) {
+        console.warn('雲端新增週期規則失敗 (本地可用):', err);
+      }
+    }
     return newRule;
   };
 
@@ -3372,13 +3437,25 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return {
           ...r,
           ...data,
+          ledger_id: currentLedger.id,
           updated_at: new Date().toISOString(),
         };
       }
       return r;
     });
     setRecurringRules(updated);
-    await saveRecurringRulesToStorage(updated);
+    await saveRecurringRulesToStorage(updated, currentLedger.id);
+
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        await supabase.from('recurring_rules').update({
+          ...data,
+          updated_at: new Date().toISOString(),
+        }).eq('id', id);
+      } catch (err) {
+        console.warn('雲端更新週期規則失敗 (本地可用):', err);
+      }
+    }
     return true;
   };
 
@@ -3386,7 +3463,15 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const deleteRecurringRule = async (id: string): Promise<boolean> => {
     const updated = recurringRules.filter(r => r.id !== id);
     setRecurringRules(updated);
-    await saveRecurringRulesToStorage(updated);
+    await saveRecurringRulesToStorage(updated, currentLedger.id);
+
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        await supabase.from('recurring_rules').delete().eq('id', id);
+      } catch (err) {
+        console.warn('雲端刪除週期規則失敗 (本地可用):', err);
+      }
+    }
     return true;
   };
 
@@ -3436,7 +3521,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return r;
     });
     setRecurringRules(updated);
-    await saveRecurringRulesToStorage(updated);
+    await saveRecurringRulesToStorage(updated, currentLedger.id);
+
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        await supabase.from('recurring_rules').update({
+          last_recorded_period: periodKey,
+          updated_at: new Date().toISOString(),
+        }).eq('id', ruleId);
+      } catch {}
+    }
     return true;
   };
 
@@ -3457,7 +3551,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return r;
     });
     setRecurringRules(updated);
-    await saveRecurringRulesToStorage(updated);
+    await saveRecurringRulesToStorage(updated, currentLedger.id);
+
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        await supabase.from('recurring_rules').update({
+          last_recorded_period: targetPeriod,
+          updated_at: new Date().toISOString(),
+        }).eq('id', ruleId);
+      } catch {}
+    }
     return true;
   };
 
@@ -3485,7 +3588,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       updated_at: new Date().toISOString(),
     }));
     setRecurringRules(defaultRules);
-    await saveRecurringRulesToStorage(defaultRules);
+    await saveRecurringRulesToStorage(defaultRules, currentLedger.id);
+
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        await supabase.from('recurring_rules').insert(defaultRules);
+      } catch {}
+    }
   };
 
   // 快速加值悠遊卡/儲值卡（更新卡片餘額並可自動記錄一筆出資扣款明細）
@@ -4307,7 +4416,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         account_id: t.account_id,
         is_reconciled: t.is_reconciled,
       })),
-      recurring_rules: recurringRules.map(r => ({
+      recurring_rules: recurringRules
+        .filter(r => !r.ledger_id || r.ledger_id === currentLedger.id)
+        .map(r => ({
         id: r.id,
         name: r.name,
         amount_type: r.amount_type,
@@ -4673,7 +4784,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           });
         }
         setRecurringRules(nextRecurringRules);
-        await saveRecurringRulesToStorage(nextRecurringRules);
+        await saveRecurringRulesToStorage(nextRecurringRules, currentLedger.id);
       }
 
       // 4. 還原/合併 交易明細

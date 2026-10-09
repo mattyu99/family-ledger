@@ -83,6 +83,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
 }) => {
   const {
     recurringRules,
+    currentLedger,
     addRecurringRule,
     updateRecurringRule,
     deleteRecurringRule,
@@ -102,6 +103,12 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
 
   const [activeTab, setActiveTab] = useState<'pending' | 'rules'>(initialTab);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+
+  // 依當前帳本嚴格過濾週期規則，確保絕不混入其他帳本規則
+  const scopedRules = useMemo(() => {
+    if (!currentLedger?.id) return recurringRules || [];
+    return (recurringRules || []).filter(r => !r.ledger_id || r.ledger_id === currentLedger.id);
+  }, [recurringRules, currentLedger?.id]);
 
   // 輸入金額彈窗狀態 (用於浮動金額或自訂金額入帳)
   const [amountModalVisible, setAmountModalVisible] = useState<boolean>(false);
@@ -140,7 +147,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     const pending: RecurringRule[] = [];
     const settled: RecurringRule[] = [];
 
-    recurringRules.forEach(rule => {
+    scopedRules.forEach(rule => {
       if (!rule.is_active) return;
       // 判定當月是否為出帳繳納月份
       if (!isBillDueInMonth(rule, year, month)) return;
@@ -158,7 +165,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     settled.sort((a, b) => (a.due_day || 1) - (b.due_day || 1));
 
     return { pendingBills: pending, settledBills: settled };
-  }, [recurringRules, year, month, selectedDate]);
+  }, [scopedRules, year, month, selectedDate]);
 
   // 切換月份
   const handlePrevMonth = () => {
@@ -459,7 +466,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
               onPress={() => setActiveTab('rules')}
             >
               <Text style={[styles.tabText, activeTab === 'rules' && styles.tabTextActive]}>
-                ⚙️ 規則設定 ({recurringRules.length})
+                ⚙️ 規則設定 ({scopedRules.length})
               </Text>
             </TouchableOpacity>
           </View>
@@ -500,7 +507,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                     <Text style={styles.emptyStateSubtitle}>
                       {year} 年 {month} 月所有週期項目皆已入帳，或當月無雙月繳帳單。
                     </Text>
-                    {recurringRules.length === 0 && (
+                    {scopedRules.length === 0 && (
                       <TouchableOpacity
                         style={styles.addRuleQuickButton}
                         onPress={() => setPresetModalVisible(true)}
@@ -663,7 +670,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
               </View>
 
               <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-                {recurringRules.length === 0 ? (
+                {scopedRules.length === 0 ? (
                   <View style={styles.emptyStateBox}>
                     <Text style={styles.emptyStateIcon}>💡</Text>
                     <Text style={styles.emptyStateTitle}>尚未設定週期扣款規則</Text>
@@ -678,7 +685,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                     </TouchableOpacity>
                   </View>
                 ) : (
-                  recurringRules.map(rule => {
+                  scopedRules.map(rule => {
                     const cat = getCategoryById(rule.category_id);
                     const payer = getMemberById(rule.paid_by);
                     const card = rule.account_id ? getAccountById(rule.account_id) : undefined;

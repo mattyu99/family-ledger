@@ -218,11 +218,12 @@ function MainApp() {
     const currYear = now.getFullYear();
     const currMonth = now.getMonth() + 1;
     return (recurringRules || []).filter(rule => {
+      if (rule.ledger_id && currentLedger?.id && rule.ledger_id !== currentLedger.id) return false;
       if (!rule.is_active) return false;
       if (!isBillDueInMonth(rule, currYear, currMonth)) return false;
       return !isBillPaidForCurrentPeriod(rule, now);
     }).length;
-  }, [recurringRules]);
+  }, [recurringRules, currentLedger?.id]);
   const [searchQuery, setSearchQuery] = useState('');
   const [exportModalVisible, setExportModalVisible] = useState(false);
   const [memberModalVisible, setMemberModalVisible] = useState(false);
@@ -3907,7 +3908,7 @@ function MainApp() {
               <View style={styles.sectionHeaderRow}>
                 <View style={styles.sectionHeaderLeft}>
                   <Text style={styles.cardSectionTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    🗓️ 週期扣款與固定帳單 ({(recurringRules || []).length})
+                    🗓️ 週期扣款與固定帳單 ({(recurringRules || []).filter(r => !r.ledger_id || r.ledger_id === currentLedger?.id).length})
                   </Text>
                   <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                     {isOwner
@@ -3944,7 +3945,7 @@ function MainApp() {
               </View>
 
               <View style={styles.paymentAccountPreviewRow}>
-                {(recurringRules || []).filter(r => r.is_active).map(rule => {
+                {(recurringRules || []).filter(r => (!r.ledger_id || r.ledger_id === currentLedger?.id) && r.is_active).map(rule => {
                   const cat = getCategoryById(rule.category_id);
                   return (
                     <TouchableOpacity
@@ -3968,7 +3969,7 @@ function MainApp() {
                     </TouchableOpacity>
                   );
                 })}
-                {(recurringRules || []).length === 0 && (
+                {(recurringRules || []).filter(r => !r.ledger_id || r.ledger_id === currentLedger?.id).length === 0 && (
                   <TouchableOpacity
                     style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
                     onPress={() => {

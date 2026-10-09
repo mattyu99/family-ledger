@@ -633,4 +633,51 @@ DROP FUNCTION IF EXISTS public.prevent_transaction_resurrection();
 -- - 信用卡對帳系統是以 account_id (UUID) 精確過濾，因此所有綁卡交易皆能 100% 正確歸戶與對帳
 -- ==============================================================================
 
+-- ==============================================================================
+-- 10. 週期扣款與固定帳單規則表 (Recurring Rules)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.recurring_rules (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    ledger_id UUID NOT NULL REFERENCES public.ledgers(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    amount_type TEXT CHECK (amount_type IN ('fixed', 'variable')) DEFAULT 'variable' NOT NULL,
+    default_amount NUMERIC(12, 2) DEFAULT 0 NOT NULL,
+    category_id UUID REFERENCES public.categories(id) ON DELETE SET NULL,
+    merchant TEXT,
+    paid_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    payment_method TEXT DEFAULT 'credit_card' NOT NULL,
+    account_id UUID REFERENCES public.payment_accounts(id) ON DELETE SET NULL,
+    frequency TEXT CHECK (frequency IN ('monthly', 'bimonthly', 'yearly')) DEFAULT 'monthly' NOT NULL,
+    due_day INT CHECK (due_day BETWEEN 1 AND 31) DEFAULT 1 NOT NULL,
+    bimonthly_start_month INT CHECK (bimonthly_start_month IN (1, 2)),
+    is_active BOOLEAN DEFAULT TRUE NOT NULL,
+    last_recorded_period TEXT,
+    note TEXT,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 啟用 RLS
+ALTER TABLE public.recurring_rules ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "成員可讀取所屬帳本的週期規則" ON public.recurring_rules;
+CREATE POLICY "成員可讀取所屬帳本的週期規則" ON public.recurring_rules
+    FOR SELECT USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+
+DROP POLICY IF EXISTS "成員可新增所屬帳本的週期規則" ON public.recurring_rules;
+CREATE POLICY "成員可新增所屬帳本的週期規則" ON public.recurring_rules
+    FOR INSERT WITH CHECK (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+
+DROP POLICY IF EXISTS "成員可更新所屬帳本的週期規則" ON public.recurring_rules;
+CREATE POLICY "成員可更新所屬帳本的週期規則" ON public.recurring_rules
+    FOR UPDATE USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+
+DROP POLICY IF EXISTS "成員可刪除所屬帳本的週期規則" ON public.recurring_rules;
+CREATE POLICY "成員可刪除所屬帳本的週期規則" ON public.recurring_rules
+    FOR DELETE USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+
+-- 確保 Realtime 事件可用
+ALTER TABLE public.recurring_rules REPLICA IDENTITY FULL;
+
+
 
