@@ -4037,21 +4037,76 @@ function MainApp() {
                 </View>
               </View>
 
-              {/* 帳本狀態小指標 */}
-              <View style={styles.backupStatsRow}>
-                <View style={styles.backupStatItem}>
-                  <Text style={styles.backupStatVal} allowFontScaling={false} maxFontSizeMultiplier={1.08}>{transactions.length}</Text>
-                  <Text style={styles.backupStatLabel} allowFontScaling={false} maxFontSizeMultiplier={1.08}>歷史明細筆數</Text>
+              {/* 帳本狀態小指標 (6 大全要素封存數據) */}
+              <View style={styles.backupStatsGrid}>
+                {/* 第一排：核心數據 */}
+                <View style={styles.backupStatsRow}>
+                  <View style={styles.backupStatItem}>
+                    <Text style={styles.backupStatVal} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      {transactions.length}
+                    </Text>
+                    <Text style={styles.backupStatLabel} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      📝 交易明細
+                    </Text>
+                  </View>
+                  <View style={styles.backupStatDivider} />
+                  <View style={styles.backupStatItem}>
+                    <Text style={styles.backupStatVal} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      {members.length}
+                    </Text>
+                    <Text style={styles.backupStatLabel} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      👨‍👩‍👧 家庭成員
+                    </Text>
+                  </View>
+                  <View style={styles.backupStatDivider} />
+                  <View style={styles.backupStatItem}>
+                    <Text style={styles.backupStatVal} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      {categories.length}
+                    </Text>
+                    <Text style={styles.backupStatLabel} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      🏷️ 自訂分類
+                    </Text>
+                  </View>
                 </View>
-                <View style={styles.backupStatDivider} />
-                <View style={styles.backupStatItem}>
-                  <Text style={styles.backupStatVal} allowFontScaling={false} maxFontSizeMultiplier={1.08}>{members.length}</Text>
-                  <Text style={styles.backupStatLabel} allowFontScaling={false} maxFontSizeMultiplier={1.08}>家庭成員數</Text>
+
+                {/* 分隔橫線 */}
+                <View style={styles.backupStatsHorizontalDivider} />
+
+                {/* 第二排：支付與規則資產 */}
+                <View style={styles.backupStatsRow}>
+                  <View style={styles.backupStatItem}>
+                    <Text style={styles.backupStatVal} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      {paymentAccounts.length}
+                    </Text>
+                    <Text style={styles.backupStatLabel} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      💳 支付卡片
+                    </Text>
+                  </View>
+                  <View style={styles.backupStatDivider} />
+                  <View style={styles.backupStatItem}>
+                    <Text style={styles.backupStatVal} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      {(recurringRules || []).filter(r => !r.ledger_id || r.ledger_id === currentLedger?.id).length}
+                    </Text>
+                    <Text style={styles.backupStatLabel} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      🗓️ 週期/分期
+                    </Text>
+                  </View>
+                  <View style={styles.backupStatDivider} />
+                  <View style={styles.backupStatItem}>
+                    <Text style={styles.backupStatVal} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      {(paymentMethods || []).filter(m => m.is_enabled !== false).length}
+                    </Text>
+                    <Text style={styles.backupStatLabel} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      📱 付款方式
+                    </Text>
+                  </View>
                 </View>
-                <View style={styles.backupStatDivider} />
-                <View style={styles.backupStatItem}>
-                  <Text style={styles.backupStatVal} allowFontScaling={false} maxFontSizeMultiplier={1.08}>{categories.length}</Text>
-                  <Text style={styles.backupStatLabel} allowFontScaling={false} maxFontSizeMultiplier={1.08}>自訂分類數</Text>
+
+                {/* 底部全要素封存安心標記 */}
+                <View style={styles.backupStatsFooter}>
+                  <Text style={styles.backupStatsFooterText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    🛡️ JSON 備份檔 100% 完整封存以上 6 類全要素資料
+                  </Text>
                 </View>
               </View>
 
@@ -4631,7 +4686,7 @@ function MainApp() {
                   <Text style={styles.exportTipText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                     {exportTab === 'csv'
                       ? '💡 格式通用於微軟 Excel、Google 試算表與 Apple Numbers，已注入 UTF-8 BOM 繁體中文防亂碼保護。'
-                      : '💡 包含帳本基本資料、全體成員稱謂頭像、自訂分類顏色及每筆交易明細之高精度結構封包。'}
+                      : '💡 完整封存明細、成員、分類、卡片帳戶、週期規則 (含分期) 及付款方式之 6 大全要素高精度結構封包。'}
                   </Text>
                   {Platform.OS !== 'web' && (
                     <Text style={styles.exportTipSubtext} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
@@ -5551,24 +5606,33 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  backupStatsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
+  backupStatsGrid: {
     backgroundColor: '#F8FAFC',
     borderRadius: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 8,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
+  },
+  backupStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingVertical: 4,
+  },
+  backupStatsHorizontalDivider: {
+    height: 1,
+    backgroundColor: '#E2E8F0',
+    marginVertical: 6,
+    marginHorizontal: 8,
   },
   backupStatItem: {
     alignItems: 'center',
     flex: 1,
   },
   backupStatVal: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     color: '#1E293B',
   },
@@ -5580,8 +5644,20 @@ const styles = StyleSheet.create({
   },
   backupStatDivider: {
     width: 1,
-    height: 24,
+    height: 22,
     backgroundColor: '#CBD5E1',
+  },
+  backupStatsFooter: {
+    marginTop: 8,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    alignItems: 'center',
+  },
+  backupStatsFooterText: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: '#6366F1',
   },
   backupBtnRow: {
     flexDirection: 'row',

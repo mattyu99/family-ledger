@@ -5051,6 +5051,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (Array.isArray(backup.recurring_rules) && backup.recurring_rules.length > 0) {
         parts.push(`${nextRecurringRules.length} 個週期規則`);
       }
+      if (Array.isArray(backup.payment_methods) && backup.payment_methods.length > 0) {
+        parts.push(`${nextPaymentMethods.length} 個付款方式`);
+      }
 
       return {
         success: true,

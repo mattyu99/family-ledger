@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.3';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.3 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 29;
+export const APP_BUILD_REVISION = 30;
 
-// 完整版本字串 (例如 "1.0.3.29")
+// 完整版本字串 (例如 "1.0.3.30")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.3.30',
+    date: '2026-10-09',
+    title: '資料備份看板升級為「6 大全要素封存指標網格」，備份安心透明一目了然',
+    highlights: [
+      '升級備份狀態指標看板：將原先僅有 3 項的簡略摘要擴充為 2x3 雙排指標網格，即時呈現「📝 交易明細」、「👨‍👩‍👧 家庭成員」、「🏷️ 自訂分類」、「💳 支付卡片」、「🗓️ 週期/分期」、「📱 付款方式」共 6 大類完整筆數。',
+      '強化全要素封存安心提示：底部醒目標記「🛡️ JSON 備份檔 100% 完整封存以上 6 類全要素資料」，備份前對內容物一目了然零疑慮。',
+      '匯出彈窗說明與還原成功提示同步對齊：還原完成時清楚報告補入/覆蓋之 6 大項目數量，打造端到端透明體驗。',
+    ],
+  },
   {
     version: '1.0.3.29',
     date: '2026-10-09',
