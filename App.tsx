@@ -1214,6 +1214,7 @@ function MainApp() {
         setIsJoining(false);
         if (res.success) {
           setSwitchLedgerModalVisible(false);
+          setSwitchCodeInput('');
           showAlert('切換成功', `已切換回「${preview.ledgerName}」，身分：${matchedMember.display_name}！`);
         } else {
           showAlert('切換失敗', res.message || '加入帳本失敗，請稍後重試');
@@ -1224,9 +1225,19 @@ function MainApp() {
       // 3. 若尚未在此帳本認領過身分：關閉切換彈窗，開啟身分認領彈窗供使用者挑選身分或自訂新稱謂
       setIsJoining(false);
       setSwitchLedgerModalVisible(false);
+      setSwitchCodeInput('');
       setJoinCodeInput(cleanCode);
+      setPreviewLedgerName(preview.ledgerName || '家庭公帳');
+      const mems = preview.members || [];
+      setPreviewMembers(mems);
+      if (mems.length > 0) {
+        setIsCreatingNewMember(false);
+        setSelectedClaimMember(mems[0]);
+      } else {
+        setIsCreatingNewMember(true);
+        setSelectedClaimMember(null);
+      }
       setJoinLedgerModalVisible(true);
-      fetchInvitePreview(cleanCode);
     } catch (e: any) {
       setIsJoining(false);
       showAlert('切換異常', e?.message || '切換帳本時發生錯誤');
@@ -2303,11 +2314,21 @@ function MainApp() {
             </View>
 
             <TouchableOpacity
+              style={[styles.leaveLedgerBtn, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0', marginBottom: 10 }]}
+              onPress={() => {
+                setSwitchLedgerModalVisible(false);
+                setCreateLedgerModalVisible(true);
+              }}
+            >
+              <Text style={[styles.leaveLedgerBtnText, { color: '#16A34A' }]}>➕ 建立全新的家庭公帳</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={styles.leaveLedgerBtn}
               onPress={() => {
                 showConfirm(
                   '退出當前帳本',
-                  '退出後將返回初始起始畫面，您可以重新選擇「建立新帳本」或「輸入邀請碼加入」。確定要退出嗎？',
+                  '確定要退出當前帳本嗎？退出後將返回初始起始畫面。若只是想切換或加入其他帳本，請直接在上方選擇或輸入邀請碼。',
                   async () => {
                     setSwitchLedgerModalVisible(false);
                     await leaveCurrentLedger();
@@ -4459,6 +4480,12 @@ function MainApp() {
 
       {/* 切換帳本彈窗 */}
       {renderSwitchLedgerModal()}
+
+      {/* 建立新帳本彈窗 */}
+      {renderCreateLedgerModal()}
+
+      {/* 加入家庭公帳 / 認領成員彈窗 */}
+      {renderJoinLedgerModal()}
 
       {/* 偵測到待確認的邀請網址 */}
       {renderPendingInviteModal()}
