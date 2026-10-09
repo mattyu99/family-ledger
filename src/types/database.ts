@@ -19,6 +19,8 @@ export interface Ledger {
   created_at: string;
   userRole?: RoleType;
   admin_pin?: string;
+  userDisplayName?: string;
+  userAvatar?: string;
 }
 
 export interface LedgerMember {

@@ -806,6 +806,51 @@ function MainApp() {
 
   const [switchLedgerModalVisible, setSwitchLedgerModalVisible] = useState(false);
   const [switchCodeInput, setSwitchCodeInput] = useState('');
+  const [ledgerUserMap, setLedgerUserMap] = useState<Record<string, { displayName: string; avatarUrl?: string }>>({});
+
+  // 當開啟切換帳本彈窗時，自動載入本機在各帳本已綁定之成員稱謂快取
+  useEffect(() => {
+    if (!switchLedgerModalVisible) return;
+    let isCancelled = false;
+    const loadLedgerUsers = async () => {
+      const map: Record<string, { displayName: string; avatarUrl?: string }> = {};
+      for (const l of ledgers) {
+        if (l.id === currentLedger.id) {
+          map[l.id] = { displayName: currentUser.display_name, avatarUrl: currentUser.avatar_url };
+          continue;
+        }
+        try {
+          const userStr = await AsyncStorage.getItem(`@family_ledger_current_user_${l.id}`);
+          if (userStr) {
+            const u = JSON.parse(userStr);
+            if (u.display_name) {
+              map[l.id] = { displayName: u.display_name, avatarUrl: u.avatar_url };
+              continue;
+            }
+          }
+          const membersStr = await AsyncStorage.getItem(`@family_ledger_members_${l.id}`);
+          if (membersStr) {
+            const mems = JSON.parse(membersStr);
+            if (Array.isArray(mems) && mems.length > 0) {
+              const adminMem = mems.find((m: any) => m.role === 'owner' || m.role === 'admin');
+              if (adminMem && (l.userRole === 'owner' || l.userRole === 'admin')) {
+                map[l.id] = { displayName: adminMem.display_name, avatarUrl: adminMem.avatar_url };
+                continue;
+              }
+            }
+          }
+        } catch {}
+        if (l.userDisplayName) {
+          map[l.id] = { displayName: l.userDisplayName, avatarUrl: l.userAvatar };
+        }
+      }
+      if (!isCancelled) {
+        setLedgerUserMap(map);
+      }
+    };
+    loadLedgerUsers();
+    return () => { isCancelled = true; };
+  }, [switchLedgerModalVisible, ledgers, currentLedger.id, currentUser]);
 
   // 當偵測到網址帶有邀請碼且尚未加入帳本時，自動彈出加入彈窗並填入代碼，自動載入帳本名稱與現有成員供直接認領
   useEffect(() => {
@@ -2215,6 +2260,10 @@ function MainApp() {
                 <Text style={styles.formLabel}>📚 您已加入的帳本清單 (點擊可切換)</Text>
                 {ledgers.map((l) => {
                   const isCurrent = l.id === currentLedger.id;
+                  const isAdmin = l.userRole === 'owner' || l.userRole === 'admin';
+                  const userInfo = ledgerUserMap[l.id];
+                  const userDisplayName = userInfo?.displayName || (isCurrent ? currentUser.display_name : (l.userDisplayName || ''));
+                  const userAvatar = userInfo?.avatarUrl || (isCurrent ? currentUser.avatar_url : (l.userAvatar || ''));
                   return (
                     <View
                       key={l.id}
@@ -2231,21 +2280,37 @@ function MainApp() {
                       }}
                     >
                       <TouchableOpacity
-                        style={{ flex: 1 }}
-                        onPress={async () => {
-                          if (!isCurrent) {
-                            await switchLedgerById(l.id);
-                            setSwitchLedgerModalVisible(false);
-                            showAlert('切換成功', `已切換至「${l.name}」！`);
-                          }
+                        style={{ flex: 1, paddingRight: 6 }}
+                        activeOpacity={isCurrent ? 1 : 0.7}
+                        onPress={() => {
+                          if (isCurrent) return;
+                          showConfirm(
+                            '切換家庭公帳',
+                            `確定要切換至「${l.name}」嗎？${userDisplayName ? `\n\n切換後您在此帳本的稱謂為：${userAvatar ? `${userAvatar} ` : ''}${userDisplayName}` : ''}`,
+                            async () => {
+                              await switchLedgerById(l.id);
+                              setSwitchLedgerModalVisible(false);
+                              showAlert('切換成功', `已切換至「${l.name}」！`);
+                            }
+                          );
                         }}
                       >
-                        <Text style={{ fontSize: 15, fontWeight: '700', color: isCurrent ? '#4F46E5' : '#1F2937' }}>
+                        <Text style={{ fontSize: 15, fontWeight: '700', color: isCurrent ? '#4F46E5' : '#1F2937' }} numberOfLines={1}>
                           {l.name} {isCurrent ? '（使用中 ✓）' : ''}
                         </Text>
-                        <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 3 }}>
-                          身分：{l.userRole === 'owner' ? '👑 管理員 (Owner)' : '👤 成員'}
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 4, gap: 6 }}>
+                          <Text style={{ fontSize: 12, color: '#4B5563' }}>
+                            身分：<Text style={{ fontWeight: '700', color: isAdmin ? '#D97706' : '#4B5563' }}>{isAdmin ? '👑 管理員' : '👤 成員'}</Text>
+                          </Text>
+                          {userDisplayName ? (
+                            <>
+                              <Text style={{ fontSize: 11, color: '#9CA3AF' }}>•</Text>
+                              <Text style={{ fontSize: 12, color: '#4B5563' }}>
+                                我的稱謂：<Text style={{ fontWeight: '700', color: '#1F2937' }}>{userAvatar ? `${userAvatar} ` : ''}{userDisplayName}</Text>
+                              </Text>
+                            </>
+                          ) : null}
+                        </View>
                       </TouchableOpacity>
 
                       <TouchableOpacity

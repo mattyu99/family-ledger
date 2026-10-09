@@ -1470,9 +1470,15 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, role);
 
       if (canonicalMe) {
-        setCurrentUser(canonicalMe);
-        await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(canonicalMe));
-        await AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${targetLedger.id}`, JSON.stringify(canonicalMe));
+        const activeMe = canonicalMe;
+        setCurrentUser(activeMe);
+        await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(activeMe));
+        await AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${targetLedger.id}`, JSON.stringify(activeMe));
+        setLedgers(prev => prev.map(l => l.id === targetLedger.id ? {
+          ...l,
+          userDisplayName: activeMe.display_name,
+          userAvatar: activeMe.avatar_url,
+        } : l));
       }
 
       // 若身為建立者但雲端成員身分被誤設為 member，自動在雲端校正回 owner
@@ -2017,14 +2023,26 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             console.warn('本機已存帳本自動關聯失敗:', bindErr);
           }
         }
-        const allUserLedgers: Ledger[] = validMemberLedgers.map((m: any) => {
+        const allUserLedgers: Ledger[] = await Promise.all(validMemberLedgers.map(async (m: any) => {
           const l = m.ledgers as unknown as Ledger;
           const isCreator = l.created_by === authUser.id;
+          let savedName = '';
+          let savedAvatar = '';
+          try {
+            const savedUserStr = await AsyncStorage.getItem(`${STORAGE_KEYS.CURRENT_USER}_${l.id}`);
+            if (savedUserStr) {
+              const u = JSON.parse(savedUserStr);
+              savedName = u.display_name;
+              savedAvatar = u.avatar_url;
+            }
+          } catch {}
           return {
             ...l,
             userRole: (isCreator ? 'owner' : m.role) as any,
+            userDisplayName: savedName,
+            userAvatar: savedAvatar,
           };
-        });
+        }));
         setLedgers(allUserLedgers);
 
         // 情境 A：網址自帶邀請碼
@@ -2249,7 +2267,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await AsyncStorage.setItem(`${STORAGE_KEYS.ADMIN_PIN}_${newLedger.id}`, '8888');
       await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
       setHasJoinedLedger(true);
-      setLedgers(prev => [{ ...newLedger, userRole: 'owner' }, ...prev.filter(l => l.id !== newLedger.id)]);
+      setLedgers(prev => [{ ...newLedger, userRole: 'owner', userDisplayName: chosenName, userAvatar: chosenAvatar }, ...prev.filter(l => l.id !== newLedger.id)]);
 
       const updatedMe: Profile = {
         id: creatorProfileId,
@@ -2482,7 +2500,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
       setHasJoinedLedger(true);
-      setLedgers(prev => [{ ...targetLedger, userRole: assignedRole }, ...prev.filter(l => l.id !== targetLedger.id)]);
+      setLedgers(prev => [{ ...targetLedger, userRole: assignedRole, userDisplayName: finalDisplayName, userAvatar: finalAvatar }, ...prev.filter(l => l.id !== targetLedger.id)]);
 
       await loadLedgerData(targetLedger, authUserId);
       if (Platform.OS === 'web' && typeof window !== 'undefined' && window.history) {

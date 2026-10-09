@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.3';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.3 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 21;
+export const APP_BUILD_REVISION = 22;
 
-// 完整版本字串 (例如 "1.0.3.21")
+// 完整版本字串 (例如 "1.0.3.22")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.3.22',
+    date: '2026-10-09',
+    title: '帳本切換清單稱謂顯示、移除 (Owner) 標記與防誤觸切換確認',
+    highlights: [
+      '在可切換的帳本清單卡片中，即時顯示本機使用者在各帳本綁定的成員稱謂與頭像（如：我的稱謂：👨 智爸）。',
+      '點擊切換帳本時加入防誤觸二次確認對話框，清楚提醒目標帳本名稱與切換後的稱謂。',
+      '移除管理員身分旁多餘的內部技術英文 (Owner) 標籤，全系統一致顯示親切簡潔的「👑 管理員」。',
+    ],
+  },
   {
     version: '1.0.3.21',
     date: '2026-10-09',
