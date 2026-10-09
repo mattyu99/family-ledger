@@ -1,13 +1,13 @@
 import appConfig from '../../app.json';
 
-// 主版本號（來自 app.json，例如 1.0.3）
-export const APP_BASE_VERSION = appConfig.expo.version || '1.0.3';
+// 主版本號（來自 app.json，例如 1.0.4）
+export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
-// 代表自 v1.0.3 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 31;
+// 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
+export const APP_BUILD_REVISION = 0;
 
-// 完整版本字串 (例如 "1.0.3.31")
+// 完整版本字串 (例如 "1.0.4.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,19 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.0',
+    date: '2026-10-10',
+    title: 'v1.0.4 大版本里程碑發布：全新獨立帳單支付頁籤、固定與分期帳單管理、生活記事手帳與 6 大全要素備份',
+    highlights: [
+      '全新底部 4 頁籤架構升級：獨立「💳 帳單支付」專屬分頁，收納帳單週期、信用卡/悠遊卡對帳、付款方式與記帳分類；家庭設定回歸純粹名冊與備份管理。',
+      '全新「週期扣款與固定帳單」管理：落實待繳清單核對入帳機制，精準契合水電瓦斯單雙月繳，首頁醒目待繳提醒橫幅。',
+      '全新「信用卡分期付款追蹤」：支援常見期數（3~36期）與自訂期數，每期自動標記 (第 X/Y 期)，已繳進度條可視化與繳滿全額完結自動除役。',
+      '全新「📝 家庭生活記事與備忘」手帳模式：$0 零金額無負擔手帳，支援待辦提醒日期與首頁即時提醒膠囊，手帳便利貼專屬視覺且 100% 隔離財務統計。',
+      '資料備份升級「6 大全要素封存指標網格」：即時呈現交易明細、家庭成員、自訂分類、支付卡片、週期/分期、付款方式 6 大完整筆數，封存還原零遺漏。',
+      '家長一鍵撥款零用錢雙向記帳 (方案 D)：出資家長記支出，受領小孩記零用錢收入，家庭公帳完美平衡。',
+    ],
+  },
   {
     version: '1.0.3.31',
     date: '2026-10-10',
