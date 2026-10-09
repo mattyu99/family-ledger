@@ -17,6 +17,7 @@ import {
   Share,
   Keyboard,
   Dimensions,
+  Clipboard,
 } from 'react-native';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -124,9 +125,14 @@ const copyToClipboard = async (text: string, successMsg: string) => {
       showAlert('已複製', successMsg);
       return;
     }
+    if (Clipboard && typeof Clipboard.setString === 'function') {
+      Clipboard.setString(text);
+      showAlert('已複製', successMsg);
+      return;
+    }
     showAlert('已複製', `${successMsg}\n\n${text}`);
   } catch {
-    showAlert('邀請碼與連結', text);
+    showAlert('已複製', text);
   }
 };
 
@@ -849,21 +855,41 @@ function MainApp() {
     event.target.value = '';
   };
 
-  const handlePasteClipboard = async () => {
-    if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
-      try {
-        const text = await navigator.clipboard.readText();
-        if (text) {
-          setRestoreJsonInput(text);
-          showAlert('貼上成功', '已從剪貼簿讀取並帶入備份內容！');
-        } else {
-          showAlert('提示', '剪貼簿中無內容，請先複製備份代碼');
-        }
-      } catch {
-        showAlert('提示', '請在文字框中長按或使用 Ctrl+V 貼上備份內容');
+  const handleFileSelectBtnPress = () => {
+    if (Platform.OS === 'web') {
+      if (typeof document !== 'undefined') {
+        const el = document.getElementById('backup-file-input');
+        el?.click();
       }
     } else {
-      showAlert('提示', '請直接在下方文字框中長按並選擇「貼上」');
+      Alert.alert(
+        '📂 手機端檔案還原指引',
+        '在手機上還原最快的方式是使用剪貼簿：\n\n1. 請在手機檔案、雲端硬碟或 LINE 中開啟備份檔並「複製全部文字」\n2. 回到此處點擊「📋 讀取剪貼簿貼上」\n\n系統將自動秒速辨識並完成還原！',
+        [
+          { text: '關閉', style: 'cancel' },
+          { text: '📋 立即讀取剪貼簿', onPress: () => handlePasteClipboard() },
+        ]
+      );
+    }
+  };
+
+  const handlePasteClipboard = async () => {
+    try {
+      let text = '';
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
+        text = await navigator.clipboard.readText();
+      } else if (Clipboard && typeof Clipboard.getString === 'function') {
+        text = await Clipboard.getString();
+      }
+
+      if (text && text.trim()) {
+        setRestoreJsonInput(text.trim());
+        showAlert('貼上成功', '已從系統剪貼簿自動讀取並帶入備份內容！');
+      } else {
+        showAlert('剪貼簿中無內容', '請先從備份檔案、LINE 或雲端記事複製 JSON 備份內容，再點擊此處貼上。');
+      }
+    } catch {
+      showAlert('提示', '無法自動讀取剪貼簿，請直接在文字框中長按並選擇「貼上」。');
     }
   };
 
@@ -4153,40 +4179,39 @@ function MainApp() {
                 <ScrollView style={styles.restoreScrollArea} showsVerticalScrollIndicator={false}>
                   <View style={styles.exportTipBox}>
                   <Text style={styles.exportTipText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    💡 支援由甜心記帳本匯出的 .json 備份檔。您可選擇上傳備份檔案或貼上 JSON 備份代碼，安全還原家庭帳本明細與卡片。
+                    {Platform.OS === 'web'
+                      ? '💡 支援由甜心記帳本匯出的 .json 備份檔。您可點擊下方按鈕選擇本機檔案，或在文字框貼上 JSON 備份內容進行還原。'
+                      : '💡 支援由甜心記帳本匯出的 .json 備份檔。手機端推薦點擊「📋 讀取剪貼簿貼上」一秒自動帶入，亦可於文字框長按貼上。'}
                   </Text>
                 </View>
 
-                {/* 方式一：選擇備份檔案 (Web 環境) */}
-                {Platform.OS === 'web' && (
-                  <View style={styles.restoreFileSection}>
-                    <TouchableOpacity
-                      style={styles.selectFileBtn}
-                      onPress={() => {
-                        if (typeof document !== 'undefined') {
-                          const el = document.getElementById('backup-file-input');
-                          el?.click();
-                        }
-                      }}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.selectFileBtnIcon}>📂</Text>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.selectFileBtnText}>選擇本機 .json 備份檔案</Text>
-                        <Text style={styles.selectFileBtnSub}>點擊自動載入並解析備份內容</Text>
-                      </View>
-                    </TouchableOpacity>
-                    {Platform.OS === 'web' && (
-                      <input
-                        id="backup-file-input"
-                        type="file"
-                        accept=".json,application/json"
-                        style={{ display: 'none' }}
-                        onChange={handleWebFileSelect}
-                      />
-                    )}
-                  </View>
-                )}
+                {/* 方式一：選擇備份檔案 */}
+                <View style={styles.restoreFileSection}>
+                  <TouchableOpacity
+                    style={styles.selectFileBtn}
+                    onPress={handleFileSelectBtnPress}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.selectFileBtnIcon}>📂</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.selectFileBtnText}>
+                        {Platform.OS === 'web' ? '選擇本機 .json 備份檔案' : '選擇 .json 備份檔案 (手機操作指引)'}
+                      </Text>
+                      <Text style={styles.selectFileBtnSub}>
+                        {Platform.OS === 'web' ? '點擊自動載入並解析備份內容' : '點擊查看手機檔案匯入步驟，或使用下方剪貼簿'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  {Platform.OS === 'web' && (
+                    <input
+                      id="backup-file-input"
+                      type="file"
+                      accept=".json,application/json"
+                      style={{ display: 'none' }}
+                      onChange={handleWebFileSelect}
+                    />
+                  )}
+                </View>
 
                 {/* 方式二：貼上備份內容 */}
                 <View style={styles.restoreInputSection}>
@@ -4304,7 +4329,9 @@ function MainApp() {
                   </Text>
                   {Platform.OS !== 'web' && (
                     <Text style={styles.exportTipSubtext} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                      📱 手機端點擊下方「☁️ 存到雲端硬碟 / 分享」，可在系統選單直接點選「Google 雲端硬碟」或「儲存到檔案」即時備份。
+                      {exportTab === 'csv'
+                        ? '📱 手機端點擊下方「☁️ 存到雲端硬碟 / 分享」，可在系統選單直接點選「Google 雲端硬碟」或「儲存到檔案」即時備份。'
+                        : '📱 手機端點擊下方「📋 一鍵複製全部文字」可直接複製到系統剪貼簿；切換至「📥 回復資料」點擊「📋 讀取剪貼簿貼上」即可快速還原。'}
                     </Text>
                   )}
                   <View style={styles.exportLastBackupRow}>
