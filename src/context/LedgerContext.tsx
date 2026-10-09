@@ -709,7 +709,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (savedTx) {
           const parsed = JSON.parse(savedTx);
           const validTx = parsed
-            .filter((t: any) => isValidUUID(t.id) && isValidUUID(t.ledger_id) && !deletedSet.has(t.id))
+            .filter((t: any) => isValidUUID(t.id) && isValidUUID(t.ledger_id))
             .map((t: any) => {
               const matchedCat =
                 activeCategories.find((c: any) => c.id === t.category_id) ||
@@ -879,13 +879,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const newRow = payload.new as any;
           if (!newRow) return;
 
-          // 主動免疫防禦：若此交易已被本機記錄刪除（如舊版客戶端未更新而誤復活），攔截並主動清除雲端資料
+          // 若此 ID 先前曾存在於本機刪除快取，由於雲端已確認寫入新交易/還原紀錄，解除本機刪除標記
           if (deletedTxIdsRef.current.has(newRow.id)) {
-            console.warn('攔截到已被標記刪除之交易重複推播，略過並主動防禦清除:', newRow.id);
-            if (isConfigured && ledgerId !== DEMO_LEDGER_ID) {
-              Promise.resolve(supabase.from('transactions').delete().eq('id', newRow.id)).catch(() => {});
-            }
-            return;
+            deletedTxIdsRef.current.delete(newRow.id);
           }
           let parsedMerchant = newRow.merchant;
           let parsedNote = newRow.note;
@@ -1580,36 +1576,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     if (txRows) {
-      // 自動偵測雲端是否存在「本機已記錄刪除、但先前被舊客戶端誤復活」的歷史殘留殭屍明細，主動為全家清除並記回墓碑表
-      const zombiesInCloud = txRows.filter((t: any) => deletedSet.has(t.id));
-      if (zombiesInCloud.length > 0 && isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
-        const zombieIds = zombiesInCloud.map((t: any) => t.id);
-        console.log('偵測到雲端存在歷史被誤復活之殘留明細，主動為全家徹底清除:', zombieIds);
-        Promise.resolve(
-          supabase.from('deleted_transactions').upsert(
-            zombieIds.map(id => ({ id, ledger_id: targetLedger.id }))
-          )
-        ).catch(() => {});
-        Promise.resolve(
-          supabase.from('transactions').delete().in('id', zombieIds)
-        ).then(() => {
-          if (channelRef.current) {
-            zombieIds.forEach(id => {
-              try {
-                channelRef.current.send({
-                  type: 'broadcast',
-                  event: 'TX_DELETED',
-                  payload: { id, actorName: '系統同步清理', ledgerId: targetLedger.id },
-                });
-              } catch {}
-            });
-          }
-        }).catch(() => {});
-      }
-
-      finalTx = txRows
-        .filter((t: any) => !deletedSet.has(t.id))
-        .map((t: any) => {
+      finalTx = txRows.map((t: any) => {
           const canonicalPayer = aliasMap[t.paid_by] || dedupedMembers.find(m => m.id === t.paid_by);
           let correctedPaidBy = t.paid_by;
           if (
@@ -4328,70 +4295,105 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       // 4. 還原/合併 交易明細
-      const backupTxs = backup.transactions;
+      const backupTxs = Array.isArray(backup.transactions) ? backup.transactions : [];
       const targetLedgerId = currentLedger.id;
       const fallbackPayerId = currentUser?.id || nextMembers[0]?.id || 'unknown';
 
-      const sanitizedTxs: Transaction[] = backupTxs
-        .filter((t: any) => t && !isNaN(Number(t.amount)))
-        .map((t: any) => {
-          // 分類對齊
-          const targetCatId = t.category_id && categoryIdMap[t.category_id] ? categoryIdMap[t.category_id] : t.category_id;
-          const matchedCategory = nextCategories.find(c => c.id === targetCatId) || nextCategories[0];
+      // 關鍵防禦：徹底清空本機與雲端墓碑名冊，防止任何還原紀錄被既有刪除快取阻擋
+      deletedTxIdsRef.current.clear();
+      try {
+        await AsyncStorage.removeItem(STORAGE_KEYS.DELETED_TX_IDS);
+        await AsyncStorage.removeItem(`${STORAGE_KEYS.DELETED_TX_IDS}_${targetLedgerId}`);
+        if (isRealCloud) {
+          await supabase.from('deleted_transactions').delete().eq('ledger_id', targetLedgerId);
+        }
+      } catch {}
 
-          // 付款人對齊
-          let resolvedPaidBy = fallbackPayerId;
-          if (t.paid_by) {
-            if (memberIdMap[t.paid_by]) {
-              resolvedPaidBy = memberIdMap[t.paid_by];
-            } else if (nextMembers.some(m => m.id === t.paid_by)) {
-              resolvedPaidBy = t.paid_by;
-            } else if (memberAliasMap[t.paid_by]) {
-              resolvedPaidBy = memberAliasMap[t.paid_by].id;
-            }
+      if (mode === 'overwrite' && isRealCloud) {
+        try {
+          await supabase.from('transactions').delete().eq('ledger_id', targetLedgerId);
+        } catch (e) {
+          console.warn('覆蓋模式清空舊交易失敗:', e);
+        }
+      }
+
+      // 建立現有明細特徵指紋集合（以防 merge 模式重複補入）
+      const existingFingerprints = new Set(
+        transactions.map(t => `${t.type}_${Number(t.amount)}_${t.transacted_at}_${t.merchant || ''}_${t.note || ''}`)
+      );
+
+      const sanitizedTxs: Transaction[] = [];
+
+      for (const t of backupTxs) {
+        if (!t || isNaN(Number(t.amount))) continue;
+
+        const fingerprint = `${t.type}_${Number(t.amount)}_${t.transacted_at}_${t.merchant || ''}_${t.note || ''}`;
+        if (mode === 'merge' && existingFingerprints.has(fingerprint)) {
+          // 合併模式下，若已存在完全相同的明細，跳過避免重複
+          continue;
+        }
+
+        // 分類對齊
+        const targetCatId = t.category_id && categoryIdMap[t.category_id] ? categoryIdMap[t.category_id] : t.category_id;
+        const matchedCategory = nextCategories.find(c => c.id === targetCatId) || nextCategories[0];
+
+        // 付款人對齊
+        let resolvedPaidBy = fallbackPayerId;
+        if (t.paid_by) {
+          if (memberIdMap[t.paid_by]) {
+            resolvedPaidBy = memberIdMap[t.paid_by];
+          } else if (nextMembers.some(m => m.id === t.paid_by)) {
+            resolvedPaidBy = t.paid_by;
+          } else if (memberAliasMap[t.paid_by]) {
+            resolvedPaidBy = memberAliasMap[t.paid_by].id;
           }
+        }
 
-          // 建立者對齊
-          let resolvedCreatorId = currentUser?.id;
-          if (t.creator_id) {
-            if (memberIdMap[t.creator_id]) {
-              resolvedCreatorId = memberIdMap[t.creator_id];
-            } else if (nextMembers.some(m => m.id === t.creator_id)) {
-              resolvedCreatorId = t.creator_id;
-            }
+        // 建立者對齊
+        let resolvedCreatorId = currentUser?.id;
+        if (t.creator_id) {
+          if (memberIdMap[t.creator_id]) {
+            resolvedCreatorId = memberIdMap[t.creator_id];
+          } else if (nextMembers.some(m => m.id === t.creator_id)) {
+            resolvedCreatorId = t.creator_id;
           }
+        }
 
-          // 扣款卡片對齊
-          let resolvedAccountId = t.account_id;
-          if (resolvedAccountId && accountIdMap[resolvedAccountId]) {
-            resolvedAccountId = accountIdMap[resolvedAccountId];
-          }
+        // 扣款卡片對齊
+        let resolvedAccountId = t.account_id;
+        if (resolvedAccountId && accountIdMap[resolvedAccountId]) {
+          resolvedAccountId = accountIdMap[resolvedAccountId];
+        }
 
-          return {
-            id: t.id && isValidUUID(t.id) ? t.id : generateUUID(),
-            ledger_id: targetLedgerId,
-            creator_id: resolvedCreatorId,
-            category_id: matchedCategory?.id || targetCatId,
-            amount: Number(t.amount),
-            type: (t.type === 'income' ? 'income' : 'expense') as 'income' | 'expense',
-            paid_by: resolvedPaidBy,
-            transacted_at: t.transacted_at || new Date().toISOString(),
-            merchant: t.merchant || undefined,
-            note: t.note || '',
-            payment_method: t.payment_method || 'cash',
-            account_id: resolvedAccountId || undefined,
-            is_reconciled: Boolean(t.is_reconciled),
-            category: matchedCategory,
-          };
+        // 核心免疫關鍵：一律生成全新獨立 UUID！
+        // 徹底根除任何客戶端或資料庫中舊 ID 的「歷史刪除標記」，確保 100% 不會被自動刪除
+        const freshTxId = generateUUID();
+
+        sanitizedTxs.push({
+          id: freshTxId,
+          ledger_id: targetLedgerId,
+          creator_id: resolvedCreatorId,
+          category_id: matchedCategory?.id || targetCatId,
+          amount: Number(t.amount),
+          type: (t.type === 'income' ? 'income' : 'expense') as 'income' | 'expense',
+          paid_by: resolvedPaidBy,
+          transacted_at: t.transacted_at || new Date().toISOString(),
+          merchant: t.merchant || undefined,
+          note: t.note || '',
+          payment_method: t.payment_method || 'cash',
+          account_id: resolvedAccountId || undefined,
+          is_reconciled: Boolean(t.is_reconciled),
+          category: matchedCategory,
+          is_settled: t.is_settled ?? false,
+          created_at: t.created_at || new Date().toISOString(),
         });
+      }
 
       let finalTxs: Transaction[];
       if (mode === 'overwrite') {
         finalTxs = sanitizedTxs;
       } else {
-        const existingIds = new Set(transactions.map(t => t.id));
-        const newRestored = sanitizedTxs.filter(st => !existingIds.has(st.id));
-        finalTxs = [...transactions, ...newRestored];
+        finalTxs = [...transactions, ...sanitizedTxs];
       }
 
       finalTxs.sort((a, b) => new Date(b.transacted_at).getTime() - new Date(a.transacted_at).getTime());
@@ -4399,27 +4401,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setTransactions(finalTxs);
       await saveTransactionsToStorage(finalTxs);
 
-      // 若有要還原的交易曾存在於墓碑表，先從墓碑表解除 (以免被防復活觸發器阻擋)
-      const restoredIds = sanitizedTxs.map(t => t.id).filter(isValidUUID);
-      if (restoredIds.length > 0) {
-        restoredIds.forEach(id => deletedTxIdsRef.current.delete(id));
-        try {
-          const deletedKey = `${STORAGE_KEYS.DELETED_TX_IDS}_${targetLedgerId}`;
-          const saved = await AsyncStorage.getItem(deletedKey);
-          if (saved) {
-            const arr = JSON.parse(saved).filter((id: string) => !restoredIds.includes(id));
-            await AsyncStorage.setItem(deletedKey, JSON.stringify(arr));
-          }
-        } catch {}
-        if (isRealCloud) {
-          try {
-            await supabase.from('deleted_transactions').delete().in('id', restoredIds);
-          } catch {}
-        }
-      }
-
       // 同步還原交易至 Supabase 雲端 (若為已連線雲端帳本)
-      if (isRealCloud) {
+      if (isRealCloud && sanitizedTxs.length > 0) {
         try {
           const txsToUpsert = sanitizedTxs.map(t => {
             const p: any = {

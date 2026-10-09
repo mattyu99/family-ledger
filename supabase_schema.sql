@@ -620,22 +620,9 @@ CREATE TRIGGER tr_log_transaction_deletion
     BEFORE DELETE ON public.transactions
     FOR EACH ROW EXECUTE FUNCTION public.log_transaction_deletion();
 
--- 2. 防復活觸發器：當任何舊版客戶端嘗試 INSERT 已在墓碑表中的 ID，直接靜默阻斷 (RETURN NULL)
-CREATE OR REPLACE FUNCTION public.prevent_transaction_resurrection()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM public.deleted_transactions WHERE id = NEW.id) THEN
-        -- 阻斷舊客戶端誤插已刪除明細，保護雲端資料庫不被復活污染
-        RETURN NULL;
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
+-- 2. 移除阻斷還原的防復活觸發器，確保備份回復（JSON 還原）功能能正常寫入資料
 DROP TRIGGER IF EXISTS tr_prevent_transaction_resurrection ON public.transactions;
-CREATE TRIGGER tr_prevent_transaction_resurrection
-    BEFORE INSERT ON public.transactions
-    FOR EACH ROW EXECUTE FUNCTION public.prevent_transaction_resurrection();
+DROP FUNCTION IF EXISTS public.prevent_transaction_resurrection();
 
 -- ==============================================================================
 -- 9. 付款方式 (Payment Methods) 架構說明：
