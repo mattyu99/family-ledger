@@ -4481,6 +4481,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         installment_start_period: r.installment_start_period,
         note: r.note,
       })),
+      payment_methods: paymentMethods.map(m => ({
+        id: m.id,
+        name: m.name,
+        icon: m.icon,
+        color: m.color,
+        type: m.type,
+        supports_credit_card: m.supports_credit_card,
+        is_enabled: m.is_enabled,
+        is_system: m.is_system,
+        sort_order: m.sort_order,
+      })),
     };
     return JSON.stringify(backupData, null, 2);
   };
@@ -4835,6 +4846,54 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
         setRecurringRules(nextRecurringRules);
         await saveRecurringRulesToStorage(nextRecurringRules, currentLedger.id);
+      }
+
+      // 3.6 還原/合併 自訂付款方式 (Payment Methods)
+      let nextPaymentMethods = [...paymentMethods];
+      if (Array.isArray(backup.payment_methods) && backup.payment_methods.length > 0) {
+        if (mode === 'overwrite') {
+          nextPaymentMethods = backup.payment_methods.map((bm: any) => ({
+            id: bm.id,
+            ledger_id: currentLedger.id,
+            name: bm.name,
+            icon: bm.icon || '💳',
+            color: bm.color || '#6366F1',
+            type: bm.type || 'other',
+            supports_credit_card: !!bm.supports_credit_card,
+            is_enabled: bm.is_enabled !== false,
+            is_system: !!bm.is_system,
+            sort_order: bm.sort_order || 1,
+            created_at: new Date().toISOString(),
+          }));
+        } else {
+          backup.payment_methods.forEach((bm: any) => {
+            if (!bm || !bm.name) return;
+            const existingIndex = nextPaymentMethods.findIndex(m => m.id === bm.id || m.name === bm.name);
+            if (existingIndex >= 0) {
+              nextPaymentMethods[existingIndex] = {
+                ...nextPaymentMethods[existingIndex],
+                is_enabled: bm.is_enabled !== false,
+                sort_order: bm.sort_order ?? nextPaymentMethods[existingIndex].sort_order,
+              };
+            } else {
+              nextPaymentMethods.push({
+                id: bm.id || generateUUID(),
+                ledger_id: currentLedger.id,
+                name: bm.name,
+                icon: bm.icon || '💳',
+                color: bm.color || '#6366F1',
+                type: bm.type || 'other',
+                supports_credit_card: !!bm.supports_credit_card,
+                is_enabled: bm.is_enabled !== false,
+                is_system: !!bm.is_system,
+                sort_order: bm.sort_order || nextPaymentMethods.length + 1,
+                created_at: new Date().toISOString(),
+              });
+            }
+          });
+        }
+        setPaymentMethods(nextPaymentMethods);
+        await savePaymentMethodsToStorage(nextPaymentMethods);
       }
 
       // 4. 還原/合併 交易明細

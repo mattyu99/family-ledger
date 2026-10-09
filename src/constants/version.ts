@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.3';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.3 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 27;
+export const APP_BUILD_REVISION = 28;
 
-// 完整版本字串 (例如 "1.0.3.27")
+// 完整版本字串 (例如 "1.0.3.28")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,15 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.3.28',
+    date: '2026-10-09',
+    title: '資料備份與還原全面納入「自訂付款方式」，達成 100% 全要素完整封存',
+    highlights: [
+      '全面補齊備份資料結構：JSON 備份現在 100% 涵蓋所有客製化紀錄（週期扣款規則、分期付款、支付卡片帳戶、自訂付款方式、收支分類、家庭成員名冊與所有交易明細）。',
+      '匯出與還原支援自訂付款方式：新增之電子支付（如街口、全支付、自訂錢包）之圖示、色彩、綁卡支援設定與排序將完整保存，跨裝置還原零遺漏。',
+    ],
+  },
   {
     version: '1.0.3.27',
     date: '2026-10-09',
