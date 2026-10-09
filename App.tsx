@@ -1271,16 +1271,41 @@ function MainApp() {
       );
 
       if (matchedMember) {
+        const isMatchedAdmin = matchedMember.role === 'owner' || matchedMember.role === 'admin';
+
         // 先前已有身分紀錄（如「智爸/爸爸」）：自動精準認領，絕不帶入當前帳本的稱謂（如「老闆」）！
-        const res = await joinLedgerByCode(cleanCode, undefined, undefined, matchedMember);
-        setIsJoining(false);
-        if (res.success) {
-          setSwitchLedgerModalVisible(false);
-          setSwitchCodeInput('');
-          showAlert('切換成功', `已切換回「${preview.ledgerName}」，身分：${matchedMember.display_name}！`);
-        } else {
-          showAlert('切換失敗', res.message || '加入帳本失敗，請稍後重試');
+        // 若此身分為管理員，嘗試從本地快取讀取此帳本先前記錄的 PIN 碼
+        const savedLedgerPin = (preview.ledgerId && await AsyncStorage.getItem(`@family_ledger_admin_pin_${preview.ledgerId}`)) ||
+                               (await AsyncStorage.getItem('@family_ledger_admin_pin'));
+
+        if (!isMatchedAdmin || savedLedgerPin) {
+          const res = await joinLedgerByCode(cleanCode, undefined, undefined, matchedMember, savedLedgerPin || undefined);
+          if (res.success) {
+            setIsJoining(false);
+            setSwitchLedgerModalVisible(false);
+            setSwitchCodeInput('');
+            showAlert('切換成功', `已切換回「${preview.ledgerName}」，身分：${matchedMember.display_name}！`);
+            return;
+          }
         }
+
+        // 若為管理員身分需要輸入 PIN 碼，或自動切換因未提供有效 PIN 碼未通過：
+        // 立即無縫關閉切換彈窗，開啟認領彈窗，並自動選取該成員以顯示 PIN 碼輸入欄位！
+        setIsJoining(false);
+        setSwitchLedgerModalVisible(false);
+        setSwitchCodeInput('');
+        setJoinCodeInput(cleanCode);
+        setPreviewLedgerName(preview.ledgerName || '家庭公帳');
+        const mems = preview.members || [];
+        setPreviewMembers(mems);
+        setIsCreatingNewMember(false);
+        setSelectedClaimMember(matchedMember);
+        setAdminPinInput('');
+        setJoinLedgerModalVisible(true);
+        showAlert(
+          '請輸入管理員 PIN 碼',
+          `您在「${preview.ledgerName}」先前為管理員身分「${matchedMember.display_name}」，請輸入 4 位數安全 PIN 碼（預設為 8888）以完成切換。`
+        );
         return;
       }
 

@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.3';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.3 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 24;
+export const APP_BUILD_REVISION = 25;
 
-// 完整版本字串 (例如 "1.0.3.24")
+// 完整版本字串 (例如 "1.0.3.25")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.3.25',
+    date: '2026-10-09',
+    title: '修復輸入邀請碼切換帳本時管理員 PIN 碼驗證流程與輸入欄位',
+    highlights: [
+      '修復在「加入或切換家庭公帳」畫面輸入邀請碼時，若先前於該帳本為管理員身分，會直接報錯「管理員安全 PIN 碼錯誤」且無欄位供使用者輸入之問題。',
+      '加入本機管理員 PIN 碼智慧快取比對：若本設備先前曾驗證過此帳本 PIN 碼，自動安全無縫切換。',
+      '若需驗證 PIN 碼，自動平滑轉跳至身分認領畫面並即時開啟「🔐 管理員身分安全驗證」輸入框，支援輸入 4 位數 PIN 碼（預設 8888）順暢取得管理員權限。',
+      '驗證通過後自動將 PIN 碼儲存於此帳本專屬本機快取，確保日後多帳本往返切換體驗流暢無阻。',
+    ],
+  },
   {
     version: '1.0.3.24',
     date: '2026-10-09',

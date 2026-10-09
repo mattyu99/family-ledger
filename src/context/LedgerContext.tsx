@@ -2620,10 +2620,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setPendingInviteCode(null);
       await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, code);
 
-      if ((targetLedger as any)?.admin_pin) {
-        setAdminPin((targetLedger as any).admin_pin);
-        await AsyncStorage.setItem(STORAGE_KEYS.ADMIN_PIN, (targetLedger as any).admin_pin);
-        await AsyncStorage.setItem(`${STORAGE_KEYS.ADMIN_PIN}_${targetLedger.id}`, (targetLedger as any).admin_pin);
+      const finalVerifiedPin = (targetLedger as any)?.admin_pin || adminPinInput?.trim();
+      if (finalVerifiedPin) {
+        setAdminPin(finalVerifiedPin);
+        await AsyncStorage.setItem(STORAGE_KEYS.ADMIN_PIN, finalVerifiedPin);
+        await AsyncStorage.setItem(`${STORAGE_KEYS.ADMIN_PIN}_${targetLedger.id}`, finalVerifiedPin);
       }
 
       await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');

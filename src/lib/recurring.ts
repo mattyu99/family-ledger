@@ -183,3 +183,4 @@ export const DEFAULT_RECURRING_PRESETS = [
     payment_method: 'transfer' as const,
   },
 ];
+
