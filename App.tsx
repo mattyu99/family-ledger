@@ -37,6 +37,8 @@ const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFont
     {...rest}
   />
 );
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LedgerProvider, useLedger } from './src/context/LedgerContext';
 import { TransactionItem } from './src/components/TransactionItem';
 import { AddTransactionModal } from './src/components/AddTransactionModal';
@@ -1149,18 +1151,56 @@ function MainApp() {
   };
 
   const handleSwitchLedger = async () => {
-    if (!switchCodeInput.trim()) {
+    const cleanCode = switchCodeInput.trim();
+    if (!cleanCode) {
       showAlert('請輸入邀請碼', '請輸入目標帳本的邀請碼或完整邀請連結');
       return;
     }
     setIsJoining(true);
-    const res = await joinLedgerByCode(switchCodeInput.trim(), currentUser.display_name, currentUser.avatar_url);
-    setIsJoining(false);
-    if (res.success) {
+    try {
+      // 1. 預覽目標帳本與既有名冊
+      const preview = await previewInvite(cleanCode);
+      if (!preview.success || !preview.ledgerId) {
+        setIsJoining(false);
+        showAlert('切換失敗', preview.message || '找不到此邀請碼對應的帳本，請確認代碼是否正確。');
+        return;
+      }
+
+      // 2. 檢查本機先前是否曾在此帳本認領過身分
+      const savedTargetUserStr = await AsyncStorage.getItem(`@family_ledger_current_user_${preview.ledgerId}`);
+      let targetSavedUser: any = null;
+      if (savedTargetUserStr) {
+        try { targetSavedUser = JSON.parse(savedTargetUserStr); } catch {}
+      }
+
+      const matchedMember = preview.members?.find(
+        (m: any) =>
+          (targetSavedUser?.id && m.id === targetSavedUser.id) ||
+          (targetSavedUser?.display_name && (m.display_name || '').trim().toLowerCase() === targetSavedUser.display_name.trim().toLowerCase())
+      );
+
+      if (matchedMember) {
+        // 先前已有身分紀錄（如「智爸/爸爸」）：自動精準認領，絕不帶入當前帳本的稱謂（如「老闆」）！
+        const res = await joinLedgerByCode(cleanCode, undefined, undefined, matchedMember);
+        setIsJoining(false);
+        if (res.success) {
+          setSwitchLedgerModalVisible(false);
+          showAlert('切換成功', `已切換回「${preview.ledgerName}」，身分：${matchedMember.display_name}！`);
+        } else {
+          showAlert('切換失敗', res.message || '加入帳本失敗，請稍後重試');
+        }
+        return;
+      }
+
+      // 3. 若尚未在此帳本認領過身分：關閉切換彈窗，開啟身分認領彈窗供使用者挑選身分或自訂新稱謂
+      setIsJoining(false);
       setSwitchLedgerModalVisible(false);
-      showAlert('切換成功', '已成功切換至目標家庭帳本！');
-    } else {
-      showAlert('切換失敗', res.message || '找不到此邀請碼對應的帳本，請確認代碼是否正確。');
+      setJoinCodeInput(cleanCode);
+      setJoinLedgerModalVisible(true);
+      fetchInvitePreview(cleanCode);
+    } catch (e: any) {
+      setIsJoining(false);
+      showAlert('切換異常', e?.message || '切換帳本時發生錯誤');
     }
   };
 
