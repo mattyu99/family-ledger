@@ -53,6 +53,8 @@ import { StoredValueWidget } from './src/components/StoredValueWidget';
 import { CreditCardReconciliationModal } from './src/components/CreditCardReconciliationModal';
 import { PaymentAccountsManageModal } from './src/components/PaymentAccountsManageModal';
 import { PaymentMethodsManageModal } from './src/components/PaymentMethodsManageModal';
+import { ChangelogModal } from './src/components/ChangelogModal';
+import { APP_FULL_VERSION } from './src/constants/version';
 import { HorizontalScrollView } from './src/components/HorizontalScrollView';
 import { Transaction, Profile } from './src/types/database';
 import { getCategoryIcon } from './src/lib/icons';
@@ -311,8 +313,9 @@ function MainApp() {
   };
 
   // 應用程式版本與熱更新狀態
-  const APP_VERSION = appConfig.expo.version || '1.0.0';
+  const APP_VERSION = APP_FULL_VERSION;
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [changelogModalVisible, setChangelogModalVisible] = useState(false);
 
   // 當前與上一月份字串
   const currentMonthYm = useMemo(() => {
@@ -3902,12 +3905,32 @@ function MainApp() {
                   </Text>
                   <Text style={styles.cardSectionDesc}>甜心記帳本跨平台系統</Text>
                 </View>
-                <View style={styles.versionTagBadge}>
-                  <Text style={styles.versionTagBadgeText}>v{APP_VERSION}</Text>
-                </View>
+                <TouchableOpacity
+                  style={styles.versionTagBadge}
+                  onPress={() => setChangelogModalVisible(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.versionTagBadgeText}>v{APP_VERSION} 📜</Text>
+                </TouchableOpacity>
               </View>
 
               <View style={styles.versionDetailBox}>
+                <View style={styles.versionDetailRow}>
+                  <Text style={styles.versionDetailLabel}>目前版本：</Text>
+                  <TouchableOpacity
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                    onPress={() => setChangelogModalVisible(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.versionDetailValue, { color: '#4F46E5', fontWeight: '800' }]}>
+                      v{APP_VERSION}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: '#6366F1', fontWeight: '600' }}>
+                      (點此看改動 📜)
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
                 <View style={styles.versionDetailRow}>
                   <Text style={styles.versionDetailLabel}>運行環境：</Text>
                   <Text style={styles.versionDetailValue}>
@@ -3946,6 +3969,14 @@ function MainApp() {
                   </View>
                 )}
               </View>
+
+              <TouchableOpacity
+                style={styles.changelogBtn}
+                onPress={() => setChangelogModalVisible(true)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.changelogBtnText}>📜 查看版本更新紀錄 (Changelog)</Text>
+              </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.checkUpdateBtn, isCheckingUpdate && styles.checkUpdateBtnDisabled]}
@@ -4095,6 +4126,12 @@ function MainApp() {
       <PaymentMethodsManageModal
         visible={paymentMethodsModalVisible}
         onClose={() => setPaymentMethodsModalVisible(false)}
+      />
+
+      {/* 📜 版本更新歷程彈窗 */}
+      <ChangelogModal
+        visible={changelogModalVisible}
+        onClose={() => setChangelogModalVisible(false)}
       />
 
       {/* 匯出資料展示彈窗 */}
@@ -7023,6 +7060,20 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     fontWeight: '700',
     color: '#4F46E5',
+  },
+  changelogBtn: {
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  changelogBtnText: {
+    color: '#4F46E5',
+    fontSize: 13,
+    fontWeight: '700',
   },
   checkUpdateBtn: {
     backgroundColor: '#F1F5F9',
