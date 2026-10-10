@@ -334,6 +334,7 @@ interface LedgerContextType {
   isDeviceBound: boolean;
   bindDeviceToMember: (member: Profile) => Promise<void>;
   unbindDevice: () => Promise<void>;
+  switchCurrentUser: (member: Profile) => Promise<void>;
   isCloudSynced: boolean;
   settlementInfo: {
     totalExpense: number;
@@ -1605,21 +1606,28 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setRecurringRules([]); // 先行清空記憶體中的週期規則，避免在非同步載入過程閃現上一本帳本之規則
     await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(targetLedger));
 
-    // (A-0) 載入帳本 admin_pin
+    // (A-0) 載入帳本最新雲端資訊 (created_by, admin_pin 等)
     if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
       try {
         const { data: lData } = await supabase
           .from('ledgers')
-          .select('admin_pin')
+          .select('*')
           .eq('id', targetLedger.id)
           .maybeSingle();
-        if (lData && lData.admin_pin) {
-          setAdminPin(lData.admin_pin);
-          await AsyncStorage.setItem(STORAGE_KEYS.ADMIN_PIN, lData.admin_pin);
-          await AsyncStorage.setItem(`${STORAGE_KEYS.ADMIN_PIN}_${targetLedger.id}`, lData.admin_pin);
+        if (lData) {
+          if (lData.admin_pin) {
+            setAdminPin(lData.admin_pin);
+            await AsyncStorage.setItem(STORAGE_KEYS.ADMIN_PIN, lData.admin_pin);
+            await AsyncStorage.setItem(`${STORAGE_KEYS.ADMIN_PIN}_${targetLedger.id}`, lData.admin_pin);
+          }
+          if (lData.created_by && lData.created_by !== targetLedger.created_by) {
+            targetLedger = { ...targetLedger, ...lData };
+            setCurrentLedger(targetLedger);
+            await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(targetLedger));
+          }
         }
       } catch (e) {
-        console.warn('載入帳本 admin_pin 失敗:', e);
+        console.warn('載入帳本最新雲端資訊失敗:', e);
       }
     }
 
@@ -5996,15 +6004,67 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  // 一鍵切換本機成員身分（讓使用者可在多成員或長輩/小孩身分間自由切換）
+  const switchCurrentUser = async (member: Profile) => {
+    try {
+      const isMemberCreator = currentLedger.created_by === member.id;
+      const resolvedRole: 'owner' | 'admin' | 'member' =
+        isMemberCreator ? 'owner' : (member.role === 'owner' || member.role === 'admin' ? member.role : 'member');
+      const updatedUser: Profile = { ...member, role: resolvedRole };
+
+      setCurrentUser(updatedUser);
+      setUserRole(resolvedRole);
+      setIsDeviceBound(true);
+
+      // 立即持久化本地身分與角色
+      await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedUser));
+      if (currentLedger?.id) {
+        await AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${currentLedger.id}`, JSON.stringify(updatedUser));
+      }
+      await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, resolvedRole);
+      await AsyncStorage.setItem(STORAGE_KEYS.DEVICE_BOUND, 'true');
+
+      // 同步更新 ledgers 列表中的當前使用者快取
+      setLedgers(prev => prev.map(l => l.id === currentLedger.id ? {
+        ...l,
+        userRole: resolvedRole,
+        userDisplayName: member.display_name,
+        userAvatar: member.avatar_url,
+      } : l));
+
+      // 若已連線 Supabase，將當前裝置的 Auth Profile 與 ledger_members 綁定同步
+      if (isConfigured && currentLedger?.id !== DEMO_LEDGER_ID) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const authUserId = session?.user?.id;
+          if (authUserId) {
+            await supabase.from('profiles').upsert({
+              id: authUserId,
+              display_name: member.display_name,
+              avatar_url: member.avatar_url || '👨',
+            });
+
+            // 若切換的身分具備管理員權限，確保當前裝置 session 在 ledger_members 也有 owner 角色
+            if (resolvedRole === 'owner') {
+              await supabase.from('ledger_members').upsert({
+                ledger_id: currentLedger.id,
+                user_id: authUserId,
+                role: 'owner',
+              }, { onConflict: 'ledger_id,user_id' });
+            }
+          }
+        } catch (e) {
+          console.warn('switchCurrentUser 雲端同步失敗:', e);
+        }
+      }
+    } catch (err) {
+      console.error('switchCurrentUser 異常:', err);
+    }
+  };
+
   // 將當前裝置綁定至指定家庭成員（長輩防呆專用）
   const bindDeviceToMember = async (member: Profile) => {
-    setCurrentUser(member);
-    setIsDeviceBound(true);
-    await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(member));
-    if (currentLedger?.id) {
-      await AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${currentLedger.id}`, JSON.stringify(member));
-    }
-    await AsyncStorage.setItem(STORAGE_KEYS.DEVICE_BOUND, 'true');
+    await switchCurrentUser(member);
   };
 
   // 解除裝置身分綁定
@@ -6123,9 +6183,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }, { onConflict: 'ledger_id,user_id' });
         }
 
-        // 同步更新 ledgers 表之 created_by，徹底鎖定創立者身分，防止日後脫鉤
-        await supabase.from('ledgers').update({ created_by: authUserId }).eq('id', currentLedger.id);
-        setCurrentLedger(prev => ({ ...prev, created_by: authUserId }));
+        // 僅在帳本目前無建立者或本使用者即為創立者時，才設定 created_by；否則只升級 owner 角色，避免誤改帳本原創者
+        if (!currentLedger.created_by || currentLedger.created_by === authUserId) {
+          await supabase.from('ledgers').update({ created_by: authUserId }).eq('id', currentLedger.id);
+          setCurrentLedger(prev => ({ ...prev, created_by: authUserId }));
+        }
 
         // 跨裝置同步：若名冊中有其他同名紀錄 (例如同成員的手機 APP 或其他瀏覽器裝置)，一併升級為 owner
         const myName = (currentUser.display_name || '').trim().toLowerCase();
@@ -6192,15 +6254,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addMember,
         updateMember,
         deleteMember,
-        isDeviceBound: false,
-        bindDeviceToMember: async (member: Profile) => {
-          setCurrentUser(member);
-          await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(member));
-          if (currentLedger?.id) {
-            await AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${currentLedger.id}`, JSON.stringify(member));
-          }
-        },
-        unbindDevice: async () => {},
+        isDeviceBound,
+        bindDeviceToMember,
+        unbindDevice,
+        switchCurrentUser,
         isCloudSynced,
         settlementInfo,
         hasJoinedLedger,

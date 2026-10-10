@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 9;
+export const APP_BUILD_REVISION = 10;
 
-// 完整版本字串 (例如 "1.0.4.9")
+// 完整版本字串 (例如 "1.0.4.10")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.10',
+    date: '2026-10-10',
+    title: '本機成員身分一鍵自由切換與雲端創立者身分校正',
+    highlights: [
+      '本機成員身分一鍵自由切換（我是「智爸」）：在家庭成員名單點擊任意成員，新增「👤 將此成員設為本機身分」按鈕。無論是先前身分誤選或切換視角，點擊即可一鍵將本機切換為該成員，並立即同步管理員與創立者權限！',
+      '雲端帳本創立者校正與即時穿透：連線雲端時即時同步帳本真實創立者（created_by），徹底修正先前 Web 端輸入 PIN 碼時將當前成員誤設為創立者的問題。',
+      'PIN 碼升級防誤篡建立者：防呆保護 ledgers.created_by，輸入 PIN 碼時只提升該成員為管理員，不再覆寫原始帳本建立者。',
+    ],
+  },
   {
     version: '1.0.4.9',
     date: '2026-10-10',

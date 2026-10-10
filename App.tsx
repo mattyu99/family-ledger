@@ -149,6 +149,7 @@ function MainApp() {
     categories,
     members,
     currentUser,
+    switchCurrentUser,
     settlementInfo,
     exportToCSV,
     exportToJSON,
@@ -1258,11 +1259,6 @@ function MainApp() {
   };
 
   const handleStartEditMember = (member: any) => {
-    const isCurrent = currentUser.id === member.id || (!!currentUser.display_name && currentUser.display_name === member.display_name);
-    if (!isCurrent && !isOwner) {
-      showAlert('權限不足', '只有本機成員或帳本管理員才允許編輯該成員稱謂');
-      return;
-    }
     setEditingMemberId(member.id);
     setEditingMemberName(member.display_name);
     setEditingMemberAvatar(member.avatar_url || '👨');
@@ -1424,6 +1420,7 @@ function MainApp() {
       targetMember.role === 'owner' ||
       targetMember.role === 'admin' ||
       currentLedger.created_by === targetMember.id;
+    const canModifyProfile = isOwner || isCurrent;
 
     return (
       <Modal visible={editMemberModalVisible} animationType="fade" transparent onRequestClose={() => setEditMemberModalVisible(false)}>
@@ -1457,40 +1454,85 @@ function MainApp() {
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
             >
-              <View style={styles.formLabelRow}>
-                <Text style={styles.formLabel}>成員暱稱 / 稱謂</Text>
-                {keyboardOffset > 0 && (
-                  <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+              {/* 本機身分一鍵切換：當檢視的對象不是當前本機身分時，提供一鍵切換為此成員 */}
+              {!isCurrent && targetMember && (
+                <View style={styles.modalMemberSwitchSection}>
+                  <Text style={styles.formLabel}>📱 本機裝置身分切換</Text>
+                  <Text style={styles.modalSubHint}>
+                    若您是「{targetMember.display_name}」，您可以將這台裝置直接設為此成員身分。日常記帳付款人將自動切換，並即時繼承此成員之管理權限！
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.modalSwitchUserBtn}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      showConfirm(
+                        '切換本機身分',
+                        `確定將這台裝置設為「${targetMember.display_name}」的身分嗎？\n\n・記帳付款人將自動預設為「${targetMember.display_name}」\n・${targetMember.role === 'owner' || currentLedger.created_by === targetMember.id ? '此成員為管理員/創建者，本機將立即恢復管理權限 👑' : '本機將以此成員身分使用'}`,
+                        async () => {
+                          await switchCurrentUser(targetMember);
+                          setEditMemberModalVisible(false);
+                          showAlert('身分切換成功', `已將本機身分切換為「${targetMember.display_name}」！`);
+                        }
+                      );
+                    }}
+                  >
+                    <Text style={styles.modalSwitchUserBtnText}>
+                      👤 將此成員設為本機身分（我是「{targetMember.display_name}」）
+                    </Text>
                   </TouchableOpacity>
-                )}
-              </View>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="例如：張三、爸爸、媽媽..."
-                placeholderTextColor="#9CA3AF"
-                value={editingMemberName}
-                onChangeText={setEditingMemberName}
-                autoFocus={false}
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
-              />
+                  <View style={[styles.memberSectionDivider, { marginTop: 16 }]} />
+                </View>
+              )}
 
-              <Text style={styles.formLabel}>選擇專屬頭像</Text>
-              <AvatarPicker
-                selectedAvatar={editingMemberAvatar}
-                onSelectAvatar={setEditingMemberAvatar}
-              />
+              {canModifyProfile ? (
+                <>
+                  <View style={styles.formLabelRow}>
+                    <Text style={styles.formLabel}>成員暱稱 / 稱謂</Text>
+                    {keyboardOffset > 0 && (
+                      <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="例如：張三、爸爸、媽媽..."
+                    placeholderTextColor="#9CA3AF"
+                    value={editingMemberName}
+                    onChangeText={setEditingMemberName}
+                    autoFocus={false}
+                    returnKeyType="done"
+                    onSubmitEditing={Keyboard.dismiss}
+                  />
 
-              <TouchableOpacity
-                style={styles.submitMemberBtn}
-                disabled={isSavingEdit}
-                onPress={handleSaveEditMember}
-              >
-                <Text style={styles.submitMemberBtnText}>
-                  {isSavingEdit ? '正在儲存...' : '💾 儲存修改'}
-                </Text>
-              </TouchableOpacity>
+                  <Text style={styles.formLabel}>選擇專屬頭像</Text>
+                  <AvatarPicker
+                    selectedAvatar={editingMemberAvatar}
+                    onSelectAvatar={setEditingMemberAvatar}
+                  />
+
+                  <TouchableOpacity
+                    style={styles.submitMemberBtn}
+                    disabled={isSavingEdit}
+                    onPress={handleSaveEditMember}
+                  >
+                    <Text style={styles.submitMemberBtnText}>
+                      {isSavingEdit ? '正在儲存...' : '💾 儲存修改'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <View style={styles.memberReadOnlyCard}>
+                  <Text style={styles.memberReadOnlyAvatar}>{targetMember?.avatar_url || '👤'}</Text>
+                  <Text style={styles.memberReadOnlyName}>{targetMember?.display_name}</Text>
+                  <Text style={styles.memberReadOnlyRole}>
+                    {isCreator ? '👑 帳本原始創建者' : isMemberAdmin ? '👑 共同管理員' : '一般家庭成員'}
+                  </Text>
+                  <Text style={styles.memberReadOnlyHint}>
+                    （僅該成員本人裝置或帳本管理員可修改暱稱與頭像）
+                  </Text>
+                </View>
+              )}
 
               {/* 若在預覽模式中：在彈窗內提供大按鈕隨時結束預覽返回管理員 */}
               {isPreviewMode && (
@@ -4052,14 +4094,10 @@ function MainApp() {
                       style={[
                         styles.userChip,
                         isCurrent && styles.userChipActive,
-                        !canEdit && styles.userChipDisabled,
                       ]}
-                      activeOpacity={canEdit ? 0.7 : 1}
-                      disabled={!canEdit}
+                      activeOpacity={0.7}
                       onPress={() => {
-                        if (canEdit) {
-                          handleStartEditMember(member);
-                        }
+                        handleStartEditMember(member);
                       }}
                     >
                       <Text style={styles.userAvatar}>{member.avatar_url}</Text>
@@ -7059,6 +7097,53 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#DC2626',
+  },
+  modalMemberSwitchSection: {
+    marginBottom: 8,
+  },
+  modalSwitchUserBtn: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1.5,
+    borderColor: '#86EFAC',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+  },
+  modalSwitchUserBtnText: {
+    color: '#15803D',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  memberReadOnlyCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  memberReadOnlyAvatar: {
+    fontSize: 36,
+    marginBottom: 6,
+  },
+  memberReadOnlyName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  memberReadOnlyRole: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 4,
+  },
+  memberReadOnlyHint: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 8,
   },
   topBarTitleRow: {
     flexDirection: 'row',
