@@ -6,6 +6,7 @@ import { supabase, isConfigured } from '../lib/supabase';
 import { generateUUID } from '../lib/uuid';
 import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS } from '../lib/payment';
 import { DEFAULT_RECURRING_PRESETS, getCurrentPeriodKey, getBillPeriodLabel, getInstallmentInfo } from '../lib/recurring';
+import { parseMemoNote } from '../lib/memo';
 
 const safeAlert = (title: string, message: string) => {
   if (Platform.OS === 'web') {
@@ -204,7 +205,7 @@ const INITIAL_TRANSACTIONS: Transaction[] = [
 
 export interface LiveToastNotification {
   id: string;
-  type: 'insert' | 'update' | 'delete' | 'info';
+  type: 'insert' | 'update' | 'delete' | 'info' | 'complete';
   actorName: string;
   avatar: string;
   title: string;
@@ -587,6 +588,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const hasMerchantColumnRef = useRef<boolean>(false);
   const hasPaymentColumnsRef = useRef<boolean>(false);
   const deletedTxIdsRef = useRef<Set<string>>(new Set());
+  const recentToastTimestampsRef = useRef<Map<string, number>>(new Map());
+  const recentUpdatersRef = useRef<Map<string, { updaterId: string; updaterName: string; updaterAvatar: string; timestamp: number }>>(new Map());
+
+  // 輔助函式：避免 Realtime 多重通道（廣播 + 資料庫變更）在 4 秒內重複彈出相同通知泡泡
+  const shouldShowToast = React.useCallback((id: string, actionType: string): boolean => {
+    const key = `${id}:${actionType}`;
+    const now = Date.now();
+    const last = recentToastTimestampsRef.current.get(key);
+    if (last && now - last < 4000) {
+      return false;
+    }
+    recentToastTimestampsRef.current.set(key, now);
+    return true;
+  }, []);
 
   const recordMerchant = React.useCallback(async (m: string) => {
     const clean = (m || '').trim();
@@ -968,18 +983,43 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               parsedNote = match[2];
             }
           }
-          if (parsedMerchant) {
+
+          let reminderDate: string | undefined = undefined;
+          let completedBy: string | undefined = newRow.completed_by;
+          let resolvedType: TransactionType = newRow.type;
+
+          if (parsedMerchant?.startsWith('remind:') || parsedMerchant?.startsWith('memo')) {
+            resolvedType = 'memo';
+            let rawStr = parsedMerchant;
+            if (rawStr.includes('|done:')) {
+              const parts = rawStr.split('|done:');
+              rawStr = parts[0];
+              completedBy = parts[1] || undefined;
+            }
+            if (rawStr.startsWith('remind:')) {
+              reminderDate = rawStr.replace('remind:', '') || undefined;
+            }
+            parsedMerchant = undefined;
+          } else if (newRow.type === 'memo' || (newRow.type === 'transfer' && Number(newRow.amount) === 0)) {
+            resolvedType = 'memo';
+          } else if (parsedMerchant) {
             recordMerchant(parsedMerchant);
           }
+
           setTransactions((prev) => {
             if (prev.some((t) => t.id === newRow.id)) return prev;
             const canonicalPayer = getMemberById(newRow.paid_by);
             const item: Transaction = {
               ...newRow,
+              type: resolvedType,
+              reminder_date: reminderDate || newRow.reminder_date,
+              completed_by: completedBy || newRow.completed_by,
               merchant: parsedMerchant || undefined,
               note: parsedNote || '',
-              amount: Number(newRow.amount),
+              amount: resolvedType === 'memo' ? 0 : Number(newRow.amount),
+              paid_by: canonicalPayer?.id || newRow.paid_by,
               payer_profile: canonicalPayer || newRow.payer_profile,
+              category: getCategoryById(newRow.category_id, newRow.category),
             };
             const updated = [item, ...prev];
             AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
@@ -987,28 +1027,42 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return updated;
           });
 
-          // 方案 A：若這筆記帳由其他裝置寫入，觸發即時通知泡泡
+          // 方案 A：若這筆記帳/記事由其他裝置寫入，觸發即時通知泡泡
           const myId = currentUserRef.current?.id;
           const isFromOther = !myId || (newRow.creator_id && newRow.creator_id !== myId);
-          if (isFromOther) {
+          if (isFromOther && shouldShowToast(newRow.id, 'insert')) {
             const actor = getMemberById(newRow.paid_by) || getMemberById(newRow.creator_id);
             const actorName = actor?.display_name || '家人';
             const actorAvatar = actor?.avatar_url || '👤';
-            const cat = getCategoryById(newRow.category_id);
-            const isIncome = newRow.type === 'income';
-            const amountStr = Number(newRow.amount).toLocaleString();
-            const displayDetail = [parsedMerchant ? `[${parsedMerchant}]` : '', parsedNote || ''].filter(Boolean).join(' ');
 
-            setLiveToast({
-              id: `insert-${newRow.id}-${Date.now()}`,
-              type: 'insert',
-              actorName,
-              avatar: actorAvatar,
-              title: `🎉 ${actorName} 剛記了一筆！`,
-              message: `${cat.icon} ${cat.name} ${isIncome ? '+' : '-'}NT$ ${amountStr}${displayDetail ? ` (${displayDetail})` : ''}`,
-              amount: Number(newRow.amount),
-              createdAt: Date.now(),
-            });
+            if (resolvedType === 'memo') {
+              const memoData = parseMemoNote(parsedNote);
+              setLiveToast({
+                id: `insert-memo-${newRow.id}-${Date.now()}`,
+                type: 'insert',
+                actorName,
+                avatar: memoData.icon || actorAvatar,
+                title: `📝 ${actorName} 留了一則生活記事！`,
+                message: `[${memoData.title}] ${memoData.cleanContent}`,
+                createdAt: Date.now(),
+              });
+            } else {
+              const cat = getCategoryById(newRow.category_id);
+              const isIncome = newRow.type === 'income';
+              const amountStr = Number(newRow.amount).toLocaleString();
+              const displayDetail = [parsedMerchant ? `[${parsedMerchant}]` : '', parsedNote || ''].filter(Boolean).join(' ');
+
+              setLiveToast({
+                id: `insert-${newRow.id}-${Date.now()}`,
+                type: 'insert',
+                actorName,
+                avatar: actorAvatar,
+                title: `🎉 ${actorName} 剛記了一筆！`,
+                message: `${cat.icon} ${cat.name} ${isIncome ? '+' : '-'}NT$ ${amountStr}${displayDetail ? ` (${displayDetail})` : ''}`,
+                amount: Number(newRow.amount),
+                createdAt: Date.now(),
+              });
+            }
           }
         }
       )
@@ -1032,19 +1086,46 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               parsedNote = match[2];
             }
           }
-          if (parsedMerchant) {
+
+          let reminderDate: string | undefined = undefined;
+          let completedBy: string | undefined = updatedRow.completed_by;
+          let resolvedType: TransactionType = updatedRow.type;
+
+          if (parsedMerchant?.startsWith('remind:') || parsedMerchant?.startsWith('memo')) {
+            resolvedType = 'memo';
+            let rawStr = parsedMerchant;
+            if (rawStr.includes('|done:')) {
+              const parts = rawStr.split('|done:');
+              rawStr = parts[0];
+              completedBy = parts[1] || undefined;
+            }
+            if (rawStr.startsWith('remind:')) {
+              reminderDate = rawStr.replace('remind:', '') || undefined;
+            }
+            parsedMerchant = undefined;
+          } else if (updatedRow.type === 'memo' || (updatedRow.type === 'transfer' && Number(updatedRow.amount) === 0)) {
+            resolvedType = 'memo';
+          } else if (parsedMerchant) {
             recordMerchant(parsedMerchant);
           }
+
+          let prevTx: Transaction | undefined;
           setTransactions((prev) => {
+            prevTx = prev.find((t) => t.id === updatedRow.id);
             const canonicalPayer = getMemberById(updatedRow.paid_by);
             const updated = prev.map((t) =>
               t.id === updatedRow.id
                 ? {
+                    ...t,
                     ...updatedRow,
+                    type: resolvedType,
+                    reminder_date: reminderDate !== undefined ? reminderDate : t.reminder_date,
+                    completed_by: updatedRow.is_settled ? (completedBy || t.completed_by) : undefined,
                     merchant: parsedMerchant || undefined,
                     note: parsedNote || '',
-                    amount: Number(updatedRow.amount),
+                    amount: resolvedType === 'memo' ? 0 : Number(updatedRow.amount),
                     payer_profile: canonicalPayer || updatedRow.payer_profile || t.payer_profile,
+                    category: getCategoryById(updatedRow.category_id, updatedRow.category || t.category),
                   }
                 : t
             );
@@ -1055,26 +1136,160 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
           // 方案 A：若更新由其他裝置發起，觸發即時通知泡泡
           const myId = currentUserRef.current?.id;
-          const isFromOther = !myId || (updatedRow.creator_id && updatedRow.creator_id !== myId);
-          if (isFromOther) {
-            const actor = getMemberById(updatedRow.paid_by) || getMemberById(updatedRow.creator_id);
-            const actorName = actor?.display_name || '家人';
-            const actorAvatar = actor?.avatar_url || '✏️';
-            const cat = getCategoryById(updatedRow.category_id);
-            const isIncome = updatedRow.type === 'income';
-            const amountStr = Number(updatedRow.amount).toLocaleString();
-            const displayDetail = [parsedMerchant ? `[${parsedMerchant}]` : '', parsedNote || ''].filter(Boolean).join(' ');
+          const isMemo = resolvedType === 'memo' || prevTx?.type === 'memo';
 
-            setLiveToast({
-              id: `update-${updatedRow.id}-${Date.now()}`,
-              type: 'update',
-              actorName,
-              avatar: actorAvatar,
-              title: `✏️ ${actorName} 更新了帳目`,
-              message: `${cat.icon} ${cat.name} ${isIncome ? '+' : '-'}NT$ ${amountStr}${displayDetail ? ` (${displayDetail})` : ''}`,
-              amount: Number(updatedRow.amount),
-              createdAt: Date.now(),
-            });
+          const recentUpdater = recentUpdatersRef.current.get(updatedRow.id);
+          const isFreshUpdater = recentUpdater && (Date.now() - recentUpdater.timestamp < 15000);
+          const effectiveUpdaterId = isFreshUpdater ? recentUpdater.updaterId : undefined;
+
+          if (isMemo) {
+            const wasSettledBefore = !!prevTx?.is_settled;
+            const isSettledNow = !!updatedRow.is_settled;
+
+            if (!wasSettledBefore && isSettledNow) {
+              // 待辦打勾完成！
+              const completerId = completedBy || prevTx?.completed_by;
+              const isFromOther = !myId || (completerId && completerId !== myId);
+              if (isFromOther && shouldShowToast(updatedRow.id, 'done')) {
+                const completer = getMemberById(completerId);
+                const completerName = completer?.display_name || '家人';
+                const memoData = parseMemoNote(parsedNote || prevTx?.note);
+                setLiveToast({
+                  id: `complete-${updatedRow.id}-${Date.now()}`,
+                  type: 'complete',
+                  actorName: completerName,
+                  avatar: '✓',
+                  title: `✓ ${completerName} 辦妥了一項待辦！`,
+                  message: `[${memoData.title}] ${memoData.cleanContent}`,
+                  createdAt: Date.now(),
+                });
+              }
+            } else if (wasSettledBefore && !isSettledNow) {
+              // 取消完成（重新開啟待辦）
+              const isFromOther = !myId || (effectiveUpdaterId ? effectiveUpdaterId !== myId : (updatedRow.creator_id && updatedRow.creator_id !== myId));
+              if (isFromOther && shouldShowToast(updatedRow.id, 'reopen')) {
+                const actorName = (isFreshUpdater && recentUpdater.updaterName) || getMemberById(updatedRow.paid_by)?.display_name || getMemberById(updatedRow.creator_id)?.display_name || '家人';
+                const memoData = parseMemoNote(parsedNote || prevTx?.note);
+                setLiveToast({
+                  id: `reopen-${updatedRow.id}-${Date.now()}`,
+                  type: 'update',
+                  actorName,
+                  avatar: '⚪',
+                  title: `⚪ ${actorName} 重新開啟了待辦事項`,
+                  message: `[${memoData.title}] ${memoData.cleanContent}`,
+                  createdAt: Date.now(),
+                });
+              }
+            } else {
+              // 生活記事內容更新
+              const isFromOther = !myId || (effectiveUpdaterId ? effectiveUpdaterId !== myId : (updatedRow.creator_id && updatedRow.creator_id !== myId));
+              if (isFromOther && shouldShowToast(updatedRow.id, 'update-memo')) {
+                const actorName = (isFreshUpdater && recentUpdater.updaterName) || getMemberById(updatedRow.paid_by)?.display_name || getMemberById(updatedRow.creator_id)?.display_name || '家人';
+                const memoData = parseMemoNote(parsedNote || prevTx?.note);
+                setLiveToast({
+                  id: `update-memo-${updatedRow.id}-${Date.now()}`,
+                  type: 'update',
+                  actorName,
+                  avatar: memoData.icon || '📝',
+                  title: `📝 ${actorName} 更新了生活記事`,
+                  message: `[${memoData.title}] ${memoData.cleanContent}`,
+                  createdAt: Date.now(),
+                });
+              }
+            }
+          } else {
+            const isFromOther = !myId || (effectiveUpdaterId ? effectiveUpdaterId !== myId : (updatedRow.creator_id && updatedRow.creator_id !== myId));
+            if (isFromOther && shouldShowToast(updatedRow.id, 'update')) {
+              const actorName = (isFreshUpdater && recentUpdater.updaterName) || getMemberById(updatedRow.paid_by)?.display_name || getMemberById(updatedRow.creator_id)?.display_name || '家人';
+              const actorAvatar = (isFreshUpdater && recentUpdater.updaterAvatar) || getMemberById(updatedRow.paid_by)?.avatar_url || '✏️';
+              const cat = getCategoryById(updatedRow.category_id);
+              const isIncome = updatedRow.type === 'income';
+              const amountStr = Number(updatedRow.amount).toLocaleString();
+              const displayDetail = [parsedMerchant ? `[${parsedMerchant}]` : '', parsedNote || ''].filter(Boolean).join(' ');
+
+              setLiveToast({
+                id: `update-${updatedRow.id}-${Date.now()}`,
+                type: 'update',
+                actorName,
+                avatar: actorAvatar,
+                title: `✏️ ${actorName} 更新了帳目`,
+                message: `${cat.icon} ${cat.name} ${isIncome ? '+' : '-'}NT$ ${amountStr}${displayDetail ? ` (${displayDetail})` : ''}`,
+                amount: Number(updatedRow.amount),
+                createdAt: Date.now(),
+              });
+            }
+          }
+        }
+      )
+      .on(
+        'broadcast',
+        { event: 'TX_UPDATED' },
+        (payload: any) => {
+          const data = payload?.payload;
+          if (!data || !data.id || !data.updaterId) return;
+          recentUpdatersRef.current.set(data.id, {
+            updaterId: data.updaterId,
+            updaterName: data.updaterName || '家人',
+            updaterAvatar: data.updaterAvatar || '✏️',
+            timestamp: Date.now(),
+          });
+        }
+      )
+      .on(
+        'broadcast',
+        { event: 'TX_MEMO_TOGGLED' },
+        async (payload: any) => {
+          const data = payload?.payload;
+          if (!data || !data.id) return;
+          const { id, is_settled, actorId, actorName, completed_by } = data;
+          const myId = currentUserRef.current?.id;
+          if (myId && actorId === myId) return;
+
+          let targetNote = '';
+          setTransactions((prev) => {
+            const target = prev.find((t) => t.id === id);
+            if (!target) return prev;
+            targetNote = target.note || '';
+            const updated = prev.map((t) =>
+              t.id === id
+                ? {
+                    ...t,
+                    is_settled,
+                    completed_by: is_settled ? (completed_by || actorId) : undefined,
+                  }
+                : t
+            );
+            AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
+            AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${ledgerId}`, JSON.stringify(updated));
+            return updated;
+          });
+
+          const completerName = actorName || '家人';
+          const memoData = parseMemoNote(targetNote);
+          if (is_settled) {
+            if (shouldShowToast(id, 'done')) {
+              setLiveToast({
+                id: `memo-done-${id}-${Date.now()}`,
+                type: 'complete',
+                actorName: completerName,
+                avatar: '✓',
+                title: `✓ ${completerName} 辦妥了一項待辦！`,
+                message: `[${memoData.title}] ${memoData.cleanContent}`,
+                createdAt: Date.now(),
+              });
+            }
+          } else {
+            if (shouldShowToast(id, 'reopen')) {
+              setLiveToast({
+                id: `memo-reopen-${id}-${Date.now()}`,
+                type: 'update',
+                actorName: completerName,
+                avatar: '⚪',
+                title: `⚪ ${completerName} 重新開啟了待辦事項`,
+                message: `[${memoData.title}] ${memoData.cleanContent}`,
+                createdAt: Date.now(),
+              });
+            }
           }
         }
       )
@@ -4553,6 +4768,31 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           return false;
         }
       }
+
+      // 即時廣播更新事件給所有已連線裝置（跨裝置即時反應更新者）
+      if (channelRef.current) {
+        try {
+          const updaterId = effectiveCurrentUser?.id || currentUser?.id;
+          const updater = getMemberById(updaterId);
+          const updaterName = updater?.display_name || '家人';
+          const updaterAvatar = updater?.avatar_url || '✏️';
+          if (updaterId) {
+            recentUpdatersRef.current.set(id, { updaterId, updaterName, updaterAvatar, timestamp: Date.now() });
+            channelRef.current.send({
+              type: 'broadcast',
+              event: 'TX_UPDATED',
+              payload: {
+                id,
+                updaterId,
+                updaterName,
+                updaterAvatar,
+                ledgerId: currentLedger.id,
+              },
+            });
+          }
+        } catch (err) {}
+      }
+
       return true;
     } catch (err) {
       console.warn('更新交易例外錯誤:', err);
@@ -4568,6 +4808,29 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const effectiveCompleter = nextSettled
       ? (completedByUserId || effectiveCurrentUser?.id || currentUser?.id)
       : undefined;
+
+    // 即時廣播給所有已連線裝置（跨裝置毫秒級通知）
+    if (channelRef.current) {
+      try {
+        const actor = getMemberById(effectiveCompleter || effectiveCurrentUser?.id || currentUser?.id);
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'TX_MEMO_TOGGLED',
+          payload: {
+            id,
+            is_settled: nextSettled,
+            completed_by: effectiveCompleter,
+            actorId: effectiveCompleter || effectiveCurrentUser?.id || currentUser?.id,
+            actorName: actor?.display_name || '家人',
+            actorAvatar: actor?.avatar_url || (nextSettled ? '✓' : '⚪'),
+            ledgerId: currentLedger.id,
+          },
+        });
+      } catch (err) {
+        console.warn('Realtime 廣播待辦切換事件失敗:', err);
+      }
+    }
+
     return updateTransaction(id, {
       is_settled: nextSettled,
       completed_by: effectiveCompleter,

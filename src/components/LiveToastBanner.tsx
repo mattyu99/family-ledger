@@ -88,6 +88,7 @@ export const LiveToastBanner: React.FC<LiveToastBannerProps> = ({ toast, onDismi
   if (!toast) return null;
 
   const getBorderColor = () => {
+    if (toast.type === 'complete') return '#10B981';
     if (toast.type === 'insert') return '#4F46E5';
     if (toast.type === 'update') return '#F59E0B';
     if (toast.type === 'delete') return '#EF4444';
@@ -95,6 +96,7 @@ export const LiveToastBanner: React.FC<LiveToastBannerProps> = ({ toast, onDismi
   };
 
   const getAvatarBg = () => {
+    if (toast.type === 'complete') return '#D1FAE5';
     if (toast.type === 'insert') return '#EEF2FF';
     if (toast.type === 'update') return '#FEF3C7';
     if (toast.type === 'delete') return '#FEE2E2';

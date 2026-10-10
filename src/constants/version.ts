@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 4;
+export const APP_BUILD_REVISION = 5;
 
-// 完整版本字串 (例如 "1.0.4.4")
+// 完整版本字串 (例如 "1.0.4.5")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.5',
+    date: '2026-10-10',
+    title: '生活記事與家庭待辦「跨裝置零秒即時同步」與「協同完成推播通知泡泡」全面落實',
+    highlights: [
+      '待辦事項跨裝置零秒即時同步：任何裝置（如爸爸的手機）在超市將採買事項打勾完成時，其他裝置（如媽媽的手機、電腦 Web 版）畫面上的卡片毫秒級自動劃線、打勾、顯示完成者稱謂，首頁待辦橫幅同步移除，絕無須手動重新整理。',
+      '即時推播專屬溫馨通知泡泡 (Live Toast)：另一半或家人在其他裝置「留了一則生活記事」、「幫忙辦妥待辦事項」或「重新開啟待辦」時，畫面頂部優雅滑下專屬通知泡泡（如「✓ 爸爸 辦妥了一項待辦！[採買清單] 鮮奶、雞蛋」），清楚看見家人協同付出的心意。',
+      '雙軌即時通道 (Supabase Realtime Broadcast + Postgres CDC)：結合客製化廣播事件與資料庫變更捕獲雙軌推播，自帶 4 秒防重防抖機制，兼具零延遲推播與百分之百資料可靠性。',
+      '智慧反序列化修正：徹底解決跨裝置 Realtime INSERT 與 UPDATE 事件遺失記事類型 (type: memo)、提醒日期 (reminder_date) 與完成者稱謂 (completed_by) 的問題，商家自動紀錄亦杜絕記事關鍵字污染。',
+    ],
+  },
   {
     version: '1.0.4.4',
     date: '2026-10-10',
