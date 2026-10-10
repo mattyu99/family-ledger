@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 1;
+export const APP_BUILD_REVISION = 2;
 
-// 完整版本字串 (例如 "1.0.4.1")
+// 完整版本字串 (例如 "1.0.4.2")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,18 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.2',
+    date: '2026-10-10',
+    title: '全新「生活備忘與待辦總覽中心」上線、記事一鍵打勾勾完成與排程預告提醒',
+    highlights: [
+      '待辦事項一鍵打勾勾 (Checkbox)：生活記事卡片自帶圓形勾選紐，點擊即時切換未完成/已辦妥，文字劃線與「✓ 已辦妥」綠色徽章，全家雲端同步。',
+      '提醒智慧自動排除：打勾辦妥之生活備忘，立即自首頁待辦橫幅移除，不再重複干擾。',
+      '全新「生活備忘與待辦總覽中心」：獨立彈窗支援「全部待辦」、「今日與逾期 🚨」、「未到期預告 🗓️ (依倒數天數排序)」、「日常雜記 📝」與「已辦妥 ✓」5 大分頁總覽。',
+      '首頁排程預告橫幅與工具列捷徑：未到期排程主動提示預告筆數，首頁工具列新增「📋 待辦總覽」快捷膠囊，點擊隨時查閱。',
+      '編輯彈窗待辦進度狀態切換：編輯記事時可一鍵切換「⚪ 進行中」與「✓ 已辦妥」，並支援清單直接打勾。',
+    ],
+  },
   {
     version: '1.0.4.1',
     date: '2026-10-10',

@@ -20,7 +20,7 @@ interface TransactionItemProps {
 }
 
 export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ transaction, onPress }) => {
-  const { getMemberById, getCategoryById, getAccountById, paymentMethods } = useLedger();
+  const { getMemberById, getCategoryById, getAccountById, paymentMethods, toggleMemoSettled } = useLedger();
 
   const category = getCategoryById(transaction.category_id, transaction.category);
   const payer = getMemberById(transaction.paid_by) || transaction.payer_profile;
@@ -33,46 +33,78 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
   const paymentLabel = formatPaymentLabel(transaction.payment_method, account, paymentMethods);
 
   if (transaction.type === 'memo') {
+    const isCompleted = !!transaction.is_settled;
     const reminderDate = transaction.reminder_date || (transaction.merchant?.startsWith('remind:') ? transaction.merchant.replace('remind:', '') : undefined);
     const memoData = parseMemoNote(transaction.note, category?.name, getCategoryIcon(category?.icon));
 
     return (
       <TouchableOpacity
         activeOpacity={0.7}
-        style={styles.memoCard}
+        style={[styles.memoCard, isCompleted && styles.memoCardCompleted]}
         onPress={() => onPress?.(transaction)}
       >
         <View style={styles.memoHeaderRow}>
           <View style={styles.memoHeaderLeft}>
-            <View style={styles.memoIconBadge}>
+            {/* 一鍵待辦完成 / 取消核取按鈕 */}
+            <TouchableOpacity
+              style={[styles.memoCheckbox, isCompleted && styles.memoCheckboxChecked]}
+              onPress={(e) => {
+                e.stopPropagation?.();
+                toggleMemoSettled?.(transaction.id);
+              }}
+              activeOpacity={0.6}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={[styles.memoCheckboxIcon, isCompleted && styles.memoCheckboxIconChecked]}>
+                {isCompleted ? '✓' : ''}
+              </Text>
+            </TouchableOpacity>
+
+            <View style={[styles.memoIconBadge, isCompleted && styles.memoIconBadgeCompleted]}>
               <Text style={styles.memoIconText}>{memoData.icon}</Text>
             </View>
-            <Text style={styles.memoTitleText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+            <Text
+              style={[styles.memoTitleText, isCompleted && styles.memoTitleTextCompleted]}
+              allowFontScaling={false}
+              maxFontSizeMultiplier={1.08}
+            >
               {memoData.title}
             </Text>
-            {!!reminderDate && (
-              <View style={styles.memoReminderBadge}>
-                <Text style={styles.memoReminderBadgeText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                  ⏰ 提醒：{reminderDate}
+            {isCompleted ? (
+              <View style={styles.memoCompletedBadge}>
+                <Text style={styles.memoCompletedBadgeText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                  ✓ 已辦妥
                 </Text>
               </View>
+            ) : (
+              !!reminderDate && (
+                <View style={styles.memoReminderBadge}>
+                  <Text style={styles.memoReminderBadgeText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    ⏰ 提醒：{reminderDate}
+                  </Text>
+                </View>
+              )
             )}
           </View>
-          <Text style={styles.memoDateText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          <Text style={[styles.memoDateText, isCompleted && styles.memoDateTextCompleted]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
             {formattedDate}
           </Text>
         </View>
 
-        <Text style={styles.memoContentText} allowFontScaling={false} maxFontSizeMultiplier={1.1}>
+        <Text
+          style={[styles.memoContentText, isCompleted && styles.memoContentTextCompleted]}
+          allowFontScaling={false}
+          maxFontSizeMultiplier={1.1}
+        >
           {memoData.cleanContent}
         </Text>
 
         <View style={styles.memoFooterRow}>
-          <Text style={styles.memoAuthorText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          <Text style={[styles.memoAuthorText, isCompleted && styles.memoAuthorTextCompleted]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
             {payer?.avatar_url || '👤'} {payer?.display_name || '成員'} 記錄
           </Text>
-          <Text style={styles.memoActionHint} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            點擊查看 / 編輯 ›
+          <Text style={[styles.memoActionHint, isCompleted && styles.memoActionHintCompleted]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+            {isCompleted ? '查看詳情 ›' : '點擊查看 / 編輯 ›'}
           </Text>
         </View>
       </TouchableOpacity>
@@ -327,6 +359,12 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 1,
   },
+  memoCardCompleted: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+    borderLeftColor: '#10B981',
+    opacity: 0.88,
+  },
   memoHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -339,6 +377,29 @@ const styles = StyleSheet.create({
     gap: 6,
     flex: 1,
   },
+  memoCheckbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.8,
+    borderColor: '#D97706',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 2,
+  },
+  memoCheckboxChecked: {
+    backgroundColor: '#10B981',
+    borderColor: '#10B981',
+  },
+  memoCheckboxIcon: {
+    fontSize: 11,
+    color: 'transparent',
+    fontWeight: '800',
+  },
+  memoCheckboxIconChecked: {
+    color: '#FFFFFF',
+  },
   memoIconBadge: {
     width: 22,
     height: 22,
@@ -347,6 +408,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  memoIconBadgeCompleted: {
+    backgroundColor: '#E2E8F0',
+  },
   memoIconText: {
     fontSize: 12,
   },
@@ -354,6 +418,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#92400E',
+  },
+  memoTitleTextCompleted: {
+    color: '#64748B',
+    textDecorationLine: 'line-through',
+  },
+  memoCompletedBadge: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  memoCompletedBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#059669',
   },
   memoReminderBadge: {
     backgroundColor: '#EFF6FF',
@@ -373,11 +454,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#B45309',
   },
+  memoDateTextCompleted: {
+    color: '#94A3B8',
+  },
   memoContentText: {
     fontSize: 14,
     color: '#1E293B',
     lineHeight: 20,
     marginBottom: 8,
+  },
+  memoContentTextCompleted: {
+    color: '#94A3B8',
+    textDecorationLine: 'line-through',
   },
   memoFooterRow: {
     flexDirection: 'row',
@@ -392,9 +480,15 @@ const styles = StyleSheet.create({
     color: '#78350F',
     fontWeight: '500',
   },
+  memoAuthorTextCompleted: {
+    color: '#94A3B8',
+  },
   memoActionHint: {
     fontSize: 11,
     color: '#D97706',
     fontWeight: '600',
+  },
+  memoActionHintCompleted: {
+    color: '#64748B',
   },
 });

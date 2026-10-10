@@ -54,6 +54,7 @@ import { CreditCardReconciliationModal } from './src/components/CreditCardReconc
 import { PaymentAccountsManageModal } from './src/components/PaymentAccountsManageModal';
 import { PaymentMethodsManageModal } from './src/components/PaymentMethodsManageModal';
 import { RecurringBillsManageModal } from './src/components/RecurringBillsManageModal';
+import { MemoTodoModal } from './src/components/MemoTodoModal';
 import { isBillDueInMonth, isBillPaidForCurrentPeriod } from './src/lib/recurring';
 import { ChangelogModal } from './src/components/ChangelogModal';
 import { APP_FULL_VERSION } from './src/constants/version';
@@ -211,6 +212,7 @@ function MainApp() {
   const [paymentMethodsModalVisible, setPaymentMethodsModalVisible] = useState(false);
   const [recurringModalVisible, setRecurringModalVisible] = useState(false);
   const [recurringModalInitialTab, setRecurringModalInitialTab] = useState<'pending' | 'rules'>('pending');
+  const [memoTodoModalVisible, setMemoTodoModalVisible] = useState(false);
 
   // 本期待繳帳單筆數 (方案 B: 到期需手動確認記帳之項目)
   const pendingRecurringBillsCount = useMemo(() => {
@@ -225,14 +227,26 @@ function MainApp() {
     }).length;
   }, [recurringRules, currentLedger?.id]);
 
-  // 今日或到期待辦之生活記事備忘
+  // 今日或逾期待辦之生活記事備忘（未辦妥）
   const pendingMemos = useMemo(() => {
     const todayYmd = new Date().toISOString().split('T')[0];
     return transactions.filter(t => {
       if (t.type !== 'memo') return false;
+      if (t.is_settled) return false;
       if (!t.reminder_date) return false;
       return t.reminder_date <= todayYmd;
-    });
+    }).sort((a, b) => (a.reminder_date || '').localeCompare(b.reminder_date || ''));
+  }, [transactions]);
+
+  // 未來到期預告之生活記事備忘（未辦妥，依倒數日期排序）
+  const upcomingMemos = useMemo(() => {
+    const todayYmd = new Date().toISOString().split('T')[0];
+    return transactions.filter(t => {
+      if (t.type !== 'memo') return false;
+      if (t.is_settled) return false;
+      if (!t.reminder_date) return false;
+      return t.reminder_date > todayYmd;
+    }).sort((a, b) => (a.reminder_date || '').localeCompare(b.reminder_date || ''));
   }, [transactions]);
   const [searchQuery, setSearchQuery] = useState('');
   const [exportModalVisible, setExportModalVisible] = useState(false);
@@ -2797,31 +2811,66 @@ function MainApp() {
               </TouchableOpacity>
             )}
 
-            {/* 🔔 今日生活備忘與待辦提醒膠囊 */}
-            {pendingMemos.length > 0 && (
+            {/* 🔔 生活備忘與待辦提醒膠囊（今日/逾期 🚨 或 未來排程預告 🗓️） */}
+            {(pendingMemos.length > 0 || upcomingMemos.length > 0) && (
               <TouchableOpacity
-                style={styles.pendingMemoBanner}
+                style={[
+                  styles.pendingMemoBanner,
+                  pendingMemos.length === 0 && {
+                    backgroundColor: '#EFF6FF',
+                    borderColor: '#BFDBFE',
+                    shadowColor: '#3B82F6',
+                  },
+                ]}
                 activeOpacity={0.8}
-                onPress={() => {
-                  const firstPending = pendingMemos[0];
-                  if (firstPending) {
-                    setEditingTransaction(firstPending);
-                  }
-                }}
+                onPress={() => setMemoTodoModalVisible(true)}
               >
                 <View style={styles.pendingMemoLeft}>
-                  <View style={styles.pendingMemoBadge}>
+                  <View
+                    style={[
+                      styles.pendingMemoBadge,
+                      pendingMemos.length === 0 && { backgroundColor: '#2563EB' },
+                    ]}
+                  >
                     <Text style={styles.pendingMemoBadgeText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                      🔔 待辦
+                      {pendingMemos.length > 0 ? '🔔 待辦' : '🗓️ 預告'}
                     </Text>
                   </View>
-                  <Text style={styles.pendingMemoTitle} numberOfLines={1} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    今日有 <Text style={styles.pendingMemoCountHighlight}>{pendingMemos.length}</Text> 則生活待辦：{pendingMemos[0]?.note}
+                  <Text
+                    style={[
+                      styles.pendingMemoTitle,
+                      pendingMemos.length === 0 && { color: '#1E40AF' },
+                    ]}
+                    numberOfLines={1}
+                    allowFontScaling={false}
+                    maxFontSizeMultiplier={1.08}
+                  >
+                    {pendingMemos.length > 0 ? (
+                      <>
+                        今日/逾期 <Text style={styles.pendingMemoCountHighlight}>{pendingMemos.length}</Text> 則待辦：{pendingMemos[0]?.note}
+                      </>
+                    ) : (
+                      <>
+                        排程預告 <Text style={[styles.pendingMemoCountHighlight, { color: '#2563EB' }]}>{upcomingMemos.length}</Text> 則事項：{upcomingMemos[0]?.note}
+                      </>
+                    )}
                   </Text>
                 </View>
-                <View style={styles.pendingMemoAction}>
-                  <Text style={styles.pendingMemoActionText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    查看備忘 ›
+                <View
+                  style={[
+                    styles.pendingMemoAction,
+                    pendingMemos.length === 0 && { backgroundColor: '#DBEAFE' },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.pendingMemoActionText,
+                      pendingMemos.length === 0 && { color: '#1D4ED8' },
+                    ]}
+                    allowFontScaling={false}
+                    maxFontSizeMultiplier={1.08}
+                  >
+                    待辦總覽 ›
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -2957,6 +3006,31 @@ function MainApp() {
                     : (selectedMember?.display_name || '指定成員')}
                 </Text>
                 <Text style={[styles.filterChipArrow, filterMemberId !== defaultMemberId && styles.filterChipArrowActive]}>▾</Text>
+              </TouchableOpacity>
+
+              {/* 📋 生活待辦總覽捷徑按鈕 */}
+              <TouchableOpacity
+                activeOpacity={0.7}
+                style={[
+                  styles.filterChip,
+                  pendingMemos.length > 0
+                    ? { borderColor: '#F59E0B', backgroundColor: '#FEF3C7' }
+                    : { borderColor: '#CBD5E1', backgroundColor: '#F8FAFC' },
+                ]}
+                onPress={() => setMemoTodoModalVisible(true)}
+              >
+                <Text style={styles.filterChipIcon}>📋</Text>
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    {
+                      color: pendingMemos.length > 0 ? '#B45309' : '#475569',
+                      fontWeight: '700',
+                    },
+                  ]}
+                >
+                  待辦總覽{pendingMemos.length > 0 ? ` (${pendingMemos.length})` : ''}
+                </Text>
               </TouchableOpacity>
 
               {/* 若在搜尋狀態下且非查全部月份，提供 1 鍵切換至全部月份 */}
@@ -4428,6 +4502,17 @@ function MainApp() {
         visible={!!editingTransaction}
         transaction={editingTransaction}
         onClose={() => setEditingTransaction(null)}
+      />
+
+      {/* 生活備忘與待辦總覽彈窗 */}
+      <MemoTodoModal
+        visible={memoTodoModalVisible}
+        onClose={() => setMemoTodoModalVisible(false)}
+        onEditMemo={(tx) => setEditingTransaction(tx)}
+        onAddMemo={() => {
+          setModalMode('memo');
+          setModalVisible(true);
+        }}
       />
 
       {/* 記帳分類項目管理彈窗 (僅管理員可增修) */}

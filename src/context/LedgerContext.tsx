@@ -249,8 +249,10 @@ interface LedgerContextType {
       payment_method?: PaymentMethod;
       account_id?: string;
       is_reconciled?: boolean;
+      is_settled?: boolean;
     }
   ) => Promise<boolean>;
+  toggleMemoSettled: (id: string) => Promise<boolean>;
   deleteTransaction: (id: string) => Promise<void>;
   transferAllowance: (data: {
     amount: number;
@@ -4332,6 +4334,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       payment_method?: PaymentMethod;
       account_id?: string;
       is_reconciled?: boolean;
+      is_settled?: boolean;
     }
   ): Promise<boolean> => {
     try {
@@ -4410,6 +4413,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (data.payment_method !== undefined) updatePayload.payment_method = data.payment_method;
         if (data.account_id !== undefined) updatePayload.account_id = data.account_id;
         if (data.is_reconciled !== undefined) updatePayload.is_reconciled = data.is_reconciled;
+        if (data.is_settled !== undefined) updatePayload.is_settled = data.is_settled;
         updatePayload.updated_at = new Date().toISOString();
 
         if (hasMerchantColumnRef.current) {
@@ -4463,6 +4467,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.warn('更新交易例外錯誤:', err);
       return false;
     }
+  };
+
+  // 一鍵切換生活記事完成/待辦狀態
+  const toggleMemoSettled = async (id: string): Promise<boolean> => {
+    const target = transactions.find(t => t.id === id);
+    if (!target) return false;
+    const nextSettled = !target.is_settled;
+    return updateTransaction(id, { is_settled: nextSettled });
   };
 
   // 匯出為 CSV 格式 (自帶 UTF-8 BOM，防止 Windows Excel 雙擊開啟出現繁體中文亂碼)
@@ -5684,6 +5696,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         },
         addTransaction,
         updateTransaction,
+        toggleMemoSettled,
         deleteTransaction,
         transferAllowance,
         recentMerchants,

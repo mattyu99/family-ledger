@@ -110,6 +110,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const [merchant, setMerchant] = useState<string>(() => transaction?.merchant || '');
   const [note, setNote] = useState<string>(() => transaction?.note || '');
   const [memoReminderDate, setMemoReminderDate] = useState<string>(() => transaction?.reminder_date || '');
+  const [isSettled, setIsSettled] = useState<boolean>(() => !!transaction?.is_settled);
   const [transactedAt, setTransactedAt] = useState<string>(() => transaction?.transacted_at || new Date().toISOString());
   const [datePickerVisible, setDatePickerVisible] = useState<boolean>(false);
   const [reminderDatePickerVisible, setReminderDatePickerVisible] = useState<boolean>(false);
@@ -252,6 +253,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       setMerchant(transaction.merchant || '');
       setNote(transaction.note || '');
       setMemoReminderDate(transaction.reminder_date || '');
+      setIsSettled(!!transaction.is_settled);
       setReminderDatePickerVisible(false);
       setTransactedAt(transaction.transacted_at || new Date().toISOString());
       setDatePickerVisible(false);
@@ -365,6 +367,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           reminder_date: memoReminderDate || undefined,
           merchant: memoReminderDate ? `remind:${memoReminderDate}` : 'memo',
           transacted_at: transactedAt || transaction.transacted_at,
+          is_settled: isSettled,
         });
 
         if (success) {
@@ -497,6 +500,34 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                     <Text style={styles.memoBannerDesc} maxFontSizeMultiplier={1.08}>
                       隨手記錄生活瑣事、採買清單或重要待辦。獨立於財務統計，支援到期提醒！
                     </Text>
+                  </View>
+                </View>
+
+                {/* 待辦事項進度狀態切換 */}
+                <View style={styles.memoStatusContainer}>
+                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>待辦進度狀態</Text>
+                  <View style={styles.memoStatusRow}>
+                    <TouchableOpacity
+                      disabled={!canEdit}
+                      style={[styles.memoStatusChip, !isSettled && styles.memoStatusChipActivePending]}
+                      onPress={() => setIsSettled(false)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.memoStatusChipText, !isSettled && styles.memoStatusChipTextActivePending]}>
+                        ⚪ 待辦進行中
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      disabled={!canEdit}
+                      style={[styles.memoStatusChip, isSettled && styles.memoStatusChipActiveCompleted]}
+                      onPress={() => setIsSettled(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.memoStatusChipText, isSettled && styles.memoStatusChipTextActiveCompleted]}>
+                        ✓ 已完成辦妥
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
 
@@ -1726,6 +1757,45 @@ const styles = StyleSheet.create({
   },
   quickNoteChipTextActive: {
     color: '#92400E',
+    fontWeight: '700',
+  },
+  memoStatusContainer: {
+    marginBottom: 12,
+  },
+  memoStatusRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  memoStatusChip: {
+    flex: 1,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  memoStatusChipActivePending: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#F59E0B',
+  },
+  memoStatusChipActiveCompleted: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#10B981',
+  },
+  memoStatusChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  memoStatusChipTextActivePending: {
+    color: '#B45309',
+    fontWeight: '700',
+  },
+  memoStatusChipTextActiveCompleted: {
+    color: '#059669',
     fontWeight: '700',
   },
 });
