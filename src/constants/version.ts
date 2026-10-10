@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 12;
+export const APP_BUILD_REVISION = 13;
 
-// 完整版本字串 (例如 "1.0.4.12")
+// 完整版本字串 (例如 "1.0.4.13")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,15 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.13',
+    date: '2026-10-10',
+    title: '資料庫智爸與豆豆身分徹底校正歸位，創建者裝置自動精準對齊智爸身分',
+    highlights: [
+      '雲端資料庫全面校正智爸 Profile：徹底還原智爸 (9a24be3d) 之稱謂與頭像 (👨 智爸)，並確保豆豆 (8a0505f0 🦕) 重新常駐於成員名冊中，4 位成員全員歸隊。',
+      '創建者裝置智慧精準對齊：若本機裝置為帳本建立者，優先直接對齊建立者 Profile (智爸)，杜絕先前舊版本遺留之受污染快取導致創建者身分被標示為「豆豆」之混亂。',
+    ],
+  },
   {
     version: '1.0.4.12',
     date: '2026-10-10',

@@ -1787,7 +1787,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         try { targetSavedUser = JSON.parse(savedLedgerUserStr); } catch {}
       }
 
-      if (targetSavedUser) {
+      // 尋找此裝置對應的成員：
+      // 1. 若當前裝置 Auth User ID 在名冊中且為建立者 (isCreator)，優先對齊建立者 Profile (防止舊版本受污染的本地快取將創建者誤導至其他成員)
+      if (isCreator) {
+        canonicalMe = dedupedMembers.find(m => m.id === authUserId);
+      }
+
+      if (!canonicalMe && targetSavedUser) {
         canonicalMe = dedupedMembers.find(
           m => (isValidUUID(targetSavedUser?.id) && m.id === targetSavedUser?.id) ||
                (targetSavedUser?.display_name && (m.display_name || '').trim().toLowerCase() === targetSavedUser.display_name.trim().toLowerCase())
