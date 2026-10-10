@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 17;
+export const APP_BUILD_REVISION = 18;
 
-// 完整版本字串 (例如 "1.0.4.17")
+// 完整版本字串 (例如 "1.0.4.18")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,15 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.18',
+    date: '2026-10-10',
+    title: '模式切換窗條移至頁面最底端，測試泡泡按鈕僅限管理員顯示',
+    highlights: [
+      '模式切換窗條位置優化：將「日常成員模式 ⇄ 管理員提權模式」切換卡片由「家庭設定」頂部移至整個頁面的最底端。打開設定時版面 100% 聚焦於家庭成員名單，視覺更自然乾淨。',
+      '測試即時動態泡泡權限控管：「🔔 測試即時動態泡泡通知」按鈕改為僅在管理員模式下顯示，日常成員模式自動隱藏，介面更乾淨無冗餘除錯按鈕。',
+    ],
+  },
   {
     version: '1.0.4.17',
     date: '2026-10-10',

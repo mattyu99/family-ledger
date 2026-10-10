@@ -4140,51 +4140,6 @@ function MainApp() {
 
         {activeTab === 'family' && (
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollPadding}>
-            {/* 管理員日常成員模式 / 提權管理模式切換卡片 */}
-            {realIsOwner && (
-              <View style={[styles.sudoCard, isAdminMode ? styles.sudoCardUnlocked : styles.sudoCardProtected]}>
-                <View style={styles.sudoCardLeft}>
-                  <Text style={styles.sudoCardIcon}>{isAdminMode ? '👑' : '🛡️'}</Text>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text style={[styles.sudoCardTitle, isAdminMode ? styles.sudoCardTitleUnlocked : styles.sudoCardTitleProtected]}>
-                      {isAdminMode ? '目前模式：管理員模式 (已啟用)' : '目前模式：日常成員模式 (安全防護中)'}
-                    </Text>
-                    <Text style={styles.sudoCardDesc}>
-                      {isAdminMode
-                        ? '管理員特權已全面解除隱藏，可自由維護帳本、管理成員與資料庫備份。管理完成後建議切回日常成員模式。'
-                        : '本機已進入日常成員保護模式，所有管理員專屬按鈕已自動隱藏，日常記帳更安心防誤觸。需要管理時請輸入 PIN 碼切換。'}
-                    </Text>
-                  </View>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  {isAdminMode ? (
-                    <TouchableOpacity
-                      style={[styles.sudoCardBtn, styles.sudoCardBtnLock, { flex: 1 }]}
-                      onPress={handleSwitchToDailyMemberMode}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.sudoCardBtnText, styles.sudoCardBtnTextLock]}>
-                        🔒 切回日常成員模式
-                      </Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity
-                      style={[styles.sudoCardBtn, styles.sudoCardBtnUnlock, { flex: 1 }]}
-                      onPress={() => {
-                        setAdminModePinInput('');
-                        setAdminModeModalVisible(true);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.sudoCardBtnText, styles.sudoCardBtnTextUnlock]}>
-                        🔐 輸入 PIN 碼切換為管理員模式
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-            )}
-
             {/* 家庭成員名冊與管理 */}
             <View style={styles.cardSection}>
               <View style={styles.sectionHeaderRow}>
@@ -4241,7 +4196,7 @@ function MainApp() {
                       activeOpacity={0.7}
                       onPress={() => {
                         if (!canEdit) {
-                          showAlert('成員資料', `「${member.display_name}」為家庭成員。\n若需由管理員調整稱謂或權限，請先至上方切換至管理員模式。`);
+                          showAlert('成員資料', `「${member.display_name}」為家庭成員。\n若需由管理員調整稱謂或權限，請先至下方切換至管理員模式。`);
                           return;
                         }
                         handleStartEditMember(member);
@@ -4713,27 +4668,74 @@ function MainApp() {
                 </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.testToastBtn}
-                onPress={() => {
-                  triggerLiveToast({
-                    id: `demo-${Date.now()}`,
-                    type: 'insert',
-                    actorName: '媽媽',
-                    avatar: '👩',
-                    title: '🎉 媽媽 剛記了一筆！',
-                    message: '🛒 全聯生鮮超市 -NT$ 680 (鮮乳、有機蛋)',
-                    amount: 680,
-                    createdAt: Date.now(),
-                  });
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.testToastBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                  🔔 測試即時動態泡泡通知
-                </Text>
-              </TouchableOpacity>
+              {isOwner && (
+                <TouchableOpacity
+                  style={styles.testToastBtn}
+                  onPress={() => {
+                    triggerLiveToast({
+                      id: `demo-${Date.now()}`,
+                      type: 'insert',
+                      actorName: '媽媽',
+                      avatar: '👩',
+                      title: '🎉 媽媽 剛記了一筆！',
+                      message: '🛒 全聯生鮮超市 -NT$ 680 (鮮乳、有機蛋)',
+                      amount: 680,
+                      createdAt: Date.now(),
+                    });
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.testToastBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    🔔 測試即時動態泡泡通知
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
+
+            {/* 管理員日常成員模式 / 提權管理模式切換窗條 (置於家庭設定最下方) */}
+            {realIsOwner && (
+              <View style={[styles.sudoCard, isAdminMode ? styles.sudoCardUnlocked : styles.sudoCardProtected, { marginTop: 12 }]}>
+                <View style={styles.sudoCardLeft}>
+                  <Text style={styles.sudoCardIcon}>{isAdminMode ? '👑' : '🛡️'}</Text>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={[styles.sudoCardTitle, isAdminMode ? styles.sudoCardTitleUnlocked : styles.sudoCardTitleProtected]}>
+                      {isAdminMode ? '目前模式：管理員模式 (已啟用)' : '目前模式：日常成員模式 (安全防護中)'}
+                    </Text>
+                    <Text style={styles.sudoCardDesc}>
+                      {isAdminMode
+                        ? '管理員特權已全面解除隱藏，可自由維護帳本、管理成員與資料庫備份。管理完成後建議切回日常成員模式。'
+                        : '本機已進入日常成員保護模式，所有管理員專屬按鈕已自動隱藏，日常記帳更安心防誤觸。需要管理時請輸入 PIN 碼切換。'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  {isAdminMode ? (
+                    <TouchableOpacity
+                      style={[styles.sudoCardBtn, styles.sudoCardBtnLock, { flex: 1 }]}
+                      onPress={handleSwitchToDailyMemberMode}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.sudoCardBtnText, styles.sudoCardBtnTextLock]}>
+                        🔒 切回日常成員模式
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.sudoCardBtn, styles.sudoCardBtnUnlock, { flex: 1 }]}
+                      onPress={() => {
+                        setAdminModePinInput('');
+                        setAdminModeModalVisible(true);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.sudoCardBtnText, styles.sudoCardBtnTextUnlock]}>
+                        🔐 輸入 PIN 碼切換為管理員模式
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            )}
           </ScrollView>
         )}
       </View>
