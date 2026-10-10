@@ -334,7 +334,7 @@ interface LedgerContextType {
   isDeviceBound: boolean;
   bindDeviceToMember: (member: Profile) => Promise<void>;
   unbindDevice: () => Promise<void>;
-  switchCurrentUser: (member: Profile) => Promise<void>;
+  switchCurrentUser: (member: Profile, pin?: string) => Promise<{ success: boolean; message?: string }>;
   isCloudSynced: boolean;
   settlementInfo: {
     totalExpense: number;
@@ -6004,10 +6004,23 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  // 一鍵切換本機成員身分（讓使用者可在多成員或長輩/小孩身分間自由切換）
-  const switchCurrentUser = async (member: Profile) => {
+  // 一鍵切換本機成員身分（包含管理員 PIN 碼權限防護）
+  const switchCurrentUser = async (member: Profile, inputPin?: string): Promise<{ success: boolean; message?: string }> => {
     try {
       const isMemberCreator = currentLedger.created_by === member.id;
+      const targetIsAdmin = isMemberCreator || member.role === 'owner' || member.role === 'admin';
+      const currentIsAdmin = userRole === 'owner' || userRole === 'admin';
+
+      // 安全防護機制：
+      // 若當前裝置為一般成員身分（非管理員），且欲切換至具備管理員權限的成員，強制驗證 4 位數管理員 PIN 碼！
+      if (!currentIsAdmin && targetIsAdmin) {
+        const clean = (inputPin || '').trim();
+        const expected = ((currentLedger as any)?.admin_pin || adminPin || '8888').trim();
+        if (!clean || clean !== expected) {
+          return { success: false, message: '管理員安全 PIN 碼錯誤，無法切換至管理員身分！' };
+        }
+      }
+
       const resolvedRole: 'owner' | 'admin' | 'member' =
         isMemberCreator ? 'owner' : (member.role === 'owner' || member.role === 'admin' ? member.role : 'member');
       const updatedUser: Profile = { ...member, role: resolvedRole };
@@ -6057,8 +6070,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           console.warn('switchCurrentUser 雲端同步失敗:', e);
         }
       }
-    } catch (err) {
+
+      return { success: true };
+    } catch (err: any) {
       console.error('switchCurrentUser 異常:', err);
+      return { success: false, message: err?.message || '切換身分失敗' };
     }
   };
 

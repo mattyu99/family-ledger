@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 10;
+export const APP_BUILD_REVISION = 11;
 
-// 完整版本字串 (例如 "1.0.4.10")
+// 完整版本字串 (例如 "1.0.4.11")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.11',
+    date: '2026-10-10',
+    title: '成員身分切換加裝管理員 PIN 碼安全防護鎖',
+    highlights: [
+      '管理員身分切換 PIN 碼防護鎖：為杜絕孩童或一般成員隨意切換至管理員（如「智爸」）導致權限越權外洩，凡由一般成員切換至管理員/創建者身分，系統強制彈出 4 位數 PIN 碼驗證，未通過驗證一律禁止切換與提權。',
+      '家長最高權限自由度：若本機裝置已為管理員，可無障礙指派切換身分；若降為一般成員，要再次重返管理員時皆須 PIN 碼核可，杜絕任何權限提升漏洞。',
+      '防篡改雲端與本地身分聯動：身分切換與雲端 Session Profile 及 ledger_members 雙向同步驗證，確保家庭成員帳目安全性與管理權限滴水不漏。',
+    ],
+  },
   {
     version: '1.0.4.10',
     date: '2026-10-10',

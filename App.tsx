@@ -848,6 +848,10 @@ function MainApp() {
   const [showPinClear, setShowPinClear] = useState(false);
   const [claimAdminModalVisible, setClaimAdminModalVisible] = useState(false);
   const [claimAdminPinInput, setClaimAdminPinInput] = useState('');
+  const [switchPinModalVisible, setSwitchPinModalVisible] = useState(false);
+  const [switchTargetMember, setSwitchTargetMember] = useState<Profile | null>(null);
+  const [switchPinInput, setSwitchPinInput] = useState('');
+  const [isSwitchingWithPin, setIsSwitchingWithPin] = useState(false);
 
   // 模式 A：帳本入口與邀請管理狀態
   const [createLedgerModalVisible, setCreateLedgerModalVisible] = useState(false);
@@ -1454,35 +1458,66 @@ function MainApp() {
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
             >
-              {/* 本機身分一鍵切換：當檢視的對象不是當前本機身分時，提供一鍵切換為此成員 */}
-              {!isCurrent && targetMember && (
-                <View style={styles.modalMemberSwitchSection}>
-                  <Text style={styles.formLabel}>📱 本機裝置身分切換</Text>
-                  <Text style={styles.modalSubHint}>
-                    若您是「{targetMember.display_name}」，您可以將這台裝置直接設為此成員身分。日常記帳付款人將自動切換，並即時繼承此成員之管理權限！
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.modalSwitchUserBtn}
-                    activeOpacity={0.7}
-                    onPress={() => {
-                      showConfirm(
-                        '切換本機身分',
-                        `確定將這台裝置設為「${targetMember.display_name}」的身分嗎？\n\n・記帳付款人將自動預設為「${targetMember.display_name}」\n・${targetMember.role === 'owner' || currentLedger.created_by === targetMember.id ? '此成員為管理員/創建者，本機將立即恢復管理權限 👑' : '本機將以此成員身分使用'}`,
-                        async () => {
-                          await switchCurrentUser(targetMember);
-                          setEditMemberModalVisible(false);
-                          showAlert('身分切換成功', `已將本機身分切換為「${targetMember.display_name}」！`);
-                        }
-                      );
-                    }}
-                  >
-                    <Text style={styles.modalSwitchUserBtnText}>
-                      👤 將此成員設為本機身分（我是「{targetMember.display_name}」）
+              {/* 本機身分切換（含管理員 PIN 碼安全防護） */}
+              {!isCurrent && targetMember && (() => {
+                const isTargetAdmin =
+                  targetMember.role === 'owner' ||
+                  targetMember.role === 'admin' ||
+                  currentLedger.created_by === targetMember.id;
+                const isCurrentAdmin = isOwner || realIsOwner;
+                const needsPin = !isCurrentAdmin && isTargetAdmin;
+
+                return (
+                  <View style={styles.modalMemberSwitchSection}>
+                    <Text style={styles.formLabel}>
+                      {needsPin ? '🔐 管理員身分切換防護' : '📱 本機裝置身分切換'}
                     </Text>
-                  </TouchableOpacity>
-                  <View style={[styles.memberSectionDivider, { marginTop: 16 }]} />
-                </View>
-              )}
+                    <Text style={styles.modalSubHint}>
+                      {needsPin
+                        ? `「${targetMember.display_name}」為帳本管理員。為防範孩童或未授權者獲取管理權限，切換至此成員強制需要輸入 4 位數管理員 PIN 碼驗證！`
+                        : `若您是「${targetMember.display_name}」，您可以將這台裝置直接設為此成員身分。日常記帳付款人將自動切換為此成員。`}
+                    </Text>
+                    <TouchableOpacity
+                      style={[
+                        styles.modalSwitchUserBtn,
+                        needsPin && styles.modalSwitchUserBtnLocked,
+                      ]}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        if (needsPin) {
+                          setSwitchTargetMember(targetMember);
+                          setSwitchPinInput('');
+                          setSwitchPinModalVisible(true);
+                        } else {
+                          showConfirm(
+                            '切換本機身分',
+                            `確定將這台裝置設為「${targetMember.display_name}」的身分嗎？\n\n・記帳付款人將自動預設為「${targetMember.display_name}」`,
+                            async () => {
+                              const res = await switchCurrentUser(targetMember);
+                              if (res.success) {
+                                setEditMemberModalVisible(false);
+                                showAlert('身分切換成功', `已將本機身分切換為「${targetMember.display_name}」！`);
+                              } else {
+                                showAlert('切換失敗', res.message || '無法切換身分');
+                              }
+                            }
+                          );
+                        }
+                      }}
+                    >
+                      <Text style={[
+                        styles.modalSwitchUserBtnText,
+                        needsPin && styles.modalSwitchUserBtnTextLocked,
+                      ]}>
+                        {needsPin
+                          ? `🔒 輸入 PIN 碼驗證切換為「${targetMember.display_name}」（管理員）`
+                          : `👤 將此成員設為本機身分（我是「${targetMember.display_name}」）`}
+                      </Text>
+                    </TouchableOpacity>
+                    <View style={[styles.memberSectionDivider, { marginTop: 16 }]} />
+                  </View>
+                );
+              })()}
 
               {canModifyProfile ? (
                 <>
@@ -2392,6 +2427,81 @@ function MainApp() {
             }}
           >
             <Text style={styles.submitMemberBtnText}>確認驗證並取得管理員權限</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const renderSwitchPinModal = () => (
+    <Modal visible={switchPinModalVisible} animationType="fade" transparent onRequestClose={() => setSwitchPinModalVisible(false)}>
+      <View style={[
+        styles.exportOverlay,
+        keyboardOffset > 0 && styles.exportOverlayKeyboardActive
+      ]}>
+        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
+        <View style={styles.exportCard}>
+          <View style={styles.modalHeaderRow}>
+            <View style={{ flex: 1, marginRight: 8 }}>
+              <Text style={styles.exportTitle}>🔐 管理員身分安全驗證</Text>
+              <Text style={styles.formHint}>
+                {switchTargetMember
+                  ? `您正切換至具備管理員權限的成員「${switchTargetMember.display_name}」。為防範孩童或未經授權者越權，請輸入管理員 4 位數 PIN 碼：`
+                  : '請輸入管理員安全 PIN 碼'}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => setSwitchPinModalVisible(false)} style={styles.closeBtn}>
+              <Text style={styles.closeText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.formLabelRow}>
+            <Text style={styles.formLabel}>管理員安全 PIN 碼</Text>
+            {keyboardOffset > 0 && (
+              <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <TextInput
+            style={styles.modalInput}
+            placeholder="請輸入 4 位數 PIN 碼"
+            placeholderTextColor="#9CA3AF"
+            value={switchPinInput}
+            keyboardType="number-pad"
+            maxLength={8}
+            secureTextEntry
+            autoFocus
+            onChangeText={setSwitchPinInput}
+            returnKeyType="done"
+            onSubmitEditing={Keyboard.dismiss}
+          />
+
+          <TouchableOpacity
+            style={styles.submitMemberBtn}
+            disabled={isSwitchingWithPin}
+            onPress={async () => {
+              if (!switchPinInput.trim()) {
+                showAlert('請輸入 PIN 碼', '請輸入管理員 4 位數安全 PIN 碼');
+                return;
+              }
+              if (!switchTargetMember) return;
+              setIsSwitchingWithPin(true);
+              const res = await switchCurrentUser(switchTargetMember, switchPinInput.trim());
+              setIsSwitchingWithPin(false);
+              if (res.success) {
+                setSwitchPinModalVisible(false);
+                setSwitchPinInput('');
+                setEditMemberModalVisible(false);
+                showAlert('身分驗證成功！', `已成功將本機切換為「${switchTargetMember.display_name}」，並取得管理員權限 👑！`);
+              } else {
+                showAlert('驗證失敗', res.message || 'PIN 碼錯誤，無法切換至管理員身分');
+              }
+            }}
+          >
+            <Text style={styles.submitMemberBtnText}>
+              {isSwitchingWithPin ? '驗證中...' : '確認驗證並切換為管理員'}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -5088,6 +5198,9 @@ function MainApp() {
       {/* PIN 碼升級管理員彈窗 */}
       {renderClaimAdminModal()}
 
+      {/* 切換管理員身分 PIN 碼驗證彈窗 */}
+      {renderSwitchPinModal()}
+
       {/* 切換帳本彈窗 */}
       {renderSwitchLedgerModal()}
 
@@ -7116,6 +7229,13 @@ const styles = StyleSheet.create({
     color: '#15803D',
     fontSize: 14,
     fontWeight: '700',
+  },
+  modalSwitchUserBtnLocked: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FCD34D',
+  },
+  modalSwitchUserBtnTextLocked: {
+    color: '#B45309',
   },
   memberReadOnlyCard: {
     backgroundColor: '#F8FAFC',
