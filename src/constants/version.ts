@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 7;
+export const APP_BUILD_REVISION = 8;
 
-// 完整版本字串 (例如 "1.0.4.7")
+// 完整版本字串 (例如 "1.0.4.8")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.8',
+    date: '2026-10-10',
+    title: '徹底根除 Web 端重新整理退出帳本與 Session 換發自動無感重連',
+    highlights: [
+      '網址列第 0 秒靜默洗淨：透過邀請連結進入網頁版時，第一時間自瀏覽器網址列靜默清洗 ?invite= / ?join= 參數，保證往後按 F5 重新整理永遠是純淨路徑，100% 絕不再重複觸發邀請彈窗。',
+      '本機快取黃金絕對鎖定 (Local-First Absolute Lock)：只要瀏覽器 LocalStorage 存有真實帳本、已加入標記或使用者身分，狀態永久鎖定為已加入，嚴禁任何非同步或雲端查詢延遲將其重設為 false。',
+      'Session 換發自動無感重連：當匿名 Session 到期或更換 User ID 時，系統於背景透過 Security Definer RPC 函式以本機帳本自動完成名冊重連，並同步 Profile 稱謂與頭像，使用者 0 感知、免重新輸入邀請碼。',
+      '雲端離線資料保底：若雲端連線失敗或查詢異常，嚴格保留本機交易紀錄與家庭成員名冊，絕不覆寫為空陣列。',
+    ],
+  },
   {
     version: '1.0.4.7',
     date: '2026-10-10',

@@ -839,6 +839,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (savedCode) setInviteCode(savedCode);
 
         const savedLedger = await AsyncStorage.getItem(STORAGE_KEYS.LEDGER);
+        const savedUserStr = await AsyncStorage.getItem(STORAGE_KEYS.CURRENT_USER);
+
         if (savedLedger) {
           try {
             const parsed = JSON.parse(savedLedger);
@@ -852,14 +854,15 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               }
             }
           } catch {}
-        } else if (savedHasJoined === 'false') {
-          // 僅在明確無真實帳本快取、且無任何邀請碼與使用者身分紀錄時才關閉
-          const savedUserStr = await AsyncStorage.getItem(STORAGE_KEYS.CURRENT_USER);
-          if (!savedCode && !savedUserStr) {
-            setHasJoinedLedger(false);
-          } else {
-            setHasJoinedLedger(true);
-          }
+        }
+
+        // 本機快取黃金絕對鎖定 (Local-First Absolute Lock)：
+        // 只要本機存有真實帳本、已加入標記、邀請碼或使用者身分紀錄，100% 鎖死為已加入狀態
+        if (savedLedger || savedHasJoined === 'true' || savedCode || savedUserStr) {
+          setHasJoinedLedger(true);
+        } else {
+          // 僅在「完全無任何帳本快取、身分紀錄與邀請碼」的全新冷啟動時，才顯示初始歡迎畫面
+          setHasJoinedLedger(false);
         }
 
         const savedBound = await AsyncStorage.getItem(STORAGE_KEYS.DEVICE_BOUND);
@@ -2096,6 +2099,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
 
+    // 雲端查詢失敗或無資料時的 Local-First 保底：絕不將本機快取的交易明細覆蓋成空陣列
+    if (finalTx.length === 0 && txRows === null && targetLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        const savedTxStr = (await AsyncStorage.getItem(`${STORAGE_KEYS.TRANSACTIONS}_${targetLedger.id}`)) ||
+                           (await AsyncStorage.getItem(STORAGE_KEYS.TRANSACTIONS));
+        if (savedTxStr) {
+          const cachedTx = JSON.parse(savedTxStr);
+          if (Array.isArray(cachedTx) && cachedTx.length > 0) {
+            finalTx = cachedTx;
+          }
+        }
+      } catch {}
+    }
+
     finalTx.sort((a, b) => new Date(b.transacted_at).getTime() - new Date(a.transacted_at).getTime());
     setTransactions(finalTx);
     await AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(finalTx));
@@ -2372,6 +2389,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const params = new URLSearchParams(window.location.search);
           urlInviteCode = params.get('invite');
           urlJoinId = params.get('join') || params.get('ledger');
+          // 網址列第 0 秒靜默洗淨：一旦讀取出參數，立即清洗瀏覽器網址列，避免使用者未來按 F5 重新整理時再度夾帶 Query 參數
+          if ((urlInviteCode || urlJoinId) && window.history) {
+            try {
+              window.history.replaceState({}, document.title, window.location.pathname);
+            } catch {}
+          }
         }
 
         // 查詢該用戶目前已加入的帳本清單 (依加入時間新到舊排序)
@@ -2398,7 +2421,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         let validMemberLedgers = (memberLedgers || []).filter((m: any) => m.ledgers && isValidUUID(m.ledgers.id));
 
-        // 若伺服器查無該使用者的帳本成員記錄，但本機已儲存有效邀請碼或帳本 ID（例如 APK 剛安裝或本地離線恢復）
+        // 若伺服器查無該使用者的帳本成員記錄，但本機已儲存有效邀請碼或帳本 ID（例如 Session 換發、APK 剛安裝或本地離線恢復）
         if (validMemberLedgers.length === 0 && (savedCode || savedLedgerId)) {
           try {
             let foundLedger: any = null;
@@ -2517,11 +2540,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
 
             if (foundLedger && isValidUUID(foundLedger.id)) {
-              await supabase.from('ledger_members').upsert({
-                ledger_id: foundLedger.id,
-                user_id: authUser.id,
-                role: savedRole,
-              });
+              // 透過 RPC 成功綁定後已由 Security Definer 寫入 ledger_members，安全同步最新 Profile 稱謂與頭像
+              try {
+                const activeSavedUserStr = (await AsyncStorage.getItem(`${STORAGE_KEYS.CURRENT_USER}_${foundLedger.id}`)) ||
+                                           (await AsyncStorage.getItem(STORAGE_KEYS.CURRENT_USER));
+                if (activeSavedUserStr) {
+                  const au = JSON.parse(activeSavedUserStr);
+                  if (au.display_name) {
+                    await supabase.from('profiles').upsert({
+                      id: authUser.id,
+                      display_name: au.display_name,
+                      avatar_url: au.avatar_url || '👩',
+                    });
+                  }
+                }
+              } catch {}
 
               validMemberLedgers = [
                 {
@@ -2572,7 +2605,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               (urlJoinId && (m.ledger_id === urlJoinId || m.ledgers?.id === urlJoinId)) ||
               (urlInviteCode && savedCode && savedCode.toUpperCase() === urlInviteCode.toUpperCase())
           ) || (savedLedgerId && urlJoinId && savedLedgerId === urlJoinId)
-            || (savedLedgerId && !urlJoinId); // 若本機已有有效帳本，且網址僅為一般邀請碼，不應強制跳加入彈窗
+            || (savedLedgerId && !urlJoinId) // 若本機已有有效帳本，且網址僅為一般邀請碼，不應強制跳加入彈窗
+            || (validMemberLedgers.length > 0 && !urlJoinId); // 若已在有效成員帳本中，不強制跳彈窗
 
           if (!alreadyInThisLedger) {
             // 收到邀請：交給 Join Modal 讓使用者填寫自己的暱稱與頭像確認加入，絕不可在背景偷偷產生「家庭成員」假人
