@@ -158,6 +158,10 @@ function MainApp() {
     isCloudSynced,
     hasJoinedLedger,
     isOwner,
+    isAdminUnlocked,
+    setIsAdminUnlocked,
+    unlockAdmin,
+    lockAdmin,
     inviteCode,
     adminPin,
     updateAdminPin,
@@ -848,6 +852,50 @@ function MainApp() {
   const [claimAdminModalVisible, setClaimAdminModalVisible] = useState(false);
   const [claimAdminPinInput, setClaimAdminPinInput] = useState('');
 
+  // 管理員安全保險栓（Sudo 模式）狀態
+  const [adminUnlockModalVisible, setAdminUnlockModalVisible] = useState(false);
+  const [adminUnlockPinInput, setAdminUnlockPinInput] = useState('');
+  const [adminUnlockActionLabel, setAdminUnlockActionLabel] = useState('執行管理員操作');
+  const [adminUnlockPendingAction, setAdminUnlockPendingAction] = useState<(() => void) | null>(null);
+
+  const requestAdminUnlock = (actionLabel: string, callback?: () => void) => {
+    if (isAdminUnlocked) {
+      if (callback) callback();
+      return;
+    }
+    setAdminUnlockActionLabel(actionLabel);
+    setAdminUnlockPendingAction(() => callback || null);
+    setAdminUnlockPinInput('');
+    setAdminUnlockModalVisible(true);
+  };
+
+  const handleConfirmAdminUnlock = () => {
+    const res = unlockAdmin(adminUnlockPinInput);
+    if (!res.success) {
+      showAlert('PIN 碼驗證失敗', res.message || '管理員安全 PIN 碼錯誤，請重新輸入！');
+      return;
+    }
+    setAdminUnlockModalVisible(false);
+    setAdminUnlockPinInput('');
+    showAlert('🔓 管理員權限已解鎖', '已成功解鎖最高管理權限！\n現在可執行帳本更名、成員管理、備份還原等高級操作。\n操作完成後可隨時至家庭設定點擊「立即上鎖」。');
+    if (adminUnlockPendingAction) {
+      const action = adminUnlockPendingAction;
+      setAdminUnlockPendingAction(null);
+      action();
+    }
+  };
+
+  const handleLockAdmin = () => {
+    showConfirm(
+      '回防日常保護模式',
+      '確定要上鎖管理員權限嗎？\n上鎖後將隱藏/保護高風險管理功能，避免日常誤觸。',
+      () => {
+        lockAdmin();
+        showAlert('🔒 已上鎖', '已回防至管理員日常保護模式！');
+      }
+    );
+  };
+
   // 模式 A：帳本入口與邀請管理狀態
   const [createLedgerModalVisible, setCreateLedgerModalVisible] = useState(false);
   const [newLedgerName, setNewLedgerName] = useState('幸福家庭公帳');
@@ -1043,6 +1091,10 @@ function MainApp() {
       showAlert('🔒 權限不足', '只有帳本管理員才能回復帳本資料');
       return;
     }
+    if (!isAdminUnlocked) {
+      requestAdminUnlock('回復資料庫備份', () => handleConfirmRestore());
+      return;
+    }
     if (!restoreJsonInput.trim() || !parsedBackupPreview) {
       showAlert('提示', '請先貼上或選擇有效的備份內容');
       return;
@@ -1134,6 +1186,17 @@ function MainApp() {
           ]
         );
       }
+      return;
+    }
+    if (tab === 'restore' && !isAdminUnlocked) {
+      requestAdminUnlock('回復資料庫備份', () => {
+        const csv = exportToCSV();
+        const json = exportToJSON();
+        setCsvContent(csv);
+        setJsonContent(json);
+        setExportTab('restore');
+        setExportModalVisible(true);
+      });
       return;
     }
     const csv = exportToCSV();
@@ -1248,6 +1311,10 @@ function MainApp() {
       showAlert('權限不足', '只有帳本管理員才能新增家庭成員');
       return;
     }
+    if (!isAdminUnlocked) {
+      requestAdminUnlock('新增家庭成員', () => handleAddMember());
+      return;
+    }
     if (!newMemberName.trim()) {
       showAlert('請輸入姓名', '成員名稱不能為空');
       return;
@@ -1273,9 +1340,15 @@ function MainApp() {
 
     const targetMember = members.find(m => m.id === editingMemberId);
     const isCurrent = editingMemberId === currentUser.id || (!!targetMember && !!currentUser.display_name && targetMember.display_name === currentUser.display_name);
-    if (!isCurrent && !isOwner) {
-      showAlert('權限不足', '只有本機成員或帳本管理員才允許編輯此稱謂');
-      return;
+    if (!isCurrent) {
+      if (!isOwner) {
+        showAlert('權限不足', '只有本機成員或帳本管理員才允許編輯此稱謂');
+        return;
+      }
+      if (!isAdminUnlocked) {
+        requestAdminUnlock('修改其他家庭成員資料', () => handleSaveEditMember());
+        return;
+      }
     }
 
     setIsSavingEdit(true);
@@ -1563,6 +1636,10 @@ function MainApp() {
                       isMemberAdmin ? styles.modalRoleToggleBtnDemote : styles.modalRoleToggleBtnPromote,
                     ]}
                     onPress={() => {
+                      if (!isAdminUnlocked) {
+                        requestAdminUnlock(isMemberAdmin ? '取消管理員權限' : '設為共同管理員');
+                        return;
+                      }
                       if (isMemberAdmin) {
                         showConfirm(
                           '取消管理員權限',
@@ -1603,6 +1680,10 @@ function MainApp() {
                       <TouchableOpacity
                         style={styles.modalDeleteBtn}
                         onPress={() => {
+                          if (!isAdminUnlocked) {
+                            requestAdminUnlock('移除家庭成員');
+                            return;
+                          }
                           setEditMemberModalVisible(false);
                           const paidTxs = transactions.filter(
                             t => (getMemberById(t.paid_by)?.id || t.paid_by) === targetMember.id
@@ -2367,6 +2448,58 @@ function MainApp() {
     </Modal>
   );
 
+  const renderAdminUnlockModal = () => (
+    <Modal visible={adminUnlockModalVisible} animationType="fade" transparent onRequestClose={() => setAdminUnlockModalVisible(false)}>
+      <View style={[
+        styles.exportOverlay,
+        keyboardOffset > 0 && styles.exportOverlayKeyboardActive
+      ]}>
+        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
+        <View style={styles.exportCard}>
+          <View style={styles.modalHeaderRow}>
+            <Text style={styles.exportTitle}>🔐 解鎖管理員權限</Text>
+            <TouchableOpacity onPress={() => setAdminUnlockModalVisible(false)} style={styles.closeBtn}>
+              <Text style={styles.closeText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.formHint}>
+            您即將進行「{adminUnlockActionLabel || '管理員操作'}」。日常保護機制上鎖中，請輸入 4 位數管理員安全 PIN 碼（預設 8888）以解鎖操作：
+          </Text>
+
+          <View style={styles.formLabelRow}>
+            <Text style={styles.formLabel}>管理員安全 PIN 碼</Text>
+            {keyboardOffset > 0 && (
+              <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <TextInput
+            style={styles.modalInput}
+            placeholder="請輸入 4 位數 PIN 碼 (預設 8888)"
+            placeholderTextColor="#9CA3AF"
+            value={adminUnlockPinInput}
+            keyboardType="number-pad"
+            maxLength={8}
+            secureTextEntry
+            onChangeText={setAdminUnlockPinInput}
+            returnKeyType="done"
+            onSubmitEditing={handleConfirmAdminUnlock}
+            autoFocus
+          />
+
+          <TouchableOpacity
+            style={styles.submitMemberBtn}
+            onPress={handleConfirmAdminUnlock}
+          >
+            <Text style={styles.submitMemberBtnText}>驗證並解鎖管理權限</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+
   const renderSwitchLedgerModal = () => (
     <Modal visible={switchLedgerModalVisible} animationType="fade" transparent onRequestClose={() => setSwitchLedgerModalVisible(false)}>
       <View style={[
@@ -2636,9 +2769,30 @@ function MainApp() {
           <View style={styles.topBarSubtitleRow}>
             <Text style={styles.ledgerSubtitle} maxFontSizeMultiplier={1.2}>家庭共享記帳本</Text>
             {isOwner && (
-              <View style={styles.ownerTopBadge}>
-                <Text style={styles.ownerTopBadgeText} maxFontSizeMultiplier={1.2}>👑 管理員</Text>
-              </View>
+              <TouchableOpacity
+                style={[
+                  styles.ownerTopBadge,
+                  !isAdminUnlocked && styles.ownerTopBadgeProtected,
+                ]}
+                onPress={() => {
+                  if (isAdminUnlocked) {
+                    handleLockAdmin();
+                  } else {
+                    requestAdminUnlock('解鎖管理員模式');
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.ownerTopBadgeText,
+                    !isAdminUnlocked && styles.ownerTopBadgeTextProtected,
+                  ]}
+                  maxFontSizeMultiplier={1.2}
+                >
+                  {isAdminUnlocked ? '👑 管理員 (已解鎖)' : '🛡️ 管理員 (日常保護中)'}
+                </Text>
+              </TouchableOpacity>
             )}
           </View>
           <View style={styles.topBarTitleRow}>
@@ -2646,6 +2800,13 @@ function MainApp() {
               <TouchableOpacity
                 style={styles.ledgerTitleClickable}
                 onPress={() => {
+                  if (!isAdminUnlocked) {
+                    requestAdminUnlock('修改帳本名稱', () => {
+                      setEditLedgerNameInput(currentLedger.name);
+                      setEditLedgerModalVisible(true);
+                    });
+                    return;
+                  }
                   setEditLedgerNameInput(currentLedger.name);
                   setEditLedgerModalVisible(true);
                 }}
@@ -4011,6 +4172,40 @@ function MainApp() {
 
         {activeTab === 'family' && (
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollPadding}>
+            {/* 管理員日常安全保護保險栓卡片 (Sudo Mode) */}
+            {isOwner && (
+              <View style={[styles.sudoCard, isAdminUnlocked ? styles.sudoCardUnlocked : styles.sudoCardProtected]}>
+                <View style={styles.sudoCardLeft}>
+                  <Text style={styles.sudoCardIcon}>{isAdminUnlocked ? '👑' : '🛡️'}</Text>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={[styles.sudoCardTitle, isAdminUnlocked ? styles.sudoCardTitleUnlocked : styles.sudoCardTitleProtected]}>
+                      {isAdminUnlocked ? '管理員權限：已解鎖 (Sudo 運作中)' : '管理員權限：日常保護中 (已上鎖)'}
+                    </Text>
+                    <Text style={styles.sudoCardDesc}>
+                      {isAdminUnlocked
+                        ? '目前可自由修改帳本、調整成員、變更代碼與覆蓋備份。建議高階操作完畢後隨時點擊上鎖。'
+                        : '日常記帳查帳不受限；高風險操作（刪改他人成員/紀錄、改邀請代碼、覆蓋資料庫）受 PIN 碼防誤觸保護。'}
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={[styles.sudoCardBtn, isAdminUnlocked ? styles.sudoCardBtnLock : styles.sudoCardBtnUnlock]}
+                  onPress={() => {
+                    if (isAdminUnlocked) {
+                      handleLockAdmin();
+                    } else {
+                      requestAdminUnlock('解鎖管理員模式');
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.sudoCardBtnText, isAdminUnlocked ? styles.sudoCardBtnTextLock : styles.sudoCardBtnTextUnlock]}>
+                    {isAdminUnlocked ? '🔒 立即上鎖' : '🔓 輸入 PIN 解鎖'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             {/* 家庭成員名冊與管理 */}
             <View style={styles.cardSection}>
               <View style={styles.sectionHeaderRow}>
@@ -4035,7 +4230,13 @@ function MainApp() {
                   {isOwner && (
                     <TouchableOpacity
                       style={styles.addMemberBtn}
-                      onPress={() => setMemberModalVisible(true)}
+                      onPress={() => {
+                        if (!isAdminUnlocked) {
+                          requestAdminUnlock('新增家庭成員', () => setMemberModalVisible(true));
+                          return;
+                        }
+                        setMemberModalVisible(true);
+                      }}
                       activeOpacity={0.7}
                     >
                       <Text style={styles.addMemberBtnText}>＋ 新增成員</Text>
@@ -4144,9 +4345,9 @@ function MainApp() {
                   <Text style={styles.cardSectionTitle}>🔗 邀請家人共同記帳</Text>
                   <Text style={styles.cardSectionDesc}>讓伴侶或家人加入這本公帳，資料即時雙向同步</Text>
                 </View>
-                <View style={[styles.roleBadge, isOwner ? styles.roleBadgeOwner : styles.roleBadgeMember]}>
-                  <Text style={[styles.roleBadgeText, isOwner ? styles.roleBadgeTextOwner : styles.roleBadgeTextMember]}>
-                    {isOwner ? '👑 帳本管理員' : '👤 家庭成員'}
+                <View style={[styles.roleBadge, isOwner ? (isAdminUnlocked ? styles.roleBadgeOwner : styles.roleBadgeProtected) : styles.roleBadgeMember]}>
+                  <Text style={[styles.roleBadgeText, isOwner ? (isAdminUnlocked ? styles.roleBadgeTextOwner : styles.roleBadgeTextProtected) : styles.roleBadgeTextMember]}>
+                    {isOwner ? (isAdminUnlocked ? '👑 帳本管理員 (已解鎖)' : '🛡️ 帳本管理員 (日常保護中)') : '👤 家庭成員'}
                   </Text>
                 </View>
               </View>
@@ -4175,6 +4376,13 @@ function MainApp() {
                     <TouchableOpacity
                       style={styles.ownerControlBtn}
                       onPress={() => {
+                        if (!isAdminUnlocked) {
+                          requestAdminUnlock('修改帳本名稱', () => {
+                            setEditLedgerNameInput(currentLedger.name);
+                            setEditLedgerModalVisible(true);
+                          });
+                          return;
+                        }
                         setEditLedgerNameInput(currentLedger.name);
                         setEditLedgerModalVisible(true);
                       }}
@@ -4185,6 +4393,10 @@ function MainApp() {
                     <TouchableOpacity
                       style={styles.ownerControlBtn}
                       onPress={() => {
+                        if (!isAdminUnlocked) {
+                          requestAdminUnlock('重新產生邀請碼');
+                          return;
+                        }
                         showConfirm(
                           '重新產生邀請碼',
                           '重新產生後，舊代碼將會作廢。確定要產生全新的一組隨機邀請碼嗎？',
@@ -4201,6 +4413,13 @@ function MainApp() {
                     <TouchableOpacity
                       style={styles.ownerControlBtn}
                       onPress={() => {
+                        if (!isAdminUnlocked) {
+                          requestAdminUnlock('自訂邀請碼', () => {
+                            setCustomCodeInput(inviteCode);
+                            setCustomCodeModalVisible(true);
+                          });
+                          return;
+                        }
                         setCustomCodeInput(inviteCode);
                         setCustomCodeModalVisible(true);
                       }}
@@ -4238,6 +4457,13 @@ function MainApp() {
                         <TouchableOpacity
                           style={styles.changePinBtn}
                           onPress={() => {
+                            if (!isAdminUnlocked) {
+                              requestAdminUnlock('修改管理員 PIN 碼', () => {
+                                setNewPinInput(adminPin);
+                                setChangePinModalVisible(true);
+                              });
+                              return;
+                            }
                             setNewPinInput(adminPin);
                             setChangePinModalVisible(true);
                           }}
@@ -4758,6 +4984,10 @@ function MainApp() {
                     );
                     return;
                   }
+                  if (!isAdminUnlocked) {
+                    requestAdminUnlock('回復資料庫備份', () => setExportTab('restore'));
+                    return;
+                  }
                   setExportTab('restore');
                 }}
                 activeOpacity={0.7}
@@ -5056,6 +5286,9 @@ function MainApp() {
 
       {/* PIN 碼升級管理員彈窗 */}
       {renderClaimAdminModal()}
+
+      {/* 管理員安全保險栓 PIN 碼解鎖彈窗 */}
+      {renderAdminUnlockModal()}
 
       {/* 切換帳本彈窗 */}
       {renderSwitchLedgerModal()}
@@ -7148,6 +7381,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#B45309',
   },
+  ownerTopBadgeProtected: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#BFDBFE',
+  },
+  ownerTopBadgeTextProtected: {
+    color: '#1D4ED8',
+  },
   welcomeScroll: {
     padding: 20,
     paddingBottom: 60,
@@ -7377,6 +7617,77 @@ const styles = StyleSheet.create({
   },
   roleBadgeTextMember: {
     color: '#4F46E5',
+  },
+  roleBadgeProtected: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  roleBadgeTextProtected: {
+    color: '#1D4ED8',
+  },
+  sudoCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1.5,
+  },
+  sudoCardProtected: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#93C5FD',
+  },
+  sudoCardUnlocked: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FCD34D',
+  },
+  sudoCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  sudoCardIcon: {
+    fontSize: 24,
+    marginRight: 10,
+    marginTop: 1,
+  },
+  sudoCardTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  sudoCardTitleProtected: {
+    color: '#1E40AF',
+  },
+  sudoCardTitleUnlocked: {
+    color: '#92400E',
+  },
+  sudoCardDesc: {
+    fontSize: 12.5,
+    color: '#475569',
+    lineHeight: 18,
+  },
+  sudoCardBtn: {
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sudoCardBtnUnlock: {
+    backgroundColor: '#2563EB',
+  },
+  sudoCardBtnLock: {
+    backgroundColor: '#D97706',
+  },
+  sudoCardBtnText: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  sudoCardBtnTextUnlock: {
+    color: '#FFFFFF',
+  },
+  sudoCardBtnTextLock: {
+    color: '#FFFFFF',
   },
   inviteCard: {
     backgroundColor: '#F8FAFC',

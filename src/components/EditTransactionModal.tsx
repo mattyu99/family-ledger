@@ -90,7 +90,24 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   transaction,
   onClose,
 }) => {
-  const { categories, members, currentUser, isOwner, updateTransaction, deleteTransaction, getMemberById, getCategoryById, recentMerchants, paymentAccounts, paymentMethods } = useLedger();
+  const {
+    categories,
+    members,
+    currentUser,
+    isOwner,
+    isAdminUnlocked,
+    unlockAdmin,
+    updateTransaction,
+    deleteTransaction,
+    getMemberById,
+    getCategoryById,
+    recentMerchants,
+    paymentAccounts,
+    paymentMethods,
+  } = useLedger();
+
+  const [unlockPinModalVisible, setUnlockPinModalVisible] = useState(false);
+  const [unlockPinInput, setUnlockPinInput] = useState('');
 
   const [type, setType] = useState<TransactionType>(() => transaction?.type || 'expense');
   const [amount, setAmount] = useState<string>(() => (transaction?.amount ? String(transaction.amount) : ''));
@@ -216,13 +233,13 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
   const canEdit = React.useMemo(() => {
     if (!transaction || !currentUser?.id) return false;
-    // 帳本管理者擁有全域編輯與刪除權限
-    if (isOwner) return true;
+    // 帳本管理者且已解鎖管理員權限時，擁有全域編輯與刪除權限
+    if (isOwner && isAdminUnlocked) return true;
     const payerId = txPayerProfile ? txPayerProfile.id : transaction.paid_by;
     const isPayerIdMatch = payerId === currentUser.id;
     const isPayerNameMatch = !!txPayerProfile?.display_name && !!currentUser.display_name && txPayerProfile.display_name === currentUser.display_name;
     return Boolean(isPayerIdMatch || isPayerNameMatch);
-  }, [transaction, currentUser, txPayerProfile, isOwner]);
+  }, [transaction, currentUser, txPayerProfile, isOwner, isAdminUnlocked]);
 
   // 智慧店家快捷建議標籤列表 (結合自學習 recentMerchants + 分類推薦 + 關鍵字即時比對)
   const suggestedMerchants = React.useMemo(() => {
@@ -1152,17 +1169,94 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           </View>
         ) : (
           <View style={styles.readOnlyBtnRow}>
+            {isOwner && !isAdminUnlocked && (
+              <TouchableOpacity
+                style={styles.sudoUnlockBtn}
+                onPress={() => {
+                  setUnlockPinInput('');
+                  setUnlockPinModalVisible(true);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.sudoUnlockBtnText} maxFontSizeMultiplier={1.15}>
+                  🛡️ 管理員日常保護中 · 點此輸入 PIN 碼解鎖編輯
+                </Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity style={styles.readOnlyCloseBtn} onPress={onClose} activeOpacity={0.8}>
               <Text style={styles.readOnlyCloseBtnText} maxFontSizeMultiplier={1.15}>關閉明細</Text>
             </TouchableOpacity>
             <Text style={styles.readOnlyFooterHint} maxFontSizeMultiplier={1.08}>
-              🔒 僅成員「{txPayerName}」本人或帳本管理者具有編輯與刪除權限
+              {isOwner && !isAdminUnlocked
+                ? `🛡️ 日常保護模式：僅「${txPayerName}」本人可直接修改。管理員可解鎖後代為編輯。`
+                : `🔒 僅成員「${txPayerName}」本人或帳本管理者具有編輯與刪除權限`}
             </Text>
           </View>
         )}
       </ScrollView>
     </View>
   </KeyboardAvoidingView>
+
+  <Modal
+    visible={unlockPinModalVisible}
+    transparent
+    animationType="fade"
+    onRequestClose={() => setUnlockPinModalVisible(false)}
+  >
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={styles.pinModalOverlay}
+    >
+      <View style={styles.pinModalContent}>
+        <View style={styles.pinModalHeader}>
+          <Text style={styles.pinModalIcon}>🔐</Text>
+          <Text style={styles.pinModalTitle}>解鎖管理員編輯權限</Text>
+        </View>
+        <Text style={styles.pinModalDesc}>
+          您即將編輯或刪除由「{txPayerName}」付費之紀錄。請輸入 4 位數管理員安全 PIN 碼（預設 8888）：
+        </Text>
+        <TextInput
+          style={styles.pinModalInput}
+          placeholder="請輸入 4 位數 PIN 碼"
+          placeholderTextColor="#9CA3AF"
+          value={unlockPinInput}
+          onChangeText={setUnlockPinInput}
+          keyboardType="number-pad"
+          maxLength={8}
+          secureTextEntry
+          autoFocus
+        />
+        <View style={styles.pinModalBtnRow}>
+          <TouchableOpacity
+            style={styles.pinModalCancelBtn}
+            onPress={() => setUnlockPinModalVisible(false)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.pinModalCancelBtnText}>取消</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.pinModalConfirmBtn}
+            onPress={() => {
+              const res = unlockAdmin(unlockPinInput);
+              if (res.success) {
+                setUnlockPinModalVisible(false);
+                setUnlockPinInput('');
+              } else {
+                if (Platform.OS === 'web') {
+                  window.alert(res.message || '管理員 PIN 碼錯誤！');
+                } else {
+                  Alert.alert('驗證失敗', res.message || '管理員 PIN 碼錯誤！');
+                }
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.pinModalConfirmBtnText}>驗證解鎖</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </KeyboardAvoidingView>
+  </Modal>
 
   <DatePickerModal
     visible={datePickerVisible}
@@ -1811,5 +1905,107 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#059669',
     fontWeight: '600',
+  },
+  sudoUnlockBtn: {
+    width: '100%',
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#3B82F6',
+    marginBottom: 10,
+  },
+  sudoUnlockBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  pinModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  pinModalContent: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 22,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  pinModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  pinModalIcon: {
+    fontSize: 22,
+    marginRight: 8,
+  },
+  pinModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1E293B',
+  },
+  pinModalDesc: {
+    fontSize: 13,
+    color: '#64748B',
+    lineHeight: 19,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  pinModalInput: {
+    width: '100%',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    fontSize: 18,
+    textAlign: 'center',
+    letterSpacing: 4,
+    color: '#0F172A',
+    fontWeight: '700',
+    marginBottom: 18,
+  },
+  pinModalBtnRow: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  pinModalCancelBtn: {
+    flex: 1,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  pinModalCancelBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  pinModalConfirmBtn: {
+    flex: 1,
+    backgroundColor: '#3B82F6',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  pinModalConfirmBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

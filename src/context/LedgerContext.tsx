@@ -401,6 +401,10 @@ interface LedgerContextType {
   realCurrentUser: Profile;
   realIsOwner: boolean;
   realUserRole: 'owner' | 'admin' | 'member';
+  isAdminUnlocked: boolean;
+  setIsAdminUnlocked: (unlocked: boolean) => void;
+  unlockAdmin: (pin: string) => { success: boolean; message?: string };
+  lockAdmin: () => void;
 }
 
 const LedgerContext = createContext<LedgerContextType | null>(null);
@@ -703,6 +707,25 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const exitMemberPreview = () => {
     setPreviewMember(null);
+  };
+
+  // 管理員日常安全保護模式 (Sudo Mode / 臨時解鎖模式)
+  // 預設為日常保護上鎖模式 (false)，輸入 PIN 碼臨時解鎖 (true)；
+  // 關閉 App 或重新整理自動回防鎖定，日常記帳查帳無礙、高風險管理操作受保險栓防護。
+  const [isAdminUnlocked, setIsAdminUnlocked] = useState<boolean>(false);
+
+  const unlockAdmin = (inputPin: string): { success: boolean; message?: string } => {
+    const clean = (inputPin || '').trim();
+    const expected = (((currentLedger as any)?.admin_pin || adminPin || '8888') as string).trim();
+    if (!clean || clean !== expected) {
+      return { success: false, message: '管理員安全 PIN 碼錯誤，請重新輸入！' };
+    }
+    setIsAdminUnlocked(true);
+    return { success: true };
+  };
+
+  const lockAdmin = () => {
+    setIsAdminUnlocked(false);
   };
 
   // 帳本管理員包含建立者 (owner) 與共同管理員 (admin)
@@ -3303,12 +3326,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await AsyncStorage.removeItem(STORAGE_KEYS.USER_ROLE);
     await AsyncStorage.removeItem(STORAGE_KEYS.INVITE_CODE);
     setUserRole('member');
+    setIsAdminUnlocked(false);
     setHasJoinedLedger(false);
   };
 
   // 依帳本 ID 直接在使用者已加入的帳本間無縫切換
   const switchLedgerById = async (targetLedgerId: string) => {
     try {
+      setIsAdminUnlocked(false);
       setRecurringRules([]); // 切換前立即清空前一帳本之週期規則，防止畫面殘留
       const { data: { session } } = await supabase.auth.getSession();
       const authUserId = session?.user?.id;
@@ -6104,6 +6129,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         realCurrentUser: currentUser,
         realIsOwner: isOwner,
         realUserRole: userRole,
+        isAdminUnlocked,
+        setIsAdminUnlocked,
+        unlockAdmin,
+        lockAdmin,
         inviteCode,
         adminPin,
         updateAdminPin,

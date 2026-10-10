@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 14;
+export const APP_BUILD_REVISION = 15;
 
-// 完整版本字串 (例如 "1.0.4.14")
+// 完整版本字串 (例如 "1.0.4.15")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.15',
+    date: '2026-10-10',
+    title: '管理員安全防誤觸保險栓（Sudo 模式）上線，日常保護上鎖 ⇄ PIN 碼臨時解鎖',
+    highlights: [
+      '管理員日常保護模式 (Sudo Mode)：貫徹資安「最小權限原則」，身為管理員（智爸）日常記帳、查帳、看報表、勾選待辦完全自由，但預設為「日常保護中」，避免誤按高風險操作。',
+      '4 位數 PIN 碼安全保險栓：高風險操作（編輯/刪除其他成員、變更管理員角色、修改安全 PIN 碼、帳本更名、自訂邀請碼、覆蓋還原資料庫、編輯/刪除他人記帳）受保險栓鎖定，點擊時彈出 PIN 碼驗證框臨時解鎖。',
+      '一鍵上鎖與自動回防：在家庭設定或頂部導航列徽章可一鍵隨時「🔒 立即上鎖」；關閉 App 或重新整理後自動回防日常保護模式，安全滴水不漏。',
+      '他人交易安全編輯鎖：未解鎖狀態下僅允許修改自己支付之款項；若需代為修改其他家人帳目，點擊「🛡️ 管理員日常保護中」即可輸入 PIN 碼快速解鎖。',
+    ],
+  },
   {
     version: '1.0.4.14',
     date: '2026-10-10',
