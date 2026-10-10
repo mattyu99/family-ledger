@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 5;
+export const APP_BUILD_REVISION = 6;
 
-// 完整版本字串 (例如 "1.0.4.5")
+// 完整版本字串 (例如 "1.0.4.6")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,15 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.6',
+    date: '2026-10-10',
+    title: '精簡首頁篩選列佈局，移除重複之「待辦總覽」按鈕',
+    highlights: [
+      '精簡首頁篩選工具列：因頂部待辦橫幅已常駐顯眼之「待辦總覽 ›」按鈕，移除下方篩選工具列中重複之「待辦總覽」膠囊按鈕，介面更清爽純淨。',
+      '純粹化工具列職責：下方工具列專注聚焦於「📅 月份選擇」與「👤 成員篩選」，操作層次更分明好用。',
+    ],
+  },
   {
     version: '1.0.4.5',
     date: '2026-10-10',

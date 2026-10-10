@@ -3123,31 +3123,6 @@ function MainApp() {
                 <Text style={[styles.filterChipArrow, filterMemberId !== defaultMemberId && styles.filterChipArrowActive]}>▾</Text>
               </TouchableOpacity>
 
-              {/* 📋 生活待辦總覽捷徑按鈕 */}
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={[
-                  styles.filterChip,
-                  pendingMemos.length > 0
-                    ? { borderColor: '#F59E0B', backgroundColor: '#FEF3C7' }
-                    : { borderColor: '#CBD5E1', backgroundColor: '#F8FAFC' },
-                ]}
-                onPress={() => setMemoTodoModalVisible(true)}
-              >
-                <Text style={styles.filterChipIcon}>📋</Text>
-                <Text
-                  style={[
-                    styles.filterChipText,
-                    {
-                      color: pendingMemos.length > 0 ? '#B45309' : '#475569',
-                      fontWeight: '700',
-                    },
-                  ]}
-                >
-                  待辦總覽{pendingMemos.length > 0 ? ` (${pendingMemos.length})` : ''}
-                </Text>
-              </TouchableOpacity>
-
               {/* 若在搜尋狀態下且非查全部月份，提供 1 鍵切換至全部月份 */}
               {!!searchQuery.trim() && filterMonth !== 'all' && (
                 <TouchableOpacity
