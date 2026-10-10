@@ -402,6 +402,10 @@ interface LedgerContextType {
   realCurrentUser: Profile;
   realIsOwner: boolean;
   realUserRole: 'owner' | 'admin' | 'member';
+  isAdminMode: boolean;
+  setIsAdminMode: (enabled: boolean) => void;
+  enableAdminMode: (pin: string) => { success: boolean; message?: string };
+  disableAdminMode: () => void;
   isAdminUnlocked: boolean;
   setIsAdminUnlocked: (unlocked: boolean) => void;
   unlockAdmin: (pin: string) => { success: boolean; message?: string };
@@ -714,37 +718,42 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setPreviewMember(null);
   };
 
-  // 管理員日常安全保護模式 (Sudo Mode / 臨時解鎖模式)
-  // 預設為日常保護上鎖模式 (false)，輸入 PIN 碼臨時解鎖 (true)；
-  // 關閉 App 或重新整理自動回防鎖定，日常記帳查帳無礙、高風險管理操作受保險栓防護。
-  const [isAdminUnlocked, setIsAdminUnlocked] = useState<boolean>(false);
+  // 管理員日常成員模式 / 提權管理模式切換 (Default-to-Member Mode)
+  // 本機開機/重新整理預設為日常成員模式 (isAdminMode = false)，
+  // 畫面完全如一般成員般乾淨防呆；需要時至家庭設定輸入 PIN 碼提權啟用管理員模式 (isAdminMode = true)。
+  const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
 
-  const unlockAdmin = (inputPin: string): { success: boolean; message?: string } => {
+  const enableAdminMode = (inputPin: string): { success: boolean; message?: string } => {
     const clean = (inputPin || '').trim();
     const expected = (((currentLedger as any)?.admin_pin || adminPin || '8888') as string).trim();
     if (!clean || clean !== expected) {
       return { success: false, message: '管理員安全 PIN 碼錯誤，請重新輸入！' };
     }
-    setIsAdminUnlocked(true);
+    setIsAdminMode(true);
     return { success: true };
   };
 
-  const lockAdmin = () => {
-    setIsAdminUnlocked(false);
+  const disableAdminMode = () => {
+    setIsAdminMode(false);
   };
 
   // 帳本管理員包含建立者 (owner) 與共同管理員 (admin)
   const isOwner = userRole === 'owner' || userRole === 'admin';
 
-  // 有效身分與權限（若啟動預覽模式，全 App 視角模擬該預覽成員）
+  // 有效身分與權限：
+  // 1. 若啟動 previewMember（角色體驗），則完全以該模擬成員角色為準
+  // 2. 若真實身分為管理員 (isOwner)，但在預設日常成員模式 (!isAdminMode)，則前端 isOwner 為 false (無管理特權)
+  // 3. 只有真實身分為管理員且啟用管理員模式 (isOwner && isAdminMode) 時，effectiveIsOwner 為 true
   const effectiveCurrentUser = previewMember || currentUser;
   const isPreviewMode = !!previewMember;
   const effectiveUserRole: 'owner' | 'admin' | 'member' = previewMember
     ? (previewMember.role === 'owner' || previewMember.role === 'admin'
         ? (previewMember.role as 'owner' | 'admin')
         : 'member')
-    : userRole;
-  const effectiveIsOwner = effectiveUserRole === 'owner' || effectiveUserRole === 'admin';
+    : (isOwner && isAdminMode ? userRole : 'member');
+  const effectiveIsOwner = isPreviewMode
+    ? (previewMember.role === 'owner' || previewMember.role === 'admin')
+    : (isOwner && isAdminMode);
   const channelRef = useRef<any>(null);
 
   // 1. 初始化本地快取（Local-First: 先離線秒開，再非同步接雲端）
@@ -3331,14 +3340,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await AsyncStorage.removeItem(STORAGE_KEYS.USER_ROLE);
     await AsyncStorage.removeItem(STORAGE_KEYS.INVITE_CODE);
     setUserRole('member');
-    setIsAdminUnlocked(false);
+    setIsAdminMode(false);
     setHasJoinedLedger(false);
   };
 
   // 依帳本 ID 直接在使用者已加入的帳本間無縫切換
   const switchLedgerById = async (targetLedgerId: string) => {
     try {
-      setIsAdminUnlocked(false);
+      setIsAdminMode(false);
       setRecurringRules([]); // 切換前立即清空前一帳本之週期規則，防止畫面殘留
       const { data: { session } } = await supabase.auth.getSession();
       const authUserId = session?.user?.id;
@@ -5559,10 +5568,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, [transactions, members, getMemberById]);
 
-  // 新增家庭成員 (僅 Owner / Admin 可操作)
+  // 新增家庭成員 (僅在管理員模式下可操作)
   const addMember = async (name: string, avatar: string = '😊') => {
-    if (!isOwner) {
-      safeAlert('權限不足', '只有帳本管理員才能新增家庭成員');
+    if (!effectiveIsOwner) {
+      safeAlert('權限不足', '只有在管理員模式下才能新增家庭成員');
       return;
     }
 
@@ -5659,15 +5668,15 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return true;
   };
 
-  // 刪除家庭成員 (僅 Owner 可操作，支援一鍵移轉帳目)
+  // 刪除家庭成員 (僅在管理員模式下可操作，支援一鍵移轉帳目)
   const deleteMember = async (id: string, transferToId?: string): Promise<boolean> => {
     if (members.length <= 1) {
       safeAlert('無法刪除', '家庭至少需保留一位成員');
       return false;
     }
 
-    if (!isOwner) {
-      safeAlert('權限不足', '只有帳本管理員才能移除家庭成員');
+    if (!effectiveIsOwner) {
+      safeAlert('權限不足', '只有在管理員模式下才能移除家庭成員');
       return false;
     }
 
@@ -5938,10 +5947,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await AsyncStorage.removeItem(STORAGE_KEYS.DEVICE_BOUND);
   };
 
-  // 變更成員角色權限 (管理員可指派共同管理員或降為一般成員)
+  // 變更成員角色權限 (僅在管理員模式下可操作)
   const updateMemberRole = async (memberId: string, newRole: 'owner' | 'member'): Promise<boolean> => {
-    if (!isOwner) {
-      alert('只有帳本管理員才能變更成員角色權限');
+    if (!effectiveIsOwner) {
+      alert('只有在管理員模式下才能變更成員角色權限');
       return false;
     }
 
@@ -6136,10 +6145,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         realCurrentUser: currentUser,
         realIsOwner: isOwner,
         realUserRole: userRole,
-        isAdminUnlocked,
-        setIsAdminUnlocked,
-        unlockAdmin,
-        lockAdmin,
+        isAdminMode,
+        setIsAdminMode,
+        enableAdminMode,
+        disableAdminMode,
+        isAdminUnlocked: isAdminMode,
+        setIsAdminUnlocked: setIsAdminMode,
+        unlockAdmin: enableAdminMode,
+        lockAdmin: disableAdminMode,
         inviteCode,
         adminPin,
         updateAdminPin,

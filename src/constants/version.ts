@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 16;
+export const APP_BUILD_REVISION = 17;
 
-// 完整版本字串 (例如 "1.0.4.16")
+// 完整版本字串 (例如 "1.0.4.17")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.17',
+    date: '2026-10-10',
+    title: '預設日常成員模式（Default-to-Member Mode）極簡架構上線：日常 100% 清爽防誤觸，需要時 PIN 碼一鍵提權',
+    highlights: [
+      '開機預設日常成員模式：徹底取代先前在各按鈕零碎攔截的 Sudo 模式。本機開機/重新載入時，預設即為「日常成員模式」（以智爸身分與付款人日常運作，但畫面天然隱藏所有管理員專屬按鈕與功能）。',
+      '無干擾純淨畫面：無需頂部預覽橫幅，日常記帳、查帳、報表、勾選待辦 100% 順暢清爽，他人記帳天然為唯讀狀態，再也不怕日常誤觸高風險功能。',
+      'PIN 碼一鍵提權管理模式：真正需要管理維護時，至「家庭設定」點擊「🔐 輸入 PIN 碼切換為管理員模式」，驗證後所有管理功能（帳本更名、成員名冊管理、自訂邀請碼、備份還原等）瞬間浮現；頂部導航列常駐「👑 管理員模式」，點擊即可一秒切回日常成員模式。',
+      '雲端身分永遠穩固：Supabase 雲端資料庫中，智爸永久為帳本最高擁有者 (owner)，本機日常模式僅為前端視角防呆，絕不影響資料庫角色，亦絕不觸發 0 位管理員警報。',
+    ],
+  },
   {
     version: '1.0.4.16',
     date: '2026-10-10',
