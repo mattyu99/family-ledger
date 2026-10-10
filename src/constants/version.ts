@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 18;
+export const APP_BUILD_REVISION = 19;
 
-// 完整版本字串 (例如 "1.0.4.18")
+// 完整版本字串 (例如 "1.0.4.19")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,15 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.19',
+    date: '2026-10-10',
+    title: '修正備份資料檔版本號：動態對齊 App 最新完整版號 (APP_FULL_VERSION)',
+    highlights: [
+      '備份檔版本號動態對齊：修正在匯出 JSON 備份檔時版本標籤寫死為 1.0.3 的問題。現已動態鏈接系統最新版本號 (APP_FULL_VERSION)，後續產生的備份檔案將精準標記為當前 App 版本（如 v1.0.4.19）。',
+      '備份還原預覽強化：於「備份還原」頁面解析備份檔時，同步顯示備份檔案所屬版本號，兼具向下相容舊版備份檔還原。',
+    ],
+  },
   {
     version: '1.0.4.18',
     date: '2026-10-10',

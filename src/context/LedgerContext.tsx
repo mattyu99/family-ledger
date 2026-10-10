@@ -7,6 +7,7 @@ import { generateUUID } from '../lib/uuid';
 import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS } from '../lib/payment';
 import { DEFAULT_RECURRING_PRESETS, getCurrentPeriodKey, getBillPeriodLabel, getInstallmentInfo } from '../lib/recurring';
 import { parseMemoNote } from '../lib/memo';
+import { APP_FULL_VERSION } from '../constants/version';
 
 const safeAlert = (title: string, message: string) => {
   if (Platform.OS === 'web') {
@@ -4872,7 +4873,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const exportToJSON = (): string => {
     const backupData = {
       app: '甜心記帳本',
-      version: '1.0.3',
+      version: APP_FULL_VERSION,
       exported_at: new Date().toISOString(),
       ledger: {
         id: currentLedger.id,

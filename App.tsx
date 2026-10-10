@@ -1004,6 +1004,7 @@ function MainApp() {
       return {
         isValid: true,
         appName: data.app || '甜心記帳本',
+        version: (typeof data.version === 'string' && data.version.trim()) ? data.version.trim() : '1.0.3',
         exportedAt: data.exported_at ? new Date(data.exported_at).toLocaleString() : '未知',
         txCount: data.transactions.length,
         memberCount: Array.isArray(data.members) ? data.members.length : 0,
@@ -5044,6 +5045,12 @@ function MainApp() {
                     </View>
                     <View style={styles.previewGrid}>
                       <View style={styles.previewGridItem}>
+                        <Text style={styles.previewItemLabel}>備份版本</Text>
+                        <Text style={[styles.previewItemValue, { color: '#059669', fontWeight: '800' }]}>
+                          v{parsedBackupPreview.version}
+                        </Text>
+                      </View>
+                      <View style={styles.previewGridItem}>
                         <Text style={styles.previewItemLabel}>備份時間</Text>
                         <Text style={styles.previewItemValue}>{parsedBackupPreview.exportedAt}</Text>
                       </View>
@@ -5060,6 +5067,10 @@ function MainApp() {
                       <View style={styles.previewGridItem}>
                         <Text style={styles.previewItemLabel}>支付卡片與帳戶</Text>
                         <Text style={styles.previewItemValue}>{parsedBackupPreview.cardCount} 張</Text>
+                      </View>
+                      <View style={styles.previewGridItem}>
+                        <Text style={styles.previewItemLabel}>來源應用</Text>
+                        <Text style={styles.previewItemValue} numberOfLines={1}>{parsedBackupPreview.appName}</Text>
                       </View>
                     </View>
 
