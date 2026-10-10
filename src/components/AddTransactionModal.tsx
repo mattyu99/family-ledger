@@ -44,6 +44,7 @@ import { useLedger } from '../context/LedgerContext';
 import { TransactionType, PaymentMethod } from '../types/database';
 import { PAYMENT_METHOD_OPTIONS, DEFAULT_PAYMENT_METHODS, sortAccountsByUser } from '../lib/payment';
 import { getCategoryIcon } from '../lib/icons';
+import { MEMO_QUICK_TAGS, toggleMemoTag, isMemoTagActive } from '../lib/memo';
 import { DatePickerModal } from './DatePickerModal';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -629,22 +630,24 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
                 {/* 快捷情境標籤 */}
                 <View style={styles.quickNoteRow}>
-                  {['📌 待辦清單', '🛒 採買清單', '💡 靈感筆記', '🏠 家居修繕', '🩺 健康用藥', '🎂 紀念日', '💼 重要備忘'].map(tag => (
-                    <TouchableOpacity
-                      key={tag}
-                      style={styles.quickNoteChip}
-                      onPress={() => {
-                        if (!note) {
-                          setNote(`[${tag}] `);
-                        } else if (!note.includes(tag)) {
-                          setNote(`[${tag}] ${note}`);
-                        }
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.quickNoteChipText} maxFontSizeMultiplier={1.08}>{tag}</Text>
-                    </TouchableOpacity>
-                  ))}
+                  {MEMO_QUICK_TAGS.map(tag => {
+                    const active = isMemoTagActive(note, tag);
+                    return (
+                      <TouchableOpacity
+                        key={tag}
+                        style={[styles.quickNoteChip, active && styles.quickNoteChipActive]}
+                        onPress={() => setNote(toggleMemoTag(note, tag))}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[styles.quickNoteChipText, active && styles.quickNoteChipTextActive]}
+                          maxFontSizeMultiplier={1.08}
+                        >
+                          {tag}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
 
                 {/* 記事日期 */}
@@ -2017,9 +2020,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
+  quickNoteChipActive: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F59E0B',
+  },
   quickNoteChipText: {
     fontSize: 11,
     color: '#4B5563',
+  },
+  quickNoteChipTextActive: {
+    color: '#92400E',
+    fontWeight: '700',
   },
   submitBtnAllowance: {
     backgroundColor: '#8B5CF6',

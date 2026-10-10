@@ -4,6 +4,7 @@ import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { getCategoryIcon } from '../lib/icons';
 import { formatPaymentLabel } from '../lib/payment';
+import { parseMemoNote } from '../lib/memo';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
   <RNText
@@ -33,6 +34,8 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
 
   if (transaction.type === 'memo') {
     const reminderDate = transaction.reminder_date || (transaction.merchant?.startsWith('remind:') ? transaction.merchant.replace('remind:', '') : undefined);
+    const memoData = parseMemoNote(transaction.note, category?.name, getCategoryIcon(category?.icon));
+
     return (
       <TouchableOpacity
         activeOpacity={0.7}
@@ -42,10 +45,10 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
         <View style={styles.memoHeaderRow}>
           <View style={styles.memoHeaderLeft}>
             <View style={styles.memoIconBadge}>
-              <Text style={styles.memoIconText}>📌</Text>
+              <Text style={styles.memoIconText}>{memoData.icon}</Text>
             </View>
             <Text style={styles.memoTitleText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              {category?.name || '生活記事'}
+              {memoData.title}
             </Text>
             {!!reminderDate && (
               <View style={styles.memoReminderBadge}>
@@ -61,7 +64,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
         </View>
 
         <Text style={styles.memoContentText} allowFontScaling={false} maxFontSizeMultiplier={1.1}>
-          {transaction.note || '(無內容)'}
+          {memoData.cleanContent}
         </Text>
 
         <View style={styles.memoFooterRow}>
