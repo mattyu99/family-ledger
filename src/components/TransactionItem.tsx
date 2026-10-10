@@ -36,6 +36,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
     const isCompleted = !!transaction.is_settled;
     const reminderDate = transaction.reminder_date || (transaction.merchant?.startsWith('remind:') ? transaction.merchant.replace('remind:', '') : undefined);
     const memoData = parseMemoNote(transaction.note, category?.name, getCategoryIcon(category?.icon));
+    const completer = transaction.completed_by ? getMemberById(transaction.completed_by) : undefined;
 
     return (
       <TouchableOpacity
@@ -73,7 +74,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
             {isCompleted ? (
               <View style={styles.memoCompletedBadge}>
                 <Text style={styles.memoCompletedBadgeText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                  ✓ 已辦妥
+                  ✓ {completer?.display_name ? `${completer.display_name} 辦妥` : '已辦妥'}
                 </Text>
               </View>
             ) : (
@@ -102,6 +103,11 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
         <View style={styles.memoFooterRow}>
           <Text style={[styles.memoAuthorText, isCompleted && styles.memoAuthorTextCompleted]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
             {payer?.avatar_url || '👤'} {payer?.display_name || '成員'} 記錄
+            {isCompleted && (
+              completer
+                ? ` · 由 ${completer.avatar_url || '👤'} ${completer.display_name} 辦妥 ✓`
+                : ' · 已辦妥 ✓'
+            )}
           </Text>
           <Text style={[styles.memoActionHint, isCompleted && styles.memoActionHintCompleted]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
             {isCompleted ? '查看詳情 ›' : '點擊查看 / 編輯 ›'}

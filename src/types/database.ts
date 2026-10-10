@@ -110,6 +110,7 @@ export interface Transaction {
   is_reconciled?: boolean; // 信用卡對帳：是否已核對/已核銷
   note?: string;
   reminder_date?: string; // 選填生活記事提醒日期 (YYYY-MM-DD)
+  completed_by?: string; // 完成此待辦事項的家庭成員 ID (Profile ID)
   image_url?: string;
   is_settled: boolean;
   created_at: string;

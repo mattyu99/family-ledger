@@ -229,6 +229,7 @@ interface LedgerContextType {
     merchant?: string;
     note?: string;
     reminder_date?: string;
+    completed_by?: string;
     transacted_at?: string;
     payment_method?: PaymentMethod;
     account_id?: string;
@@ -245,6 +246,7 @@ interface LedgerContextType {
       merchant?: string;
       note?: string;
       reminder_date?: string;
+      completed_by?: string;
       transacted_at?: string;
       payment_method?: PaymentMethod;
       account_id?: string;
@@ -252,7 +254,7 @@ interface LedgerContextType {
       is_settled?: boolean;
     }
   ) => Promise<boolean>;
-  toggleMemoSettled: (id: string) => Promise<boolean>;
+  toggleMemoSettled: (id: string, completedByUserId?: string) => Promise<boolean>;
   deleteTransaction: (id: string) => Promise<void>;
   transferAllowance: (data: {
     amount: number;
@@ -1740,11 +1742,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
           }
           let reminderDate: string | undefined = undefined;
+          let completedBy: string | undefined = t.completed_by;
           let resolvedType: TransactionType = t.type;
-          if (parsedMerchant?.startsWith('remind:')) {
-            reminderDate = parsedMerchant.replace('remind:', '');
+          if (parsedMerchant?.startsWith('remind:') || parsedMerchant?.startsWith('memo')) {
             resolvedType = 'memo';
-          } else if (parsedMerchant === 'memo' || t.type === 'memo' || (t.type === 'transfer' && Number(t.amount) === 0)) {
+            let rawStr = parsedMerchant;
+            if (rawStr.includes('|done:')) {
+              const parts = rawStr.split('|done:');
+              rawStr = parts[0];
+              completedBy = parts[1] || undefined;
+            }
+            if (rawStr.startsWith('remind:')) {
+              reminderDate = rawStr.replace('remind:', '') || undefined;
+            }
+            parsedMerchant = undefined;
+          } else if (t.type === 'memo' || (t.type === 'transfer' && Number(t.amount) === 0)) {
             resolvedType = 'memo';
           } else if (parsedMerchant) {
             recordMerchant(parsedMerchant);
@@ -1754,6 +1766,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             ...t,
             type: resolvedType,
             reminder_date: reminderDate || t.reminder_date,
+            completed_by: completedBy || t.completed_by,
             merchant: parsedMerchant || undefined,
             note: parsedNote || '',
             amount: Number(t.amount),
@@ -3897,6 +3910,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     merchant?: string;
     note?: string;
     reminder_date?: string;
+    completed_by?: string;
     transacted_at?: string;
     payment_method?: PaymentMethod;
     account_id?: string;
@@ -3906,11 +3920,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const txId = generateUUID();
     let cleanMerchant = data.merchant ? data.merchant.trim() : undefined;
     if (data.type === 'memo') {
-      if (data.reminder_date) {
-        cleanMerchant = `remind:${data.reminder_date}`;
-      } else if (!cleanMerchant) {
-        cleanMerchant = 'memo';
+      let memoTag = data.reminder_date ? `remind:${data.reminder_date}` : 'memo';
+      if (data.completed_by) {
+        memoTag = `${memoTag}|done:${data.completed_by}`;
       }
+      cleanMerchant = memoTag;
     } else if (cleanMerchant) {
       recordMerchant(cleanMerchant);
     }
@@ -3963,6 +3977,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       amount: data.type === 'memo' ? 0 : (data.amount || 0),
       type: data.type,
       reminder_date: data.reminder_date,
+      completed_by: data.completed_by,
       paid_by: validPaidBy,
       merchant: cleanMerchant,
       payment_method: data.payment_method || 'cash',
@@ -4392,6 +4407,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       merchant?: string;
       note?: string;
       reminder_date?: string;
+      completed_by?: string;
       transacted_at?: string;
       payment_method?: PaymentMethod;
       account_id?: string;
@@ -4404,11 +4420,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const isTargetMemo = data.type === 'memo' || targetTx?.type === 'memo';
       let cleanMerchant = data.merchant !== undefined ? (data.merchant ? data.merchant.trim() : undefined) : undefined;
       if (isTargetMemo) {
-        if (data.reminder_date) {
-          cleanMerchant = `remind:${data.reminder_date}`;
-        } else if (data.reminder_date === '') {
-          cleanMerchant = 'memo';
+        const effectiveSettled = data.is_settled !== undefined ? data.is_settled : targetTx?.is_settled;
+        const effectiveCompletedBy = effectiveSettled
+          ? (data.completed_by !== undefined ? data.completed_by : targetTx?.completed_by)
+          : undefined;
+        const effectiveReminder = data.reminder_date !== undefined
+          ? (data.reminder_date || undefined)
+          : targetTx?.reminder_date;
+
+        let memoTag = effectiveReminder ? `remind:${effectiveReminder}` : 'memo';
+        if (effectiveCompletedBy) {
+          memoTag = `${memoTag}|done:${effectiveCompletedBy}`;
         }
+        cleanMerchant = memoTag;
       } else if (cleanMerchant) {
         recordMerchant(cleanMerchant);
       }
@@ -4449,16 +4473,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const canonicalPayer = getMemberById(effectivePaidBy);
           const effectiveAccId = data.account_id !== undefined ? data.account_id : t.account_id;
           const resolvedAccount = effectiveAccId ? getAccountById(effectiveAccId) : undefined;
-          return {
-            ...t,
-            ...data,
-            amount: isTargetMemo ? 0 : (data.amount !== undefined ? data.amount : t.amount),
-            reminder_date: data.reminder_date !== undefined ? (data.reminder_date || undefined) : t.reminder_date,
-            merchant: (data.merchant !== undefined || isTargetMemo) ? cleanMerchant : t.merchant,
-            category: data.category_id ? getCategoryById(data.category_id, t.category) : t.category,
-            payer_profile: canonicalPayer || t.payer_profile,
-            payment_account: resolvedAccount || t.payment_account,
-          };
+            const effectiveSettled = data.is_settled !== undefined ? data.is_settled : t.is_settled;
+            const effectiveCompletedBy = effectiveSettled
+              ? (data.completed_by !== undefined ? data.completed_by : t.completed_by)
+              : undefined;
+            return {
+              ...t,
+              ...data,
+              amount: isTargetMemo ? 0 : (data.amount !== undefined ? data.amount : t.amount),
+              reminder_date: data.reminder_date !== undefined ? (data.reminder_date || undefined) : t.reminder_date,
+              completed_by: effectiveCompletedBy,
+              merchant: (data.merchant !== undefined || isTargetMemo) ? cleanMerchant : t.merchant,
+              category: data.category_id ? getCategoryById(data.category_id, t.category) : t.category,
+              payer_profile: canonicalPayer || t.payer_profile,
+              payment_account: resolvedAccount || t.payment_account,
+            };
         }
         return t;
       });
@@ -4531,12 +4560,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  // 一鍵切換生活記事完成/待辦狀態
-  const toggleMemoSettled = async (id: string): Promise<boolean> => {
+  // 一鍵切換生活記事完成/待辦狀態（自動記錄是哪位家庭成員打勾完成的）
+  const toggleMemoSettled = async (id: string, completedByUserId?: string): Promise<boolean> => {
     const target = transactions.find(t => t.id === id);
     if (!target) return false;
     const nextSettled = !target.is_settled;
-    return updateTransaction(id, { is_settled: nextSettled });
+    const effectiveCompleter = nextSettled
+      ? (completedByUserId || effectiveCurrentUser?.id || currentUser?.id)
+      : undefined;
+    return updateTransaction(id, {
+      is_settled: nextSettled,
+      completed_by: effectiveCompleter,
+    });
   };
 
   // 匯出為 CSV 格式 (自帶 UTF-8 BOM，防止 Windows Excel 雙擊開啟出現繁體中文亂碼)
@@ -4595,6 +4630,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         amount: t.amount,
         type: t.type,
         reminder_date: t.reminder_date,
+        completed_by: t.completed_by,
         category_id: t.category_id,
         paid_by: t.paid_by,
         transacted_at: t.transacted_at,
@@ -4603,6 +4639,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         payment_method: t.payment_method,
         account_id: t.account_id,
         is_reconciled: t.is_reconciled,
+        is_settled: t.is_settled,
       })),
       recurring_rules: recurringRules
         .filter(r => !r.ledger_id || r.ledger_id === currentLedger.id)
@@ -5129,6 +5166,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           amount: isBackupMemo ? 0 : Number(t.amount),
           type: restoredType,
           reminder_date: restoredReminder,
+          completed_by: t.completed_by || undefined,
           paid_by: resolvedPaidBy,
           transacted_at: t.transacted_at || new Date().toISOString(),
           merchant: t.merchant || undefined,

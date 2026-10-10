@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 3;
+export const APP_BUILD_REVISION = 4;
 
-// 完整版本字串 (例如 "1.0.4.3")
+// 完整版本字串 (例如 "1.0.4.4")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.4',
+    date: '2026-10-10',
+    title: '上線首頁「明細類型三段式快捷篩選」與待辦協同完成者標記',
+    highlights: [
+      '明細類型三段式快捷篩選列：首頁明細頂部新增「全部紀錄 / 💳 僅看收支 / 📝 僅看生活備忘」分段膠囊切換，自帶即時筆數統計，一鍵純淨瀏覽生活手帳。',
+      '家庭待辦協同完成者標記：待辦打勾時自動記錄是由哪位家庭成員辦妥，卡片底部與徽章清楚標註「👩 媽媽 記錄 · 👨 爸爸 辦妥 ✓」，協同分工一目了然。',
+      '全端同步與編輯彈窗連動：支援編輯記事時即時顯示打勾完成者稱謂，雲端即時同步與全要素備份還原零遺漏。',
+    ],
+  },
   {
     version: '1.0.4.3',
     date: '2026-10-10',

@@ -380,6 +380,8 @@ function MainApp() {
   const [filterMemberId, setFilterMemberId] = useState<string>(() => currentUser?.id || 'all');
   const [hasManuallySelectedMember, setHasManuallySelectedMember] = useState<boolean>(false);
   const [filterModalType, setFilterModalType] = useState<'month' | 'member' | null>(null);
+  // 明細類型快捷篩選：'all' 全部紀錄 | 'financial' 僅看收支 | 'memo' 僅看生活備忘
+  const [transactionTypeFilter, setTransactionTypeFilter] = useState<'all' | 'financial' | 'memo'>('all');
 
   // 當本機使用者身分載入或切換時，若使用者尚未手動指定其他成員，自動同步預設為本機成員
   useEffect(() => {
@@ -395,7 +397,7 @@ function MainApp() {
   // 篩選條件改變時，自動重設顯示筆數回初始值
   useEffect(() => {
     setDisplayCount(PAGE_SIZE);
-  }, [filterMonth, filterMemberId, searchQuery]);
+  }, [filterMonth, filterMemberId, searchQuery, transactionTypeFilter]);
 
   // 提取所有有記帳紀錄的歷史月份
   const availableMonths = useMemo(() => {
@@ -647,11 +649,63 @@ function MainApp() {
     return combined.slice(0, 15);
   }, [transactions, recentMerchants]);
 
-  // 依據選取的月份、成員與店家關鍵字進行即時篩選
+  // 依據選取的月份、成員與店家關鍵字計算各類型數量（全部 / 僅看收支 / 僅看生活備忘）
+  const typeCountStats = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    let all = 0;
+    let financial = 0;
+    let memo = 0;
+
+    transactions.forEach(t => {
+      // 1. 月份篩選
+      if (filterMonth !== 'all') {
+        if (!t.transacted_at) return;
+        const d = new Date(t.transacted_at);
+        if (isNaN(d.getTime())) return;
+        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        if (ym !== filterMonth) return;
+      }
+
+      // 2. 成員篩選
+      if (filterMemberId !== 'all') {
+        const payer = getMemberById(t.paid_by) || t.payer_profile;
+        const targetMember = members.find(m => m.id === filterMemberId) || (currentUser?.id === filterMemberId ? currentUser : undefined);
+        const isMatch =
+          (payer && payer.id === filterMemberId) ||
+          t.paid_by === filterMemberId ||
+          (targetMember && (payer?.display_name === targetMember.display_name || (t as any).payer_name === targetMember.display_name));
+        if (!isMatch) return;
+      }
+
+      // 3. 店家與關鍵字搜尋
+      if (q) {
+        const mMatch = t.merchant && t.merchant.toLowerCase().includes(q);
+        const nMatch = t.note && t.note.toLowerCase().includes(q);
+        const cat = getCategoryById(t.category_id, t.category);
+        const cMatch = cat && cat.name.toLowerCase().includes(q);
+        if (!mMatch && !nMatch && !cMatch) return;
+      }
+
+      all++;
+      if (t.type === 'memo') {
+        memo++;
+      } else {
+        financial++;
+      }
+    });
+
+    return { all, financial, memo };
+  }, [transactions, filterMonth, filterMemberId, searchQuery, getMemberById, getCategoryById, members, currentUser]);
+
+  // 依據選取的月份、成員、店家關鍵字與明細類型進行即時篩選
   const filteredTransactions = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
 
     return transactions.filter(t => {
+      // 0. 明細類型快捷篩選 (全部 / 僅看收支 / 僅看生活備忘)
+      if (transactionTypeFilter === 'financial' && t.type === 'memo') return false;
+      if (transactionTypeFilter === 'memo' && t.type !== 'memo') return false;
+
       // 1. 月份篩選
       if (filterMonth !== 'all') {
         if (!t.transacted_at) return false;
@@ -683,7 +737,7 @@ function MainApp() {
 
       return true;
     });
-  }, [transactions, filterMonth, filterMemberId, searchQuery, getMemberById, getCategoryById, members, currentUser]);
+  }, [transactions, transactionTypeFilter, filterMonth, filterMemberId, searchQuery, getMemberById, getCategoryById, members, currentUser]);
 
   // 方案 A：依分批上限動態切片明細清單 (避免一次渲染過多元件)
   const displayedTransactions = useMemo(() => {
@@ -693,8 +747,8 @@ function MainApp() {
   // 預設成員篩選視角為本機使用成員
   const defaultMemberId = currentUser?.id || 'all';
 
-  // 判定是否偏離預設視角（預設視角為：當前月份 + 本機使用成員 + 無搜尋）
-  const isFiltered = filterMonth !== currentMonthYm || filterMemberId !== defaultMemberId || !!searchQuery.trim();
+  // 判定是否偏離預設視角（預設視角為：當前月份 + 本機使用成員 + 無搜尋 + 全部類型）
+  const isFiltered = filterMonth !== currentMonthYm || filterMemberId !== defaultMemberId || !!searchQuery.trim() || transactionTypeFilter !== 'all';
 
   // 當前檢視範圍之收支總計 (完全精確連動當前月份或指定篩選範圍)
   const activeFilterSummary = useMemo(() => {
@@ -764,6 +818,7 @@ function MainApp() {
     setFilterMemberId(currentUser?.id || 'all');
     setHasManuallySelectedMember(false);
     setSearchQuery('');
+    setTransactionTypeFilter('all');
   };
 
   // 記帳分類管理狀態
@@ -2893,7 +2948,7 @@ function MainApp() {
             {/* 交易列表標題 */}
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>
-                近期收支明細 {filteredTransactions.length < transactions.length ? `(${filteredTransactions.length} / 總 ${transactions.length})` : `(總 ${transactions.length})`}
+                {transactionTypeFilter === 'memo' ? '📝 生活備忘記事' : transactionTypeFilter === 'financial' ? '💳 日常收支明細' : '近期收支明細'} {filteredTransactions.length < transactions.length ? `(${filteredTransactions.length} / 總 ${transactions.length})` : `(總 ${transactions.length})`}
               </Text>
               {keyboardOffset > 0 ? (
                 <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -2902,6 +2957,66 @@ function MainApp() {
               ) : (
                 <Text style={styles.sectionSubtitle}>點擊明細可直接修改或刪除 ✍️</Text>
               )}
+            </View>
+
+            {/* 📝 ✕ 💳 明細類型快捷切換列：全部紀錄 / 💳 僅看收支 / 📝 僅看生活備忘 */}
+            <View style={styles.typeFilterContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.typeFilterTab,
+                  transactionTypeFilter === 'all' && styles.typeFilterTabActive,
+                ]}
+                onPress={() => setTransactionTypeFilter('all')}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.typeFilterTabText,
+                    transactionTypeFilter === 'all' && styles.typeFilterTabTextActive,
+                  ]}
+                  maxFontSizeMultiplier={1.08}
+                >
+                  全部紀錄 ({typeCountStats.all})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.typeFilterTab,
+                  transactionTypeFilter === 'financial' && styles.typeFilterTabActive,
+                ]}
+                onPress={() => setTransactionTypeFilter('financial')}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.typeFilterTabText,
+                    transactionTypeFilter === 'financial' && styles.typeFilterTabTextActive,
+                  ]}
+                  maxFontSizeMultiplier={1.08}
+                >
+                  💳 僅看收支 ({typeCountStats.financial})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.typeFilterTab,
+                  transactionTypeFilter === 'memo' && styles.typeFilterTabActiveMemo,
+                ]}
+                onPress={() => setTransactionTypeFilter('memo')}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.typeFilterTabText,
+                    transactionTypeFilter === 'memo' && styles.typeFilterTabTextActiveMemo,
+                  ]}
+                  maxFontSizeMultiplier={1.08}
+                >
+                  📝 僅看生活備忘 ({typeCountStats.memo})
+                </Text>
+              </TouchableOpacity>
             </View>
 
             {/* 🔍 店家 / 關鍵字即時搜尋列 */}
@@ -3066,12 +3181,24 @@ function MainApp() {
               </View>
             ) : filteredTransactions.length === 0 ? (
               <View style={styles.emptyBox}>
-                <Text style={styles.emptyIcon}>🔍</Text>
+                <Text style={styles.emptyIcon}>
+                  {transactionTypeFilter === 'memo' ? '📝' : transactionTypeFilter === 'financial' ? '💳' : '🔍'}
+                </Text>
                 <Text style={styles.emptyText}>
-                  {searchQuery.trim() ? `查無「${searchQuery.trim()}」的相關紀錄` : '沒有符合篩選條件的明細'}
+                  {transactionTypeFilter === 'memo' && !searchQuery.trim()
+                    ? '目前沒有生活備忘或待辦記事'
+                    : transactionTypeFilter === 'financial' && !searchQuery.trim()
+                    ? '目前沒有日常收支消費紀錄'
+                    : searchQuery.trim()
+                    ? `查無「${searchQuery.trim()}」的相關紀錄`
+                    : '沒有符合篩選條件的明細'}
                 </Text>
                 <Text style={styles.emptySubtext}>
-                  {searchQuery.trim() && filterMonth !== 'all'
+                  {transactionTypeFilter === 'memo' && !searchQuery.trim()
+                    ? '點擊右下角「+」並切換至「記事」隨手記錄家庭大小事'
+                    : transactionTypeFilter === 'financial' && !searchQuery.trim()
+                    ? '點擊右下角「+」記錄第一筆家庭收支開銷'
+                    : searchQuery.trim() && filterMonth !== 'all'
                     ? '目前僅搜尋指定月份，您可以點擊下方按鈕改查「全部月份」'
                     : '請嘗試更換店家關鍵字或重設篩選'}
                 </Text>
@@ -5101,6 +5228,53 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6366F1',
     fontWeight: '500',
+  },
+  typeFilterContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    padding: 3,
+    marginBottom: 10,
+    gap: 4,
+  },
+  typeFilterTab: {
+    flex: 1,
+    paddingVertical: 7,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  typeFilterTabActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  typeFilterTabActiveMemo: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F59E0B',
+    borderWidth: 1,
+    shadowColor: '#B45309',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  typeFilterTabText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  typeFilterTabTextActive: {
+    color: '#0F172A',
+    fontWeight: '800',
+  },
+  typeFilterTabTextActiveMemo: {
+    color: '#B45309',
+    fontWeight: '800',
   },
   searchBarContainer: {
     marginBottom: 8,

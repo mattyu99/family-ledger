@@ -245,6 +245,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                 const memoData = parseMemoNote(item.note);
                 const dueStatus = getDueStatus(item.reminder_date);
                 const payer = getMemberById(item.paid_by) || item.payer_profile;
+                const completer = item.completed_by ? getMemberById(item.completed_by) : undefined;
                 const date = new Date(item.transacted_at);
                 const dateFormatted = `${date.getMonth() + 1}/${date.getDate()}`;
 
@@ -290,7 +291,9 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                       {/* 提醒狀態徽章 */}
                       {isCompleted ? (
                         <View style={styles.completedBadge}>
-                          <Text style={styles.completedBadgeText} maxFontSizeMultiplier={1.08}>✓ 已辦妥</Text>
+                          <Text style={styles.completedBadgeText} maxFontSizeMultiplier={1.08}>
+                            ✓ {completer?.display_name ? `${completer.display_name} 辦妥` : '已辦妥'}
+                          </Text>
                         </View>
                       ) : dueStatus ? (
                         <View style={[styles.dueBadge, { backgroundColor: dueStatus.bg, borderColor: dueStatus.border }]}>
@@ -315,6 +318,11 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                     <View style={styles.itemFooterRow}>
                       <Text style={[styles.itemAuthor, isCompleted && styles.itemAuthorCompleted]} maxFontSizeMultiplier={1.08}>
                         {payer?.avatar_url || '👤'} {payer?.display_name || '成員'} 記錄 · {dateFormatted}
+                        {isCompleted && (
+                          completer
+                            ? ` · 由 ${completer.avatar_url || '👤'} ${completer.display_name} 辦妥 ✓`
+                            : ' · 已辦妥 ✓'
+                        )}
                       </Text>
                       <Text style={[styles.itemHint, isCompleted && styles.itemHintCompleted]} maxFontSizeMultiplier={1.08}>
                         查看 / 編輯 ›

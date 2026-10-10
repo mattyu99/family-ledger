@@ -368,6 +368,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           merchant: memoReminderDate ? `remind:${memoReminderDate}` : 'memo',
           transacted_at: transactedAt || transaction.transacted_at,
           is_settled: isSettled,
+          completed_by: isSettled ? (transaction.completed_by || currentUser?.id) : undefined,
         });
 
         if (success) {
@@ -529,6 +530,13 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                       </Text>
                     </TouchableOpacity>
                   </View>
+                  {isSettled && (
+                    <Text style={styles.memoCompleterHint} maxFontSizeMultiplier={1.08}>
+                      {transaction.completed_by
+                        ? `✓ 由 ${getMemberById(transaction.completed_by)?.display_name || '家庭成員'} 打勾辦妥`
+                        : `✓ 儲存後將標記由 ${currentUser?.display_name || '本人'} 辦妥`}
+                    </Text>
+                  )}
                 </View>
 
                 {/* 記事內容多行輸入框 */}
@@ -1797,5 +1805,11 @@ const styles = StyleSheet.create({
   memoStatusChipTextActiveCompleted: {
     color: '#059669',
     fontWeight: '700',
+  },
+  memoCompleterHint: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#059669',
+    fontWeight: '600',
   },
 });
