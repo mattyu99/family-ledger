@@ -2059,12 +2059,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       try {
         let { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-          const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
-          if (anonError) {
-            console.warn('Supabase 匿名登入失敗:', anonError.message);
-            return;
+          // 避免 AsyncStorage 還原 session 的微小延遲造成重複建立匿名使用者
+          await new Promise(r => setTimeout(r, 250));
+          const retryGet = await supabase.auth.getSession();
+          if (retryGet.data?.session) {
+            session = retryGet.data.session;
+          } else {
+            const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
+            if (anonError) {
+              console.warn('Supabase 匿名登入失敗:', anonError.message);
+              return;
+            }
+            session = anonData.session;
           }
-          session = anonData.session;
         }
 
         const authUser = session?.user;
@@ -2127,7 +2134,74 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (validMemberLedgers.length === 0 && (savedCode || savedLedgerId)) {
           try {
             let foundLedger: any = null;
-            if (savedLedgerId) {
+            const savedRole = (await AsyncStorage.getItem(STORAGE_KEYS.USER_ROLE)) || 'member';
+            const savedPin = (await AsyncStorage.getItem(STORAGE_KEYS.ADMIN_PIN)) || '8888';
+
+            // 1. 優先以邀請碼呼叫 RPC 重新綁定當前 Supabase Session (攜帶 PIN 碼)
+            if (savedCode) {
+              const { data: rpcRes } = await supabase.rpc('join_ledger_by_invite', {
+                invite_code_input: savedCode.trim(),
+                claimed_role: savedRole,
+                admin_pin_input: savedPin,
+              });
+              if (rpcRes?.success && rpcRes?.ledger_id) {
+                const { data: lData } = await supabase
+                  .from('ledgers')
+                  .select('*')
+                  .eq('id', rpcRes.ledger_id)
+                  .maybeSingle();
+                if (lData) foundLedger = lData;
+              } else if (!rpcRes?.success && savedRole === 'owner') {
+                // 若以 owner 角色被 PIN 檔下，降級為 member 先確保雲端綁定成功不被踢出
+                const { data: fallbackRpc } = await supabase.rpc('join_ledger_by_invite', {
+                  invite_code_input: savedCode.trim(),
+                  claimed_role: 'member',
+                  admin_pin_input: null,
+                });
+                if (fallbackRpc?.success && fallbackRpc?.ledger_id) {
+                  const { data: lData } = await supabase
+                    .from('ledgers')
+                    .select('*')
+                    .eq('id', fallbackRpc.ledger_id)
+                    .maybeSingle();
+                  if (lData) foundLedger = lData;
+                }
+              }
+            }
+
+            // 2. 若邀請碼未成功但有 savedLedgerId，以帳本 ID 重新綁定
+            if (!foundLedger && savedLedgerId) {
+              const { data: rpcRes } = await supabase.rpc('join_ledger_by_invite', {
+                invite_code_input: savedLedgerId,
+                claimed_role: savedRole,
+                admin_pin_input: savedPin,
+              });
+              if (rpcRes?.success && rpcRes?.ledger_id) {
+                const { data: lData } = await supabase
+                  .from('ledgers')
+                  .select('*')
+                  .eq('id', rpcRes.ledger_id)
+                  .maybeSingle();
+                if (lData) foundLedger = lData;
+              } else if (!rpcRes?.success && savedRole === 'owner') {
+                const { data: fallbackRpc } = await supabase.rpc('join_ledger_by_invite', {
+                  invite_code_input: savedLedgerId,
+                  claimed_role: 'member',
+                  admin_pin_input: null,
+                });
+                if (fallbackRpc?.success && fallbackRpc?.ledger_id) {
+                  const { data: lData } = await supabase
+                    .from('ledgers')
+                    .select('*')
+                    .eq('id', fallbackRpc.ledger_id)
+                    .maybeSingle();
+                  if (lData) foundLedger = lData;
+                }
+              }
+            }
+
+            // 3. 備援：若 RPC 沒能查到但 directLedger 查得到
+            if (!foundLedger && savedLedgerId) {
               const { data: directLedger } = await supabase
                 .from('ledgers')
                 .select('*')
@@ -2136,50 +2210,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               if (directLedger) foundLedger = directLedger;
             }
 
-            if (!foundLedger && savedCode) {
-              const { data: inviteRows } = await supabase
-                .from('ledger_invites')
-                .select('ledger_id, ledgers(*)')
-                .ilike('invite_code', savedCode.trim())
-                .limit(1);
-              if (inviteRows && inviteRows.length > 0 && inviteRows[0].ledgers) {
-                foundLedger = inviteRows[0].ledgers;
-              }
-            }
-
-            // 若因 RLS 限制無法直接讀取，透過 SECURITY DEFINER RPC 進行重連
-            if (!foundLedger && savedCode) {
-              const { data: rpcRes } = await supabase.rpc('join_ledger_by_invite', {
-                invite_code_input: savedCode.trim(),
-                claimed_role: (await AsyncStorage.getItem(STORAGE_KEYS.USER_ROLE)) || 'member',
-              });
-              if (rpcRes?.success && rpcRes?.ledger_id) {
-                const { data: lData } = await supabase
-                  .from('ledgers')
-                  .select('*')
-                  .eq('id', rpcRes.ledger_id)
-                  .maybeSingle();
-                if (lData) foundLedger = lData;
-              }
-            }
-
-            if (!foundLedger && savedLedgerId) {
-              const { data: rpcRes } = await supabase.rpc('join_ledger_by_invite', {
-                invite_code_input: savedLedgerId,
-                claimed_role: (await AsyncStorage.getItem(STORAGE_KEYS.USER_ROLE)) || 'member',
-              });
-              if (rpcRes?.success && rpcRes?.ledger_id) {
-                const { data: lData } = await supabase
-                  .from('ledgers')
-                  .select('*')
-                  .eq('id', rpcRes.ledger_id)
-                  .maybeSingle();
-                if (lData) foundLedger = lData;
-              }
-            }
-
             if (foundLedger && isValidUUID(foundLedger.id)) {
-              const savedRole = (await AsyncStorage.getItem(STORAGE_KEYS.USER_ROLE)) || 'member';
               await supabase.from('ledger_members').upsert({
                 ledger_id: foundLedger.id,
                 user_id: authUser.id,
@@ -2306,27 +2337,25 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
           }
         } else {
-          // 情境 C：新訪客打開乾淨網址，或已被管理員從帳本名冊中移除
+          // 情境 C：雲端查無成員名冊或離線狀態 (Local-First: 絕對不可任意清理使用者本地已加入的帳本！)
           if (!isMounted) return;
           const savedLedgerStr = await AsyncStorage.getItem(STORAGE_KEYS.LEDGER);
           if (savedLedgerStr) {
-            // 此裝置原先有帳本紀錄，但在雲端查無任何加入紀錄（已被管理員踢除/刪除）
-            console.log('此裝置已不再屬於任何雲端帳本，清理本地狀態回到初始歡迎畫面');
-            await AsyncStorage.removeItem(STORAGE_KEYS.LEDGER);
-            await AsyncStorage.removeItem(STORAGE_KEYS.MEMBERS);
-            await AsyncStorage.removeItem(STORAGE_KEYS.TRANSACTIONS);
-            await AsyncStorage.removeItem(STORAGE_KEYS.USER_ROLE);
-            await AsyncStorage.removeItem(STORAGE_KEYS.INVITE_CODE);
-            await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'false');
+            try {
+              const cachedLedger = JSON.parse(savedLedgerStr);
+              if (cachedLedger && isValidUUID(cachedLedger.id) && cachedLedger.id !== DEMO_LEDGER_ID) {
+                console.log('雲端未查詢到即時名冊，但本機具備有效帳本快取：維持本地離線優先狀態，絕不踢出帳本');
+                setCurrentLedger(cachedLedger);
+                setHasJoinedLedger(true);
+                setIsCloudSynced(false);
+                return;
+              }
+            } catch {}
+          }
+          // 僅在確定本機「完全沒有任何帳本快取」時，才顯示初始加入畫面
+          const savedHasJoined = await AsyncStorage.getItem(STORAGE_KEYS.HAS_JOINED);
+          if (savedHasJoined !== 'true') {
             setHasJoinedLedger(false);
-            setIsCloudSynced(false);
-            setTransactions([]);
-            setMembers(DEFAULT_MEMBERS);
-          } else {
-            const savedHasJoined = await AsyncStorage.getItem(STORAGE_KEYS.HAS_JOINED);
-            if (savedHasJoined !== 'true') {
-              setHasJoinedLedger(false);
-            }
           }
         }
       } catch (err) {

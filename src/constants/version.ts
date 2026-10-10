@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 0;
+export const APP_BUILD_REVISION = 1;
 
-// 完整版本字串 (例如 "1.0.4.0")
+// 完整版本字串 (例如 "1.0.4.1")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.1',
+    date: '2026-10-10',
+    title: '修復 APP 更新後帳本重連機制（落實 Local-First 帳本快取永不掉失）與手帳情境標籤優化',
+    highlights: [
+      '修復更新後帳本脫離問題：徹底修正雲端 Supabase Session 重整時，因 PIN 驗證與成員查詢延遲誤判踢出帳本之問題。',
+      '落實 Local-First 離線優先防護：本機只要保有已加入帳本快取，任何情況下均維持登入狀態，絕不主動清除本地資料。',
+      '生活手帳情境標籤智慧解析：記事卡片頂部標題徹底脫鉤「餐飲伙食」，自動辨識 [🛒 採買清單]、[💼 重要備忘] 等主題標籤。',
+      '彈窗手帳主題膠囊雙向連動：手打或點選膠囊皆能即時高亮同步，支援反選取消與主題無縫切換。',
+    ],
+  },
   {
     version: '1.0.4.0',
     date: '2026-10-10',
