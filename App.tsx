@@ -177,6 +177,8 @@ function MainApp() {
     leaveCurrentLedger,
     switchLedgerById,
     leaveLedgerById,
+    unreadLedgerMap,
+    hasOtherUnread,
     updateMemberRole,
     claimAdminRoleWithPin,
     getMemberById,
@@ -2538,9 +2540,18 @@ function MainApp() {
                           );
                         }}
                       >
-                        <Text style={{ fontSize: 15, fontWeight: '700', color: isCurrent ? '#4F46E5' : '#1F2937' }} numberOfLines={1}>
-                          {l.name} {isCurrent ? '（使用中 ✓）' : ''}
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                          <Text style={{ fontSize: 15, fontWeight: '700', color: isCurrent ? '#4F46E5' : '#1F2937', flexShrink: 1 }} numberOfLines={1}>
+                            {l.name} {isCurrent ? '（使用中 ✓）' : ''}
+                          </Text>
+                          {!isCurrent && (unreadLedgerMap[l.id] || 0) > 0 && (
+                            <View style={styles.modalLedgerUnreadBadge}>
+                              <Text style={styles.modalLedgerUnreadBadgeText}>
+                                🔴 {(unreadLedgerMap[l.id] || 0) > 1 ? `${unreadLedgerMap[l.id]} 筆新動態` : '有新記帳'}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
                         <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 4, gap: 6 }}>
                           <Text style={{ fontSize: 12, color: '#4B5563' }}>
                             身分：<Text style={{ fontWeight: '700', color: isAdmin ? '#D97706' : '#4B5563' }}>{isAdmin ? '👑 管理員' : '👤 成員'}</Text>
@@ -2779,6 +2790,21 @@ function MainApp() {
               <Text style={styles.ledgerTitle} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.2}>
                 {currentLedger.name}
               </Text>
+            )}
+
+            {/* 多本帳本快速切換膠囊入口 (若其他帳本有未讀新動態則亮紅點) */}
+            {ledgers.length > 1 && (
+              <TouchableOpacity
+                style={[
+                  styles.switchLedgerTopBadge,
+                  hasOtherUnread && styles.switchLedgerTopBadgeUnread,
+                ]}
+                onPress={() => setSwitchLedgerModalVisible(true)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.switchLedgerTopBadgeText}>切換 ▾</Text>
+                {hasOtherUnread && <View style={styles.topBadgeRedDot} />}
+              </TouchableOpacity>
             )}
           </View>
         </View>
@@ -4392,7 +4418,14 @@ function MainApp() {
                   setSwitchLedgerModalVisible(true);
                 }}
               >
-                <Text style={styles.switchLedgerEntryText}>🚪 加入或切換其他家庭公帳</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  <Text style={styles.switchLedgerEntryText}>🚪 加入或切換其他家庭公帳</Text>
+                  {hasOtherUnread && (
+                    <View style={styles.switchLedgerEntryRedBadge}>
+                      <Text style={styles.switchLedgerEntryRedBadgeText}>新動態</Text>
+                    </View>
+                  )}
+                </View>
               </TouchableOpacity>
             </View>
 
@@ -7728,6 +7761,57 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#4F46E5',
+  },
+  switchLedgerTopBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    marginLeft: 4,
+  },
+  switchLedgerTopBadgeUnread: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+  },
+  switchLedgerTopBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  topBadgeRedDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
+    marginLeft: 4,
+  },
+  switchLedgerEntryRedBadge: {
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 8,
+  },
+  switchLedgerEntryRedBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  modalLedgerUnreadBadge: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+  },
+  modalLedgerUnreadBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#DC2626',
   },
   invitePreviewHeader: {
     flexDirection: 'row',

@@ -373,6 +373,9 @@ interface LedgerContextType {
   leaveCurrentLedger: () => Promise<void>;
   switchLedgerById: (ledgerId: string) => Promise<void>;
   leaveLedgerById: (ledgerId: string) => Promise<void>;
+  unreadLedgerMap: Record<string, number>;
+  hasOtherUnread: boolean;
+  checkUnreadLedgers: () => Promise<void>;
   updateMemberRole: (memberId: string, newRole: 'owner' | 'member') => Promise<boolean>;
   claimAdminRoleWithPin: (pin: string) => Promise<{ success: boolean; message?: string }>;
   getMemberById: (id?: string) => Profile | undefined;
@@ -504,6 +507,7 @@ const STORAGE_KEYS = {
   ACCOUNTS_INITIALIZED: '@family_ledger_accounts_initialized',
   PAYMENT_METHODS: '@family_ledger_payment_methods',
   RECURRING_RULES: '@family_ledger_recurring_rules',
+  LAST_VISITED_PREFIX: '@family_ledger_last_visited_',
 };
 
 // 預設常用店家快捷建議清單（涵蓋台灣家庭最普遍的日常採買店家）
@@ -569,6 +573,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const triggerLiveToast = React.useCallback((toast: LiveToastNotification) => {
     setLiveToast(toast);
   }, []);
+
+  // 跨帳本未讀動態與紅點標記 (Record<ledger_id, unread_count>)
+  const [unreadLedgerMap, setUnreadLedgerMap] = useState<Record<string, number>>({});
+  const multiLedgerChannelRef = useRef<any>(null);
+
+  const hasOtherUnread = React.useMemo(() => {
+    return Object.entries(unreadLedgerMap).some(([lid, cnt]) => lid !== currentLedger.id && cnt > 0);
+  }, [unreadLedgerMap, currentLedger.id]);
 
   // 定期備份設定與上次備份記錄
   const [lastBackupAt, setLastBackupAt] = useState<string | null>(null);
@@ -1643,6 +1655,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setCurrentLedger(targetLedger);
     setRecurringRules([]); // 先行清空記憶體中的週期規則，避免在非同步載入過程閃現上一本帳本之規則
     await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(targetLedger));
+
+    // 記錄當前帳本最後造訪時間，並消除本機該帳本的未讀紅點標記
+    const nowIso = new Date().toISOString();
+    await AsyncStorage.setItem(`${STORAGE_KEYS.LAST_VISITED_PREFIX}${targetLedger.id}`, nowIso);
+    setUnreadLedgerMap(prev => {
+      if (!prev[targetLedger.id]) return prev;
+      const next = { ...prev };
+      delete next[targetLedger.id];
+      return next;
+    });
 
     // (A-0) 載入帳本最新雲端資訊 (created_by, admin_pin 等)
     if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
@@ -2772,6 +2794,177 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, [currentLedger, isConfigured]);
 
+  // 檢查使用者所屬之其他帳本是否有未讀新動態
+  const checkUnreadLedgers = async (
+    targetLedgers?: Ledger[],
+    activeLedgerId?: string,
+    currentAuthUserId?: string
+  ) => {
+    if (!isConfigured) return;
+    try {
+      const ledgerList = targetLedgers || ledgers;
+      const activeId = activeLedgerId || currentLedger.id;
+      if (!ledgerList || ledgerList.length <= 1) return;
+
+      const otherLedgers = ledgerList.filter(
+        l => l.id !== activeId && isValidUUID(l.id) && l.id !== DEMO_LEDGER_ID
+      );
+      if (otherLedgers.length === 0) return;
+
+      let authId = currentAuthUserId;
+      if (!authId) {
+        const { data: { session } } = await supabase.auth.getSession();
+        authId = session?.user?.id;
+      }
+
+      const newUnreadMap: Record<string, number> = {};
+
+      for (const otherL of otherLedgers) {
+        const visitKey = `${STORAGE_KEYS.LAST_VISITED_PREFIX}${otherL.id}`;
+        const lastVisitedStr = await AsyncStorage.getItem(visitKey);
+
+        // 查詢該帳本最新一筆交易 (以 created_at 降冪排序)
+        const { data: latestTxs } = await supabase
+          .from('transactions')
+          .select('id, created_at, transacted_at, creator_id, paid_by')
+          .eq('ledger_id', otherL.id)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (latestTxs && latestTxs.length > 0) {
+          const latest = latestTxs[0];
+          const latestTime = latest.created_at || latest.transacted_at;
+
+          if (!lastVisitedStr) {
+            // 初次使用或未記錄過離開時間：以目前時間為起點，避免將歷史舊帳誤判為未讀紅點
+            await AsyncStorage.setItem(visitKey, new Date().toISOString());
+          } else if (latestTime && new Date(latestTime).getTime() > new Date(lastVisitedStr).getTime()) {
+            // 防呆：若是自己建立的交易，不觸發自己的未讀紅點
+            const isMe = (authId && latest.creator_id === authId) ||
+                         (authId && latest.paid_by === authId) ||
+                         (currentUserRef.current?.id && (latest.creator_id === currentUserRef.current.id || latest.paid_by === currentUserRef.current.id));
+            if (!isMe) {
+              newUnreadMap[otherL.id] = 1;
+            }
+          }
+        }
+      }
+
+      setUnreadLedgerMap(prev => {
+        const next = { ...prev };
+        otherLedgers.forEach(ol => {
+          if (newUnreadMap[ol.id]) {
+            next[ol.id] = newUnreadMap[ol.id];
+          } else {
+            delete next[ol.id];
+          }
+        });
+        return next;
+      });
+    } catch (err) {
+      console.warn('檢查跨帳本未讀動態失敗:', err);
+    }
+  };
+
+  // 4. 跨帳本即時動態與紅點監聽器：當 ledgers 變更或切換帳本時自動維護
+  useEffect(() => {
+    if (!isConfigured || ledgers.length <= 1) {
+      if (multiLedgerChannelRef.current) {
+        supabase.removeChannel(multiLedgerChannelRef.current);
+        multiLedgerChannelRef.current = null;
+      }
+      return;
+    }
+
+    let isSubscribed = true;
+
+    const initMultiLedgerRealtime = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const authId = session?.user?.id;
+
+      if (!isSubscribed) return;
+
+      // 1. 靜態檢查其他帳本是否有新動態
+      await checkUnreadLedgers(ledgers, currentLedger.id, authId);
+
+      if (!isSubscribed) return;
+
+      // 2. 訂閱其他帳本的 Realtime 廣播
+      if (multiLedgerChannelRef.current) {
+        supabase.removeChannel(multiLedgerChannelRef.current);
+        multiLedgerChannelRef.current = null;
+      }
+
+      const otherLedgers = ledgers.filter(
+        l => l.id !== currentLedger.id && isValidUUID(l.id) && l.id !== DEMO_LEDGER_ID
+      );
+      if (otherLedgers.length === 0) return;
+
+      const channel = supabase.channel(`multi-ledger-unread-${currentLedger.id}-${Date.now()}`);
+
+      otherLedgers.forEach((otherL) => {
+        channel.on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'transactions',
+            filter: `ledger_id=eq.${otherL.id}`,
+          },
+          (payload) => {
+            const newRow = payload.new as any;
+            if (!newRow) return;
+
+            // 防呆：若記帳者為本機裝置，不觸發紅點
+            const isMe = (authId && newRow.creator_id === authId) ||
+                         (authId && newRow.paid_by === authId) ||
+                         (currentUserRef.current?.id && (newRow.creator_id === currentUserRef.current.id || newRow.paid_by === currentUserRef.current.id));
+            if (isMe) return;
+
+            // 1. 標記該帳本未讀
+            setUnreadLedgerMap(prev => ({
+              ...prev,
+              [otherL.id]: (prev[otherL.id] || 0) + 1,
+            }));
+
+            // 2. 彈出頂部跨帳本即時動態泡泡
+            let parsedMerchant = newRow.merchant;
+            if (!parsedMerchant && newRow.note) {
+              const match = newRow.note.match(/^\[(.*?)\]\s*(.*)$/);
+              if (match) parsedMerchant = match[1];
+            }
+            const displayMerchant = parsedMerchant || (newRow.type === 'expense' ? '支出' : (newRow.type === 'income' ? '收入' : '記事'));
+            const displayAmount = newRow.amount ? ` NT$ ${Number(newRow.amount).toLocaleString('zh-TW')}` : '';
+
+            triggerLiveToast({
+              id: `cross-ledger-${otherL.id}-${newRow.id || Date.now()}`,
+              type: 'insert',
+              actorName: otherL.name,
+              avatar: '📬',
+              title: `📬 [${otherL.name}] 新記帳`,
+              message: `${displayMerchant}${displayAmount}`,
+              amount: newRow.amount ? Number(newRow.amount) : undefined,
+              createdAt: Date.now(),
+            });
+          }
+        );
+      });
+
+      channel.subscribe();
+      multiLedgerChannelRef.current = channel;
+    };
+
+    initMultiLedgerRealtime();
+
+    return () => {
+      isSubscribed = false;
+      if (multiLedgerChannelRef.current) {
+        supabase.removeChannel(multiLedgerChannelRef.current);
+        multiLedgerChannelRef.current = null;
+      }
+    };
+  }, [ledgers, currentLedger.id, isConfigured]);
+
   // 建立新的家庭公帳 (Owner 發起)
   const createLedger = async (name: string = '幸福家庭帳本', creatorName?: string, avatar?: string) => {
     try {
@@ -3412,6 +3605,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await AsyncStorage.removeItem(`${STORAGE_KEYS.CURRENT_USER}_${targetLedgerId}`);
       await AsyncStorage.removeItem(`${STORAGE_KEYS.MEMBERS}_${targetLedgerId}`);
       await AsyncStorage.removeItem(`${STORAGE_KEYS.TRANSACTIONS}_${targetLedgerId}`);
+      await AsyncStorage.removeItem(`${STORAGE_KEYS.LAST_VISITED_PREFIX}${targetLedgerId}`);
+      setUnreadLedgerMap(prev => {
+        if (!prev[targetLedgerId]) return prev;
+        const next = { ...prev };
+        delete next[targetLedgerId];
+        return next;
+      });
 
       const remainingLedgers = ledgers.filter(l => l.id !== targetLedgerId);
       setLedgers(remainingLedgers);
@@ -6170,6 +6370,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         leaveCurrentLedger,
         switchLedgerById,
         leaveLedgerById,
+        unreadLedgerMap,
+        hasOtherUnread,
+        checkUnreadLedgers,
         updateMemberRole,
         claimAdminRoleWithPin,
         getMemberById,

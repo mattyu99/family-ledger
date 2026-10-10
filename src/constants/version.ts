@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 19;
+export const APP_BUILD_REVISION = 20;
 
-// 完整版本字串 (例如 "1.0.4.19")
+// 完整版本字串 (例如 "1.0.4.20")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.20',
+    date: '2026-10-11',
+    title: '跨帳本動態紅點提示與頂部切換捷徑上線：多帳本家人記帳動態即時掌握',
+    highlights: [
+      '跨帳本未讀動態紅點提醒：當家人在其他帳本記帳時，系統透過 Supabase Realtime 與本機造訪時間戳即時偵測，並在帳本切換選單與各帳本卡片上亮起醒目的「🔴 有新記帳」紅點提醒。',
+      '頂部導航列快速切換捷徑：若加入超過一本公帳，頂部標題列新增「切換 ▾」膠囊按鈕（有未讀新動態時自帶紅點提醒），點擊一秒呼叫切換選單，無需再滾動至設定頁底端。',
+      '跨帳本即時動態泡泡通知：當家人在非當前活躍帳本記帳時，畫面頂部直接跳出溫馨即時泡泡提示（如「📬 [日本旅遊] 新記帳: 住宿 NT$ 4,500」），多帳本動態零時差。',
+      '切換自動已讀消紅點：點擊切換進入目標帳本時，自動更新本機造訪時間戳記並消除該帳本之紅點標記。',
+    ],
+  },
   {
     version: '1.0.4.19',
     date: '2026-10-10',
