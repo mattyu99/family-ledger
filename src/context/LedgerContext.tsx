@@ -397,6 +397,7 @@ interface LedgerContextType {
   previewMember: Profile | null;
   isPreviewMode: boolean;
   startMemberPreview: (member: Profile) => void;
+  startCurrentMemberPreview: () => void;
   exitMemberPreview: () => void;
   realCurrentUser: Profile;
   realIsOwner: boolean;
@@ -703,6 +704,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const startMemberPreview = (member: Profile) => {
     setPreviewMember(member);
+  };
+
+  const startCurrentMemberPreview = () => {
+    setPreviewMember({ ...currentUser, role: 'member' });
   };
 
   const exitMemberPreview = () => {
@@ -6019,6 +6024,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const { data: { session } } = await supabase.auth.getSession();
     const authUserId = session?.user?.id || currentUser.id;
 
+    setPreviewMember(null);
     setUserRole('owner');
     await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, 'owner');
 
@@ -6125,6 +6131,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         previewMember,
         isPreviewMode,
         startMemberPreview,
+        startCurrentMemberPreview,
         exitMemberPreview,
         realCurrentUser: currentUser,
         realIsOwner: isOwner,

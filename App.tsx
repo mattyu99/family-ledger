@@ -186,6 +186,7 @@ function MainApp() {
     isPreviewMode,
     previewMember,
     startMemberPreview,
+    startCurrentMemberPreview,
     exitMemberPreview,
     realIsOwner,
     realCurrentUser,
@@ -1594,6 +1595,31 @@ function MainApp() {
                 </View>
               )}
 
+              {/* 將本機管理員自身模擬為一般成員視角 */}
+              {realIsOwner && isCurrent && !isPreviewMode && (
+                <View style={styles.modalMemberAdminSection}>
+                  <View style={styles.memberSectionDivider} />
+
+                  <Text style={styles.formLabel}>🧪 一般成員操作模擬 (體驗模式)</Text>
+                  <Text style={styles.modalSubHint}>
+                    您可以將自己暫時模擬為「一般家庭成員」視角操作。在此模式下，所有管理員特權（成員管理、代碼更名、資料庫還原等）將全部隱藏或鎖定，完整模擬一般成員的介面體驗。
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.modalPreviewBtn}
+                    onPress={() => {
+                      setEditMemberModalVisible(false);
+                      startCurrentMemberPreview();
+                      showAlert(
+                        '已進入一般成員模擬模式',
+                        `目前已將「${currentUser.display_name}」模擬為一般成員視角！\n\n・全 App 介面已模擬為一般成員權限（管理特權全數隱藏）\n・您依然是「${currentUser.display_name}」，記帳時出資者仍為您本人\n・測試完畢後，點擊畫面頂部橫幅「結束模擬」即可立即恢復管理員。`
+                      );
+                    }}
+                  >
+                    <Text style={styles.modalPreviewBtnText}>🧪 模擬為一般成員操作 (測試體驗)</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
               {/* 角色預覽與測試視角：僅管理員且對象非自己時可使用 */}
               {realIsOwner && !isCurrent && targetMember && (
                 <View style={styles.modalMemberAdminSection}>
@@ -2842,13 +2868,19 @@ function MainApp() {
       {isPreviewMode && previewMember && (
         <View style={styles.previewModeBanner}>
           <View style={styles.previewModeBannerLeft}>
-            <Text style={styles.previewModeBannerIcon}>👀</Text>
+            <Text style={styles.previewModeBannerIcon}>
+              {previewMember.id === realCurrentUser.id ? '🧪' : '👀'}
+            </Text>
             <View style={{ flex: 1, marginRight: 10 }}>
               <Text style={styles.previewModeBannerTitle} numberOfLines={1}>
-                正在預覽：{previewMember.display_name}
+                {previewMember.id === realCurrentUser.id
+                  ? `正在模擬：${previewMember.display_name} (一般成員視角)`
+                  : `正在預覽：${previewMember.display_name}`}
               </Text>
               <Text style={styles.previewModeBannerSub} numberOfLines={1}>
-                模擬一般成員視角中・記帳預設以其付款
+                {previewMember.id === realCurrentUser.id
+                  ? '已隱藏所有管理員特權・體驗一般成員操作'
+                  : '模擬一般成員視角中・記帳預設以其付款'}
               </Text>
             </View>
           </View>
@@ -2858,10 +2890,15 @@ function MainApp() {
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             onPress={() => {
               exitMemberPreview();
-              showAlert('已結束預覽', '已安全切回管理員身分！');
+              showAlert(
+                previewMember.id === realCurrentUser.id ? '已結束模擬' : '已結束預覽',
+                '已安全恢復為管理員身分！'
+              );
             }}
           >
-            <Text style={styles.exitPreviewBtnText}>✕ 結束預覽</Text>
+            <Text style={styles.exitPreviewBtnText}>
+              {previewMember.id === realCurrentUser.id ? '✕ 結束模擬' : '✕ 結束預覽'}
+            </Text>
           </TouchableOpacity>
         </View>
       )}
@@ -4188,21 +4225,46 @@ function MainApp() {
                     </Text>
                   </View>
                 </View>
-                <TouchableOpacity
-                  style={[styles.sudoCardBtn, isAdminUnlocked ? styles.sudoCardBtnLock : styles.sudoCardBtnUnlock]}
-                  onPress={() => {
-                    if (isAdminUnlocked) {
-                      handleLockAdmin();
-                    } else {
-                      requestAdminUnlock('解鎖管理員模式');
-                    }
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.sudoCardBtnText, isAdminUnlocked ? styles.sudoCardBtnTextLock : styles.sudoCardBtnTextUnlock]}>
-                    {isAdminUnlocked ? '🔒 立即上鎖' : '🔓 輸入 PIN 解鎖'}
-                  </Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <TouchableOpacity
+                    style={[
+                      styles.sudoCardBtn,
+                      { flex: 1 },
+                      isAdminUnlocked ? styles.sudoCardBtnLock : styles.sudoCardBtnUnlock,
+                    ]}
+                    onPress={() => {
+                      if (isAdminUnlocked) {
+                        handleLockAdmin();
+                      } else {
+                        requestAdminUnlock('解鎖管理員模式');
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.sudoCardBtnText,
+                        isAdminUnlocked ? styles.sudoCardBtnTextLock : styles.sudoCardBtnTextUnlock,
+                      ]}
+                    >
+                      {isAdminUnlocked ? '🔒 立即上鎖' : '🔓 輸入 PIN 解鎖'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.sudoCardBtn, { flex: 1, backgroundColor: '#334155' }]}
+                    onPress={() => {
+                      startCurrentMemberPreview();
+                      showAlert(
+                        '已進入一般成員模擬模式',
+                        `目前已將「${currentUser.display_name}」模擬為一般成員視角！\n\n・全 App 介面已切換為一般成員權限（管理特權全數隱藏）\n・您依然是「${currentUser.display_name}」，記帳時出資者仍為您本人\n・測試完畢後，點擊畫面頂部橫幅「結束模擬」即可立即恢復管理員。`
+                      );
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.sudoCardBtnText}>🧪 模擬一般成員視角</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
 

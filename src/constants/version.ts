@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 15;
+export const APP_BUILD_REVISION = 16;
 
-// 完整版本字串 (例如 "1.0.4.15")
+// 完整版本字串 (例如 "1.0.4.16")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.16',
+    date: '2026-10-10',
+    title: '新增管理員自身模擬為一般成員視角操作功能 (角色體驗模式)',
+    highlights: [
+      '管理員自身一般成員體驗模擬：在「家庭設定」或點擊個人稱謂卡片，新增「🧪 模擬一般成員視角」按鈕。管理員（智爸）可一鍵切換為一般成員視角操作，所有管理員特權（成員名冊管理、邀請碼代碼自訂、PIN 管理、備份還原等）完整模擬隱藏。',
+      '純粹一般成員介面驗證：您依然是「智爸」，日常記帳出資者預設仍為智爸，可完整體驗一般家庭成員無最高權限時的真實使用情境。',
+      '安全頂部橫幅隨時恢復：模擬中頂部常駐專屬橫幅提示（正在模擬：智爸 一般成員視角），點擊「✕ 結束模擬」或在設定中輸入 PIN 碼即可瞬間恢復管理員身分。',
+    ],
+  },
   {
     version: '1.0.4.15',
     date: '2026-10-10',
