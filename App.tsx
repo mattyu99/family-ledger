@@ -4092,15 +4092,33 @@ function MainApp() {
 
               {/* 若此手機目前不是管理員，提供 PIN 碼驗證升級入口 */}
               {!isOwner && (
-                <View style={styles.claimAdminBanner}>
+                <View style={[
+                  styles.claimAdminBanner,
+                  !members.some(m => m.role === 'owner' || m.role === 'admin') && { borderColor: '#EF4444', backgroundColor: '#FEF2F2' }
+                ]}>
                   <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text style={styles.claimAdminBannerTitle}>👑 您目前為一般成員</Text>
-                    <Text style={styles.claimAdminBannerDesc}>
-                      若需恢復管理員權限，可輸入 4 位數 PIN 碼立即取回/升級為管理員
+                    <Text style={[
+                      styles.claimAdminBannerTitle,
+                      !members.some(m => m.role === 'owner' || m.role === 'admin') && { color: '#B91C1C' }
+                    ]}>
+                      {!members.some(m => m.role === 'owner' || m.role === 'admin')
+                        ? '⚠️ 帳本目前無管理員（全員皆為一般成員）'
+                        : '👑 您目前為一般成員'}
+                    </Text>
+                    <Text style={[
+                      styles.claimAdminBannerDesc,
+                      !members.some(m => m.role === 'owner' || m.role === 'admin') && { color: '#991B1B' }
+                    ]}>
+                      {!members.some(m => m.role === 'owner' || m.role === 'admin')
+                        ? '請點擊右側輸入管理員 PIN 碼（預設 8888），即可立即恢復並將您設為管理員！'
+                        : '若需恢復管理員權限，可輸入 4 位數 PIN 碼立即取回/升級為管理員'}
                     </Text>
                   </View>
                   <TouchableOpacity
-                    style={styles.claimAdminBannerBtn}
+                    style={[
+                      styles.claimAdminBannerBtn,
+                      !members.some(m => m.role === 'owner' || m.role === 'admin') && { backgroundColor: '#DC2626' }
+                    ]}
                     onPress={() => {
                       setClaimAdminPinInput('');
                       setClaimAdminModalVisible(true);

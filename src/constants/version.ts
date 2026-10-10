@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 6;
+export const APP_BUILD_REVISION = 7;
 
-// 完整版本字串 (例如 "1.0.4.6")
+// 完整版本字串 (例如 "1.0.4.7")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.7',
+    date: '2026-10-10',
+    title: '強化管理員身分恢復與「0 位管理員」防呆自動自癒防護',
+    highlights: [
+      '0 管理員自癒保護：若帳本因過去跨裝置重連或同名清理出現「全員皆為 member」之極端情況，且本機曾記錄為管理員，系統啟動時自動啟動自癒防禦、恢復為 owner，杜絕無管理員困境。',
+      'PIN 碼升級創立者身分雙向鎖定：透過 4 位數 PIN 碼認領管理員時，同步更新資料庫 ledgers.created_by，永久鎖定創立者身分，防止日後因 Session 換發而脫鉤。',
+      '設定頁面醒目提示橫幅：當偵測到帳本處於「0 位管理員」狀態時，設定頁面以紅色高對比度橫幅主動引導輸入 PIN 碼一鍵取回權限。',
+    ],
+  },
   {
     version: '1.0.4.6',
     date: '2026-10-10',

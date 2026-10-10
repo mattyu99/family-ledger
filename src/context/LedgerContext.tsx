@@ -1773,7 +1773,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     setRawMembers(loadedMembers);
-    const dedupedMembers = deduplicateMembers(loadedMembers);
+    let dedupedMembers = deduplicateMembers(loadedMembers);
     let aliasMap = buildMemberAliasMap(dedupedMembers, loadedMembers);
     let canonicalMe: Profile | undefined = undefined;
 
@@ -1815,9 +1815,32 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       const isMeCreator = isCreator || (canonicalMe ? targetLedger.created_by === canonicalMe.id : false);
       const myRow = memberRows?.find((r: any) => r.user_id === authUserId || (canonicalMe && r.user_id === canonicalMe.id));
-      const role = isMeCreator
+      let role = isMeCreator
         ? 'owner'
         : ((myRow?.role as 'owner' | 'admin' | 'member') || (canonicalMe?.role as any) || 'member');
+
+      // 0 管理員自癒保護：若雲端帳本全體成員皆無任何管理員 (0 admin)，且本機曾記錄為管理員，自動救援恢復為 owner
+      const hasAnyAdminInLedger = dedupedMembers.some(m => m.role === 'owner' || m.role === 'admin' || targetLedger.created_by === m.id);
+      const savedLocalRole = await AsyncStorage.getItem(STORAGE_KEYS.USER_ROLE);
+      if (!hasAnyAdminInLedger && (savedLocalRole === 'owner' || savedLocalRole === 'admin')) {
+        role = 'owner';
+        if (canonicalMe) {
+          canonicalMe.role = 'owner';
+          dedupedMembers = dedupedMembers.map(m => m.id === canonicalMe?.id ? { ...m, role: 'owner' as const } : m);
+          setMembers(dedupedMembers);
+          AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(dedupedMembers));
+          AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${targetLedger.id}`, JSON.stringify(dedupedMembers));
+        }
+        if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+          supabase.from('ledger_members').upsert({
+            ledger_id: targetLedger.id,
+            user_id: authUserId,
+            role: 'owner',
+          }, { onConflict: 'ledger_id,user_id' }).then();
+          supabase.from('ledgers').update({ created_by: authUserId }).eq('id', targetLedger.id).then();
+        }
+      }
+
       setUserRole(role);
       await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, role);
 
@@ -6034,6 +6057,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           user_id: authUserId,
           role: 'owner',
         }, { onConflict: 'ledger_id,user_id' });
+
+        if (currentUser.id && currentUser.id !== authUserId) {
+          await supabase.from('ledger_members').upsert({
+            ledger_id: currentLedger.id,
+            user_id: currentUser.id,
+            role: 'owner',
+          }, { onConflict: 'ledger_id,user_id' });
+        }
+
+        // 同步更新 ledgers 表之 created_by，徹底鎖定創立者身分，防止日後脫鉤
+        await supabase.from('ledgers').update({ created_by: authUserId }).eq('id', currentLedger.id);
+        setCurrentLedger(prev => ({ ...prev, created_by: authUserId }));
       } catch (e) {
         console.warn('雲端更新角色失敗:', e);
       }
