@@ -1443,13 +1443,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${ledgerId}`, JSON.stringify(dedupedMembers));
               }
 
-              // 即時同步本機使用者之角色權限
+              // 即時同步本機使用者之角色權限 (跨裝置同名身分自動對齊)
               const { data: { session } } = await supabase.auth.getSession();
               const myAuthId = session?.user?.id;
               if (myAuthId) {
                 const myRow = memberRows.find((r: any) => r.user_id === myAuthId);
-                const isMeCreator = currentLedger.created_by === myAuthId;
-                const newRole = isMeCreator ? 'owner' : ((myRow?.role as 'owner' | 'admin' | 'member') || 'member');
+                const myName = ((myRow?.profiles as any)?.display_name || currentUser.display_name || '').trim().toLowerCase();
+                const creatorRow = memberRows.find((r: any) => r.user_id === currentLedger.created_by);
+                const creatorName = ((creatorRow?.profiles as any)?.display_name || '').trim().toLowerCase();
+                const isMeCreator = currentLedger.created_by === myAuthId || Boolean(creatorName && myName && creatorName === myName);
+                const hasAdminByName = memberRows.some((r: any) => {
+                  const rName = ((r.profiles as any)?.display_name || '').trim().toLowerCase();
+                  return (r.role === 'owner' || r.role === 'admin' || r.user_id === currentLedger.created_by) && rName && rName === myName;
+                });
+                const isMeAdmin = isMeCreator || hasAdminByName || (myRow?.role === 'owner' || myRow?.role === 'admin');
+                const newRole = isMeAdmin ? 'owner' : ((myRow?.role as 'owner' | 'admin' | 'member') || 'member');
                 setUserRole(newRole);
                 await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, newRole);
               }
@@ -1816,9 +1824,26 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         canonicalMe = dedupedMembers[0];
       }
 
-      const isMeCreator = isCreator || (canonicalMe ? targetLedger.created_by === canonicalMe.id : false);
+      // 跨裝置管理員身分統一辨識：
+      // 1. 本裝置為建立者 (isCreator)
+      // 2. 建立者的稱謂與本成員相同 (isCreatorByName，多裝置匿名帳號對齊)
+      // 3. 去重後的統一成員 (canonicalMe) 具備 owner/admin 權限 (例如在 Web 端已恢復權限)
+      // 4. 雲端名冊中存在同名紀錄且具備 owner/admin/created_by
+      const creatorRow = memberRows?.find((r: any) => r.user_id === targetLedger.created_by);
+      const creatorName = ((creatorRow?.profiles as any)?.display_name || '').trim().toLowerCase();
+      const myName = (targetSavedUser?.display_name || myDisplayName || canonicalMe?.display_name || '').trim().toLowerCase();
+      const isCreatorByName = Boolean(creatorName && myName && creatorName === myName);
+
+      const hasAdminByName = memberRows?.some((r: any) => {
+        const rName = ((r.profiles as any)?.display_name || '').trim().toLowerCase();
+        return (r.role === 'owner' || r.role === 'admin' || r.user_id === targetLedger.created_by) && rName && rName === myName;
+      });
+
+      const isMeCreator = isCreator || isCreatorByName || (canonicalMe ? targetLedger.created_by === canonicalMe.id : false);
       const myRow = memberRows?.find((r: any) => r.user_id === authUserId || (canonicalMe && r.user_id === canonicalMe.id));
-      let role = isMeCreator
+      const isMeAdmin = isMeCreator || (canonicalMe ? (canonicalMe.role === 'owner' || canonicalMe.role === 'admin') : false) || Boolean(hasAdminByName);
+
+      let role: 'owner' | 'admin' | 'member' = isMeAdmin
         ? 'owner'
         : ((myRow?.role as 'owner' | 'admin' | 'member') || (canonicalMe?.role as any) || 'member');
 
@@ -1827,21 +1852,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const savedLocalRole = await AsyncStorage.getItem(STORAGE_KEYS.USER_ROLE);
       if (!hasAnyAdminInLedger && (savedLocalRole === 'owner' || savedLocalRole === 'admin')) {
         role = 'owner';
-        if (canonicalMe) {
-          canonicalMe.role = 'owner';
-          dedupedMembers = dedupedMembers.map(m => m.id === canonicalMe?.id ? { ...m, role: 'owner' as const } : m);
-          setMembers(dedupedMembers);
-          AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(dedupedMembers));
-          AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${targetLedger.id}`, JSON.stringify(dedupedMembers));
-        }
-        if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
-          supabase.from('ledger_members').upsert({
-            ledger_id: targetLedger.id,
-            user_id: authUserId,
-            role: 'owner',
-          }, { onConflict: 'ledger_id,user_id' }).then();
-          supabase.from('ledgers').update({ created_by: authUserId }).eq('id', targetLedger.id).then();
-        }
+      }
+
+      // 若確認身分為管理員，但本機裝置在雲端的 ledger_members 紀錄仍為 member，自動同步升級為 owner (多裝置權限永久對齊)
+      if (role === 'owner' && myMemberRow && myMemberRow.role !== 'owner' && isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+        supabase.from('ledger_members').update({ role: 'owner' }).eq('ledger_id', targetLedger.id).eq('user_id', authUserId).then();
+      }
+
+      if (canonicalMe && role === 'owner') {
+        canonicalMe.role = 'owner';
+        dedupedMembers = dedupedMembers.map(m => m.id === canonicalMe?.id || ((m.display_name || '').trim().toLowerCase() === myName) ? { ...m, role: 'owner' as const } : m);
+        setMembers(dedupedMembers);
+        AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(dedupedMembers));
+        AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${targetLedger.id}`, JSON.stringify(dedupedMembers));
       }
 
       setUserRole(role);
@@ -6103,6 +6126,28 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // 同步更新 ledgers 表之 created_by，徹底鎖定創立者身分，防止日後脫鉤
         await supabase.from('ledgers').update({ created_by: authUserId }).eq('id', currentLedger.id);
         setCurrentLedger(prev => ({ ...prev, created_by: authUserId }));
+
+        // 跨裝置同步：若名冊中有其他同名紀錄 (例如同成員的手機 APP 或其他瀏覽器裝置)，一併升級為 owner
+        const myName = (currentUser.display_name || '').trim().toLowerCase();
+        if (myName) {
+          const { data: allMembersInLedger } = await supabase
+            .from('ledger_members')
+            .select('user_id, profiles(display_name)')
+            .eq('ledger_id', currentLedger.id);
+
+          if (allMembersInLedger) {
+            for (const m of allMembersInLedger) {
+              const mName = ((m.profiles as any)?.display_name || '').trim().toLowerCase();
+              if (mName === myName && m.user_id !== authUserId) {
+                await supabase
+                  .from('ledger_members')
+                  .update({ role: 'owner' })
+                  .eq('ledger_id', currentLedger.id)
+                  .eq('user_id', m.user_id);
+              }
+            }
+          }
+        }
       } catch (e) {
         console.warn('雲端更新角色失敗:', e);
       }

@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 8;
+export const APP_BUILD_REVISION = 9;
 
-// 完整版本字串 (例如 "1.0.4.8")
+// 完整版本字串 (例如 "1.0.4.9")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.9',
+    date: '2026-10-10',
+    title: '跨裝置同名身分權限自動對齊與全端管理員同步',
+    highlights: [
+      '跨裝置同名身分權限自動對齊：同一家庭成員（如「智爸」）若在電腦 Web 端透過 PIN 碼或自癒機制取回管理員權限，手機 App 啟動或 Realtime 同步時自動對齊為管理員（👑 owner），徹底消除「電腦是管理員、手機卻是一般成員」的脫節困擾。',
+      '創立者同名身分多裝置自動相認：當帳本建立者（created_by）稱謂與當前本機成員暱稱相同時，手機自動認領為創立者與管理員，並自動同步補正雲端 ledger_members 紀錄。',
+      'PIN 碼取回全端名冊一體升級：在任一裝置透過 PIN 碼恢復管理員時，雲端背景同步查詢並將同名成員的所有裝置 User ID 一併升級為 owner。',
+    ],
+  },
   {
     version: '1.0.4.8',
     date: '2026-10-10',
