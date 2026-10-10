@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 2;
+export const APP_BUILD_REVISION = 3;
 
-// 完整版本字串 (例如 "1.0.4.2")
+// 完整版本字串 (例如 "1.0.4.3")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,18 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.3',
+    date: '2026-10-10',
+    title: '徹底修復 Web 端與 APP 重新整理退出帳本問題，落實五重 Local-First 離線優先防護',
+    highlights: [
+      '徹底修復 Web 端重新整理 (F5) 退出帳本缺陷：解決瀏覽器非同步 Session 競態條件與二次查詢失敗，確保重新整理 100% 保持在帳本內。',
+      '落實五重 Local-First 離線優先防護：本機只要保有帳本、邀請碼、身分稱謂或歷史帳目快取，任何情況下絕不退回冷啟動輸入邀請碼頁面。',
+      '雙重 RPC 終極保底與 RPC 資料直用：邀請碼重連成功時直接繼承回傳之帳本名稱與 ID，避免受 RLS 行級權限限制或延遲而丟失。',
+      '權限阻擋自動降級綁定：若以管理員身分重連因 PIN 碼驗證受阻，一律自動以 member 身分保底綁定，確保雲端連線不中斷。',
+      '全要素本地離線秒開與網址參數清理：即使雲端延遲或無網路，立即掛載本地成員與帳目；已在帳本內時自動清除網址列邀請碼，防止反覆彈窗。',
+    ],
+  },
   {
     version: '1.0.4.2',
     date: '2026-10-10',
