@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 11;
+export const APP_BUILD_REVISION = 12;
 
-// 完整版本字串 (例如 "1.0.4.11")
+// 完整版本字串 (例如 "1.0.4.12")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,18 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.12',
+    date: '2026-10-10',
+    title: '徹底根除自動覆寫 Profile 與成員誤刪漏洞，修復全家庭 4 名成員與帳目歸屬',
+    highlights: [
+      '徹底修復並還原家庭 4 名成員名單：雲端資料庫已完整復原「智爸 (👑 創建者/管理員)」、「瑩媽」、「洋洋」、「豆豆」共 4 位成員之關聯與 Profiles，洋洋與豆豆所有被誤轉移的記帳紀錄已 100% 歸回原付款人名下。',
+      '根除 Profile 雲端覆寫機制：徹底移除本機切換身分、加入帳本或重開啟動時將當前裝置 Session Display Name 覆寫至雲端他人 Profile 的毀滅性漏洞，各成員 Profile 稱謂永久獨立穩固。',
+      '徹底禁止加入帳本時刪除成員與移轉交易：加入帳本時嚴格禁止任何自動刪除 ledger_members 或將他人歷史帳目轉移至自身 Session 的動作，名冊只增不減。',
+      '安全付款人自我修復限制：付款人 ID 自動校正僅限定於離線臨時/佔位 ID，嚴禁擅自修改任何真實家庭成員 UUID 的付款紀錄。',
+      '本機成員身分純粹本機化：本機自由切換身分僅變更當前裝置記帳視角與出資者，絕不干擾或篡改雲端資料庫名冊與權限結構。',
+    ],
+  },
   {
     version: '1.0.4.11',
     date: '2026-10-10',
