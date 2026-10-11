@@ -1,13 +1,13 @@
 import appConfig from '../../app.json';
 
-// 主版本號（來自 app.json，例如 1.0.4）
-export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
+// 主版本號（來自 app.json，例如 1.0.5）
+export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
-// 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 26;
+// 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
+export const APP_BUILD_REVISION = 0;
 
-// 完整版本字串 (例如 "1.0.4.26")
+// 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,20 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.0',
+    date: '2026-10-12',
+    title: 'v1.0.5 大版本里程碑發布：生活待辦打勾確認彈窗、辦妥補充回報與連動記帳全新升級',
+    highlights: [
+      '待辦打勾辦妥確認彈窗（方案 B）：點擊待辦核取方塊（勾勾）時，立即喚起專屬辦妥確認彈窗 (MemoCompletionModal)，支援自由指定辦妥人、填寫補充說明與快捷標籤，並可自由選擇連動記一筆支出或純標記完成。',
+      '連動記帳智慧取消退回防護（Option 2B）：點擊連動支出後若在記帳視窗按下「✕ 取消」，系統自動退回辦妥確認彈窗，原先輸入之回報備註與選取的辦妥人完整保留，絕不強制落庫或遺失草稿。',
+      '辦妥補充說明（completion_note）與綠色氣泡：生活待辦辦妥後，卡片自動以專屬綠色留言氣泡呈現辦妥補充說明，家庭分工與交代清清楚楚。',
+      '連動支出記帳（linked_transaction_id）：採買辦妥一鍵轉公帳支出，雙向智慧綁定，卡片直接展示連動支出膠囊，點擊一秒跳轉查看。',
+      '行動端鍵盤自適應防頂出（scrollToInput）：全方位修正手機鍵盤升起時輸入框被頂出可視畫面之問題，以組件實際佈局高度動態平移對齊，輸入體驗極致平滑。',
+      '中文全形括號［ ］與超連結解析：完美相容手機中文輸入法全形中括號標籤提取主題；正文網址自動轉為藍字超連結點擊跳轉。',
+      '跨帳本動態紅點提示與頂部切換捷徑：家人在其他帳本記帳時即時亮起未讀紅點與動態泡泡；待辦時區精準對齊本地時間，徹底杜絕跨日少算一天問題。',
+    ],
+  },
   {
     version: '1.0.4.26',
     date: '2026-10-12',
