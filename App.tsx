@@ -211,6 +211,9 @@ function MainApp() {
   const [modalVisible, setModalVisible] = useState(false);
   const [modalMode, setModalMode] = useState<'expense' | 'income' | 'allowance' | 'memo'>('expense');
   const [modalRecipientId, setModalRecipientId] = useState<string | undefined>(undefined);
+  const [modalLinkedMemoId, setModalLinkedMemoId] = useState<string | undefined>(undefined);
+  const [modalDefaultPayerId, setModalDefaultPayerId] = useState<string | undefined>(undefined);
+  const [modalDefaultNote, setModalDefaultNote] = useState<string | undefined>(undefined);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [reconcileModalVisible, setReconcileModalVisible] = useState(false);
   const [reconcileAccountType, setReconcileAccountType] = useState<'credit_card' | 'stored_value'>('credit_card');
@@ -4832,9 +4835,15 @@ function MainApp() {
         visible={modalVisible}
         initialMode={modalMode}
         defaultRecipientId={modalRecipientId}
+        defaultPayerId={modalDefaultPayerId}
+        defaultNote={modalDefaultNote}
+        linkedMemoId={modalLinkedMemoId}
         onClose={() => {
           setModalVisible(false);
           setModalRecipientId(undefined);
+          setModalDefaultPayerId(undefined);
+          setModalDefaultNote(undefined);
+          setModalLinkedMemoId(undefined);
         }}
       />
 
@@ -4844,6 +4853,17 @@ function MainApp() {
         visible={!!editingTransaction}
         transaction={editingTransaction}
         onClose={() => setEditingTransaction(null)}
+        onLinkExpense={(memoTx) => {
+          setEditingTransaction(null);
+          setModalMode('expense');
+          setModalLinkedMemoId(memoTx.id);
+          setModalDefaultPayerId(memoTx.completed_by || currentUser?.id);
+          setModalDefaultNote(memoTx.note);
+          setModalVisible(true);
+        }}
+        onOpenLinkedExpense={(expenseTx) => {
+          setEditingTransaction(expenseTx);
+        }}
       />
 
       {/* 生活備忘與待辦總覽彈窗 */}

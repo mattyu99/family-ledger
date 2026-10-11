@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 22;
+export const APP_BUILD_REVISION = 23;
 
-// 完整版本字串 (例如 "1.0.4.22")
+// 完整版本字串 (例如 "1.0.4.23")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.23',
+    date: '2026-10-11',
+    title: '生活待辦支援辦妥回報說明與連動支出記帳功能',
+    highlights: [
+      '辦妥說明補充（completion_note）：生活待辦事項被辦妥後，辦妥人或家庭成員可點進卡片編輯頁面，填寫「辦妥說明 / 回報備註」（例如「已於全聯買齊、發票放客廳鞋櫃」），卡片上將以綠色回報留言氣泡精緻呈現。',
+      '連動支出記帳（linked_transaction_id）：於已辦妥的待辦記事中，可一鍵點擊「連動記一筆支出」，系統自動預填辦妥人、備註並帶入記帳視窗；儲存後雙向智能綁定，待辦卡片自動顯示連動支出膠囊，點擊可快速查看該筆支出詳情。',
+      '協作成員友善權限放寬：即使非待辦原始建立者，只要是辦妥人即可在編輯視窗中編輯辦妥回報並進行連動記帳，維護家庭分工協作的便利與彈性。',
+      '雲端資料庫向前相容與錯誤容錯：LedgerContext 增設資料庫欄位缺失容錯機制（代碼 42703），即使雲端資料庫尚未執行 schema migration 亦能平滑重試，絕不閃退。',
+    ],
+  },
   {
     version: '1.0.4.22',
     date: '2026-10-11',

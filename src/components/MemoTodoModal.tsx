@@ -277,6 +277,10 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                 const date = new Date(item.transacted_at);
                 const dateFormatted = `${date.getMonth() + 1}/${date.getDate()}`;
 
+                const linkedExpense = item.linked_transaction_id
+                  ? transactions.find(t => t.id === item.linked_transaction_id && t.type !== 'memo')
+                  : undefined;
+
                 return (
                   <TouchableOpacity
                     key={item.id}
@@ -341,6 +345,32 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                     >
                       {renderContentWithLinks(memoData.cleanContent, isCompleted)}
                     </Text>
+
+                    {/* 辦妥回報說明 */}
+                    {isCompleted && !!item.completion_note && (
+                      <View style={styles.itemReportBubble}>
+                        <Text style={styles.itemReportText} maxFontSizeMultiplier={1.08}>
+                          💬 {completer?.display_name ? `${completer.display_name} 回報` : '辦妥回報'}：{item.completion_note}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* 連動支出卡片 */}
+                    {isCompleted && !!linkedExpense && (
+                      <TouchableOpacity
+                        style={styles.itemLinkedExpenseBadge}
+                        activeOpacity={0.7}
+                        onPress={(e) => {
+                          e.stopPropagation?.();
+                          onClose();
+                          onEditMemo(linkedExpense);
+                        }}
+                      >
+                        <Text style={styles.itemLinkedExpenseBadgeText} maxFontSizeMultiplier={1.08}>
+                          🔗 連動支出：NT$ {Number(linkedExpense.amount).toLocaleString()} ({linkedExpense.note || '支出'}) ›
+                        </Text>
+                      </TouchableOpacity>
+                    )}
 
                     {/* 底部資訊 */}
                     <View style={styles.itemFooterRow}>
@@ -641,6 +671,35 @@ const styles = StyleSheet.create({
   linkTextCompleted: {
     color: '#94A3B8',
     textDecorationLine: 'line-through',
+  },
+  itemReportBubble: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    marginBottom: 6,
+  },
+  itemReportText: {
+    fontSize: 11.5,
+    color: '#166534',
+    lineHeight: 16,
+  },
+  itemLinkedExpenseBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginBottom: 6,
+  },
+  itemLinkedExpenseBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#DC2626',
   },
   itemFooterRow: {
     flexDirection: 'row',

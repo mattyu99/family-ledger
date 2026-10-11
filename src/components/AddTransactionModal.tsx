@@ -92,6 +92,9 @@ interface AddTransactionModalProps {
   onClose: () => void;
   initialMode?: 'expense' | 'income' | 'allowance' | 'memo';
   defaultRecipientId?: string;
+  defaultPayerId?: string;
+  defaultNote?: string;
+  linkedMemoId?: string;
 }
 
 export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
@@ -99,12 +102,16 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   onClose,
   initialMode = 'expense',
   defaultRecipientId,
+  defaultPayerId,
+  defaultNote,
+  linkedMemoId,
 }) => {
   const {
     categories,
     members,
     currentUser,
     addTransaction,
+    updateTransaction,
     transferAllowance,
     getMemberById,
     getCategoryById,
@@ -300,7 +307,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         setType(targetMode);
       }
 
-      const activeMember = members.find(m => m.id === currentUser.id)
+      if (defaultNote) {
+        setNote(defaultNote);
+      } else {
+        setNote('');
+      }
+
+      const activeMember = (defaultPayerId && members.find(m => m.id === defaultPayerId))
+        || members.find(m => m.id === currentUser.id)
         || getMemberById(currentUser.id)
         || members.find(m => (m.display_name || '').trim().toLowerCase() === (currentUser.display_name || '').trim().toLowerCase())
         || members[0];
@@ -334,7 +348,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         setSelectedCategoryId(activeCats[0].id);
       }
     }
-  }, [visible, initialMode, defaultRecipientId, currentUser, members, categories, getMemberById]);
+  }, [visible, initialMode, defaultRecipientId, defaultPayerId, defaultNote, currentUser, members, categories, getMemberById]);
 
   // 快捷金額累加
   const handleQuickAddAmount = (addVal: number) => {
@@ -473,7 +487,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       txDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
       const transacted_at = txDate.toISOString();
 
-      await addTransaction({
+      const createdTxId = await addTransaction({
         amount: numAmount,
         type,
         category_id: targetCategory.id,
@@ -483,8 +497,18 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         account_id: selectedAccountId || undefined,
         note,
         transacted_at,
+        linked_transaction_id: linkedMemoId || undefined,
         splitWithIds: type === 'expense' ? members.map(m => m.id) : undefined,
       });
+
+      if (linkedMemoId && createdTxId) {
+        // 同步雙向綁定至生活待辦，並標記已由該成員辦妥
+        await updateTransaction(linkedMemoId, {
+          linked_transaction_id: createdTxId,
+          is_settled: true,
+          completed_by: targetPayer,
+        });
+      }
 
       // 重設表單並關閉
       setAmount('');
@@ -527,6 +551,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
+            {!!linkedMemoId && (
+              <View style={styles.linkedMemoBanner}>
+                <Text style={styles.linkedMemoBannerText} maxFontSizeMultiplier={1.08}>
+                  🔗 連動生活待辦採買：儲存時將自動為該記事打勾辦妥
+                </Text>
+              </View>
+            )}
+
             {/* 支出 / 收入 / 撥零用錢 / 記事 切換鈕 */}
             <View style={styles.typeSelector}>
               <TouchableOpacity
@@ -2076,5 +2108,19 @@ const styles = StyleSheet.create({
     color: '#111827',
     minHeight: 96,
     marginBottom: 10,
+  },
+  linkedMemoBanner: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
+  linkedMemoBannerText: {
+    fontSize: 12.5,
+    color: '#1D4ED8',
+    fontWeight: '600',
   },
 });

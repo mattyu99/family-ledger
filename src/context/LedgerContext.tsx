@@ -224,6 +224,7 @@ interface LedgerContextType {
   currentUser: Profile;
   setCurrentUser: (user: Profile) => void;
   addTransaction: (data: {
+    id?: string;
     amount: number;
     type: TransactionType;
     category_id: string;
@@ -236,8 +237,10 @@ interface LedgerContextType {
     payment_method?: PaymentMethod;
     account_id?: string;
     is_reconciled?: boolean;
+    completion_note?: string;
+    linked_transaction_id?: string;
     splitWithIds?: string[];
-  }) => Promise<void>;
+  }) => Promise<string>;
   updateTransaction: (
     id: string,
     data: {
@@ -249,6 +252,8 @@ interface LedgerContextType {
       note?: string;
       reminder_date?: string;
       completed_by?: string;
+      completion_note?: string;
+      linked_transaction_id?: string;
       transacted_at?: string;
       payment_method?: PaymentMethod;
       account_id?: string;
@@ -4348,6 +4353,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // 新增交易（兼顧樂觀更新與雲端同步）
   const addTransaction = async (data: {
+    id?: string;
     amount: number;
     type: TransactionType;
     category_id: string;
@@ -4360,9 +4366,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     payment_method?: PaymentMethod;
     account_id?: string;
     is_reconciled?: boolean;
+    completion_note?: string;
+    linked_transaction_id?: string;
     splitWithIds?: string[];
-  }) => {
-    const txId = generateUUID();
+  }): Promise<string> => {
+    const txId = data.id || generateUUID();
     let cleanMerchant = data.merchant ? data.merchant.trim() : undefined;
     if (data.type === 'memo') {
       let memoTag = data.reminder_date ? `remind:${data.reminder_date}` : 'memo';
@@ -4423,6 +4431,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       type: data.type,
       reminder_date: data.reminder_date,
       completed_by: data.completed_by,
+      completion_note: data.completion_note || undefined,
+      linked_transaction_id: data.linked_transaction_id || undefined,
       paid_by: validPaidBy,
       merchant: cleanMerchant,
       payment_method: data.payment_method || 'cash',
@@ -4495,6 +4505,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (newTx.is_reconciled !== undefined) insertPayload.is_reconciled = newTx.is_reconciled;
         }
 
+        if (newTx.completion_note) insertPayload.completion_note = newTx.completion_note;
+        if (newTx.linked_transaction_id && isValidUUID(newTx.linked_transaction_id)) {
+          insertPayload.linked_transaction_id = newTx.linked_transaction_id;
+        }
+
         let { error: txError } = await supabase.from('transactions').insert(insertPayload);
 
         // 若雲端 DB 尚未放寬 check constraint 允許 'memo' (23514)，自動退回為 'transfer' 重試
@@ -4512,6 +4527,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           delete insertPayload.payment_method;
           delete insertPayload.account_id;
           delete insertPayload.is_reconciled;
+          delete insertPayload.completion_note;
+          delete insertPayload.linked_transaction_id;
           insertPayload.note = newTx.merchant
             ? `[${newTx.merchant}] ${newTx.note || ''}`.trim()
             : newTx.note;
@@ -4552,6 +4569,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         console.warn('雲端新增交易連線延遲，已保存於本機稍後重試:', err);
       }
     }
+    return txId;
   };
 
   // 方案 D：家長一鍵撥款 / 轉帳記帳（一鍵自動產生「家長支出 + 小孩收入」兩筆紀錄）
@@ -4853,6 +4871,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       note?: string;
       reminder_date?: string;
       completed_by?: string;
+      completion_note?: string;
+      linked_transaction_id?: string;
       transacted_at?: string;
       payment_method?: PaymentMethod;
       account_id?: string;
@@ -4928,6 +4948,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               amount: isTargetMemo ? 0 : (data.amount !== undefined ? data.amount : t.amount),
               reminder_date: data.reminder_date !== undefined ? (data.reminder_date || undefined) : t.reminder_date,
               completed_by: effectiveCompletedBy,
+              completion_note: data.completion_note !== undefined ? (data.completion_note || undefined) : t.completion_note,
+              linked_transaction_id: data.linked_transaction_id !== undefined ? (data.linked_transaction_id || undefined) : t.linked_transaction_id,
               merchant: (data.merchant !== undefined || isTargetMemo) ? cleanMerchant : t.merchant,
               category: data.category_id ? getCategoryById(data.category_id, t.category) : t.category,
               payer_profile: canonicalPayer || t.payer_profile,
@@ -4950,6 +4972,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (data.account_id !== undefined) updatePayload.account_id = data.account_id;
         if (data.is_reconciled !== undefined) updatePayload.is_reconciled = data.is_reconciled;
         if (data.is_settled !== undefined) updatePayload.is_settled = data.is_settled;
+        if (data.completion_note !== undefined) updatePayload.completion_note = data.completion_note || null;
+        if (data.linked_transaction_id !== undefined) updatePayload.linked_transaction_id = data.linked_transaction_id || null;
         updatePayload.updated_at = new Date().toISOString();
 
         if (hasMerchantColumnRef.current) {
@@ -4984,6 +5008,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           delete updatePayload.payment_method;
           delete updatePayload.account_id;
           delete updatePayload.is_reconciled;
+          delete updatePayload.completion_note;
+          delete updatePayload.linked_transaction_id;
           const effectiveMerchant = data.merchant !== undefined ? cleanMerchant : targetTx?.merchant;
           const effectiveNote = data.note !== undefined ? data.note : (targetTx?.note || '');
           updatePayload.note = effectiveMerchant

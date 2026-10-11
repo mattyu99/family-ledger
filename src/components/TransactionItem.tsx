@@ -20,7 +20,7 @@ interface TransactionItemProps {
 }
 
 export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ transaction, onPress }) => {
-  const { getMemberById, getCategoryById, getAccountById, paymentMethods, toggleMemoSettled } = useLedger();
+  const { getMemberById, getCategoryById, getAccountById, paymentMethods, toggleMemoSettled, transactions } = useLedger();
 
   const category = getCategoryById(transaction.category_id, transaction.category);
   const payer = getMemberById(transaction.paid_by) || transaction.payer_profile;
@@ -37,6 +37,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
     const reminderDate = transaction.reminder_date || (transaction.merchant?.startsWith('remind:') ? transaction.merchant.replace('remind:', '') : undefined);
     const memoData = parseMemoNote(transaction.note, category?.name, getCategoryIcon(category?.icon));
     const completer = transaction.completed_by ? getMemberById(transaction.completed_by) : undefined;
+    const linkedExpense = transaction.linked_transaction_id ? transactions.find(t => t.id === transaction.linked_transaction_id && t.type !== 'memo') : undefined;
 
     // 正文超連結自動識別與點擊開啟支援
     const renderContentWithLinks = (content: string, isCompleted: boolean) => {
@@ -126,6 +127,29 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
           {renderContentWithLinks(memoData.cleanContent, isCompleted)}
         </Text>
 
+        {isCompleted && !!transaction.completion_note && (
+          <View style={styles.memoReportBubble}>
+            <Text style={styles.memoReportText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              💬 {completer?.display_name ? `${completer.display_name} 回報` : '辦妥回報'}：{transaction.completion_note}
+            </Text>
+          </View>
+        )}
+
+        {isCompleted && !!linkedExpense && (
+          <TouchableOpacity
+            style={styles.memoLinkedExpenseBadge}
+            activeOpacity={0.7}
+            onPress={(e) => {
+              e.stopPropagation?.();
+              onPress?.(linkedExpense);
+            }}
+          >
+            <Text style={styles.memoLinkedExpenseBadgeText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              🔗 連動支出：NT$ {Number(linkedExpense.amount).toLocaleString()} ({linkedExpense.note || '支出'}) ›
+            </Text>
+          </TouchableOpacity>
+        )}
+
         <View style={styles.memoFooterRow}>
           <Text style={[styles.memoAuthorText, isCompleted && styles.memoAuthorTextCompleted]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
             {payer?.avatar_url || '👤'} {payer?.display_name || '成員'} 記錄
@@ -142,6 +166,8 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
       </TouchableOpacity>
     );
   }
+
+  const linkedMemo = transaction.linked_transaction_id ? transactions.find(t => t.id === transaction.linked_transaction_id && t.type === 'memo') : undefined;
 
   return (
     <TouchableOpacity
@@ -170,6 +196,13 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
               <View style={styles.merchantBadge}>
                 <Text style={styles.merchantBadgeText} numberOfLines={1} maxFontSizeMultiplier={1.08}>
                   {transaction.merchant}
+                </Text>
+              </View>
+            )}
+            {!!linkedMemo && (
+              <View style={styles.expenseLinkedMemoTag}>
+                <Text style={styles.expenseLinkedMemoTagText} numberOfLines={1} maxFontSizeMultiplier={1.08}>
+                  📋 連動待辦
                 </Text>
               </View>
             )}
@@ -529,5 +562,47 @@ const styles = StyleSheet.create({
   },
   linkTextCompleted: {
     color: '#93C5FD',
+  },
+  memoReportBubble: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    marginBottom: 8,
+  },
+  memoReportText: {
+    fontSize: 12,
+    color: '#166534',
+    lineHeight: 17,
+  },
+  memoLinkedExpenseBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginBottom: 8,
+  },
+  memoLinkedExpenseBadgeText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: '#DC2626',
+  },
+  expenseLinkedMemoTag: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 0.5,
+    borderColor: '#FDE68A',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+  },
+  expenseLinkedMemoTagText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#B45309',
   },
 });

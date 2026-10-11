@@ -83,16 +83,21 @@ interface EditTransactionModalProps {
   visible: boolean;
   transaction: Transaction | null;
   onClose: () => void;
+  onLinkExpense?: (memoTx: Transaction) => void;
+  onOpenLinkedExpense?: (tx: Transaction) => void;
 }
 
 export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   visible,
   transaction,
   onClose,
+  onLinkExpense,
+  onOpenLinkedExpense,
 }) => {
   const {
     categories,
     members,
+    transactions,
     currentUser,
     isOwner,
     updateTransaction,
@@ -123,6 +128,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const [note, setNote] = useState<string>(() => transaction?.note || '');
   const [memoReminderDate, setMemoReminderDate] = useState<string>(() => transaction?.reminder_date || '');
   const [isSettled, setIsSettled] = useState<boolean>(() => !!transaction?.is_settled);
+  const [completionNote, setCompletionNote] = useState<string>(() => transaction?.completion_note || '');
+  const [linkedTxId, setLinkedTxId] = useState<string>(() => transaction?.linked_transaction_id || '');
   const [transactedAt, setTransactedAt] = useState<string>(() => transaction?.transacted_at || new Date().toISOString());
   const [datePickerVisible, setDatePickerVisible] = useState<boolean>(false);
   const [reminderDatePickerVisible, setReminderDatePickerVisible] = useState<boolean>(false);
@@ -236,6 +243,26 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     return Boolean(isPayerIdMatch || isPayerNameMatch);
   }, [transaction, currentUser, txPayerProfile, isOwner]);
 
+  // 生活記事允許任何已登入家庭成員回報辦妥說明與操作連動
+  const canEditCompletion = React.useMemo(() => {
+    if (!transaction || !currentUser?.id) return false;
+    if (canEdit) return true;
+    if (transaction.type === 'memo') return true;
+    return false;
+  }, [transaction, currentUser, canEdit]);
+
+  // 取得生活記事關聯之支出項目
+  const linkedExpense = React.useMemo(() => {
+    if (!linkedTxId) return undefined;
+    return transactions.find(t => t.id === linkedTxId && t.type !== 'memo');
+  }, [linkedTxId, transactions]);
+
+  // 取得支出項目關聯之生活記事項目
+  const linkedMemoTx = React.useMemo(() => {
+    if (!transaction?.linked_transaction_id) return undefined;
+    return transactions.find(t => t.id === transaction.linked_transaction_id && t.type === 'memo');
+  }, [transaction?.linked_transaction_id, transactions]);
+
   // 智慧店家快捷建議標籤列表 (結合自學習 recentMerchants + 分類推薦 + 關鍵字即時比對)
   const suggestedMerchants = React.useMemo(() => {
     const currentCats = categories.filter(c => c.type === type);
@@ -266,6 +293,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       setNote(transaction.note || '');
       setMemoReminderDate(transaction.reminder_date || '');
       setIsSettled(!!transaction.is_settled);
+      setCompletionNote(transaction.completion_note || '');
+      setLinkedTxId(transaction.linked_transaction_id || '');
       setReminderDatePickerVisible(false);
       setTransactedAt(transaction.transacted_at || new Date().toISOString());
       setDatePickerVisible(false);
@@ -356,6 +385,29 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     if (!transaction) return;
 
     if (!canEdit) {
+      if (transaction.type === 'memo' && canEditCompletion) {
+        try {
+          const effectiveCompleter = isSettled
+            ? (transaction.completed_by || currentUser?.id)
+            : undefined;
+          const success = await updateTransaction(transaction.id, {
+            is_settled: isSettled,
+            completed_by: effectiveCompleter,
+            completion_note: completionNote.trim() || undefined,
+            linked_transaction_id: linkedTxId || undefined,
+          });
+
+          if (success) {
+            onClose();
+          } else {
+            alert('更新失敗，請檢查網路連線');
+          }
+        } catch (err: any) {
+          alert(err.message || '更新回報時發生錯誤');
+        }
+        return;
+      }
+
       const msg = `權限不足：此筆紀錄由「${txPayerName}」記錄，僅本人或帳本管理者有權修改。`;
       if (Platform.OS === 'web') alert(msg);
       else Alert.alert('權限不足', msg);
@@ -381,6 +433,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           transacted_at: transactedAt || transaction.transacted_at,
           is_settled: isSettled,
           completed_by: isSettled ? (transaction.completed_by || currentUser?.id) : undefined,
+          completion_note: completionNote.trim() || undefined,
+          linked_transaction_id: linkedTxId || undefined,
         });
 
         if (success) {
@@ -521,7 +575,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>待辦進度狀態</Text>
                   <View style={styles.memoStatusRow}>
                     <TouchableOpacity
-                      disabled={!canEdit}
+                      disabled={!canEdit && !canEditCompletion}
                       style={[styles.memoStatusChip, !isSettled && styles.memoStatusChipActivePending]}
                       onPress={() => setIsSettled(false)}
                       activeOpacity={0.7}
@@ -532,7 +586,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                     </TouchableOpacity>
 
                     <TouchableOpacity
-                      disabled={!canEdit}
+                      disabled={!canEdit && !canEditCompletion}
                       style={[styles.memoStatusChip, isSettled && styles.memoStatusChipActiveCompleted]}
                       onPress={() => setIsSettled(true)}
                       activeOpacity={0.7}
@@ -550,6 +604,102 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                     </Text>
                   )}
                 </View>
+
+                {/* 辦妥補充說明 / 回報備註 (辦妥時顯示) */}
+                {isSettled && (
+                  <View style={styles.completionNoteContainer}>
+                    <View style={styles.sectionLabelRow}>
+                      <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>💬 辦妥補充說明 / 回報 (選填)</Text>
+                    </View>
+                    <TextInput
+                      style={[styles.completionNoteInput, (!canEdit && !canEditCompletion) && styles.readOnlyInput]}
+                      multiline
+                      numberOfLines={3}
+                      placeholder="補充說明如何辦妥、採買狀況、注意事項..."
+                      placeholderTextColor="#9CA3AF"
+                      value={completionNote}
+                      onChangeText={setCompletionNote}
+                      editable={canEdit || canEditCompletion}
+                      onFocus={() => handleInputFocus()}
+                      textAlignVertical="top"
+                      maxFontSizeMultiplier={1.15}
+                    />
+                  </View>
+                )}
+
+                {/* 💳 連動支出紀錄區塊 (辦妥時顯示) */}
+                {isSettled && (
+                  <View style={styles.linkedExpenseContainer}>
+                    <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>💳 連動支出紀錄</Text>
+                    {linkedExpense ? (
+                      <View style={styles.linkedExpenseCard}>
+                        <View style={styles.linkedExpenseHeader}>
+                          <View style={styles.linkedExpenseInfo}>
+                            <Text style={styles.linkedExpenseTitle} numberOfLines={1}>
+                              {linkedExpense.merchant || linkedExpense.category?.name || '支出記帳'}
+                            </Text>
+                            <Text style={styles.linkedExpenseSubtitle} numberOfLines={1}>
+                              {linkedExpense.payment_account?.name || linkedExpense.payment_method || '現金'} · {getMemberById(linkedExpense.paid_by)?.display_name || '成員'} 付款
+                            </Text>
+                          </View>
+                          <Text style={styles.linkedExpenseAmount}>
+                            - NT$ {Number(linkedExpense.amount).toLocaleString('zh-TW')}
+                          </Text>
+                        </View>
+                        <View style={styles.linkedExpenseActions}>
+                          <TouchableOpacity
+                            style={styles.linkedExpenseActionBtn}
+                            onPress={() => onOpenLinkedExpense?.(linkedExpense)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.linkedExpenseActionBtnText}>查看 / 編輯記帳明細 ›</Text>
+                          </TouchableOpacity>
+                          {(canEdit || canEditCompletion) && (
+                            <TouchableOpacity
+                              style={styles.linkedExpenseUnlinkBtn}
+                              onPress={() => {
+                                Alert.alert(
+                                  '解除連動確認',
+                                  '解除連動後，這筆生活待辦與該筆記帳將不再相互關聯，但記帳紀錄仍會保留。確定解除嗎？',
+                                  [
+                                    { text: '取消', style: 'cancel' },
+                                    {
+                                      text: '確認解除',
+                                      style: 'destructive',
+                                      onPress: async () => {
+                                        setLinkedTxId('');
+                                        await updateTransaction(transaction.id, { linked_transaction_id: '' });
+                                        await updateTransaction(linkedExpense.id, { linked_transaction_id: '' });
+                                      },
+                                    },
+                                  ]
+                                );
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={styles.linkedExpenseUnlinkBtnText}>解除連動 ✕</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+                    ) : (
+                      (canEdit || canEditCompletion) && (
+                        <TouchableOpacity
+                          style={styles.linkExpenseBtn}
+                          onPress={() => onLinkExpense?.(transaction)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={styles.linkExpenseBtnText}>
+                            💳 連動記一筆支出 (將此採買計入公帳)
+                          </Text>
+                          <Text style={styles.linkExpenseBtnDesc}>
+                            自動預填此待辦內容，完成後雙向綁定紀錄
+                          </Text>
+                        </TouchableOpacity>
+                      )
+                    )}
+                  </View>
+                )}
 
                 {/* 記事內容多行輸入框 */}
                 <View style={styles.sectionLabelRow}>
@@ -752,6 +902,24 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               </>
             ) : (
               <>
+                {/* 若此筆交易連動自生活待辦事項，顯示提示卡片 */}
+                {!!linkedMemoTx && (
+                  <View style={styles.linkedMemoCard}>
+                    <View style={styles.linkedMemoCardHeader}>
+                      <Text style={styles.linkedMemoCardBadge} maxFontSizeMultiplier={1.08}>📌 源自生活待辦事項</Text>
+                      <TouchableOpacity
+                        onPress={() => onOpenLinkedExpense?.(linkedMemoTx)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.linkedMemoCardLink} maxFontSizeMultiplier={1.08}>查看生活待辦 ›</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.linkedMemoCardContent} numberOfLines={2} maxFontSizeMultiplier={1.08}>
+                      {linkedMemoTx.note || '生活待辦事項'}
+                    </Text>
+                  </View>
+                )}
+
                 {/* 類型切換 (支出 / 收入) */}
                 <View style={[styles.typeToggle, !canEdit && styles.disabledContainer]}>
                   <TouchableOpacity
@@ -1160,6 +1328,15 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             </TouchableOpacity>
             <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
               <Text style={styles.submitBtnText} maxFontSizeMultiplier={1.15}>儲存修改</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (transaction.type === 'memo' && canEditCompletion) ? (
+          <View style={styles.btnRow}>
+            <TouchableOpacity style={styles.readOnlyCloseBtn} onPress={onClose} activeOpacity={0.8}>
+              <Text style={styles.readOnlyCloseBtnText} maxFontSizeMultiplier={1.15}>關閉</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
+              <Text style={styles.submitBtnText} maxFontSizeMultiplier={1.15}>儲存回報</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -1823,5 +2000,131 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#059669',
     fontWeight: '600',
+  },
+  completionNoteContainer: {
+    marginBottom: 14,
+  },
+  completionNoteInput: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1.5,
+    borderColor: '#86EFAC',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 14.5,
+    color: '#14532D',
+    minHeight: 76,
+  },
+  linkedExpenseContainer: {
+    marginBottom: 16,
+  },
+  linkedExpenseCard: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 12,
+  },
+  linkedExpenseHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  linkedExpenseInfo: {
+    flex: 1,
+    marginRight: 8,
+  },
+  linkedExpenseTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 2,
+  },
+  linkedExpenseSubtitle: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  linkedExpenseAmount: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#DC2626',
+  },
+  linkedExpenseActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    paddingTop: 8,
+    marginTop: 2,
+  },
+  linkedExpenseActionBtn: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 8,
+  },
+  linkedExpenseActionBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2563EB',
+  },
+  linkedExpenseUnlinkBtn: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+  },
+  linkedExpenseUnlinkBtnText: {
+    fontSize: 12,
+    color: '#94A3B8',
+  },
+  linkExpenseBtn: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1.5,
+    borderColor: '#BFDBFE',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  linkExpenseBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1D4ED8',
+    marginBottom: 2,
+  },
+  linkExpenseBtnDesc: {
+    fontSize: 11,
+    color: '#3B82F6',
+  },
+  linkedMemoCard: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+  },
+  linkedMemoCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  linkedMemoCardBadge: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#B45309',
+  },
+  linkedMemoCardLink: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2563EB',
+  },
+  linkedMemoCardContent: {
+    fontSize: 13,
+    color: '#78350F',
+    lineHeight: 18,
   },
 });
