@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 25;
+export const APP_BUILD_REVISION = 26;
 
-// 完整版本字串 (例如 "1.0.4.25")
+// 完整版本字串 (例如 "1.0.4.26")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.26',
+    date: '2026-10-12',
+    title: '生活待辦打勾辦妥確認彈窗與連動記帳全新體驗 (方案 B)',
+    highlights: [
+      '打勾智慧呼叫辦妥確認彈窗：在首頁流水帳或「生活備忘總覽」中，點擊未完成待辦核取方塊（勾勾）時，立即呼叫專屬辦妥確認彈窗，提供確認辦妥人、填寫辦妥說明與快捷標籤，並可自由選擇「連動記一筆支出」或「僅標記完成（無支出）」。',
+      '連動記帳智慧取消退回防護（Option 2B）：若點擊連動支出後在記帳頁面按下「✕ 取消」，系統自動退回辦妥確認彈窗，原先輸入之回報備註與選取的辦妥人完整保留，絕不強制落庫或遺失草稿。',
+      '已完成待辦一秒直覺取消：針對已辦妥之待辦事項，點擊勾勾維持一鍵取消打勾回到進行中狀態，無需多餘確認彈窗，操作流暢不囉嗦。',
+    ],
+  },
   {
     version: '1.0.4.25',
     date: '2026-10-12',

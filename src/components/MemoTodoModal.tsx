@@ -33,6 +33,7 @@ interface MemoTodoModalProps {
   onClose: () => void;
   onEditMemo: (tx: Transaction) => void;
   onAddMemo: () => void;
+  onCompleteMemo?: (tx: Transaction) => void;
 }
 
 export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
@@ -40,6 +41,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
   onClose,
   onEditMemo,
   onAddMemo,
+  onCompleteMemo,
 }) => {
   const { transactions, getMemberById, toggleMemoSettled } = useLedger();
   const [activeTab, setActiveTab] = useState<TodoTab>('all');
@@ -298,7 +300,13 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                           style={[styles.checkbox, isCompleted && styles.checkboxChecked]}
                           onPress={(e) => {
                             e.stopPropagation?.();
-                            toggleMemoSettled?.(item.id);
+                            if (isCompleted) {
+                              toggleMemoSettled?.(item.id);
+                            } else if (onCompleteMemo) {
+                              onCompleteMemo(item);
+                            } else {
+                              toggleMemoSettled?.(item.id);
+                            }
                           }}
                           activeOpacity={0.6}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}

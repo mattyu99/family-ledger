@@ -17,9 +17,10 @@ const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultip
 interface TransactionItemProps {
   transaction: Transaction;
   onPress?: (transaction: Transaction) => void;
+  onCompleteMemo?: (transaction: Transaction) => void;
 }
 
-export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ transaction, onPress }) => {
+export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ transaction, onPress, onCompleteMemo }) => {
   const { getMemberById, getCategoryById, getAccountById, paymentMethods, toggleMemoSettled, transactions } = useLedger();
 
   const category = getCategoryById(transaction.category_id, transaction.category);
@@ -78,7 +79,13 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
               style={[styles.memoCheckbox, isCompleted && styles.memoCheckboxChecked]}
               onPress={(e) => {
                 e.stopPropagation?.();
-                toggleMemoSettled?.(transaction.id);
+                if (isCompleted) {
+                  toggleMemoSettled?.(transaction.id);
+                } else if (onCompleteMemo) {
+                  onCompleteMemo(transaction);
+                } else {
+                  toggleMemoSettled?.(transaction.id);
+                }
               }}
               activeOpacity={0.6}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}

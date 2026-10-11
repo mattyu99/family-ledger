@@ -90,6 +90,7 @@ const getCategoryPresetMerchants = (catName?: string, type?: TransactionType): s
 interface AddTransactionModalProps {
   visible: boolean;
   onClose: () => void;
+  onSuccess?: (createdTxId?: string) => void;
   initialMode?: 'expense' | 'income' | 'allowance' | 'memo';
   defaultRecipientId?: string;
   defaultPayerId?: string;
@@ -101,6 +102,7 @@ interface AddTransactionModalProps {
 export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   visible,
   onClose,
+  onSuccess,
   initialMode = 'expense',
   defaultRecipientId,
   defaultPayerId,
@@ -527,6 +529,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       setPaymentMethod('cash');
       setSelectedAccountId('');
       setSelectedDate(new Date());
+      onSuccess?.(createdTxId);
       onClose();
     } catch (err: any) {
       safeAlert('儲存失敗', err.message || '儲存記帳時發生錯誤');

@@ -55,6 +55,7 @@ import { PaymentAccountsManageModal } from './src/components/PaymentAccountsMana
 import { PaymentMethodsManageModal } from './src/components/PaymentMethodsManageModal';
 import { RecurringBillsManageModal } from './src/components/RecurringBillsManageModal';
 import { MemoTodoModal } from './src/components/MemoTodoModal';
+import { MemoCompletionModal } from './src/components/MemoCompletionModal';
 import { getLocalDateYmd, parseMemoNote } from './src/lib/memo';
 import { isBillDueInMonth, isBillPaidForCurrentPeriod } from './src/lib/recurring';
 import { ChangelogModal } from './src/components/ChangelogModal';
@@ -147,6 +148,7 @@ function MainApp() {
     currentLedger,
     ledgers,
     transactions,
+    updateTransaction,
     categories,
     members,
     currentUser,
@@ -215,7 +217,40 @@ function MainApp() {
   const [modalDefaultPayerId, setModalDefaultPayerId] = useState<string | undefined>(undefined);
   const [modalDefaultNote, setModalDefaultNote] = useState<string | undefined>(undefined);
   const [modalLinkedCompletionNote, setModalLinkedCompletionNote] = useState<string | undefined>(undefined);
+  const [completingMemo, setCompletingMemo] = useState<Transaction | null>(null);
+  const [completionTempNote, setCompletionTempNote] = useState<string>('');
+  const [completionTempCompleter, setCompletionTempCompleter] = useState<string>('');
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+
+  // 方案 B：待辦打勾彈出辦妥確認與連動記帳彈窗
+  const handleOpenMemoCompletion = (tx: Transaction) => {
+    setCompletingMemo(tx);
+    setCompletionTempNote(tx.completion_note || '');
+    setCompletionTempCompleter(tx.completed_by || currentUser?.id || members[0]?.id || '');
+  };
+
+  const handleCompleteMemoOnly = async (memoId: string, completedBy: string, note?: string) => {
+    await updateTransaction(memoId, {
+      is_settled: true,
+      completed_by: completedBy,
+      completion_note: note || undefined,
+    });
+    setCompletingMemo(null);
+    setCompletionTempNote('');
+    setCompletionTempCompleter('');
+  };
+
+  const handleLinkExpenseFromCompletion = (memo: Transaction, completedBy: string, note?: string) => {
+    setModalMode('expense');
+    setModalLinkedMemoId(memo.id);
+    setModalDefaultPayerId(completedBy || currentUser?.id);
+    const memoData = parseMemoNote(memo.note);
+    setModalDefaultNote(`[辦妥] ${memoData.title || memo.note}`);
+    setModalLinkedCompletionNote(note);
+    setCompletionTempCompleter(completedBy);
+    setCompletionTempNote(note || '');
+    setModalVisible(true);
+  };
   const [reconcileModalVisible, setReconcileModalVisible] = useState(false);
   const [reconcileAccountType, setReconcileAccountType] = useState<'credit_card' | 'stored_value'>('credit_card');
   const [reconcileAccountId, setReconcileAccountId] = useState<string | undefined>(undefined);
@@ -3370,6 +3405,7 @@ function MainApp() {
                     key={item.id}
                     transaction={item}
                     onPress={tx => setEditingTransaction(tx)}
+                    onCompleteMemo={handleOpenMemoCompletion}
                   />
                 ))}
 
@@ -4840,6 +4876,11 @@ function MainApp() {
         defaultNote={modalDefaultNote}
         linkedMemoId={modalLinkedMemoId}
         linkedCompletionNote={modalLinkedCompletionNote}
+        onSuccess={() => {
+          setCompletingMemo(null);
+          setCompletionTempNote('');
+          setCompletionTempCompleter('');
+        }}
         onClose={() => {
           setModalVisible(false);
           setModalRecipientId(undefined);
@@ -4873,13 +4914,29 @@ function MainApp() {
 
       {/* 生活備忘與待辦總覽彈窗 */}
       <MemoTodoModal
-        visible={memoTodoModalVisible}
+        visible={memoTodoModalVisible && !completingMemo && !modalVisible}
         onClose={() => setMemoTodoModalVisible(false)}
         onEditMemo={(tx) => setEditingTransaction(tx)}
         onAddMemo={() => {
           setModalMode('memo');
           setModalVisible(true);
         }}
+        onCompleteMemo={handleOpenMemoCompletion}
+      />
+
+      {/* 辦妥待辦確認與連動記帳彈窗 (方案 B) */}
+      <MemoCompletionModal
+        visible={!!completingMemo && !modalVisible}
+        memo={completingMemo}
+        initialNote={completionTempNote}
+        initialCompleterId={completionTempCompleter}
+        onClose={() => {
+          setCompletingMemo(null);
+          setCompletionTempNote('');
+          setCompletionTempCompleter('');
+        }}
+        onCompleteOnly={handleCompleteMemoOnly}
+        onLinkExpense={handleLinkExpenseFromCompletion}
       />
 
       {/* 記帳分類項目管理彈窗 (僅管理員可增修) */}
