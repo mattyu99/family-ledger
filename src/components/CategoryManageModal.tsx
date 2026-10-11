@@ -126,12 +126,6 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({ visibl
     };
   }, []);
 
-  const handleInputFocus = (delay = 120) => {
-    setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, delay);
-  };
-
   const dynamicBottomPadding = keyboardOffset > 0
     ? (keyboardOffset + 24)
     : 30;

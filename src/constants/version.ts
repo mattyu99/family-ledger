@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 23;
+export const APP_BUILD_REVISION = 24;
 
-// 完整版本字串 (例如 "1.0.4.23")
+// 完整版本字串 (例如 "1.0.4.24")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.24',
+    date: '2026-10-11',
+    title: '修復手機鍵盤彈出時記事內容與辦妥說明輸入框被頂出畫面問題',
+    highlights: [
+      '精準平滑滾動定位（scrollToInput）：全面修正點擊「記事內容與備忘」、「辦妥補充說明/回報」以及店家/備註輸入框時，舊版代碼強制捲動至頁面最底端（scrollToEnd）導致上方輸入框完全被頂出可見範圍之嚴重問題。',
+      '動態測量輸入區塊 Y 座標：改以組件實際佈局高度（onLayout）智能對齊，點擊輸入框時自動平滑平移至上方舒適安全區，確保文字編輯框完整常駐於軟體鍵盤上方，不再迷失焦點。',
+      '全方位適用於新增與編輯視窗：涵蓋新增記事、編輯記事、連動辦妥說明與零用錢等多種情境，徹底解決手機 App 版與 Web 版升起鍵盤時的編輯體驗。',
+    ],
+  },
   {
     version: '1.0.4.23',
     date: '2026-10-11',

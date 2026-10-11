@@ -141,6 +141,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [allowanceRecipientId, setAllowanceRecipientId] = useState<string>('');
   const [allowanceExpenseCatId, setAllowanceExpenseCatId] = useState<string>('');
 
+  // 各輸入框於 ScrollView 內之 Y 座標（精準平滑滾動，避免強行 scrollToEnd）
+  const [memoSectionY, setMemoSectionY] = useState<number>(0);
+  const [merchantSectionY, setMerchantSectionY] = useState<number>(0);
+  const [noteSectionY, setNoteSectionY] = useState<number>(0);
+  const [allowanceNoteSectionY, setAllowanceNoteSectionY] = useState<number>(0);
+
   // 取得有效啟用的付款方式清單（確保現金永遠存在不被全數隱藏）
   const activePaymentMethods = React.useMemo(() => {
     const list = paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS;
@@ -205,10 +211,11 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     };
   }, []);
 
-  // 點選店家或備註欄時，自動平滑滑動到底部可見安全區域
-  const handleInputFocus = (delay = 120) => {
+  // 點選輸入框時，平滑滑動至該輸入框所在位置，避免強行 scrollToEnd 導致上方輸入框被頂出可見範圍
+  const scrollToInput = (targetY: number, defaultY = 0, delay = 100) => {
     setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
+      const scrollY = targetY > 0 ? targetY : defaultY;
+      scrollViewRef.current?.scrollTo({ y: Math.max(0, scrollY - 15), animated: true });
     }, delay);
   };
 
@@ -639,26 +646,28 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 </View>
 
                 {/* 記事內容多行輸入框 */}
-                <View style={styles.sectionLabelRow}>
-                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記事內容與備忘</Text>
-                  {keyboardOffset > 0 && (
-                    <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
-                    </TouchableOpacity>
-                  )}
+                <View onLayout={(e) => setMemoSectionY(e.nativeEvent.layout.y)}>
+                  <View style={styles.sectionLabelRow}>
+                    <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記事內容與備忘</Text>
+                    {keyboardOffset > 0 && (
+                      <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  <TextInput
+                    style={styles.memoContentInput}
+                    multiline
+                    numberOfLines={4}
+                    placeholder="記錄今天的事情、靈感、採買備忘或家庭待辦..."
+                    placeholderTextColor="#9CA3AF"
+                    value={note}
+                    onChangeText={setNote}
+                    onFocus={() => scrollToInput(memoSectionY, 70)}
+                    textAlignVertical="top"
+                    maxFontSizeMultiplier={1.15}
+                  />
                 </View>
-                <TextInput
-                  style={styles.memoContentInput}
-                  multiline
-                  numberOfLines={4}
-                  placeholder="記錄今天的事情、靈感、採買備忘或家庭待辦..."
-                  placeholderTextColor="#9CA3AF"
-                  value={note}
-                  onChangeText={setNote}
-                  onFocus={() => handleInputFocus()}
-                  textAlignVertical="top"
-                  maxFontSizeMultiplier={1.15}
-                />
 
                 {/* 快捷情境標籤 */}
                 <View style={styles.quickNoteRow}>
@@ -1095,17 +1104,19 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     </TouchableOpacity>
                   ))}
                 </View>
-                <TextInput
-                  style={styles.noteInput}
-                  placeholder="例如：每週零用錢、考試進步獎勵..."
-                  placeholderTextColor="#9CA3AF"
-                  value={note}
-                  onChangeText={setNote}
-                  onFocus={() => handleInputFocus()}
-                  returnKeyType="done"
-                  onSubmitEditing={Keyboard.dismiss}
-                  maxFontSizeMultiplier={1.15}
-                />
+                <View onLayout={(e) => setAllowanceNoteSectionY(e.nativeEvent.layout.y)}>
+                  <TextInput
+                    style={styles.noteInput}
+                    placeholder="例如：每週零用錢、考試進步獎勵..."
+                    placeholderTextColor="#9CA3AF"
+                    value={note}
+                    onChangeText={setNote}
+                    onFocus={() => scrollToInput(allowanceNoteSectionY, 300)}
+                    returnKeyType="done"
+                    onSubmitEditing={Keyboard.dismiss}
+                    maxFontSizeMultiplier={1.15}
+                  />
+                </View>
               </>
             ) : (
               <>
@@ -1359,31 +1370,33 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 </View>
 
                 {/* 店家 / 對象 (選填) */}
-                <View style={styles.sectionLabelRow}>
-                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>店家 / 付款對象 (選填)</Text>
-                  {!!merchant && (
-                    <TouchableOpacity onPress={() => setMerchant('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <Text style={styles.clearMerchantText} maxFontSizeMultiplier={1.08}>清除</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <View style={styles.merchantInputWrapper}>
-                  <Text style={styles.merchantInputIcon}>🏪</Text>
-                  <TextInput
-                    style={styles.merchantInput}
-                    placeholder="例如：全聯、好市多、麥當勞、中油..."
-                    placeholderTextColor="#9CA3AF"
-                    value={merchant}
-                    onChangeText={setMerchant}
-                    onFocus={() => handleInputFocus()}
-                    returnKeyType="next"
-                    maxFontSizeMultiplier={1.15}
-                  />
-                  {!!merchant && (
-                    <TouchableOpacity onPress={() => setMerchant('')} style={styles.merchantClearBtn}>
-                      <Text style={styles.merchantClearBtnText}>✕</Text>
-                    </TouchableOpacity>
-                  )}
+                <View onLayout={(e) => setMerchantSectionY(e.nativeEvent.layout.y)}>
+                  <View style={styles.sectionLabelRow}>
+                    <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>店家 / 付款對象 (選填)</Text>
+                    {!!merchant && (
+                      <TouchableOpacity onPress={() => setMerchant('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Text style={styles.clearMerchantText} maxFontSizeMultiplier={1.08}>清除</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  <View style={styles.merchantInputWrapper}>
+                    <Text style={styles.merchantInputIcon}>🏪</Text>
+                    <TextInput
+                      style={styles.merchantInput}
+                      placeholder="例如：全聯、好市多、麥當勞、中油..."
+                      placeholderTextColor="#9CA3AF"
+                      value={merchant}
+                      onChangeText={setMerchant}
+                      onFocus={() => scrollToInput(merchantSectionY, 350)}
+                      returnKeyType="next"
+                      maxFontSizeMultiplier={1.15}
+                    />
+                    {!!merchant && (
+                      <TouchableOpacity onPress={() => setMerchant('')} style={styles.merchantClearBtn}>
+                        <Text style={styles.merchantClearBtnText}>✕</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
 
                 {/* 智慧自學習快捷膠囊標籤 */}
@@ -1415,25 +1428,27 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 )}
 
                 {/* 備註說明 */}
-                <View style={styles.sectionLabelRow}>
-                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>備註說明</Text>
-                  {keyboardOffset > 0 && (
-                    <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
-                    </TouchableOpacity>
-                  )}
+                <View onLayout={(e) => setNoteSectionY(e.nativeEvent.layout.y)}>
+                  <View style={styles.sectionLabelRow}>
+                    <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>備註說明</Text>
+                    {keyboardOffset > 0 && (
+                      <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  <TextInput
+                    style={styles.noteInput}
+                    placeholder="例如：好市多牛肉、加滿油、水電費..."
+                    placeholderTextColor="#9CA3AF"
+                    value={note}
+                    onChangeText={setNote}
+                    onFocus={() => scrollToInput(noteSectionY, 450)}
+                    returnKeyType="done"
+                    onSubmitEditing={Keyboard.dismiss}
+                    maxFontSizeMultiplier={1.15}
+                  />
                 </View>
-                <TextInput
-                  style={styles.noteInput}
-                  placeholder="例如：好市多牛肉、加滿油、水電費..."
-                  placeholderTextColor="#9CA3AF"
-                  value={note}
-                  onChangeText={setNote}
-                  onFocus={() => handleInputFocus()}
-                  returnKeyType="done"
-                  onSubmitEditing={Keyboard.dismiss}
-                  maxFontSizeMultiplier={1.15}
-                />
               </>
             )}
           </>
