@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 20;
+export const APP_BUILD_REVISION = 21;
 
-// 完整版本字串 (例如 "1.0.4.20")
+// 完整版本字串 (例如 "1.0.4.21")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,15 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.21',
+    date: '2026-10-11',
+    title: '修復今日與逾期待辦時區對齊及跨日快取同步問題',
+    highlights: [
+      '時區精準對齊本地時間：徹底修正原先使用 UTC 時區字串 (toISOString) 導致 UTC+8 台灣時區在凌晨跨日或比對時少算一天之問題，全面改用裝置本地時區 (getLocalDateYmd)。',
+      '待辦總覽動態跨日刷新：解決生活備忘總覽彈窗中今日日期快取寫死空依賴之狀況，每次開啟或交易更新時即時刷新，確保主畫面橫幅與彈窗卡片筆數 100% 完美一致。',
+    ],
+  },
   {
     version: '1.0.4.20',
     date: '2026-10-11',

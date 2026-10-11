@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
-import { parseMemoNote } from '../lib/memo';
+import { parseMemoNote, getLocalDateYmd } from '../lib/memo';
 import { HorizontalScrollView } from './HorizontalScrollView';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
@@ -43,7 +43,8 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
   const { transactions, getMemberById, toggleMemoSettled } = useLedger();
   const [activeTab, setActiveTab] = useState<TodoTab>('all');
 
-  const todayYmd = useMemo(() => new Date().toISOString().split('T')[0], []);
+  // 每次開啟彈窗或交易更新時，精準取得本地最新日期 (避免空依賴緩存或 UTC 時區差)
+  const todayYmd = useMemo(() => getLocalDateYmd(), [visible, transactions]);
 
   // 篩選生活記事
   const allMemos = useMemo(() => {

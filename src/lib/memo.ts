@@ -118,3 +118,13 @@ export function toggleMemoTag(currentNote: string, tag: string): string {
   return currentNote.trim() ? `[${tag}] ${currentNote.trim()}` : `[${tag}] `;
 }
 
+/**
+ * 取得裝置本地時區的 YYYY-MM-DD 日期字串 (避免 toISOString() 造成 UTC 與本地時區差問題)
+ */
+export function getLocalDateYmd(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+

@@ -55,6 +55,7 @@ import { PaymentAccountsManageModal } from './src/components/PaymentAccountsMana
 import { PaymentMethodsManageModal } from './src/components/PaymentMethodsManageModal';
 import { RecurringBillsManageModal } from './src/components/RecurringBillsManageModal';
 import { MemoTodoModal } from './src/components/MemoTodoModal';
+import { getLocalDateYmd } from './src/lib/memo';
 import { isBillDueInMonth, isBillPaidForCurrentPeriod } from './src/lib/recurring';
 import { ChangelogModal } from './src/components/ChangelogModal';
 import { APP_FULL_VERSION } from './src/constants/version';
@@ -233,9 +234,9 @@ function MainApp() {
     }).length;
   }, [recurringRules, currentLedger?.id]);
 
-  // 今日或逾期待辦之生活記事備忘（未辦妥）
+  // 今日或逾期待辦之生活記事備忘（未辦妥，依本地時區精準判定）
   const pendingMemos = useMemo(() => {
-    const todayYmd = new Date().toISOString().split('T')[0];
+    const todayYmd = getLocalDateYmd();
     return transactions.filter(t => {
       if (t.type !== 'memo') return false;
       if (t.is_settled) return false;
@@ -244,9 +245,9 @@ function MainApp() {
     }).sort((a, b) => (a.reminder_date || '').localeCompare(b.reminder_date || ''));
   }, [transactions]);
 
-  // 未來到期預告之生活記事備忘（未辦妥，依倒數日期排序）
+  // 未來到期預告之生活記事備忘（未辦妥，依本地時區精準判定）
   const upcomingMemos = useMemo(() => {
-    const todayYmd = new Date().toISOString().split('T')[0];
+    const todayYmd = getLocalDateYmd();
     return transactions.filter(t => {
       if (t.type !== 'memo') return false;
       if (t.is_settled) return false;
