@@ -95,6 +95,7 @@ interface AddTransactionModalProps {
   defaultPayerId?: string;
   defaultNote?: string;
   linkedMemoId?: string;
+  linkedCompletionNote?: string;
 }
 
 export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
@@ -105,6 +106,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   defaultPayerId,
   defaultNote,
   linkedMemoId,
+  linkedCompletionNote,
 }) => {
   const {
     categories,
@@ -509,11 +511,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       });
 
       if (linkedMemoId && createdTxId) {
-        // 同步雙向綁定至生活待辦，並標記已由該成員辦妥
+        // 同步雙向綁定至生活待辦，並標記已由該成員辦妥與儲存辦妥說明
         await updateTransaction(linkedMemoId, {
           linked_transaction_id: createdTxId,
           is_settled: true,
           completed_by: targetPayer,
+          ...(linkedCompletionNote ? { completion_note: linkedCompletionNote } : {}),
         });
       }
 
@@ -562,6 +565,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               <View style={styles.linkedMemoBanner}>
                 <Text style={styles.linkedMemoBannerText} maxFontSizeMultiplier={1.08}>
                   🔗 連動生活待辦採買：儲存時將自動為該記事打勾辦妥
+                  {linkedCompletionNote ? `（回報：${linkedCompletionNote}）` : ''}
                 </Text>
               </View>
             )}

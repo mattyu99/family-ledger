@@ -55,7 +55,7 @@ import { PaymentAccountsManageModal } from './src/components/PaymentAccountsMana
 import { PaymentMethodsManageModal } from './src/components/PaymentMethodsManageModal';
 import { RecurringBillsManageModal } from './src/components/RecurringBillsManageModal';
 import { MemoTodoModal } from './src/components/MemoTodoModal';
-import { getLocalDateYmd } from './src/lib/memo';
+import { getLocalDateYmd, parseMemoNote } from './src/lib/memo';
 import { isBillDueInMonth, isBillPaidForCurrentPeriod } from './src/lib/recurring';
 import { ChangelogModal } from './src/components/ChangelogModal';
 import { APP_FULL_VERSION } from './src/constants/version';
@@ -214,6 +214,7 @@ function MainApp() {
   const [modalLinkedMemoId, setModalLinkedMemoId] = useState<string | undefined>(undefined);
   const [modalDefaultPayerId, setModalDefaultPayerId] = useState<string | undefined>(undefined);
   const [modalDefaultNote, setModalDefaultNote] = useState<string | undefined>(undefined);
+  const [modalLinkedCompletionNote, setModalLinkedCompletionNote] = useState<string | undefined>(undefined);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [reconcileModalVisible, setReconcileModalVisible] = useState(false);
   const [reconcileAccountType, setReconcileAccountType] = useState<'credit_card' | 'stored_value'>('credit_card');
@@ -4838,12 +4839,14 @@ function MainApp() {
         defaultPayerId={modalDefaultPayerId}
         defaultNote={modalDefaultNote}
         linkedMemoId={modalLinkedMemoId}
+        linkedCompletionNote={modalLinkedCompletionNote}
         onClose={() => {
           setModalVisible(false);
           setModalRecipientId(undefined);
           setModalDefaultPayerId(undefined);
           setModalDefaultNote(undefined);
           setModalLinkedMemoId(undefined);
+          setModalLinkedCompletionNote(undefined);
         }}
       />
 
@@ -4858,7 +4861,9 @@ function MainApp() {
           setModalMode('expense');
           setModalLinkedMemoId(memoTx.id);
           setModalDefaultPayerId(memoTx.completed_by || currentUser?.id);
-          setModalDefaultNote(memoTx.note);
+          const memoData = parseMemoNote(memoTx.note);
+          setModalDefaultNote(`[辦妥] ${memoData.title || memoTx.note}`);
+          setModalLinkedCompletionNote(memoTx.completion_note);
           setModalVisible(true);
         }}
         onOpenLinkedExpense={(expenseTx) => {

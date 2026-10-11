@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 24;
+export const APP_BUILD_REVISION = 25;
 
-// 完整版本字串 (例如 "1.0.4.24")
+// 完整版本字串 (例如 "1.0.4.25")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,15 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.25',
+    date: '2026-10-12',
+    title: '強化連動記帳自動暫存辦妥回報說明，避免輸入內容被覆蓋丟失',
+    highlights: [
+      '點擊連動支出自動即時儲存回報：在待辦記事編輯視窗中，若已輸入「辦妥補充說明/回報 (選填)」，點擊「💳 連動記一筆支出」按鈕時系統會自動先將回報說明與辦妥狀態立即持久化存檔，徹底解決未先按儲存回報即進行連動記帳導致文字被捨棄遺失之問題。',
+      '連動視窗雙向無縫銜接：連動之新增支出視窗頂部橫幅同步顯示回報備註預覽（如「🔗 連動生活待辦採買：...（回報：...）」），支出儲存後智能雙向寫入，待辦事項之辦妥回報與連動卡片完整無缺保留。',
+    ],
+  },
   {
     version: '1.0.4.24',
     date: '2026-10-11',

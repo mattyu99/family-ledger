@@ -388,6 +388,44 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     setTransactedAt(d.toISOString());
   };
 
+  const handleLinkExpensePress = async () => {
+    if (!transaction) return;
+    const noteToSave = completionNote.trim();
+    const effectiveCompleter = isSettled
+      ? (transaction.completed_by || currentUser?.id)
+      : (currentUser?.id);
+
+    // 立即自動保存使用者剛剛輸入的辦妥說明與狀態，絕不丟失任何輸入內容！
+    try {
+      if (canEdit) {
+        await updateTransaction(transaction.id, {
+          note: note.trim() || transaction.note,
+          reminder_date: memoReminderDate || undefined,
+          merchant: memoReminderDate ? `remind:${memoReminderDate}` : 'memo',
+          is_settled: true,
+          completed_by: effectiveCompleter,
+          completion_note: noteToSave || undefined,
+        });
+      } else if (canEditCompletion) {
+        await updateTransaction(transaction.id, {
+          is_settled: true,
+          completed_by: effectiveCompleter,
+          completion_note: noteToSave || undefined,
+        });
+      }
+    } catch (err) {
+      console.warn('Auto-save memo before linking expense failed:', err);
+    }
+
+    onLinkExpense?.({
+      ...transaction,
+      note: note.trim() || transaction.note,
+      is_settled: true,
+      completed_by: effectiveCompleter,
+      completion_note: noteToSave || transaction.completion_note,
+    });
+  };
+
   const handleSubmit = async () => {
     if (!transaction) return;
 
@@ -701,7 +739,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                       (canEdit || canEditCompletion) && (
                         <TouchableOpacity
                           style={styles.linkExpenseBtn}
-                          onPress={() => onLinkExpense?.(transaction)}
+                          onPress={handleLinkExpensePress}
                           activeOpacity={0.8}
                         >
                           <Text style={styles.linkExpenseBtnText}>
