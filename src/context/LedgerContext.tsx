@@ -839,8 +839,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 t.category;
               let parsedMerchant = t.merchant;
               let parsedNote = t.note;
-              if (!parsedMerchant && t.note) {
-                const match = t.note.match(/^\[(.*?)\]\s*(.*)$/);
+              if (t.type !== 'memo' && !parsedMerchant && t.note) {
+                const match = t.note.match(/^[\[［【](.*?)[\]］】]\s*(.*)$/);
                 if (match) {
                   parsedMerchant = match[1];
                   parsedNote = match[2];
@@ -1031,7 +1031,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           let parsedMerchant = newRow.merchant;
           let parsedNote = newRow.note;
           if (!parsedMerchant && newRow.note) {
-            const match = newRow.note.match(/^\[(.*?)\]\s*(.*)$/);
+            const match = newRow.note.match(/^[\[［【](.*?)[\]］】]\s*(.*)$/);
             if (match) {
               parsedMerchant = match[1];
               parsedNote = match[2];
@@ -1056,6 +1056,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             parsedMerchant = undefined;
           } else if (newRow.type === 'memo' || (newRow.type === 'transfer' && Number(newRow.amount) === 0)) {
             resolvedType = 'memo';
+            parsedMerchant = undefined;
+            parsedNote = newRow.note;
           } else if (parsedMerchant) {
             recordMerchant(parsedMerchant);
           }
@@ -1134,7 +1136,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           let parsedMerchant = updatedRow.merchant;
           let parsedNote = updatedRow.note;
           if (!parsedMerchant && updatedRow.note) {
-            const match = updatedRow.note.match(/^\[(.*?)\]\s*(.*)$/);
+            const match = updatedRow.note.match(/^[\[［【](.*?)[\]］】]\s*(.*)$/);
             if (match) {
               parsedMerchant = match[1];
               parsedNote = match[2];
@@ -1159,6 +1161,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             parsedMerchant = undefined;
           } else if (updatedRow.type === 'memo' || (updatedRow.type === 'transfer' && Number(updatedRow.amount) === 0)) {
             resolvedType = 'memo';
+            parsedMerchant = undefined;
+            parsedNote = updatedRow.note;
           } else if (parsedMerchant) {
             recordMerchant(parsedMerchant);
           }
@@ -2048,7 +2052,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           let parsedMerchant = t.merchant;
           let parsedNote = t.note;
           if (!parsedMerchant && t.note) {
-            const match = t.note.match(/^\[(.*?)\]\s*(.*)$/);
+            const match = t.note.match(/^[\[［【](.*?)[\]］】]\s*(.*)$/);
             if (match) {
               parsedMerchant = match[1];
               parsedNote = match[2];
@@ -2071,6 +2075,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             parsedMerchant = undefined;
           } else if (t.type === 'memo' || (t.type === 'transfer' && Number(t.amount) === 0)) {
             resolvedType = 'memo';
+            parsedMerchant = undefined;
+            parsedNote = t.note;
           } else if (parsedMerchant) {
             recordMerchant(parsedMerchant);
           }
@@ -2928,12 +2934,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }));
 
             // 2. 彈出頂部跨帳本即時動態泡泡
-            let parsedMerchant = newRow.merchant;
-            if (!parsedMerchant && newRow.note) {
-              const match = newRow.note.match(/^\[(.*?)\]\s*(.*)$/);
-              if (match) parsedMerchant = match[1];
+            let displayMerchant = '記事';
+            if (newRow.type === 'memo') {
+              const memoData = parseMemoNote(newRow.note);
+              displayMerchant = `[${memoData.title}] ${memoData.cleanContent}`;
+            } else {
+              let parsedMerchant = newRow.merchant;
+              if (!parsedMerchant && newRow.note) {
+                const match = newRow.note.match(/^[\[［【](.*?)[\]］】]\s*(.*)$/);
+                if (match) parsedMerchant = match[1];
+              }
+              displayMerchant = parsedMerchant || (newRow.type === 'expense' ? '支出' : '收入');
             }
-            const displayMerchant = parsedMerchant || (newRow.type === 'expense' ? '支出' : (newRow.type === 'income' ? '收入' : '記事'));
             const displayAmount = newRow.amount ? ` NT$ ${Number(newRow.amount).toLocaleString('zh-TW')}` : '';
 
             triggerLiveToast({

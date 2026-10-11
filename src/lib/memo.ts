@@ -38,7 +38,8 @@ export function parseMemoNote(noteText?: string, categoryName?: string, category
   }
 
   const raw = noteText.trim();
-  const match = raw.match(/\[([^\[\]\n]{1,16})\]/) || raw.match(/【([^【】\n]{1,16})】/);
+  // 支援半形中括號 [ ]、全形中括號 ［ ］、粗括號 【 】 (依文本出現順序由左至右優先解析首個標籤)
+  const match = raw.match(/[\[［【]([^\[\]［］【】\n]{1,16})[\]］】]/);
 
   if (!match) {
     const isMemoCategory =
@@ -83,7 +84,7 @@ export function parseMemoNote(noteText?: string, categoryName?: string, category
  */
 export function isMemoTagActive(currentNote: string, tag: string): boolean {
   if (!currentNote) return false;
-  const match = currentNote.match(/\[([^\[\]\n]{1,16})\]/) || currentNote.match(/【([^【】\n]{1,16})】/);
+  const match = currentNote.match(/[\[［【]([^\[\]［］【】\n]{1,16})[\]］】]/);
   if (!match) return false;
   const raw = match[1].trim();
   const core = raw.replace(EMOJI_REGEX, '').trim();
@@ -98,7 +99,7 @@ export function isMemoTagActive(currentNote: string, tag: string): boolean {
  * - 原本無標籤：加到文字字首
  */
 export function toggleMemoTag(currentNote: string, tag: string): string {
-  const match = currentNote.match(/\[([^\[\]\n]{1,16})\]/) || currentNote.match(/【([^【】\n]{1,16})】/);
+  const match = currentNote.match(/[\[［【]([^\[\]［］【】\n]{1,16})[\]］】]/);
   const tagCore = tag.replace(EMOJI_REGEX, '').trim();
 
   if (match) {

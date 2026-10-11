@@ -9,6 +9,7 @@ import {
   Dimensions,
   Platform,
   TextProps,
+  Linking,
 } from 'react-native';
 import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
@@ -122,6 +123,32 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
       bg: '#EFF6FF',
       border: '#BFDBFE',
     };
+  };
+
+  // 正文超連結自動識別與點擊開啟支援
+  const renderContentWithLinks = (content: string, isCompleted: boolean) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = content.split(urlRegex);
+    if (parts.length === 1) {
+      return content;
+    }
+    return parts.map((part, index) => {
+      if (part.match(urlRegex)) {
+        return (
+          <Text
+            key={index}
+            style={[styles.linkText, isCompleted && styles.linkTextCompleted]}
+            onPress={(e: any) => {
+              e?.stopPropagation?.();
+              Linking.openURL(part).catch(() => {});
+            }}
+          >
+            {part}
+          </Text>
+        );
+      }
+      return part;
+    });
   };
 
   if (!visible) return null;
@@ -307,12 +334,12 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                       )}
                     </View>
 
-                    {/* 正文文字 */}
+                    {/* 正文文字 (支援超連結高亮與點擊開啟) */}
                     <Text
                       style={[styles.itemContent, isCompleted && styles.itemContentCompleted]}
                       maxFontSizeMultiplier={1.1}
                     >
-                      {memoData.cleanContent}
+                      {renderContentWithLinks(memoData.cleanContent, isCompleted)}
                     </Text>
 
                     {/* 底部資訊 */}
@@ -604,6 +631,14 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   itemContentCompleted: {
+    color: '#94A3B8',
+    textDecorationLine: 'line-through',
+  },
+  linkText: {
+    color: '#2563EB',
+    textDecorationLine: 'underline',
+  },
+  linkTextCompleted: {
     color: '#94A3B8',
     textDecorationLine: 'line-through',
   },

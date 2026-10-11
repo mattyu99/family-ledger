@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.4';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.4 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 21;
+export const APP_BUILD_REVISION = 22;
 
-// 完整版本字串 (例如 "1.0.4.21")
+// 完整版本字串 (例如 "1.0.4.22")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.4.22',
+    date: '2026-10-11',
+    title: '支援中文全形括號［ ］生活記事標籤解析與超連結點擊跳轉',
+    highlights: [
+      '相容中文全形中括號標籤解析：支援手機中文輸入法自動打出的全形括號「［ ］」，與半形「[ ]」、粗括號「【 】」完全相通。由左至右、由上至下依序精準提取首個標籤為生活記事卡片主題與 Emoji 徽章，徹底消除第二行標籤喧賓奪主之問題。',
+      '生活記事正文超連結點擊跳轉：在主畫面流水帳卡片與「生活備忘總覽」清單中，自動偵測備忘內文的 http/https 網址（如 Facebook、網購連結），以藍字底線高亮呈現，點擊即可一秒跳轉至外部瀏覽器或對應 App 開啟。',
+      '跨帳本即時泡泡標籤預覽：跨帳本即時動態提示同步適配新版生活記事標籤解析，完整保留備忘主題與清潔後內文。',
+    ],
+  },
   {
     version: '1.0.4.21',
     date: '2026-10-11',

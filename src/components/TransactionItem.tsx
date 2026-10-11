@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text as RNText, StyleSheet, TouchableOpacity, TextProps } from 'react-native';
+import { View, Text as RNText, StyleSheet, TouchableOpacity, TextProps, Linking } from 'react-native';
 import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { getCategoryIcon } from '../lib/icons';
@@ -37,6 +37,32 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
     const reminderDate = transaction.reminder_date || (transaction.merchant?.startsWith('remind:') ? transaction.merchant.replace('remind:', '') : undefined);
     const memoData = parseMemoNote(transaction.note, category?.name, getCategoryIcon(category?.icon));
     const completer = transaction.completed_by ? getMemberById(transaction.completed_by) : undefined;
+
+    // 正文超連結自動識別與點擊開啟支援
+    const renderContentWithLinks = (content: string, isCompleted: boolean) => {
+      const urlRegex = /(https?:\/\/[^\s]+)/g;
+      const parts = content.split(urlRegex);
+      if (parts.length === 1) {
+        return content;
+      }
+      return parts.map((part, index) => {
+        if (part.match(urlRegex)) {
+          return (
+            <Text
+              key={index}
+              style={[styles.linkText, isCompleted && styles.linkTextCompleted]}
+              onPress={(e: any) => {
+                e?.stopPropagation?.();
+                Linking.openURL(part).catch(() => {});
+              }}
+            >
+              {part}
+            </Text>
+          );
+        }
+        return part;
+      });
+    };
 
     return (
       <TouchableOpacity
@@ -97,7 +123,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
           allowFontScaling={false}
           maxFontSizeMultiplier={1.1}
         >
-          {memoData.cleanContent}
+          {renderContentWithLinks(memoData.cleanContent, isCompleted)}
         </Text>
 
         <View style={styles.memoFooterRow}>
@@ -496,5 +522,12 @@ const styles = StyleSheet.create({
   },
   memoActionHintCompleted: {
     color: '#64748B',
+  },
+  linkText: {
+    color: '#2563EB',
+    textDecorationLine: 'underline',
+  },
+  linkTextCompleted: {
+    color: '#93C5FD',
   },
 });
