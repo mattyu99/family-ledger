@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 7;
+export const APP_BUILD_REVISION = 8;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.8',
+    date: '2026-10-12',
+    title: '修復多端帳本清單同步：手機版完整看見 3 本帳本、Web 版全面解鎖 3 本帳本與各自獨立名牌',
+    highlights: [
+      '修復手機版 3 本帳本全數回歸：行動端匿名 Session 正確讀取已綁定之 Google 信箱，找回所有關聯帳本身分（含【幸福家庭公帳】「🐹 倉鼠」），手機端帳本選單完整呈現全部 3 本帳本！',
+      '修復 Web 版 Google 登入後全面解鎖 3 本帳本：已為 Google 帳號授權帳本關聯與 RLS 權限，網頁版重新整理後立即呈現全部 3 本帳本，徹底告別只看到 1 本的困擾。',
+      '各帳本獨立名牌動態呈現：多端切換帳本時自動記憶與對齊專屬身分——在【幸福家庭公帳】中為「🐹 倉鼠」，在其他帳本中為「👨 智爸」，各帳本角色鮮明且互不干擾。',
+    ],
+  },
   {
     version: '1.0.5.7',
     date: '2026-10-12',

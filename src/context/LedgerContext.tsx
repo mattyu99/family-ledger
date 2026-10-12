@@ -2352,29 +2352,33 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       // 尋找此裝置對應的成員：
-      // 1. 若當前裝置 Auth User ID 在名冊中且為建立者 (isCreator)，優先對齊建立者 Profile (防止舊版本受污染的本地快取將創建者誤導至其他成員)
-      if (isCreator) {
-        canonicalMe = dedupedMembers.find(m => m.id === authUserId);
-      }
-
-      if (!canonicalMe && targetSavedUser) {
+      // 1. 優先查本地為該帳本記憶之專屬成員 (${STORAGE_KEYS.CURRENT_USER}_${targetLedger.id})
+      if (targetSavedUser) {
         canonicalMe = dedupedMembers.find(
           m => (isValidUUID(targetSavedUser?.id) && m.id === targetSavedUser?.id) ||
                (targetSavedUser?.display_name && (m.display_name || '').trim().toLowerCase() === targetSavedUser.display_name.trim().toLowerCase())
         );
       }
 
-      if (!canonicalMe) {
+      // 2. 若尚未找到且使用者具備已綁定之 Google 信箱，優先在此帳本名冊中尋找綁定同信箱的受保護身分（例如在幸福家庭公帳中為「倉鼠」，在其他帳本中為「智爸」）
+      const userGoogleEmail = currentUser?.auth_email || targetSavedUser?.auth_email;
+      if (!canonicalMe && userGoogleEmail) {
         canonicalMe = dedupedMembers.find(
-          m => m.id === authUserId || (myDisplayName && (m.display_name || '').trim().toLowerCase() === myDisplayName.trim().toLowerCase())
+          m => (m.auth_email || '').trim().toLowerCase() === userGoogleEmail.trim().toLowerCase() &&
+               (!m.avatar_url || (!m.avatar_url.startsWith('http://') && !m.avatar_url.startsWith('https://')))
+        ) || dedupedMembers.find(
+          m => (m.auth_email || '').trim().toLowerCase() === userGoogleEmail.trim().toLowerCase()
         );
       }
 
-      // 若尚未找到且當前登入者具備 Google 信箱，優先在此帳本名冊中尋找綁定同信箱的受保護身分（例如「倉鼠」）
-      const userGoogleEmail = currentUser?.auth_email;
-      if (!canonicalMe && userGoogleEmail) {
+      // 3. 若為建立者，對齊建立者 Profile (防止舊版本受污染的本地快取將創建者誤導至其他成員)
+      if (!canonicalMe && isCreator) {
+        canonicalMe = dedupedMembers.find(m => m.id === authUserId);
+      }
+
+      if (!canonicalMe) {
         canonicalMe = dedupedMembers.find(
-          m => (m.auth_email || '').trim().toLowerCase() === userGoogleEmail.trim().toLowerCase()
+          m => m.id === authUserId || (myDisplayName && (m.display_name || '').trim().toLowerCase() === myDisplayName.trim().toLowerCase())
         );
       }
 
@@ -3015,12 +3019,35 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // 查詢該用戶目前已加入的帳本清單 (依加入時間新到舊排序)
         // 跨裝置 Google 帳號整合：若當前登入者具備 Google 信箱，反查全庫所有綁定此信箱的身分 ID，實現多帳本全自動反查！
         let candidateUserIds = [authUser.id];
-        if (authUser?.email) {
+        let lookupEmail = authUser?.email;
+
+        // 若 authUser 無 email（例如手機端為匿名 Session），反查本機快取或該 Session 在 profiles 中綁定的 Google 信箱
+        if (!lookupEmail) {
+          try {
+            const savedUserStr = await AsyncStorage.getItem(STORAGE_KEYS.CURRENT_USER);
+            if (savedUserStr) {
+              const u = JSON.parse(savedUserStr);
+              if (u?.auth_email) lookupEmail = u.auth_email;
+            }
+          } catch {}
+        }
+        if (!lookupEmail && authUser?.id) {
+          try {
+            const { data: myProf } = await supabase
+              .from('profiles')
+              .select('auth_email')
+              .eq('id', authUser.id)
+              .maybeSingle();
+            if (myProf?.auth_email) lookupEmail = myProf.auth_email;
+          } catch {}
+        }
+
+        if (lookupEmail) {
           try {
             const { data: boundProfiles } = await supabase
               .from('profiles')
               .select('id')
-              .eq('auth_email', authUser.email.toLowerCase());
+              .eq('auth_email', lookupEmail.toLowerCase());
             if (boundProfiles && boundProfiles.length > 0) {
               candidateUserIds = [...new Set([...candidateUserIds, ...boundProfiles.map(p => p.id)])];
             }
@@ -3201,7 +3228,28 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             console.warn('本機已存帳本自動關聯失敗:', bindErr);
           }
         }
-        const allUserLedgers: Ledger[] = await Promise.all(validMemberLedgers.map(async (m: any) => {
+        // 對 validMemberLedgers 進行帳本去重，並優先保留具有專屬自訂家庭稱謂（非 Google HTTP 頭像影子成員）的紀錄
+        const ledgerMap = new Map<string, any>();
+        for (const m of validMemberLedgers) {
+          const lObj = (Array.isArray(m.ledgers) ? m.ledgers[0] : m.ledgers) as any;
+          const lId = lObj?.id;
+          if (!lId) continue;
+          if (!ledgerMap.has(lId)) {
+            ledgerMap.set(lId, m);
+          } else {
+            const existing = ledgerMap.get(lId);
+            const prof = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+            const isCustom = prof?.avatar_url && !prof.avatar_url.startsWith('http');
+            const existingProf = Array.isArray(existing.profiles) ? existing.profiles[0] : existing.profiles;
+            const existingIsUrl = existingProf?.avatar_url && existingProf.avatar_url.startsWith('http');
+            if (isCustom || existingIsUrl) {
+              ledgerMap.set(lId, m);
+            }
+          }
+        }
+        const uniqueMemberLedgers = Array.from(ledgerMap.values());
+
+        const allUserLedgers: Ledger[] = await Promise.all(uniqueMemberLedgers.map(async (m: any) => {
           const l = m.ledgers as unknown as Ledger;
           const isCreator = l.created_by === authUser.id;
           let savedName = '';
