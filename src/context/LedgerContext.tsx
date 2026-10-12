@@ -433,27 +433,60 @@ interface LedgerContextType {
 
 const LedgerContext = createContext<LedgerContextType | null>(null);
 
-// 成員名冊去重函式：相同 display_name 視為同一位家庭成員（支援多台手機/電腦認領同一身分）
+// 成員名冊去重函式：相同 display_name 或相同 Google 綁定信箱者視為同一位家庭成員（支援多台手機/電腦認領同一身分及 Google 帳號授權）
 export const deduplicateMembers = (memberList: Profile[]): Profile[] => {
   const result: Profile[] = [];
-  const seen = new Set<string>();
+  const seenNames = new Set<string>();
+  const seenEmails = new Set<string>();
 
-  for (const m of memberList) {
-    const key = (m.display_name || '').trim().toLowerCase();
-    if (!key) continue;
-    if (!seen.has(key)) {
-      seen.add(key);
+  // 步驟一：先將已綁定 Google 且加鎖之重要受保護成員放前，確保保留自訂家庭稱謂（如「智爸」優先於「Matt Yu」）
+  const sortedList = [...memberList].sort((a, b) => {
+    // 1. 已加鎖保護者優先
+    if (a.is_locked && !b.is_locked) return -1;
+    if (!a.is_locked && b.is_locked) return 1;
+    // 2. 具有自訂稱謂（非 Google 預設姓名、頭像不是圖片網址）者優先
+    const aIsUrl = Boolean(a.avatar_url && (a.avatar_url.startsWith('http://') || a.avatar_url.startsWith('https://')));
+    const bIsUrl = Boolean(b.avatar_url && (b.avatar_url.startsWith('http://') || b.avatar_url.startsWith('https://')));
+    if (!aIsUrl && bIsUrl) return -1;
+    if (aIsUrl && !bIsUrl) return 1;
+    // 3. owner / admin 優先
+    if ((a.role === 'owner' || a.role === 'admin') && b.role === 'member') return -1;
+    if (a.role === 'member' && (b.role === 'owner' || b.role === 'admin')) return 1;
+    return 0;
+  });
+
+  for (const m of sortedList) {
+    const nameKey = (m.display_name || '').trim().toLowerCase();
+    const emailKey = (m.auth_email || m.email || '').trim().toLowerCase();
+
+    // 檢查是否已有名稱相同，或已綁定信箱相同的既有成員
+    let existing: Profile | undefined = undefined;
+
+    if (nameKey && seenNames.has(nameKey)) {
+      existing = result.find(em => (em.display_name || '').trim().toLowerCase() === nameKey);
+    } else if (emailKey && seenEmails.has(emailKey)) {
+      existing = result.find(em => {
+        const emEmail = (em.auth_email || em.email || '').trim().toLowerCase();
+        return emEmail === emailKey;
+      });
+    }
+
+    if (!existing) {
+      if (nameKey) seenNames.add(nameKey);
+      if (emailKey) seenEmails.add(emailKey);
       result.push({ ...m });
     } else {
-      const existing = result.find(em => (em.display_name || '').trim().toLowerCase() === key);
-      if (existing) {
-        if (m.role === 'owner') existing.role = 'owner';
-        else if (m.role === 'admin' && existing.role !== 'owner') existing.role = 'admin';
-        if (m.auth_email && !existing.auth_email) existing.auth_email = m.auth_email;
-        if (m.auth_provider && !existing.auth_provider) existing.auth_provider = m.auth_provider;
-        if (m.is_locked) existing.is_locked = true;
-        if (m.claim_code && !existing.claim_code) existing.claim_code = m.claim_code;
-        if (m.claim_code_expires_at && !existing.claim_code_expires_at) existing.claim_code_expires_at = m.claim_code_expires_at;
+      // 合併屬性：保留較高的權限與已綁定資訊
+      if (m.role === 'owner') existing.role = 'owner';
+      else if (m.role === 'admin' && existing.role !== 'owner') existing.role = 'admin';
+      if (m.auth_email && !existing.auth_email) existing.auth_email = m.auth_email;
+      if (m.auth_provider && !existing.auth_provider) existing.auth_provider = m.auth_provider;
+      if (m.is_locked) existing.is_locked = true;
+      if (m.claim_code && !existing.claim_code) existing.claim_code = m.claim_code;
+      if (m.claim_code_expires_at && !existing.claim_code_expires_at) existing.claim_code_expires_at = m.claim_code_expires_at;
+      // 保留正常 Emoji 大頭貼（若 existing 的是 URL 而 m 是 Emoji，換回 Emoji）
+      if (existing.avatar_url && (existing.avatar_url.startsWith('http://') || existing.avatar_url.startsWith('https://')) && m.avatar_url && !m.avatar_url.startsWith('http')) {
+        existing.avatar_url = m.avatar_url;
       }
     }
   }
@@ -473,12 +506,21 @@ export const buildMemberAliasMap = (
     map[m.id] = m;
   }
 
-  // 2. 雲端所有關聯成員（包含不同裝置登入但同一暱稱者）
+  // 2. 雲端所有關聯成員（包含不同裝置登入但同一暱稱者、以及 Google OAuth 幽靈帳號）
   for (const raw of loaded) {
     const rawName = (raw.display_name || '').trim().toLowerCase();
-    const canonical = deduped.find(
+    const rawEmail = (raw.auth_email || raw.email || '').trim().toLowerCase();
+
+    // 優先以名稱比對
+    let canonical = deduped.find(
       m => (m.display_name || '').trim().toLowerCase() === rawName
     );
+    // 次之以已綁定之 Google 信箱比對 (例如 Matt Yu 與 智爸 綁定相同信箱)
+    if (!canonical && rawEmail) {
+      canonical = deduped.find(
+        m => (m.auth_email || m.email || '').trim().toLowerCase() === rawEmail
+      );
+    }
     map[raw.id] = canonical || raw;
   }
 
@@ -486,9 +528,15 @@ export const buildMemberAliasMap = (
   if (extraProfiles) {
     for (const p of extraProfiles) {
       const pName = (p.display_name || '').trim().toLowerCase();
-      const canonical = deduped.find(
+      const pEmail = (p.auth_email || p.email || '').trim().toLowerCase();
+      let canonical = deduped.find(
         m => (m.display_name || '').trim().toLowerCase() === pName
       );
+      if (!canonical && pEmail) {
+        canonical = deduped.find(
+          m => (m.auth_email || m.email || '').trim().toLowerCase() === pEmail
+        );
+      }
       map[p.id] = canonical || p;
     }
   }
@@ -2194,6 +2242,33 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           };
         })
         .filter(Boolean);
+
+      // 自動防呆與自癒：偵測是否存在已受保護稱謂的 Google OAuth 影子紀錄 (例如 profiles 中存在 Matt Yu，但該信箱已有受保護的家庭稱謂「智爸」)
+      if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+        const lockedProfiles: any[] = memberRows
+          .map((r: any) => (Array.isArray(r.profiles) ? r.profiles[0] : r.profiles))
+          .filter((p: any) => p && p.is_locked && p.auth_email);
+
+        for (const r of memberRows) {
+          const prof: any = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles;
+          if (!prof) continue;
+          const profEmail = (prof.email || prof.auth_email || '').trim().toLowerCase();
+          const matchedLocked = lockedProfiles.find(
+            (lp: any) => lp.id !== prof.id && (lp.auth_email || '').trim().toLowerCase() === profEmail
+          );
+          if (matchedLocked) {
+            // 自雲端 ledger_members 靜默清除多餘的影子成員關聯，保持家庭名冊純淨
+            supabase
+              .from('ledger_members')
+              .delete()
+              .eq('ledger_id', targetLedger.id)
+              .eq('user_id', prof.id)
+              .then(() => {
+                console.log('已自動清理 Google OAuth 影子成員關聯:', prof.display_name);
+              });
+          }
+        }
+      }
     }
 
     // 若雲端已有成員，以雲端為準；僅在離線或雲端尚無成員時才從本地快取補救，避免跨帳本成員污染
@@ -2936,7 +3011,23 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         let validMemberLedgers = (memberLedgers || []).filter((m: any) => m.ledgers && isValidUUID(m.ledgers.id));
 
         // 若伺服器查無該使用者的帳本成員記錄，但本機已儲存有效邀請碼或帳本 ID（例如 Session 換發、APK 剛安裝或本地離線恢復）
-        if (validMemberLedgers.length === 0 && (savedCode || savedLedgerId)) {
+        let shouldAutoJoin = validMemberLedgers.length === 0 && Boolean(savedCode || savedLedgerId);
+        if (shouldAutoJoin && authUser?.email && (savedLedgerId || targetInvite)) {
+          // 檢查雲端該帳本是否已存在此 Google 信箱所保護的成員稱謂（防止以 Google OAuth 影子身分重複加入）
+          try {
+            const { data: boundProfiles } = await supabase
+              .from('profiles')
+              .select('id, display_name, auth_email')
+              .eq('auth_email', authUser.email.toLowerCase())
+              .eq('is_locked', true);
+
+            if (boundProfiles && boundProfiles.length > 0) {
+              shouldAutoJoin = false;
+            }
+          } catch (e) {}
+        }
+
+        if (shouldAutoJoin) {
           try {
             let foundLedger: any = null;
             const savedRole = (await AsyncStorage.getItem(STORAGE_KEYS.USER_ROLE)) || 'member';

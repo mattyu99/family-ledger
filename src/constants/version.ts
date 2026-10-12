@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 4;
+export const APP_BUILD_REVISION = 5;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.5',
+    date: '2026-10-12',
+    title: '智慧消除 Google OAuth 幽靈成員與頭像防爆渲染',
+    highlights: [
+      '智慧消除 OAuth 幽靈影子成員：綁定 Google 帳號後，若雲端產生同信箱之 Google 使用者紀錄（如 Matt Yu），名冊去重與別名機制自動將其無縫合併回家庭稱謂【智爸】，徹底杜絕多餘幽靈成員混入家庭清單。',
+      '雲端名冊防呆自癒與清理：載入帳本時自動掃描並清理因 OAuth 產生的多餘影子成員關聯，保持家庭名冊純淨準確。',
+      '大頭貼智慧防爆與安全圖片渲染：全面升級大頭貼渲染器，若大頭貼為 Google HTTP 圖片網址，自動渲染為精美圓形縮圖，徹底消除長網址文字溢出排版之異常。',
+      '防止重複影子加入帳本：系統啟動時若偵測到使用者 Google 信箱已綁定於當前帳本受保護稱謂，自動阻斷影子帳號重加入帳本，維持成員唯一性。',
+    ],
+  },
   {
     version: '1.0.5.4',
     date: '2026-10-12',

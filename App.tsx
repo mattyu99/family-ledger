@@ -18,6 +18,7 @@ import {
   Keyboard,
   Dimensions,
   Clipboard,
+  Image,
 } from 'react-native';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -38,6 +39,24 @@ const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFont
     {...rest}
   />
 );
+
+// 成員頭像智慧防爆渲染：若為 HTTP 圖片網址則渲染為圓形圖片，若為 Emoji 則以文字標籤正常呈現
+const renderMemberAvatar = (avatar: string | undefined, textStyle?: any, size: number = 20) => {
+  if (avatar && (avatar.startsWith('http://') || avatar.startsWith('https://'))) {
+    return (
+      <Image
+        source={{ uri: avatar }}
+        style={{ width: size, height: size, borderRadius: size / 2, marginRight: 6 }}
+        resizeMode="cover"
+      />
+    );
+  }
+  return (
+    <Text style={textStyle || { fontSize: 18, marginRight: 6 }}>
+      {avatar || '👤'}
+    </Text>
+  );
+};
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LedgerProvider, useLedger } from './src/context/LedgerContext';
@@ -1674,7 +1693,7 @@ function MainApp() {
                 </>
               ) : (
                 <View style={styles.memberReadOnlyCard}>
-                  <Text style={styles.memberReadOnlyAvatar}>{targetMember?.avatar_url || '👤'}</Text>
+                  {renderMemberAvatar(targetMember?.avatar_url, styles.memberReadOnlyAvatar, 36)}
                   <Text style={styles.memberReadOnlyName}>{targetMember?.display_name}</Text>
                   <Text style={styles.memberReadOnlyRole}>
                     {isCreator ? '👑 帳本原始創建者' : isMemberAdmin ? '👑 共同管理員' : '一般家庭成員'}
@@ -2054,7 +2073,7 @@ function MainApp() {
                       onPress={() => setTransferRecipientId(m.id)}
                       activeOpacity={0.7}
                     >
-                      <Text style={styles.transferRecipientAvatar}>{m.avatar_url || '👤'}</Text>
+                      {renderMemberAvatar(m.avatar_url, styles.transferRecipientAvatar, 24)}
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                           <Text
@@ -2297,7 +2316,7 @@ function MainApp() {
                         }}
                         activeOpacity={0.8}
                       >
-                        <Text style={styles.claimMemberAvatar}>{m.avatar_url || '👤'}</Text>
+                        {renderMemberAvatar(m.avatar_url, styles.claimMemberAvatar, 24)}
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Text style={[styles.claimMemberName, isSelected && styles.claimMemberNameActive]} numberOfLines={1}>
                             {m.display_name}
@@ -3977,9 +3996,7 @@ function MainApp() {
                           >
                             {rankBadge}
                           </Text>
-                          <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.memberAvatar}>
-                            {member.avatar_url || '👤'}
-                          </Text>
+                          {renderMemberAvatar(member.avatar_url, styles.memberAvatar, 22)}
                           <Text
                             allowFontScaling={false}
                             maxFontSizeMultiplier={1.08}
@@ -4539,7 +4556,7 @@ function MainApp() {
                         handleStartEditMember(member);
                       }}
                     >
-                      <Text style={styles.userAvatar}>{member.avatar_url}</Text>
+                      {renderMemberAvatar(member.avatar_url, styles.userAvatar, 20)}
                       <Text
                         style={[styles.userTitle, isCurrent && styles.userTitleActive]}
                         numberOfLines={1}
