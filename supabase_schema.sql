@@ -722,21 +722,14 @@ CREATE INDEX IF NOT EXISTS idx_member_devices_device ON public.member_devices(le
 ALTER TABLE public.member_devices ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "成員可讀取所屬帳本的裝置清單" ON public.member_devices;
-CREATE POLICY "成員可讀取所屬帳本的裝置清單" ON public.member_devices
-    FOR SELECT USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
-
 DROP POLICY IF EXISTS "成員可登記所屬帳本的裝置" ON public.member_devices;
-CREATE POLICY "成員可登記所屬帳本的裝置" ON public.member_devices
-    FOR INSERT WITH CHECK (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
-
 DROP POLICY IF EXISTS "成員可更新所屬帳本的裝置心跳" ON public.member_devices;
-CREATE POLICY "成員可更新所屬帳本的裝置心跳" ON public.member_devices
-    FOR UPDATE USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon')
-    WITH CHECK (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
-
 DROP POLICY IF EXISTS "成員可解除所屬帳本的裝置綁定" ON public.member_devices;
-CREATE POLICY "成員可解除所屬帳本的裝置綁定" ON public.member_devices
-    FOR DELETE USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+DROP POLICY IF EXISTS "成員可管理所屬帳本的裝置" ON public.member_devices;
+
+CREATE POLICY "成員可管理所屬帳本的裝置" ON public.member_devices
+    FOR ALL
+    USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
 
 -- 確保 Realtime 事件可用
 ALTER TABLE public.member_devices REPLICA IDENTITY FULL;
