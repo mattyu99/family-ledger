@@ -2948,11 +2948,15 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         let myProfile: Profile;
         if (!existingProfile) {
+          const fallbackName = (authUser as any)?.user_metadata?.full_name ||
+            (authUser as any)?.user_metadata?.name ||
+            (authUser?.email ? authUser.email.split('@')[0] : '家庭成員');
+          const fallbackAvatar = (authUser as any)?.user_metadata?.avatar_url || '👤';
           myProfile = {
             id: authUser.id,
             email: authUser.email || undefined,
-            display_name: '家庭成員',
-            avatar_url: '👩',
+            display_name: fallbackName,
+            avatar_url: fallbackAvatar,
           };
           await supabase.from('profiles').upsert(myProfile);
         } else {

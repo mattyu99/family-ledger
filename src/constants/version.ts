@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 9;
+export const APP_BUILD_REVISION = 10;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.10',
+    date: '2026-10-12',
+    title: 'Google 一鍵登入授權頁修復：辨識真實身分稱謂，徹底移除預設「家庭成員」誤導文字',
+    highlights: [
+      '修復授權頁面：Google 一鍵登入中繼頁面專門支援 action=login，自動辨識名下已綁定的真實稱謂（如 智爸、倉鼠），絕不再顯示誤導的「家庭成員」',
+      '增設一鍵返回：授權成功頁面新增「🚀 返回甜心記帳本 App」捷徑按鈕，並支援自動喚回 App',
+      '稱謂防呆優化：Google 登入建立新 Profile 時優先使用 Google 姓名，徹底杜絕無名預設稱謂',
+    ],
+  },
   {
     version: '1.0.5.9',
     date: '2026-10-12',
