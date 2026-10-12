@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Google 帳號綁定 - 甜心記帳本</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    if (!window.supabase) {
+      document.write('<script src="https://unpkg.com/@supabase/supabase-js@2"><\/script>');
+    }
+  </script>
   <style>
     * {
       box-sizing: border-box;
@@ -184,16 +189,6 @@
   </div>
 
   <script>
-    const SUPABASE_URL = 'https://babpppaxzszieropeouh.supabase.co';
-    const SUPABASE_ANON_KEY = 'sb_publishable_nxHZUg651sBAJ387bZgZIQ_GuEfpAuZ';
-
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: {
-        persistSession: true,
-        detectSessionInUrl: true,
-      }
-    });
-
     let currentEmail = '';
 
     function returnToApp(extraQuery = '') {
@@ -209,179 +204,224 @@
       }, 500);
     }
 
-    async function handleAuth() {
-      try {
-        const urlParams = new URLSearchParams(window.location.search);
-        let action = urlParams.get('action') || 'bind_google';
-        let profileId = urlParams.get('profile_id');
-        let ledgerId = urlParams.get('ledger_id');
-        let displayName = urlParams.get('display_name') || '家庭成員';
-
-        // 檢查是否有取消授權或錯誤參數
-        const errorDesc = urlParams.get('error_description') || urlParams.get('error');
-        if (errorDesc) {
-          showError('您已取消 Google 授權，未進行任何身分變更。若需要綁定或認領，請返回 App 重新開啟。');
-          return;
-        }
-
-        // 檢查 Hash 中的參數 (Supabase OAuth 回傳時可能放在 hash 中)
-        if (window.location.hash) {
-          const hashParams = new URLSearchParams(window.location.hash.substring(1));
-          if (hashParams.get('error') || hashParams.get('error_description')) {
-            showError('您已取消 Google 授權，未進行任何身分變更。若需要綁定或認領，請返回 App 重新開啟。');
-            return;
-          }
-          if (!profileId && hashParams.get('profile_id')) profileId = hashParams.get('profile_id');
-          if (!action && hashParams.get('action')) action = hashParams.get('action');
-        }
-
-        // 取得使用者 Session
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) throw sessionError;
-
-        if (!session || !session.user) {
-          // 若無 session，可能是初次回傳正在交換 token，監聽 onAuthStateChange
-          supabase.auth.onAuthStateChange(async (event, newSession) => {
-            if (newSession && newSession.user) {
-              processUserSession(newSession.user, action, profileId, ledgerId, displayName);
-            }
-          });
-          return;
-        }
-
-        await processUserSession(session.user, action, profileId, ledgerId, displayName);
-      } catch (err) {
-        console.error('OAuth 授權異常:', err);
-        showError(err.message || '授權處理過程中發生錯誤，請返回 APP 重試。');
-      }
-    }
-
-    async function processUserSession(user, action, profileId, ledgerId, displayName) {
-      currentEmail = user.email || '';
-
-      if (action === 'claim') {
-        // 舊設備或換機身分恢復：查詢符合此 email 的 profile
-        const { data: profiles, error: pErr } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('auth_email', currentEmail.toLowerCase())
-          .eq('is_locked', true);
-
-        if (pErr || !profiles || profiles.length === 0) {
-          showError('在雲端找不到綁定此 Google 帳號（' + currentEmail + '）的受保護稱謂。請確認是否使用相同的 Google 信箱。');
-          return;
-        }
-
-        const matchedProfile = profiles[0];
-        // 產生 6 位數一次性驗證碼
-        const claimCode = Math.floor(100000 + Math.random() * 900000).toString();
-        const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-
-        await supabase.from('profiles').update({
-          claim_code: claimCode,
-          claim_code_expires_at: expiresAt,
-          updated_at: new Date().toISOString()
-        }).eq('id', matchedProfile.id);
-
-        showClaimSuccess(matchedProfile.display_name, currentEmail, claimCode);
-      } else {
-        // 綁定流程 (action === 'bind_google' 或帶有 profileId)
-        if (profileId) {
-          const { error: updateErr } = await supabase
-            .from('profiles')
-            .update({
-              auth_email: currentEmail.toLowerCase(),
-              auth_provider: 'google',
-              is_locked: true,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', profileId);
-
-          if (updateErr) {
-            console.warn('更新 profile 失敗:', updateErr);
-          }
-        }
-
-        showBindSuccess(displayName, currentEmail);
-      }
-    }
-
-    function showBindSuccess(name, email) {
-      document.getElementById('statusIcon').className = 'icon-box success';
-      document.getElementById('statusIcon').innerHTML = '🛡️';
-      document.getElementById('statusTitle').innerText = 'Google 帳號綁定成功！';
-      document.getElementById('statusDesc').innerText = '您的公帳身分稱謂已受到安全電子鎖完整保護';
-
-      const contentArea = document.getElementById('contentArea');
-      contentArea.innerHTML = `
-        <div class="badge">🟢 已啟動身分防護鎖</div>
-        <div class="info-card">
-          <div class="info-row">
-            <span class="info-label">家庭稱謂</span>
-            <span class="info-val">${name}</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">保護信箱</span>
-            <span class="info-val">${email}</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">身分狀態</span>
-            <span class="info-val" style="color: #10B981;">🔒 已鎖定 (禁止未授權冒名)</span>
-          </div>
-        </div>
-      `;
-
-      document.getElementById('actionArea').style.display = 'block';
-
-      // 自動嘗試喚醒 App (綁定成功)
-      setTimeout(() => returnToApp('action=bind_google'), 1000);
-    }
-
-    function showClaimSuccess(name, email, code) {
-      document.getElementById('statusIcon').className = 'icon-box success';
-      document.getElementById('statusIcon').innerHTML = '🔑';
-      document.getElementById('statusTitle').innerText = '身分認領驗證成功！';
-      document.getElementById('statusDesc').innerText = '已在公帳中找到您的專屬身分稱謂';
-
-      const contentArea = document.getElementById('contentArea');
-      contentArea.innerHTML = `
-        <div class="info-card" style="margin-bottom: 16px;">
-          <div class="info-row">
-            <span class="info-label">已辨識稱謂</span>
-            <span class="info-val">${name}</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">認證信箱</span>
-            <span class="info-val">${email}</span>
-          </div>
-        </div>
-        <div class="code-box">
-          <div class="code-title">一次性認領驗證碼 (10分鐘內有效)</div>
-          <div class="code-digits">${code}</div>
-        </div>
-      `;
-
-      document.getElementById('actionArea').style.display = 'block';
-      setTimeout(() => returnToApp('action=claim&code=' + encodeURIComponent(code)), 1200);
+    function returnToAppCancelled() {
+      window.location.href = 'familyledger://auth-cancelled';
+      setTimeout(() => {
+        window.location.href = 'intent://auth-cancelled#Intent;package=com.mattyu.familyledger;scheme=familyledger;end;';
+      }, 500);
     }
 
     function showError(msg) {
-      document.getElementById('statusIcon').className = 'icon-box error';
-      document.getElementById('statusIcon').innerHTML = '⚠️';
-      document.getElementById('statusTitle').innerText = '授權或綁定未完成';
-      document.getElementById('statusDesc').innerText = msg;
-      document.getElementById('contentArea').innerHTML = '';
-      document.getElementById('actionArea').style.display = 'block';
-      document.getElementById('returnBtn').innerText = '返回甜心記帳本 App';
-      document.getElementById('returnBtn').onclick = () => {
-        window.location.href = 'familyledger://auth-cancelled';
-        setTimeout(() => {
-          window.location.href = 'intent://auth-cancelled#Intent;package=com.mattyu.familyledger;scheme=familyledger;end;';
-        }, 500);
-      };
+      const statusIcon = document.getElementById('statusIcon');
+      if (statusIcon) {
+        statusIcon.className = 'icon-box error';
+        statusIcon.innerHTML = '⚠️';
+      }
+      const statusTitle = document.getElementById('statusTitle');
+      if (statusTitle) {
+        statusTitle.innerText = '授權或綁定未完成';
+      }
+      const statusDesc = document.getElementById('statusDesc');
+      if (statusDesc) {
+        statusDesc.innerText = msg;
+      }
+      const contentArea = document.getElementById('contentArea');
+      if (contentArea) {
+        contentArea.innerHTML = '';
+      }
+      const actionArea = document.getElementById('actionArea');
+      if (actionArea) {
+        actionArea.style.display = 'block';
+      }
+      const returnBtn = document.getElementById('returnBtn');
+      if (returnBtn) {
+        returnBtn.innerText = '返回甜心記帳本 App';
+        returnBtn.onclick = returnToAppCancelled;
+      }
     }
 
-    handleAuth();
+    // 全域未捕捉錯誤防護
+    window.addEventListener('error', function(e) {
+      console.warn('全域捕獲錯誤:', e);
+      showError('授權處理發生異常：' + (e.message || '請返回 App 重試'));
+    });
+
+    // 優先立即檢測 URL 是否為取消或錯誤（0 毫秒極速反應，不依賴任何外部庫）
+    const searchStr = window.location.search || '';
+    const hashStr = window.location.hash || '';
+    const urlParams = new URLSearchParams(searchStr);
+    const hashParams = hashStr ? new URLSearchParams(hashStr.substring(1)) : null;
+
+    const isCancelOrError = urlParams.get('error') ||
+                            urlParams.get('error_description') ||
+                            searchStr.includes('error=access_denied') ||
+                            hashStr.includes('error=access_denied') ||
+                            hashParams?.get('error') ||
+                            hashParams?.get('error_description');
+
+    if (isCancelOrError) {
+      showError('您已取消 Google 授權，未進行任何身分變更。請返回 App 重新開啟。');
+      // 1.5 秒後嘗試自動切換回 App
+      setTimeout(returnToAppCancelled, 1500);
+    } else {
+      // 正常授權流程：初始化 Supabase 並處理 session
+      const SUPABASE_URL = 'https://babpppaxzszieropeouh.supabase.co';
+      const SUPABASE_ANON_KEY = 'sb_publishable_nxHZUg651sBAJ387bZgZIQ_GuEfpAuZ';
+
+      if (!window.supabase || !window.supabase.createClient) {
+        showError('驗證核心元件載入逾時，請確認網路連線正常後返回 App 重試。');
+      } else {
+        try {
+          const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            auth: {
+              persistSession: true,
+              detectSessionInUrl: true,
+            }
+          });
+
+          async function handleAuth() {
+            try {
+              let action = urlParams.get('action') || 'bind_google';
+              let profileId = urlParams.get('profile_id');
+              let ledgerId = urlParams.get('ledger_id');
+              let displayName = urlParams.get('display_name') || '家庭成員';
+
+              if (window.location.hash) {
+                const hp = new URLSearchParams(window.location.hash.substring(1));
+                if (!profileId && hp.get('profile_id')) profileId = hp.get('profile_id');
+                if (!action && hp.get('action')) action = hp.get('action');
+              }
+
+              // 取得使用者 Session
+              const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+              if (sessionError) throw sessionError;
+
+              if (!session || !session.user) {
+                supabase.auth.onAuthStateChange(async (event, newSession) => {
+                  if (newSession && newSession.user) {
+                    processUserSession(newSession.user, action, profileId, ledgerId, displayName);
+                  }
+                });
+                return;
+              }
+
+              await processUserSession(session.user, action, profileId, ledgerId, displayName);
+            } catch (err) {
+              console.error('OAuth 授權異常:', err);
+              showError(err.message || '授權處理過程中發生錯誤，請返回 APP 重試。');
+            }
+          }
+
+          async function processUserSession(user, action, profileId, ledgerId, displayName) {
+            currentEmail = user.email || '';
+
+            if (action === 'claim') {
+              const { data: profiles, error: pErr } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('auth_email', currentEmail.toLowerCase())
+                .eq('is_locked', true);
+
+              if (pErr || !profiles || profiles.length === 0) {
+                showError('在雲端找不到綁定此 Google 帳號（' + currentEmail + '）的受保護稱謂。請確認是否使用相同的 Google 信箱。');
+                return;
+              }
+
+              const matchedProfile = profiles[0];
+              const claimCode = Math.floor(100000 + Math.random() * 900000).toString();
+              const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+              await supabase.from('profiles').update({
+                claim_code: claimCode,
+                claim_code_expires_at: expiresAt,
+                updated_at: new Date().toISOString()
+              }).eq('id', matchedProfile.id);
+
+              showClaimSuccess(matchedProfile.display_name, currentEmail, claimCode);
+            } else {
+              if (profileId) {
+                const { error: updateErr } = await supabase
+                  .from('profiles')
+                  .update({
+                    auth_email: currentEmail.toLowerCase(),
+                    auth_provider: 'google',
+                    is_locked: true,
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('id', profileId);
+
+                if (updateErr) {
+                  console.warn('更新 profile 失敗:', updateErr);
+                }
+              }
+
+              showBindSuccess(displayName, currentEmail);
+            }
+          }
+
+          function showBindSuccess(name, email) {
+            document.getElementById('statusIcon').className = 'icon-box success';
+            document.getElementById('statusIcon').innerHTML = '🛡️';
+            document.getElementById('statusTitle').innerText = 'Google 帳號綁定成功！';
+            document.getElementById('statusDesc').innerText = '您的公帳身分稱謂已受到安全電子鎖完整保護';
+
+            const contentArea = document.getElementById('contentArea');
+            contentArea.innerHTML = `
+              <div class="badge">🟢 已啟動身分防護鎖</div>
+              <div class="info-card">
+                <div class="info-row">
+                  <span class="info-label">家庭稱謂</span>
+                  <span class="info-val">${name}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">保護信箱</span>
+                  <span class="info-val">${email}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">身分狀態</span>
+                  <span class="info-val" style="color: #10B981;">🔒 已鎖定 (禁止未授權冒名)</span>
+                </div>
+              </div>
+            `;
+
+            document.getElementById('actionArea').style.display = 'block';
+            setTimeout(() => returnToApp('action=bind_google'), 1000);
+          }
+
+          function showClaimSuccess(name, email, code) {
+            document.getElementById('statusIcon').className = 'icon-box success';
+            document.getElementById('statusIcon').innerHTML = '🔑';
+            document.getElementById('statusTitle').innerText = '身分認領驗證成功！';
+            document.getElementById('statusDesc').innerText = '已在公帳中找到您的專屬身分稱謂';
+
+            const contentArea = document.getElementById('contentArea');
+            contentArea.innerHTML = `
+              <div class="info-card" style="margin-bottom: 16px;">
+                <div class="info-row">
+                  <span class="info-label">已辨識稱謂</span>
+                  <span class="info-val">${name}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">認證信箱</span>
+                  <span class="info-val">${email}</span>
+                </div>
+              </div>
+              <div class="code-box">
+                <div class="code-title">一次性認領驗證碼 (10分鐘內有效)</div>
+                <div class="code-digits">${code}</div>
+              </div>
+            `;
+
+            document.getElementById('actionArea').style.display = 'block';
+            setTimeout(() => returnToApp('action=claim&code=' + encodeURIComponent(code)), 1200);
+          }
+
+          handleAuth();
+        } catch (initErr) {
+          showError('啟動驗證服務失敗：' + (initErr.message || initErr));
+        }
+      }
+    }
   </script>
 </body>
 </html>
