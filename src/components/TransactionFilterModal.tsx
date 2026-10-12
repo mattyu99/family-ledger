@@ -57,16 +57,9 @@ export const TransactionFilterModal: React.FC<TransactionFilterModalProps> = ({
   transactions,
   getMemberById,
 }) => {
-  if (!visible || !type) return null;
-
-  // 取得當前選定月份之中文標籤
-  const selectedMonthObj = availableMonths.find(m => m.ym === selectedMonth);
-  const selectedMonthLabel = selectedMonth === 'all'
-    ? '全部月份'
-    : (selectedMonthObj?.label || (selectedMonth.includes('-') ? `${selectedMonth.split('-')[0]} 年 ${parseInt(selectedMonth.split('-')[1], 10)} 月` : selectedMonth));
-
   // 依當前選取的月份設定範圍篩選交易明細（連動月份篩選範圍）
   const monthScopedTransactions = React.useMemo(() => {
+    if (!visible || !type) return [];
     if (selectedMonth === 'all') return transactions;
     return transactions.filter(t => {
       if (!t.transacted_at) return false;
@@ -75,7 +68,16 @@ export const TransactionFilterModal: React.FC<TransactionFilterModalProps> = ({
       const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       return ym === selectedMonth;
     });
-  }, [transactions, selectedMonth]);
+  }, [visible, type, transactions, selectedMonth]);
+
+  if (!visible || !type) return null;
+
+  // 取得當前選定月份之中文標籤
+  const selectedMonthObj = availableMonths.find(m => m.ym === selectedMonth);
+  const selectedMonthLabel = selectedMonth === 'all'
+    ? '全部月份'
+    : (selectedMonthObj?.label || (selectedMonth.includes('-') ? `${selectedMonth.split('-')[0]} 年 ${parseInt(selectedMonth.split('-')[1], 10)} 月` : selectedMonth));
+
 
   // 計算特定成員在當前月份設定範圍內的記帳筆數
   const getMemberTxCount = (memberId: string) => {
