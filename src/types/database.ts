@@ -8,6 +8,11 @@ export interface Profile {
   display_name: string;
   avatar_url?: string;
   role?: RoleType;
+  auth_email?: string;
+  auth_provider?: 'google' | null;
+  is_locked?: boolean;
+  claim_code?: string;
+  claim_code_expires_at?: string;
 }
 
 export interface Ledger {

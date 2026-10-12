@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Google 帳號綁定 - 甜心記帳本</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    body {
+      background-color: #FFF0F5;
+      color: #1F2937;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .card {
+      background: #FFFFFF;
+      border-radius: 24px;
+      box-shadow: 0 10px 25px -5px rgba(225, 29, 72, 0.1), 0 8px 10px -6px rgba(225, 29, 72, 0.05);
+      border: 1.5px solid #FFE4E6;
+      width: 100%;
+      max-width: 440px;
+      padding: 32px 24px;
+      text-align: center;
+    }
+    .icon-box {
+      width: 72px;
+      height: 72px;
+      margin: 0 auto 16px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+      background: #FFE4E6;
+    }
+    .icon-box.success {
+      background: #DCFCE7;
+    }
+    .icon-box.error {
+      background: #FEE2E2;
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1F2937;
+      margin-bottom: 8px;
+    }
+    p.desc {
+      font-size: 14px;
+      color: #6B7280;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #FFF1F2;
+      border: 1px solid #FECDD3;
+      padding: 6px 14px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #E11D48;
+      margin-bottom: 20px;
+    }
+    .info-card {
+      background: #F9FAFB;
+      border-radius: 16px;
+      padding: 16px;
+      text-align: left;
+      margin-bottom: 24px;
+      border: 1px solid #E5E7EB;
+    }
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      font-size: 13.5px;
+    }
+    .info-label {
+      color: #6B7280;
+    }
+    .info-val {
+      font-weight: 600;
+      color: #111827;
+      word-break: break-all;
+    }
+    .code-box {
+      background: #FDF2F8;
+      border: 2px dashed #F472B6;
+      border-radius: 16px;
+      padding: 18px;
+      margin-bottom: 24px;
+    }
+    .code-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #BE185D;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+    .code-digits {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: 6px;
+      color: #E11D48;
+      font-family: monospace;
+    }
+    .btn {
+      display: block;
+      width: 100%;
+      background: linear-gradient(135deg, #E11D48 0%, #BE123C 100%);
+      color: #FFFFFF;
+      border: none;
+      border-radius: 16px;
+      padding: 14px 20px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      box-shadow: 0 4px 12px rgba(225, 29, 72, 0.25);
+      transition: transform 0.1s, opacity 0.2s;
+    }
+    .btn:active {
+      transform: scale(0.98);
+      opacity: 0.9;
+    }
+    .btn-secondary {
+      background: #F3F4F6;
+      color: #374151;
+      box-shadow: none;
+      margin-top: 10px;
+      font-size: 14px;
+      padding: 12px;
+    }
+    .sub-hint {
+      font-size: 12px;
+      color: #9CA3AF;
+      margin-top: 14px;
+      line-height: 1.4;
+    }
+    .spinner {
+      border: 3px solid #F3F4F6;
+      border-top: 3px solid #E11D48;
+      border-radius: 50%;
+      width: 36px;
+      height: 36px;
+      animation: spin 0.8s linear infinite;
+      margin: 20px auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="card" id="appCard">
+    <div class="icon-box" id="statusIcon">
+      <div class="spinner" id="loadingSpinner"></div>
+    </div>
+    <h1 id="statusTitle">正在處理 Google 授權...</h1>
+    <p class="desc" id="statusDesc">請稍候，系統正在安全驗證您的身分與公帳權限</p>
+
+    <div id="contentArea"></div>
+
+    <div id="actionArea" style="display: none;">
+      <button class="btn" id="returnBtn" onclick="returnToApp()">🚀 立即返回甜心記帳本 App</button>
+      <button class="btn btn-secondary" onclick="window.close()">關閉此瀏覽器視窗</button>
+      <p class="sub-hint">若未自動跳轉，請直接從手機桌面切換回「甜心記帳本」APP，身分已即時生效！</p>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://babpppaxzszieropeouh.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_nxHZUg651sBAJ387bZgZIQ_GuEfpAuZ';
+
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,
+        detectSessionInUrl: true,
+      }
+    });
+
+    let currentEmail = '';
+
+    function returnToApp() {
+      // 1. 嘗試使用自訂 Scheme
+      const schemeUrl = 'familyledger://auth-success?email=' + encodeURIComponent(currentEmail);
+      window.location.href = schemeUrl;
+
+      // 2. 備援 Android Intent
+      setTimeout(() => {
+        const intentUrl = 'intent://auth-success?email=' + encodeURIComponent(currentEmail) + '#Intent;package=com.mattyu.familyledger;scheme=familyledger;end;';
+        window.location.href = intentUrl;
+      }, 500);
+    }
+
+    async function handleAuth() {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        let action = urlParams.get('action') || 'bind_google';
+        let profileId = urlParams.get('profile_id');
+        let ledgerId = urlParams.get('ledger_id');
+        let displayName = urlParams.get('display_name') || '家庭成員';
+
+        // 檢查 Hash 中的參數 (Supabase OAuth 回傳時可能放在 hash 中)
+        if (window.location.hash) {
+          const hashParams = new URLSearchParams(window.location.hash.substring(1));
+          if (!profileId && hashParams.get('profile_id')) profileId = hashParams.get('profile_id');
+          if (!action && hashParams.get('action')) action = hashParams.get('action');
+        }
+
+        // 取得使用者 Session
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+
+        if (!session || !session.user) {
+          // 若無 session，可能是初次回傳正在交換 token，監聽 onAuthStateChange
+          supabase.auth.onAuthStateChange(async (event, newSession) => {
+            if (newSession && newSession.user) {
+              processUserSession(newSession.user, action, profileId, ledgerId, displayName);
+            }
+          });
+          return;
+        }
+
+        await processUserSession(session.user, action, profileId, ledgerId, displayName);
+      } catch (err) {
+        console.error('OAuth 授權異常:', err);
+        showError(err.message || '授權處理過程中發生錯誤，請返回 APP 重試。');
+      }
+    }
+
+    async function processUserSession(user, action, profileId, ledgerId, displayName) {
+      currentEmail = user.email || '';
+
+      if (action === 'claim') {
+        // 舊設備或換機身分恢復：查詢符合此 email 的 profile
+        const { data: profiles, error: pErr } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('auth_email', currentEmail.toLowerCase())
+          .eq('is_locked', true);
+
+        if (pErr || !profiles || profiles.length === 0) {
+          showError('在雲端找不到綁定此 Google 帳號（' + currentEmail + '）的受保護稱謂。請確認是否使用相同的 Google 信箱。');
+          return;
+        }
+
+        const matchedProfile = profiles[0];
+        // 產生 6 位數一次性驗證碼
+        const claimCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+        await supabase.from('profiles').update({
+          claim_code: claimCode,
+          claim_code_expires_at: expiresAt,
+          updated_at: new Date().toISOString()
+        }).eq('id', matchedProfile.id);
+
+        showClaimSuccess(matchedProfile.display_name, currentEmail, claimCode);
+      } else {
+        // 綁定流程 (action === 'bind_google' 或帶有 profileId)
+        if (profileId) {
+          const { error: updateErr } = await supabase
+            .from('profiles')
+            .update({
+              auth_email: currentEmail.toLowerCase(),
+              auth_provider: 'google',
+              is_locked: true,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', profileId);
+
+          if (updateErr) {
+            console.warn('更新 profile 失敗:', updateErr);
+          }
+        }
+
+        showBindSuccess(displayName, currentEmail);
+      }
+    }
+
+    function showBindSuccess(name, email) {
+      document.getElementById('statusIcon').className = 'icon-box success';
+      document.getElementById('statusIcon').innerHTML = '🛡️';
+      document.getElementById('statusTitle').innerText = 'Google 帳號綁定成功！';
+      document.getElementById('statusDesc').innerText = '您的公帳身分稱謂已受到安全電子鎖完整保護';
+
+      const contentArea = document.getElementById('contentArea');
+      contentArea.innerHTML = `
+        <div class="badge">🟢 已啟動身分防護鎖</div>
+        <div class="info-card">
+          <div class="info-row">
+            <span class="info-label">家庭稱謂</span>
+            <span class="info-val">${name}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">保護信箱</span>
+            <span class="info-val">${email}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">身分狀態</span>
+            <span class="info-val" style="color: #10B981;">🔒 已鎖定 (禁止未授權冒名)</span>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('actionArea').style.display = 'block';
+
+      // 自動嘗試喚醒 App
+      setTimeout(returnToApp, 1000);
+    }
+
+    function showClaimSuccess(name, email, code) {
+      document.getElementById('statusIcon').className = 'icon-box success';
+      document.getElementById('statusIcon').innerHTML = '🔑';
+      document.getElementById('statusTitle').innerText = '身分認領驗證成功！';
+      document.getElementById('statusDesc').innerText = '已在公帳中找到您的專屬身分稱謂';
+
+      const contentArea = document.getElementById('contentArea');
+      contentArea.innerHTML = `
+        <div class="info-card" style="margin-bottom: 16px;">
+          <div class="info-row">
+            <span class="info-label">已辨識稱謂</span>
+            <span class="info-val">${name}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">認證信箱</span>
+            <span class="info-val">${email}</span>
+          </div>
+        </div>
+        <div class="code-box">
+          <div class="code-title">一次性認領驗證碼 (10分鐘內有效)</div>
+          <div class="code-digits">${code}</div>
+        </div>
+      `;
+
+      document.getElementById('actionArea').style.display = 'block';
+      setTimeout(returnToApp, 1200);
+    }
+
+    function showError(msg) {
+      document.getElementById('statusIcon').className = 'icon-box error';
+      document.getElementById('statusIcon').innerHTML = '⚠️';
+      document.getElementById('statusTitle').innerText = '授權或綁定未完成';
+      document.getElementById('statusDesc').innerText = msg;
+      document.getElementById('contentArea').innerHTML = '';
+      document.getElementById('actionArea').style.display = 'block';
+      document.getElementById('returnBtn').innerText = '返回甜心記帳本 App 重試';
+    }
+
+    handleAuth();
+  </script>
+</body>
+</html>

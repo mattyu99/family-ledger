@@ -2,6 +2,7 @@
   "expo": {
     "name": "甜心記帳本",
     "slug": "family-ledger",
+    "scheme": "familyledger",
     "version": "1.0.5",
     "runtimeVersion": "1.0.0",
     "updates": {

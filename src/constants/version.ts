@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 2;
+export const APP_BUILD_REVISION = 3;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,19 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.3',
+    date: '2026-10-12',
+    title: 'Google 帳號一鍵綁定與身分電子鎖正式上線 (Phase 2)',
+    highlights: [
+      'Google 帳號一鍵綁定（可選安全升級）：在家庭設定中新增「🔐 帳號安全與 Google 綁定」專區，支援一鍵綁定 Google 帳號，為個人家庭稱謂加裝電子鎖。',
+      '身分防冒用與防奪取保護（Identity Lock）：綁定 Google 後，成員名冊自動標記「🔒 已保護」徽章；未獲該 Google 帳號授權的設備全面禁止竄改稱謂或冒名認領。',
+      '各帳本稱謂 100% 獨立保有：綁定 Google 僅作為全域身分防偽鑰匙，各公帳稱謂（如公帳叫「智爸」、私帳叫「阿智」）完全各自獨立，絕不強制統一稱謂。',
+      '換手機/重新安裝無縫認領（身分恢復）：支援「以 Google 帳號認領 / 恢復舊身分」，換新設備時透過線上 Google 驗證或 6 位數認領碼，一秒找回專屬身分與管理權限。',
+      '長輩小孩訪客模式零摩擦：未綁定 Google 的家庭成員（長輩、小孩）維持訪客模式無感使用，日常記帳、分帳與公帳運作完全不受任何影響。',
+      '零新增原生模組（100% EAS OTA 相容）：採用純 Web/深層連結相容架構，雲端熱更新即刻生效，無需重新下載安裝 APK。',
+    ],
+  },
   {
     version: '1.0.5.2',
     date: '2026-10-12',

@@ -734,5 +734,16 @@ CREATE POLICY "成員可管理所屬帳本的裝置" ON public.member_devices
 -- 確保 Realtime 事件可用
 ALTER TABLE public.member_devices REPLICA IDENTITY FULL;
 
+-- ==============================================================================
+-- 9. Google 帳號綁定與身分電子鎖欄位擴充 (Phase 2)
+-- ==============================================================================
+-- 擴充 profiles 資料表以支援 Google 帳號一鍵綁定與身分電子鎖
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS auth_email TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS auth_provider TEXT DEFAULT 'google';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_locked BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS claim_code TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS claim_code_expires_at TIMESTAMPTZ;
 
-
+-- 建立索引加速查詢
+CREATE INDEX IF NOT EXISTS idx_profiles_auth_email ON public.profiles(auth_email);
+CREATE INDEX IF NOT EXISTS idx_profiles_claim_code ON public.profiles(claim_code);

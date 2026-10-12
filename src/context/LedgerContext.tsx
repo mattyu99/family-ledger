@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { Platform, Alert, AppState } from 'react-native';
+import { Platform, Alert, AppState, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Transaction, Category, Ledger, Profile, TransactionType, CategoryType, PaymentMethod, PaymentAccount, AccountType, CustomPaymentMethod, RecurringRule, MemberDevice } from '../types/database';
 import { supabase, isConfigured } from '../lib/supabase';
@@ -425,6 +425,10 @@ interface LedgerContextType {
   fetchMemberDevices: (ledgerId?: string, memberId?: string) => Promise<void>;
   registerDevice: (memberId?: string, ledgerId?: string) => Promise<void>;
   removeDevice: (deviceId: string) => Promise<boolean>;
+  linkGoogleAccount: (targetProfileId?: string) => Promise<{ success: boolean; message?: string }>;
+  unlinkGoogleAccount: (targetProfileId?: string) => Promise<{ success: boolean; message?: string }>;
+  claimGoogleIdentity: (codeOrEmail: string) => Promise<{ success: boolean; message?: string; profile?: Profile }>;
+  isCurrentUserLocked: boolean;
 }
 
 const LedgerContext = createContext<LedgerContextType | null>(null);
@@ -445,6 +449,11 @@ export const deduplicateMembers = (memberList: Profile[]): Profile[] => {
       if (existing) {
         if (m.role === 'owner') existing.role = 'owner';
         else if (m.role === 'admin' && existing.role !== 'owner') existing.role = 'admin';
+        if (m.auth_email && !existing.auth_email) existing.auth_email = m.auth_email;
+        if (m.auth_provider && !existing.auth_provider) existing.auth_provider = m.auth_provider;
+        if (m.is_locked) existing.is_locked = true;
+        if (m.claim_code && !existing.claim_code) existing.claim_code = m.claim_code;
+        if (m.claim_code_expires_at && !existing.claim_code_expires_at) existing.claim_code_expires_at = m.claim_code_expires_at;
       }
     }
   }
@@ -1860,6 +1869,195 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  // ==============================================================================
+  // Google 帳號綁定與身分電子鎖 (Phase 2)
+  // ==============================================================================
+  const isCurrentUserLocked = Boolean(currentUser?.is_locked);
+
+  const linkGoogleAccount = async (targetProfileId?: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+      if (!isConfigured) {
+        return { success: false, message: '目前為示範或離線模式，無法進行 Google 帳號綁定。' };
+      }
+
+      const targetId = targetProfileId || currentUser.id;
+      const targetMember = members.find(m => m.id === targetId) || currentUser;
+
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined' && window.location) {
+          const redirectUrl = `${window.location.origin}${window.location.pathname}?action=bind_google&profile_id=${targetId}&ledger_id=${currentLedger.id}&display_name=${encodeURIComponent(targetMember.display_name)}`;
+          const { error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+              redirectTo: redirectUrl,
+            },
+          });
+          if (error) {
+            return { success: false, message: error.message };
+          }
+          return { success: true };
+        }
+      } else {
+        // 行動端（Android / iOS）：開啟系統瀏覽器完成 Google 授權
+        const redirectUrl = `https://mattyudev.github.io/family-ledger/auth-callback.html?action=bind_google&profile_id=${targetId}&ledger_id=${currentLedger.id}&display_name=${encodeURIComponent(targetMember.display_name)}`;
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: redirectUrl,
+            skipBrowserRedirect: true,
+          },
+        });
+        if (error) {
+          return { success: false, message: error.message };
+        }
+        if (data?.url) {
+          await Linking.openURL(data.url);
+          return { success: true, message: '已開啟瀏覽器進行 Google 授權，請在授權完成後返回 APP' };
+        }
+      }
+      return { success: false, message: '未能取得 Google 授權轉跳網址' };
+    } catch (err: any) {
+      console.warn('發起 Google 帳號綁定失敗:', err);
+      return { success: false, message: err?.message || '綁定失敗' };
+    }
+  };
+
+  const unlinkGoogleAccount = async (targetProfileId?: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const targetId = targetProfileId || currentUser.id;
+      const targetMember = members.find(m => m.id === targetId) || currentUser;
+
+      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+        try {
+          await supabase.from('profiles').update({
+            auth_email: null,
+            auth_provider: null,
+            is_locked: false,
+            claim_code: null,
+            claim_code_expires_at: null,
+            updated_at: new Date().toISOString(),
+          }).eq('id', targetId);
+        } catch (e) {
+          console.warn('雲端解除綁定更新失敗:', e);
+        }
+      }
+
+      const updatedUser: Profile = {
+        ...currentUser,
+        auth_email: undefined,
+        auth_provider: null,
+        is_locked: false,
+      };
+
+      if (currentUser.id === targetId) {
+        setCurrentUser(updatedUser);
+        await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedUser));
+        if (currentLedger?.id) {
+          await AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${currentLedger.id}`, JSON.stringify(updatedUser));
+        }
+      }
+
+      setMembers(prev => prev.map(m => m.id === targetId ? {
+        ...m,
+        auth_email: undefined,
+        auth_provider: null,
+        is_locked: false,
+      } : m));
+
+      triggerLiveToast({
+        id: `auth-${Date.now()}`,
+        type: 'info',
+        actorName: '帳號安全',
+        avatar: '🛡️',
+        title: '已解除 Google 綁定',
+        message: `稱謂【${targetMember.display_name}】已恢復為訪客模式`,
+        createdAt: Date.now(),
+      });
+
+      return { success: true };
+    } catch (err: any) {
+      console.warn('解除 Google 綁定失敗:', err);
+      return { success: false, message: err?.message || '解除失敗' };
+    }
+  };
+
+  const claimGoogleIdentity = async (codeOrEmail: string): Promise<{ success: boolean; message?: string; profile?: Profile }> => {
+    const clean = (codeOrEmail || '').trim();
+    if (!clean) return { success: false, message: '請輸入有效的 Google Email 或 6 位數認領驗證碼' };
+
+    try {
+      if (!isConfigured) {
+        return { success: false, message: '雲端資料庫未連線，無法認領身分' };
+      }
+
+      // 查詢受鎖定保護之成員
+      let query = supabase.from('profiles').select('*').eq('is_locked', true);
+      if (clean.includes('@')) {
+        query = query.eq('auth_email', clean.toLowerCase());
+      } else {
+        query = query.eq('claim_code', clean);
+      }
+
+      const { data: matchedProfiles, error } = await query;
+      if (error || !matchedProfiles || matchedProfiles.length === 0) {
+        return { success: false, message: '找不到符合且受保護的 Google 身分稱謂，請確認輸入是否正確' };
+      }
+
+      const matched = matchedProfiles[0] as Profile;
+
+      // 驗證碼時效性檢驗
+      if (!clean.includes('@') && (matched as any).claim_code_expires_at) {
+        const expiresAt = new Date((matched as any).claim_code_expires_at).getTime();
+        if (Date.now() > expiresAt) {
+          return { success: false, message: '驗證碼已過期（超過 10 分鐘），請重新驗證 Google 登入以獲取新驗證碼' };
+        }
+      }
+
+      // 登錄當前裝置到該成員
+      await registerDevice(matched.id, currentLedger.id);
+
+      // 清除已使用之驗證碼
+      if (!clean.includes('@')) {
+        await supabase.from('profiles').update({
+          claim_code: null,
+          claim_code_expires_at: null,
+          updated_at: new Date().toISOString(),
+        }).eq('id', matched.id);
+      }
+
+      // 更新本機身分
+      setCurrentUser(matched);
+      await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(matched));
+      if (currentLedger?.id) {
+        await AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${currentLedger.id}`, JSON.stringify(matched));
+      }
+
+      // 若該成員具備管理員權限，同步提升本地身分角色
+      if (matched.role === 'owner' || matched.role === 'admin' || currentLedger.created_by === matched.id) {
+        const targetRole = matched.role === 'owner' || matched.role === 'admin' ? matched.role : 'owner';
+        setUserRole(targetRole);
+        await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, targetRole);
+      }
+
+      await refreshLedger();
+
+      triggerLiveToast({
+        id: `auth-claim-${Date.now()}`,
+        type: 'complete',
+        actorName: matched.display_name,
+        avatar: matched.avatar_url || '🔑',
+        title: '🎉 身分認領成功！',
+        message: `已成功恢復為【${matched.display_name}】(${matched.auth_email || '受保護'})`,
+        createdAt: Date.now(),
+      });
+
+      return { success: true, profile: matched };
+    } catch (err: any) {
+      console.warn('身分認領過程發生異常:', err);
+      return { success: false, message: err?.message || '認領身分失敗' };
+    }
+  };
+
   // 輔助函式：載入指定帳本的完整資料 (分類、成員、交易、即時推播)
   const loadLedgerData = async (targetLedger: Ledger, authUserId: string) => {
     setCurrentLedger(targetLedger);
@@ -2675,15 +2873,35 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           myProfile = existingProfile;
         }
 
-        // 偵測網址是否帶有邀請參數
+        // 偵測網址是否帶有邀請參數或 Google 綁定回傳
         let urlInviteCode: string | null = null;
         let urlJoinId: string | null = null;
+        let urlAuthAction: string | null = null;
+        let urlProfileId: string | null = null;
+
         if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
           const params = new URLSearchParams(window.location.search);
           urlInviteCode = params.get('invite');
           urlJoinId = params.get('join') || params.get('ledger');
+          urlAuthAction = params.get('action');
+          urlProfileId = params.get('profile_id');
+
+          // 若為 Web Google OAuth 綁定回傳
+          if (urlAuthAction === 'bind_google' && urlProfileId && authUser?.email) {
+            try {
+              await supabase.from('profiles').update({
+                auth_email: authUser.email.toLowerCase(),
+                auth_provider: 'google',
+                is_locked: true,
+                updated_at: new Date().toISOString(),
+              }).eq('id', urlProfileId);
+            } catch (err) {
+              console.warn('Web Google 綁定更新失敗:', err);
+            }
+          }
+
           // 網址列第 0 秒靜默洗淨：一旦讀取出參數，立即清洗瀏覽器網址列，避免使用者未來按 F5 重新整理時再度夾帶 Query 參數
-          if ((urlInviteCode || urlJoinId) && window.history) {
+          if ((urlInviteCode || urlJoinId || urlAuthAction) && window.history) {
             try {
               window.history.replaceState({}, document.title, window.location.pathname);
             } catch {}
@@ -3012,6 +3230,67 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     return () => {
       subscription.remove();
+    };
+  }, [currentLedger, isConfigured]);
+
+  // 4. 監聽行動端 Deep Link 與 Supabase Auth 事件 (Phase 2 Google 綁定與授權回傳)
+  useEffect(() => {
+    const handleUrl = async (event: { url: string }) => {
+      try {
+        const linkUrl = event?.url;
+        if (!linkUrl) return;
+        console.log('收到 Deep Link 呼叫:', linkUrl);
+
+        if (linkUrl.includes('auth-success') || linkUrl.includes('bind_google')) {
+          await refreshLedger();
+          triggerLiveToast({
+            id: `auth-link-${Date.now()}`,
+            type: 'complete',
+            actorName: '帳號安全',
+            avatar: '🛡️',
+            title: 'Google 帳號綁定成功',
+            message: '您的身分稱謂已受 Google 帳號安全保護！',
+            createdAt: Date.now(),
+          });
+        }
+      } catch (err) {
+        console.warn('解析 Deep Link 異常:', err);
+      }
+    };
+
+    const linkSub = Linking.addEventListener('url', handleUrl);
+    Linking.getInitialURL().then(initialUrl => {
+      if (initialUrl) handleUrl({ url: initialUrl });
+    }).catch(() => {});
+
+    let authListener: any = null;
+    if (isConfigured) {
+      const res = supabase.auth.onAuthStateChange(async (event, currentSession) => {
+        if (event === 'SIGNED_IN' && currentSession?.user?.email) {
+          console.log('Supabase 使用者已登入:', currentSession.user.email);
+          if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
+            const params = new URLSearchParams(window.location.search);
+            const action = params.get('action');
+            const profileId = params.get('profile_id');
+            if (action === 'bind_google' && profileId) {
+              await supabase.from('profiles').update({
+                auth_email: currentSession.user.email.toLowerCase(),
+                auth_provider: 'google',
+                is_locked: true,
+                updated_at: new Date().toISOString(),
+              }).eq('id', profileId);
+              window.history.replaceState({}, document.title, window.location.pathname);
+              await refreshLedger();
+            }
+          }
+        }
+      });
+      authListener = res?.data?.subscription;
+    }
+
+    return () => {
+      linkSub.remove();
+      authListener?.unsubscribe?.();
     };
   }, [currentLedger, isConfigured]);
 
@@ -3346,6 +3625,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       const targetRole = claimedMember?.role || undefined;
       const isClaimingAdmin = claimedMember?.role === 'owner' || claimedMember?.role === 'admin';
+
+      // Google 電子鎖保護：若欲認領之成員已鎖定，禁止一般邀請碼直接冒名認領
+      if (claimedMember?.is_locked) {
+        if (!currentUser.auth_email || currentUser.auth_email.toLowerCase() !== (claimedMember.auth_email || '').toLowerCase()) {
+          return {
+            success: false,
+            message: `「${claimedMember.display_name}」身分已受 Google 帳號鎖定保護，無法直接透過邀請碼認領。請在加入後使用「以 Google 帳號認領身分」！`
+          };
+        }
+      }
 
       // 1. 優先使用 SECURITY DEFINER 的 join_ledger_by_invite 函式以邀請碼加入 (自動驗證 PIN 與繞過 RLS 限制)
       if (code) {
@@ -6091,7 +6380,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // 只有本機上的成員才允許編輯稱謂，其他非本機成員不允許，但以管理員身分登入的成員例外
     const isCurrent = currentUser.id === id || (!!oldName && !!currentUser.display_name && currentUser.display_name === oldName);
     if (!isCurrent && !isOwner) {
-      alert('只有本機成員或帳本管理員可以修改此成員稱謂');
+      safeAlert('提示', '只有本機成員或帳本管理員可以修改此成員稱謂');
+      return false;
+    }
+
+    // Google 電子鎖保護：若成員已鎖定且非本人修改，全面阻斷竄改
+    if (oldMember?.is_locked && !isCurrent) {
+      safeAlert('身分受保護', `「${oldName}」已受 Google 帳號電子鎖保護（${oldMember.auth_email || '已加密保護'}），無法由其他裝置直接修改其稱謂。`);
       return false;
     }
 
@@ -6146,7 +6441,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const targetMember = members.find(m => m.id === id);
     const isDeletingSelf = currentUser.id === id || (targetMember && currentUser.display_name === targetMember.display_name);
     if (isDeletingSelf) {
-      alert('無法移除自己正在使用的身分，若要離開此帳本請使用「退出帳本」功能');
+      safeAlert('無法刪除', '無法移除自己正在使用的身分，若要離開此帳本請使用「退出帳本」功能');
+      return false;
+    }
+
+    if (targetMember?.is_locked) {
+      safeAlert('無法刪除受保護成員', `「${targetMember.display_name}」已由 Google 帳號鎖定保護（${targetMember.auth_email || '受保護'}），無法直接從名冊中刪除。`);
       return false;
     }
 
@@ -6357,6 +6657,15 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const isMemberCreator = currentLedger.created_by === member.id;
       const targetIsAdmin = isMemberCreator || member.role === 'owner' || member.role === 'admin';
       const currentIsAdmin = userRole === 'owner' || userRole === 'admin';
+
+      // Google 電子鎖安全防護：
+      // 若目標成員已受 Google 帳號鎖定，且當前裝置未綁定該 Google 帳號，禁止直接切換冒充
+      if (member.is_locked && (!currentUser.auth_email || currentUser.auth_email.toLowerCase() !== (member.auth_email || '').toLowerCase())) {
+        return {
+          success: false,
+          message: `「${member.display_name}」身分已受 Google 帳號（${member.auth_email || '受保護'}）鎖定。請於設定頁使用「以 Google 帳號認領身分」以完成切換。`
+        };
+      }
 
       // 安全防護機制：
       // 若當前裝置為一般成員身分（非管理員），且欲切換至具備管理員權限的成員，強制驗證 4 位數管理員 PIN 碼！
@@ -6675,6 +6984,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         fetchMemberDevices,
         registerDevice,
         removeDevice,
+        linkGoogleAccount,
+        unlinkGoogleAccount,
+        claimGoogleIdentity,
+        isCurrentUserLocked,
       }}
     >
       {children}

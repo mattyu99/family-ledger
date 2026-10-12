@@ -212,7 +212,16 @@ function MainApp() {
     currentDeviceId,
     fetchMemberDevices,
     removeDevice,
+    linkGoogleAccount,
+    unlinkGoogleAccount,
+    claimGoogleIdentity,
+    isCurrentUserLocked,
   } = useLedger();
+
+  const [claimGoogleModalVisible, setClaimGoogleModalVisible] = useState(false);
+  const [claimGoogleInput, setClaimGoogleInput] = useState('');
+  const [isClaimingGoogle, setIsClaimingGoogle] = useState(false);
+  const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
 
   const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'bills' | 'family'>('transactions');
   const [modalVisible, setModalVisible] = useState(false);
@@ -1379,6 +1388,12 @@ function MainApp() {
 
     const targetMember = members.find(m => m.id === editingMemberId);
     const isCurrent = editingMemberId === currentUser.id || (!!targetMember && !!currentUser.display_name && targetMember.display_name === currentUser.display_name);
+
+    if (targetMember?.is_locked && !isCurrent) {
+      showAlert('身分受保護', `「${targetMember.display_name}」已由 Google 帳號鎖定保護（${targetMember.auth_email || '受保護'}），無法由其他裝置直接修改其稱謂。`);
+      return;
+    }
+
     if (!isCurrent) {
       if (!isOwner) {
         showAlert('權限不足', '只有本機成員或在管理員模式下才允許編輯此稱謂');
@@ -1395,6 +1410,45 @@ function MainApp() {
       showAlert('修改成功！', `成員資料已更新為「${editingMemberName.trim()}」！\n全家裝置與歷史記帳皆已同步。`);
     } else {
       showAlert('修改失敗', '儲存時發生錯誤，請稍後重試');
+    }
+  };
+
+  const handleLinkGoogle = async (targetProfileId?: string) => {
+    setIsLinkingGoogle(true);
+    const res = await linkGoogleAccount(targetProfileId);
+    setIsLinkingGoogle(false);
+    if (!res.success && res.message) {
+      showAlert('綁定提示', res.message);
+    }
+  };
+
+  const handleUnlinkGoogle = async (targetProfileId?: string) => {
+    showConfirm(
+      '解除 Google 帳號綁定',
+      `確定要為【${currentUser.display_name}】解除 Google 帳號綁定嗎？\n\n解除後將恢復為訪客模式，身分稱謂不再受到電子鎖保護。`,
+      async () => {
+        const res = await unlinkGoogleAccount(targetProfileId);
+        if (!res.success && res.message) {
+          showAlert('解除失敗', res.message);
+        }
+      }
+    );
+  };
+
+  const handleClaimGoogle = async () => {
+    if (!claimGoogleInput.trim()) {
+      showAlert('請輸入資訊', '請輸入綁定的 Google Email 或 6 位數認領驗證碼');
+      return;
+    }
+    setIsClaimingGoogle(true);
+    const res = await claimGoogleIdentity(claimGoogleInput.trim());
+    setIsClaimingGoogle(false);
+    if (res.success) {
+      setClaimGoogleModalVisible(false);
+      setClaimGoogleInput('');
+      showAlert('身分認領成功', `已成功恢復為【${res.profile?.display_name || '受保護身分'}】！\n設備已完成登記並同步家庭公帳。`);
+    } else {
+      showAlert('認領失敗', res.message || '找不到對應身分或驗證碼無效');
     }
   };
 
@@ -1527,7 +1581,9 @@ function MainApp() {
       targetMember.role === 'owner' ||
       targetMember.role === 'admin' ||
       currentLedger.created_by === targetMember.id;
-    const canModifyProfile = isOwner || isCurrent;
+    const isLocked = Boolean(targetMember.is_locked);
+    const isLockedByOther = isLocked && !isCurrent;
+    const canModifyProfile = (isOwner || isCurrent) && !isLockedByOther;
     const targetMemberDevices = getDevicesForMember(targetMember);
 
     return (
@@ -1562,6 +1618,23 @@ function MainApp() {
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
             >
+              {/* Google 電子鎖身分安全提示 */}
+              {isLockedByOther ? (
+                <View style={styles.lockedMemberNoticeBox}>
+                  <Text style={styles.lockedMemberNoticeTitle}>🔒 此成員已受 Google 帳號綁定保護</Text>
+                  <Text style={styles.lockedMemberNoticeDesc}>
+                    保護信箱：{targetMember.auth_email || '已加密保護'}
+                    {'\n'}此身分稱謂已受原擁有者鎖定，無法由其他設備修改稱謂或認領。
+                  </Text>
+                </View>
+              ) : isLocked && isCurrent ? (
+                <View style={styles.selfLockedNoticeBox}>
+                  <Text style={styles.selfLockedNoticeTitle}>🛡️ 您的身分已受 Google 帳號保護</Text>
+                  <Text style={styles.selfLockedNoticeDesc}>
+                    保護信箱：{targetMember.auth_email || currentUser.auth_email || 'Google 授權'}
+                  </Text>
+                </View>
+              ) : null}
               {canModifyProfile ? (
                 <>
                   <View style={styles.formLabelRow}>
@@ -1849,6 +1922,78 @@ function MainApp() {
                   )}
                 </View>
               )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
+  const renderClaimGoogleModal = () => {
+    return (
+      <Modal visible={claimGoogleModalVisible} animationType="fade" transparent onRequestClose={() => setClaimGoogleModalVisible(false)}>
+        <View style={styles.exportOverlay}>
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
+          <View style={styles.exportCard}>
+            <View style={styles.modalHeaderRow}>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={styles.exportTitle}>🔑 以 Google 帳號認領身分</Text>
+                <Text style={styles.formHint}>換新手機或重新安裝時，快速找回原先綁定的家庭身分</Text>
+              </View>
+              <TouchableOpacity onPress={() => setClaimGoogleModalVisible(false)} style={styles.closeBtn}>
+                <Text style={styles.closeText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
+              <View style={styles.claimMethodCard}>
+                <Text style={styles.claimMethodTitle}>方法一：線上 Google 授權 (推薦)</Text>
+                <Text style={styles.claimMethodDesc}>
+                  點擊下方按鈕以瀏覽器登入 Google，驗證通過後將自動為此手機認領並同步您的專屬身分。
+                </Text>
+                <TouchableOpacity
+                  style={styles.claimGoogleOAuthBtn}
+                  onPress={async () => {
+                    const res = await linkGoogleAccount();
+                    if (!res.success && res.message) showAlert('提示', res.message);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.claimGoogleOAuthBtnText}>🌐 開啟 Google 登入驗證</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.claimMethodDividerRow}>
+                <View style={styles.claimMethodDividerLine} />
+                <Text style={styles.claimMethodDividerText}>或輸入驗證資訊</Text>
+                <View style={styles.claimMethodDividerLine} />
+              </View>
+
+              <View style={styles.claimMethodCard}>
+                <Text style={styles.claimMethodTitle}>方法二：輸入綁定 Email 或 6 位數認領碼</Text>
+                <Text style={styles.claimMethodDesc}>
+                  輸入您在舊手機已綁定的 Google 信箱，或是授權頁面顯示的 6 位數一次性認領碼：
+                </Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="例如：dad@gmail.com 或 739201"
+                  placeholderTextColor="#9CA3AF"
+                  value={claimGoogleInput}
+                  onChangeText={setClaimGoogleInput}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="done"
+                />
+                <TouchableOpacity
+                  style={styles.submitMemberBtn}
+                  disabled={isClaimingGoogle}
+                  onPress={handleClaimGoogle}
+                >
+                  <Text style={styles.submitMemberBtnText}>
+                    {isClaimingGoogle ? '正在驗證認領中...' : '🔍 確認認領此身分'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </ScrollView>
           </View>
         </View>
@@ -4416,6 +4561,11 @@ function MainApp() {
                           <Text style={styles.memberDeviceCountBadgeText}>📱 {memberDevList.length}</Text>
                         </View>
                       )}
+                      {member.is_locked && (
+                        <View style={styles.memberLockedBadge}>
+                          <Text style={styles.memberLockedBadgeText}>🔒 已保護</Text>
+                        </View>
+                      )}
                       {isCurrent && (
                         <Text style={styles.activeTag}>我</Text>
                       )}
@@ -4462,6 +4612,85 @@ function MainApp() {
                     }}
                   >
                     <Text style={styles.claimAdminBannerBtnText}>🔐 升為管理員</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+
+            {/* 🔐 帳號安全與 Google 綁定 (Phase 2) */}
+            <View style={styles.cardSection}>
+              <View style={styles.sectionHeaderRow}>
+                <View style={styles.sectionHeaderLeft}>
+                  <Text style={styles.cardSectionTitle}>🔐 帳號安全與 Google 綁定</Text>
+                  <Text style={styles.cardSectionDesc}>
+                    保護個人稱謂身分防偽防奪，換機換卡資料無縫接軌
+                  </Text>
+                </View>
+                <View style={[styles.roleBadge, isCurrentUserLocked ? styles.roleBadgeOwner : styles.roleBadgeMember]}>
+                  <Text style={[styles.roleBadgeText, isCurrentUserLocked ? styles.roleBadgeTextOwner : styles.roleBadgeTextMember]}>
+                    {isCurrentUserLocked ? '🛡️ Google 已保護' : '⚠️ 訪客模式'}
+                  </Text>
+                </View>
+              </View>
+
+              {isCurrentUserLocked ? (
+                <View style={styles.authBoundCard}>
+                  <View style={styles.authBoundRow}>
+                    <Text style={styles.authBoundIcon}>🛡️</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.authBoundTitle}>
+                        稱謂【{currentUser.display_name}】已成功受保護
+                      </Text>
+                      <Text style={styles.authBoundEmail}>
+                        保護信箱：{currentUser.auth_email || 'Google 授權帳號'}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.authBoundDesc}>
+                    已啟動雙重身分電子鎖。其他未經此 Google 帳號授權的設備，無法修改您的稱謂或冒名認領。
+                  </Text>
+                  <View style={styles.authBoundActionsRow}>
+                    <TouchableOpacity
+                      style={styles.authUnlinkBtn}
+                      onPress={() => handleUnlinkGoogle()}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.authUnlinkBtnText}>🔓 解除綁定 (回到訪客模式)</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.authGuestCard}>
+                  <View style={styles.authGuestRow}>
+                    <Text style={styles.authGuestIcon}>⚠️</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.authGuestTitle}>
+                        目前為訪客模式（稱謂【{currentUser.display_name}】未受保護）
+                      </Text>
+                      <Text style={styles.authGuestDesc}>
+                        若更換手機、清除快取或重新安裝，可能無法自動恢復此身分。建議立即綁定 Google 帳號！
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.authGoogleBindBtn}
+                    disabled={isLinkingGoogle}
+                    onPress={() => handleLinkGoogle()}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.authGoogleBindBtnText}>
+                      {isLinkingGoogle ? '⏳ 正在開啟授權...' : '🔗 立即綁定 Google 帳號 (推薦)'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.authClaimEntryBtn}
+                    onPress={() => {
+                      setClaimGoogleInput('');
+                      setClaimGoogleModalVisible(true);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.authClaimEntryBtnText}>🔑 換新手機？以 Google 帳號認領 / 恢復舊身分</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -5477,6 +5706,9 @@ function MainApp() {
 
       {/* 編輯家庭成員彈窗 */}
       {renderEditMemberModal()}
+
+      {/* 以 Google 帳號認領身分彈窗 */}
+      {renderClaimGoogleModal()}
 
       {/* 移轉帳目並刪除成員彈窗 */}
       {renderTransferDeleteModal()}
@@ -7369,6 +7601,216 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '700',
     color: '#475569',
+  },
+  memberLockedBadge: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+    marginLeft: 5,
+    borderWidth: 0.5,
+    borderColor: '#86EFAC',
+  },
+  memberLockedBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#15803D',
+  },
+  authBoundCard: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#BBF7D0',
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 12,
+  },
+  authBoundRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
+  },
+  authBoundIcon: {
+    fontSize: 26,
+  },
+  authBoundTitle: {
+    fontSize: 14.5,
+    fontWeight: '700',
+    color: '#166534',
+    marginBottom: 2,
+  },
+  authBoundEmail: {
+    fontSize: 12.5,
+    color: '#15803D',
+    fontWeight: '600',
+  },
+  authBoundDesc: {
+    fontSize: 12,
+    color: '#166534',
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  authBoundActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  authUnlinkBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FECDD3',
+  },
+  authUnlinkBtnText: {
+    fontSize: 12,
+    color: '#BE123C',
+    fontWeight: '600',
+  },
+  authGuestCard: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FDE68A',
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 12,
+  },
+  authGuestRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 12,
+  },
+  authGuestIcon: {
+    fontSize: 24,
+    marginTop: 1,
+  },
+  authGuestTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#92400E',
+    marginBottom: 4,
+  },
+  authGuestDesc: {
+    fontSize: 12,
+    color: '#B45309',
+    lineHeight: 17,
+  },
+  authGoogleBindBtn: {
+    backgroundColor: '#E11D48',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 8,
+    shadowColor: '#E11D48',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  authGoogleBindBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  authClaimEntryBtn: {
+    paddingVertical: 10,
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  authClaimEntryBtnText: {
+    fontSize: 12.5,
+    color: '#475569',
+    fontWeight: '600',
+  },
+  lockedMemberNoticeBox: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECDD3',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
+  },
+  lockedMemberNoticeTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#991B1B',
+    marginBottom: 4,
+  },
+  lockedMemberNoticeDesc: {
+    fontSize: 12,
+    color: '#B91C1C',
+    lineHeight: 17,
+  },
+  selfLockedNoticeBox: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
+  },
+  selfLockedNoticeTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#166534',
+    marginBottom: 4,
+  },
+  selfLockedNoticeDesc: {
+    fontSize: 12,
+    color: '#15803D',
+    lineHeight: 17,
+  },
+  claimMethodCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  claimMethodTitle: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  claimMethodDesc: {
+    fontSize: 12,
+    color: '#6B7280',
+    lineHeight: 17,
+    marginBottom: 10,
+  },
+  claimGoogleOAuthBtn: {
+    backgroundColor: '#4285F4',
+    paddingVertical: 11,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  claimGoogleOAuthBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13.5,
+    fontWeight: '700',
+  },
+  claimMethodDividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 8,
+  },
+  claimMethodDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E5E7EB',
+  },
+  claimMethodDividerText: {
+    marginHorizontal: 10,
+    fontSize: 11.5,
+    color: '#9CA3AF',
+    fontWeight: '500',
   },
   deviceSectionHeaderRow: {
     flexDirection: 'row',
