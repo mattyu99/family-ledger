@@ -193,10 +193,10 @@
     <div id="contentArea"></div>
 
     <div id="actionArea" style="display: none;">
-      <button class="btn" id="returnBtn" onclick="returnToApp()">🚀 立即返回甜心記帳本 App</button>
-      <button class="btn btn-secondary" id="secondaryBtn" onclick="handleSecondaryAction()">📱 回上一頁 / 關閉此頁</button>
+      <button class="btn" id="returnBtn" onclick="returnToApp()">📱 切換回「甜心記帳本」App</button>
+      <button class="btn btn-secondary" id="secondaryBtn" onclick="handleSecondaryAction()">◀️ 回上一頁</button>
       <div class="tip-card" id="userGuideHint">
-        💡 <b>操作小提示</b>：手機系統因隱私機制限制，若點擊上方按鈕未自動切換，您只需<b>按手機返回鍵</b>或從螢幕底部<b>切換回「甜心記帳本」APP</b> 即可！
+        ✨ <b>貼心提示</b>：您可以點擊上方按鈕、按手機<b>「返回鍵」</b>，或從螢幕底部向上滑<b>切換回 App</b> 即可！
       </div>
     </div>
   </div>
@@ -204,38 +204,12 @@
   <script>
     let currentEmail = '';
 
-    const ANDROID_LAUNCHER_INTENT = 'intent:#Intent;package=com.mattyu.familyledger;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end;';
-
     function returnToApp(extraQuery = '') {
       const sep = extraQuery ? (extraQuery.startsWith('&') ? extraQuery : '&' + extraQuery) : '';
       const schemeUrl = 'familyledger://auth-success?email=' + encodeURIComponent(currentEmail) + sep;
-      const customIntent = 'intent://auth-success?email=' + encodeURIComponent(currentEmail) + sep + '#Intent;package=com.mattyu.familyledger;scheme=familyledger;end;';
-
-      const isAndroid = /android/i.test(navigator.userAgent);
-      if (isAndroid) {
-        window.location.href = ANDROID_LAUNCHER_INTENT;
-        setTimeout(() => {
-          window.location.href = schemeUrl;
-        }, 400);
-        setTimeout(() => {
-          window.location.href = customIntent;
-        }, 800);
-      } else {
+      try {
         window.location.href = schemeUrl;
-      }
-    }
-
-    function returnToAppCancelled() {
-      const schemeUrl = 'familyledger://auth-cancelled';
-      const isAndroid = /android/i.test(navigator.userAgent);
-      if (isAndroid) {
-        window.location.href = ANDROID_LAUNCHER_INTENT;
-        setTimeout(() => {
-          window.location.href = schemeUrl;
-        }, 400);
-      } else {
-        window.location.href = schemeUrl;
-      }
+      } catch (e) {}
 
       setTimeout(() => {
         if (window.history && window.history.length > 1) {
@@ -244,12 +218,23 @@
       }, 800);
     }
 
-    function handleSecondaryAction() {
+    function returnToAppCancelled() {
       try {
-        window.close();
+        window.location.href = 'familyledger://auth-cancelled';
       } catch (e) {}
+
+      setTimeout(() => {
+        if (window.history && window.history.length > 1) {
+          window.history.back();
+        }
+      }, 400);
+    }
+
+    function handleSecondaryAction() {
       if (window.history && window.history.length > 1) {
         window.history.back();
+      } else {
+        try { window.close(); } catch (e) {}
       }
     }
 
@@ -277,7 +262,7 @@
       }
       const returnBtn = document.getElementById('returnBtn');
       if (returnBtn) {
-        returnBtn.innerText = '🚀 立即返回甜心記帳本 App';
+        returnBtn.innerText = '📱 切換回「甜心記帳本」App';
         returnBtn.onclick = returnToAppCancelled;
       }
     }
@@ -303,8 +288,6 @@
 
     if (isCancelOrError) {
       showError('您已取消 Google 授權，未進行任何身分變更。請返回 App 重新開啟。');
-      // 1.5 秒後嘗試自動切換回 App
-      setTimeout(returnToAppCancelled, 1500);
     } else {
       // 正常授權流程：初始化 Supabase 並處理 session
       const SUPABASE_URL = 'https://babpppaxzszieropeouh.supabase.co';
