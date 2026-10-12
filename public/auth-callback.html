@@ -156,6 +156,17 @@
       margin-top: 14px;
       line-height: 1.4;
     }
+    .tip-card {
+      margin-top: 16px;
+      background: #FFF7ED;
+      border: 1px solid #FFEDD5;
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-size: 13px;
+      color: #9A3412;
+      line-height: 1.5;
+      text-align: left;
+    }
     .spinner {
       border: 3px solid #F3F4F6;
       border-top: 3px solid #E11D48;
@@ -183,32 +194,63 @@
 
     <div id="actionArea" style="display: none;">
       <button class="btn" id="returnBtn" onclick="returnToApp()">🚀 立即返回甜心記帳本 App</button>
-      <button class="btn btn-secondary" onclick="window.close()">關閉此瀏覽器視窗</button>
-      <p class="sub-hint">若未自動跳轉，請直接從手機桌面切換回「甜心記帳本」APP，身分已即時生效！</p>
+      <button class="btn btn-secondary" id="secondaryBtn" onclick="handleSecondaryAction()">📱 回上一頁 / 關閉此頁</button>
+      <div class="tip-card" id="userGuideHint">
+        💡 <b>操作小提示</b>：手機系統因隱私機制限制，若點擊上方按鈕未自動切換，您只需<b>按手機返回鍵</b>或從螢幕底部<b>切換回「甜心記帳本」APP</b> 即可！
+      </div>
     </div>
   </div>
 
   <script>
     let currentEmail = '';
 
+    const ANDROID_LAUNCHER_INTENT = 'intent:#Intent;package=com.mattyu.familyledger;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end;';
+
     function returnToApp(extraQuery = '') {
       const sep = extraQuery ? (extraQuery.startsWith('&') ? extraQuery : '&' + extraQuery) : '';
-      // 1. 嘗試使用自訂 Scheme
       const schemeUrl = 'familyledger://auth-success?email=' + encodeURIComponent(currentEmail) + sep;
-      window.location.href = schemeUrl;
+      const customIntent = 'intent://auth-success?email=' + encodeURIComponent(currentEmail) + sep + '#Intent;package=com.mattyu.familyledger;scheme=familyledger;end;';
 
-      // 2. 備援 Android Intent
-      setTimeout(() => {
-        const intentUrl = 'intent://auth-success?email=' + encodeURIComponent(currentEmail) + sep + '#Intent;package=com.mattyu.familyledger;scheme=familyledger;end;';
-        window.location.href = intentUrl;
-      }, 500);
+      const isAndroid = /android/i.test(navigator.userAgent);
+      if (isAndroid) {
+        window.location.href = ANDROID_LAUNCHER_INTENT;
+        setTimeout(() => {
+          window.location.href = schemeUrl;
+        }, 400);
+        setTimeout(() => {
+          window.location.href = customIntent;
+        }, 800);
+      } else {
+        window.location.href = schemeUrl;
+      }
     }
 
     function returnToAppCancelled() {
-      window.location.href = 'familyledger://auth-cancelled';
+      const schemeUrl = 'familyledger://auth-cancelled';
+      const isAndroid = /android/i.test(navigator.userAgent);
+      if (isAndroid) {
+        window.location.href = ANDROID_LAUNCHER_INTENT;
+        setTimeout(() => {
+          window.location.href = schemeUrl;
+        }, 400);
+      } else {
+        window.location.href = schemeUrl;
+      }
+
       setTimeout(() => {
-        window.location.href = 'intent://auth-cancelled#Intent;package=com.mattyu.familyledger;scheme=familyledger;end;';
-      }, 500);
+        if (window.history && window.history.length > 1) {
+          window.history.back();
+        }
+      }, 800);
+    }
+
+    function handleSecondaryAction() {
+      try {
+        window.close();
+      } catch (e) {}
+      if (window.history && window.history.length > 1) {
+        window.history.back();
+      }
     }
 
     function showError(msg) {
@@ -235,7 +277,7 @@
       }
       const returnBtn = document.getElementById('returnBtn');
       if (returnBtn) {
-        returnBtn.innerText = '返回甜心記帳本 App';
+        returnBtn.innerText = '🚀 立即返回甜心記帳本 App';
         returnBtn.onclick = returnToAppCancelled;
       }
     }
