@@ -422,8 +422,8 @@ interface LedgerContextType {
   lockAdmin: () => void;
   memberDevices: MemberDevice[];
   currentDeviceId: string;
-  fetchMemberDevices: (ledgerId?: string) => Promise<void>;
-  registerDevice: (memberId?: string) => Promise<void>;
+  fetchMemberDevices: (ledgerId?: string, memberId?: string) => Promise<void>;
+  registerDevice: (memberId?: string, ledgerId?: string) => Promise<void>;
   removeDevice: (deviceId: string) => Promise<boolean>;
 }
 
@@ -1706,9 +1706,27 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // 讀取指定帳本的成員連線裝置清單
-  const fetchMemberDevices = async (targetLedgerId?: string) => {
+  const fetchMemberDevices = async (targetLedgerId?: string, targetMemberId?: string) => {
     const lId = targetLedgerId || currentLedger.id;
-    if (!lId) return;
+    if (!lId || lId === DEMO_LEDGER_ID) return;
+
+    const devId = await getDeviceId();
+    setCurrentDeviceId(devId);
+    const devName = getDeviceName();
+    const platform = getDevicePlatform();
+    const mId = targetMemberId || effectiveCurrentUser?.id || currentUser.id;
+
+    const myDev: MemberDevice = {
+      id: devId,
+      ledger_id: lId,
+      member_id: mId,
+      device_id: devId,
+      device_name: devName,
+      platform,
+      app_version: APP_FULL_VERSION,
+      last_active_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+    };
 
     if (isConfigured && lId !== DEMO_LEDGER_ID) {
       try {
@@ -1719,8 +1737,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           .order('last_active_at', { ascending: false });
 
         if (!error && Array.isArray(data)) {
-          setMemberDevices(data as MemberDevice[]);
-          await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${lId}`, JSON.stringify(data));
+          // 確保本機裝置必定在清單中（若雲端推播延遲或新裝置剛加入）
+          const hasMe = data.some(d => d.device_id === devId);
+          const combined = hasMe ? data : [myDev, ...data];
+          setMemberDevices(combined as MemberDevice[]);
+          await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${lId}`, JSON.stringify(combined));
           return;
         }
       } catch (e) {
@@ -1728,47 +1749,55 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
 
-    // 若為示範帳本或雲端讀取失敗，自本地快取或以本機保底
+    // 若為示範帳本或雲端讀取失敗，自本地快取恢復，並確保本機設備在內
     try {
-      const devId = await getDeviceId();
-      setCurrentDeviceId(devId);
-      const devName = getDeviceName();
-      const platform = getDevicePlatform();
-      const fallbackDevice: MemberDevice = {
-        id: devId,
-        ledger_id: lId,
-        member_id: currentUser.id,
-        device_id: devId,
-        device_name: devName,
-        platform,
-        app_version: APP_FULL_VERSION,
-        last_active_at: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-      };
-      setMemberDevices(prev => {
-        if (prev.some(d => d.device_id === devId && d.ledger_id === lId)) {
-          return prev;
-        }
-        return [fallbackDevice, ...prev];
-      });
+      const cachedStr = await AsyncStorage.getItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${lId}`);
+      let cachedList: MemberDevice[] = [];
+      if (cachedStr) {
+        try { cachedList = JSON.parse(cachedStr); } catch {}
+      }
+      const hasMe = cachedList.some(d => d.device_id === devId);
+      const combined = hasMe ? cachedList : [myDev, ...cachedList];
+      setMemberDevices(combined);
     } catch {}
   };
 
   // 登記本機裝置連線與心跳時間
-  const registerDevice = async (targetMemberId?: string) => {
+  const registerDevice = async (targetMemberId?: string, targetLedgerId?: string) => {
     try {
       const devId = await getDeviceId();
       setCurrentDeviceId(devId);
       const devName = getDeviceName();
       const platform = getDevicePlatform();
-      const mId = targetMemberId || currentUser.id;
-      const lId = currentLedger.id;
+      const lId = targetLedgerId || currentLedger.id;
+      const mId = targetMemberId || effectiveCurrentUser?.id || currentUser.id;
 
-      if (!lId) return;
+      if (!lId || lId === DEMO_LEDGER_ID) return;
 
+      const nowIso = new Date().toISOString();
+      const myDev: MemberDevice = {
+        id: devId,
+        ledger_id: lId,
+        member_id: mId,
+        device_id: devId,
+        device_name: devName,
+        platform,
+        app_version: APP_FULL_VERSION,
+        last_active_at: nowIso,
+        created_at: nowIso,
+      };
+
+      // 1. 立即更新本機狀態保底（確保無延遲呈現本機設備）
+      setMemberDevices(prev => {
+        const remaining = prev.filter(d => !(d.device_id === devId && d.ledger_id === lId));
+        const next = [myDev, ...remaining];
+        AsyncStorage.setItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${lId}`, JSON.stringify(next)).catch(() => {});
+        return next;
+      });
+
+      // 2. 雲端同步
       if (isConfigured && lId !== DEMO_LEDGER_ID) {
         try {
-          const nowIso = new Date().toISOString();
           const { error } = await supabase.from('member_devices').upsert({
             ledger_id: lId,
             member_id: mId,
@@ -1780,35 +1809,25 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }, { onConflict: 'ledger_id,device_id' });
 
           if (!error) {
-            await fetchMemberDevices(lId);
-            return;
+            const { data: cloudData } = await supabase
+              .from('member_devices')
+              .select('*')
+              .eq('ledger_id', lId)
+              .order('last_active_at', { ascending: false });
+
+            if (cloudData && Array.isArray(cloudData)) {
+              const hasMe = cloudData.some(d => d.device_id === devId);
+              const combined = hasMe ? cloudData : [myDev, ...cloudData];
+              setMemberDevices(combined as MemberDevice[]);
+              await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${lId}`, JSON.stringify(combined));
+            }
+          } else {
+            console.warn('雲端登記裝置心跳回應 (若尚未執行 migration 屬正常現象):', error.message);
           }
         } catch (e) {
           console.warn('登記裝置心跳失敗（若尚未執行 migration 屬正常現象）:', e);
         }
       }
-
-      // 本機狀態更新保底
-      setMemberDevices(prev => {
-        const existingIdx = prev.findIndex(d => d.device_id === devId && d.ledger_id === lId);
-        const myDev: MemberDevice = {
-          id: devId,
-          ledger_id: lId,
-          member_id: mId,
-          device_id: devId,
-          device_name: devName,
-          platform,
-          app_version: APP_FULL_VERSION,
-          last_active_at: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-        };
-        if (existingIdx >= 0) {
-          const copy = [...prev];
-          copy[existingIdx] = myDev;
-          return copy;
-        }
-        return [myDev, ...prev];
-      });
     } catch (err) {
       console.warn('本機登記裝置發生異常:', err);
     }
@@ -2590,8 +2609,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // (E-4) 載入成員裝置清單並為本機自動登記心跳
     try {
-      await fetchMemberDevices(targetLedger.id);
-      await registerDevice();
+      const activeMemberId = canonicalMe?.id || authUserId;
+      await registerDevice(activeMemberId, targetLedger.id);
+      await fetchMemberDevices(targetLedger.id, activeMemberId);
     } catch (devErr) {
       console.warn('載入成員裝置或登記失敗:', devErr);
     }
@@ -6551,7 +6571,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${currentLedger.id}`, JSON.stringify(u));
           }
           // 同步為該身分登記本裝置
-          registerDevice(u.id).catch(() => {});
+          registerDevice(u.id, currentLedger?.id).catch(() => {});
         },
         addTransaction,
         updateTransaction,

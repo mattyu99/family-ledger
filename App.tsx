@@ -61,7 +61,7 @@ import { isBillDueInMonth, isBillPaidForCurrentPeriod } from './src/lib/recurrin
 import { ChangelogModal } from './src/components/ChangelogModal';
 import { APP_FULL_VERSION } from './src/constants/version';
 import { HorizontalScrollView } from './src/components/HorizontalScrollView';
-import { Transaction, Profile } from './src/types/database';
+import { Transaction, Profile, MemberDevice } from './src/types/database';
 import { getCategoryIcon } from './src/lib/icons';
 import { getDevicePlatformIcon, formatDeviceRelativeTime } from './src/lib/device';
 import * as Updates from 'expo-updates';
@@ -1335,12 +1335,39 @@ function MainApp() {
     setMemberModalVisible(false);
   };
 
+  // 根據成員標準 Profile 與稱謂解析對應的連線裝置清單 (完美穿透去重成員、rawMembers 與本機裝置)
+  const getDevicesForMember = React.useCallback((targetMember: Profile): MemberDevice[] => {
+    if (!targetMember) return [];
+    const targetName = (targetMember.display_name || '').trim().toLowerCase();
+    const isTargetCurrent =
+      currentUser.id === targetMember.id ||
+      (!!currentUser.display_name && (currentUser.display_name || '').trim().toLowerCase() === targetName);
+
+    return memberDevices.filter(d => {
+      // 嚴格帳本隔離
+      if (d.ledger_id && currentLedger?.id && d.ledger_id !== currentLedger.id) {
+        return false;
+      }
+      // 1. 直查 ID 符合
+      if (d.member_id === targetMember.id) return true;
+      // 2. 本機裝置且目標成員為我本人（本機正在操作此身分）
+      if (isTargetCurrent && d.device_id === currentDeviceId) return true;
+      // 3. 透過 getMemberById 自動穿透 rawMembers 與別名表比對稱謂
+      const devMember = getMemberById(d.member_id);
+      if (devMember) {
+        if (devMember.id === targetMember.id) return true;
+        if ((devMember.display_name || '').trim().toLowerCase() === targetName) return true;
+      }
+      return false;
+    });
+  }, [memberDevices, currentLedger?.id, currentUser, currentDeviceId, getMemberById]);
+
   const handleStartEditMember = (member: any) => {
     setEditingMemberId(member.id);
     setEditingMemberName(member.display_name);
     setEditingMemberAvatar(member.avatar_url || '👨');
     setEditMemberModalVisible(true);
-    fetchMemberDevices().catch(() => {});
+    fetchMemberDevices(currentLedger.id, member.id).catch(() => {});
   };
 
   const handleSaveEditMember = async () => {
@@ -1501,9 +1528,7 @@ function MainApp() {
       targetMember.role === 'admin' ||
       currentLedger.created_by === targetMember.id;
     const canModifyProfile = isOwner || isCurrent;
-    const targetMemberDevices = memberDevices.filter(
-      d => d.member_id === targetMember.id && d.ledger_id === currentLedger.id
-    );
+    const targetMemberDevices = getDevicesForMember(targetMember);
 
     return (
       <Modal visible={editMemberModalVisible} animationType="fade" transparent onRequestClose={() => setEditMemberModalVisible(false)}>
@@ -1596,7 +1621,7 @@ function MainApp() {
                   </Text>
                   <TouchableOpacity
                     style={styles.deviceRefreshSmallBtn}
-                    onPress={() => fetchMemberDevices().catch(() => {})}
+                    onPress={() => fetchMemberDevices(currentLedger.id, targetMember.id).catch(() => {})}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <Text style={styles.deviceRefreshSmallBtnText}>🔄 重新整理</Text>
@@ -4351,9 +4376,7 @@ function MainApp() {
                   const isCreator = currentLedger.created_by === member.id;
                   // 管理員可對所有成員點擊；一般成員只能點自己本機成員
                   const canEdit = isOwner || isCurrent;
-                  const memberDevList = memberDevices.filter(
-                    d => d.member_id === member.id && d.ledger_id === currentLedger.id
-                  );
+                  const memberDevList = getDevicesForMember(member);
 
                   return (
                     <TouchableOpacity

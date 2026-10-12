@@ -117,3 +117,4 @@ export const formatDeviceRelativeTime = (isoDate?: string): string => {
   const day = String(d.getDate()).padStart(2, '0');
   return `${m}/${day}`;
 };
+

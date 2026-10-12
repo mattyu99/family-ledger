@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 1;
+export const APP_BUILD_REVISION = 2;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.2',
+    date: '2026-10-12',
+    title: '修復成員裝置穿透解析與本機設備即時感知保底',
+    highlights: [
+      '成員裝置智慧穿透匹配（getDevicesForMember）：直查 ID、本機裝置與 getMemberById 別名表三重比對，徹底解決多裝置認領同一稱謂（如「智爸」）時因 profile UUID 差異導致裝置數顯示為 0 之問題。',
+      '本機設備即時保底常駐：連線或刷新時本機操作中的手機/電腦保證永久在線顯示，不被尚未執行的雲端資料表或非同步延遲覆蓋。',
+      '載入時精確傳遞當前身分與帳本：全面修正 loadLedgerData 與 setCurrentUser 閉包中預設帳本與預設身分未對齊之問題。',
+      '資料庫外鍵與 RLS 彈性解耦：優化 member_devices 結構，移除 member_id 外鍵限制，確保各類離線或別名成員皆能順暢登記心跳。',
+    ],
+  },
   {
     version: '1.0.5.1',
     date: '2026-10-12',

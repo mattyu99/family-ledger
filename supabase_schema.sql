@@ -701,7 +701,7 @@ ALTER TABLE public.recurring_rules REPLICA IDENTITY FULL;
 CREATE TABLE IF NOT EXISTS public.member_devices (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     ledger_id UUID NOT NULL REFERENCES public.ledgers(id) ON DELETE CASCADE,
-    member_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    member_id UUID NOT NULL,                     -- 成員 Profile ID (保持相容與防呆，不強制外鍵約束)
     device_id TEXT NOT NULL,                     -- 本機持久化裝置指紋 (UUID)
     device_name TEXT NOT NULL,                   -- 例如 "iPhone 16 Pro", "Pixel 8", "Windows Chrome Web"
     platform TEXT CHECK (platform IN ('ios', 'android', 'web')) NOT NULL,
@@ -710,6 +710,9 @@ CREATE TABLE IF NOT EXISTS public.member_devices (
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     UNIQUE (ledger_id, device_id)
 );
+
+-- 若歷史已存在外鍵約束，安全移除外鍵防護以相容自訂/別名成員
+ALTER TABLE public.member_devices DROP CONSTRAINT IF EXISTS member_devices_member_id_fkey;
 
 -- 建立索引加速查詢
 CREATE INDEX IF NOT EXISTS idx_member_devices_member ON public.member_devices(ledger_id, member_id);
@@ -728,7 +731,8 @@ CREATE POLICY "成員可登記所屬帳本的裝置" ON public.member_devices
 
 DROP POLICY IF EXISTS "成員可更新所屬帳本的裝置心跳" ON public.member_devices;
 CREATE POLICY "成員可更新所屬帳本的裝置心跳" ON public.member_devices
-    FOR UPDATE USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+    FOR UPDATE USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon')
+    WITH CHECK (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
 
 DROP POLICY IF EXISTS "成員可解除所屬帳本的裝置綁定" ON public.member_devices;
 CREATE POLICY "成員可解除所屬帳本的裝置綁定" ON public.member_devices
