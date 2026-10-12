@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 10;
+export const APP_BUILD_REVISION = 11;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.11',
+    date: '2026-10-12',
+    title: '手機 Google 一鍵登入雙重保險：切回前景零接觸自動同步 ＋ 6位數授權碼備援，徹底根除幽靈「家庭成員」反覆加入',
+    highlights: [
+      '根除幽靈成員：修復 shouldAutoJoin 判定邏輯，當本機已有受保護綁定身分時，禁止匿名 Session 自動以「家庭成員」加入公帳',
+      '清理雲端殘留：徹底自 Supabase 抹除先前殘留的匿名「家庭成員」帳號，恢復純淨【🐹 倉鼠】公帳',
+      '零接觸前景同步：手機端發起 Google 授權後，切回 App 時自動感應授權完成並秒速解鎖 3 本帳本',
+      '6 位數授權碼備援：網頁端提供一鍵複製 6 位數授權碼，App 切換帳本選單支援直接貼上驗證，100% 解決瀏覽器無法返回 App 問題',
+    ],
+  },
   {
     version: '1.0.5.10',
     date: '2026-10-12',

@@ -2108,6 +2108,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         await AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${currentLedger.id}`, JSON.stringify(matched));
       }
 
+      if (matched.auth_email) {
+        setIsGoogleAuthenticated(true);
+        setGoogleUserEmail(matched.auth_email);
+      }
+
       // 若該成員具備管理員權限，同步提升本地身分角色
       if (matched.role === 'owner' || matched.role === 'admin' || currentLedger.created_by === matched.id) {
         const targetRole = matched.role === 'owner' || matched.role === 'admin' ? matched.role : 'owner';
@@ -2115,6 +2120,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, targetRole);
       }
 
+      await initLedger();
       await refreshLedger();
 
       triggerLiveToast({
@@ -3098,17 +3104,27 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         // 若伺服器查無該使用者的帳本成員記錄，但本機已儲存有效邀請碼或帳本 ID（例如 Session 換發、APK 剛安裝或本地離線恢復）
         let shouldAutoJoin = validMemberLedgers.length === 0 && Boolean(savedCode || savedLedgerId);
-        if (shouldAutoJoin && authUser?.email && (savedLedgerId || targetInvite)) {
-          // 檢查雲端該帳本是否已存在此 Google 信箱所保護的成員稱謂（防止以 Google OAuth 影子身分重複加入）
-          try {
-            const { data: boundProfiles } = await supabase
-              .from('profiles')
-              .select('id, display_name, auth_email')
-              .eq('auth_email', authUser.email.toLowerCase())
-              .eq('is_locked', true);
 
-            if (boundProfiles && boundProfiles.length > 0) {
-              shouldAutoJoin = false;
+        // 嚴格安全防護：
+        // 1. 若該本機已有 lookupEmail (Google 綁定信箱)，絕不允許匿名 Session 自動以「家庭成員」加入！
+        if (shouldAutoJoin && lookupEmail) {
+          shouldAutoJoin = false;
+        }
+
+        // 2. 檢查雲端是否已存在此 Google 信箱所保護的成員稱謂（防止以 Google OAuth 影子身分或匿名 Session 重複加入）
+        if (shouldAutoJoin && (savedLedgerId || targetInvite)) {
+          try {
+            const checkEmail = (authUser?.email && !authUser.email.endsWith('@family.local')) ? authUser.email : lookupEmail;
+            if (checkEmail) {
+              const { data: boundProfiles } = await supabase
+                .from('profiles')
+                .select('id, display_name, auth_email')
+                .eq('auth_email', checkEmail.toLowerCase())
+                .eq('is_locked', true);
+
+              if (boundProfiles && boundProfiles.length > 0) {
+                shouldAutoJoin = false;
+              }
             }
           } catch (e) {}
         }
@@ -3477,7 +3493,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           return { success: true };
         }
       } else {
-        const redirectUrl = `https://mattyu99.github.io/family-ledger/auth-callback.html?action=login`;
+        const syncCode = Math.floor(100000 + Math.random() * 900000).toString();
+        await AsyncStorage.setItem('@family_ledger_pending_sync_code', syncCode);
+        const redirectUrl = `https://mattyu99.github.io/family-ledger/auth-callback.html?action=login&sync_code=${syncCode}`;
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {
@@ -3490,7 +3508,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
         if (data?.url) {
           await Linking.openURL(data.url);
-          return { success: true, message: '已開啟系統瀏覽器進行 Google 授權，請在授權完成後返回 APP' };
+          return { success: true, message: '已開啟系統瀏覽器進行 Google 授權，完成後返回 App 即可自動同步' };
         }
       }
       return { success: false, message: '未能取得 Google 授權轉跳網址' };
@@ -3523,11 +3541,36 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  // 3. 當 App 從背景回到前景時，自動檢查並重新載入最新雲端資料
+  // 3. 當 App 從背景回到前景時，自動檢查並重新載入最新雲端資料，並自動完成待處理的 Google 授權同步
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (nextAppState === 'active' && isConfigured && currentLedger && currentLedger.id !== DEMO_LEDGER_ID) {
-        refreshLedger();
+    const subscription = AppState.addEventListener('change', async (nextAppState) => {
+      if (nextAppState === 'active' && isConfigured) {
+        try {
+          const pendingSyncCode = await AsyncStorage.getItem('@family_ledger_pending_sync_code');
+          if (pendingSyncCode) {
+            console.log('App 回到前景，自動檢查待驗證 Google 授權碼:', pendingSyncCode);
+            const res = await claimGoogleIdentity(pendingSyncCode);
+            if (res.success) {
+              await AsyncStorage.removeItem('@family_ledger_pending_sync_code');
+              await initLedger();
+              triggerLiveToast({
+                id: `auth-sync-${Date.now()}`,
+                type: 'complete',
+                actorName: '帳號同步',
+                avatar: '🎉',
+                title: 'Google 帳號同步成功！',
+                message: `已自動還原為【${res.profile?.display_name || 'Google 使用者'}】，名下公帳已全部解鎖！`,
+                createdAt: Date.now(),
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('檢查待處理授權碼失敗:', e);
+        }
+
+        if (currentLedger && currentLedger.id !== DEMO_LEDGER_ID) {
+          refreshLedger();
+        }
       }
     });
 

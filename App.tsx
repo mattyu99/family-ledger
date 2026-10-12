@@ -1012,6 +1012,7 @@ function MainApp() {
 
   const [switchLedgerModalVisible, setSwitchLedgerModalVisible] = useState(false);
   const [switchCodeInput, setSwitchCodeInput] = useState('');
+  const [authPinInput, setAuthPinInput] = useState('');
   const [ledgerUserMap, setLedgerUserMap] = useState<Record<string, { displayName: string; avatarUrl?: string }>>({});
 
   // 當開啟切換帳本彈窗時，自動載入本機在各帳本已綁定之成員稱謂快取
@@ -2961,10 +2962,72 @@ function MainApp() {
                   </Text>
                 </View>
               </View>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: isGoogleAuthenticated ? '#15803D' : '#FFFFFF' }}>
-                {isGoogleAuthenticated ? '已連線 ✓' : '登入 ➔'}
-              </Text>
             </TouchableOpacity>
+
+            {!isGoogleAuthenticated && (
+              <View style={{
+                marginBottom: 16,
+                backgroundColor: '#F9FAFB',
+                borderRadius: 12,
+                padding: 12,
+                borderWidth: 1,
+                borderColor: '#E5E7EB',
+              }}>
+                <Text style={{ fontSize: 13, color: '#374151', marginBottom: 8, fontWeight: '700' }}>
+                  🔑 手機未自動同步？請輸入瀏覽器顯示的 6 位數授權碼：
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                  <TextInput
+                    style={{
+                      flex: 1,
+                      backgroundColor: '#FFFFFF',
+                      borderWidth: 1.5,
+                      borderColor: '#D1D5DB',
+                      borderRadius: 8,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      fontSize: 16,
+                      letterSpacing: 4,
+                      textAlign: 'center',
+                      fontWeight: '800',
+                      color: '#111827',
+                    }}
+                    placeholder="例如 839102"
+                    placeholderTextColor="#9CA3AF"
+                    value={authPinInput}
+                    onChangeText={setAuthPinInput}
+                    keyboardType="number-pad"
+                    maxLength={6}
+                  />
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: '#10B981',
+                      paddingHorizontal: 16,
+                      paddingVertical: 10,
+                      borderRadius: 8,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}
+                    onPress={async () => {
+                      if (!authPinInput.trim()) {
+                        showAlert('提示', '請輸入瀏覽器顯示的 6 位數授權碼');
+                        return;
+                      }
+                      const res = await claimGoogleIdentity(authPinInput.trim());
+                      if (res.success) {
+                        setAuthPinInput('');
+                        setSwitchLedgerModalVisible(false);
+                        showAlert('同步成功！', `已成功還原為【${res.profile?.display_name}】！\n名下所有家庭公帳已同步載入。`);
+                      } else {
+                        showAlert('驗證失敗', res.message || '授權碼無效或已過期');
+                      }
+                    }}
+                  >
+                    <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 13 }}>驗證同步</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
 
             {ledgers.length >= 1 && (
               <View style={{ marginBottom: 16 }}>
