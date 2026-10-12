@@ -333,8 +333,37 @@
               }).eq('id', matchedProfile.id);
 
               showClaimSuccess(matchedProfile.display_name, currentEmail, claimCode);
+            } else if (action === 'login') {
+              // 1. 查詢所有鎖定給此 Google 帳號的成員稱謂（例如 智爸、倉鼠）
+              const { data: boundProfiles } = await supabase
+                .from('profiles')
+                .select('id, display_name, avatar_url, ledger_id')
+                .eq('auth_email', currentEmail.toLowerCase())
+                .eq('is_locked', true);
+
+              showLoginSuccess(currentEmail, boundProfiles || []);
+
+              // 自動嘗試喚回原生 App
+              setTimeout(() => {
+                try {
+                  window.location.href = `familyledger://auth-success?action=login&email=${encodeURIComponent(currentEmail)}`;
+                } catch (e) {}
+              }, 800);
             } else {
+              // action === 'bind_google'
+              let finalName = displayName;
               if (profileId) {
+                // 優先從資料庫撈取此成員真實名稱，避免使用預設 fallback
+                const { data: pData } = await supabase
+                  .from('profiles')
+                  .select('display_name')
+                  .eq('id', profileId)
+                  .maybeSingle();
+
+                if (pData?.display_name) {
+                  finalName = pData.display_name;
+                }
+
                 const { error: updateErr } = await supabase
                   .from('profiles')
                   .update({
@@ -350,8 +379,62 @@
                 }
               }
 
-              showBindSuccess(displayName, currentEmail);
+              showBindSuccess(finalName || '已綁定成員', currentEmail);
+
+              // 自動嘗試喚回原生 App
+              setTimeout(() => {
+                try {
+                  window.location.href = `familyledger://auth-success?action=bind_google&email=${encodeURIComponent(currentEmail)}`;
+                } catch (e) {}
+              }, 800);
             }
+          }
+
+          function showLoginSuccess(email, boundProfiles) {
+            document.getElementById('statusIcon').className = 'icon-box success';
+            document.getElementById('statusIcon').innerHTML = '🎉';
+            document.getElementById('statusTitle').innerText = 'Google 帳號登入成功！';
+            document.getElementById('statusDesc').innerText = '已安全驗證身分，名下的家庭公帳與稱謂已同步解鎖';
+
+            let namesHtml = '';
+            if (boundProfiles && boundProfiles.length > 0) {
+              const uniqueNames = [...new Set(boundProfiles.map(p => `${p.avatar_url || '👤'} ${p.display_name}`))];
+              namesHtml = uniqueNames.join('、');
+            } else {
+              namesHtml = '（登入成功，即將為您同步）';
+            }
+
+            const contentArea = document.getElementById('contentArea');
+            contentArea.innerHTML = `
+              <div class="badge" style="background: #ECFDF5; color: #047857; border: 1px solid #A7F3D0;">🟢 帳號登入成功</div>
+              <div class="info-card">
+                <div class="info-row">
+                  <span class="info-label">登入帳號</span>
+                  <span class="info-val">${email}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">已配對稱謂</span>
+                  <span class="info-val" style="color: #059669; font-weight: 700;">${namesHtml}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">帳號狀態</span>
+                  <span class="info-val" style="color: #10B981;">✅ 已授權通行</span>
+                </div>
+              </div>
+            `;
+
+            const actionArea = document.getElementById('actionArea');
+            actionArea.innerHTML = `
+              <div class="tip-card" id="userGuideHint" style="margin-top: 0; margin-bottom: 14px; background: #F0FDF4; border: 1px solid #DCFCE7;">
+                <div id="guideHintTitle" style="font-size: 14.5px; font-weight: 700; margin-bottom: 6px; color: #15803D;">🎉 登入同步已完成！</div>
+                <div id="guideHintDesc" style="font-size: 13.5px; line-height: 1.6; color: #166534;">
+                  請從螢幕底部<strong>「向上輕滑」</strong>或點擊下方按鈕切換回「甜心記帳本」App，系統已為您自動載入帳本！
+                </div>
+              </div>
+              <a href="familyledger://auth-success?action=login&email=${encodeURIComponent(email)}" class="btn" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25); text-align: center; text-decoration: none; margin-bottom: 8px;">🚀 返回「甜心記帳本」App</a>
+              <button class="btn btn-secondary" onclick="tryCloseOrBack()">✕ 關閉此分頁</button>
+            `;
+            actionArea.style.display = 'block';
           }
 
           function showBindSuccess(name, email) {
@@ -379,23 +462,18 @@
               </div>
             `;
 
-            const guideTitle = document.getElementById('guideHintTitle');
-            if (guideTitle) {
-              guideTitle.innerText = '🎉 雲端綁定已完成！';
-              guideTitle.style.color = '#15803D';
-            }
-            const guideDesc = document.getElementById('guideHintDesc');
-            if (guideDesc) {
-              guideDesc.innerHTML = '請從螢幕底部<strong>「向上輕滑」</strong>切換回「甜心記帳本」App，身分防偽鎖已即時生效！';
-              guideDesc.style.color = '#166534';
-            }
-            const guideCard = document.getElementById('userGuideHint');
-            if (guideCard) {
-              guideCard.style.background = '#F0FDF4';
-              guideCard.style.borderColor = '#DCFCE7';
-            }
-
-            document.getElementById('actionArea').style.display = 'block';
+            const actionArea = document.getElementById('actionArea');
+            actionArea.innerHTML = `
+              <div class="tip-card" id="userGuideHint" style="margin-top: 0; margin-bottom: 14px; background: #F0FDF4; border: 1px solid #DCFCE7;">
+                <div id="guideHintTitle" style="font-size: 14.5px; font-weight: 700; margin-bottom: 6px; color: #15803D;">🎉 雲端綁定已完成！</div>
+                <div id="guideHintDesc" style="font-size: 13.5px; line-height: 1.6; color: #166534;">
+                  請從螢幕底部<strong>「向上輕滑」</strong>或點擊下方按鈕切換回「甜心記帳本」App，身分防偽鎖已即時生效！
+                </div>
+              </div>
+              <a href="familyledger://auth-success?action=bind_google&email=${encodeURIComponent(email)}" class="btn" style="text-align: center; text-decoration: none; margin-bottom: 8px;">🚀 返回「甜心記帳本」App</a>
+              <button class="btn btn-secondary" onclick="tryCloseOrBack()">✕ 關閉此分頁</button>
+            `;
+            actionArea.style.display = 'block';
           }
 
           function showClaimSuccess(name, email, code) {
@@ -422,23 +500,18 @@
               </div>
             `;
 
-            const guideTitle = document.getElementById('guideHintTitle');
-            if (guideTitle) {
-              guideTitle.innerText = '🔑 請複製 6 位數認領碼';
-              guideTitle.style.color = '#BE185D';
-            }
-            const guideDesc = document.getElementById('guideHintDesc');
-            if (guideDesc) {
-              guideDesc.innerHTML = '請記下上方 6 位數認領碼，切換回 App 輸入即可完成身分恢復！';
-              guideDesc.style.color = '#9D174D';
-            }
-            const guideCard = document.getElementById('userGuideHint');
-            if (guideCard) {
-              guideCard.style.background = '#FDF2F8';
-              guideCard.style.borderColor = '#FCE7F3';
-            }
-
-            document.getElementById('actionArea').style.display = 'block';
+            const actionArea = document.getElementById('actionArea');
+            actionArea.innerHTML = `
+              <div class="tip-card" id="userGuideHint" style="margin-top: 0; margin-bottom: 14px; background: #FDF2F8; border: 1px solid #FCE7F3;">
+                <div id="guideHintTitle" style="font-size: 14.5px; font-weight: 700; margin-bottom: 6px; color: #BE185D;">🔑 請複製 6 位數認領碼</div>
+                <div id="guideHintDesc" style="font-size: 13.5px; line-height: 1.6; color: #9D174D;">
+                  請記下上方 6 位數認領碼，切換回 App 輸入即可完成身分恢復！
+                </div>
+              </div>
+              <a href="familyledger://auth-success?action=claim&code=${code}&email=${encodeURIComponent(email)}" class="btn" style="text-align: center; text-decoration: none; margin-bottom: 8px;">🚀 返回 App 自動填入認領碼</a>
+              <button class="btn btn-secondary" onclick="tryCloseOrBack()">✕ 關閉此分頁</button>
+            `;
+            actionArea.style.display = 'block';
           }
 
           handleAuth();
