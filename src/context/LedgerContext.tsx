@@ -1902,7 +1902,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       } else {
         // 行動端（Android / iOS）：開啟系統瀏覽器完成 Google 授權
-        const redirectUrl = `https://mattyudev.github.io/family-ledger/auth-callback.html?action=${actionType}&profile_id=${targetId}&ledger_id=${currentLedger.id}&display_name=${encodeURIComponent(targetMember.display_name)}`;
+        const redirectUrl = `https://mattyu99.github.io/family-ledger/auth-callback.html?action=${actionType}&profile_id=${targetId}&ledger_id=${currentLedger.id}&display_name=${encodeURIComponent(targetMember.display_name)}`;
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {
