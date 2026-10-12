@@ -1637,21 +1637,92 @@ function MainApp() {
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
             >
-              {/* Google 電子鎖身分安全提示 */}
+              {/* Google 電子鎖身分安全防護 (完整內嵌於成員設定) */}
               {isLockedByOther ? (
                 <View style={styles.lockedMemberNoticeBox}>
                   <Text style={styles.lockedMemberNoticeTitle}>🔒 此成員已受 Google 帳號綁定保護</Text>
                   <Text style={styles.lockedMemberNoticeDesc}>
                     保護信箱：{targetMember.auth_email || '已加密保護'}
-                    {'\n'}此身分稱謂已受原擁有者鎖定，無法由其他設備修改稱謂或認領。
+                    {'\n'}此身分稱謂已受原擁有者鎖定，無法由其他設備修改稱謂。若您是該擁有者換新手機，可透過 Google 帳號認領。
                   </Text>
+                  <TouchableOpacity
+                    style={[styles.authGoogleBindBtn, { marginTop: 10, backgroundColor: '#0284C7' }]}
+                    onPress={() => {
+                      setEditMemberModalVisible(false);
+                      setClaimGoogleInput('');
+                      setClaimGoogleModalVisible(true);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.authGoogleBindBtnText}>🔑 我是此稱謂擁有者，以 Google 帳號認領恢復</Text>
+                  </TouchableOpacity>
                 </View>
               ) : isLocked && isCurrent ? (
-                <View style={styles.selfLockedNoticeBox}>
-                  <Text style={styles.selfLockedNoticeTitle}>🛡️ 您的身分已受 Google 帳號保護</Text>
-                  <Text style={styles.selfLockedNoticeDesc}>
-                    保護信箱：{targetMember.auth_email || currentUser.auth_email || 'Google 授權'}
+                <View style={[styles.authBoundCard, { marginTop: 0, marginBottom: 14 }]}>
+                  <View style={styles.authBoundRow}>
+                    <Text style={styles.authBoundIcon}>🛡️</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.authBoundTitle}>
+                        稱謂【{targetMember.display_name}】已成功受保護
+                      </Text>
+                      <Text style={styles.authBoundEmail}>
+                        保護信箱：{targetMember.auth_email || currentUser.auth_email || 'Google 授權帳號'}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.authBoundDesc}>
+                    已啟動雙重身分電子鎖。其他未經此 Google 帳號授權的設備，無法修改您的稱謂或冒名認領。
                   </Text>
+                  <View style={styles.authBoundActionsRow}>
+                    <TouchableOpacity
+                      style={styles.authUnlinkBtn}
+                      onPress={() => {
+                        setEditMemberModalVisible(false);
+                        handleUnlinkGoogle(targetMember.id);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.authUnlinkBtnText}>🔓 解除綁定 (回到訪客模式)</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : isCurrent ? (
+                <View style={[styles.authGuestCard, { marginTop: 0, marginBottom: 14 }]}>
+                  <View style={styles.authGuestRow}>
+                    <Text style={styles.authGuestIcon}>⚠️</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.authGuestTitle}>
+                        目前為訪客模式（稱謂【{targetMember.display_name}】未受保護）
+                      </Text>
+                      <Text style={styles.authGuestDesc}>
+                        若更換手機、清除快取或重新安裝，可能無法自動恢復此身分。建議立即綁定 Google 帳號！
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.authGoogleBindBtn}
+                    disabled={isLinkingGoogle}
+                    onPress={() => {
+                      setEditMemberModalVisible(false);
+                      handleLinkGoogle(targetMember.id);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.authGoogleBindBtnText}>
+                      {isLinkingGoogle ? '⏳ 正在開啟授權...' : '🔗 立即綁定 Google 帳號 (推薦)'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.authClaimEntryBtn}
+                    onPress={() => {
+                      setEditMemberModalVisible(false);
+                      setClaimGoogleInput('');
+                      setClaimGoogleModalVisible(true);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.authClaimEntryBtnText}>🔑 換新手機？以 Google 帳號認領 / 恢復舊身分</Text>
+                  </TouchableOpacity>
                 </View>
               ) : null}
               {canModifyProfile ? (
@@ -4499,7 +4570,7 @@ function MainApp() {
                 <View style={styles.sectionHeaderLeft}>
                   <Text style={styles.cardSectionTitle}>👨‍👩‍👧 家庭成員名單 ({members.length})</Text>
                   <Text style={styles.sectionHeaderDesc}>
-                    點擊成員可開啟設定；記帳時預設自動帶入個人身分
+                    點擊成員可自訂稱謂、管理連線裝置與 Google 帳號安全防護
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
@@ -4578,11 +4649,15 @@ function MainApp() {
                           <Text style={styles.memberDeviceCountBadgeText}>📱 {memberDevList.length}</Text>
                         </View>
                       )}
-                      {member.is_locked && (
+                      {member.is_locked ? (
                         <View style={styles.memberLockedBadge}>
                           <Text style={styles.memberLockedBadgeText}>🔒 已保護</Text>
                         </View>
-                      )}
+                      ) : isCurrent ? (
+                        <View style={[styles.memberLockedBadge, { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' }]}>
+                          <Text style={[styles.memberLockedBadgeText, { color: '#B45309' }]}>⚠️ 訪客</Text>
+                        </View>
+                      ) : null}
                       {isCurrent && (
                         <Text style={styles.activeTag}>我</Text>
                       )}
@@ -4629,85 +4704,6 @@ function MainApp() {
                     }}
                   >
                     <Text style={styles.claimAdminBannerBtnText}>🔐 升為管理員</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-
-            {/* 🔐 帳號安全與 Google 綁定 (Phase 2) */}
-            <View style={styles.cardSection}>
-              <View style={styles.sectionHeaderRow}>
-                <View style={styles.sectionHeaderLeft}>
-                  <Text style={styles.cardSectionTitle}>🔐 帳號安全與 Google 綁定</Text>
-                  <Text style={styles.cardSectionDesc}>
-                    保護個人稱謂身分防偽防奪，換機換卡資料無縫接軌
-                  </Text>
-                </View>
-                <View style={[styles.roleBadge, isCurrentUserLocked ? styles.roleBadgeOwner : styles.roleBadgeMember]}>
-                  <Text style={[styles.roleBadgeText, isCurrentUserLocked ? styles.roleBadgeTextOwner : styles.roleBadgeTextMember]}>
-                    {isCurrentUserLocked ? '🛡️ Google 已保護' : '⚠️ 訪客模式'}
-                  </Text>
-                </View>
-              </View>
-
-              {isCurrentUserLocked ? (
-                <View style={styles.authBoundCard}>
-                  <View style={styles.authBoundRow}>
-                    <Text style={styles.authBoundIcon}>🛡️</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.authBoundTitle}>
-                        稱謂【{currentUser.display_name}】已成功受保護
-                      </Text>
-                      <Text style={styles.authBoundEmail}>
-                        保護信箱：{currentUser.auth_email || 'Google 授權帳號'}
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={styles.authBoundDesc}>
-                    已啟動雙重身分電子鎖。其他未經此 Google 帳號授權的設備，無法修改您的稱謂或冒名認領。
-                  </Text>
-                  <View style={styles.authBoundActionsRow}>
-                    <TouchableOpacity
-                      style={styles.authUnlinkBtn}
-                      onPress={() => handleUnlinkGoogle()}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.authUnlinkBtnText}>🔓 解除綁定 (回到訪客模式)</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : (
-                <View style={styles.authGuestCard}>
-                  <View style={styles.authGuestRow}>
-                    <Text style={styles.authGuestIcon}>⚠️</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.authGuestTitle}>
-                        目前為訪客模式（稱謂【{currentUser.display_name}】未受保護）
-                      </Text>
-                      <Text style={styles.authGuestDesc}>
-                        若更換手機、清除快取或重新安裝，可能無法自動恢復此身分。建議立即綁定 Google 帳號！
-                      </Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.authGoogleBindBtn}
-                    disabled={isLinkingGoogle}
-                    onPress={() => handleLinkGoogle()}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.authGoogleBindBtnText}>
-                      {isLinkingGoogle ? '⏳ 正在開啟授權...' : '🔗 立即綁定 Google 帳號 (推薦)'}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.authClaimEntryBtn}
-                    onPress={() => {
-                      setClaimGoogleInput('');
-                      setClaimGoogleModalVisible(true);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.authClaimEntryBtnText}>🔑 換新手機？以 Google 帳號認領 / 恢復舊身分</Text>
                   </TouchableOpacity>
                 </View>
               )}

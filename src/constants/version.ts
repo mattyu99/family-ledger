@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 5;
+export const APP_BUILD_REVISION = 6;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.6',
+    date: '2026-10-12',
+    title: '整合 Google 帳號安全至成員個人設定與主畫面精簡優化',
+    highlights: [
+      '身分安全完全內嵌個人成員設定：將「Google 帳號綁定、身分受保護信箱、解除綁定、換新手機認領」等全部整合進點擊成員稱謂後的「成員資訊與設定」彈窗中，符合個人身分屬性直覺。',
+      '主畫面極簡清爽化：徹底移除家庭設定主頁面獨立且重複的「帳號安全與 Google 綁定」大卡片，消除冗餘捲動空間，頁面結構更加俐落。',
+      '成員晶片即時身分狀態徽章：家庭名單中清楚標示個人「🔒 已保護」或「⚠️ 訪客」狀態，點擊稱謂即可一鍵進行安全防護或換機認領。',
+    ],
+  },
   {
     version: '1.0.5.5',
     date: '2026-10-12',
