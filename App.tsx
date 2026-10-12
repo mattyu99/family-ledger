@@ -1954,7 +1954,7 @@ function MainApp() {
                 <TouchableOpacity
                   style={styles.claimGoogleOAuthBtn}
                   onPress={async () => {
-                    const res = await linkGoogleAccount();
+                    const res = await linkGoogleAccount(undefined, 'claim');
                     if (!res.success && res.message) showAlert('提示', res.message);
                   }}
                   activeOpacity={0.8}

@@ -196,14 +196,15 @@
 
     let currentEmail = '';
 
-    function returnToApp() {
+    function returnToApp(extraQuery = '') {
+      const sep = extraQuery ? (extraQuery.startsWith('&') ? extraQuery : '&' + extraQuery) : '';
       // 1. 嘗試使用自訂 Scheme
-      const schemeUrl = 'familyledger://auth-success?email=' + encodeURIComponent(currentEmail);
+      const schemeUrl = 'familyledger://auth-success?email=' + encodeURIComponent(currentEmail) + sep;
       window.location.href = schemeUrl;
 
       // 2. 備援 Android Intent
       setTimeout(() => {
-        const intentUrl = 'intent://auth-success?email=' + encodeURIComponent(currentEmail) + '#Intent;package=com.mattyu.familyledger;scheme=familyledger;end;';
+        const intentUrl = 'intent://auth-success?email=' + encodeURIComponent(currentEmail) + sep + '#Intent;package=com.mattyu.familyledger;scheme=familyledger;end;';
         window.location.href = intentUrl;
       }, 500);
     }
@@ -216,9 +217,20 @@
         let ledgerId = urlParams.get('ledger_id');
         let displayName = urlParams.get('display_name') || '家庭成員';
 
+        // 檢查是否有取消授權或錯誤參數
+        const errorDesc = urlParams.get('error_description') || urlParams.get('error');
+        if (errorDesc) {
+          showError('您已取消 Google 授權，未進行任何身分變更。若需要綁定或認領，請返回 App 重新開啟。');
+          return;
+        }
+
         // 檢查 Hash 中的參數 (Supabase OAuth 回傳時可能放在 hash 中)
         if (window.location.hash) {
           const hashParams = new URLSearchParams(window.location.hash.substring(1));
+          if (hashParams.get('error') || hashParams.get('error_description')) {
+            showError('您已取消 Google 授權，未進行任何身分變更。若需要綁定或認領，請返回 App 重新開啟。');
+            return;
+          }
           if (!profileId && hashParams.get('profile_id')) profileId = hashParams.get('profile_id');
           if (!action && hashParams.get('action')) action = hashParams.get('action');
         }
@@ -321,8 +333,8 @@
 
       document.getElementById('actionArea').style.display = 'block';
 
-      // 自動嘗試喚醒 App
-      setTimeout(returnToApp, 1000);
+      // 自動嘗試喚醒 App (綁定成功)
+      setTimeout(() => returnToApp('action=bind_google'), 1000);
     }
 
     function showClaimSuccess(name, email, code) {
@@ -350,7 +362,7 @@
       `;
 
       document.getElementById('actionArea').style.display = 'block';
-      setTimeout(returnToApp, 1200);
+      setTimeout(() => returnToApp('action=claim&code=' + encodeURIComponent(code)), 1200);
     }
 
     function showError(msg) {
@@ -360,10 +372,17 @@
       document.getElementById('statusDesc').innerText = msg;
       document.getElementById('contentArea').innerHTML = '';
       document.getElementById('actionArea').style.display = 'block';
-      document.getElementById('returnBtn').innerText = '返回甜心記帳本 App 重試';
+      document.getElementById('returnBtn').innerText = '返回甜心記帳本 App';
+      document.getElementById('returnBtn').onclick = () => {
+        window.location.href = 'familyledger://auth-cancelled';
+        setTimeout(() => {
+          window.location.href = 'intent://auth-cancelled#Intent;package=com.mattyu.familyledger;scheme=familyledger;end;';
+        }, 500);
+      };
     }
 
     handleAuth();
   </script>
 </body>
 </html>
+

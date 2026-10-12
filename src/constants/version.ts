@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 3;
+export const APP_BUILD_REVISION = 4;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.4',
+    date: '2026-10-12',
+    title: '修復 Google OAuth 取消誤報成功與認領回傳導向',
+    highlights: [
+      '修復 Google 授權取消誤報成功通知問題：徹底移除前端粗暴的 bind_google 判定，嚴格檢測 access_denied、使用者取消與錯誤參數，僅在授權成功且資料庫寫入完畢後才彈出通知。',
+      '完善換新手機 Google 線上認領流程：換新設備認領時以專屬 claim 行為發起 OAuth，授權通過後精確找回舊身分並登錄新設備，避免誤綁新訪客。',
+      'Web 端與 Deep Link 狀態精準清洗：點擊取消或出錯時，自動安全清洗網址列殘留參數，避免頁面重整引發連鎖錯誤。',
+    ],
+  },
   {
     version: '1.0.5.3',
     date: '2026-10-12',

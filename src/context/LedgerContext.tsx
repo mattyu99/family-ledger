@@ -425,7 +425,7 @@ interface LedgerContextType {
   fetchMemberDevices: (ledgerId?: string, memberId?: string) => Promise<void>;
   registerDevice: (memberId?: string, ledgerId?: string) => Promise<void>;
   removeDevice: (deviceId: string) => Promise<boolean>;
-  linkGoogleAccount: (targetProfileId?: string) => Promise<{ success: boolean; message?: string }>;
+  linkGoogleAccount: (targetProfileId?: string, actionType?: 'bind_google' | 'claim') => Promise<{ success: boolean; message?: string }>;
   unlinkGoogleAccount: (targetProfileId?: string) => Promise<{ success: boolean; message?: string }>;
   claimGoogleIdentity: (codeOrEmail: string) => Promise<{ success: boolean; message?: string; profile?: Profile }>;
   isCurrentUserLocked: boolean;
@@ -1874,7 +1874,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // ==============================================================================
   const isCurrentUserLocked = Boolean(currentUser?.is_locked);
 
-  const linkGoogleAccount = async (targetProfileId?: string): Promise<{ success: boolean; message?: string }> => {
+  const linkGoogleAccount = async (
+    targetProfileId?: string,
+    actionType: 'bind_google' | 'claim' = 'bind_google'
+  ): Promise<{ success: boolean; message?: string }> => {
     try {
       if (!isConfigured) {
         return { success: false, message: '目前為示範或離線模式，無法進行 Google 帳號綁定。' };
@@ -1885,7 +1888,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       if (Platform.OS === 'web') {
         if (typeof window !== 'undefined' && window.location) {
-          const redirectUrl = `${window.location.origin}${window.location.pathname}?action=bind_google&profile_id=${targetId}&ledger_id=${currentLedger.id}&display_name=${encodeURIComponent(targetMember.display_name)}`;
+          const redirectUrl = `${window.location.origin}${window.location.pathname}?action=${actionType}&profile_id=${targetId}&ledger_id=${currentLedger.id}&display_name=${encodeURIComponent(targetMember.display_name)}`;
           const { error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
@@ -1899,7 +1902,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       } else {
         // 行動端（Android / iOS）：開啟系統瀏覽器完成 Google 授權
-        const redirectUrl = `https://mattyudev.github.io/family-ledger/auth-callback.html?action=bind_google&profile_id=${targetId}&ledger_id=${currentLedger.id}&display_name=${encodeURIComponent(targetMember.display_name)}`;
+        const redirectUrl = `https://mattyudev.github.io/family-ledger/auth-callback.html?action=${actionType}&profile_id=${targetId}&ledger_id=${currentLedger.id}&display_name=${encodeURIComponent(targetMember.display_name)}`;
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {
@@ -1917,8 +1920,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
       return { success: false, message: '未能取得 Google 授權轉跳網址' };
     } catch (err: any) {
-      console.warn('發起 Google 帳號綁定失敗:', err);
-      return { success: false, message: err?.message || '綁定失敗' };
+      console.warn('發起 Google 帳號授權失敗:', err);
+      return { success: false, message: err?.message || '授權失敗' };
     }
   };
 
@@ -3235,23 +3238,65 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // 4. 監聽行動端 Deep Link 與 Supabase Auth 事件 (Phase 2 Google 綁定與授權回傳)
   useEffect(() => {
+    // 檢查 Web 端是否有取消或錯誤的授權回呼殘留
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
+      const search = window.location.search || '';
+      const hash = window.location.hash || '';
+      if (
+        search.includes('error') ||
+        search.includes('access_denied') ||
+        hash.includes('error') ||
+        hash.includes('access_denied')
+      ) {
+        console.log('Web 端檢測到 Google 授權取消或失敗，清理網址列');
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
+
     const handleUrl = async (event: { url: string }) => {
       try {
         const linkUrl = event?.url;
         if (!linkUrl) return;
         console.log('收到 Deep Link 呼叫:', linkUrl);
 
-        if (linkUrl.includes('auth-success') || linkUrl.includes('bind_google')) {
-          await refreshLedger();
-          triggerLiveToast({
-            id: `auth-link-${Date.now()}`,
-            type: 'complete',
-            actorName: '帳號安全',
-            avatar: '🛡️',
-            title: 'Google 帳號綁定成功',
-            message: '您的身分稱謂已受 Google 帳號安全保護！',
-            createdAt: Date.now(),
-          });
+        // 若使用者在 Google 畫面點擊取消或出錯，靜默忽略，絕不彈出成功通知
+        if (
+          linkUrl.includes('error') ||
+          linkUrl.includes('access_denied') ||
+          linkUrl.includes('auth-cancelled')
+        ) {
+          console.log('Deep Link 包含取消或錯誤，忽略處理');
+          return;
+        }
+
+        // 僅當明確來自原生 Deep Link 授權成功回呼時處理
+        if (linkUrl.startsWith('familyledger://auth-success') || linkUrl.includes('//auth-success')) {
+          let action: string | null = null;
+          let code: string | null = null;
+          let email: string | null = null;
+          const queryIdx = linkUrl.indexOf('?');
+          if (queryIdx !== -1) {
+            const query = linkUrl.substring(queryIdx + 1);
+            const searchParams = new URLSearchParams(query);
+            action = searchParams.get('action');
+            code = searchParams.get('code');
+            email = searchParams.get('email');
+          }
+
+          if (action === 'claim' && (code || email)) {
+            await claimGoogleIdentity(code || email!);
+          } else {
+            await refreshLedger();
+            triggerLiveToast({
+              id: `auth-link-${Date.now()}`,
+              type: 'complete',
+              actorName: '帳號安全',
+              avatar: '🛡️',
+              title: 'Google 帳號綁定成功',
+              message: email ? `已成功綁定【${email}】！身分稱謂已受安全保護。` : '您的身分稱謂已受 Google 帳號安全保護！',
+              createdAt: Date.now(),
+            });
+          }
         }
       } catch (err) {
         console.warn('解析 Deep Link 異常:', err);
@@ -3260,27 +3305,105 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const linkSub = Linking.addEventListener('url', handleUrl);
     Linking.getInitialURL().then(initialUrl => {
-      if (initialUrl) handleUrl({ url: initialUrl });
+      // 僅在非 Web 或原生 scheme 時解析 initialURL，避免 Web 刷新重複誤判
+      if (initialUrl && !initialUrl.startsWith('http')) {
+        handleUrl({ url: initialUrl });
+      }
     }).catch(() => {});
 
     let authListener: any = null;
     if (isConfigured) {
       const res = supabase.auth.onAuthStateChange(async (event, currentSession) => {
         if (event === 'SIGNED_IN' && currentSession?.user?.email) {
-          console.log('Supabase 使用者已登入:', currentSession.user.email);
+          const userEmail = currentSession.user.email.toLowerCase();
+          console.log('Supabase 使用者已登入:', userEmail);
+
           if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
             const params = new URLSearchParams(window.location.search);
             const action = params.get('action');
             const profileId = params.get('profile_id');
+
             if (action === 'bind_google' && profileId) {
-              await supabase.from('profiles').update({
-                auth_email: currentSession.user.email.toLowerCase(),
+              const { error: upErr } = await supabase.from('profiles').update({
+                auth_email: userEmail,
                 auth_provider: 'google',
                 is_locked: true,
                 updated_at: new Date().toISOString(),
               }).eq('id', profileId);
+
               window.history.replaceState({}, document.title, window.location.pathname);
-              await refreshLedger();
+
+              if (!upErr) {
+                // 本地同步更新 currentUser
+                setCurrentUser(prev => {
+                  const updated: Profile = {
+                    ...prev,
+                    auth_email: userEmail,
+                    auth_provider: 'google',
+                    is_locked: true,
+                  };
+                  AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updated)).catch(() => {});
+                  if (currentLedger?.id) {
+                    AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${currentLedger.id}`, JSON.stringify(updated)).catch(() => {});
+                  }
+                  return updated;
+                });
+                await refreshLedger();
+                triggerLiveToast({
+                  id: `auth-link-${Date.now()}`,
+                  type: 'complete',
+                  actorName: '帳號安全',
+                  avatar: '🛡️',
+                  title: 'Google 帳號綁定成功',
+                  message: `已成功綁定【${userEmail}】！身分稱謂已受安全保護。`,
+                  createdAt: Date.now(),
+                });
+              } else {
+                console.error('更新 Profile 鎖定失敗:', upErr);
+              }
+            } else if (action === 'claim') {
+              const { data: matchedProfiles, error: claimErr } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('auth_email', userEmail)
+                .eq('is_locked', true);
+
+              window.history.replaceState({}, document.title, window.location.pathname);
+
+              if (!claimErr && matchedProfiles && matchedProfiles.length > 0) {
+                const matched = matchedProfiles[0] as Profile;
+                await registerDevice(matched.id, currentLedger.id);
+                setCurrentUser(matched);
+                await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(matched));
+                if (currentLedger?.id) {
+                  await AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${currentLedger.id}`, JSON.stringify(matched));
+                }
+                if (matched.role === 'owner' || matched.role === 'admin' || currentLedger.created_by === matched.id) {
+                  const targetRole = matched.role === 'owner' || matched.role === 'admin' ? matched.role : 'owner';
+                  setUserRole(targetRole);
+                  await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, targetRole);
+                }
+                await refreshLedger();
+                triggerLiveToast({
+                  id: `auth-claim-${Date.now()}`,
+                  type: 'complete',
+                  actorName: matched.display_name,
+                  avatar: matched.avatar_url || '🔑',
+                  title: '🎉 身分認領成功！',
+                  message: `已成功恢復為【${matched.display_name}】(${matched.auth_email})`,
+                  createdAt: Date.now(),
+                });
+              } else {
+                triggerLiveToast({
+                  id: `auth-claim-warn-${Date.now()}`,
+                  type: 'info',
+                  actorName: '帳號安全',
+                  avatar: '⚠️',
+                  title: '找不到受保護身分',
+                  message: `未找到綁定此信箱 (${userEmail}) 的受保護稱謂。`,
+                  createdAt: Date.now(),
+                });
+              }
             }
           }
         }
