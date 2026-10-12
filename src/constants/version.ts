@@ -23,6 +23,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
     date: '2026-10-12',
     title: '修復 Google OAuth 取消誤報成功與認領回傳導向',
     highlights: [
+      '重構授權回呼頁面（auth-callback.html）：取消或異常時在 0 毫秒極速攔截，徹底解決使用者取消授權時回呼頁無限轉圈等待問題，並支援自動引導返回 App。',
       '修正行動端 Google OAuth 回呼網址（mattyu99.github.io）：修復跳轉回呼網域筆誤，確保手機授權取消或完成時精準導回專屬回呼頁與 App，不落入 404 頁面。',
       '修復 Google 授權取消誤報成功通知問題：徹底移除前端粗暴的 bind_google 判定，嚴格檢測 access_denied、使用者取消與錯誤參數，僅在授權成功且資料庫寫入完畢後才彈出通知。',
       '完善換新手機 Google 線上認領流程：換新設備認領時以專屬 claim 行為發起 OAuth，授權通過後精確找回舊身分並登錄新設備，避免誤綁新訪客。',
