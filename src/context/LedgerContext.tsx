@@ -1,13 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Platform, Alert, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Transaction, Category, Ledger, Profile, TransactionType, CategoryType, PaymentMethod, PaymentAccount, AccountType, CustomPaymentMethod, RecurringRule } from '../types/database';
+import { Transaction, Category, Ledger, Profile, TransactionType, CategoryType, PaymentMethod, PaymentAccount, AccountType, CustomPaymentMethod, RecurringRule, MemberDevice } from '../types/database';
 import { supabase, isConfigured } from '../lib/supabase';
 import { generateUUID } from '../lib/uuid';
 import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS } from '../lib/payment';
 import { DEFAULT_RECURRING_PRESETS, getCurrentPeriodKey, getBillPeriodLabel, getInstallmentInfo } from '../lib/recurring';
 import { parseMemoNote } from '../lib/memo';
 import { APP_FULL_VERSION } from '../constants/version';
+import { getDeviceId, getDeviceName, getDevicePlatform } from '../lib/device';
 
 const safeAlert = (title: string, message: string) => {
   if (Platform.OS === 'web') {
@@ -419,6 +420,11 @@ interface LedgerContextType {
   setIsAdminUnlocked: (unlocked: boolean) => void;
   unlockAdmin: (pin: string) => { success: boolean; message?: string };
   lockAdmin: () => void;
+  memberDevices: MemberDevice[];
+  currentDeviceId: string;
+  fetchMemberDevices: (ledgerId?: string) => Promise<void>;
+  registerDevice: (memberId?: string) => Promise<void>;
+  removeDevice: (deviceId: string) => Promise<boolean>;
 }
 
 const LedgerContext = createContext<LedgerContextType | null>(null);
@@ -513,6 +519,8 @@ const STORAGE_KEYS = {
   PAYMENT_METHODS: '@family_ledger_payment_methods',
   RECURRING_RULES: '@family_ledger_recurring_rules',
   LAST_VISITED_PREFIX: '@family_ledger_last_visited_',
+  DEVICE_ID: '@family_ledger_device_id',
+  MEMBER_DEVICES: '@family_ledger_member_devices',
 };
 
 // 預設常用店家快捷建議清單（涵蓋台灣家庭最普遍的日常採買店家）
@@ -562,6 +570,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [adminPin, setAdminPin] = useState<string>('8888');
   const [userRole, setUserRole] = useState<'owner' | 'admin' | 'member'>('member');
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
+  const [memberDevices, setMemberDevices] = useState<MemberDevice[]>([]);
+  const [currentDeviceId, setCurrentDeviceId] = useState<string>('');
 
   // 方案 A：即時 App 內通知泡泡 (In-App Toast Notification)
   const [liveToast, setLiveToast] = useState<LiveToastNotification | null>(null);
@@ -1002,6 +1012,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
         // 清理歷史版本殘留之全域無前綴 key，防止跨帳本洩漏
         AsyncStorage.removeItem(STORAGE_KEYS.RECURRING_RULES).catch(() => {});
+
+        // 載入本機裝置指紋與成員裝置快取
+        const devId = await getDeviceId();
+        setCurrentDeviceId(devId);
+        const savedDevicesStr = ledgerId ? await AsyncStorage.getItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${ledgerId}`) : null;
+        if (savedDevicesStr) {
+          try {
+            const parsed = JSON.parse(savedDevicesStr);
+            if (Array.isArray(parsed)) setMemberDevices(parsed);
+          } catch {}
+        }
       } catch (err) {
         console.warn('載入本地記帳快取失敗:', err);
       }
@@ -1650,6 +1671,31 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'member_devices',
+          filter: `ledger_id=eq.${ledgerId}`,
+        },
+        async () => {
+          try {
+            const { data: devRows } = await supabase
+              .from('member_devices')
+              .select('*')
+              .eq('ledger_id', ledgerId)
+              .order('last_active_at', { ascending: false });
+
+            if (devRows && Array.isArray(devRows)) {
+              setMemberDevices(devRows as MemberDevice[]);
+              AsyncStorage.setItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${ledgerId}`, JSON.stringify(devRows)).catch(() => {});
+            }
+          } catch (err) {
+            console.warn('Realtime 刷新成員裝置失敗:', err);
+          }
+        }
+      )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           setIsCloudSynced(true);
@@ -1657,6 +1703,142 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       });
 
     channelRef.current = channel;
+  };
+
+  // 讀取指定帳本的成員連線裝置清單
+  const fetchMemberDevices = async (targetLedgerId?: string) => {
+    const lId = targetLedgerId || currentLedger.id;
+    if (!lId) return;
+
+    if (isConfigured && lId !== DEMO_LEDGER_ID) {
+      try {
+        const { data, error } = await supabase
+          .from('member_devices')
+          .select('*')
+          .eq('ledger_id', lId)
+          .order('last_active_at', { ascending: false });
+
+        if (!error && Array.isArray(data)) {
+          setMemberDevices(data as MemberDevice[]);
+          await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${lId}`, JSON.stringify(data));
+          return;
+        }
+      } catch (e) {
+        console.warn('讀取雲端成員裝置清單失敗（若尚未執行 migration 屬正常現象）:', e);
+      }
+    }
+
+    // 若為示範帳本或雲端讀取失敗，自本地快取或以本機保底
+    try {
+      const devId = await getDeviceId();
+      setCurrentDeviceId(devId);
+      const devName = getDeviceName();
+      const platform = getDevicePlatform();
+      const fallbackDevice: MemberDevice = {
+        id: devId,
+        ledger_id: lId,
+        member_id: currentUser.id,
+        device_id: devId,
+        device_name: devName,
+        platform,
+        app_version: APP_FULL_VERSION,
+        last_active_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      };
+      setMemberDevices(prev => {
+        if (prev.some(d => d.device_id === devId && d.ledger_id === lId)) {
+          return prev;
+        }
+        return [fallbackDevice, ...prev];
+      });
+    } catch {}
+  };
+
+  // 登記本機裝置連線與心跳時間
+  const registerDevice = async (targetMemberId?: string) => {
+    try {
+      const devId = await getDeviceId();
+      setCurrentDeviceId(devId);
+      const devName = getDeviceName();
+      const platform = getDevicePlatform();
+      const mId = targetMemberId || currentUser.id;
+      const lId = currentLedger.id;
+
+      if (!lId) return;
+
+      if (isConfigured && lId !== DEMO_LEDGER_ID) {
+        try {
+          const nowIso = new Date().toISOString();
+          const { error } = await supabase.from('member_devices').upsert({
+            ledger_id: lId,
+            member_id: mId,
+            device_id: devId,
+            device_name: devName,
+            platform,
+            app_version: APP_FULL_VERSION,
+            last_active_at: nowIso,
+          }, { onConflict: 'ledger_id,device_id' });
+
+          if (!error) {
+            await fetchMemberDevices(lId);
+            return;
+          }
+        } catch (e) {
+          console.warn('登記裝置心跳失敗（若尚未執行 migration 屬正常現象）:', e);
+        }
+      }
+
+      // 本機狀態更新保底
+      setMemberDevices(prev => {
+        const existingIdx = prev.findIndex(d => d.device_id === devId && d.ledger_id === lId);
+        const myDev: MemberDevice = {
+          id: devId,
+          ledger_id: lId,
+          member_id: mId,
+          device_id: devId,
+          device_name: devName,
+          platform,
+          app_version: APP_FULL_VERSION,
+          last_active_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+        };
+        if (existingIdx >= 0) {
+          const copy = [...prev];
+          copy[existingIdx] = myDev;
+          return copy;
+        }
+        return [myDev, ...prev];
+      });
+    } catch (err) {
+      console.warn('本機登記裝置發生異常:', err);
+    }
+  };
+
+  // 解除指定裝置的綁定
+  const removeDevice = async (targetDeviceId: string): Promise<boolean> => {
+    try {
+      const lId = currentLedger.id;
+      if (isConfigured && lId !== DEMO_LEDGER_ID) {
+        try {
+          await supabase
+            .from('member_devices')
+            .delete()
+            .eq('ledger_id', lId)
+            .eq('device_id', targetDeviceId);
+        } catch (e) {
+          console.warn('雲端刪除成員裝置失敗:', e);
+        }
+      }
+      setMemberDevices(prev => {
+        const next = prev.filter(d => d.device_id !== targetDeviceId);
+        AsyncStorage.setItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${lId}`, JSON.stringify(next)).catch(() => {});
+        return next;
+      });
+      return true;
+    } catch (e) {
+      console.warn('移除裝置失敗:', e);
+      return false;
+    }
   };
 
   // 輔助函式：載入指定帳本的完整資料 (分類、成員、交易、即時推播)
@@ -2404,6 +2586,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await AsyncStorage.setItem(recurringLedgerKey, JSON.stringify(loadedRules));
     } catch (recErr) {
       console.warn('載入週期扣款規則失敗:', recErr);
+    }
+
+    // (E-4) 載入成員裝置清單並為本機自動登記心跳
+    try {
+      await fetchMemberDevices(targetLedger.id);
+      await registerDevice();
+    } catch (devErr) {
+      console.warn('載入成員裝置或登記失敗:', devErr);
     }
 
     // (F) Realtime 訂閱
@@ -3533,6 +3723,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             .eq('ledger_id', currentLedger.id)
             .eq('user_id', myAuthId);
         }
+        // 清除此裝置在該帳本的註冊記錄
+        const devId = await getDeviceId();
+        await supabase
+          .from('member_devices')
+          .delete()
+          .eq('ledger_id', currentLedger.id)
+          .eq('device_id', devId);
       } catch (e) {
         console.warn('雲端退出帳本失敗:', e);
       }
@@ -3617,6 +3814,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           .delete()
           .eq('ledger_id', targetLedgerId)
           .eq('user_id', authUserId);
+
+        const devId = await getDeviceId();
+        await supabase
+          .from('member_devices')
+          .delete()
+          .eq('ledger_id', targetLedgerId)
+          .eq('device_id', devId);
       }
 
       await AsyncStorage.removeItem(`${STORAGE_KEYS.CURRENT_USER}_${targetLedgerId}`);
@@ -6346,6 +6550,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (currentLedger?.id) {
             AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${currentLedger.id}`, JSON.stringify(u));
           }
+          // 同步為該身分登記本裝置
+          registerDevice(u.id).catch(() => {});
         },
         addTransaction,
         updateTransaction,
@@ -6444,6 +6650,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         adjustAccountBalance,
         toggleReconcileTransaction,
         getAccountById,
+        memberDevices,
+        currentDeviceId,
+        fetchMemberDevices,
+        registerDevice,
+        removeDevice,
       }}
     >
       {children}

@@ -695,5 +695,47 @@ CREATE POLICY "成員可刪除所屬帳本的週期規則" ON public.recurring_r
 -- 確保 Realtime 事件可用
 ALTER TABLE public.recurring_rules REPLICA IDENTITY FULL;
 
+-- ==============================================================================
+-- 11. 成員裝置連線與在線感知表 (Member Devices Management)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.member_devices (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    ledger_id UUID NOT NULL REFERENCES public.ledgers(id) ON DELETE CASCADE,
+    member_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    device_id TEXT NOT NULL,                     -- 本機持久化裝置指紋 (UUID)
+    device_name TEXT NOT NULL,                   -- 例如 "iPhone 16 Pro", "Pixel 8", "Windows Chrome Web"
+    platform TEXT CHECK (platform IN ('ios', 'android', 'web')) NOT NULL,
+    app_version TEXT,                            -- 記錄該裝置 App 版本 (例如 "1.0.5.1")
+    last_active_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    UNIQUE (ledger_id, device_id)
+);
+
+-- 建立索引加速查詢
+CREATE INDEX IF NOT EXISTS idx_member_devices_member ON public.member_devices(ledger_id, member_id);
+CREATE INDEX IF NOT EXISTS idx_member_devices_device ON public.member_devices(ledger_id, device_id);
+
+-- 啟用 RLS
+ALTER TABLE public.member_devices ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "成員可讀取所屬帳本的裝置清單" ON public.member_devices;
+CREATE POLICY "成員可讀取所屬帳本的裝置清單" ON public.member_devices
+    FOR SELECT USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+
+DROP POLICY IF EXISTS "成員可登記所屬帳本的裝置" ON public.member_devices;
+CREATE POLICY "成員可登記所屬帳本的裝置" ON public.member_devices
+    FOR INSERT WITH CHECK (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+
+DROP POLICY IF EXISTS "成員可更新所屬帳本的裝置心跳" ON public.member_devices;
+CREATE POLICY "成員可更新所屬帳本的裝置心跳" ON public.member_devices
+    FOR UPDATE USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+
+DROP POLICY IF EXISTS "成員可解除所屬帳本的裝置綁定" ON public.member_devices;
+CREATE POLICY "成員可解除所屬帳本的裝置綁定" ON public.member_devices
+    FOR DELETE USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+
+-- 確保 Realtime 事件可用
+ALTER TABLE public.member_devices REPLICA IDENTITY FULL;
+
 
 

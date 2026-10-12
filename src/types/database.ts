@@ -162,3 +162,14 @@ export interface RecurringRule {
   updated_at: string;
 }
 
+export interface MemberDevice {
+  id: string;
+  ledger_id: string;
+  member_id: string;
+  device_id: string;
+  device_name: string;
+  platform: 'ios' | 'android' | 'web';
+  app_version?: string;
+  last_active_at: string;
+  created_at: string;
+}

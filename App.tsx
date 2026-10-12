@@ -63,6 +63,7 @@ import { APP_FULL_VERSION } from './src/constants/version';
 import { HorizontalScrollView } from './src/components/HorizontalScrollView';
 import { Transaction, Profile } from './src/types/database';
 import { getCategoryIcon } from './src/lib/icons';
+import { getDevicePlatformIcon, formatDeviceRelativeTime } from './src/lib/device';
 import * as Updates from 'expo-updates';
 import appConfig from './app.json';
 
@@ -207,6 +208,10 @@ function MainApp() {
     paymentMethods,
     recurringRules,
     restoreFromJSON,
+    memberDevices,
+    currentDeviceId,
+    fetchMemberDevices,
+    removeDevice,
   } = useLedger();
 
   const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'bills' | 'family'>('transactions');
@@ -1335,6 +1340,7 @@ function MainApp() {
     setEditingMemberName(member.display_name);
     setEditingMemberAvatar(member.avatar_url || '👨');
     setEditMemberModalVisible(true);
+    fetchMemberDevices().catch(() => {});
   };
 
   const handleSaveEditMember = async () => {
@@ -1495,6 +1501,9 @@ function MainApp() {
       targetMember.role === 'admin' ||
       currentLedger.created_by === targetMember.id;
     const canModifyProfile = isOwner || isCurrent;
+    const targetMemberDevices = memberDevices.filter(
+      d => d.member_id === targetMember.id && d.ledger_id === currentLedger.id
+    );
 
     return (
       <Modal visible={editMemberModalVisible} animationType="fade" transparent onRequestClose={() => setEditMemberModalVisible(false)}>
@@ -1577,6 +1586,95 @@ function MainApp() {
                   </Text>
                 </View>
               )}
+
+              {/* 連線裝置與設備管理 */}
+              <View style={styles.modalMemberAdminSection}>
+                <View style={styles.memberSectionDivider} />
+                <View style={styles.deviceSectionHeaderRow}>
+                  <Text style={styles.formLabel}>
+                    📱 連線中的裝置清單 ({targetMemberDevices.length})
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.deviceRefreshSmallBtn}
+                    onPress={() => fetchMemberDevices().catch(() => {})}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={styles.deviceRefreshSmallBtnText}>🔄 重新整理</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.modalSubHint}>
+                  {isCurrent
+                    ? '以下為目前以您的身分連線此帳本的設備。若有舊手機或不再使用的設備，可點擊解除連線。'
+                    : `以下為目前以「${targetMember.display_name}」身分連線此帳本的設備。管理員可協助解除已不再使用的設備。`}
+                </Text>
+
+                {targetMemberDevices.length === 0 ? (
+                  <View style={styles.deviceEmptyBox}>
+                    <Text style={styles.deviceEmptyText}>暫無連線中的裝置記錄</Text>
+                    <Text style={styles.deviceEmptySubText}>
+                      （開啟 App 或登入此帳本時將自動為本機設備登記）
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.deviceListContainer}>
+                    {targetMemberDevices.map(dev => {
+                      const isThisDevice = dev.device_id === currentDeviceId;
+                      return (
+                        <View
+                          key={dev.id || dev.device_id}
+                          style={[
+                            styles.deviceItemCard,
+                            isThisDevice && styles.deviceItemCardCurrent,
+                          ]}
+                        >
+                          <View style={styles.deviceItemIconBox}>
+                            <Text style={styles.deviceItemIcon}>{getDevicePlatformIcon(dev.platform)}</Text>
+                          </View>
+                          <View style={styles.deviceItemInfo}>
+                            <View style={styles.deviceItemTitleRow}>
+                              <Text style={styles.deviceItemName} numberOfLines={1}>
+                                {dev.device_name}
+                              </Text>
+                              {isThisDevice && (
+                                <View style={styles.deviceThisBadge}>
+                                  <Text style={styles.deviceThisBadgeText}>本機</Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text style={styles.deviceItemMeta}>
+                              版本 v{dev.app_version || '1.0'} · {formatDeviceRelativeTime(dev.last_active_at)}
+                            </Text>
+                          </View>
+                          {canModifyProfile && (
+                            <TouchableOpacity
+                              style={styles.deviceUnbindBtn}
+                              onPress={() => {
+                                showConfirm(
+                                  '解除裝置連線',
+                                  `確定要將「${dev.device_name}」從「${targetMember.display_name}」的身分中解除連線嗎？\n\n${
+                                    isThisDevice
+                                      ? '※ 注意：這是您目前正在使用的裝置，解除後需重新選取成員身分。'
+                                      : '解除後該裝置開啟時需重新登記成員。'
+                                  }`,
+                                  async () => {
+                                    const ok = await removeDevice(dev.device_id);
+                                    if (ok) {
+                                      showAlert('解除成功', `已成功解除設備「${dev.device_name}」的連線！`);
+                                    }
+                                  }
+                                );
+                              }}
+                            >
+                              <Text style={styles.deviceUnbindBtnText}>解除</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
 
               {/* 若在預覽模式中：在彈窗內提供大按鈕隨時結束預覽返回管理員 */}
               {isPreviewMode && (
@@ -4253,6 +4351,9 @@ function MainApp() {
                   const isCreator = currentLedger.created_by === member.id;
                   // 管理員可對所有成員點擊；一般成員只能點自己本機成員
                   const canEdit = isOwner || isCurrent;
+                  const memberDevList = memberDevices.filter(
+                    d => d.member_id === member.id && d.ledger_id === currentLedger.id
+                  );
 
                   return (
                     <TouchableOpacity
@@ -4287,6 +4388,11 @@ function MainApp() {
                           <Text style={styles.memberRoleBadgeText}>👑 管理員</Text>
                         </View>
                       ) : null}
+                      {memberDevList.length > 0 && (
+                        <View style={styles.memberDeviceCountBadge}>
+                          <Text style={styles.memberDeviceCountBadgeText}>📱 {memberDevList.length}</Text>
+                        </View>
+                      )}
                       {isCurrent && (
                         <Text style={styles.activeTag}>我</Text>
                       )}
@@ -7226,6 +7332,137 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '700',
     color: '#B45309',
+  },
+  memberDeviceCountBadge: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+    marginLeft: 5,
+    borderWidth: 0.5,
+    borderColor: '#CBD5E1',
+  },
+  memberDeviceCountBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  deviceSectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  deviceRefreshSmallBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: '#EEF2FF',
+    borderRadius: 8,
+    borderWidth: 0.5,
+    borderColor: '#C7D2FE',
+  },
+  deviceRefreshSmallBtnText: {
+    fontSize: 11,
+    color: '#4F46E5',
+    fontWeight: '600',
+  },
+  deviceEmptyBox: {
+    backgroundColor: '#F8FAFC',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  deviceEmptyText: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  deviceEmptySubText: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 3,
+  },
+  deviceListContainer: {
+    marginTop: 8,
+    gap: 8,
+  },
+  deviceItemCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  deviceItemCardCurrent: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#86EFAC',
+  },
+  deviceItemIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  deviceItemIcon: {
+    fontSize: 16,
+  },
+  deviceItemInfo: {
+    flex: 1,
+    marginRight: 8,
+  },
+  deviceItemTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  deviceItemName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1E293B',
+    flexShrink: 1,
+  },
+  deviceThisBadge: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 6,
+    borderWidth: 0.5,
+    borderColor: '#86EFAC',
+  },
+  deviceThisBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#15803D',
+  },
+  deviceItemMeta: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  deviceUnbindBtn: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  deviceUnbindBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#DC2626',
   },
   roleToggleBtn: {
     marginTop: 8,

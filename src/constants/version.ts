@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 0;
+export const APP_BUILD_REVISION = 1;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,19 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.1',
+    date: '2026-10-12',
+    title: '成員連線裝置感知與設備管理全新上線 (Phase 1)',
+    highlights: [
+      '成員連線裝置感知（Device Perception）：家庭成員卡片新增「📱 X 台裝置」徽章，直觀掌握每位家庭成員目前有多少台手機/電腦在線使用。',
+      '連線裝置清單與型號辨識：點擊成員開啟設定彈窗，新增「📱 連線中的裝置清單」，清楚列出該成員綁定的所有設備名稱（如 iPhone、Pixel、Chrome 等）、平台圖示、App 版本與最後活動時間。',
+      '本機設備標記（本機裝置）：精準標記使用者當前操作的手機或瀏覽器，避免誤判。',
+      '安全解除與舊設備踢除：本人或帳本管理員可隨時一鍵解除遺失、報廢或不再使用的舊手機，雲端與本機即時雙向同步，設備清單井然有序。',
+      '無感自動註冊與心跳續約：冷啟動、切換身分、換帳本或自背景喚醒時，系統自動靜默登記當前設備連線狀態，無需手動操作。',
+      '平滑容錯與向前相容：即使雲端尚未執行資料庫 migration 腳本，系統自動本機保底並優雅降級，絕不影響日常記帳流程。',
+    ],
+  },
   {
     version: '1.0.5.0',
     date: '2026-10-12',
