@@ -334,19 +334,43 @@
 
               showClaimSuccess(matchedProfile.display_name, currentEmail, claimCode);
             } else if (action === 'login') {
-              // 1. 查詢所有鎖定給此 Google 帳號的成員稱謂（例如 智爸、倉鼠）
+              let syncCode = urlParams.get('sync_code');
+              if (!syncCode && window.location.hash) {
+                const hp = new URLSearchParams(window.location.hash.substring(1));
+                syncCode = hp.get('sync_code');
+              }
+              if (!syncCode) {
+                syncCode = Math.floor(100000 + Math.random() * 900000).toString();
+              }
+              const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+
+              // 將此 syncCode 寫入該 Google 信箱的所有受保護稱謂（讓 App 能夠隨時自動認領）
+              try {
+                await supabase
+                  .from('profiles')
+                  .update({
+                    claim_code: syncCode,
+                    claim_code_expires_at: expiresAt,
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('auth_email', currentEmail.toLowerCase());
+              } catch (e) {
+                console.warn('寫入 syncCode 失敗:', e);
+              }
+
+              // 查詢所有鎖定給此 Google 帳號的成員稱謂（例如 智爸、倉鼠）
               const { data: boundProfiles } = await supabase
                 .from('profiles')
                 .select('id, display_name, avatar_url, ledger_id')
                 .eq('auth_email', currentEmail.toLowerCase())
                 .eq('is_locked', true);
 
-              showLoginSuccess(currentEmail, boundProfiles || []);
+              showLoginSuccess(currentEmail, boundProfiles || [], syncCode);
 
-              // 自動嘗試喚回原生 App
+              // 嘗試自動喚回原生 App (嘗試 Android intent 與 custom scheme)
               setTimeout(() => {
                 try {
-                  window.location.href = `familyledger://auth-success?action=login&email=${encodeURIComponent(currentEmail)}`;
+                  window.location.href = `intent://auth-success?action=login&code=${syncCode}&email=${encodeURIComponent(currentEmail)}#Intent;scheme=familyledger;package=com.mattyu.familyledger;end`;
                 } catch (e) {}
               }, 800);
             } else {
@@ -384,13 +408,13 @@
               // 自動嘗試喚回原生 App
               setTimeout(() => {
                 try {
-                  window.location.href = `familyledger://auth-success?action=bind_google&email=${encodeURIComponent(currentEmail)}`;
+                  window.location.href = `intent://auth-success?action=bind_google&email=${encodeURIComponent(currentEmail)}#Intent;scheme=familyledger;package=com.mattyu.familyledger;end`;
                 } catch (e) {}
               }, 800);
             }
           }
 
-          function showLoginSuccess(email, boundProfiles) {
+          function showLoginSuccess(email, boundProfiles, syncCode) {
             document.getElementById('statusIcon').className = 'icon-box success';
             document.getElementById('statusIcon').innerHTML = '🎉';
             document.getElementById('statusTitle').innerText = 'Google 帳號登入成功！';
@@ -421,6 +445,13 @@
                   <span class="info-val" style="color: #10B981;">✅ 已授權通行</span>
                 </div>
               </div>
+              <div class="code-box" style="margin-top: 14px;">
+                <div class="code-title">您的手機一鍵登入授權碼 (15分鐘有效)</div>
+                <div class="code-digits">${syncCode}</div>
+                <div style="font-size: 13px; color: #6B7280; margin-top: 8px; line-height: 1.5;">
+                  切換回 App 即可<strong>自動完成同步</strong>；若手機未自動切回，可在 App 切換帳本視窗輸入上方 6 位數授權碼！
+                </div>
+              </div>
             `;
 
             const actionArea = document.getElementById('actionArea');
@@ -431,7 +462,8 @@
                   請從螢幕底部<strong>「向上輕滑」</strong>或點擊下方按鈕切換回「甜心記帳本」App，系統已為您自動載入帳本！
                 </div>
               </div>
-              <a href="familyledger://auth-success?action=login&email=${encodeURIComponent(email)}" class="btn" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25); text-align: center; text-decoration: none; margin-bottom: 8px;">🚀 返回「甜心記帳本」App</a>
+              <button onclick="navigator.clipboard.writeText('${syncCode}'); alert('已複製授權碼：' + '${syncCode}' + '，請回 App 貼上驗證！');" class="btn" style="background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%); margin-bottom: 8px;">📋 點此複製 6 位數授權碼 (${syncCode})</button>
+              <a href="intent://auth-success?action=login&code=${syncCode}&email=${encodeURIComponent(email)}#Intent;scheme=familyledger;package=com.mattyu.familyledger;end" class="btn" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25); text-align: center; text-decoration: none; margin-bottom: 8px;">🚀 返回「甜心記帳本」App</a>
               <button class="btn btn-secondary" onclick="tryCloseOrBack()">✕ 關閉此分頁</button>
             `;
             actionArea.style.display = 'block';
