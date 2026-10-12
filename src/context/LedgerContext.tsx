@@ -459,15 +459,21 @@ export const deduplicateMembers = (memberList: Profile[]): Profile[] => {
     const nameKey = (m.display_name || '').trim().toLowerCase();
     const emailKey = (m.auth_email || m.email || '').trim().toLowerCase();
 
-    // 檢查是否已有名稱相同，或已綁定信箱相同的既有成員
+    // 檢查是否已有名稱相同，或已綁定信箱相同且其中一方為 Google 影子帳號的既有成員
     let existing: Profile | undefined = undefined;
 
     if (nameKey && seenNames.has(nameKey)) {
       existing = result.find(em => (em.display_name || '').trim().toLowerCase() === nameKey);
     } else if (emailKey && seenEmails.has(emailKey)) {
+      // 僅在其中一個是 Google 授權所產生的影子帳號（大頭貼為 HTTP 圖片網址，或稱謂為未加鎖的 Google 帳號姓名）時，才與既有自訂家庭稱謂合併！
+      // 若兩者皆為獨立的自訂稱謂（例如「智爸」與「倉鼠」），絕對不能互相合併覆蓋！
       existing = result.find(em => {
         const emEmail = (em.auth_email || em.email || '').trim().toLowerCase();
-        return emEmail === emailKey;
+        if (emEmail !== emailKey) return false;
+        const mIsUrl = Boolean(m.avatar_url && (m.avatar_url.startsWith('http://') || m.avatar_url.startsWith('https://')));
+        const emIsUrl = Boolean(em.avatar_url && (em.avatar_url.startsWith('http://') || em.avatar_url.startsWith('https://')));
+        const isSameName = (em.display_name || '').trim().toLowerCase() === nameKey;
+        return isSameName || mIsUrl || emIsUrl;
       });
     }
 
@@ -515,10 +521,16 @@ export const buildMemberAliasMap = (
     let canonical = deduped.find(
       m => (m.display_name || '').trim().toLowerCase() === rawName
     );
-    // 次之以已綁定之 Google 信箱比對 (例如 Matt Yu 與 智爸 綁定相同信箱)
+    // 次之以已綁定之 Google 信箱比對 (僅比對 Matt Yu 圖片影子成員，不跨稱謂亂對齊)
     if (!canonical && rawEmail) {
       canonical = deduped.find(
-        m => (m.auth_email || m.email || '').trim().toLowerCase() === rawEmail
+        m => {
+          const mEmail = (m.auth_email || m.email || '').trim().toLowerCase();
+          if (mEmail !== rawEmail) return false;
+          const rawIsUrl = Boolean(raw.avatar_url && (raw.avatar_url.startsWith('http://') || raw.avatar_url.startsWith('https://')));
+          const mIsUrl = Boolean(m.avatar_url && (m.avatar_url.startsWith('http://') || m.avatar_url.startsWith('https://')));
+          return (m.display_name || '').trim().toLowerCase() === rawName || rawIsUrl || mIsUrl;
+        }
       );
     }
     map[raw.id] = canonical || raw;
@@ -534,7 +546,13 @@ export const buildMemberAliasMap = (
       );
       if (!canonical && pEmail) {
         canonical = deduped.find(
-          m => (m.auth_email || m.email || '').trim().toLowerCase() === pEmail
+          m => {
+            const mEmail = (m.auth_email || m.email || '').trim().toLowerCase();
+            if (mEmail !== pEmail) return false;
+            const pIsUrl = Boolean(p.avatar_url && (p.avatar_url.startsWith('http://') || p.avatar_url.startsWith('https://')));
+            const mIsUrl = Boolean(m.avatar_url && (m.avatar_url.startsWith('http://') || m.avatar_url.startsWith('https://')));
+            return (m.display_name || '').trim().toLowerCase() === pName || pIsUrl || mIsUrl;
+          }
         );
       }
       map[p.id] = canonical || p;
@@ -2352,6 +2370,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         );
       }
 
+      // 若尚未找到且當前登入者具備 Google 信箱，優先在此帳本名冊中尋找綁定同信箱的受保護身分（例如「倉鼠」）
+      const userGoogleEmail = currentUser?.auth_email;
+      if (!canonicalMe && userGoogleEmail) {
+        canonicalMe = dedupedMembers.find(
+          m => (m.auth_email || '').trim().toLowerCase() === userGoogleEmail.trim().toLowerCase()
+        );
+      }
+
       if (!canonicalMe) {
         canonicalMe = dedupedMembers[0];
       }
@@ -2987,10 +3013,26 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
 
         // 查詢該用戶目前已加入的帳本清單 (依加入時間新到舊排序)
+        // 跨裝置 Google 帳號整合：若當前登入者具備 Google 信箱，反查全庫所有綁定此信箱的身分 ID，實現多帳本全自動反查！
+        let candidateUserIds = [authUser.id];
+        if (authUser?.email) {
+          try {
+            const { data: boundProfiles } = await supabase
+              .from('profiles')
+              .select('id')
+              .eq('auth_email', authUser.email.toLowerCase());
+            if (boundProfiles && boundProfiles.length > 0) {
+              candidateUserIds = [...new Set([...candidateUserIds, ...boundProfiles.map(p => p.id)])];
+            }
+          } catch (e) {
+            console.warn('反查 Google 綁定帳本身分失敗:', e);
+          }
+        }
+
         const { data: memberLedgers } = await supabase
           .from('ledger_members')
-          .select('ledger_id, role, joined_at, ledgers(*)')
-          .eq('user_id', authUser.id)
+          .select('ledger_id, role, joined_at, ledgers(*), profiles(*)')
+          .in('user_id', candidateUserIds)
           .order('joined_at', { ascending: false });
 
         const targetInvite = urlInviteCode || urlJoinId;
@@ -3151,7 +3193,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                   role: savedRole,
                   joined_at: new Date().toISOString(),
                   ledgers: foundLedger,
-                },
+                  profiles: null,
+                } as any,
               ];
             }
           } catch (bindErr) {
@@ -3171,6 +3214,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               savedAvatar = u.avatar_url;
             }
           } catch {}
+          if (!savedName && m.profiles) {
+            const prof = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+            if (prof) {
+              savedName = prof.display_name;
+              savedAvatar = prof.avatar_url;
+            }
+          }
           return {
             ...l,
             userRole: (isCreator ? 'owner' : m.role) as any,

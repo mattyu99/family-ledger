@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 6;
+export const APP_BUILD_REVISION = 7;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.7',
+    date: '2026-10-12',
+    title: '還原【幸福家庭公帳】🐹 倉鼠身分、嚴格隔離跨帳本獨立稱謂與支援 Google 全域帳本反查',
+    highlights: [
+      '還原【幸福家庭公帳】「🐹 倉鼠」專屬身分：徹底修復資料庫中【幸福家庭公帳】成員身分與歷史交易歸屬，百分之百還原為「🐹 倉鼠」（受保護身分），消除誤被覆蓋為智爸之問題。',
+      '跨帳本稱謂嚴格隔離（Per-Ledger Identity Isolation）：全面改進成員去重與別名機制，僅對 Google OAuth 影子帳號（HTTP 圖片頭像）進行整併，嚴格禁止跨自訂稱謂（如「智爸」與「倉鼠」）互相吞噬覆蓋，確保在各帳本中保有完全獨立的稱謂與形象。',
+      'Web 端 Google 登入全自動反查多帳本：修復 Web 端登入 Google 帳號後因匿名 Session 與帳本成員 ID 脫鉤導致只顯示 1 本帳本的問題。現在透過 Google 信箱自動反查名下關聯之所有帳本，手機與電腦雙端 3 本帳本同步呈現！',
+      '帳本切換動態名牌對齊：切換至【幸福家庭公帳】時自動對齊為「🐹 倉鼠」，切換至其他家庭帳本時維持「👨 智爸」，完美兼顧多帳本角色扮演。',
+    ],
+  },
   {
     version: '1.0.5.6',
     date: '2026-10-12',
