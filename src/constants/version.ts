@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 8;
+export const APP_BUILD_REVISION = 9;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.9',
+    date: '2026-10-12',
+    title: '階段三 (Phase 3) 上線：Google 帳號一鍵登入同步、雙端解鎖 3 本帳本並恢復【幸福家庭公帳】純淨🐹倉鼠身分',
+    highlights: [
+      '階段三 (Phase 3) 全面落地：在「加入/切換公帳選單」、「冷啟動歡迎頁」與「個人設定」皆提供一鍵「🟢 使用 Google 帳號登入同步」，點擊後秒速解鎖並還原名下的全部 3 本家庭公帳！',
+      '【幸福家庭公帳】名冊 100% 純淨還原：資料庫徹底移除誤入之智爸紀錄，【幸福家庭公帳】名冊中僅保留受保護身分「🐹 倉鼠」，徹底消除多重稱謂混入。',
+      '修復手機版遺失帳本問題（3 本帳本全數回歸）：根治手機端 dummy session email 阻斷 Google 信箱反查之根因，手機版選單即刻完整顯示 3 本帳本。',
+      '各帳本獨立名牌動態對齊：切換至【幸福家庭公帳】時精準呈現「🐹 倉鼠」，切換至其他帳本時精準呈現「👨 智爸」，完美兼顧多帳本角色扮演。',
+    ],
+  },
   {
     version: '1.0.5.8',
     date: '2026-10-12',

@@ -429,6 +429,10 @@ interface LedgerContextType {
   unlinkGoogleAccount: (targetProfileId?: string) => Promise<{ success: boolean; message?: string }>;
   claimGoogleIdentity: (codeOrEmail: string) => Promise<{ success: boolean; message?: string; profile?: Profile }>;
   isCurrentUserLocked: boolean;
+  signInWithGoogle: () => Promise<{ success: boolean; message?: string }>;
+  signOutGoogle: () => Promise<void>;
+  isGoogleAuthenticated: boolean;
+  googleUserEmail: string | null;
 }
 
 const LedgerContext = createContext<LedgerContextType | null>(null);
@@ -647,10 +651,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
   const [memberDevices, setMemberDevices] = useState<MemberDevice[]>([]);
   const [currentDeviceId, setCurrentDeviceId] = useState<string>('');
+  const [isGoogleAuthenticated, setIsGoogleAuthenticated] = useState<boolean>(false);
+  const [googleUserEmail, setGoogleUserEmail] = useState<string | null>(null);
 
   // 方案 A：即時 App 內通知泡泡 (In-App Toast Notification)
   const [liveToast, setLiveToast] = useState<LiveToastNotification | null>(null);
   const currentUserRef = useRef<Profile>(currentUser);
+  const isMountedRef = useRef<boolean>(true);
 
   useEffect(() => {
     currentUserRef.current = currentUser;
@@ -2261,32 +2268,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         })
         .filter(Boolean);
 
-      // 自動防呆與自癒：偵測是否存在已受保護稱謂的 Google OAuth 影子紀錄 (例如 profiles 中存在 Matt Yu，但該信箱已有受保護的家庭稱謂「智爸」)
-      if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
-        const lockedProfiles: any[] = memberRows
-          .map((r: any) => (Array.isArray(r.profiles) ? r.profiles[0] : r.profiles))
-          .filter((p: any) => p && p.is_locked && p.auth_email);
-
-        for (const r of memberRows) {
-          const prof: any = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles;
-          if (!prof) continue;
-          const profEmail = (prof.email || prof.auth_email || '').trim().toLowerCase();
-          const matchedLocked = lockedProfiles.find(
-            (lp: any) => lp.id !== prof.id && (lp.auth_email || '').trim().toLowerCase() === profEmail
-          );
-          if (matchedLocked) {
-            // 自雲端 ledger_members 靜默清除多餘的影子成員關聯，保持家庭名冊純淨
-            supabase
-              .from('ledger_members')
-              .delete()
-              .eq('ledger_id', targetLedger.id)
-              .eq('user_id', prof.id)
-              .then(() => {
-                console.log('已自動清理 Google OAuth 影子成員關聯:', prof.display_name);
-              });
-          }
-        }
-      }
+      // deduplicateMembers 會在記憶體中自動整併 Google OAuth 影子紀錄至受保護稱謂（如「倉鼠」或「智爸」），名冊呈現始終純淨
     }
 
     // 若雲端已有成員，以雲端為準；僅在離線或雲端尚無成員時才從本地快取補救，避免跨帳本成員污染
@@ -2927,39 +2909,35 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // 2. 當連線設定具備時，啟動 Supabase 身分驗證與雲端即時同步
-  useEffect(() => {
-    if (!isConfigured) {
-      setIsCloudSynced(false);
-      return;
-    }
-
-    let isMounted = true;
-
-    const setupSupabase = async () => {
-      try {
-        let { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          // Web 端 AsyncStorage 非同步讀取 localStorage，給予多次漸進式重試，杜絕太早放棄而建立新匿名帳號
-          for (let i = 0; i < 4; i++) {
-            await new Promise(r => setTimeout(r, 150));
-            const retryGet = await supabase.auth.getSession();
-            if (retryGet.data?.session) {
-              session = retryGet.data.session;
-              break;
-            }
-          }
-          if (!session) {
-            const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
-            if (anonError) {
-              console.warn('Supabase 匿名登入失敗:', anonError.message);
-              return;
-            }
-            session = anonData.session;
+  const initLedger = async () => {
+    try {
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        // Web 端 AsyncStorage 非同步讀取 localStorage，給予多次漸進式重試，杜絕太早放棄而建立新匿名帳號
+        for (let i = 0; i < 4; i++) {
+          await new Promise(r => setTimeout(r, 150));
+          const retryGet = await supabase.auth.getSession();
+          if (retryGet.data?.session) {
+            session = retryGet.data.session;
+            break;
           }
         }
+        if (!session) {
+          const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
+          if (anonError) {
+            console.warn('Supabase 匿名登入失敗:', anonError.message);
+            return;
+          }
+          session = anonData.session;
+        }
+      }
 
-        const authUser = session?.user;
-        if (!authUser || !isMounted) return;
+      const authUser = session?.user;
+      if (!authUser || !isMountedRef.current) return;
+
+      const isRealGoogle = Boolean(authUser?.email && !authUser.email.endsWith('@family.local') && !authUser.is_anonymous);
+      setIsGoogleAuthenticated(isRealGoogle);
+      setGoogleUserEmail(isRealGoogle ? (authUser?.email || null) : null);
 
         // 使用者 Profile 初始化
         const { data: existingProfile } = await supabase
@@ -3019,15 +2997,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // 查詢該用戶目前已加入的帳本清單 (依加入時間新到舊排序)
         // 跨裝置 Google 帳號整合：若當前登入者具備 Google 信箱，反查全庫所有綁定此信箱的身分 ID，實現多帳本全自動反查！
         let candidateUserIds = [authUser.id];
-        let lookupEmail = authUser?.email;
+        let lookupEmail: string | undefined = undefined;
 
-        // 若 authUser 無 email（例如手機端為匿名 Session），反查本機快取或該 Session 在 profiles 中綁定的 Google 信箱
+        if (authUser?.email && !authUser.email.endsWith('@family.local') && !authUser.email.includes('anonymous')) {
+          lookupEmail = authUser.email;
+        }
+
+        // 若 authUser 無真實 Google email（例如手機端為匿名 Session），反查本機快取或該 Session 在 profiles 中綁定的 Google 信箱
         if (!lookupEmail) {
           try {
             const savedUserStr = await AsyncStorage.getItem(STORAGE_KEYS.CURRENT_USER);
             if (savedUserStr) {
               const u = JSON.parse(savedUserStr);
-              if (u?.auth_email) lookupEmail = u.auth_email;
+              if (u?.auth_email && !u.auth_email.endsWith('@family.local')) {
+                lookupEmail = u.auth_email;
+              }
             }
           } catch {}
         }
@@ -3038,7 +3022,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               .select('auth_email')
               .eq('id', authUser.id)
               .maybeSingle();
-            if (myProf?.auth_email) lookupEmail = myProf.auth_email;
+            if (myProf?.auth_email && !myProf.auth_email.endsWith('@family.local')) {
+              lookupEmail = myProf.auth_email;
+            }
           } catch {}
         }
 
@@ -3078,6 +3064,33 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const savedCode = await AsyncStorage.getItem(STORAGE_KEYS.INVITE_CODE);
 
         let validMemberLedgers = (memberLedgers || []).filter((m: any) => m.ledgers && isValidUUID(m.ledgers.id));
+
+        // 額外保底：查出由 candidateUserIds 建立之所有帳本，確保發起人永遠能見到自己建立的公帳
+        try {
+          const { data: createdLedgers } = await supabase
+            .from('ledgers')
+            .select('*')
+            .in('created_by', candidateUserIds);
+          if (createdLedgers && createdLedgers.length > 0) {
+            for (const cl of createdLedgers) {
+              const exists = validMemberLedgers.some((m: any) => {
+                const lObj = Array.isArray(m.ledgers) ? m.ledgers[0] : m.ledgers;
+                return lObj?.id === cl.id || m.ledger_id === cl.id;
+              });
+              if (!exists) {
+                validMemberLedgers.push({
+                  ledger_id: cl.id,
+                  role: 'owner',
+                  joined_at: cl.created_at || new Date().toISOString(),
+                  ledgers: cl,
+                  profiles: null,
+                } as any);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('反查建立之帳本失敗:', e);
+        }
 
         // 若伺服器查無該使用者的帳本成員記錄，但本機已儲存有效邀請碼或帳本 ID（例如 Session 換發、APK 剛安裝或本地離線恢復）
         let shouldAutoJoin = validMemberLedgers.length === 0 && Boolean(savedCode || savedLedgerId);
@@ -3264,10 +3277,30 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } catch {}
           if (!savedName && m.profiles) {
             const prof = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
-            if (prof) {
+            if (prof?.display_name && (!prof.avatar_url || !prof.avatar_url.startsWith('http'))) {
               savedName = prof.display_name;
               savedAvatar = prof.avatar_url;
             }
+          }
+          if (!savedName && lookupEmail) {
+            try {
+              const { data: bMems } = await supabase
+                .from('ledger_members')
+                .select('profiles(id, display_name, avatar_url, auth_email)')
+                .eq('ledger_id', l.id);
+              if (bMems && bMems.length > 0) {
+                const match = bMems.find((bm: any) => {
+                  const bp = Array.isArray(bm.profiles) ? bm.profiles[0] : bm.profiles;
+                  return bp && (bp.auth_email || '').toLowerCase() === lookupEmail.toLowerCase() &&
+                         (!bp.avatar_url || !bp.avatar_url.startsWith('http'));
+                });
+                if (match) {
+                  const bp = Array.isArray(match.profiles) ? match.profiles[0] : match.profiles;
+                  savedName = bp.display_name;
+                  savedAvatar = bp.avatar_url;
+                }
+              }
+            } catch {}
           }
           return {
             ...l,
@@ -3347,7 +3380,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const role = isCreator ? 'owner' : ((targetRecord.role as 'owner' | 'admin' | 'member') || 'member');
             setUserRole(role);
             await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, role);
-            if (!isMounted) return;
+            if (!isMountedRef.current) return;
 
             await loadLedgerData(activeLedger, authUser.id);
             setHasJoinedLedger(true);
@@ -3355,7 +3388,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         } else {
           // 情境 C：雲端查無成員名冊或離線狀態 (Local-First: 絕對不可任意清理使用者本地已加入的帳本！)
-          if (!isMounted) return;
+          if (!isMountedRef.current) return;
           const savedLedgerStr = await AsyncStorage.getItem(STORAGE_KEYS.LEDGER);
           if (savedLedgerStr) {
             try {
@@ -3387,15 +3420,22 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     };
 
-    setupSupabase();
-
-    return () => {
-      isMounted = false;
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
+    useEffect(() => {
+      isMountedRef.current = true;
+      if (!isConfigured) {
+        setIsCloudSynced(false);
+        return;
       }
-    };
-  }, []);
+
+      initLedger();
+
+      return () => {
+        isMountedRef.current = false;
+        if (channelRef.current) {
+          supabase.removeChannel(channelRef.current);
+        }
+      };
+    }, []);
 
   // 手動 / 前景重新整理當前帳本完整資料
   const refreshLedger = async () => {
@@ -3409,6 +3449,73 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } catch (err) {
         console.warn('重新整理帳本資料失敗:', err);
       }
+    }
+  };
+
+  // Google 帳號一鍵登入與同步 (Phase 3)
+  const signInWithGoogle = async (): Promise<{ success: boolean; message?: string }> => {
+    try {
+      if (!isConfigured) {
+        return { success: false, message: '目前為示範或離線模式，無法進行 Google 登入。' };
+      }
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined' && window.location) {
+          const redirectUrl = `${window.location.origin}${window.location.pathname}?action=login`;
+          const { error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+              redirectTo: redirectUrl,
+            },
+          });
+          if (error) {
+            return { success: false, message: error.message };
+          }
+          return { success: true };
+        }
+      } else {
+        const redirectUrl = `https://mattyu99.github.io/family-ledger/auth-callback.html?action=login`;
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: redirectUrl,
+            skipBrowserRedirect: true,
+          },
+        });
+        if (error) {
+          return { success: false, message: error.message };
+        }
+        if (data?.url) {
+          await Linking.openURL(data.url);
+          return { success: true, message: '已開啟系統瀏覽器進行 Google 授權，請在授權完成後返回 APP' };
+        }
+      }
+      return { success: false, message: '未能取得 Google 授權轉跳網址' };
+    } catch (err: any) {
+      console.warn('發起 Google 登入失敗:', err);
+      return { success: false, message: err?.message || '登入失敗' };
+    }
+  };
+
+  const signOutGoogle = async () => {
+    try {
+      await supabase.auth.signOut();
+      setIsGoogleAuthenticated(false);
+      setGoogleUserEmail(null);
+      const { data: anonData } = await supabase.auth.signInAnonymously();
+      if (anonData?.session) {
+        await initLedger();
+      }
+      triggerLiveToast({
+        id: `auth-signout-${Date.now()}`,
+        type: 'info',
+        actorName: '帳號安全',
+        avatar: '👋',
+        title: '已登出 Google 帳號',
+        message: '已安全登出並重設為本機訪客身分',
+        createdAt: Date.now(),
+      });
+    } catch (err) {
+      console.warn('Google 登出失敗:', err);
     }
   };
 
@@ -3474,6 +3581,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
           if (action === 'claim' && (code || email)) {
             await claimGoogleIdentity(code || email!);
+          } else if (action === 'login') {
+            await initLedger();
+            triggerLiveToast({
+              id: `auth-login-${Date.now()}`,
+              type: 'complete',
+              actorName: '帳號同步',
+              avatar: '🎉',
+              title: 'Google 帳號登入成功',
+              message: email ? `已成功登入【${email}】！已同步解鎖名下的家庭公帳。` : '已成功登入 Google 帳號！已同步解鎖名下的家庭公帳。',
+              createdAt: Date.now(),
+            });
           } else {
             await refreshLedger();
             triggerLiveToast({
@@ -3505,6 +3623,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const res = supabase.auth.onAuthStateChange(async (event, currentSession) => {
         if (event === 'SIGNED_IN' && currentSession?.user?.email) {
           const userEmail = currentSession.user.email.toLowerCase();
+          const isRealGoogle = !userEmail.endsWith('@family.local') && !currentSession.user.is_anonymous;
+          if (isRealGoogle) {
+            setIsGoogleAuthenticated(true);
+            setGoogleUserEmail(userEmail);
+          }
           console.log('Supabase 使用者已登入:', userEmail);
 
           if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
@@ -3593,8 +3716,23 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                   createdAt: Date.now(),
                 });
               }
+            } else if (action === 'login' || (!action && isRealGoogle)) {
+              window.history.replaceState({}, document.title, window.location.pathname);
+              await initLedger();
+              triggerLiveToast({
+                id: `auth-login-${Date.now()}`,
+                type: 'complete',
+                actorName: '帳號同步',
+                avatar: '🎉',
+                title: 'Google 帳號登入成功',
+                message: `已成功登入【${userEmail}】！已同步解鎖名下的家庭公帳。`,
+                createdAt: Date.now(),
+              });
             }
           }
+        } else if (event === 'SIGNED_OUT') {
+          setIsGoogleAuthenticated(false);
+          setGoogleUserEmail(null);
         }
       });
       authListener = res?.data?.subscription;
@@ -7300,6 +7438,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         unlinkGoogleAccount,
         claimGoogleIdentity,
         isCurrentUserLocked,
+        signInWithGoogle,
+        signOutGoogle,
+        isGoogleAuthenticated,
+        googleUserEmail,
       }}
     >
       {children}

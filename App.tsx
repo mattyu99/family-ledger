@@ -235,6 +235,10 @@ function MainApp() {
     unlinkGoogleAccount,
     claimGoogleIdentity,
     isCurrentUserLocked,
+    signInWithGoogle,
+    signOutGoogle,
+    isGoogleAuthenticated,
+    googleUserEmail,
   } = useLedger();
 
   const [claimGoogleModalVisible, setClaimGoogleModalVisible] = useState(false);
@@ -1673,7 +1677,7 @@ function MainApp() {
                   <Text style={styles.authBoundDesc}>
                     已啟動雙重身分電子鎖。其他未經此 Google 帳號授權的設備，無法修改您的稱謂或冒名認領。
                   </Text>
-                  <View style={styles.authBoundActionsRow}>
+                  <View style={[styles.authBoundActionsRow, { flexDirection: 'column', gap: 8 }]}>
                     <TouchableOpacity
                       style={styles.authUnlinkBtn}
                       onPress={() => {
@@ -1682,8 +1686,26 @@ function MainApp() {
                       }}
                       activeOpacity={0.7}
                     >
-                      <Text style={styles.authUnlinkBtnText}>🔓 解除綁定 (回到訪客模式)</Text>
+                      <Text style={styles.authUnlinkBtnText}>🔓 解除綁定 (解除此稱謂之電子鎖)</Text>
                     </TouchableOpacity>
+                    {isGoogleAuthenticated && (
+                      <TouchableOpacity
+                        style={[styles.authUnlinkBtn, { backgroundColor: '#F3F4F6', borderColor: '#D1D5DB' }]}
+                        onPress={() => {
+                          setEditMemberModalVisible(false);
+                          showConfirm(
+                            '登出 Google 帳號',
+                            '確定要登出 Google 帳號嗎？\n\n登出後此裝置將切換回訪客身分，但雲端資料與公帳身分均會保留，隨時可再次登入恢復。',
+                            async () => {
+                              await signOutGoogle();
+                            }
+                          );
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.authUnlinkBtnText, { color: '#4B5563' }]}>🚪 登出 Google 帳號 (重設本機為訪客)</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
               ) : isCurrent ? (
@@ -2898,7 +2920,53 @@ function MainApp() {
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
-            {ledgers.length > 1 && (
+            {/* Phase 3: Google 帳號一鍵登入與公帳同步卡片 */}
+            <TouchableOpacity
+              style={{
+                backgroundColor: isGoogleAuthenticated ? '#F0FDF4' : '#4F46E5',
+                borderColor: isGoogleAuthenticated ? '#86EFAC' : '#4338CA',
+                borderWidth: 1.5,
+                borderRadius: 12,
+                padding: 12,
+                marginBottom: 16,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+              activeOpacity={0.85}
+              onPress={async () => {
+                if (isGoogleAuthenticated) {
+                  showAlert(
+                    'Google 帳號狀態',
+                    `目前已登入【${googleUserEmail || 'Google 帳號'}】\n所有家庭公帳均已自動同步解鎖！`
+                  );
+                } else {
+                  const res = await signInWithGoogle();
+                  if (!res.success && res.message) {
+                    showAlert('提示', res.message);
+                  }
+                }
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, paddingRight: 6 }}>
+                <Text style={{ fontSize: 22 }}>{isGoogleAuthenticated ? '🛡️' : '🟢'}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: isGoogleAuthenticated ? '#15803D' : '#FFFFFF' }}>
+                    {isGoogleAuthenticated ? 'Google 帳號已登入同步' : '使用 Google 帳號一鍵登入'}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: isGoogleAuthenticated ? '#166534' : '#E0E7FF', marginTop: 2 }}>
+                    {isGoogleAuthenticated
+                      ? `已連線 ${googleUserEmail || ''}，名下公帳已同步`
+                      : '一鍵登入即可解鎖並還原名下的全部 3 本家庭公帳'}
+                  </Text>
+                </View>
+              </View>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: isGoogleAuthenticated ? '#15803D' : '#FFFFFF' }}>
+                {isGoogleAuthenticated ? '已連線 ✓' : '登入 ➔'}
+              </Text>
+            </TouchableOpacity>
+
+            {ledgers.length >= 1 && (
               <View style={{ marginBottom: 16 }}>
                 <Text style={styles.formLabel}>📚 您已加入的帳本清單 (點擊可切換)</Text>
                 {ledgers.map((l) => {
@@ -3098,6 +3166,41 @@ function MainApp() {
           </View>
 
           <View style={styles.welcomeActions}>
+            {/* Phase 3: Google 帳號一鍵還原/登入卡片 */}
+            <TouchableOpacity
+              style={{
+                backgroundColor: '#10B981',
+                borderRadius: 18,
+                padding: 18,
+                width: '100%',
+                shadowColor: '#10B981',
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.25,
+                shadowRadius: 12,
+                elevation: 4,
+              }}
+              onPress={async () => {
+                const res = await signInWithGoogle();
+                if (!res.success && res.message) {
+                  showAlert('登入提示', res.message);
+                }
+              }}
+              activeOpacity={0.85}
+            >
+              <View style={styles.welcomeCardHeader}>
+                <Text style={{ backgroundColor: 'rgba(255, 255, 255, 0.25)', color: '#FFFFFF', fontSize: 11, fontWeight: '700', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 }}>
+                  已有帳號 / 換手機 / 跨裝置
+                </Text>
+                <Text style={styles.welcomeCardArrow}>→</Text>
+              </View>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: '#FFFFFF', marginBottom: 6 }}>
+                🟢 使用 Google 帳號一鍵登入
+              </Text>
+              <Text style={{ fontSize: 13, color: 'rgba(255, 255, 255, 0.9)', lineHeight: 18 }}>
+                曾綁定過 Google 帳號？登入後立即自動還原並解鎖名下的所有家庭公帳與身分稱謂！
+              </Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={styles.welcomePrimaryCard}
               onPress={() => setCreateLedgerModalVisible(true)}
