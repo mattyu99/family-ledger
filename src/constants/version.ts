@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 15;
+export const APP_BUILD_REVISION = 16;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,15 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.16',
+    date: '2026-10-13',
+    title: '優化手機輸入體驗：點選「折抵名稱／折抵金額」輸入框時自動上滑避開鍵盤遮擋',
+    highlights: [
+      '智慧鍵盤避讓滾動：於新增支出、編輯記帳與信用卡對帳單點選「折抵名稱」或「折抵金額」輸入框時，畫面與鍵盤彈出同步平滑上捲，完整露出輸入框與即時折抵試算預覽',
+      '貼心收起鍵盤捷徑：鍵盤彈出期間於折抵金額旁提供「收起 ▾」快捷鍵，單手操作更順暢',
+    ],
+  },
   {
     version: '1.0.5.15',
     date: '2026-10-13',

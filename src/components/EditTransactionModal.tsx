@@ -168,6 +168,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const [discountLabel, setDiscountLabel] = useState<string>('LINE Points');
   const [discountLabelTouched, setDiscountLabelTouched] = useState<boolean>(false);
   const [discountCalcMode, setDiscountCalcMode] = useState<'subtract' | 'already_net'>('already_net');
+  const activeInputScrollYRef = useRef<number | null>(null);
 
   // 監聽鍵盤高度 (Android, iOS 與 Mobile Web)
   useEffect(() => {
@@ -177,10 +178,17 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     const showSub = Keyboard.addListener(showEvent, (e) => {
       const h = e?.endCoordinates?.height || 280;
       setKeyboardOffset(h);
+      if (activeInputScrollYRef.current !== null) {
+        const target = activeInputScrollYRef.current;
+        setTimeout(() => {
+          scrollViewRef.current?.scrollTo({ y: target, animated: true });
+        }, 60);
+      }
     });
 
     const hideSub = Keyboard.addListener(hideEvent, () => {
       setKeyboardOffset(0);
+      activeInputScrollYRef.current = null;
     });
 
     let removeViewportListener: (() => void | undefined) | undefined;
@@ -192,8 +200,15 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         const diff = windowHeight - viewportHeight;
         if (diff > 120) {
           setKeyboardOffset(diff);
+          if (activeInputScrollYRef.current !== null) {
+            const target = activeInputScrollYRef.current;
+            setTimeout(() => {
+              scrollViewRef.current?.scrollTo({ y: target, animated: true });
+            }, 60);
+          }
         } else {
           setKeyboardOffset(0);
+          activeInputScrollYRef.current = null;
         }
       };
       window.visualViewport.addEventListener('resize', handleViewportResize);
@@ -210,21 +225,26 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   }, []);
 
   // 各輸入框於 ScrollView 內之 Y 座標（精準平滑滾動，避免強行 scrollToEnd）
+  const [discountSectionY, setDiscountSectionY] = useState<number>(0);
   const [completionNoteSectionY, setCompletionNoteSectionY] = useState<number>(0);
   const [memoSectionY, setMemoSectionY] = useState<number>(0);
   const [merchantSectionY, setMerchantSectionY] = useState<number>(0);
   const [noteSectionY, setNoteSectionY] = useState<number>(0);
 
   // 點選輸入框時，平滑滑動至該輸入框所在位置，避免強行 scrollToEnd 導致上方輸入框被頂出可見範圍
-  const scrollToInput = (targetY: number, defaultY = 0, delay = 100) => {
+  const scrollToInput = (targetY: number, defaultY = 0, delay = 80) => {
+    const scrollY = Math.max(0, (targetY > 0 ? targetY : defaultY) - 15);
+    activeInputScrollYRef.current = scrollY;
     setTimeout(() => {
-      const scrollY = targetY > 0 ? targetY : defaultY;
-      scrollViewRef.current?.scrollTo({ y: Math.max(0, scrollY - 15), animated: true });
+      scrollViewRef.current?.scrollTo({ y: scrollY, animated: true });
     }, delay);
+    setTimeout(() => {
+      scrollViewRef.current?.scrollTo({ y: scrollY, animated: true });
+    }, 260);
   };
 
   const dynamicBottomPadding = keyboardOffset > 0
-    ? (keyboardOffset + 24)
+    ? (keyboardOffset + 60)
     : 30;
 
   const availableCategories = categories.filter(c => c.type === type);
@@ -1301,7 +1321,10 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
             {/* 點數／行動支付回饋折抵面板 */}
             {type === 'expense' && showDiscountPanel && (
-              <View style={styles.discountPanelBox}>
+              <View
+                style={styles.discountPanelBox}
+                onLayout={(e) => setDiscountSectionY(e.nativeEvent.layout.y)}
+              >
                 <View style={styles.discountModeRow}>
                   <TouchableOpacity
                     disabled={!canEdit}
@@ -1353,6 +1376,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                         keyboardType="numeric"
                         value={discountAmount}
                         onChangeText={setDiscountAmount}
+                        onFocus={() => scrollToInput(discountSectionY + 35, 190)}
                         editable={canEdit}
                         maxFontSizeMultiplier={1.15}
                         underlineColorAndroid="transparent"
@@ -1360,13 +1384,21 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                     </View>
                   </View>
                   <View style={styles.discountLabelBox}>
-                    <Text style={styles.discountInputLabel} maxFontSizeMultiplier={1.15}>折抵項目名稱</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <Text style={[styles.discountInputLabel, { marginBottom: 0 }]} maxFontSizeMultiplier={1.15}>折抵項目名稱</Text>
+                      {keyboardOffset > 0 && (
+                        <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                          <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                     <TextInput
                       style={styles.discountLabelInput}
                       placeholder="例如：LINE Points、街口幣"
                       placeholderTextColor="#9CA3AF"
                       value={discountLabel}
                       onChangeText={setDiscountLabel}
+                      onFocus={() => scrollToInput(discountSectionY + 35, 190)}
                       editable={canEdit}
                       maxFontSizeMultiplier={1.15}
                     />

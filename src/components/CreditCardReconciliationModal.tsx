@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text as RNText,
@@ -16,6 +16,7 @@ import {
   AppState,
   Image,
   ActivityIndicator,
+  Keyboard,
 } from 'react-native';
 import { PaymentAccount, Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
@@ -146,6 +147,41 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
   const [rebateAmount, setRebateAmount] = useState<string>('');
   const [rebateTitle, setRebateTitle] = useState<string>('現金回饋折抵');
   const [savingRebate, setSavingRebate] = useState<boolean>(false);
+  const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const activeRebateFocusRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, e => {
+      const h = e?.endCoordinates?.height || 280;
+      setKeyboardOffset(h);
+      if (activeRebateFocusRef.current) {
+        setTimeout(() => {
+          scrollViewRef.current?.scrollTo({ y: 310, animated: true });
+        }, 60);
+      }
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardOffset(0);
+      activeRebateFocusRef.current = false;
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  const scrollToRebateInput = () => {
+    activeRebateFocusRef.current = true;
+    setTimeout(() => {
+      scrollViewRef.current?.scrollTo({ y: 310, animated: true });
+    }, 80);
+    setTimeout(() => {
+      scrollViewRef.current?.scrollTo({ y: 310, animated: true });
+    }, 260);
+  };
 
   const creditCards = useMemo(
     () => sortAccountsByUser(paymentAccounts.filter(a => a.type === 'credit_card'), currentUser?.id),
@@ -740,7 +776,13 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
               <View style={{ height: 30 }} />
             </ScrollView>
           ) : (
-            <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <ScrollView
+              ref={scrollViewRef}
+              style={styles.scrollArea}
+              contentContainerStyle={{ paddingBottom: keyboardOffset > 0 ? keyboardOffset + 60 : 30 }}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
               {/* 卡片選擇標籤橫向滑軌 */}
               <Text style={styles.sectionHeader} maxFontSizeMultiplier={1.15}>
                 {isCredit ? '選擇核對的信用卡' : '選擇核對的悠遊卡 / 儲值卡'}
@@ -1071,6 +1113,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                                 style={styles.rebateTextInput}
                                 value={rebateTitle}
                                 onChangeText={setRebateTitle}
+                                onFocus={scrollToRebateInput}
                                 placeholder="例如：現金回饋折抵"
                                 placeholderTextColor="#94A3B8"
                               />
@@ -1081,6 +1124,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                                 style={[styles.rebateTextInput, styles.rebateAmountInput]}
                                 value={rebateAmount}
                                 onChangeText={setRebateAmount}
+                                onFocus={scrollToRebateInput}
                                 keyboardType="numeric"
                                 placeholder="例如 200"
                                 placeholderTextColor="#94A3B8"
