@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 18;
+export const APP_BUILD_REVISION = 19;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.19',
+    date: '2026-10-13',
+    title: '徹底根除「新建帳本覆寫全域稱謂與跨帳本成員污染」BUG ＋「☁️ 雲端帳本總管」全新上線',
+    highlights: [
+      '徹底修復跨帳本稱謂覆寫污染：建立全新公帳時全面改採專屬獨立 Profile ID，嚴格隔離各帳本稱謂與頭像，徹底根除在 A 帳本取名卻同步修改 B、C 帳本（如龜龜／蛙蛙／魚魚／寶可夢）的連鎖覆寫問題',
+      '全新上線「☁️ 雲端帳本總管」：家庭管理員模式新增專屬總管介面，即時掌握 500 MB 資料庫容量與 Storage 用量指標，全覽雲端所有帳本狀態，並支援「🧹 一鍵清理無成員空帳本」與指定刪除廢棄測試帳本',
+      '清理【測試記帳本🍟】誤入之寶可夢幽靈帳號，還原純淨家庭成員名冊',
+    ],
+  },
   {
     version: '1.0.5.18',
     date: '2026-10-13',

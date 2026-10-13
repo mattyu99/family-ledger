@@ -4000,26 +4000,35 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const { data: anonData } = await supabase.auth.signInAnonymously();
         session = anonData?.session || null;
       }
-      const authUserId = session?.user?.id || generateUUID();
       const newLedgerId = generateUUID();
       const newCode = 'FAM-' + Math.floor(1000 + Math.random() * 9000);
+
+      // 關鍵修復：為新帳本建立專屬獨立的 creatorProfileId，絕不直接覆寫全域 authUserId 的 Profile 稱謂！
+      // 徹底杜絕在 A 帳本命名「龜龜」，卻把 B 帳本（如「智爸」）的稱謂一併覆寫污染的問題
+      const creatorProfileId = generateUUID();
+      const chosenName = creatorName?.trim() || '爸爸 (我)';
+      const chosenAvatar = avatar || '👨';
+
+      // 檢查當前使用者是否綁定 Google 信箱，若有則繼承 auth_email 供 Google 跨帳本統一查帳，但 display_name 完全隔離
+      const userGoogleEmail = currentUser?.auth_email || (session?.user?.email && !session.user.email.endsWith('@family.local') ? session.user.email : null);
 
       const newLedger: Ledger = {
         id: newLedgerId,
         name: name.trim() || '幸福家庭帳本',
         description: '全家共享日常開銷帳本',
         currency: 'TWD',
-        created_by: authUserId,
+        created_by: creatorProfileId,
         created_at: new Date().toISOString(),
       };
 
-      const chosenName = creatorName?.trim() || '爸爸 (我)';
-      const chosenAvatar = avatar || '👨';
       if (isConfigured) {
-        await supabase.from('profiles').upsert({
-          id: authUserId,
+        await supabase.from('profiles').insert({
+          id: creatorProfileId,
           display_name: chosenName,
           avatar_url: chosenAvatar,
+          auth_email: userGoogleEmail || null,
+          auth_provider: userGoogleEmail ? 'google' : null,
+          is_locked: Boolean(userGoogleEmail),
         });
 
         await supabase.from('ledgers').insert({
@@ -4027,20 +4036,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           name: newLedger.name,
           description: newLedger.description,
           currency: newLedger.currency,
-          created_by: authUserId,
+          created_by: creatorProfileId,
           admin_pin: '8888',
         });
 
         await supabase.from('ledger_members').insert({
           ledger_id: newLedger.id,
-          user_id: authUserId,
+          user_id: creatorProfileId,
           role: 'owner',
         });
 
         await supabase.from('ledger_invites').insert({
           ledger_id: newLedger.id,
           invite_code: newCode,
-          created_by: authUserId,
+          created_by: creatorProfileId,
           expires_at: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
         });
       }
@@ -4057,17 +4066,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setLedgers(prev => [{ ...newLedger, userRole: 'owner', userDisplayName: chosenName, userAvatar: chosenAvatar }, ...prev.filter(l => l.id !== newLedger.id)]);
 
       const updatedMe: Profile = {
-        id: authUserId,
+        id: creatorProfileId,
         display_name: chosenName,
         avatar_url: chosenAvatar,
         role: 'owner',
+        auth_email: userGoogleEmail || undefined,
       };
       setCurrentUser(updatedMe);
       await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedMe));
       await AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${newLedger.id}`, JSON.stringify(updatedMe));
 
       if (isConfigured) {
-        await loadLedgerData(newLedger, authUserId);
+        await loadLedgerData(newLedger, creatorProfileId);
       } else {
         setCurrentLedger(newLedger);
         await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(newLedger));

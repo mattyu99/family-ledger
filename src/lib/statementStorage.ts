@@ -21,7 +21,7 @@ const STORAGE_FALLBACK_CODES = [
   50, 79, 107, 57, 119, 55, 103, 88,
 ];
 
-const getStorageServiceToken = (): string => {
+export const getStorageServiceToken = (): string => {
   return STORAGE_FALLBACK_CODES.map(c => String.fromCharCode(c - 5)).join('');
 };
 

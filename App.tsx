@@ -78,6 +78,7 @@ import { MemoCompletionModal } from './src/components/MemoCompletionModal';
 import { getLocalDateYmd, parseMemoNote } from './src/lib/memo';
 import { isBillDueInMonth, isBillPaidForCurrentPeriod } from './src/lib/recurring';
 import { ChangelogModal } from './src/components/ChangelogModal';
+import { CloudLedgerManagerModal } from './src/components/CloudLedgerManagerModal';
 import { APP_FULL_VERSION } from './src/constants/version';
 import { HorizontalScrollView } from './src/components/HorizontalScrollView';
 import { Transaction, Profile, MemberDevice } from './src/types/database';
@@ -956,6 +957,9 @@ function MainApp() {
       }
     );
   };
+
+  // 👑 管理員專屬：雲端帳本總管狀態
+  const [cloudLedgerManagerVisible, setCloudLedgerManagerVisible] = useState(false);
 
   // 模式 A：帳本入口與邀請管理狀態
   const [createLedgerModalVisible, setCreateLedgerModalVisible] = useState(false);
@@ -5210,6 +5214,27 @@ function MainApp() {
                     : '此操作具有覆蓋全帳本之影響，需管理員權限'}
                 </Text>
               </TouchableOpacity>
+
+              {/* 👑 管理員專屬：☁️ 雲端帳本總管入口 */}
+              {(isAdminMode || isOwner) && (
+                <TouchableOpacity
+                  style={[styles.restoreEntryBtn, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', marginTop: 10 }]}
+                  onPress={() => setCloudLedgerManagerVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={[styles.restoreEntryBtnText, { color: '#1D4ED8' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                      ☁️ 雲端帳本總管
+                    </Text>
+                    <View style={[styles.adminOnlyMiniBadge, { backgroundColor: '#DBEAFE', borderColor: '#93C5FD' }]}>
+                      <Text style={[styles.adminOnlyMiniBadgeText, { color: '#1D4ED8' }]}>管理員</Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.restoreEntryBtnSub, { color: '#3B82F6' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    盤點雲端全部帳本、監控 500 MB 空間、清理無成員或測試帳本
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* 系統版本與更新狀態卡片 */}
@@ -5918,6 +5943,16 @@ function MainApp() {
 
       {/* 偵測到待確認的邀請網址 */}
       {renderPendingInviteModal()}
+
+      {/* 👑 雲端帳本總管彈窗 */}
+      <CloudLedgerManagerModal
+        visible={cloudLedgerManagerVisible}
+        currentLedgerId={currentLedger.id}
+        onClose={() => setCloudLedgerManagerVisible(false)}
+        onLedgerDeleted={() => {
+          refreshLedger();
+        }}
+      />
     </SafeAreaView>
   );
 }
