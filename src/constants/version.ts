@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 17;
+export const APP_BUILD_REVISION = 18;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,15 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.18',
+    date: '2026-10-13',
+    title: '修復雲端電子帳單庫讀取（解決 RLS 空陣列問題）與返回 App 按鈕導引',
+    highlights: [
+      '修復雲端電子帳單讀取顯示：修正 Supabase Storage 清單查詢因 RLS 預設回傳 200 空陣列導致未啟用授權金鑰的問題，先前已上傳的 PDF 帳單免重傳即可立即顯示於「🗂️ 帳單庫」與期別「📎」標記',
+      '優化外部上傳頁返回體驗：支援 Android 原生 Package Intent 喚起 App 與返回狀態明確指引，切回 App 前景或點開帳單庫時自動同步最新帳單清單',
+    ],
+  },
   {
     version: '1.0.5.17',
     date: '2026-10-13',

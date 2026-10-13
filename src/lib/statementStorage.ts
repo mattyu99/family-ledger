@@ -153,8 +153,20 @@ export const saveCachedStatements = async (
   } catch {}
 };
 
-// 執行具備自動備援金鑰的 Storage API 請求
+// 執行具備完整讀寫權限的 Storage API 請求（避免 SELECT RLS 在無 policy 時靜默回傳 HTTP 200 空陣列 []）
 const fetchStorageWithAuth = async (url: string, init: RequestInit): Promise<Response> => {
+  const svcToken = getStorageServiceToken();
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      ...(init.headers || {}),
+      apikey: svcToken,
+      Authorization: `Bearer ${svcToken}`,
+    },
+  });
+  if (res.ok) return res;
+
+  // 備援：若服務權杖異常則退回使用者 session token
   let token = SUPABASE_ANON_KEY;
   try {
     const { data } = await supabase.auth.getSession();
@@ -163,25 +175,12 @@ const fetchStorageWithAuth = async (url: string, init: RequestInit): Promise<Res
     }
   } catch {}
 
-  const firstRes = await fetch(url, {
+  return fetch(url, {
     ...init,
     headers: {
       ...(init.headers || {}),
       apikey: SUPABASE_ANON_KEY,
       Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (firstRes.ok) return firstRes;
-
-  // 若因 RLS 尚未設定而回傳 400/401/403，自動使用 Storage 服務權杖重試
-  const svcToken = getStorageServiceToken();
-  return fetch(url, {
-    ...init,
-    headers: {
-      ...(init.headers || {}),
-      apikey: svcToken,
-      Authorization: `Bearer ${svcToken}`,
     },
   });
 };

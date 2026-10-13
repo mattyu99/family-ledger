@@ -252,11 +252,14 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
     const appStateSub = AppState.addEventListener('change', nextState => {
       if (nextState === 'active') {
         refreshStatements();
+        setTimeout(() => {
+          refreshStatements();
+        }, 700);
       }
     });
 
     const linkSub = Linking.addEventListener('url', event => {
-      if (event?.url?.includes('statement-uploaded')) {
+      if (event?.url?.includes('statement')) {
         refreshStatements();
       }
     });
@@ -573,7 +576,13 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
             {isCredit && creditCards.length > 0 && (
               <TouchableOpacity
                 style={[styles.vaultToggleBtn, showStatementVault && styles.vaultToggleBtnActive]}
-                onPress={() => setShowStatementVault(prev => !prev)}
+                onPress={() => {
+                  setShowStatementVault(prev => {
+                    const next = !prev;
+                    if (next) refreshStatements();
+                    return next;
+                  });
+                }}
                 activeOpacity={0.7}
               >
                 <Text
