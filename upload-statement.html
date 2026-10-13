@@ -147,13 +147,17 @@
 
     <div id="statusBox" class="status"></div>
 
-    <a id="returnAppBtn" href="familyledger://statement-uploaded" class="btn btn-success" style="display:none;">
+    <button type="button" id="returnAppBtn" onclick="returnToApp(true)" class="btn btn-success" style="display:none;">
       ✅ 上傳完成！點此返回甜心記帳本 App
-    </a>
+    </button>
 
-    <a id="cancelBtn" href="familyledger://statement-cancel" class="btn btn-secondary">
+    <button type="button" id="reuploadBtn" onclick="document.getElementById('fileInput').click()" class="btn btn-secondary" style="display:none;">
+      📄 重新選擇檔案上傳
+    </button>
+
+    <button type="button" id="cancelBtn" onclick="returnToApp(false)" class="btn btn-secondary">
       返回甜心記帳本 App
-    </a>
+    </button>
   </div>
 
   <script>
@@ -172,8 +176,39 @@
     document.getElementById('cardNameText').textContent = cardName;
     document.getElementById('cycleNameText').textContent = cycleName || cycleKey;
 
-    const returnUrl = `familyledger://statement-uploaded?cardId=${encodeURIComponent(cardId)}&cycleKey=${encodeURIComponent(cycleKey)}`;
-    document.getElementById('returnAppBtn').href = returnUrl;
+    function returnToApp(isUploaded) {
+      const ua = navigator.userAgent || '';
+      const isAndroid = /android/i.test(ua);
+      const statusEl = document.getElementById('statusBox');
+
+      // 1. 嘗試關閉外部彈出分頁
+      try { window.close(); } catch (e) {}
+
+      // 2. Android 優先使用原生 Package Launcher Intent 喚起甜心記帳本 App
+      if (isAndroid) {
+        const intentUrl = 'intent://#Intent;package=com.mattyu.familyledger;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end';
+        try {
+          window.location.href = intentUrl;
+        } catch (e) {}
+      } else {
+        const schemeUrl = isUploaded
+          ? `familyledger://statement-uploaded?cardId=${encodeURIComponent(cardId)}&cycleKey=${encodeURIComponent(cycleKey)}`
+          : 'familyledger://statement-cancel';
+        try {
+          window.location.href = schemeUrl;
+        } catch (e) {}
+      }
+
+      // 3. 若瀏覽器阻擋自動跳轉，立即提供明確的視覺回饋指引
+      setTimeout(() => {
+        statusEl.className = 'status success';
+        if (isUploaded) {
+          statusEl.innerHTML = '✅ <b>雲端歸檔已完成！</b><br/>若瀏覽器未自動切換，請直接按手機左下角<b>「返回鍵 ◀」</b>或從<b>「多工畫面」</b>切回【甜心記帳本 App】，App 將自動顯示已上傳的帳單 📎';
+        } else {
+          statusEl.innerHTML = '💡 請直接按手機左下角<b>「返回鍵 ◀」</b>或從<b>「多工畫面」</b>切回【甜心記帳本 App】即可。';
+        }
+      }, 350);
+    }
 
     function toHexUtf8(str) {
       try {
@@ -290,13 +325,14 @@
 
         const kb = (blob.size / 1024).toFixed(1);
         statusBox.className = 'status success';
-        statusBox.innerHTML = `🎉 <b>${file.name} (${kb} KB)</b> 已成功歸檔！<br/>正在為您返回甜心記帳本 App...`;
+        statusBox.innerHTML = `🎉 <b>${file.name} (${kb} KB)</b> 已成功歸檔！<br/>請點選下方綠色按鈕或按手機<b>「返回鍵 ◀」</b>切回甜心記帳本 App 📎`;
         document.getElementById('dropZone').style.display = 'none';
         document.getElementById('returnAppBtn').style.display = 'block';
+        document.getElementById('reuploadBtn').style.display = 'block';
         document.getElementById('cancelBtn').style.display = 'none';
 
         setTimeout(() => {
-          window.location.href = returnUrl;
+          try { window.close(); } catch (e) {}
         }, 600);
       } catch (err) {
         statusBox.className = 'status error';
