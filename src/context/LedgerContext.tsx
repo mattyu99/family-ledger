@@ -3126,8 +3126,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           console.warn('反查建立之帳本失敗:', e);
         }
 
-        // 若伺服器查無該使用者的帳本成員記錄，但本機已儲存有效邀請碼或帳本 ID（例如 Session 換發、APK 剛安裝或本地離線恢復）
-        let shouldAutoJoin = validMemberLedgers.length === 0 && Boolean(savedCode || savedLedgerId);
+        // 僅在使用者主動點擊全新邀請網址 (targetInvite) 且本機查無任何成員記錄時，才允許自動加入；
+        // 絕不允許無邀請連結時在背景隱式自動重入，徹底杜絕已被移除之成員（如跨帳本誤入者）回滾復活！
+        let shouldAutoJoin = validMemberLedgers.length === 0 && Boolean(targetInvite);
 
         // 嚴格安全防護：
         // 1. 若該本機已有 lookupEmail (Google 綁定信箱)，絕不允許匿名 Session 自動以「家庭成員」加入！
@@ -7122,10 +7123,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return false;
     }
 
-    if (targetMember?.is_locked) {
-      safeAlert('無法刪除受保護成員', `「${targetMember.display_name}」已由 Google 帳號鎖定保護（${targetMember.auth_email || '受保護'}），無法直接從名冊中刪除。`);
-      return false;
-    }
+    // 管理員可自本公帳名冊中移除成員關係 (僅解除此帳本之 ledger_members 關聯，絕不抹除其全域 Profile 或 Google 帳號)
 
     // 檢查是否有「該成員實際付款」且金額大於 0 的紀錄
     const paidTxs = transactions.filter(t => t.paid_by === id);
@@ -7169,12 +7167,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           .eq('ledger_id', currentLedger.id)
           .eq('paid_by', id);
 
-        // 2. 清除該成員的 ledger_members 紀錄
+        // 2. 清除該成員在此帳本的 ledger_members 紀錄
         await supabase
           .from('ledger_members')
           .delete()
           .eq('ledger_id', currentLedger.id)
           .eq('user_id', id);
+
+        // 3. 清除該成員在此帳本登記的連線裝置紀錄
+        await supabase
+          .from('member_devices')
+          .delete()
+          .eq('ledger_id', currentLedger.id)
+          .eq('member_id', id);
       } catch (err) {
         console.warn('雲端刪除成員失敗:', err);
       }

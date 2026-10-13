@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 20;
+export const APP_BUILD_REVISION = 21;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.21',
+    date: '2026-10-13',
+    title: '解除管理員移除成員限制 ＋ 徹底杜絕成員背景隱式自動重入',
+    highlights: [
+      '解除管理員移除 Google 鎖定成員限制：管理員從公帳名冊中移除成員時，不再因電子鎖硬性阻斷（僅移除此帳本之成員關聯，絕不影響其全域 Profile 或 Google 帳號）',
+      '徹底杜絕被刪除成員回滾復活：修正 initLedger 背景無邀請碼時的隱式自動重入漏洞，避免跨帳本誤入之身分被手動刪除後又在背景被自動加回',
+      '從雲端【測試記帳本🍟】徹底清除誤入之「寶可夢」成員名冊紀錄，名冊純淨還原',
+    ],
+  },
   {
     version: '1.0.5.20',
     date: '2026-10-13',
