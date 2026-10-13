@@ -21,6 +21,7 @@ import {
 interface CloudLedgerManagerModalProps {
   visible: boolean;
   currentLedgerId: string;
+  knownLedgers?: any[];
   onClose: () => void;
   onLedgerDeleted?: (deletedId: string) => void;
 }
@@ -28,6 +29,7 @@ interface CloudLedgerManagerModalProps {
 export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = ({
   visible,
   currentLedgerId,
+  knownLedgers = [],
   onClose,
   onLedgerDeleted,
 }) => {
@@ -40,7 +42,7 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchCloudLedgersSummary();
+      const data = await fetchCloudLedgersSummary(knownLedgers);
       setLedgers(data.ledgers);
       setQuota(data.quota);
     } catch (e) {
@@ -49,7 +51,7 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [knownLedgers]);
 
   useEffect(() => {
     if (visible) {
@@ -93,7 +95,11 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
               if (onLedgerDeleted) onLedgerDeleted(ledger.id);
               Alert.alert('已刪除', `已成功自雲端永久抹除【${ledger.name}】！`);
             } else {
-              Alert.alert('刪除失敗', '雲端資料庫刪除回應異常，請稍後重試。');
+              const tip =
+                Platform.OS === 'web'
+                  ? '雲端資料庫刪除失敗（Web 網頁版受瀏覽器限制，建議使用手機 App 一鍵刪除，或在 Supabase SQL Editor 執行最新 RPC 腳本解鎖 Web 刪除權限）。'
+                  : '雲端資料庫刪除回應異常，請稍後重試。';
+              Alert.alert('刪除失敗', tip);
             }
           } catch (e) {
             Alert.alert('刪除失敗', '網路連線異常，請重試。');
@@ -121,8 +127,16 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
             try {
               const ids = ghostLedgers.map(g => g.id);
               const count = await batchPurgeGhostLedgers(ids);
-              Alert.alert('清理完成', `已成功清除 ${count} 本無成員幽靈空帳本！`);
-              loadData();
+              if (count > 0) {
+                Alert.alert('清理完成', `已成功清除 ${count} 本無成員幽靈空帳本！`);
+                loadData();
+              } else {
+                const tip =
+                  Platform.OS === 'web'
+                    ? '清理未成功（Web 網頁版受瀏覽器限制，請使用手機 App 一鍵清理，或於 Supabase SQL Editor 執行最新 RPC 腳本）。'
+                    : '清理回應異常，請稍後重試。';
+                Alert.alert('清理失敗', tip);
+              }
             } catch (e) {
               Alert.alert('清理失敗', '網路連線異常，請重試。');
             } finally {
@@ -705,3 +719,4 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
 });
+

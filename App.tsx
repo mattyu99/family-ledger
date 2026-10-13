@@ -5948,6 +5948,7 @@ function MainApp() {
       <CloudLedgerManagerModal
         visible={cloudLedgerManagerVisible}
         currentLedgerId={currentLedger.id}
+        knownLedgers={ledgers}
         onClose={() => setCloudLedgerManagerVisible(false)}
         onLedgerDeleted={() => {
           refreshLedger();

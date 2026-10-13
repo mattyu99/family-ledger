@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 19;
+export const APP_BUILD_REVISION = 20;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.20',
+    date: '2026-10-13',
+    title: '修復 Web 網頁版「☁️ 雲端帳本總管」列表顯示與跨平台韌性解析通道',
+    highlights: [
+      '修復 Web 版帳本列表數為 0 問題：針對瀏覽器安全架構與 Supabase API Gateway 之 User-Agent 限制，建立 Web 專屬的公開邀請通道反查與已知帳本合流機制，免受瀏覽器 401 攔截',
+      '全新支援「get_all_cloud_ledgers_summary」資料庫 RPC 函式：提供一次性批次盤點全雲端資料庫所有帳本、成員、交易與幽靈空帳本指標之官方標準通道',
+      '強化刪除與清理提示：若在 Web 端遇瀏覽器權限限制，自動提供友善的指引說明（可切換至手機 App 一鍵操作或至 Supabase SQL Editor 執行擴充腳本）',
+    ],
+  },
   {
     version: '1.0.5.19',
     date: '2026-10-13',

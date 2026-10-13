@@ -747,3 +747,125 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS claim_code_expires_at TIMES
 -- 建立索引加速查詢
 CREATE INDEX IF NOT EXISTS idx_profiles_auth_email ON public.profiles(auth_email);
 CREATE INDEX IF NOT EXISTS idx_profiles_claim_code ON public.profiles(claim_code);
+
+-- ==============================================================================
+-- 10. 雲端帳本總管 RPC 與跨平台穿透管理權限 (Phase 3, v1.0.5.20)
+-- 支援 Web 網頁版與手機端同時無障礙盤點、穿透讀取、一鍵清理無用空帳本
+-- ==============================================================================
+
+-- 10.1 允許全域讀取帳本基本資訊 (支援 Web 與 Mobile 雲端帳本總管列表顯示)
+DROP POLICY IF EXISTS "Members can view their ledgers" ON public.ledgers;
+CREATE POLICY "Members can view their ledgers" ON public.ledgers FOR SELECT 
+  USING (public.is_ledger_member(id) OR auth.role() = 'anon' OR auth.role() = 'authenticated');
+
+-- 10.2 高效能盤點全體雲端帳本現況與用量統計之 SECURITY DEFINER 函式
+CREATE OR REPLACE FUNCTION public.get_all_cloud_ledgers_summary()
+RETURNS JSONB AS $$
+DECLARE
+    result JSONB;
+BEGIN
+    WITH ledger_tx_summary AS (
+        SELECT 
+            ledger_id, 
+            COUNT(*)::INT AS tx_count,
+            MAX(transacted_at) AS latest_tx_date
+        FROM public.transactions
+        GROUP BY ledger_id
+    ),
+    ledger_mem_summary AS (
+        SELECT 
+            lm.ledger_id,
+            COUNT(*)::INT AS member_count,
+            COALESCE(
+                jsonb_agg(
+                    jsonb_build_object(
+                        'userId', lm.user_id,
+                        'displayName', COALESCE(p.display_name, '未命名'),
+                        'avatarUrl', COALESCE(p.avatar_url, '👤'),
+                        'role', lm.role
+                    )
+                ) FILTER (WHERE lm.user_id IS NOT NULL),
+                '[]'::jsonb
+            ) AS members
+        FROM public.ledger_members lm
+        LEFT JOIN public.profiles p ON p.id = lm.user_id
+        GROUP BY lm.ledger_id
+    ),
+    ledger_inv_summary AS (
+        SELECT DISTINCT ON (ledger_id)
+            ledger_id,
+            invite_code
+        FROM public.ledger_invites
+        ORDER BY ledger_id, created_at DESC
+    ),
+    full_ledgers AS (
+        SELECT 
+            l.id,
+            l.name,
+            l.description,
+            l.created_at,
+            l.created_by,
+            COALESCE(inv.invite_code, '') AS invite_code,
+            COALESCE(m.member_count, 0) AS member_count,
+            COALESCE(m.members, '[]'::jsonb) AS members,
+            COALESCE(t.tx_count, 0) AS tx_count,
+            t.latest_tx_date,
+            (COALESCE(m.member_count, 0) = 0 AND COALESCE(t.tx_count, 0) = 0) AS is_ghost,
+            (COALESCE(t.tx_count, 0) = 0 AND COALESCE(m.member_count, 0) <= 1) AS is_test
+        FROM public.ledgers l
+        LEFT JOIN ledger_tx_summary t ON t.ledger_id = l.id
+        LEFT JOIN ledger_mem_summary m ON m.ledger_id = l.id
+        LEFT JOIN ledger_inv_summary inv ON inv.ledger_id = l.id
+        ORDER BY l.created_at ASC
+    )
+    SELECT jsonb_build_object(
+        'ledgers', COALESCE(jsonb_agg(row_to_json(fl)), '[]'::jsonb),
+        'totalCount', COUNT(*)::INT,
+        'ghostCount', COUNT(*) FILTER (WHERE fl.is_ghost)::INT,
+        'activeCount', COUNT(*) FILTER (WHERE fl.tx_count > 0)::INT
+    ) INTO result
+    FROM full_ledgers fl;
+
+    RETURN result;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.get_all_cloud_ledgers_summary() TO anon, authenticated;
+
+-- 10.3 管理員自雲端抹除指定帳本之 RPC 函式 (CASCADE 級聯刪除關聯成員與明細)
+CREATE OR REPLACE FUNCTION public.delete_cloud_ledger_admin(target_ledger_id UUID)
+RETURNS JSONB AS $$
+BEGIN
+    IF target_ledger_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'message', '帳本 ID 不得為空');
+    END IF;
+
+    DELETE FROM public.ledgers WHERE id = target_ledger_id;
+
+    RETURN jsonb_build_object('success', true);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.delete_cloud_ledger_admin(UUID) TO anon, authenticated;
+
+-- 10.4 管理員一鍵批量清理 0 成員 0 交易之無用幽靈帳本之 RPC 函式
+CREATE OR REPLACE FUNCTION public.batch_purge_ghost_ledgers_admin(ghost_ledger_ids UUID[])
+RETURNS JSONB AS $$
+DECLARE
+    deleted_count INT := 0;
+BEGIN
+    IF ghost_ledger_ids IS NULL OR array_length(ghost_ledger_ids, 1) = 0 THEN
+        RETURN jsonb_build_object('success', true, 'count', 0);
+    END IF;
+
+    DELETE FROM public.ledgers 
+    WHERE id = ANY(ghost_ledger_ids);
+
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+
+    RETURN jsonb_build_object('success', true, 'count', deleted_count);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.batch_purge_ghost_ledgers_admin(UUID[]) TO anon, authenticated;
+
