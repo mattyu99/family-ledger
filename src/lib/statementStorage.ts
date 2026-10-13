@@ -476,3 +476,4 @@ export const buildMobileUploadBridgeUrl = (params: {
   ].join('&');
   return `https://mattyu99.github.io/family-ledger/upload-statement.html?${q}`;
 };
+

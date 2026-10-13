@@ -429,3 +429,104 @@ export const sortAccountsByUser = (
   });
 };
 
+export const DISCOUNT_PRESET_LABELS: string[] = [
+  'LINE Points',
+  '街口幣',
+  '全點',
+  '悠遊付回饋',
+  '全聯福利點',
+  'OPENPOINT',
+  '全家點數',
+  '好市多好多金',
+  '小樹點',
+  '折價券',
+];
+
+export const getRecommendedDiscountLabel = (
+  paymentMethod?: string,
+  methodName?: string
+): string => {
+  const m = (paymentMethod || '').toLowerCase();
+  const n = (methodName || '').toLowerCase();
+  if (m === 'line_pay' || n.includes('line')) return 'LINE Points';
+  if (m === 'jkopay' || n.includes('街口')) return '街口幣';
+  if (m === 'px_pay' || n.includes('全支付')) return '全點';
+  if (m === 'easycard_pay' || n.includes('悠遊付')) return '悠遊付回饋';
+  if (m === 'credit_card' || n.includes('信用卡')) return '小樹點';
+  return 'LINE Points';
+};
+
+export interface ParsedExpenseDiscount {
+  hasDiscount: boolean;
+  discountAmount: number;
+  discountLabel: string;
+  originalAmount?: number;
+  cleanNote: string;
+  badgeText: string;
+}
+
+const EXPENSE_DISCOUNT_REGEX =
+  /^【🎁\s*([^】]*?)\s*折抵\s*\$([\d,]+(?:\.\d+)?)(?:\s*·\s*原價\s*\$([\d,]+(?:\.\d+)?))?】\s*/;
+
+export const parseExpenseDiscount = (note?: string): ParsedExpenseDiscount => {
+  const raw = note || '';
+  const match = raw.match(EXPENSE_DISCOUNT_REGEX);
+  if (!match) {
+    return {
+      hasDiscount: false,
+      discountAmount: 0,
+      discountLabel: '',
+      cleanNote: raw,
+      badgeText: '',
+    };
+  }
+
+  const discountLabel = (match[1] || '點數').trim() || '點數';
+  const discountAmount = parseFloat((match[2] || '0').replace(/,/g, '')) || 0;
+  const originalAmount = match[3] ? parseFloat(match[3].replace(/,/g, '')) || undefined : undefined;
+  const cleanNote = raw.slice(match[0].length).trim();
+
+  if (discountAmount <= 0) {
+    return {
+      hasDiscount: false,
+      discountAmount: 0,
+      discountLabel: '',
+      cleanNote: raw,
+      badgeText: '',
+    };
+  }
+
+  const badgeText = originalAmount
+    ? `🎁 ${discountLabel} 折 $${discountAmount.toLocaleString()} (原價 $${originalAmount.toLocaleString()})`
+    : `🎁 ${discountLabel} 折 $${discountAmount.toLocaleString()}`;
+
+  return {
+    hasDiscount: true,
+    discountAmount,
+    discountLabel,
+    originalAmount,
+    cleanNote,
+    badgeText,
+  };
+};
+
+export const formatExpenseNoteWithDiscount = (
+  rawNote: string,
+  discountAmount?: number,
+  discountLabel?: string,
+  originalAmount?: number
+): string => {
+  const parsed = parseExpenseDiscount(rawNote);
+  const clean = parsed.cleanNote;
+  const amt = Number(discountAmount || 0);
+  if (isNaN(amt) || amt <= 0) {
+    return clean;
+  }
+  const label = (discountLabel || '點數').trim() || '點數';
+  const origPart =
+    originalAmount && originalAmount > amt ? ` · 原價 $${originalAmount.toLocaleString()}` : '';
+  const prefix = `【🎁 ${label} 折抵 $${amt.toLocaleString()}${origPart}】`;
+  return clean ? `${prefix}${clean}` : prefix;
+};
+
+

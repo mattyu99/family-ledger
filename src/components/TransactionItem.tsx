@@ -3,7 +3,7 @@ import { View, Text as RNText, StyleSheet, TouchableOpacity, TextProps, Linking 
 import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { getCategoryIcon } from '../lib/icons';
-import { formatPaymentLabel } from '../lib/payment';
+import { formatPaymentLabel, parseExpenseDiscount } from '../lib/payment';
 import { parseMemoNote, decodeMemoMerchantTag } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 
@@ -180,6 +180,10 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
   }
 
   const linkedMemo = transaction.linked_transaction_id ? transactions.find(t => t.id === transaction.linked_transaction_id && t.type === 'memo') : undefined;
+  const parsedDiscount = isExpense ? parseExpenseDiscount(transaction.note) : null;
+  const displayNote = parsedDiscount?.hasDiscount
+    ? parsedDiscount.cleanNote || `${parsedDiscount.discountLabel}折抵消費`
+    : transaction.note || '無備註';
 
   return (
     <TouchableOpacity
@@ -211,6 +215,13 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
                 </Text>
               </View>
             )}
+            {!!parsedDiscount?.hasDiscount && (
+              <View style={styles.expenseDiscountBadge}>
+                <Text style={styles.expenseDiscountBadgeText} numberOfLines={1} maxFontSizeMultiplier={1.08}>
+                  {parsedDiscount.badgeText}
+                </Text>
+              </View>
+            )}
             {!!linkedMemo && (
               <View style={styles.expenseLinkedMemoTag}>
                 <Text style={styles.expenseLinkedMemoTagText} numberOfLines={1} maxFontSizeMultiplier={1.08}>
@@ -234,7 +245,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
             ellipsizeMode="tail"
             maxFontSizeMultiplier={1.2}
           >
-            {transaction.note ? transaction.note : '無備註'}
+            {displayNote}
           </Text>
           <View style={styles.metaRow}>
             <Text
@@ -616,5 +627,19 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     fontWeight: '700',
     color: '#B45309',
+  },
+  expenseDiscountBadge: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 0.5,
+    borderColor: '#A7F3D0',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    maxWidth: 185,
+  },
+  expenseDiscountBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#059669',
   },
 });

@@ -24,6 +24,7 @@ import {
   getCalendarMonthCycles,
   isDateInBillingCycle,
   sortAccountsByUser,
+  parseExpenseDiscount,
 } from '../lib/payment';
 import {
   CreditCardStatementFile,
@@ -1126,6 +1127,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                 cycleTransactions.map(tx => {
                   const isTopUp = !isCredit && currentCard && isTopUpTransaction(tx, currentCard);
                   const isRebate = isCredit && tx.type === 'income';
+                  const parsedDiscount = tx.type === 'expense' ? parseExpenseDiscount(tx.note) : null;
                   const cat = getCategoryById(tx.category_id, tx.category);
                   const d = new Date(tx.transacted_at);
                   const dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
@@ -1153,7 +1155,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                         activeOpacity={0.7}
                       >
                         <View style={styles.txTitleRow}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 6 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 6, flexWrap: 'wrap', gap: 4 }}>
                             {isTopUp && (
                               <View style={styles.topUpBadge}>
                                 <Text style={styles.topUpBadgeText}>加值</Text>
@@ -1181,6 +1183,11 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                                 ? (tx.merchant || cat?.name || '刷卡回饋折抵')
                                 : (tx.merchant || cat?.name || (isCredit ? '消費' : '悠遊卡扣款'))}
                             </Text>
+                            {!!parsedDiscount?.hasDiscount && (
+                              <View style={styles.topUpBadge}>
+                                <Text style={styles.topUpBadgeText}>{parsedDiscount.badgeText}</Text>
+                              </View>
+                            )}
                           </View>
                           <Text style={[styles.txAmountText, (isTopUp || isRebate) && styles.txAmountTopUp]}>
                             {isTopUp
@@ -1193,7 +1200,9 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                         <View style={styles.txSubRow}>
                           <Text style={styles.txDate}>{dateStr}</Text>
                           <Text style={styles.txNote} numberOfLines={1}>
-                            {tx.note ? `· ${tx.note}` : ''}
+                            {parsedDiscount?.hasDiscount
+                              ? (parsedDiscount.cleanNote ? `· ${parsedDiscount.cleanNote}` : '')
+                              : (tx.note ? `· ${tx.note}` : '')}
                           </Text>
                         </View>
                       </TouchableOpacity>

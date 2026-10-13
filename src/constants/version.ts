@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 14;
+export const APP_BUILD_REVISION = 15;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.15',
+    date: '2026-10-13',
+    title: '一般記帳全面支援「行動支付與點數回饋折抵」：單筆實付入帳、原價與折抵雙軌標記',
+    highlights: [
+      '一般記帳內建「🎁 點數/回饋折抵」：新增與編輯支出時，一鍵展開折抵面板，支援 LINE Points、街口幣、全點、悠遊付回饋、全聯福利點、OPENPOINT、全家點數、好市多好多金、小樹點、折價券等快捷標籤，並依支付方式自動推薦',
+      '雙模式智慧試算（自動扣減 vs 僅標記）：支援「🧮 上方填原價（自動扣減算實付）」與「✅ 上方已填實付（僅標記折抵）」，直接以實際扣款金額單筆入帳，不產生虛增收入，信用卡與行動支付對帳 100% 吻合',
+      '明細與對帳單醒目徽章：交易列表與信用卡對帳單自動解析並顯示綠色「🎁 點數折抵 · 原價」專屬徽章，帳目清晰一目了然',
+    ],
+  },
   {
     version: '1.0.5.14',
     date: '2026-10-13',

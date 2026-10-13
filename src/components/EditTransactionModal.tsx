@@ -34,7 +34,15 @@ const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFont
 );
 import { useLedger } from '../context/LedgerContext';
 import { Transaction, TransactionType, PaymentMethod } from '../types/database';
-import { PAYMENT_METHOD_OPTIONS, DEFAULT_PAYMENT_METHODS, sortAccountsByUser } from '../lib/payment';
+import {
+  PAYMENT_METHOD_OPTIONS,
+  DEFAULT_PAYMENT_METHODS,
+  sortAccountsByUser,
+  DISCOUNT_PRESET_LABELS,
+  getRecommendedDiscountLabel,
+  parseExpenseDiscount,
+  formatExpenseNoteWithDiscount,
+} from '../lib/payment';
 import { getCategoryIcon } from '../lib/icons';
 import { MEMO_QUICK_TAGS, toggleMemoTag, isMemoTagActive } from '../lib/memo';
 import {
@@ -153,6 +161,13 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const [reminderDatePickerVisible, setReminderDatePickerVisible] = useState<boolean>(false);
   const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
   const scrollViewRef = useRef<ScrollView>(null);
+
+  // 🎁 點數 / 回饋折抵專用狀態（算在原先支出交易的一環）
+  const [showDiscountPanel, setShowDiscountPanel] = useState<boolean>(false);
+  const [discountAmount, setDiscountAmount] = useState<string>('');
+  const [discountLabel, setDiscountLabel] = useState<string>('LINE Points');
+  const [discountLabelTouched, setDiscountLabelTouched] = useState<boolean>(false);
+  const [discountCalcMode, setDiscountCalcMode] = useState<'subtract' | 'already_net'>('already_net');
 
   // 監聽鍵盤高度 (Android, iOS 與 Mobile Web)
   useEffect(() => {
@@ -315,7 +330,27 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       setPaymentMethod(transaction.payment_method || 'cash');
       setSelectedAccountId(transaction.account_id || '');
       setMerchant(transaction.merchant || '');
-      setNote(transaction.note || '');
+      if (transaction.type === 'memo') {
+        setNote(transaction.note || '');
+        setShowDiscountPanel(false);
+        setDiscountAmount('');
+      } else {
+        const parsedDisc = parseExpenseDiscount(transaction.note);
+        setNote(parsedDisc.cleanNote);
+        if (parsedDisc.hasDiscount) {
+          setShowDiscountPanel(true);
+          setDiscountAmount(String(parsedDisc.discountAmount));
+          setDiscountLabel(parsedDisc.discountLabel);
+          setDiscountLabelTouched(true);
+          setDiscountCalcMode('already_net');
+        } else {
+          setShowDiscountPanel(false);
+          setDiscountAmount('');
+          setDiscountLabel(getRecommendedDiscountLabel(transaction.payment_method));
+          setDiscountLabelTouched(false);
+          setDiscountCalcMode('subtract');
+        }
+      }
       setMemoReminderDate(transaction.reminder_date || '');
       setMemoReminderCalendar(transaction.reminder_calendar || 'solar');
       setMemoReminderRepeat(transaction.reminder_repeat || 'once');
@@ -342,6 +377,9 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const handleMethodChange = (method: PaymentMethod) => {
     setPaymentMethod(method);
     const mObj = (paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS).find(m => m.id === method);
+    if (!discountLabelTouched) {
+      setDiscountLabel(getRecommendedDiscountLabel(method, mObj?.name));
+    }
     const isCc = mObj ? !!mObj.supports_credit_card : (method === 'credit_card' || method === 'line_pay' || method === 'px_pay');
     const isSv = mObj ? (mObj.type === 'stored_value' || mObj.id === 'stored_value') : method === 'stored_value';
 
@@ -522,6 +560,38 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       return;
     }
 
+    const parsedDiscount =
+      type === 'expense' && showDiscountPanel ? parseFloat(discountAmount) || 0 : 0;
+
+    if (parsedDiscount > 0 && discountCalcMode === 'subtract' && parsedDiscount >= numAmount) {
+      const msg = '折抵金額不可大於或等於商品原價。\n若全額點數兌換($0)，建議記為生活備忘或直接輸入實付金額。';
+      if (Platform.OS === 'web') alert(msg);
+      else Alert.alert('折抵金額超出原價', msg);
+      return;
+    }
+
+    const finalAmount =
+      parsedDiscount > 0 && discountCalcMode === 'subtract'
+        ? Math.max(0, Math.round((numAmount - parsedDiscount) * 100) / 100)
+        : numAmount;
+
+    const finalOriginalAmount =
+      parsedDiscount > 0
+        ? discountCalcMode === 'subtract'
+          ? numAmount
+          : Math.round((numAmount + parsedDiscount) * 100) / 100
+        : undefined;
+
+    const finalNote =
+      type === 'expense' && parsedDiscount > 0
+        ? formatExpenseNoteWithDiscount(
+            note,
+            parsedDiscount,
+            discountLabel.trim() || '點數/回饋',
+            finalOriginalAmount
+          )
+        : note.trim();
+
     const currentCats = categories.filter(c => c.type === type);
     const targetCategory = currentCats.find(c => c.id === selectedCategoryId) || currentCats[0];
     const canonicalPayer = getMemberById(transaction.paid_by);
@@ -534,14 +604,14 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
     try {
       const success = await updateTransaction(transaction.id, {
-        amount: numAmount,
+        amount: finalAmount,
         type,
         category_id: targetCategory.id,
         paid_by: targetPayer,
         merchant: merchant.trim() || undefined,
         payment_method: paymentMethod,
         account_id: selectedAccountId || undefined,
-        note,
+        note: finalNote,
         transacted_at: transactedAt || transaction.transacted_at,
       });
 
@@ -1182,7 +1252,37 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             </View>
 
             {/* 金額輸入 */}
-            <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>金額 (TWD)</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <Text style={[styles.sectionLabel, { marginBottom: 0 }]} maxFontSizeMultiplier={1.15}>
+                {type === 'expense' && showDiscountPanel && discountCalcMode === 'subtract'
+                  ? '商品原價 (TWD)'
+                  : '金額 (TWD)'}
+              </Text>
+              {type === 'expense' && (
+                <TouchableOpacity
+                  disabled={!canEdit}
+                  style={[styles.discountToggleChip, showDiscountPanel && styles.discountToggleChipActive]}
+                  onPress={() => {
+                    if (!showDiscountPanel) {
+                      if (!discountLabel) {
+                        setDiscountLabel(getRecommendedDiscountLabel(paymentMethod));
+                      }
+                      setShowDiscountPanel(true);
+                    } else {
+                      setShowDiscountPanel(false);
+                      setDiscountAmount('');
+                    }
+                  }}
+                >
+                  <Text
+                    style={[styles.discountToggleChipText, showDiscountPanel && styles.discountToggleChipTextActive]}
+                    maxFontSizeMultiplier={1.15}
+                  >
+                    {showDiscountPanel ? '🎁 取消點數/回饋折抵' : '🎁 點數/回饋折抵'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
             <View style={[styles.amountContainer, !canEdit && styles.readOnlyAmountContainer]}>
               <Text style={[styles.currencySymbol, !canEdit && styles.readOnlyTextMuted]} maxFontSizeMultiplier={1.15}>$</Text>
               <TextInput
@@ -1198,6 +1298,130 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 underlineColorAndroid="transparent"
               />
             </View>
+
+            {/* 點數／行動支付回饋折抵面板 */}
+            {type === 'expense' && showDiscountPanel && (
+              <View style={styles.discountPanelBox}>
+                <View style={styles.discountModeRow}>
+                  <TouchableOpacity
+                    disabled={!canEdit}
+                    style={[
+                      styles.discountModeBtn,
+                      discountCalcMode === 'subtract' && styles.discountModeBtnActive,
+                    ]}
+                    onPress={() => setDiscountCalcMode('subtract')}
+                  >
+                    <Text
+                      style={[
+                        styles.discountModeBtnText,
+                        discountCalcMode === 'subtract' && styles.discountModeBtnTextActive,
+                      ]}
+                      maxFontSizeMultiplier={1.15}
+                    >
+                      🧮 上方填原價 (自動扣減算實付)
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    disabled={!canEdit}
+                    style={[
+                      styles.discountModeBtn,
+                      discountCalcMode === 'already_net' && styles.discountModeBtnActive,
+                    ]}
+                    onPress={() => setDiscountCalcMode('already_net')}
+                  >
+                    <Text
+                      style={[
+                        styles.discountModeBtnText,
+                        discountCalcMode === 'already_net' && styles.discountModeBtnTextActive,
+                      ]}
+                      maxFontSizeMultiplier={1.15}
+                    >
+                      ✅ 上方已填實付 (僅標記折抵)
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.discountInputRow}>
+                  <View style={styles.discountAmountBox}>
+                    <Text style={styles.discountInputLabel} maxFontSizeMultiplier={1.15}>折抵金額</Text>
+                    <View style={styles.discountAmountInputInner}>
+                      <Text style={styles.discountCurrencyPrefix}>-$</Text>
+                      <TextInput
+                        style={styles.discountAmountInput}
+                        placeholder="0"
+                        placeholderTextColor="#9CA3AF"
+                        keyboardType="numeric"
+                        value={discountAmount}
+                        onChangeText={setDiscountAmount}
+                        editable={canEdit}
+                        maxFontSizeMultiplier={1.15}
+                        underlineColorAndroid="transparent"
+                      />
+                    </View>
+                  </View>
+                  <View style={styles.discountLabelBox}>
+                    <Text style={styles.discountInputLabel} maxFontSizeMultiplier={1.15}>折抵項目名稱</Text>
+                    <TextInput
+                      style={styles.discountLabelInput}
+                      placeholder="例如：LINE Points、街口幣"
+                      placeholderTextColor="#9CA3AF"
+                      value={discountLabel}
+                      onChangeText={setDiscountLabel}
+                      editable={canEdit}
+                      maxFontSizeMultiplier={1.15}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.discountPresetChipsRow}>
+                  {DISCOUNT_PRESET_LABELS.map(preset => {
+                    const isSelected = discountLabel === preset;
+                    return (
+                      <TouchableOpacity
+                        key={preset}
+                        disabled={!canEdit}
+                        style={[styles.discountPresetChip, isSelected && styles.discountPresetChipActive]}
+                        onPress={() => setDiscountLabel(preset)}
+                      >
+                        <Text
+                          style={[styles.discountPresetChipText, isSelected && styles.discountPresetChipTextActive]}
+                          maxFontSizeMultiplier={1.15}
+                        >
+                          {preset}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {(() => {
+                  const baseAmt = parseFloat(amount) || 0;
+                  const discAmt = parseFloat(discountAmount) || 0;
+                  if (baseAmt <= 0 || discAmt <= 0) return null;
+                  const netPaid =
+                    discountCalcMode === 'subtract'
+                      ? Math.max(0, Math.round((baseAmt - discAmt) * 100) / 100)
+                      : baseAmt;
+                  const origAmt =
+                    discountCalcMode === 'subtract'
+                      ? baseAmt
+                      : Math.round((baseAmt + discAmt) * 100) / 100;
+                  const isInvalid = discountCalcMode === 'subtract' && discAmt >= baseAmt;
+                  return (
+                    <View style={[styles.discountSummaryBanner, isInvalid && styles.discountSummaryBannerError]}>
+                      <Text
+                        style={[styles.discountSummaryText, isInvalid && styles.discountSummaryTextError]}
+                        maxFontSizeMultiplier={1.15}
+                      >
+                        {isInvalid
+                          ? '⚠️ 折抵金額不可大於或等於原價'
+                          : `💡 原價 $${origAmt.toLocaleString()} － ${discountLabel || '折抵'} $${discAmt.toLocaleString()} ＝ 實付入帳 $${netPaid.toLocaleString()} (對帳完全相符)`}
+                      </Text>
+                    </View>
+                  );
+                })()}
+              </View>
+            )}
 
             {/* 分類選擇 */}
             <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>分類</Text>
@@ -2503,5 +2727,164 @@ const styles = StyleSheet.create({
     color: '#B45309',
     marginTop: 3,
     fontWeight: '600',
+  },
+  discountToggleChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  discountToggleChipActive: {
+    backgroundColor: '#059669',
+    borderColor: '#047857',
+  },
+  discountToggleChipText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#047857',
+  },
+  discountToggleChipTextActive: {
+    color: '#FFFFFF',
+  },
+  discountPanelBox: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+  },
+  discountModeRow: {
+    flexDirection: 'row',
+    backgroundColor: '#DCFCE7',
+    borderRadius: 8,
+    padding: 3,
+    marginBottom: 8,
+    gap: 4,
+  },
+  discountModeBtn: {
+    flex: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  discountModeBtnActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  discountModeBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#166534',
+  },
+  discountModeBtnTextActive: {
+    fontWeight: '800',
+    color: '#065F46',
+  },
+  discountInputRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  discountAmountBox: {
+    flex: 0.42,
+  },
+  discountLabelBox: {
+    flex: 0.58,
+  },
+  discountInputLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#065F46',
+    marginBottom: 4,
+  },
+  discountAmountInputInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    height: 36,
+  },
+  discountCurrencyPrefix: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#059669',
+    marginRight: 4,
+  },
+  discountAmountInput: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#065F46',
+    minWidth: 0,
+    padding: 0,
+  },
+  discountLabelInput: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    height: 36,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  discountPresetChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 5,
+  },
+  discountPresetChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  discountPresetChipActive: {
+    backgroundColor: '#059669',
+    borderColor: '#047857',
+  },
+  discountPresetChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#047857',
+  },
+  discountPresetChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  discountSummaryBanner: {
+    marginTop: 8,
+    backgroundColor: '#DCFCE7',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+  },
+  discountSummaryBannerError: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+  },
+  discountSummaryText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#065F46',
+  },
+  discountSummaryTextError: {
+    color: '#DC2626',
   },
 });
