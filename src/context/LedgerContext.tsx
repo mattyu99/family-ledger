@@ -2143,7 +2143,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // 輔助函式：載入指定帳本的完整資料 (分類、成員、交易、即時推播)
   const loadLedgerData = async (targetLedger: Ledger, authUserId: string) => {
     setCurrentLedger(targetLedger);
-    setRecurringRules([]); // 先行清空記憶體中的週期規則，避免在非同步載入過程閃現上一本帳本之規則
+    // 僅清除非當前目標帳本之規則；若為同帳本重整則保留現有快取，避免雲端載入期間「待繳」橫條短暫消失閃爍
+    setRecurringRules(prev => prev.filter(r => r.ledger_id === targetLedger.id));
+    try {
+      const cachedRulesStr = await AsyncStorage.getItem(`${STORAGE_KEYS.RECURRING_RULES}_${targetLedger.id}`);
+      if (cachedRulesStr) {
+        const parsed = JSON.parse(cachedRulesStr);
+        if (Array.isArray(parsed)) {
+          const valid = parsed.filter((r: any) => r.ledger_id === targetLedger.id);
+          if (valid.length > 0) {
+            setRecurringRules(valid);
+          }
+        }
+      }
+    } catch {}
     await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(targetLedger));
 
     // 記錄當前帳本最後造訪時間，並消除本機該帳本的未讀紅點標記
@@ -4562,7 +4575,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const switchLedgerById = async (targetLedgerId: string) => {
     try {
       setIsAdminMode(false);
-      setRecurringRules([]); // 切換前立即清空前一帳本之週期規則，防止畫面殘留
+      setRecurringRules(prev => prev.filter(r => r.ledger_id === targetLedgerId));
       const { data: { session } } = await supabase.auth.getSession();
       const authUserId = session?.user?.id;
       if (!authUserId) return;
