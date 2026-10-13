@@ -432,11 +432,13 @@ export const sortAccountsByUser = (
 export const DISCOUNT_PRESET_LABELS: string[] = [
   'LINE Points',
   '街口幣',
+  'mo幣',
   '全點',
   '悠遊付回饋',
   '全聯福利點',
   'OPENPOINT',
   '全家點數',
+  '蝦皮幣',
   '好市多好多金',
   '小樹點',
   '折價券',
@@ -496,8 +498,11 @@ export const parseExpenseDiscount = (note?: string): ParsedExpenseDiscount => {
     };
   }
 
+  const isFullRebate = originalAmount !== undefined && originalAmount > 0 && originalAmount <= discountAmount;
   const badgeText = originalAmount
-    ? `🎁 ${discountLabel} 折 $${discountAmount.toLocaleString()} (原價 $${originalAmount.toLocaleString()})`
+    ? isFullRebate
+      ? `🎁 ${discountLabel} 全額折 $${discountAmount.toLocaleString()} (原價 $${originalAmount.toLocaleString()})`
+      : `🎁 ${discountLabel} 折 $${discountAmount.toLocaleString()} (原價 $${originalAmount.toLocaleString()})`
     : `🎁 ${discountLabel} 折 $${discountAmount.toLocaleString()}`;
 
   return {
@@ -524,9 +529,53 @@ export const formatExpenseNoteWithDiscount = (
   }
   const label = (discountLabel || '點數').trim() || '點數';
   const origPart =
-    originalAmount && originalAmount > amt ? ` · 原價 $${originalAmount.toLocaleString()}` : '';
+    originalAmount && originalAmount >= amt ? ` · 原價 $${originalAmount.toLocaleString()}` : '';
   const prefix = `【🎁 ${label} 折抵 $${amt.toLocaleString()}${origPart}】`;
   return clean ? `${prefix}${clean}` : prefix;
 };
+
+/**
+ * 智慧折抵名稱膠囊清單：自動從帳本歷史交易中學習常用的自訂折抵名稱（例如「mo幣」、「P幣」、「中信紅利」），
+ * 並按使用頻率與最近使用順序排在前方，無需修改程式碼即可自動加入快捷膠囊。
+ */
+export const getSmartDiscountLabels = (
+  transactions?: { note?: string; type?: string }[]
+): string[] => {
+  const counts = new Map<string, { label: string; count: number; firstIdx: number }>();
+  if (Array.isArray(transactions)) {
+    transactions.forEach((tx, idx) => {
+      if (tx.type && tx.type !== 'expense') return;
+      if (!tx.note || !tx.note.includes('🎁')) return;
+      const parsed = parseExpenseDiscount(tx.note);
+      if (parsed.hasDiscount && parsed.discountLabel) {
+        const key = parsed.discountLabel.toLowerCase();
+        const existing = counts.get(key);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          counts.set(key, { label: parsed.discountLabel, count: 1, firstIdx: idx });
+        }
+      }
+    });
+  }
+
+  const learned = Array.from(counts.values())
+    .sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return a.firstIdx - b.firstIdx;
+    })
+    .map(item => item.label);
+
+  const merged: string[] = [...learned];
+  const seenLower = new Set(learned.map(l => l.toLowerCase()));
+  for (const preset of DISCOUNT_PRESET_LABELS) {
+    if (!seenLower.has(preset.toLowerCase())) {
+      seenLower.add(preset.toLowerCase());
+      merged.push(preset);
+    }
+  }
+  return merged;
+};
+
 
 

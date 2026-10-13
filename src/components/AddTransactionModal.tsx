@@ -49,6 +49,7 @@ import {
   DISCOUNT_PRESET_LABELS,
   getRecommendedDiscountLabel,
   formatExpenseNoteWithDiscount,
+  getSmartDiscountLabels,
 } from '../lib/payment';
 import { getCategoryIcon } from '../lib/icons';
 import { MEMO_QUICK_TAGS, toggleMemoTag, isMemoTagActive } from '../lib/memo';
@@ -130,6 +131,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     categories,
     members,
     currentUser,
+    transactions,
     addTransaction,
     updateTransaction,
     transferAllowance,
@@ -139,6 +141,11 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     paymentAccounts,
     paymentMethods,
   } = useLedger();
+
+  const smartDiscountLabels = React.useMemo(
+    () => getSmartDiscountLabels(transactions),
+    [transactions]
+  );
 
   const [mode, setMode] = useState<'expense' | 'income' | 'allowance' | 'memo'>(initialMode);
   const [type, setType] = useState<TransactionType>('expense');
@@ -535,13 +542,17 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const previewOriginalAmount =
     parsedDiscountAmount > 0
       ? discountCalcMode === 'subtract'
-        ? parsedInputAmount
+        ? parsedInputAmount > 0
+          ? parsedInputAmount
+          : parsedDiscountAmount
         : Number((parsedInputAmount + parsedDiscountAmount).toFixed(2))
       : parsedInputAmount;
   const previewActualAmount =
     parsedDiscountAmount > 0
       ? discountCalcMode === 'subtract'
-        ? Math.max(0, Number((parsedInputAmount - parsedDiscountAmount).toFixed(2)))
+        ? parsedInputAmount > 0
+          ? Math.max(0, Number((parsedInputAmount - parsedDiscountAmount).toFixed(2)))
+          : 0
         : parsedInputAmount
       : parsedInputAmount;
 
@@ -553,17 +564,24 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       return handleMemoSubmit();
     }
 
-    const numAmount = parseFloat(amount);
-    if (isNaN(numAmount) || numAmount <= 0) {
+    const discNum = type === 'expense' && showDiscountPanel ? parseFloat(discountAmount) || 0 : 0;
+    const rawNum = parseFloat(amount);
+    const numAmount = isNaN(rawNum) ? 0 : rawNum;
+
+    if (discNum <= 0 && numAmount <= 0) {
       safeAlert('金額無效', '請輸入有效金額');
       return;
     }
 
-    const discNum = type === 'expense' && showDiscountPanel ? parseFloat(discountAmount) || 0 : 0;
-    if (discNum > 0 && discountCalcMode === 'subtract' && numAmount <= discNum) {
+    if (discNum > 0 && numAmount < 0) {
+      safeAlert('金額無效', '金額不可為負數');
+      return;
+    }
+
+    if (discNum > 0 && discountCalcMode === 'subtract' && numAmount > 0 && numAmount < discNum) {
       safeAlert(
-        '折抵金額過大',
-        '折抵金額需小於原價金額（若上方金額已填扣點後實付金額，請切換為「上方已填實付」）'
+        '折抵金額超出原價',
+        '折抵金額不可大於商品原價（若上方已填折抵後的實付金額，請切換為「✅ 上方已填實付」）'
       );
       return;
     }
@@ -571,14 +589,18 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     const finalAmount =
       discNum > 0
         ? discountCalcMode === 'subtract'
-          ? Number((numAmount - discNum).toFixed(2))
+          ? numAmount > 0
+            ? Math.max(0, Number((numAmount - discNum).toFixed(2)))
+            : 0
           : numAmount
         : numAmount;
 
     const finalOriginalAmount =
       discNum > 0
         ? discountCalcMode === 'subtract'
-          ? numAmount
+          ? numAmount > 0
+            ? numAmount
+            : discNum
           : Number((numAmount + discNum).toFixed(2))
         : undefined;
 
@@ -1221,7 +1243,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.discountLabelScroll}
                 >
-                  {DISCOUNT_PRESET_LABELS.map(lbl => {
+                  {smartDiscountLabels.map(lbl => {
                     const active = discountLabel === lbl;
                     return (
                       <TouchableOpacity
@@ -1250,7 +1272,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 <View style={styles.discountInputRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.discountFieldLabel} maxFontSizeMultiplier={1.08}>
-                      折抵名稱 (如 LINE Points、街口幣)
+                      折抵名稱 (自訂常輸會自動記憶為快捷膠囊)
                     </Text>
                     <TextInput
                       style={styles.discountTextInput}
@@ -1260,7 +1282,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         setDiscountLabelTouched(true);
                       }}
                       onFocus={() => scrollToInput(discountSectionY + 45, 210)}
-                      placeholder="例如：LINE Points"
+                      placeholder="例如：LINE Points、mo幣"
                       placeholderTextColor="#94A3B8"
                       maxFontSizeMultiplier={1.08}
                     />
@@ -1290,10 +1312,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   </View>
                 </View>
 
-                {parsedDiscountAmount > 0 && parsedInputAmount > 0 && (
+                {parsedDiscountAmount > 0 && (
                   <View style={styles.discountPreviewBanner}>
                     <Text style={styles.discountPreviewText} maxFontSizeMultiplier={1.08}>
-                      💡 實際入帳支出：
+                      {previewActualAmount === 0
+                        ? '🎉 全額點數折抵！實際入帳支出：'
+                        : '💡 實際入帳支出：'}
                       <Text style={styles.discountPreviewHighlight}>
                         {' '}NT$ {previewActualAmount.toLocaleString()}{' '}
                       </Text>
@@ -1898,7 +1922,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               ? '🎁 一鍵撥款 (自動建立雙向收支)'
               : mode === 'memo'
               ? '📌 儲存生活記事'
-              : mode === 'expense' && parsedDiscountAmount > 0 && parsedInputAmount > 0
+              : mode === 'expense' && parsedDiscountAmount > 0
               ? `儲存記帳 (實付 NT$ ${previewActualAmount.toLocaleString()} · 已折 $${parsedDiscountAmount.toLocaleString()})`
               : '儲存記帳'}
           </Text>

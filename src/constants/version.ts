@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 16;
+export const APP_BUILD_REVISION = 17;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,15 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.17',
+    date: '2026-10-13',
+    title: '支援「全額點數折抵（實付 $0 交易）」＋「折抵名稱智慧記憶自學習（內建 mo幣／蝦皮幣）」',
+    highlights: [
+      '全額回饋折抵（實付 NT$ 0）：無論上方填原價 150 + 折抵 150，或上方填 0 + 折抵 150，皆可儲存「實付 $0」之全額折抵消費，明細顯示「🎁 全額折 $150 (原價 $150)」',
+      '折抵名稱自動記憶學習：除內建新增「mo幣」、「蝦皮幣」外，系統會自動從帳本歷史交易中學習您自訂輸入過的折抵名稱（如 P幣、中信紅利等），依常用頻率自動排入快捷膠囊最前方，跨裝置同步免改程式',
+    ],
+  },
   {
     version: '1.0.5.16',
     date: '2026-10-13',

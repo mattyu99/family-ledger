@@ -42,6 +42,7 @@ import {
   getRecommendedDiscountLabel,
   parseExpenseDiscount,
   formatExpenseNoteWithDiscount,
+  getSmartDiscountLabels,
 } from '../lib/payment';
 import { getCategoryIcon } from '../lib/icons';
 import { MEMO_QUICK_TAGS, toggleMemoTag, isMemoTagActive } from '../lib/memo';
@@ -125,6 +126,11 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     paymentAccounts,
     paymentMethods,
   } = useLedger();
+
+  const smartDiscountLabels = React.useMemo(
+    () => getSmartDiscountLabels(transactions),
+    [transactions]
+  );
 
   const [type, setType] = useState<TransactionType>(() => transaction?.type || 'expense');
   const [amount, setAmount] = useState<string>(() => (transaction?.amount ? String(transaction.amount) : ''));
@@ -351,11 +357,19 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       setSelectedAccountId(transaction.account_id || '');
       setMerchant(transaction.merchant || '');
       if (transaction.type === 'memo') {
+        setAmount('');
         setNote(transaction.note || '');
         setShowDiscountPanel(false);
         setDiscountAmount('');
       } else {
         const parsedDisc = parseExpenseDiscount(transaction.note);
+        setAmount(
+          transaction.amount
+            ? String(transaction.amount)
+            : parsedDisc.hasDiscount
+            ? '0'
+            : ''
+        );
         setNote(parsedDisc.cleanNote);
         if (parsedDisc.hasDiscount) {
           setShowDiscountPanel(true);
@@ -574,31 +588,43 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       return;
     }
 
-    const numAmount = parseFloat(amount);
-    if (isNaN(numAmount) || numAmount <= 0) {
+    const parsedDiscount =
+      type === 'expense' && showDiscountPanel ? parseFloat(discountAmount) || 0 : 0;
+    const rawNum = parseFloat(amount);
+    const numAmount = isNaN(rawNum) ? 0 : rawNum;
+
+    if (parsedDiscount <= 0 && numAmount <= 0) {
       alert('請輸入有效金額');
       return;
     }
 
-    const parsedDiscount =
-      type === 'expense' && showDiscountPanel ? parseFloat(discountAmount) || 0 : 0;
+    if (parsedDiscount > 0 && numAmount < 0) {
+      alert('金額不可為負數');
+      return;
+    }
 
-    if (parsedDiscount > 0 && discountCalcMode === 'subtract' && parsedDiscount >= numAmount) {
-      const msg = '折抵金額不可大於或等於商品原價。\n若全額點數兌換($0)，建議記為生活備忘或直接輸入實付金額。';
+    if (parsedDiscount > 0 && discountCalcMode === 'subtract' && numAmount > 0 && parsedDiscount > numAmount) {
+      const msg = '折抵金額不可大於商品原價（若上方已填折抵後的實付金額，請切換為「✅ 上方已填實付」）。';
       if (Platform.OS === 'web') alert(msg);
       else Alert.alert('折抵金額超出原價', msg);
       return;
     }
 
     const finalAmount =
-      parsedDiscount > 0 && discountCalcMode === 'subtract'
-        ? Math.max(0, Math.round((numAmount - parsedDiscount) * 100) / 100)
+      parsedDiscount > 0
+        ? discountCalcMode === 'subtract'
+          ? numAmount > 0
+            ? Math.max(0, Math.round((numAmount - parsedDiscount) * 100) / 100)
+            : 0
+          : numAmount
         : numAmount;
 
     const finalOriginalAmount =
       parsedDiscount > 0
         ? discountCalcMode === 'subtract'
-          ? numAmount
+          ? numAmount > 0
+            ? numAmount
+            : parsedDiscount
           : Math.round((numAmount + parsedDiscount) * 100) / 100
         : undefined;
 
@@ -1394,7 +1420,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                     </View>
                     <TextInput
                       style={styles.discountLabelInput}
-                      placeholder="例如：LINE Points、街口幣"
+                      placeholder="例如：LINE Points、mo幣"
                       placeholderTextColor="#9CA3AF"
                       value={discountLabel}
                       onChangeText={setDiscountLabel}
@@ -1406,7 +1432,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 </View>
 
                 <View style={styles.discountPresetChipsRow}>
-                  {DISCOUNT_PRESET_LABELS.map(preset => {
+                  {smartDiscountLabels.map(preset => {
                     const isSelected = discountLabel === preset;
                     return (
                       <TouchableOpacity
@@ -1429,16 +1455,20 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 {(() => {
                   const baseAmt = parseFloat(amount) || 0;
                   const discAmt = parseFloat(discountAmount) || 0;
-                  if (baseAmt <= 0 || discAmt <= 0) return null;
+                  if (discAmt <= 0) return null;
                   const netPaid =
                     discountCalcMode === 'subtract'
-                      ? Math.max(0, Math.round((baseAmt - discAmt) * 100) / 100)
+                      ? baseAmt > 0
+                        ? Math.max(0, Math.round((baseAmt - discAmt) * 100) / 100)
+                        : 0
                       : baseAmt;
                   const origAmt =
                     discountCalcMode === 'subtract'
-                      ? baseAmt
+                      ? baseAmt > 0
+                        ? baseAmt
+                        : discAmt
                       : Math.round((baseAmt + discAmt) * 100) / 100;
-                  const isInvalid = discountCalcMode === 'subtract' && discAmt >= baseAmt;
+                  const isInvalid = discountCalcMode === 'subtract' && baseAmt > 0 && discAmt > baseAmt;
                   return (
                     <View style={[styles.discountSummaryBanner, isInvalid && styles.discountSummaryBannerError]}>
                       <Text
@@ -1446,7 +1476,9 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                         maxFontSizeMultiplier={1.15}
                       >
                         {isInvalid
-                          ? '⚠️ 折抵金額不可大於或等於原價'
+                          ? '⚠️ 折抵金額不可大於商品原價'
+                          : netPaid === 0
+                          ? `🎉 全額點數折抵！原價 $${origAmt.toLocaleString()} － ${discountLabel || '折抵'} $${discAmt.toLocaleString()} ＝ 實付入帳 $0`
                           : `💡 原價 $${origAmt.toLocaleString()} － ${discountLabel || '折抵'} $${discAmt.toLocaleString()} ＝ 實付入帳 $${netPaid.toLocaleString()} (對帳完全相符)`}
                       </Text>
                     </View>
