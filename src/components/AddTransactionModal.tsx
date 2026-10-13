@@ -66,7 +66,7 @@ const CATEGORY_MERCHANT_PRESETS: Record<string, string[]> = {
   entertainment: ['威秀影城', 'Netflix', 'Spotify', 'KTV', 'Steam', 'YouTube'],
   medical: ['診所', '大樹藥局', '屈臣氏', '康是美', '醫院', '健保局'],
   education: ['幼兒園', '安親班', '誠品', '金石堂', '補習班'],
-  income: ['公司薪資', '年終獎金', '股票股利', '銀行利息', '副業兼職'],
+  income: ['公司薪資', '年終獎金', '股票股利', '銀行利息', '現金回饋折抵', '小樹點折抵', '好市多好多金', '副業兼職'],
 };
 
 const getCategoryPresetMerchants = (catName?: string, type?: TransactionType): string[] => {

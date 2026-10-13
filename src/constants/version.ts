@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 13;
+export const APP_BUILD_REVISION = 14;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.14',
+    date: '2026-10-13',
+    title: '信用卡對帳全面升級：支援「雲端電子帳單歸檔（PDF／圖片）」＋「刷卡回饋折抵＆退刷自動扣減」',
+    highlights: [
+      '電子帳單雲端歸檔（Supabase Storage）：對帳單支援依卡片與期別上傳銀行 PDF 電子帳單或截圖（圖片自動輕量壓縮、PDF 保留原生身分證加密），月份標籤自動標示 📎 圖示',
+      '歷年「🗂️ 帳單庫」一鍵總覽：對帳頁頂部提供「🗂️ 帳單庫」總覽，可跨月份／跨卡片快速查找、預覽、下載或刪除歷年電子帳單，並即時顯示 1 GB 雲端儲存空間用量',
+      '刷卡回饋折抵與退刷自動扣減：對帳看板新增「🎁 ＋記一筆回饋折抵 / 退刷」快捷登記（支援現金回饋、小樹點、好市多好多金、LINE Points、退貨退刷），自動歸入當期帳單並從「本期實際應繳」精準扣除',
+    ],
+  },
   {
     version: '1.0.5.13',
     date: '2026-10-13',

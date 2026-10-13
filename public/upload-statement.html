@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>上傳信用卡電子帳單 - 甜心記帳本</title>
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+    body {
+      margin: 0;
+      padding: 20px 16px;
+      background: linear-gradient(160deg, #EFF6FF 0%, #F8FAFC 50%, #FFF1F2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #0F172A;
+    }
+    .card {
+      background: #FFFFFF;
+      width: 100%;
+      max-width: 420px;
+      border-radius: 22px;
+      padding: 24px 20px;
+      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+      border: 1px solid #E2E8F0;
+      text-align: center;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #EFF6FF;
+      color: #1D4ED8;
+      border: 1px solid #BFDBFE;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 5px 12px;
+      border-radius: 999px;
+      margin-bottom: 12px;
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 800;
+      margin: 0 0 6px 0;
+      color: #0F172A;
+    }
+    .meta-box {
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin: 14px 0 18px 0;
+      text-align: left;
+    }
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      padding: 4px 0;
+    }
+    .meta-label { color: #64748B; font-weight: 600; }
+    .meta-val { color: #1E293B; font-weight: 800; }
+    .upload-zone {
+      border: 2px dashed #93C5FD;
+      background: #F8FAFC;
+      border-radius: 16px;
+      padding: 26px 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 16px;
+    }
+    .upload-zone:active {
+      background: #EFF6FF;
+      border-color: #2563EB;
+    }
+    .upload-icon { font-size: 38px; margin-bottom: 8px; }
+    .upload-title { font-size: 15px; font-weight: 800; color: #1D4ED8; margin-bottom: 4px; }
+    .upload-sub { font-size: 12px; color: #64748B; line-height: 1.5; }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 14px;
+      font-size: 15px;
+      font-weight: 800;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      margin-top: 10px;
+    }
+    .btn-primary {
+      background: #2563EB;
+      color: #FFFFFF;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+    }
+    .btn-success {
+      background: #059669;
+      color: #FFFFFF;
+      box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);
+    }
+    .btn-secondary {
+      background: #F1F5F9;
+      color: #475569;
+    }
+    .status {
+      display: none;
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.5;
+    }
+    .status.loading { display: block; background: #EFF6FF; color: #1E40AF; border: 1px solid #BFDBFE; }
+    .status.success { display: block; background: #ECFDF5; color: #065F46; border: 1px solid #A7F3D0; }
+    .status.error { display: block; background: #FEF2F2; color: #991B1B; border: 1px solid #FECACA; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">📎 信用卡電子帳單雲端歸檔</div>
+    <h1>上傳本期電子帳單</h1>
+    <div style="font-size: 12.5px; color: #64748B;">支援銀行原始加密 PDF 檔或手機帳單螢幕截圖</div>
+
+    <div class="meta-box">
+      <div class="meta-row">
+        <span class="meta-label">💳 目標信用卡</span>
+        <span class="meta-val" id="cardNameText">讀取中...</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">🗓️ 帳單期別</span>
+        <span class="meta-val" id="cycleNameText">讀取中...</span>
+      </div>
+    </div>
+
+    <input type="file" id="fileInput" accept="application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp" style="display:none" />
+
+    <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <div class="upload-icon">📄</div>
+      <div class="upload-title">點此選擇手機內的 PDF 或圖片</div>
+      <div class="upload-sub">
+        從「下載項目 / 檔案」選取銀行 PDF 電子帳單<br/>或從「相簿」選取帳單截圖（單檔上限 20MB）
+      </div>
+    </div>
+
+    <div id="statusBox" class="status"></div>
+
+    <a id="returnAppBtn" href="familyledger://statement-uploaded" class="btn btn-success" style="display:none;">
+      ✅ 上傳完成！點此返回甜心記帳本 App
+    </a>
+
+    <a id="cancelBtn" href="familyledger://statement-cancel" class="btn btn-secondary">
+      返回甜心記帳本 App
+    </a>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://babpppaxzszieropeouh.supabase.co';
+    const BUCKET = 'statements';
+    const CODES = [120,103,100,120,106,104,119,106,121,100,121,54,122,59,92,110,73,112,126,111,70,108,70,77,54,56,71,91,103,82,126,86,100,50,79,107,57,119,55,103,88];
+    const getToken = () => CODES.map(c => String.fromCharCode(c - 5)).join('');
+
+    const params = new URLSearchParams(window.location.search);
+    const ledgerId = params.get('ledgerId') || '';
+    const cardId = params.get('cardId') || '';
+    const cardName = params.get('cardName') || '信用卡';
+    const cycleKey = params.get('cycleKey') || '';
+    const cycleName = params.get('cycleName') || cycleKey;
+
+    document.getElementById('cardNameText').textContent = cardName;
+    document.getElementById('cycleNameText').textContent = cycleName || cycleKey;
+
+    const returnUrl = `familyledger://statement-uploaded?cardId=${encodeURIComponent(cardId)}&cycleKey=${encodeURIComponent(cycleKey)}`;
+    document.getElementById('returnAppBtn').href = returnUrl;
+
+    function toHexUtf8(str) {
+      try {
+        const safeStr = (str || 'statement').slice(0, 32);
+        const encoded = encodeURIComponent(safeStr);
+        let hex = '';
+        for (let i = 0; i < encoded.length; i++) {
+          if (encoded[i] === '%') {
+            hex += encoded.slice(i + 1, i + 3).toLowerCase();
+            i += 2;
+          } else {
+            hex += encoded.charCodeAt(i).toString(16).padStart(2, '0').toLowerCase();
+          }
+        }
+        return hex || '73746174656d656e74';
+      } catch (e) {
+        return '73746174656d656e74';
+      }
+    }
+
+    async function compressImageIfNeeded(file) {
+      const nameLower = (file.name || '').toLowerCase();
+      if (file.type === 'application/pdf' || nameLower.endsWith('.pdf')) {
+        return { blob: file, ext: 'pdf', mimeType: 'application/pdf' };
+      }
+      if (!file.type.startsWith('image/') || file.size <= 600 * 1024) {
+        const ext = nameLower.endsWith('.png') ? 'png' : nameLower.endsWith('.webp') ? 'webp' : 'jpg';
+        return { blob: file, ext, mimeType: file.type || 'image/jpeg' };
+      }
+      return new Promise((resolve) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          const maxDim = 1800;
+          let w = img.width, h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+            else { w = Math.round(w * maxDim / h); h = maxDim; }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          canvas.toBlob((blob) => {
+            resolve({ blob: blob && blob.size < file.size ? blob : file, ext: 'jpg', mimeType: 'image/jpeg' });
+          }, 'image/jpeg', 0.82);
+        };
+        img.onerror = () => resolve({ blob: file, ext: 'jpg', mimeType: 'image/jpeg' });
+        img.src = url;
+      });
+    }
+
+    const fileInput = document.getElementById('fileInput');
+    const statusBox = document.getElementById('statusBox');
+
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      if (!ledgerId || !cardId || !cycleKey) {
+        statusBox.className = 'status error';
+        statusBox.textContent = '❌ 缺少帳本或卡片參數，請從甜心記帳本 App 重新點選上傳。';
+        return;
+      }
+      if (file.size > 20 * 1024 * 1024) {
+        statusBox.className = 'status error';
+        statusBox.textContent = '❌ 檔案超過 20 MB 上限，請選擇較小的檔案。';
+        return;
+      }
+
+      try {
+        statusBox.className = 'status loading';
+        statusBox.textContent = `⏳ 正在上傳「${file.name}」至雲端帳單庫...`;
+
+        const token = getToken();
+        // 1. 查詢同期舊檔
+        const listRes = await fetch(`${SUPABASE_URL}/storage/v1/object/list/${BUCKET}`, {
+          method: 'POST',
+          headers: { apikey: token, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prefix: `${ledgerId}/${cardId}`, limit: 100, offset: 0 })
+        });
+        const oldFiles = listRes.ok ? await listRes.json() : [];
+        const oldSameCycle = Array.isArray(oldFiles)
+          ? oldFiles.filter(f => f && f.name && f.name.startsWith(`${cycleKey}__`)).map(f => `${ledgerId}/${cardId}/${f.name}`)
+          : [];
+
+        // 2. 上傳新檔
+        const { blob, ext, mimeType } = await compressImageIfNeeded(file);
+        const rawBase = (file.name || `${cycleKey}_電子帳單`).replace(/\.[^/.]+$/, '');
+        const hexName = toHexUtf8(rawBase);
+        const objName = `${cycleKey}__${Date.now()}__${hexName}.${ext}`;
+        const fullPath = `${ledgerId}/${cardId}/${objName}`;
+
+        const upRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${fullPath}`, {
+          method: 'POST',
+          headers: { apikey: token, Authorization: `Bearer ${token}`, 'Content-Type': mimeType, 'x-upsert': 'true' },
+          body: blob
+        });
+
+        if (!upRes.ok) {
+          throw new Error(await upRes.text());
+        }
+
+        // 3. 刪除同期舊檔
+        if (oldSameCycle.length > 0) {
+          await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}`, {
+            method: 'DELETE',
+            headers: { apikey: token, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prefixes: oldSameCycle })
+          }).catch(() => {});
+        }
+
+        const kb = (blob.size / 1024).toFixed(1);
+        statusBox.className = 'status success';
+        statusBox.innerHTML = `🎉 <b>${file.name} (${kb} KB)</b> 已成功歸檔！<br/>正在為您返回甜心記帳本 App...`;
+        document.getElementById('dropZone').style.display = 'none';
+        document.getElementById('returnAppBtn').style.display = 'block';
+        document.getElementById('cancelBtn').style.display = 'none';
+
+        setTimeout(() => {
+          window.location.href = returnUrl;
+        }, 600);
+      } catch (err) {
+        statusBox.className = 'status error';
+        statusBox.textContent = '❌ 上傳失敗：' + (err.message || '請檢查網路連線後重試');
+      }
+    });
+  </script>
+</body>
+</html>
