@@ -13,7 +13,8 @@ import {
 } from 'react-native';
 import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
-import { parseMemoNote, getLocalDateYmd } from '../lib/memo';
+import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag } from '../lib/memo';
+import { formatMemoReminderBadge } from '../lib/lunar';
 import { HorizontalScrollView } from './HorizontalScrollView';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
@@ -101,17 +102,30 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
   }, [activeTab, todayAndOverdueMemos, upcomingMemos, undatedMemos, completedMemos, activeMemos]);
 
   // 計算距今天數狀態
-  const getDueStatus = (reminderDateStr?: string) => {
+  const getDueStatus = (item: Transaction) => {
+    const decoded = decodeMemoMerchantTag(item.merchant);
+    const reminderDateStr = item.reminder_date || decoded.reminderDate;
     if (!reminderDateStr) return null;
+    const cal = item.reminder_calendar || decoded.reminderCalendar;
+    const rep = item.reminder_repeat || decoded.reminderRepeat;
+    const badge = formatMemoReminderBadge(reminderDateStr, cal, rep);
+    const detailSuffix = badge ? ` · ${badge.fullText}` : ` (${reminderDateStr.slice(5)})`;
+
     if (reminderDateStr === todayYmd) {
-      return { label: '今天到期', type: 'today', color: '#EA580C', bg: '#FFF7ED', border: '#FDBA74' };
+      return {
+        label: `今天到期${badge?.isLunar || (rep && rep !== 'once') ? detailSuffix : ''}`,
+        type: 'today',
+        color: '#EA580C',
+        bg: '#FFF7ED',
+        border: '#FDBA74',
+      };
     }
     const rDate = new Date(reminderDateStr + 'T00:00:00');
     const tDate = new Date(todayYmd + 'T00:00:00');
     const diffDays = Math.round((rDate.getTime() - tDate.getTime()) / (1000 * 60 * 60 * 24));
     if (diffDays < 0) {
       return {
-        label: `逾期 ${Math.abs(diffDays)} 天 (${reminderDateStr.slice(5)})`,
+        label: `逾期 ${Math.abs(diffDays)} 天${detailSuffix}`,
         type: 'overdue',
         color: '#DC2626',
         bg: '#FEF2F2',
@@ -119,7 +133,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
       };
     }
     return {
-      label: `還有 ${diffDays} 天 (${reminderDateStr.slice(5)})`,
+      label: `還有 ${diffDays} 天${detailSuffix}`,
       type: 'upcoming',
       color: '#2563EB',
       bg: '#EFF6FF',
@@ -273,7 +287,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
               displayList.map((item) => {
                 const isCompleted = !!item.is_settled;
                 const memoData = parseMemoNote(item.note);
-                const dueStatus = getDueStatus(item.reminder_date);
+                const dueStatus = getDueStatus(item);
                 const payer = getMemberById(item.paid_by) || item.payer_profile;
                 const completer = item.completed_by ? getMemberById(item.completed_by) : undefined;
                 const date = new Date(item.transacted_at);

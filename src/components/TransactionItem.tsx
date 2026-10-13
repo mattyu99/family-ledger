@@ -4,7 +4,8 @@ import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { getCategoryIcon } from '../lib/icons';
 import { formatPaymentLabel } from '../lib/payment';
-import { parseMemoNote } from '../lib/memo';
+import { parseMemoNote, decodeMemoMerchantTag } from '../lib/memo';
+import { formatMemoReminderBadge } from '../lib/lunar';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
   <RNText
@@ -35,7 +36,11 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
 
   if (transaction.type === 'memo') {
     const isCompleted = !!transaction.is_settled;
-    const reminderDate = transaction.reminder_date || (transaction.merchant?.startsWith('remind:') ? transaction.merchant.replace('remind:', '') : undefined);
+    const decodedMerchant = decodeMemoMerchantTag(transaction.merchant);
+    const reminderDate = transaction.reminder_date || decodedMerchant.reminderDate;
+    const reminderCal = transaction.reminder_calendar || decodedMerchant.reminderCalendar;
+    const reminderRep = transaction.reminder_repeat || decodedMerchant.reminderRepeat;
+    const reminderBadge = formatMemoReminderBadge(reminderDate, reminderCal, reminderRep);
     const memoData = parseMemoNote(transaction.note, category?.name, getCategoryIcon(category?.icon));
     const completer = transaction.completed_by ? getMemberById(transaction.completed_by) : undefined;
     const linkedExpense = transaction.linked_transaction_id ? transactions.find(t => t.id === transaction.linked_transaction_id && t.type !== 'memo') : undefined;
@@ -115,7 +120,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
               !!reminderDate && (
                 <View style={styles.memoReminderBadge}>
                   <Text style={styles.memoReminderBadgeText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    ⏰ 提醒：{reminderDate}
+                    {reminderBadge?.isLunar ? '🏮 ' : '⏰ '}{reminderBadge?.fullText || `提醒：${reminderDate}`}
                   </Text>
                 </View>
               )

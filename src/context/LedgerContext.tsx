@@ -6,7 +6,8 @@ import { supabase, isConfigured } from '../lib/supabase';
 import { generateUUID } from '../lib/uuid';
 import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS } from '../lib/payment';
 import { DEFAULT_RECURRING_PRESETS, getCurrentPeriodKey, getBillPeriodLabel, getInstallmentInfo } from '../lib/recurring';
-import { parseMemoNote } from '../lib/memo';
+import { parseMemoNote, encodeMemoMerchantTag, decodeMemoMerchantTag } from '../lib/memo';
+import { CalendarSystem, MemoRepeatFrequency, getNextMemoReminderDate, formatMemoReminderBadge } from '../lib/lunar';
 import { APP_FULL_VERSION } from '../constants/version';
 import { getDeviceId, getDeviceName, getDevicePlatform } from '../lib/device';
 
@@ -233,6 +234,8 @@ interface LedgerContextType {
     merchant?: string;
     note?: string;
     reminder_date?: string;
+    reminder_calendar?: CalendarSystem;
+    reminder_repeat?: MemoRepeatFrequency;
     completed_by?: string;
     transacted_at?: string;
     payment_method?: PaymentMethod;
@@ -252,6 +255,8 @@ interface LedgerContextType {
       merchant?: string;
       note?: string;
       reminder_date?: string;
+      reminder_calendar?: CalendarSystem;
+      reminder_repeat?: MemoRepeatFrequency;
       completed_by?: string;
       completion_note?: string;
       linked_transaction_id?: string;
@@ -943,9 +948,15 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                   parsedNote = match[2];
                 }
               }
+              const decodedLocalMemo = decodeMemoMerchantTag(parsedMerchant);
               return {
                 ...t,
-                merchant: parsedMerchant || undefined,
+                type: decodedLocalMemo.isMemo ? 'memo' : t.type,
+                reminder_date: decodedLocalMemo.reminderDate || t.reminder_date,
+                reminder_calendar: decodedLocalMemo.reminderCalendar || t.reminder_calendar,
+                reminder_repeat: decodedLocalMemo.reminderRepeat || t.reminder_repeat,
+                completed_by: decodedLocalMemo.completedBy || t.completed_by,
+                merchant: decodedLocalMemo.isMemo ? undefined : (parsedMerchant || undefined),
                 note: parsedNote || '',
                 category: matchedCat || t.category,
               };
@@ -1147,20 +1158,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
 
           let reminderDate: string | undefined = undefined;
+          let reminderCalendar: CalendarSystem | undefined = newRow.reminder_calendar;
+          let reminderRepeat: MemoRepeatFrequency | undefined = newRow.reminder_repeat;
           let completedBy: string | undefined = newRow.completed_by;
           let resolvedType: TransactionType = newRow.type;
 
-          if (parsedMerchant?.startsWith('remind:') || parsedMerchant?.startsWith('memo')) {
+          const decodedMemo = decodeMemoMerchantTag(parsedMerchant);
+          if (decodedMemo.isMemo) {
             resolvedType = 'memo';
-            let rawStr = parsedMerchant;
-            if (rawStr.includes('|done:')) {
-              const parts = rawStr.split('|done:');
-              rawStr = parts[0];
-              completedBy = parts[1] || undefined;
-            }
-            if (rawStr.startsWith('remind:')) {
-              reminderDate = rawStr.replace('remind:', '') || undefined;
-            }
+            reminderDate = decodedMemo.reminderDate;
+            reminderCalendar = decodedMemo.reminderCalendar;
+            reminderRepeat = decodedMemo.reminderRepeat;
+            if (decodedMemo.completedBy) completedBy = decodedMemo.completedBy;
             parsedMerchant = undefined;
           } else if (newRow.type === 'memo' || (newRow.type === 'transfer' && Number(newRow.amount) === 0)) {
             resolvedType = 'memo';
@@ -1177,6 +1186,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               ...newRow,
               type: resolvedType,
               reminder_date: reminderDate || newRow.reminder_date,
+              reminder_calendar: reminderCalendar || newRow.reminder_calendar,
+              reminder_repeat: reminderRepeat || newRow.reminder_repeat,
               completed_by: completedBy || newRow.completed_by,
               merchant: parsedMerchant || undefined,
               note: parsedNote || '',
@@ -1252,20 +1263,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
 
           let reminderDate: string | undefined = undefined;
+          let reminderCalendar: CalendarSystem | undefined = updatedRow.reminder_calendar;
+          let reminderRepeat: MemoRepeatFrequency | undefined = updatedRow.reminder_repeat;
           let completedBy: string | undefined = updatedRow.completed_by;
           let resolvedType: TransactionType = updatedRow.type;
 
-          if (parsedMerchant?.startsWith('remind:') || parsedMerchant?.startsWith('memo')) {
+          const decodedMemo = decodeMemoMerchantTag(parsedMerchant);
+          if (decodedMemo.isMemo) {
             resolvedType = 'memo';
-            let rawStr = parsedMerchant;
-            if (rawStr.includes('|done:')) {
-              const parts = rawStr.split('|done:');
-              rawStr = parts[0];
-              completedBy = parts[1] || undefined;
-            }
-            if (rawStr.startsWith('remind:')) {
-              reminderDate = rawStr.replace('remind:', '') || undefined;
-            }
+            reminderDate = decodedMemo.reminderDate;
+            reminderCalendar = decodedMemo.reminderCalendar;
+            reminderRepeat = decodedMemo.reminderRepeat;
+            if (decodedMemo.completedBy) completedBy = decodedMemo.completedBy;
             parsedMerchant = undefined;
           } else if (updatedRow.type === 'memo' || (updatedRow.type === 'transfer' && Number(updatedRow.amount) === 0)) {
             resolvedType = 'memo';
@@ -1286,6 +1295,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     ...updatedRow,
                     type: resolvedType,
                     reminder_date: reminderDate !== undefined ? reminderDate : t.reminder_date,
+                    reminder_calendar: reminderCalendar !== undefined ? reminderCalendar : t.reminder_calendar,
+                    reminder_repeat: reminderRepeat !== undefined ? reminderRepeat : t.reminder_repeat,
                     completed_by: updatedRow.is_settled ? (completedBy || t.completed_by) : undefined,
                     merchant: parsedMerchant || undefined,
                     note: parsedNote || '',
@@ -2572,19 +2583,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
           }
           let reminderDate: string | undefined = undefined;
+          let reminderCalendar: CalendarSystem | undefined = t.reminder_calendar;
+          let reminderRepeat: MemoRepeatFrequency | undefined = t.reminder_repeat;
           let completedBy: string | undefined = t.completed_by;
           let resolvedType: TransactionType = t.type;
-          if (parsedMerchant?.startsWith('remind:') || parsedMerchant?.startsWith('memo')) {
+          const decodedMemo = decodeMemoMerchantTag(parsedMerchant);
+          if (decodedMemo.isMemo) {
             resolvedType = 'memo';
-            let rawStr = parsedMerchant;
-            if (rawStr.includes('|done:')) {
-              const parts = rawStr.split('|done:');
-              rawStr = parts[0];
-              completedBy = parts[1] || undefined;
-            }
-            if (rawStr.startsWith('remind:')) {
-              reminderDate = rawStr.replace('remind:', '') || undefined;
-            }
+            reminderDate = decodedMemo.reminderDate;
+            reminderCalendar = decodedMemo.reminderCalendar;
+            reminderRepeat = decodedMemo.reminderRepeat;
+            if (decodedMemo.completedBy) completedBy = decodedMemo.completedBy;
             parsedMerchant = undefined;
           } else if (t.type === 'memo' || (t.type === 'transfer' && Number(t.amount) === 0)) {
             resolvedType = 'memo';
@@ -2598,6 +2607,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             ...t,
             type: resolvedType,
             reminder_date: reminderDate || t.reminder_date,
+            reminder_calendar: reminderCalendar || t.reminder_calendar,
+            reminder_repeat: reminderRepeat || t.reminder_repeat,
             completed_by: completedBy || t.completed_by,
             merchant: parsedMerchant || undefined,
             note: parsedNote || '',
@@ -5384,6 +5395,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     merchant?: string;
     note?: string;
     reminder_date?: string;
+    reminder_calendar?: CalendarSystem;
+    reminder_repeat?: MemoRepeatFrequency;
     completed_by?: string;
     transacted_at?: string;
     payment_method?: PaymentMethod;
@@ -5395,12 +5408,24 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }): Promise<string> => {
     const txId = data.id || generateUUID();
     let cleanMerchant = data.merchant ? data.merchant.trim() : undefined;
+    const effectiveReminderCal: CalendarSystem | undefined =
+      data.type === 'memo' && data.reminder_date
+        ? (data.reminder_repeat === 'lunar_1_15' || data.reminder_repeat === 'lunar_2_16'
+            ? 'lunar'
+            : (data.reminder_calendar || 'solar'))
+        : undefined;
+    const effectiveReminderRep: MemoRepeatFrequency | undefined =
+      data.type === 'memo' && data.reminder_date
+        ? (data.reminder_repeat || 'once')
+        : undefined;
+
     if (data.type === 'memo') {
-      let memoTag = data.reminder_date ? `remind:${data.reminder_date}` : 'memo';
-      if (data.completed_by) {
-        memoTag = `${memoTag}|done:${data.completed_by}`;
-      }
-      cleanMerchant = memoTag;
+      cleanMerchant = encodeMemoMerchantTag({
+        reminderDate: data.reminder_date,
+        reminderCalendar: effectiveReminderCal,
+        reminderRepeat: effectiveReminderRep,
+        completedBy: data.completed_by,
+      });
     } else if (cleanMerchant) {
       recordMerchant(cleanMerchant);
     }
@@ -5453,6 +5478,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       amount: data.type === 'memo' ? 0 : (data.amount || 0),
       type: data.type,
       reminder_date: data.reminder_date,
+      reminder_calendar: effectiveReminderCal,
+      reminder_repeat: effectiveReminderRep,
       completed_by: data.completed_by,
       completion_note: data.completion_note || undefined,
       linked_transaction_id: data.linked_transaction_id || undefined,
@@ -5893,6 +5920,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       merchant?: string;
       note?: string;
       reminder_date?: string;
+      reminder_calendar?: CalendarSystem;
+      reminder_repeat?: MemoRepeatFrequency;
       completed_by?: string;
       completion_note?: string;
       linked_transaction_id?: string;
@@ -5907,20 +5936,38 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const targetTx = transactions.find(t => t.id === id);
       const isTargetMemo = data.type === 'memo' || targetTx?.type === 'memo';
       let cleanMerchant = data.merchant !== undefined ? (data.merchant ? data.merchant.trim() : undefined) : undefined;
+
+      let effectiveReminder: string | undefined;
+      let effectiveCalendar: CalendarSystem | undefined;
+      let effectiveRepeat: MemoRepeatFrequency | undefined;
+      let effectiveSettled: boolean | undefined;
+
       if (isTargetMemo) {
-        const effectiveSettled = data.is_settled !== undefined ? data.is_settled : targetTx?.is_settled;
+        effectiveSettled = data.is_settled !== undefined ? data.is_settled : targetTx?.is_settled;
         const effectiveCompletedBy = effectiveSettled
           ? (data.completed_by !== undefined ? data.completed_by : targetTx?.completed_by)
           : undefined;
-        const effectiveReminder = data.reminder_date !== undefined
+        effectiveReminder = data.reminder_date !== undefined
           ? (data.reminder_date || undefined)
           : targetTx?.reminder_date;
+        const rawRepeat = data.reminder_repeat !== undefined
+          ? data.reminder_repeat
+          : (targetTx?.reminder_repeat || 'once');
+        const rawCal = data.reminder_calendar !== undefined
+          ? data.reminder_calendar
+          : (targetTx?.reminder_calendar || 'solar');
 
-        let memoTag = effectiveReminder ? `remind:${effectiveReminder}` : 'memo';
-        if (effectiveCompletedBy) {
-          memoTag = `${memoTag}|done:${effectiveCompletedBy}`;
-        }
-        cleanMerchant = memoTag;
+        effectiveCalendar = effectiveReminder
+          ? (rawRepeat === 'lunar_1_15' || rawRepeat === 'lunar_2_16' ? 'lunar' : rawCal)
+          : undefined;
+        effectiveRepeat = effectiveReminder ? rawRepeat : undefined;
+
+        cleanMerchant = encodeMemoMerchantTag({
+          reminderDate: effectiveReminder,
+          reminderCalendar: effectiveCalendar,
+          reminderRepeat: effectiveRepeat,
+          completedBy: effectiveCompletedBy,
+        });
       } else if (cleanMerchant) {
         recordMerchant(cleanMerchant);
       }
@@ -5961,28 +6008,106 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const canonicalPayer = getMemberById(effectivePaidBy);
           const effectiveAccId = data.account_id !== undefined ? data.account_id : t.account_id;
           const resolvedAccount = effectiveAccId ? getAccountById(effectiveAccId) : undefined;
-            const effectiveSettled = data.is_settled !== undefined ? data.is_settled : t.is_settled;
-            const effectiveCompletedBy = effectiveSettled
-              ? (data.completed_by !== undefined ? data.completed_by : t.completed_by)
-              : undefined;
-            return {
-              ...t,
-              ...data,
-              amount: isTargetMemo ? 0 : (data.amount !== undefined ? data.amount : t.amount),
-              reminder_date: data.reminder_date !== undefined ? (data.reminder_date || undefined) : t.reminder_date,
-              completed_by: effectiveCompletedBy,
-              completion_note: data.completion_note !== undefined ? (data.completion_note || undefined) : t.completion_note,
-              linked_transaction_id: data.linked_transaction_id !== undefined ? (data.linked_transaction_id || undefined) : t.linked_transaction_id,
-              merchant: (data.merchant !== undefined || isTargetMemo) ? cleanMerchant : t.merchant,
-              category: data.category_id ? getCategoryById(data.category_id, t.category) : t.category,
-              payer_profile: canonicalPayer || t.payer_profile,
-              payment_account: resolvedAccount || t.payment_account,
-            };
+          const rowSettled = data.is_settled !== undefined ? data.is_settled : t.is_settled;
+          const rowCompletedBy = rowSettled
+            ? (data.completed_by !== undefined ? data.completed_by : t.completed_by)
+            : undefined;
+          return {
+            ...t,
+            ...data,
+            amount: isTargetMemo ? 0 : (data.amount !== undefined ? data.amount : t.amount),
+            reminder_date: isTargetMemo ? effectiveReminder : (data.reminder_date !== undefined ? (data.reminder_date || undefined) : t.reminder_date),
+            reminder_calendar: isTargetMemo ? effectiveCalendar : t.reminder_calendar,
+            reminder_repeat: isTargetMemo ? effectiveRepeat : t.reminder_repeat,
+            completed_by: rowCompletedBy,
+            completion_note: data.completion_note !== undefined ? (data.completion_note || undefined) : t.completion_note,
+            linked_transaction_id: data.linked_transaction_id !== undefined ? (data.linked_transaction_id || undefined) : t.linked_transaction_id,
+            merchant: (data.merchant !== undefined || isTargetMemo) ? cleanMerchant : t.merchant,
+            category: data.category_id ? getCategoryById(data.category_id, t.category) : t.category,
+            payer_profile: canonicalPayer || t.payer_profile,
+            payment_account: resolvedAccount || t.payment_account,
+          };
         }
         return t;
       });
 
-      await saveTransactionsToStorage(updatedTxs);
+      // 方案 2：辦妥週期提醒生活記事時，自動接力產生下一期未辦妥提醒
+      let nextMemoTx: Transaction | null = null;
+      if (
+        isTargetMemo &&
+        targetTx &&
+        !targetTx.is_settled &&
+        effectiveSettled === true &&
+        effectiveReminder &&
+        effectiveRepeat &&
+        effectiveRepeat !== 'once'
+      ) {
+        const nextReminderYmd = getNextMemoReminderDate(
+          effectiveReminder,
+          effectiveRepeat,
+          effectiveCalendar || 'solar'
+        );
+        const effectiveNote = data.note !== undefined ? data.note : (targetTx.note || '');
+        if (nextReminderYmd && nextReminderYmd !== effectiveReminder) {
+          const alreadyExists = updatedTxs.some(
+            t =>
+              t.type === 'memo' &&
+              !t.is_settled &&
+              t.reminder_date === nextReminderYmd &&
+              (t.note || '').trim() === effectiveNote.trim()
+          );
+          if (!alreadyExists) {
+            const nextMerchantTag = encodeMemoMerchantTag({
+              reminderDate: nextReminderYmd,
+              reminderCalendar: effectiveCalendar,
+              reminderRepeat: effectiveRepeat,
+            });
+            nextMemoTx = {
+              id: generateUUID(),
+              ledger_id: targetTx.ledger_id,
+              creator_id: targetTx.creator_id,
+              category_id: targetTx.category_id,
+              category: targetTx.category,
+              amount: 0,
+              type: 'memo',
+              reminder_date: nextReminderYmd,
+              reminder_calendar: effectiveCalendar,
+              reminder_repeat: effectiveRepeat,
+              completed_by: undefined,
+              paid_by: targetTx.paid_by,
+              payer_profile: targetTx.payer_profile,
+              merchant: nextMerchantTag,
+              payment_method: targetTx.payment_method || 'cash',
+              is_reconciled: false,
+              note: effectiveNote,
+              transacted_at: new Date().toISOString(),
+              is_settled: false,
+              created_at: new Date().toISOString(),
+            };
+          }
+        }
+      }
+
+      const finalTxs = nextMemoTx ? [nextMemoTx, ...updatedTxs] : updatedTxs;
+      await saveTransactionsToStorage(finalTxs);
+
+      if (nextMemoTx) {
+        const memoParsed = parseMemoNote(nextMemoTx.note);
+        const nextBadge = formatMemoReminderBadge(
+          nextMemoTx.reminder_date,
+          nextMemoTx.reminder_calendar,
+          nextMemoTx.reminder_repeat
+        );
+        triggerLiveToast({
+          id: `next-memo-${nextMemoTx.id}-${Date.now()}`,
+          type: 'info',
+          actorName: effectiveCurrentUser?.display_name || '系統提醒',
+          avatar: memoParsed.icon || '🔄',
+          title: '🔄 已自動接力排入下一期提醒！',
+          message: `【${memoParsed.title}】${memoParsed.cleanContent} → 下次提醒：${nextBadge?.fullText || nextMemoTx.reminder_date}`,
+          createdAt: Date.now(),
+        });
+      }
 
       if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
         const updatePayload: any = {};
@@ -6045,6 +6170,38 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (error) {
           console.warn('雲端更新交易失敗:', error);
           return false;
+        }
+
+        // 若有自動接力產生的下一期記事，一併同步寫入雲端
+        if (nextMemoTx) {
+          try {
+            const nextInsertPayload: any = {
+              id: nextMemoTx.id,
+              ledger_id: nextMemoTx.ledger_id,
+              creator_id: nextMemoTx.creator_id,
+              category_id: nextMemoTx.category_id,
+              amount: 0,
+              type: 'memo',
+              paid_by: nextMemoTx.paid_by,
+              transacted_at: nextMemoTx.transacted_at,
+              is_settled: false,
+            };
+            if (hasMerchantColumnRef.current) {
+              nextInsertPayload.merchant = nextMemoTx.merchant || null;
+              nextInsertPayload.note = nextMemoTx.note;
+            } else {
+              nextInsertPayload.note = nextMemoTx.merchant
+                ? `[${nextMemoTx.merchant}] ${nextMemoTx.note || ''}`.trim()
+                : nextMemoTx.note;
+            }
+            let { error: nextErr } = await supabase.from('transactions').insert(nextInsertPayload);
+            if (nextErr && (nextErr.code === '23514' || nextErr.message?.includes('check constraint'))) {
+              nextInsertPayload.type = 'transfer';
+              await supabase.from('transactions').insert(nextInsertPayload);
+            }
+          } catch (nextSyncErr) {
+            console.warn('雲端同步下一期週期記事失敗:', nextSyncErr);
+          }
         }
       }
 

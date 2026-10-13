@@ -37,6 +37,15 @@ import { Transaction, TransactionType, PaymentMethod } from '../types/database';
 import { PAYMENT_METHOD_OPTIONS, DEFAULT_PAYMENT_METHODS, sortAccountsByUser } from '../lib/payment';
 import { getCategoryIcon } from '../lib/icons';
 import { MEMO_QUICK_TAGS, toggleMemoTag, isMemoTagActive } from '../lib/memo';
+import {
+  CalendarSystem,
+  MemoRepeatFrequency,
+  REPEAT_OPTIONS,
+  solarToLunar,
+  getNearestLunarPairDate,
+  getNextMemoReminderDate,
+  formatMemoReminderBadge,
+} from '../lib/lunar';
 import { DatePickerModal } from './DatePickerModal';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -127,6 +136,15 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const [merchant, setMerchant] = useState<string>(() => transaction?.merchant || '');
   const [note, setNote] = useState<string>(() => transaction?.note || '');
   const [memoReminderDate, setMemoReminderDate] = useState<string>(() => transaction?.reminder_date || '');
+  const [memoReminderCalendar, setMemoReminderCalendar] = useState<CalendarSystem>(
+    () => transaction?.reminder_calendar || 'solar'
+  );
+  const [memoReminderRepeat, setMemoReminderRepeat] = useState<MemoRepeatFrequency>(
+    () => transaction?.reminder_repeat || 'once'
+  );
+  const [reminderPickerInitialMode, setReminderPickerInitialMode] = useState<CalendarSystem>(
+    () => transaction?.reminder_calendar || 'solar'
+  );
   const [isSettled, setIsSettled] = useState<boolean>(() => !!transaction?.is_settled);
   const [completionNote, setCompletionNote] = useState<string>(() => transaction?.completion_note || '');
   const [linkedTxId, setLinkedTxId] = useState<string>(() => transaction?.linked_transaction_id || '');
@@ -150,7 +168,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       setKeyboardOffset(0);
     });
 
-    let removeViewportListener: (() => void) | undefined;
+    let removeViewportListener: (() => void | undefined) | undefined;
     if (Platform.OS === 'web' && typeof window !== 'undefined' && window.visualViewport) {
       const handleViewportResize = () => {
         if (!window.visualViewport) return;
@@ -299,6 +317,9 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       setMerchant(transaction.merchant || '');
       setNote(transaction.note || '');
       setMemoReminderDate(transaction.reminder_date || '');
+      setMemoReminderCalendar(transaction.reminder_calendar || 'solar');
+      setMemoReminderRepeat(transaction.reminder_repeat || 'once');
+      setReminderPickerInitialMode(transaction.reminder_calendar || 'solar');
       setIsSettled(!!transaction.is_settled);
       setCompletionNote(transaction.completion_note || '');
       setLinkedTxId(transaction.linked_transaction_id || '');
@@ -401,7 +422,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         await updateTransaction(transaction.id, {
           note: note.trim() || transaction.note,
           reminder_date: memoReminderDate || undefined,
-          merchant: memoReminderDate ? `remind:${memoReminderDate}` : 'memo',
+          reminder_calendar: memoReminderDate ? memoReminderCalendar : undefined,
+          reminder_repeat: memoReminderDate ? memoReminderRepeat : undefined,
           is_settled: true,
           completed_by: effectiveCompleter,
           completion_note: noteToSave || undefined,
@@ -474,7 +496,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           paid_by: targetPayer,
           note: note.trim(),
           reminder_date: memoReminderDate || undefined,
-          merchant: memoReminderDate ? `remind:${memoReminderDate}` : 'memo',
+          reminder_calendar: memoReminderDate ? memoReminderCalendar : undefined,
+          reminder_repeat: memoReminderDate ? memoReminderRepeat : undefined,
           transacted_at: transactedAt || transaction.transacted_at,
           is_settled: isSettled,
           completed_by: isSettled ? (transaction.completed_by || currentUser?.id) : undefined,
@@ -865,11 +888,17 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   )}
                 </View>
 
-                {/* ⏰ 待辦提醒日期 (選填) */}
+                {/* ⏰ 待辦提醒日期與週期設定 (選填) */}
                 <View style={styles.sectionLabelRow}>
                   <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>⏰ 待辦提醒日期 (選填)</Text>
                   {canEdit && !!memoReminderDate && (
-                    <TouchableOpacity onPress={() => setMemoReminderDate('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setMemoReminderDate('');
+                        setMemoReminderRepeat('once');
+                      }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
                       <Text style={styles.clearMerchantText} maxFontSizeMultiplier={1.08}>清除提醒 ✕</Text>
                     </TouchableOpacity>
                   )}
@@ -878,7 +907,10 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   <TouchableOpacity
                     disabled={!canEdit}
                     style={[styles.dateChip, !memoReminderDate && styles.dateChipActive]}
-                    onPress={() => setMemoReminderDate('')}
+                    onPress={() => {
+                      setMemoReminderDate('');
+                      setMemoReminderRepeat('once');
+                    }}
                     activeOpacity={0.7}
                   >
                     <Text style={[styles.dateChipText, !memoReminderDate && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
@@ -905,29 +937,175 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                       明天 ({tomorrow.getMonth() + 1}/{tomorrow.getDate()})
                     </Text>
                   </TouchableOpacity>
-                  {isCustomReminder && (
+                  {canEdit && (
                     <TouchableOpacity
-                      disabled={!canEdit}
-                      style={[styles.dateChip, styles.dateChipActive, styles.dateChipCustom]}
-                      onPress={() => setReminderDatePickerVisible(true)}
+                      style={[
+                        styles.dateMoreBtn,
+                        isCustomReminder && memoReminderCalendar === 'solar' && styles.dateMoreBtnSelected,
+                      ]}
+                      onPress={() => {
+                        setReminderPickerInitialMode('solar');
+                        setReminderDatePickerVisible(true);
+                      }}
                       activeOpacity={0.7}
                     >
-                      <Text style={[styles.dateChipText, styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
-                        🗓️ {memoReminderDate}
+                      <Text
+                        style={[
+                          styles.dateMoreBtnText,
+                          isCustomReminder && memoReminderCalendar === 'solar' && styles.dateMoreBtnTextSelected,
+                        ]}
+                        maxFontSizeMultiplier={1.15}
+                      >
+                        🗓️ 選國曆
                       </Text>
                     </TouchableOpacity>
                   )}
                   {canEdit && (
                     <TouchableOpacity
-                      style={[styles.dateMoreBtn, isCustomReminder && styles.dateMoreBtnSelected]}
-                      onPress={() => setReminderDatePickerVisible(true)}
+                      style={[
+                        styles.dateMoreBtn,
+                        styles.lunarMoreBtn,
+                        !!memoReminderDate && memoReminderCalendar === 'lunar' && styles.lunarMoreBtnSelected,
+                      ]}
+                      onPress={() => {
+                        setReminderPickerInitialMode('lunar');
+                        setReminderDatePickerVisible(true);
+                      }}
                       activeOpacity={0.7}
                     >
-                      <Text style={[styles.dateMoreBtnText, isCustomReminder && styles.dateMoreBtnTextSelected]} maxFontSizeMultiplier={1.15}>
-                        {isCustomReminder ? '✏️ 改選' : '🗓️ 指定...'}
+                      <Text
+                        style={[
+                          styles.dateMoreBtnText,
+                          styles.lunarMoreBtnText,
+                          !!memoReminderDate && memoReminderCalendar === 'lunar' && styles.lunarMoreBtnTextSelected,
+                        ]}
+                        maxFontSizeMultiplier={1.15}
+                      >
+                        🏮 選農曆
                       </Text>
                     </TouchableOpacity>
                   )}
+                </View>
+
+                {/* 🔄 提醒頻率與農曆對照預覽 */}
+                <View style={styles.memoRepeatCard}>
+                  <View style={styles.memoRepeatHeaderRow}>
+                    <Text style={styles.memoRepeatTitle} maxFontSizeMultiplier={1.08}>
+                      🔄 提醒頻率與週期
+                    </Text>
+                    {canEdit &&
+                      !!memoReminderDate &&
+                      memoReminderRepeat !== 'lunar_1_15' &&
+                      memoReminderRepeat !== 'lunar_2_16' && (
+                        <View style={styles.calendarBasisSwitch}>
+                          <TouchableOpacity
+                            style={[
+                              styles.calendarBasisBtn,
+                              memoReminderCalendar === 'solar' && styles.calendarBasisBtnActive,
+                            ]}
+                            onPress={() => setMemoReminderCalendar('solar')}
+                            activeOpacity={0.7}
+                          >
+                            <Text
+                              style={[
+                                styles.calendarBasisBtnText,
+                                memoReminderCalendar === 'solar' && styles.calendarBasisBtnTextActive,
+                              ]}
+                              maxFontSizeMultiplier={1.05}
+                            >
+                              🗓️ 國曆基準
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[
+                              styles.calendarBasisBtn,
+                              memoReminderCalendar === 'lunar' && styles.calendarBasisBtnLunarActive,
+                            ]}
+                            onPress={() => setMemoReminderCalendar('lunar')}
+                            activeOpacity={0.7}
+                          >
+                            <Text
+                              style={[
+                                styles.calendarBasisBtnText,
+                                memoReminderCalendar === 'lunar' && styles.calendarBasisBtnTextLunarActive,
+                              ]}
+                              maxFontSizeMultiplier={1.05}
+                            >
+                              🏮 農曆基準
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                  </View>
+
+                  <View style={styles.memoRepeatChipsRow}>
+                    {REPEAT_OPTIONS.map(opt => {
+                      const isRepSelected = !!memoReminderDate && memoReminderRepeat === opt.value;
+                      return (
+                        <TouchableOpacity
+                          key={opt.value}
+                          disabled={!canEdit}
+                          style={[
+                            styles.memoRepeatChip,
+                            opt.lunarOnly && styles.memoRepeatChipLunar,
+                            isRepSelected && (opt.lunarOnly ? styles.memoRepeatChipLunarActive : styles.memoRepeatChipActive),
+                          ]}
+                          onPress={() => {
+                            if (opt.value === 'lunar_1_15' || opt.value === 'lunar_2_16') {
+                              setMemoReminderRepeat(opt.value);
+                              setMemoReminderCalendar('lunar');
+                              const alignedYmd = getNearestLunarPairDate(memoReminderDate || todayYmd, opt.value);
+                              setMemoReminderDate(alignedYmd);
+                            } else {
+                              setMemoReminderRepeat(opt.value);
+                              if (!memoReminderDate) {
+                                setMemoReminderDate(todayYmd);
+                              }
+                            }
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text
+                            style={[
+                              styles.memoRepeatChipText,
+                              opt.lunarOnly && styles.memoRepeatChipTextLunar,
+                              isRepSelected && (opt.lunarOnly ? styles.memoRepeatChipTextLunarActive : styles.memoRepeatChipTextActive),
+                            ]}
+                            maxFontSizeMultiplier={1.08}
+                          >
+                            {opt.shortLabel}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {!!memoReminderDate && (() => {
+                    const badge = formatMemoReminderBadge(
+                      memoReminderDate,
+                      memoReminderCalendar,
+                      memoReminderRepeat
+                    );
+                    const nextYmd =
+                      memoReminderRepeat !== 'once'
+                        ? getNextMemoReminderDate(memoReminderDate, memoReminderRepeat, memoReminderCalendar)
+                        : null;
+                    const nextBadge = nextYmd
+                      ? formatMemoReminderBadge(nextYmd, memoReminderCalendar, 'once')
+                      : null;
+                    return (
+                      <View style={styles.memoReminderPreviewBox}>
+                        <Text style={styles.memoReminderPreviewPrimary} maxFontSizeMultiplier={1.08}>
+                          📌 已排定：{badge?.fullText || memoReminderDate}
+                        </Text>
+                        {memoReminderRepeat !== 'once' && nextBadge && (
+                          <Text style={styles.memoReminderPreviewNext} maxFontSizeMultiplier={1.08}>
+                            ✨ 辦妥打勾後，將自動接力產生下一期：{nextBadge.fullText}
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  })()}
                 </View>
 
                 {/* 記錄成員 */}
@@ -1422,10 +1600,23 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   <DatePickerModal
     visible={reminderDatePickerVisible}
     onClose={() => setReminderDatePickerVisible(false)}
-    selectedDate={memoReminderDate ? new Date(memoReminderDate) : new Date()}
-    onSelectDate={(newDate: Date) => {
+    selectedDate={memoReminderDate ? new Date(`${memoReminderDate}T00:00:00`) : new Date()}
+    initialMode={reminderPickerInitialMode}
+    title="⏰ 選擇提醒日期 (支援國曆＆農曆)"
+    onSelectDate={(newDate: Date, pickedMode?: CalendarSystem) => {
       const ymd = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}-${String(newDate.getDate()).padStart(2, '0')}`;
       setMemoReminderDate(ymd);
+      if (pickedMode) {
+        setMemoReminderCalendar(pickedMode);
+      }
+      if (memoReminderRepeat === 'lunar_1_15' || memoReminderRepeat === 'lunar_2_16') {
+        const l = solarToLunar(newDate);
+        if (memoReminderRepeat === 'lunar_1_15' && l.lunarDay !== 1 && l.lunarDay !== 15) {
+          setMemoReminderRepeat('monthly');
+        } else if (memoReminderRepeat === 'lunar_2_16' && l.lunarDay !== 2 && l.lunarDay !== 16) {
+          setMemoReminderRepeat('monthly');
+        }
+      }
       setReminderDatePickerVisible(false);
     }}
   />
@@ -2185,5 +2376,132 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#78350F',
     lineHeight: 18,
+  },
+  lunarMoreBtn: {
+    borderColor: '#FDE68A',
+    backgroundColor: '#FFFBEB',
+  },
+  lunarMoreBtnSelected: {
+    borderColor: '#D97706',
+    backgroundColor: '#FEF3C7',
+  },
+  lunarMoreBtnText: {
+    color: '#B45309',
+  },
+  lunarMoreBtnTextSelected: {
+    color: '#92400E',
+    fontWeight: '800',
+  },
+  memoRepeatCard: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 14,
+  },
+  memoRepeatHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  memoRepeatTitle: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  calendarBasisSwitch: {
+    flexDirection: 'row',
+    backgroundColor: '#E2E8F0',
+    borderRadius: 8,
+    padding: 2,
+  },
+  calendarBasisBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  calendarBasisBtnActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  calendarBasisBtnLunarActive: {
+    backgroundColor: '#FEF3C7',
+  },
+  calendarBasisBtnText: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  calendarBasisBtnTextActive: {
+    color: '#2563EB',
+    fontWeight: '700',
+  },
+  calendarBasisBtnTextLunarActive: {
+    color: '#B45309',
+    fontWeight: '700',
+  },
+  memoRepeatChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  memoRepeatChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  memoRepeatChipLunar: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FDE68A',
+  },
+  memoRepeatChipActive: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#3B82F6',
+  },
+  memoRepeatChipLunarActive: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#D97706',
+  },
+  memoRepeatChipText: {
+    fontSize: 12,
+    color: '#475569',
+    fontWeight: '600',
+  },
+  memoRepeatChipTextLunar: {
+    color: '#B45309',
+  },
+  memoRepeatChipTextActive: {
+    color: '#1D4ED8',
+    fontWeight: '700',
+  },
+  memoRepeatChipTextLunarActive: {
+    color: '#92400E',
+    fontWeight: '800',
+  },
+  memoReminderPreviewBox: {
+    marginTop: 8,
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  memoReminderPreviewPrimary: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  memoReminderPreviewNext: {
+    fontSize: 11,
+    color: '#B45309',
+    marginTop: 3,
+    fontWeight: '600',
   },
 });

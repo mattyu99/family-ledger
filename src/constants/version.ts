@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 12;
+export const APP_BUILD_REVISION = 13;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.13',
+    date: '2026-10-13',
+    title: '生活記事全新升級：支援「國曆／農曆雙軌月曆」＋「週期重複提醒與辦妥自動接力」',
+    highlights: [
+      '雙模式萬年曆選擇器：日曆格子同步顯示農曆初一、十五與傳統節日（春節、端午、中秋、除夕高亮標示），並支援切換「🏮 農曆直接指定」直選農曆年、月（含閏月）、日與快捷鍵（初一、初二、十五、十六）',
+      '國曆／農曆全週期提醒頻率：全面支援「單次提醒」、「每月重複」、「每年重複」，以及台灣家庭最實用的「🏮 每月初一＆十五」、「🏮 每月初二＆十六」拜拜／祭祀快捷週期，並可一鍵切換國曆或農曆計算基準',
+      '辦妥後自動接力排程：當週期提醒記事打勾辦妥時，原紀錄保留於歷史歸檔，系統自動精準換算下一期國曆／農曆日期並建立下一次待辦提醒，跨裝置雲端即時同步',
+    ],
+  },
   {
     version: '1.0.5.12',
     date: '2026-10-13',

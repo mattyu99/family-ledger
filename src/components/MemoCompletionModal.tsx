@@ -16,7 +16,8 @@ import {
 } from 'react-native';
 import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
-import { parseMemoNote } from '../lib/memo';
+import { parseMemoNote, decodeMemoMerchantTag } from '../lib/memo';
+import { formatMemoReminderBadge, getNextMemoReminderDate } from '../lib/lunar';
 import { HorizontalScrollView } from './HorizontalScrollView';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
@@ -100,6 +101,22 @@ export const MemoCompletionModal: React.FC<MemoCompletionModalProps> = ({
 
   const creator = memo ? getMemberById(memo.paid_by) || memo.payer_profile : undefined;
 
+  const reminderInfo = useMemo(() => {
+    if (!memo) return null;
+    const decoded = decodeMemoMerchantTag(memo.merchant);
+    const rDate = memo.reminder_date || decoded.reminderDate;
+    if (!rDate) return null;
+    const rCal = memo.reminder_calendar || decoded.reminderCalendar || 'solar';
+    const rRep = memo.reminder_repeat || decoded.reminderRepeat || 'once';
+    const badge = formatMemoReminderBadge(rDate, rCal, rRep);
+    let nextBadge = null;
+    if (rRep !== 'once') {
+      const nextYmd = getNextMemoReminderDate(rDate, rRep, rCal);
+      nextBadge = formatMemoReminderBadge(nextYmd, rCal, 'once');
+    }
+    return { badge, nextBadge, rRep };
+  }, [memo]);
+
   // 僅標記完成 (無支出)
   const handleCompleteOnly = async () => {
     if (!memo || submitting) return;
@@ -166,6 +183,16 @@ export const MemoCompletionModal: React.FC<MemoCompletionModalProps> = ({
               {!!memoData.cleanContent && memoData.cleanContent !== memoData.title && (
                 <Text style={styles.memoPreviewContent} numberOfLines={3} maxFontSizeMultiplier={1.08}>
                   {memoData.cleanContent}
+                </Text>
+              )}
+              {!!reminderInfo?.badge && (
+                <Text style={styles.memoPreviewCreator} maxFontSizeMultiplier={1.06}>
+                  {reminderInfo.badge.isLunar ? '🏮 ' : '⏰ '}排定提醒：{reminderInfo.badge.fullText}
+                </Text>
+              )}
+              {!!reminderInfo?.nextBadge && (
+                <Text style={[styles.memoPreviewCreator, { color: '#D97706', fontWeight: '700', marginTop: 2 }]} maxFontSizeMultiplier={1.06}>
+                  🔄 標記辦妥後，將自動接力產生下一期：{reminderInfo.nextBadge.fullText}
                 </Text>
               )}
               <Text style={styles.memoPreviewCreator} maxFontSizeMultiplier={1.06}>

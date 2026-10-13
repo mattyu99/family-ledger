@@ -2,13 +2,16 @@
  * 生活記事手帳與備忘解析工具
  */
 
+import { CalendarSystem, MemoRepeatFrequency } from './lunar';
+
 export const MEMO_QUICK_TAGS = [
   '📌 待辦清單',
   '🛒 採買清單',
+  '🙏 祭祀拜拜',
+  '🎂 紀念日',
   '💡 靈感筆記',
   '🏠 家居修繕',
   '🩺 健康用藥',
-  '🎂 紀念日',
   '💼 重要備忘',
 ];
 
@@ -128,4 +131,93 @@ export function getLocalDateYmd(d: Date = new Date()): string {
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
+
+/**
+ * 編碼生活記事之提醒與週期 메타 標籤（存入 merchant 欄位，100% 相容既有雲端資料表）
+ * 格式範例：remind:2026-10-25|cal:lunar|rep:lunar_1_15|done:uuid
+ */
+export function encodeMemoMerchantTag(options: {
+  reminderDate?: string;
+  reminderCalendar?: CalendarSystem;
+  reminderRepeat?: MemoRepeatFrequency;
+  completedBy?: string;
+}): string {
+  const { reminderDate, reminderCalendar, reminderRepeat, completedBy } = options;
+  const parts: string[] = [];
+
+  if (reminderDate && reminderDate.trim()) {
+    parts.push(`remind:${reminderDate.trim()}`);
+    const effectiveCal: CalendarSystem =
+      reminderRepeat === 'lunar_1_15' || reminderRepeat === 'lunar_2_16'
+        ? 'lunar'
+        : (reminderCalendar || 'solar');
+
+    if (effectiveCal === 'lunar') {
+      parts.push('cal:lunar');
+    }
+    if (reminderRepeat && reminderRepeat !== 'once') {
+      parts.push(`rep:${reminderRepeat}`);
+    }
+  } else {
+    parts.push('memo');
+  }
+
+  if (completedBy && completedBy.trim()) {
+    parts.push(`done:${completedBy.trim()}`);
+  }
+
+  return parts.join('|');
+}
+
+/**
+ * 解碼生活記事之提醒與週期 메타 標籤
+ */
+export function decodeMemoMerchantTag(rawMerchant?: string): {
+  isMemo: boolean;
+  reminderDate?: string;
+  reminderCalendar?: CalendarSystem;
+  reminderRepeat?: MemoRepeatFrequency;
+  completedBy?: string;
+} {
+  if (!rawMerchant) return { isMemo: false };
+  const trimmed = rawMerchant.trim();
+  if (!trimmed.startsWith('remind:') && !trimmed.startsWith('memo')) {
+    return { isMemo: false };
+  }
+
+  let reminderDate: string | undefined;
+  let reminderCalendar: CalendarSystem | undefined;
+  let reminderRepeat: MemoRepeatFrequency | undefined;
+  let completedBy: string | undefined;
+
+  const segments = trimmed.split('|');
+  for (const seg of segments) {
+    if (seg.startsWith('remind:')) {
+      reminderDate = seg.slice(7).trim() || undefined;
+    } else if (seg.startsWith('cal:')) {
+      const calVal = seg.slice(4).trim();
+      reminderCalendar = calVal === 'lunar' ? 'lunar' : 'solar';
+    } else if (seg.startsWith('rep:')) {
+      const repVal = seg.slice(4).trim() as MemoRepeatFrequency;
+      if (['once', 'monthly', 'lunar_1_15', 'lunar_2_16', 'yearly'].includes(repVal)) {
+        reminderRepeat = repVal;
+      }
+    } else if (seg.startsWith('done:')) {
+      completedBy = seg.slice(5).trim() || undefined;
+    }
+  }
+
+  if (reminderRepeat === 'lunar_1_15' || reminderRepeat === 'lunar_2_16') {
+    reminderCalendar = 'lunar';
+  }
+
+  return {
+    isMemo: true,
+    reminderDate,
+    reminderCalendar: reminderDate ? (reminderCalendar || 'solar') : undefined,
+    reminderRepeat: reminderDate ? (reminderRepeat || 'once') : undefined,
+    completedBy,
+  };
+}
+
 

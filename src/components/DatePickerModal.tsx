@@ -5,9 +5,17 @@ import {
   Modal,
   StyleSheet,
   TouchableOpacity,
+  ScrollView,
   TextProps,
-  Dimensions,
 } from 'react-native';
+import {
+  CalendarSystem,
+  solarToLunar,
+  lunarToSolar,
+  getLunarMonthsForYear,
+  getLunarMonthDays,
+  LUNAR_DAY_NAMES,
+} from '../lib/lunar';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
   <RNText
@@ -17,13 +25,15 @@ const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultip
   />
 );
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
 export interface DatePickerModalProps {
   visible: boolean;
   onClose: () => void;
   selectedDate: Date;
-  onSelectDate: (date: Date) => void;
+  onSelectDate: (date: Date, calendarMode?: CalendarSystem) => void;
+  initialCalendarMode?: CalendarSystem;
+  initialMode?: CalendarSystem;
+  title?: string;
+  subtitle?: string;
 }
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
@@ -33,11 +43,48 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
   onClose,
   selectedDate,
   onSelectDate,
+  initialCalendarMode,
+  initialMode,
+  title = '📅 選擇日期',
+  subtitle = '支援國曆農曆雙曆對照與農曆直接指定換算',
 }) => {
+  const effectiveInitialMode = initialMode || initialCalendarMode || 'solar';
   const initialDate = selectedDate || new Date();
+  const [calendarMode, setCalendarMode] = useState<CalendarSystem>(effectiveInitialMode);
   const [viewYear, setViewYear] = useState<number>(initialDate.getFullYear());
   const [viewMonth, setViewMonth] = useState<number>(initialDate.getMonth()); // 0-11
   const [tempDate, setTempDate] = useState<Date>(initialDate);
+
+  // 農曆直接選取器狀態
+  const initLunar = useMemo(() => solarToLunar(initialDate), [initialDate]);
+  const [selLunarYear, setSelLunarYear] = useState<number>(initLunar.lunarYear);
+  const [selLunarMonth, setSelLunarMonth] = useState<number>(initLunar.lunarMonth);
+  const [selLunarIsLeap, setSelLunarIsLeap] = useState<boolean>(initLunar.isLeapMonth);
+  const [selLunarDay, setSelLunarDay] = useState<number>(initLunar.lunarDay);
+
+  // 同步國曆 Date 至農曆選取器狀態
+  const syncLunarFromSolar = (d: Date) => {
+    const l = solarToLunar(d);
+    setSelLunarYear(l.lunarYear);
+    setSelLunarMonth(l.lunarMonth);
+    setSelLunarIsLeap(l.isLeapMonth);
+    setSelLunarDay(l.lunarDay);
+  };
+
+  // 同步農曆選取器狀態至國曆 Date
+  const applyLunarSelection = (y: number, m: number, d: number, isLeap: boolean) => {
+    const maxD = getLunarMonthDays(y, m, isLeap);
+    const clampedDay = Math.min(d, maxD);
+    setSelLunarYear(y);
+    setSelLunarMonth(m);
+    setSelLunarIsLeap(isLeap);
+    setSelLunarDay(clampedDay);
+
+    const solarD = lunarToSolar(y, m, clampedDay, isLeap);
+    setTempDate(solarD);
+    setViewYear(solarD.getFullYear());
+    setViewMonth(solarD.getMonth());
+  };
 
   // 當彈窗開啟時同步目前選中日期
   React.useEffect(() => {
@@ -46,18 +93,20 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
       setTempDate(d);
       setViewYear(d.getFullYear());
       setViewMonth(d.getMonth());
+      setCalendarMode(effectiveInitialMode);
+      syncLunarFromSolar(d);
     }
-  }, [visible, selectedDate]);
+  }, [visible, selectedDate, effectiveInitialMode]);
 
   const today = useMemo(() => new Date(), []);
+  const tomorrow = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d;
+  }, []);
   const yesterday = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() - 1);
-    return d;
-  }, []);
-  const dayBeforeYesterday = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 2);
     return d;
   }, []);
 
@@ -91,21 +140,24 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
     setTempDate(targetDate);
     setViewYear(targetDate.getFullYear());
     setViewMonth(targetDate.getMonth());
+    syncLunarFromSolar(targetDate);
   };
 
   // 點擊日曆中的某一天
-  const handleDayPress = (day: number) => {
-    const newD = new Date(viewYear, viewMonth, day);
-    setTempDate(newD);
+  const handleCellPress = (targetDate: Date) => {
+    setTempDate(targetDate);
+    setViewYear(targetDate.getFullYear());
+    setViewMonth(targetDate.getMonth());
+    syncLunarFromSolar(targetDate);
   };
 
   // 確認選擇
   const handleConfirm = () => {
-    onSelectDate(tempDate);
+    onSelectDate(tempDate, calendarMode);
     onClose();
   };
 
-  // 計算日曆網格資料
+  // 計算日曆網格資料（含每格對應農曆資訊）
   const calendarCells = useMemo(() => {
     const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
     const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay(); // 0(Sun) - 6(Sat)
@@ -115,24 +167,29 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
       type: 'prev' | 'current' | 'next';
       day: number;
       date: Date;
+      lunar: ReturnType<typeof solarToLunar>;
     }[] = [];
 
     // 前一個月的填充空格
     for (let i = firstDayOfWeek - 1; i >= 0; i--) {
       const d = prevMonthDays - i;
+      const dateObj = new Date(viewYear, viewMonth - 1, d);
       cells.push({
         type: 'prev',
         day: d,
-        date: new Date(viewYear, viewMonth - 1, d),
+        date: dateObj,
+        lunar: solarToLunar(dateObj),
       });
     }
 
     // 當前月份各天
     for (let d = 1; d <= daysInMonth; d++) {
+      const dateObj = new Date(viewYear, viewMonth, d);
       cells.push({
         type: 'current',
         day: d,
-        date: new Date(viewYear, viewMonth, d),
+        date: dateObj,
+        lunar: solarToLunar(dateObj),
       });
     }
 
@@ -140,15 +197,27 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
     const totalCells = cells.length <= 35 ? 35 : 42;
     const remaining = totalCells - cells.length;
     for (let d = 1; d <= remaining; d++) {
+      const dateObj = new Date(viewYear, viewMonth + 1, d);
       cells.push({
         type: 'next',
         day: d,
-        date: new Date(viewYear, viewMonth + 1, d),
+        date: dateObj,
+        lunar: solarToLunar(dateObj),
       });
     }
 
     return cells;
   }, [viewYear, viewMonth]);
+
+  // 當前選中日期的完整農曆資訊
+  const tempLunar = useMemo(() => solarToLunar(tempDate), [tempDate]);
+
+  // 農曆直接選取器：該農曆年份的所有月份（含閏月）與當月天數
+  const lunarMonthsList = useMemo(() => getLunarMonthsForYear(selLunarYear), [selLunarYear]);
+  const currentLunarMonthDays = useMemo(
+    () => getLunarMonthDays(selLunarYear, selLunarMonth, selLunarIsLeap),
+    [selLunarYear, selLunarMonth, selLunarIsLeap]
+  );
 
   if (!visible) return null;
 
@@ -159,134 +228,312 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
         <View style={styles.card}>
           {/* 頂部標題 */}
           <View style={styles.headerRow}>
-            <View>
-              <Text style={styles.title}>📅 選擇記帳日期</Text>
-              <Text style={styles.subtitle}>可補記過去任意消費或收入明細</Text>
+            <View style={{ flex: 1, marginRight: 8 }}>
+              <Text style={styles.title}>{title}</Text>
+              <Text style={styles.subtitle}>{subtitle}</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <Text style={styles.closeText}>✕</Text>
             </TouchableOpacity>
           </View>
 
-          {/* 快捷點選列 */}
-          <View style={styles.quickRow}>
+          {/* 國曆月曆 vs 農曆指定 雙模式切換器 */}
+          <View style={styles.modeSwitchRow}>
             <TouchableOpacity
-              style={[styles.quickChip, isSameDay(tempDate, today) && styles.quickChipActive]}
-              onPress={() => handleQuickSelect(today)}
-              activeOpacity={0.7}
+              style={[styles.modeSwitchBtn, calendarMode === 'solar' && styles.modeSwitchBtnActiveSolar]}
+              onPress={() => setCalendarMode('solar')}
+              activeOpacity={0.8}
             >
-              <Text style={[styles.quickChipText, isSameDay(tempDate, today) && styles.quickChipTextActive]}>
-                📍 今天 ({today.getMonth() + 1}/{today.getDate()})
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.quickChip, isSameDay(tempDate, yesterday) && styles.quickChipActive]}
-              onPress={() => handleQuickSelect(yesterday)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.quickChipText, isSameDay(tempDate, yesterday) && styles.quickChipTextActive]}>
-                昨天 ({yesterday.getMonth() + 1}/{yesterday.getDate()})
+              <Text style={[styles.modeSwitchText, calendarMode === 'solar' && styles.modeSwitchTextActiveSolar]}>
+                🗓️ 國曆月曆 (含農曆)
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.quickChip, isSameDay(tempDate, dayBeforeYesterday) && styles.quickChipActive]}
-              onPress={() => handleQuickSelect(dayBeforeYesterday)}
-              activeOpacity={0.7}
+              style={[styles.modeSwitchBtn, calendarMode === 'lunar' && styles.modeSwitchBtnActiveLunar]}
+              onPress={() => {
+                syncLunarFromSolar(tempDate);
+                setCalendarMode('lunar');
+              }}
+              activeOpacity={0.8}
             >
-              <Text style={[styles.quickChipText, isSameDay(tempDate, dayBeforeYesterday) && styles.quickChipTextActive]}>
-                前天 ({dayBeforeYesterday.getMonth() + 1}/{dayBeforeYesterday.getDate()})
+              <Text style={[styles.modeSwitchText, calendarMode === 'lunar' && styles.modeSwitchTextActiveLunar]}>
+                🏮 農曆直接指定
               </Text>
             </TouchableOpacity>
           </View>
 
-          {/* 年月切換列 */}
-          <View style={styles.monthNavRow}>
-            <TouchableOpacity onPress={handlePrevMonth} style={styles.navArrowBtn} activeOpacity={0.7}>
-              <Text style={styles.navArrowText}>◀</Text>
-            </TouchableOpacity>
-            <View style={styles.navMonthLabelBox}>
-              <Text style={styles.navMonthLabel}>
-                {viewYear} 年 {viewMonth + 1} 月
-              </Text>
-            </View>
-            <TouchableOpacity onPress={handleNextMonth} style={styles.navArrowBtn} activeOpacity={0.7}>
-              <Text style={styles.navArrowText}>▶</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* 星期表頭 */}
-          <View style={styles.weekdayRow}>
-            {WEEKDAYS.map((w, index) => (
-              <View key={w} style={styles.weekdayCol}>
-                <Text
-                  style={[
-                    styles.weekdayText,
-                    (index === 0 || index === 6) && styles.weekdayTextWeekend,
-                  ]}
-                >
-                  {w}
-                </Text>
-              </View>
-            ))}
-          </View>
-
-          {/* 日期網格 */}
-          <View style={styles.daysGrid}>
-            {calendarCells.map((cell, idx) => {
-              if (cell.type !== 'current') {
-                return (
-                  <View key={`other-${idx}`} style={styles.dayCell}>
-                    <Text style={styles.otherMonthDayText}>{cell.day}</Text>
-                  </View>
-                );
-              }
-
-              const isSelected = isSameDay(cell.date, tempDate);
-              const isTodayDate = isSameDay(cell.date, today);
-
-              return (
+          {calendarMode === 'solar' ? (
+            <>
+              {/* 快捷點選列 */}
+              <View style={styles.quickRow}>
                 <TouchableOpacity
-                  key={`cur-${cell.day}`}
-                  style={[
-                    styles.dayCell,
-                    isSelected && styles.dayCellSelected,
-                    isTodayDate && !isSelected && styles.dayCellToday,
-                  ]}
-                  onPress={() => handleDayPress(cell.day)}
+                  style={[styles.quickChip, isSameDay(tempDate, today) && styles.quickChipActive]}
+                  onPress={() => handleQuickSelect(today)}
                   activeOpacity={0.7}
                 >
-                  <Text
-                    style={[
-                      styles.dayText,
-                      isSelected && styles.dayTextSelected,
-                      isTodayDate && !isSelected && styles.dayTextToday,
-                    ]}
-                  >
-                    {cell.day}
+                  <Text style={[styles.quickChipText, isSameDay(tempDate, today) && styles.quickChipTextActive]}>
+                    📍 今天 ({today.getMonth() + 1}/{today.getDate()})
                   </Text>
-                  {isTodayDate && !isSelected && <View style={styles.todayDot} />}
                 </TouchableOpacity>
-              );
-            })}
-          </View>
+
+                <TouchableOpacity
+                  style={[styles.quickChip, isSameDay(tempDate, tomorrow) && styles.quickChipActive]}
+                  onPress={() => handleQuickSelect(tomorrow)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.quickChipText, isSameDay(tempDate, tomorrow) && styles.quickChipTextActive]}>
+                    明天 ({tomorrow.getMonth() + 1}/{tomorrow.getDate()})
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.quickChip, isSameDay(tempDate, yesterday) && styles.quickChipActive]}
+                  onPress={() => handleQuickSelect(yesterday)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.quickChipText, isSameDay(tempDate, yesterday) && styles.quickChipTextActive]}>
+                    昨天 ({yesterday.getMonth() + 1}/{yesterday.getDate()})
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* 年月切換列 */}
+              <View style={styles.monthNavRow}>
+                <TouchableOpacity onPress={() => setViewYear(y => y - 1)} style={styles.navYearBtn} activeOpacity={0.7}>
+                  <Text style={styles.navYearText}>« 年</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handlePrevMonth} style={styles.navArrowBtn} activeOpacity={0.7}>
+                  <Text style={styles.navArrowText}>◀</Text>
+                </TouchableOpacity>
+                <View style={styles.navMonthLabelBox}>
+                  <Text style={styles.navMonthLabel}>
+                    {viewYear} 年 {viewMonth + 1} 月
+                  </Text>
+                  <Text style={styles.navLunarSubLabel}>
+                    農曆{tempLunar.yearGanZhi}{tempLunar.zodiac}年 · {tempLunar.monthStr}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={handleNextMonth} style={styles.navArrowBtn} activeOpacity={0.7}>
+                  <Text style={styles.navArrowText}>▶</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setViewYear(y => y + 1)} style={styles.navYearBtn} activeOpacity={0.7}>
+                  <Text style={styles.navYearText}>年 »</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* 星期表頭 */}
+              <View style={styles.weekdayRow}>
+                {WEEKDAYS.map((w, index) => (
+                  <View key={w} style={styles.weekdayCol}>
+                    <Text
+                      style={[
+                        styles.weekdayText,
+                        (index === 0 || index === 6) && styles.weekdayTextWeekend,
+                      ]}
+                    >
+                      {w}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* 日期網格（國曆 + 農曆雙曆同框） */}
+              <View style={styles.daysGrid}>
+                {calendarCells.map((cell, idx) => {
+                  const isCurrentMonth = cell.type === 'current';
+                  const isSelected = isSameDay(cell.date, tempDate);
+                  const isTodayDate = isSameDay(cell.date, today);
+                  const isLunarHighlight = cell.lunar.isHighlight;
+
+                  return (
+                    <TouchableOpacity
+                      key={`cell-${idx}`}
+                      style={[
+                        styles.dayCell,
+                        isSelected && styles.dayCellSelected,
+                        isTodayDate && !isSelected && styles.dayCellToday,
+                      ]}
+                      onPress={() => handleCellPress(cell.date)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.dayText,
+                          !isCurrentMonth && styles.otherMonthDayText,
+                          isSelected && styles.dayTextSelected,
+                          isTodayDate && !isSelected && styles.dayTextToday,
+                        ]}
+                      >
+                        {cell.day}
+                      </Text>
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.lunarCellText,
+                          !isCurrentMonth && styles.otherMonthLunarText,
+                          isLunarHighlight && isCurrentMonth && !isSelected && styles.lunarCellTextHighlight,
+                          isSelected && styles.lunarCellTextSelected,
+                        ]}
+                      >
+                        {cell.lunar.cellLabel}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          ) : (
+            /* 方案 B：農曆直接指定選取器 */
+            <ScrollView style={styles.lunarPickerArea} showsVerticalScrollIndicator={false}>
+              {/* 農曆年份選擇 */}
+              <View style={styles.lunarYearNavRow}>
+                <TouchableOpacity
+                  style={styles.navArrowBtn}
+                  onPress={() => {
+                    const nextY = Math.max(1900, selLunarYear - 1);
+                    applyLunarSelection(nextY, selLunarMonth, selLunarDay, false);
+                  }}
+                >
+                  <Text style={styles.navArrowText}>◀</Text>
+                </TouchableOpacity>
+                <View style={styles.navMonthLabelBox}>
+                  <Text style={styles.lunarYearTitle}>
+                    🏮 農曆 {selLunarYear} 年 ({tempLunar.yearGanZhi}{tempLunar.zodiac}年)
+                  </Text>
+                  <Text style={styles.navLunarSubLabel}>點選下方農曆月份與日期，自動換算國曆</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.navArrowBtn}
+                  onPress={() => {
+                    const nextY = Math.min(2100, selLunarYear + 1);
+                    applyLunarSelection(nextY, selLunarMonth, selLunarDay, false);
+                  }}
+                >
+                  <Text style={styles.navArrowText}>▶</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* 農曆月份選擇網格 */}
+              <Text style={styles.lunarSectionLabel}>選擇農曆月份</Text>
+              <View style={styles.lunarMonthsGrid}>
+                {lunarMonthsList.map((mItem) => {
+                  const isSel = selLunarMonth === mItem.month && selLunarIsLeap === mItem.isLeap;
+                  return (
+                    <TouchableOpacity
+                      key={`${mItem.month}-${mItem.isLeap ? 'leap' : 'norm'}`}
+                      style={[styles.lunarMonthChip, isSel && styles.lunarMonthChipActive]}
+                      onPress={() => applyLunarSelection(selLunarYear, mItem.month, selLunarDay, mItem.isLeap)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.lunarMonthChipText, isSel && styles.lunarMonthChipTextActive]}>
+                        {mItem.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* 農曆日期選擇網格 (初一 ~ 廿九/三十) */}
+              <View style={styles.lunarDayHeaderRow}>
+                <Text style={styles.lunarSectionLabel}>
+                  選擇農曆日期（本月共 {currentLunarMonthDays} 天）
+                </Text>
+                <View style={styles.lunarQuickDaysRow}>
+                  {[
+                    { d: 1, label: '初一' },
+                    { d: 2, label: '初二' },
+                    { d: 15, label: '十五' },
+                    { d: 16, label: '十六' },
+                  ].map((q) => (
+                    <TouchableOpacity
+                      key={q.d}
+                      style={[
+                        styles.lunarQuickMiniBtn,
+                        selLunarDay === q.d && styles.lunarQuickMiniBtnActive,
+                      ]}
+                      onPress={() => applyLunarSelection(selLunarYear, selLunarMonth, q.d, selLunarIsLeap)}
+                    >
+                      <Text
+                        style={[
+                          styles.lunarQuickMiniText,
+                          selLunarDay === q.d && styles.lunarQuickMiniTextActive,
+                        ]}
+                      >
+                        {q.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.lunarDaysGrid}>
+                {Array.from({ length: currentLunarMonthDays }, (_, i) => i + 1).map((dNum) => {
+                  const isSel = selLunarDay === dNum;
+                  const isSpecial = dNum === 1 || dNum === 15 || dNum === 2 || dNum === 16;
+                  return (
+                    <TouchableOpacity
+                      key={dNum}
+                      style={[
+                        styles.lunarDayChip,
+                        isSpecial && !isSel && styles.lunarDayChipSpecial,
+                        isSel && styles.lunarDayChipActive,
+                      ]}
+                      onPress={() => applyLunarSelection(selLunarYear, selLunarMonth, dNum, selLunarIsLeap)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.lunarDayChipText,
+                          isSpecial && !isSel && styles.lunarDayChipTextSpecial,
+                          isSel && styles.lunarDayChipTextActive,
+                        ]}
+                      >
+                        {LUNAR_DAY_NAMES[dNum - 1]}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* 即時換算結果預覽卡片 */}
+              <View style={styles.lunarConversionPreviewBox}>
+                <Text style={styles.lunarConversionTitle}>
+                  🏮 {tempLunar.fullLabel}
+                </Text>
+                <Text style={styles.lunarConversionSub}>
+                  ➔ 對應國曆：{tempDate.getFullYear()} 年 {tempDate.getMonth() + 1} 月 {tempDate.getDate()} 日 (週{WEEKDAYS[tempDate.getDay()]})
+                </Text>
+              </View>
+            </ScrollView>
+          )}
 
           {/* 底部目前選中提示與確認按鈕 */}
           <View style={styles.footerRow}>
             <View style={styles.selectedInfoBox}>
-              <Text style={styles.selectedInfoLabel}>已選日期：</Text>
               <Text style={styles.selectedInfoValue}>
-                {tempDate.getFullYear()}/{tempDate.getMonth() + 1}/{tempDate.getDate()}
-                {isSameDay(tempDate, today) ? ' (今天)' : isSameDay(tempDate, yesterday) ? ' (昨天)' : ''}
+                🗓️ {tempDate.getFullYear()}/{tempDate.getMonth() + 1}/{tempDate.getDate()} (週{WEEKDAYS[tempDate.getDay()]})
+                {isSameDay(tempDate, today) ? ' · 今天' : ''}
+              </Text>
+              <Text style={styles.selectedLunarValue}>
+                🏮 {tempLunar.fullLabel} ({tempLunar.yearGanZhi}{tempLunar.zodiac}年)
               </Text>
             </View>
             <View style={styles.actionBtnRow}>
               <TouchableOpacity style={styles.cancelBtn} onPress={onClose} activeOpacity={0.7}>
                 <Text style={styles.cancelBtnText}>取消</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirm} activeOpacity={0.8}>
-                <Text style={styles.confirmBtnText}>確認設定</Text>
+              <TouchableOpacity
+                style={[
+                  styles.confirmBtn,
+                  calendarMode === 'lunar' && styles.confirmBtnLunar,
+                ]}
+                onPress={handleConfirm}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.confirmBtnText}>
+                  {calendarMode === 'lunar' ? '確認農曆' : '確認設定'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -302,17 +549,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 16,
+    padding: 14,
   },
   backdrop: {
     ...StyleSheet.absoluteFill,
   },
   card: {
     width: '100%',
-    maxWidth: 400,
+    maxWidth: 410,
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
-    padding: 18,
+    padding: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
@@ -323,7 +570,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   title: {
     fontSize: 17,
@@ -349,14 +596,55 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontWeight: '700',
   },
+  modeSwitchRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    padding: 3,
+    marginBottom: 10,
+    gap: 4,
+  },
+  modeSwitchBtn: {
+    flex: 1,
+    paddingVertical: 7,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modeSwitchBtnActiveSolar: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  modeSwitchBtnActiveLunar: {
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FB923C',
+  },
+  modeSwitchText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  modeSwitchTextActiveSolar: {
+    color: '#4F46E5',
+    fontWeight: '800',
+  },
+  modeSwitchTextActiveLunar: {
+    color: '#C2410C',
+    fontWeight: '800',
+  },
   quickRow: {
     flexDirection: 'row',
     gap: 6,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   quickChip: {
     flex: 1,
-    paddingVertical: 6,
+    paddingVertical: 5,
     paddingHorizontal: 4,
     borderRadius: 10,
     backgroundColor: '#F8FAFC',
@@ -383,14 +671,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 6,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     backgroundColor: '#F8FAFC',
     borderRadius: 12,
-    marginBottom: 10,
+    marginBottom: 8,
+    gap: 4,
+  },
+  navYearBtn: {
+    paddingHorizontal: 7,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  navYearText: {
+    fontSize: 10,
+    color: '#64748B',
+    fontWeight: '700',
   },
   navArrowBtn: {
-    width: 32,
-    height: 32,
+    width: 30,
+    height: 30,
     borderRadius: 8,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
@@ -404,18 +708,25 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   navMonthLabelBox: {
+    flex: 1,
     alignItems: 'center',
   },
   navMonthLabel: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#1E293B',
+  },
+  navLunarSubLabel: {
+    fontSize: 10,
+    color: '#9A3412',
+    fontWeight: '600',
+    marginTop: 1,
   },
   weekdayRow: {
     flexDirection: 'row',
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
-    paddingBottom: 6,
+    paddingBottom: 5,
     marginBottom: 4,
   },
   weekdayCol: {
@@ -424,8 +735,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   weekdayText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     color: '#64748B',
   },
   weekdayTextWeekend: {
@@ -434,14 +745,14 @@ const styles = StyleSheet.create({
   daysGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   dayCell: {
     width: `${100 / 7}%`,
-    height: 36,
+    height: 42,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 18,
+    borderRadius: 10,
     marginVertical: 1,
     position: 'relative',
   },
@@ -450,11 +761,14 @@ const styles = StyleSheet.create({
   },
   dayCellToday: {
     backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
   },
   dayText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#1E293B',
+    lineHeight: 16,
   },
   dayTextSelected: {
     color: '#FFFFFF',
@@ -462,50 +776,204 @@ const styles = StyleSheet.create({
   },
   dayTextToday: {
     color: '#4F46E5',
-    fontWeight: '700',
+    fontWeight: '800',
   },
   otherMonthDayText: {
-    fontSize: 12,
     color: '#CBD5E1',
+    fontWeight: '500',
   },
-  todayDot: {
-    position: 'absolute',
-    bottom: 3,
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#4F46E5',
+  lunarCellText: {
+    fontSize: 9,
+    color: '#64748B',
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  otherMonthLunarText: {
+    color: '#E2E8F0',
+  },
+  lunarCellTextHighlight: {
+    color: '#EA580C',
+    fontWeight: '700',
+  },
+  lunarCellTextSelected: {
+    color: '#E0E7FF',
+    fontWeight: '700',
+  },
+  // 農曆直接指定選取器樣式
+  lunarPickerArea: {
+    maxHeight: 340,
+    marginBottom: 8,
+  },
+  lunarYearNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+    backgroundColor: '#FFF7ED',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+    marginBottom: 10,
+  },
+  lunarYearTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#9A3412',
+  },
+  lunarSectionLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+    marginBottom: 6,
+  },
+  lunarMonthsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 12,
+  },
+  lunarMonthChip: {
+    width: '23%',
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lunarMonthChipActive: {
+    backgroundColor: '#EA580C',
+    borderColor: '#EA580C',
+  },
+  lunarMonthChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  lunarMonthChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  lunarDayHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  lunarQuickDaysRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  lunarQuickMiniBtn: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 8,
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FDBA74',
+  },
+  lunarQuickMiniBtnActive: {
+    backgroundColor: '#EA580C',
+    borderColor: '#EA580C',
+  },
+  lunarQuickMiniText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#C2410C',
+  },
+  lunarQuickMiniTextActive: {
+    color: '#FFFFFF',
+  },
+  lunarDaysGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 5,
+    marginBottom: 10,
+  },
+  lunarDayChip: {
+    width: '18.4%',
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lunarDayChipSpecial: {
+    backgroundColor: '#FFF7ED',
+    borderColor: '#FED7AA',
+  },
+  lunarDayChipActive: {
+    backgroundColor: '#EA580C',
+    borderColor: '#EA580C',
+  },
+  lunarDayChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  lunarDayChipTextSpecial: {
+    color: '#C2410C',
+    fontWeight: '700',
+  },
+  lunarDayChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  lunarConversionPreviewBox: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 4,
+  },
+  lunarConversionTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#92400E',
+  },
+  lunarConversionSub: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#B45309',
+    marginTop: 2,
   },
   footerRow: {
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
-    paddingTop: 12,
+    paddingTop: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   selectedInfoBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
     flex: 1,
     marginRight: 8,
-  },
-  selectedInfoLabel: {
-    fontSize: 12,
-    color: '#64748B',
-    fontWeight: '500',
   },
   selectedInfoValue: {
     fontSize: 12,
     color: '#1E293B',
-    fontWeight: '700',
+    fontWeight: '800',
+  },
+  selectedLunarValue: {
+    fontSize: 11,
+    color: '#C2410C',
+    fontWeight: '600',
+    marginTop: 2,
   },
   actionBtnRow: {
     flexDirection: 'row',
     gap: 8,
   },
   cancelBtn: {
-    paddingVertical: 7,
+    paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 10,
     backgroundColor: '#F1F5F9',
@@ -516,10 +984,13 @@ const styles = StyleSheet.create({
     color: '#64748B',
   },
   confirmBtn: {
-    paddingVertical: 7,
+    paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 10,
     backgroundColor: '#4F46E5',
+  },
+  confirmBtnLunar: {
+    backgroundColor: '#EA580C',
   },
   confirmBtnText: {
     fontSize: 12,
