@@ -5769,18 +5769,29 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       })),
     };
 
-    // 若為儲值卡消費 (stored_value) 且指定了 account_id，自動扣減該卡餘額
-    if (data.type === 'expense' && data.payment_method === 'stored_value' && data.account_id) {
+    // 若為儲值卡 (stored_value) 且指定了 account_id，自動增減該卡餘額 (支出扣款、收入退款) 並同步至雲端
+    if ((data.type === 'expense' || data.type === 'income') && data.payment_method === 'stored_value' && data.account_id) {
+      const delta = data.type === 'expense' ? -data.amount : data.amount;
+      let finalNewBalance: number | undefined;
       setPaymentAccounts((prev) => {
         const updated = prev.map(acc => {
           if (acc.id === data.account_id) {
-            return { ...acc, balance: Number((acc.balance - data.amount).toFixed(2)) };
+            finalNewBalance = Number((acc.balance + delta).toFixed(2));
+            return { ...acc, balance: finalNewBalance };
           }
           return acc;
         });
         savePaymentAccountsToStorage(updated).catch(() => {});
         return updated;
       });
+
+      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID && !data.account_id.startsWith('50000000')) {
+        const targetAcc = paymentAccounts.find(a => a.id === data.account_id);
+        const newBal = finalNewBalance !== undefined ? finalNewBalance : (targetAcc ? Number((targetAcc.balance + delta).toFixed(2)) : undefined);
+        if (newBal !== undefined) {
+          supabase.from('payment_accounts').update({ balance: newBal, updated_at: new Date().toISOString() }).eq('id', data.account_id).then();
+        }
+      }
     }
 
     // 樂觀更新本地畫面（預先標記 _isPendingSync，確保在收到雲端成功回執前若重新整理頁面絕不遺失）
@@ -5998,18 +6009,28 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       created_at: new Date().toISOString(),
     };
 
-    // 若出資方式為儲值卡 (stored_value) 且有指定卡片，扣減該卡餘額
+    // 若出資方式為儲值卡 (stored_value) 且有指定卡片，扣減該卡餘額並同步雲端
     if (data.paymentMethod === 'stored_value' && data.accountId) {
+      let finalNewBalance: number | undefined;
       setPaymentAccounts((prev) => {
         const updated = prev.map(acc => {
           if (acc.id === data.accountId) {
-            return { ...acc, balance: Number((acc.balance - data.amount).toFixed(2)) };
+            finalNewBalance = Number((acc.balance - data.amount).toFixed(2));
+            return { ...acc, balance: finalNewBalance };
           }
           return acc;
         });
         savePaymentAccountsToStorage(updated).catch(() => {});
         return updated;
       });
+
+      if (isConfigured && validLedgerId !== DEMO_LEDGER_ID && !data.accountId.startsWith('50000000')) {
+        const targetAcc = paymentAccounts.find(a => a.id === data.accountId);
+        const newBal = finalNewBalance !== undefined ? finalNewBalance : (targetAcc ? Number((targetAcc.balance - data.amount).toFixed(2)) : undefined);
+        if (newBal !== undefined) {
+          supabase.from('payment_accounts').update({ balance: newBal, updated_at: new Date().toISOString() }).eq('id', data.accountId).then();
+        }
+      }
     }
 
     // 樂觀更新本地畫面
@@ -6112,18 +6133,29 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     deletedTxIdsRef.current.add(id);
     const targetTx = transactions.find(t => t.id === id);
 
-    // 若為儲值卡消費，恢復卡片餘額
-    if (targetTx && targetTx.type === 'expense' && targetTx.payment_method === 'stored_value' && targetTx.account_id) {
+    // 若為儲值卡消費或退款，恢復卡片餘額並同步雲端
+    if (targetTx && (targetTx.type === 'expense' || targetTx.type === 'income') && targetTx.payment_method === 'stored_value' && targetTx.account_id) {
+      const delta = targetTx.type === 'expense' ? targetTx.amount : -targetTx.amount;
+      let finalNewBalance: number | undefined;
       setPaymentAccounts((prev) => {
         const updated = prev.map(acc => {
           if (acc.id === targetTx.account_id) {
-            return { ...acc, balance: Number((acc.balance + targetTx.amount).toFixed(2)) };
+            finalNewBalance = Number((acc.balance + delta).toFixed(2));
+            return { ...acc, balance: finalNewBalance };
           }
           return acc;
         });
         savePaymentAccountsToStorage(updated).catch(() => {});
         return updated;
       });
+
+      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID && !targetTx.account_id.startsWith('50000000')) {
+        const targetAcc = paymentAccounts.find(a => a.id === targetTx.account_id);
+        const newBal = finalNewBalance !== undefined ? finalNewBalance : (targetAcc ? Number((targetAcc.balance + delta).toFixed(2)) : undefined);
+        if (newBal !== undefined) {
+          supabase.from('payment_accounts').update({ balance: newBal, updated_at: new Date().toISOString() }).eq('id', targetTx.account_id).then();
+        }
+      }
     }
 
     // 1. 本地立即清除
@@ -6250,22 +6282,45 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const newAccId = data.account_id !== undefined ? data.account_id : oldAccId;
       const newType = data.type !== undefined ? data.type : oldType;
 
-      if (oldType === 'expense' && oldMethod === 'stored_value' && oldAccId) {
-        // 退回舊扣款
+      let nextAccounts: PaymentAccount[] = [];
+      const affectedAccIds = new Set<string>();
+
+      if ((oldType === 'expense' || oldType === 'income') && oldMethod === 'stored_value' && oldAccId) {
+        // 退回舊交易對餘額之影響 (舊為支出則退回+，舊為收入則退回-)
+        const oldRefundDelta = oldType === 'expense' ? oldAmount : -oldAmount;
+        affectedAccIds.add(oldAccId);
+
         setPaymentAccounts((prev) => {
-          let updated = prev.map(acc => acc.id === oldAccId ? { ...acc, balance: Number((acc.balance + oldAmount).toFixed(2)) } : acc);
-          if (newType === 'expense' && newMethod === 'stored_value' && newAccId) {
-            updated = updated.map(acc => acc.id === newAccId ? { ...acc, balance: Number((acc.balance - newAmount).toFixed(2)) } : acc);
+          let updated = prev.map(acc => acc.id === oldAccId ? { ...acc, balance: Number((acc.balance + oldRefundDelta).toFixed(2)) } : acc);
+          if ((newType === 'expense' || newType === 'income') && newMethod === 'stored_value' && newAccId) {
+            affectedAccIds.add(newAccId);
+            const newApplyDelta = newType === 'expense' ? -newAmount : newAmount;
+            updated = updated.map(acc => acc.id === newAccId ? { ...acc, balance: Number((acc.balance + newApplyDelta).toFixed(2)) } : acc);
           }
           savePaymentAccountsToStorage(updated).catch(() => {});
+          nextAccounts = updated;
           return updated;
         });
-      } else if (newType === 'expense' && newMethod === 'stored_value' && newAccId) {
-        // 應用新扣款
+      } else if ((newType === 'expense' || newType === 'income') && newMethod === 'stored_value' && newAccId) {
+        // 應用新交易之餘額影響
+        affectedAccIds.add(newAccId);
+        const newApplyDelta = newType === 'expense' ? -newAmount : newAmount;
         setPaymentAccounts((prev) => {
-          const updated = prev.map(acc => acc.id === newAccId ? { ...acc, balance: Number((acc.balance - newAmount).toFixed(2)) } : acc);
+          const updated = prev.map(acc => acc.id === newAccId ? { ...acc, balance: Number((acc.balance + newApplyDelta).toFixed(2)) } : acc);
           savePaymentAccountsToStorage(updated).catch(() => {});
+          nextAccounts = updated;
           return updated;
+        });
+      }
+
+      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID && affectedAccIds.size > 0) {
+        affectedAccIds.forEach(accId => {
+          if (!accId.startsWith('50000000')) {
+            const found = nextAccounts.find(a => a.id === accId) || paymentAccounts.find(a => a.id === accId);
+            if (found) {
+              supabase.from('payment_accounts').update({ balance: found.balance, updated_at: new Date().toISOString() }).eq('id', accId).then();
+            }
+          }
         });
       }
 

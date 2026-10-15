@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 23;
+export const APP_BUILD_REVISION = 24;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.24',
+    date: '2026-10-15',
+    title: '儲值卡（悠遊卡）消費扣款與退款雲端即時同步更新',
+    highlights: [
+      '修復儲值卡（如悠遊卡、市民卡）日常消費記帳扣款時，餘額僅在本地扣減、未即時寫入雲端資料庫的問題，徹底避免背景同步或下拉重新整理時被舊餘額覆蓋還原。',
+      '連帶補齊刪除記帳退回金額、編輯修改記帳金額差額時，儲值卡卡片餘額同步推送更新至 Supabase 雲端資料庫。',
+      '家長撥款/轉帳若使用儲值卡，出資卡片餘額同樣同步即時推送至雲端。',
+    ],
+  },
   {
     version: '1.0.5.23',
     date: '2026-10-15',
