@@ -6,7 +6,7 @@ import { supabase, isConfigured } from '../lib/supabase';
 import { generateUUID } from '../lib/uuid';
 import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS } from '../lib/payment';
 import { DEFAULT_RECURRING_PRESETS, getCurrentPeriodKey, getBillPeriodLabel, getInstallmentInfo } from '../lib/recurring';
-import { parseMemoNote, encodeMemoMerchantTag, decodeMemoMerchantTag } from '../lib/memo';
+import { parseMemoNote, encodeMemoMerchantTag, decodeMemoMerchantTag, DEFAULT_MEMO_QUICK_TAGS, extractMemoTag } from '../lib/memo';
 import { CalendarSystem, MemoRepeatFrequency, getNextMemoReminderDate, formatMemoReminderBadge } from '../lib/lunar';
 import { APP_FULL_VERSION } from '../constants/version';
 import { getDeviceId, getDeviceName, getDevicePlatform } from '../lib/device';
@@ -326,6 +326,9 @@ interface LedgerContextType {
   getAccountById: (id?: string) => PaymentAccount | undefined;
   recentMerchants: string[];
   recordMerchant: (merchant: string) => Promise<void>;
+  recentMemoTags: string[];
+  recordMemoTag: (tag: string) => Promise<void>;
+  removeRecentMemoTag: (tag: string) => Promise<void>;
   exportToCSV: () => string;
   exportToJSON: () => string;
   restoreFromJSON: (
@@ -655,6 +658,7 @@ const STORAGE_KEYS = {
   LAST_BACKUP_AT: '@family_ledger_last_backup_at',
   AUTO_BACKUP_CONFIG: '@family_ledger_auto_backup_config',
   RECENT_MERCHANTS: '@family_ledger_recent_merchants',
+  RECENT_MEMO_TAGS: '@family_ledger_recent_memo_tags',
   PAYMENT_ACCOUNTS: '@family_ledger_payment_accounts',
   DELETED_ACCOUNT_IDS: '@family_ledger_deleted_account_ids',
   ACCOUNTS_INITIALIZED: '@family_ledger_accounts_initialized',
@@ -768,6 +772,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // 智慧店家 / 對象自學習名單與雲端欄位探測
   const [recentMerchants, setRecentMerchants] = useState<string[]>(DEFAULT_POPULAR_MERCHANTS);
+  const [recentMemoTags, setRecentMemoTags] = useState<string[]>(DEFAULT_MEMO_QUICK_TAGS);
   const hasMerchantColumnRef = useRef<boolean>(false);
   const hasPaymentColumnsRef = useRef<boolean>(false);
   const deletedTxIdsRef = useRef<Set<string>>(new Set());
@@ -793,6 +798,27 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const filtered = prev.filter(item => item.toLowerCase() !== clean.toLowerCase());
       const updated = [clean, ...filtered].slice(0, 50);
       AsyncStorage.setItem(STORAGE_KEYS.RECENT_MERCHANTS, JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
+  }, []);
+
+  const recordMemoTag = React.useCallback(async (tag: string) => {
+    const clean = (tag || '').trim();
+    if (!clean || clean.length < 2 || clean.length > 20 || clean.startsWith('http')) return;
+    setRecentMemoTags((prev) => {
+      const filtered = prev.filter(item => item.toLowerCase() !== clean.toLowerCase());
+      const updated = [clean, ...filtered].slice(0, 30);
+      AsyncStorage.setItem(STORAGE_KEYS.RECENT_MEMO_TAGS, JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
+  }, []);
+
+  const removeRecentMemoTag = React.useCallback(async (tag: string) => {
+    const clean = (tag || '').trim();
+    if (!clean) return;
+    setRecentMemoTags((prev) => {
+      const updated = prev.filter(item => item.toLowerCase() !== clean.toLowerCase());
+      AsyncStorage.setItem(STORAGE_KEYS.RECENT_MEMO_TAGS, JSON.stringify(updated)).catch(() => {});
       return updated;
     });
   }, []);
@@ -1115,6 +1141,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } catch {}
         }
 
+        const savedRecentMemoTags = await AsyncStorage.getItem(STORAGE_KEYS.RECENT_MEMO_TAGS);
+        if (savedRecentMemoTags) {
+          try {
+            const parsed = JSON.parse(savedRecentMemoTags);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setRecentMemoTags(parsed);
+            }
+          } catch {}
+        }
+
         const ledgerId = savedLedger ? JSON.parse(savedLedger)?.id : null;
         const savedAccounts = (ledgerId && await AsyncStorage.getItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${ledgerId}`)) || await AsyncStorage.getItem(STORAGE_KEYS.PAYMENT_ACCOUNTS);
         if (savedAccounts) {
@@ -1237,6 +1273,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             recordMerchant(parsedMerchant);
           }
 
+          if (resolvedType === 'memo' && newRow.note) {
+            const memoTag = extractMemoTag(newRow.note);
+            if (memoTag) recordMemoTag(memoTag);
+          }
+
           setTransactions((prev) => {
             if (prev.some((t) => t.id === newRow.id)) return prev;
             const canonicalPayer = getMemberById(newRow.paid_by);
@@ -1340,6 +1381,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             parsedNote = updatedRow.note;
           } else if (parsedMerchant) {
             recordMerchant(parsedMerchant);
+          }
+
+          if (resolvedType === 'memo' && updatedRow.note) {
+            const memoTag = extractMemoTag(updatedRow.note);
+            if (memoTag) recordMemoTag(memoTag);
           }
 
           let prevTx: Transaction | undefined;
@@ -2702,6 +2748,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             parsedNote = t.note;
           } else if (parsedMerchant) {
             recordMerchant(parsedMerchant);
+          }
+
+          if (resolvedType === 'memo' && t.note) {
+            const memoTag = extractMemoTag(t.note);
+            if (memoTag) recordMemoTag(memoTag);
           }
 
           return {
@@ -5693,6 +5744,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         reminderRepeat: effectiveReminderRep,
         completedBy: data.completed_by,
       });
+      if (data.note) {
+        const memoTag = extractMemoTag(data.note);
+        if (memoTag) recordMemoTag(memoTag);
+      }
     } else if (cleanMerchant) {
       recordMerchant(cleanMerchant);
     }
@@ -6267,6 +6322,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           reminderRepeat: effectiveRepeat,
           completedBy: effectiveCompletedBy,
         });
+        const currentMemoNote = data.note !== undefined ? data.note : targetTx?.note;
+        if (currentMemoNote) {
+          const memoTag = extractMemoTag(currentMemoNote);
+          if (memoTag) recordMemoTag(memoTag);
+        }
       } else if (cleanMerchant) {
         recordMerchant(cleanMerchant);
       }
@@ -7885,6 +7945,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         transferAllowance,
         recentMerchants,
         recordMerchant,
+        recentMemoTags,
+        recordMemoTag,
+        removeRecentMemoTag,
         exportToCSV,
         exportToJSON,
         restoreFromJSON,

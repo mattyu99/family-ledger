@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 24;
+export const APP_BUILD_REVISION = 25;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.25',
+    date: '2026-10-15',
+    title: '生活備忘快捷標籤智慧自學習 ＋ 擴充行程安排與學校親子',
+    highlights: [
+      '生活手帳與備忘快捷標籤全面升級為「動態智慧自學習」：在內容中輸入任何自訂標籤或點選標籤，系統即自動學習並加入快捷列表。',
+      '採用「方式 1：自動換行全部顯現」與「策略 1：全體依使用頻率與最近使用動態排序」，常用標籤永遠排在最前方最順手位置。',
+      '內建標籤擴充加入「📅 行程安排」與「🎒 學校親子」，支援長按快捷標籤快速移除不需要的自學習標籤。',
+    ],
+  },
   {
     version: '1.0.5.24',
     date: '2026-10-15',

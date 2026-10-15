@@ -45,7 +45,7 @@ import {
   getSmartDiscountLabels,
 } from '../lib/payment';
 import { getCategoryIcon } from '../lib/icons';
-import { MEMO_QUICK_TAGS, toggleMemoTag, isMemoTagActive } from '../lib/memo';
+import { getMergedMemoTags, toggleMemoTag, isMemoTagActive } from '../lib/memo';
 import {
   CalendarSystem,
   MemoRepeatFrequency,
@@ -125,12 +125,40 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     recentMerchants,
     paymentAccounts,
     paymentMethods,
+    recentMemoTags,
+    recordMemoTag,
+    removeRecentMemoTag,
   } = useLedger();
 
   const smartDiscountLabels = React.useMemo(
     () => getSmartDiscountLabels(transactions),
     [transactions]
   );
+
+  const displayedMemoTags = React.useMemo(() => {
+    return getMergedMemoTags(recentMemoTags);
+  }, [recentMemoTags]);
+
+  const handleLongPressMemoTag = React.useCallback((tag: string) => {
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm(`是否將「${tag}」從快捷標籤中移除？`)) {
+        removeRecentMemoTag(tag);
+      }
+    } else {
+      Alert.alert(
+        '移除快捷標籤',
+        `確定要將「${tag}」從常用標籤中移除嗎？`,
+        [
+          { text: '取消', style: 'cancel' },
+          {
+            text: '確定移除',
+            style: 'destructive',
+            onPress: () => removeRecentMemoTag(tag),
+          },
+        ]
+      );
+    }
+  }, [removeRecentMemoTag]);
 
   const [type, setType] = useState<TransactionType>(() => transaction?.type || 'expense');
   const [amount, setAmount] = useState<string>(() => (transaction?.amount ? String(transaction.amount) : ''));
@@ -918,16 +946,20 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   />
                 </View>
 
-                {/* 快捷情境標籤 (可編輯時提供快捷點選) */}
+                {/* 快捷情境標籤（方式 1：自動換行全顯；策略 1：依頻率智慧動態排序；長按可移除） */}
                 {canEdit && (
                   <View style={styles.quickNoteRow}>
-                    {MEMO_QUICK_TAGS.map(tag => {
+                    {displayedMemoTags.map(tag => {
                       const active = isMemoTagActive(note, tag);
                       return (
                         <TouchableOpacity
                           key={tag}
                           style={[styles.quickNoteChip, active && styles.quickNoteChipActive]}
-                          onPress={() => setNote(toggleMemoTag(note, tag))}
+                          onPress={() => {
+                            setNote(toggleMemoTag(note, tag));
+                            recordMemoTag(tag);
+                          }}
+                          onLongPress={() => handleLongPressMemoTag(tag)}
                           activeOpacity={0.7}
                         >
                           <Text

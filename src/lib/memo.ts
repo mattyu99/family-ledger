@@ -4,9 +4,11 @@
 
 import { CalendarSystem, MemoRepeatFrequency } from './lunar';
 
-export const MEMO_QUICK_TAGS = [
+export const DEFAULT_MEMO_QUICK_TAGS = [
   '📌 待辦清單',
   '🛒 採買清單',
+  '📅 行程安排',
+  '🎒 學校親子',
   '🙏 祭祀拜拜',
   '🎂 紀念日',
   '💡 靈感筆記',
@@ -14,6 +16,51 @@ export const MEMO_QUICK_TAGS = [
   '🩺 健康用藥',
   '💼 重要備忘',
 ];
+
+export const MEMO_QUICK_TAGS = DEFAULT_MEMO_QUICK_TAGS;
+
+/**
+ * 智慧合併生活記事標籤（策略 1：最常用/最近使用的排前面，未使用的內建項目接在後面備用）
+ */
+export function getMergedMemoTags(recentTags: string[] = []): string[] {
+  const pool: string[] = [];
+  const seen = new Set<string>();
+
+  // 1. 最近/最常用的自學習與常用標籤排最前面
+  for (const t of recentTags) {
+    const clean = (t || '').trim();
+    if (!clean) continue;
+    const key = clean.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      pool.push(clean);
+    }
+  }
+
+  // 2. 內建項目接在後面備用
+  for (const t of DEFAULT_MEMO_QUICK_TAGS) {
+    const key = t.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      pool.push(t);
+    }
+  }
+
+  // 最多保留前 16 個標籤，兼顧豐富度與版面整潔
+  return pool.slice(0, 16);
+}
+
+/**
+ * 從文字中提取生活記事標籤（支援 [標籤]、［標籤］、【標籤】）
+ */
+export function extractMemoTag(text?: string): string | undefined {
+  if (!text) return undefined;
+  const match = text.match(/[\[［【]([^\[\]［］【】\n]{1,16})[\]］】]/);
+  if (!match) return undefined;
+  const raw = match[1].trim();
+  if (!raw || raw.length < 2 || raw.startsWith('http') || raw === '辦妥' || raw.startsWith('remind:')) return undefined;
+  return raw;
+}
 
 export interface ParsedMemo {
   title: string;
