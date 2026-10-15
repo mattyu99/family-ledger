@@ -448,8 +448,15 @@ export const deduplicateMembers = (memberList: Profile[]): Profile[] => {
   const seenNames = new Set<string>();
   const seenEmails = new Set<string>();
 
+  // 排除殘留之訪客寶可夢與歷史幽靈成員，確保名冊永遠純淨
+  const cleanList = memberList.filter(m =>
+    m.id !== '9b017d89-b21f-4638-b076-5a7629e2dda5' &&
+    m.id !== 'e6a2d1ec-3b2a-495f-b24e-71c2647d9a86' &&
+    (m.display_name || '').trim() !== '寶可夢'
+  );
+
   // 步驟一：先將已綁定 Google 且加鎖之重要受保護成員放前，確保保留自訂家庭稱謂（如「智爸」優先於「Matt Yu」）
-  const sortedList = [...memberList].sort((a, b) => {
+  const sortedList = [...cleanList].sort((a, b) => {
     // 1. 已加鎖保護者優先
     if (a.is_locked && !b.is_locked) return -1;
     if (!a.is_locked && b.is_locked) return 1;
@@ -2122,6 +2129,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (matched.auth_email) {
         setIsGoogleAuthenticated(true);
         setGoogleUserEmail(matched.auth_email);
+        await AsyncStorage.setItem('@family_ledger_google_email', matched.auth_email);
       }
 
       // 若該成員具備管理員權限，同步提升本地身分角色
@@ -2301,30 +2309,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // deduplicateMembers 會在記憶體中自動整併 Google OAuth 影子紀錄至受保護稱謂（如「倉鼠」或「智爸」），名冊呈現始終純淨
     }
 
-    // 若雲端已有成員，以雲端為準；僅在離線或雲端尚無成員時才從本地快取補救，避免跨帳本成員污染
+    // 若雲端已有成員，以雲端為準；離線時僅在本地記憶體中載入快取，絕不盲目向雲端 insert 避免跨帳本身分污染
     if (loadedMembers.length === 0 && targetLedger.id !== DEMO_LEDGER_ID) {
       const localSavedMembersStr = await AsyncStorage.getItem(`${STORAGE_KEYS.MEMBERS}_${targetLedger.id}`);
       if (localSavedMembersStr) {
         try {
           const localMembers: Profile[] = JSON.parse(localSavedMembersStr);
-          const validLocals = localMembers.filter(lm => isValidUUID(lm.id) && !lm.id.startsWith('20000000-0000-4000-8000'));
-          for (const m of validLocals) {
-            try {
-              await supabase.from('profiles').upsert({
-                id: m.id,
-                display_name: m.display_name,
-                avatar_url: m.avatar_url,
-                email: m.email,
-              });
-              await supabase.from('ledger_members').insert({
-                ledger_id: targetLedger.id,
-                user_id: m.id,
-                role: 'member',
-              });
-              loadedMembers.push(m);
-            } catch (e) {
-              console.warn('補同步本地成員失敗:', m.display_name, e);
-            }
+          const validLocals = localMembers.filter(lm =>
+            isValidUUID(lm.id) &&
+            !lm.id.startsWith('20000000-0000-4000-8000') &&
+            lm.id !== '9b017d89-b21f-4638-b076-5a7629e2dda5' &&
+            lm.id !== 'e6a2d1ec-3b2a-495f-b24e-71c2647d9a86' &&
+            (lm.display_name || '').trim() !== '寶可夢'
+          );
+          if (validLocals.length > 0) {
+            loadedMembers = validLocals;
           }
         } catch (err) {
           console.warn('解析本地成員快取失敗:', err);
@@ -2965,9 +2964,27 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const authUser = session?.user;
       if (!authUser || !isMountedRef.current) return;
 
-      const isRealGoogle = Boolean(authUser?.email && !authUser.email.endsWith('@family.local') && !authUser.is_anonymous);
+      let savedGoogleEmail = '';
+      try {
+        savedGoogleEmail = (await AsyncStorage.getItem('@family_ledger_google_email')) || '';
+        if (!savedGoogleEmail) {
+          const savedUserStr = await AsyncStorage.getItem(STORAGE_KEYS.CURRENT_USER);
+          if (savedUserStr) {
+            const u = JSON.parse(savedUserStr);
+            if (u?.auth_email && !u.auth_email.endsWith('@family.local')) {
+              savedGoogleEmail = u.auth_email;
+            }
+          }
+        }
+      } catch {}
+
+      const effectiveGoogleEmail = (authUser?.email && !authUser.email.endsWith('@family.local') && !authUser.is_anonymous)
+        ? authUser.email
+        : (savedGoogleEmail || null);
+
+      const isRealGoogle = Boolean(effectiveGoogleEmail && !effectiveGoogleEmail.endsWith('@family.local'));
       setIsGoogleAuthenticated(isRealGoogle);
-      setGoogleUserEmail(isRealGoogle ? (authUser?.email || null) : null);
+      setGoogleUserEmail(effectiveGoogleEmail);
 
         // 使用者 Profile 初始化
         const { data: existingProfile } = await supabase
@@ -7151,6 +7168,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setCurrentUser(updated[0]);
     }
     await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updated));
+    if (currentLedger?.id) {
+      await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${currentLedger.id}`, JSON.stringify(updated));
+    }
 
     if (isConfigured) {
       try {

@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 21;
+export const APP_BUILD_REVISION = 22;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.22',
+    date: '2026-10-15',
+    title: '徹底根除訪客跨帳本傳染死灰復燃 ＋ 校正行動端 Google 登入狀態識別',
+    highlights: [
+      '徹底根除訪客寶可夢跨帳本自動傳染與死灰復燃：關閉切換帳本時的盲目雲端回寫機制，離線或無權限時僅於本地記憶體載入快取，杜絕自動將當前訪客登記進其他公帳',
+      '校正行動端 Google 登入狀態辨識：已認領 Google 身分之裝置，切換帳本視窗正確顯示「🛡️ Google 帳號已登入同步」，不再維持藍色按鈕誤導',
+      '同步修正刪除成員本地雙快取：刪除成員時同步更新特定帳本專屬快取與全域快取，避免切換時讀取舊成員殘留',
+      '雲端資料庫全面深度清理：自全體家庭公帳中徹底移除誤入之「寶可夢」與歷史「幽靈智爸」關聯，名冊百分之百純淨還原',
+    ],
+  },
   {
     version: '1.0.5.21',
     date: '2026-10-13',
