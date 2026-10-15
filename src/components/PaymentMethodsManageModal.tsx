@@ -271,10 +271,10 @@ export const PaymentMethodsManageModal: React.FC<PaymentMethodsManageModalProps>
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
               <Text style={styles.title} maxFontSizeMultiplier={1.15}>
-                {isOwner ? '📱 常用付款方式管理' : '📱 常用付款方式一覽'}
+                {isOwner ? '📱 常用付款方式管理' : '📱 常用付款方式設定'}
               </Text>
               <Text style={styles.subtitle} maxFontSizeMultiplier={1.08}>
-                {isOwner ? '自由開關、排序或自訂常用的電子支付與付款工具' : '查看日常記帳可用的支付工具（僅帳本管理員可編輯）'}
+                {isOwner ? '自由開關、排序或自訂常用的電子支付與付款工具' : '自由開關與排序個人常用支付，打造專屬記帳選單'}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
@@ -437,9 +437,9 @@ export const PaymentMethodsManageModal: React.FC<PaymentMethodsManageModalProps>
 
               {/* 說明橫條 */}
               {!isOwner ? (
-                <View style={[styles.infoBanner, { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' }]}>
-                  <Text style={[styles.infoBannerText, { color: '#92400E' }]} maxFontSizeMultiplier={1.08}>
-                    🔒 目前為成員檢視模式，僅帳本管理員可新增、編輯、排序或停用付款方式。
+                <View style={styles.infoBanner}>
+                  <Text style={styles.infoBannerText} maxFontSizeMultiplier={1.08}>
+                    💡 提示：點擊右側開關可自由啟用或隱藏，並可自由調整排序！💵 現金受保護必選。新增與編輯由管理員把關。
                   </Text>
                 </View>
               ) : (
@@ -515,26 +515,8 @@ export const PaymentMethodsManageModal: React.FC<PaymentMethodsManageModalProps>
 
                     {/* 右側操作按鈕群 */}
                     <View style={styles.methodActionCol}>
-                      {/* 開關鈕 */}
-                      {!isOwner ? (
-                        <View
-                          style={[
-                            styles.toggleChip,
-                            isEnabledStatus ? styles.toggleChipActive : styles.toggleChipInactive,
-                            { opacity: 0.8 },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.toggleChipText,
-                              isEnabledStatus ? styles.toggleChipTextActive : styles.toggleChipTextInactive,
-                            ]}
-                            maxFontSizeMultiplier={1.08}
-                          >
-                            {isEnabledStatus ? '✓ 啟用中' : '✕ 已停用'}
-                          </Text>
-                        </View>
-                      ) : isCash ? (
+                      {/* 開關鈕 (所有成員皆可個人化開關) */}
+                      {isCash ? (
                         <TouchableOpacity
                           style={[styles.toggleChip, styles.toggleChipLocked]}
                           onPress={() => showAlert('不可隱藏', '💵 現金為系統最基本的付款方式，必須保留至少一種付款方式，無法隱藏。')}
@@ -565,27 +547,27 @@ export const PaymentMethodsManageModal: React.FC<PaymentMethodsManageModalProps>
                         </TouchableOpacity>
                       )}
 
-                      {/* 僅管理員可排序、編輯、刪除 */}
+                      {/* 排序鈕 (所有成員皆可自訂前後順序) */}
+                      <View style={styles.sortCol}>
+                        <TouchableOpacity
+                          disabled={index === 0}
+                          style={[styles.sortBtn, index === 0 && { opacity: 0.3 }]}
+                          onPress={() => handleMove(index, 'up')}
+                        >
+                          <Text style={styles.sortArrow}>▲</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          disabled={index === paymentMethods.length - 1}
+                          style={[styles.sortBtn, index === paymentMethods.length - 1 && { opacity: 0.3 }]}
+                          onPress={() => handleMove(index, 'down')}
+                        >
+                          <Text style={styles.sortArrow}>▼</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* 僅管理員可編輯、刪除自訂項目 */}
                       {isOwner && (
                         <>
-                          {/* 排序鈕 */}
-                          <View style={styles.sortCol}>
-                            <TouchableOpacity
-                              disabled={index === 0}
-                              style={[styles.sortBtn, index === 0 && { opacity: 0.3 }]}
-                              onPress={() => handleMove(index, 'up')}
-                            >
-                              <Text style={styles.sortArrow}>▲</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              disabled={index === paymentMethods.length - 1}
-                              style={[styles.sortBtn, index === paymentMethods.length - 1 && { opacity: 0.3 }]}
-                              onPress={() => handleMove(index, 'down')}
-                            >
-                              <Text style={styles.sortArrow}>▼</Text>
-                            </TouchableOpacity>
-                          </View>
-
                           {/* 編輯鈕 */}
                           <TouchableOpacity
                             style={styles.iconActionBtn}

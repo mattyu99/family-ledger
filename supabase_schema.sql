@@ -869,3 +869,49 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.batch_purge_ghost_ledgers_admin(UUID[]) TO anon, authenticated;
 
+-- ==============================================================================
+-- 12. 自訂常用付款方式表 (Payment Methods Definition)
+-- 雲端定義共享：名稱、圖示、色彩、綁卡支援由帳本共享
+-- 開關與排序：由各成員本機裝置獨立保存，兼顧全家共用與個人化偏好
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.payment_methods (
+    id TEXT NOT NULL,                           -- 付款方式代碼或 UUID (如 'custom_xxx' 或 UUID)
+    ledger_id UUID NOT NULL REFERENCES public.ledgers(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,                         -- 名稱 (例如 "Google Pay", "OPEN錢包")
+    icon TEXT NOT NULL DEFAULT '📱',            -- 圖示 Emoji
+    color TEXT NOT NULL DEFAULT '#0055B8',      -- 代表色
+    type TEXT DEFAULT 'e_wallet',               -- 類型: 'cash' | 'credit_card' | 'e_wallet' | 'stored_value' | 'bank' | 'other'
+    supports_credit_card BOOLEAN DEFAULT TRUE,  -- 是否支援綁定信用卡
+    is_system BOOLEAN DEFAULT FALSE,            -- 是否為系統預設
+    sort_order INT DEFAULT 1,                   -- 預設順序
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    PRIMARY KEY (ledger_id, id)
+);
+
+-- 啟用 RLS
+ALTER TABLE public.payment_methods ENABLE ROW LEVEL SECURITY;
+
+-- 政策：所屬帳本成員皆可讀取自訂付款方式
+DROP POLICY IF EXISTS "成員可讀取所屬帳本的付款方式" ON public.payment_methods;
+CREATE POLICY "成員可讀取所屬帳本的付款方式" ON public.payment_methods
+    FOR SELECT USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+
+-- 政策：所屬帳本成員皆可新增付款方式
+DROP POLICY IF EXISTS "成員可新增所屬帳本的付款方式" ON public.payment_methods;
+CREATE POLICY "成員可新增所屬帳本的付款方式" ON public.payment_methods
+    FOR INSERT WITH CHECK (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+
+-- 政策：所屬帳本成員皆可更新付款方式
+DROP POLICY IF EXISTS "成員可更新所屬帳本的付款方式" ON public.payment_methods;
+CREATE POLICY "成員可更新所屬帳本的付款方式" ON public.payment_methods
+    FOR UPDATE USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+
+-- 政策：所屬帳本成員皆可刪除付款方式
+DROP POLICY IF EXISTS "成員可刪除所屬帳本的付款方式" ON public.payment_methods;
+CREATE POLICY "成員可刪除所屬帳本的付款方式" ON public.payment_methods
+    FOR DELETE USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+
+-- 確保 Realtime 事件可用
+ALTER TABLE public.payment_methods REPLICA IDENTITY FULL;
+

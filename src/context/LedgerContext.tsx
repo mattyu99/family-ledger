@@ -588,6 +588,57 @@ export const buildMemberAliasMap = (
   return map;
 };
 
+// 合併常用付款方式：定義（雲端與系統預設）共享，啟用開關（is_enabled）與排序（sort_order）由各裝置本機獨立維持
+export const mergePaymentMethods = (
+  definitions: CustomPaymentMethod[],
+  localPreferences?: CustomPaymentMethod[] | null
+): CustomPaymentMethod[] => {
+  if (!localPreferences || localPreferences.length === 0) {
+    return definitions.map((m, idx) => ({
+      ...m,
+      is_enabled: m.id === 'cash' ? true : (m.is_enabled ?? true),
+      sort_order: idx + 1,
+    }));
+  }
+
+  // 本機偏好設定映射表 (以 id 與 name 雙重相容)
+  const localMap = new Map<string, { is_enabled: boolean; sort_order: number }>();
+  localPreferences.forEach((m, idx) => {
+    const isEnabled = m.id === 'cash' ? true : m.is_enabled !== false;
+    const sortOrder = m.sort_order ?? (idx + 1);
+    localMap.set(m.id, { is_enabled: isEnabled, sort_order: sortOrder });
+    if (m.name) {
+      localMap.set(m.name, { is_enabled: isEnabled, sort_order: sortOrder });
+    }
+  });
+
+  const merged: CustomPaymentMethod[] = [];
+  definitions.forEach((def, idx) => {
+    const localPref = localMap.get(def.id) || localMap.get(def.name);
+    if (localPref) {
+      // 繼承雲端/預設的名稱、圖示、色彩與綁卡設定，但保留本地使用者的個人開關與排序
+      merged.push({
+        ...def,
+        is_enabled: def.id === 'cash' ? true : localPref.is_enabled,
+        sort_order: localPref.sort_order,
+      });
+    } else {
+      // 雲端新增項目（本機尚未看過，如管理員新增的 Google Pay）：預設開啟，排在最後
+      merged.push({
+        ...def,
+        is_enabled: true,
+        sort_order: 900 + idx,
+      });
+    }
+  });
+
+  // 依據本機排序偏好由小到大排序
+  merged.sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999));
+
+  // 重整為連續 1-indexed 順序
+  return merged.map((m, idx) => ({ ...m, sort_order: idx + 1 }));
+};
+
 const STORAGE_KEYS = {
   TRANSACTIONS: '@family_ledger_transactions',
   CURRENT_USER: '@family_ledger_current_user',
@@ -1751,6 +1802,57 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         {
           event: '*',
           schema: 'public',
+          table: 'payment_methods',
+          filter: `ledger_id=eq.${ledgerId}`,
+        },
+        async () => {
+          // 當管理員新增、編輯或刪除自訂付款方式時，即時推播至全體家庭成員
+          try {
+            const { data: cloudMethods } = await supabase
+              .from('payment_methods')
+              .select('*')
+              .eq('ledger_id', ledgerId);
+
+            if (cloudMethods !== null) {
+              const methodLedgerKey = `${STORAGE_KEYS.PAYMENT_METHODS}_${ledgerId}`;
+              const savedMethodsStr = (await AsyncStorage.getItem(methodLedgerKey)) || (await AsyncStorage.getItem(STORAGE_KEYS.PAYMENT_METHODS));
+              let localSaved: CustomPaymentMethod[] = [];
+              if (savedMethodsStr) {
+                try { localSaved = JSON.parse(savedMethodsStr); } catch {}
+              }
+
+              const allDefs: CustomPaymentMethod[] = [
+                ...DEFAULT_PAYMENT_METHODS,
+                ...(cloudMethods || []).map((cm: any) => ({
+                  id: cm.id,
+                  ledger_id: ledgerId,
+                  name: cm.name,
+                  icon: cm.icon || '📱',
+                  color: cm.color || '#0055B8',
+                  type: cm.type || 'e_wallet',
+                  supports_credit_card: !!cm.supports_credit_card,
+                  is_enabled: true,
+                  is_system: false,
+                  sort_order: cm.sort_order || 99,
+                  created_at: cm.created_at,
+                })),
+              ];
+
+              const merged = mergePaymentMethods(allDefs, localSaved);
+              setPaymentMethods(merged);
+              await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_METHODS, JSON.stringify(merged));
+              await AsyncStorage.setItem(methodLedgerKey, JSON.stringify(merged));
+            }
+          } catch (err) {
+            console.warn('Realtime 刷新付款方式失敗:', err);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
           table: 'recurring_rules',
           filter: `ledger_id=eq.${ledgerId}`,
         },
@@ -2853,28 +2955,96 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.warn('載入雲端付款帳戶失敗，使用本地快取:', accLoadErr);
     }
 
-    // (E-2) 載入自訂/常用付款方式
+    // (E-2) 載入自訂/常用付款方式 (定義雲端共享，開關各自獨立)
     try {
       const methodLedgerKey = `${STORAGE_KEYS.PAYMENT_METHODS}_${targetLedger.id}`;
       const savedMethodsStr = (await AsyncStorage.getItem(methodLedgerKey)) || (await AsyncStorage.getItem(STORAGE_KEYS.PAYMENT_METHODS));
-      let loadedMethods: CustomPaymentMethod[] = DEFAULT_PAYMENT_METHODS;
+      let localSaved: CustomPaymentMethod[] = [];
       if (savedMethodsStr) {
         try {
           const parsed = JSON.parse(savedMethodsStr);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            const merged = [...parsed];
-            DEFAULT_PAYMENT_METHODS.forEach(defM => {
-              if (!merged.some(m => m.id === defM.id)) {
-                merged.push(defM);
-              }
-            });
-            loadedMethods = merged.map(m => m.id === 'cash' ? { ...m, is_enabled: true } : m);
+            localSaved = parsed;
           }
         } catch {}
       }
-      setPaymentMethods(loadedMethods);
-      await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_METHODS, JSON.stringify(loadedMethods));
-      await AsyncStorage.setItem(methodLedgerKey, JSON.stringify(loadedMethods));
+
+      let cloudMethods: any[] = [];
+      let cloudFetchSuccess = false;
+
+      if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+        try {
+          const { data, error } = await supabase
+            .from('payment_methods')
+            .select('*')
+            .eq('ledger_id', targetLedger.id)
+            .order('sort_order', { ascending: true });
+
+          if (!error && Array.isArray(data)) {
+            cloudMethods = data;
+            cloudFetchSuccess = true;
+          }
+        } catch (cloudErr) {
+          console.warn('雲端載入付款方式失敗 (將使用本地快取):', cloudErr);
+        }
+
+        // 若為管理員，自動檢查本地是否有尚未上雲的自訂付款方式（例如先前本機建立的 Google Pay），自動補登至雲端
+        if (effectiveIsOwner && cloudFetchSuccess && localSaved.length > 0) {
+          const localCustoms = localSaved.filter(m => !m.is_system);
+          const missingInCloud = localCustoms.filter(lm => !cloudMethods.some(cm => cm.id === lm.id || cm.name === lm.name));
+          if (missingInCloud.length > 0) {
+            try {
+              const toInsert = missingInCloud.map(m => ({
+                id: m.id,
+                ledger_id: targetLedger.id,
+                name: m.name,
+                icon: m.icon || '📱',
+                color: m.color || '#0055B8',
+                type: m.type || (m.supports_credit_card ? 'e_wallet' : 'other'),
+                supports_credit_card: !!m.supports_credit_card,
+                is_system: false,
+                sort_order: m.sort_order || 99,
+              }));
+              await supabase.from('payment_methods').upsert(toInsert);
+              cloudMethods.push(...toInsert);
+            } catch (syncErr) {
+              console.warn('自動同步本地付款方式至雲端失敗:', syncErr);
+            }
+          }
+        }
+      }
+
+      // 組裝全體可用定義
+      const allDefs: CustomPaymentMethod[] = [
+        ...DEFAULT_PAYMENT_METHODS,
+        ...cloudMethods.map(cm => ({
+          id: cm.id,
+          ledger_id: targetLedger.id,
+          name: cm.name,
+          icon: cm.icon || '📱',
+          color: cm.color || '#0055B8',
+          type: cm.type || 'e_wallet',
+          supports_credit_card: !!cm.supports_credit_card,
+          is_enabled: true,
+          is_system: false,
+          sort_order: cm.sort_order || 99,
+          created_at: cm.created_at,
+        })),
+      ];
+
+      // 若雲端連線失敗，保留本地既有自訂項目以防離線遺失
+      if (!cloudFetchSuccess && localSaved.length > 0) {
+        localSaved.filter(m => !m.is_system).forEach(cm => {
+          if (!allDefs.some(d => d.id === cm.id)) {
+            allDefs.push(cm);
+          }
+        });
+      }
+
+      const merged = mergePaymentMethods(allDefs, localSaved);
+      setPaymentMethods(merged);
+      await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_METHODS, JSON.stringify(merged));
+      await AsyncStorage.setItem(methodLedgerKey, JSON.stringify(merged));
     } catch (methodErr) {
       console.warn('載入付款方式失敗:', methodErr);
     }
@@ -4931,10 +5101,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  // 新增自訂付款方式
+  // 新增自訂付款方式 (僅管理員有權限，雲端同步定義)
   const addPaymentMethod = async (
     data: Omit<CustomPaymentMethod, 'id' | 'sort_order'>
   ): Promise<CustomPaymentMethod> => {
+    if (!effectiveIsOwner) {
+      safeAlert('權限不足', '只有帳本管理員才能新增付款方式');
+      throw new Error('只有帳本管理員才能新增付款方式');
+    }
     const newId = generateUUID();
     const maxOrder = paymentMethods.reduce((max, m) => Math.max(max, m.sort_order || 0), 0);
     const newMethod: CustomPaymentMethod = {
@@ -4950,14 +5124,38 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const updated = [...paymentMethods, newMethod];
     setPaymentMethods(updated);
     await savePaymentMethodsToStorage(updated);
+
+    // 雲端同步新增定義
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        await supabase.from('payment_methods').insert({
+          id: newId,
+          ledger_id: currentLedger.id,
+          name: newMethod.name,
+          icon: newMethod.icon,
+          color: newMethod.color,
+          type: newMethod.type || (newMethod.supports_credit_card ? 'e_wallet' : 'other'),
+          supports_credit_card: !!newMethod.supports_credit_card,
+          is_system: false,
+          sort_order: newMethod.sort_order,
+        });
+      } catch (cloudErr) {
+        console.warn('雲端新增付款方式失敗 (已保留本地):', cloudErr);
+      }
+    }
+
     return newMethod;
   };
 
-  // 編輯付款方式
+  // 編輯付款方式 (僅管理員有權限，雲端同步定義)
   const updatePaymentMethod = async (
     id: string,
     data: Partial<CustomPaymentMethod>
   ): Promise<boolean> => {
+    if (!effectiveIsOwner) {
+      safeAlert('權限不足', '只有帳本管理員才能修改付款方式');
+      return false;
+    }
     const updated = paymentMethods.map(m => {
       if (m.id === id) {
         return {
@@ -4971,11 +5169,35 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
     setPaymentMethods(updated);
     await savePaymentMethodsToStorage(updated);
+
+    // 雲端同步更新定義
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        const updatePayload: any = { updated_at: new Date().toISOString() };
+        if (data.name !== undefined) updatePayload.name = data.name;
+        if (data.icon !== undefined) updatePayload.icon = data.icon;
+        if (data.color !== undefined) updatePayload.color = data.color;
+        if (data.type !== undefined) updatePayload.type = data.type;
+        if (data.supports_credit_card !== undefined) updatePayload.supports_credit_card = data.supports_credit_card;
+
+        await supabase
+          .from('payment_methods')
+          .update(updatePayload)
+          .match({ ledger_id: currentLedger.id, id });
+      } catch (cloudErr) {
+        console.warn('雲端更新付款方式失敗:', cloudErr);
+      }
+    }
+
     return true;
   };
 
-  // 刪除付款方式 (系統預設項目不可刪除，但可停用)
+  // 刪除付款方式 (系統預設項目不可刪除，但可停用；僅管理員有權限)
   const deletePaymentMethod = async (id: string): Promise<boolean> => {
+    if (!effectiveIsOwner) {
+      safeAlert('權限不足', '只有帳本管理員才能刪除付款方式');
+      return false;
+    }
     const target = paymentMethods.find(m => m.id === id);
     if (target?.is_system) {
       safeAlert('無法刪除', '系統預設的付款方式不可刪除，但您可以將其開關切換為「停用/隱藏」！');
@@ -4984,10 +5206,23 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const updated = paymentMethods.filter(m => m.id !== id);
     setPaymentMethods(updated);
     await savePaymentMethodsToStorage(updated);
+
+    // 雲端同步刪除定義
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        await supabase
+          .from('payment_methods')
+          .delete()
+          .match({ ledger_id: currentLedger.id, id });
+      } catch (cloudErr) {
+        console.warn('雲端刪除付款方式失敗:', cloudErr);
+      }
+    }
+
     return true;
   };
 
-  // 切換啟用/停用（現金為基本項目不可隱藏）
+  // 切換啟用/停用（開放全體成員自由設定，僅儲存於本機裝置，不干擾他人）
   const togglePaymentMethodEnabled = async (id: string): Promise<boolean> => {
     if (id === 'cash') {
       safeAlert('不可隱藏', '💵 現金為系統最基本的付款方式，必須保留至少一種付款方式，無法隱藏。');
@@ -4999,7 +5234,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return true;
   };
 
-  // 調整排序
+  // 調整排序（開放全體成員自由設定本機前後順序）
   const reorderPaymentMethods = async (methods: CustomPaymentMethod[]): Promise<void> => {
     const reordered = methods.map((m, idx) => ({ ...m, sort_order: idx + 1 }));
     setPaymentMethods(reordered);
@@ -5008,6 +5243,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // 恢復預設付款方式清單
   const restoreDefaultPaymentMethods = async (): Promise<void> => {
+    if (!effectiveIsOwner) {
+      safeAlert('權限不足', '只有帳本管理員才能恢復預設付款方式清單');
+      return;
+    }
     setPaymentMethods(DEFAULT_PAYMENT_METHODS);
     await savePaymentMethodsToStorage(DEFAULT_PAYMENT_METHODS);
   };

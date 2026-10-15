@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 22;
+export const APP_BUILD_REVISION = 23;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,18 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.23',
+    date: '2026-10-15',
+    title: '常用付款方式雲端同步共享 ＋ 全體成員自訂開關與排序自由',
+    highlights: [
+      '自訂付款方式雲端同步共享：管理員新增之自訂支付（如 Google Pay、OPEN 錢包等）自動同步至雲端資料庫與 Realtime 即時廣播，全家人裝置零時差自動取得',
+      '全體成員個人化開關與排序開放：解除成員僅檢視限制，全體家庭成員皆可在本機自由切換啟用/停用開關、自訂上下排序，打造專屬俐落記帳介面',
+      '開關與排序各機獨立不干擾他人：個人開關與排序設定僅存於本機快取，家人之間互不影響，完美兼顧「定義共享」與「個人化自由」',
+      '自動無縫補登本地付款方式：啟動時自動檢查本機既有自訂付款方式（如 Google Pay）並自動補登至雲端，無需重新輸入',
+      '管理員統一把關結構設定：維持由帳本管理員專屬負責新增、編輯與刪除自訂項目，並鎖定「現金」為受保護必選項目',
+    ],
+  },
   {
     version: '1.0.5.22',
     date: '2026-10-15',
