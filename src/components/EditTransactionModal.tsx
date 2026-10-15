@@ -45,7 +45,16 @@ import {
   getSmartDiscountLabels,
 } from '../lib/payment';
 import { getCategoryIcon } from '../lib/icons';
-import { getMergedMemoTags, toggleMemoTag, isMemoTagActive } from '../lib/memo';
+import {
+  getMergedMemoTags,
+  toggleMemoTag,
+  isMemoTagActive,
+  BUILTIN_MEMO_TEMPLATES,
+  MemoChecklistTemplate,
+  applyChecklistTemplate,
+  insertChecklistCheckbox,
+  handleChecklistInput,
+} from '../lib/memo';
 import {
   CalendarSystem,
   MemoRepeatFrequency,
@@ -177,6 +186,40 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const [selectedAccountId, setSelectedAccountId] = useState<string>(() => transaction?.account_id || '');
   const [merchant, setMerchant] = useState<string>(() => transaction?.merchant || '');
   const [note, setNote] = useState<string>(() => transaction?.note || '');
+
+  const handleSelectTemplate = React.useCallback((template: MemoChecklistTemplate) => {
+    if (!note || !note.trim()) {
+      setNote(applyChecklistTemplate(template));
+      return;
+    }
+
+    if (Platform.OS === 'web') {
+      const choice = typeof window !== 'undefined' && window.confirm(`是否以「${template.title}」範本替換當前內容？\n\n【確定】：替換現有內容\n【取消】：接續在目前內容下方`);
+      if (choice) {
+        setNote(applyChecklistTemplate(template, undefined, false));
+      } else {
+        setNote(applyChecklistTemplate(template, note, true));
+      }
+      return;
+    }
+
+    Alert.alert(
+      `帶入「${template.title}」範本`,
+      '請問您希望替換當前已輸入的內容，還是接續在目前內容下方？',
+      [
+        {
+          text: '接在下方',
+          onPress: () => setNote(applyChecklistTemplate(template, note, true)),
+        },
+        {
+          text: '替換內容',
+          style: 'destructive',
+          onPress: () => setNote(applyChecklistTemplate(template, undefined, false)),
+        },
+        { text: '取消', style: 'cancel' },
+      ]
+    );
+  }, [note]);
   const [memoReminderDate, setMemoReminderDate] = useState<string>(() => transaction?.reminder_date || '');
   const [memoReminderCalendar, setMemoReminderCalendar] = useState<CalendarSystem>(
     () => transaction?.reminder_calendar || 'solar'
@@ -921,15 +964,47 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   </View>
                 )}
 
+                {/* 常用清單範本捷徑列 (僅在可編輯狀態顯現) */}
+                {canEdit && (
+                  <View style={styles.templateSection}>
+                    <Text style={styles.templateSectionLabel} maxFontSizeMultiplier={1.08}>📋 常用範本 (點選一鍵帶入清單)：</Text>
+                    <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.templateChipsRow}>
+                      {BUILTIN_MEMO_TEMPLATES.map((tmpl) => (
+                        <TouchableOpacity
+                          key={tmpl.id}
+                          style={styles.templateChip}
+                          onPress={() => handleSelectTemplate(tmpl)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.templateChipIcon}>{tmpl.icon}</Text>
+                          <Text style={styles.templateChipText} maxFontSizeMultiplier={1.08}>{tmpl.title}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </HorizontalScrollView>
+                  </View>
+                )}
+
                 {/* 記事內容多行輸入框 */}
                 <View onLayout={(e) => setMemoSectionY(e.nativeEvent.layout.y)}>
                   <View style={styles.sectionLabelRow}>
                     <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記事內容與備忘</Text>
-                    {keyboardOffset > 0 && (
-                      <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
-                      </TouchableOpacity>
-                    )}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      {canEdit && (
+                        <TouchableOpacity
+                          style={styles.insertCheckboxBtn}
+                          onPress={() => setNote(prev => insertChecklistCheckbox(prev))}
+                          activeOpacity={0.7}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        >
+                          <Text style={styles.insertCheckboxBtnText} maxFontSizeMultiplier={1.08}>☑ ＋ 待辦方框</Text>
+                        </TouchableOpacity>
+                      )}
+                      {keyboardOffset > 0 && (
+                        <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                          <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
                   <TextInput
                     style={[styles.memoContentInput, !canEdit && styles.readOnlyInput]}
@@ -938,7 +1013,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                     placeholder="記錄今天的事情、靈感、採買備忘或家庭待辦..."
                     placeholderTextColor="#9CA3AF"
                     value={note}
-                    onChangeText={setNote}
+                    onChangeText={(text) => setNote(handleChecklistInput(note, text))}
                     editable={canEdit}
                     onFocus={() => scrollToInput(memoSectionY, isSettled ? 220 : 70)}
                     textAlignVertical="top"
@@ -2482,6 +2557,52 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#B45309',
     lineHeight: 15,
+  },
+  insertCheckboxBtn: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  insertCheckboxBtnText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#D97706',
+  },
+  templateSection: {
+    marginBottom: 10,
+  },
+  templateSectionLabel: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#92400E',
+    marginBottom: 5,
+  },
+  templateChipsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  templateChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 5.5,
+    gap: 5,
+  },
+  templateChipIcon: {
+    fontSize: 13,
+  },
+  templateChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#B45309',
   },
   memoContentInput: {
     backgroundColor: '#FAFAFA',

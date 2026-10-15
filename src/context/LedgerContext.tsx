@@ -6,7 +6,7 @@ import { supabase, isConfigured } from '../lib/supabase';
 import { generateUUID } from '../lib/uuid';
 import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS } from '../lib/payment';
 import { DEFAULT_RECURRING_PRESETS, getCurrentPeriodKey, getBillPeriodLabel, getInstallmentInfo } from '../lib/recurring';
-import { parseMemoNote, encodeMemoMerchantTag, decodeMemoMerchantTag, DEFAULT_MEMO_QUICK_TAGS, extractMemoTag } from '../lib/memo';
+import { parseMemoNote, encodeMemoMerchantTag, decodeMemoMerchantTag, DEFAULT_MEMO_QUICK_TAGS, extractMemoTag, toggleChecklistItem } from '../lib/memo';
 import { CalendarSystem, MemoRepeatFrequency, getNextMemoReminderDate, formatMemoReminderBadge } from '../lib/lunar';
 import { APP_FULL_VERSION } from '../constants/version';
 import { getDeviceId, getDeviceName, getDevicePlatform } from '../lib/device';
@@ -329,6 +329,7 @@ interface LedgerContextType {
   recentMemoTags: string[];
   recordMemoTag: (tag: string) => Promise<void>;
   removeRecentMemoTag: (tag: string) => Promise<void>;
+  toggleMemoChecklistItem: (transactionId: string, itemIndex: number) => Promise<boolean>;
   exportToCSV: () => string;
   exportToJSON: () => string;
   restoreFromJSON: (
@@ -6655,6 +6656,15 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   };
 
+  // 切換生活記事內特定子檢核清單項目的勾選狀態 [ ] <-> [x]
+  const toggleMemoChecklistItem = React.useCallback(async (transactionId: string, itemIndex: number): Promise<boolean> => {
+    const targetTx = transactions.find(t => t.id === transactionId);
+    if (!targetTx || !targetTx.note) return false;
+    const nextNote = toggleChecklistItem(targetTx.note, itemIndex);
+    if (nextNote === targetTx.note) return false;
+    return updateTransaction(transactionId, { note: nextNote });
+  }, [transactions, updateTransaction]);
+
   // 匯出為 CSV 格式 (自帶 UTF-8 BOM，防止 Windows Excel 雙擊開啟出現繁體中文亂碼)
   const exportToCSV = (): string => {
     const BOM = '\uFEFF';
@@ -7948,6 +7958,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         recentMemoTags,
         recordMemoTag,
         removeRecentMemoTag,
+        toggleMemoChecklistItem,
         exportToCSV,
         exportToJSON,
         restoreFromJSON,

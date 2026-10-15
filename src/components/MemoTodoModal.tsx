@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
-import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag } from '../lib/memo';
+import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag, parseMemoChecklist } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { HorizontalScrollView } from './HorizontalScrollView';
 
@@ -44,7 +44,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
   onAddMemo,
   onCompleteMemo,
 }) => {
-  const { transactions, getMemberById, toggleMemoSettled } = useLedger();
+  const { transactions, getMemberById, toggleMemoSettled, toggleMemoChecklistItem } = useLedger();
   const [activeTab, setActiveTab] = useState<TodoTab>('all');
 
   // 每次開啟彈窗或交易更新時，精準取得本地最新日期 (避免空依賴緩存或 UTC 時區差)
@@ -287,6 +287,10 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
               displayList.map((item) => {
                 const isCompleted = !!item.is_settled;
                 const memoData = parseMemoNote(item.note);
+                const checklistData = parseMemoChecklist(memoData.cleanContent);
+                const checklistProgressPercent = checklistData.totalCount > 0
+                  ? (checklistData.completedCount / checklistData.totalCount) * 100
+                  : 0;
                 const dueStatus = getDueStatus(item);
                 const payer = getMemberById(item.paid_by) || item.payer_profile;
                 const completer = item.completed_by ? getMemberById(item.completed_by) : undefined;
@@ -360,13 +364,98 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                       )}
                     </View>
 
-                    {/* 正文文字 (支援超連結高亮與點擊開啟) */}
-                    <Text
-                      style={[styles.itemContent, isCompleted && styles.itemContentCompleted]}
-                      maxFontSizeMultiplier={1.1}
-                    >
-                      {renderContentWithLinks(memoData.cleanContent, isCompleted)}
-                    </Text>
+                    {checklistData.isChecklist ? (
+                      <View style={{ marginBottom: 8 }}>
+                        {/* 檢核進度條 */}
+                        <View style={styles.checklistProgressRow}>
+                          <View style={styles.checklistProgressBarBg}>
+                            <View
+                              style={[
+                                styles.checklistProgressBarFill,
+                                {
+                                  width: `${checklistProgressPercent}%`,
+                                  backgroundColor: checklistProgressPercent === 100 ? '#10B981' : '#3B82F6',
+                                },
+                              ]}
+                            />
+                          </View>
+                          <Text
+                            style={[
+                              styles.checklistProgressText,
+                              { color: checklistProgressPercent === 100 ? '#059669' : '#2563EB' },
+                            ]}
+                            allowFontScaling={false}
+                            maxFontSizeMultiplier={1.08}
+                          >
+                            {checklistData.completedCount}/{checklistData.totalCount} ({Math.round(checklistProgressPercent)}%)
+                          </Text>
+                        </View>
+
+                        {/* 前綴說明文字 (若有) */}
+                        {!!checklistData.prefixText && (
+                          <Text
+                            style={[styles.itemContent, isCompleted && styles.itemContentCompleted, { marginBottom: 6 }]}
+                            maxFontSizeMultiplier={1.1}
+                          >
+                            {renderContentWithLinks(checklistData.prefixText, isCompleted)}
+                          </Text>
+                        )}
+
+                        {/* 互動式清單項目列表 */}
+                        <View style={styles.checklistContainer}>
+                          {checklistData.items.map((checkItem) => {
+                            const itemDone = checkItem.completed;
+                            return (
+                              <TouchableOpacity
+                                key={checkItem.index}
+                                style={[styles.checklistItemRow, itemDone && styles.checklistItemRowCompleted]}
+                                activeOpacity={0.7}
+                                onPress={(e) => {
+                                  e.stopPropagation?.();
+                                  toggleMemoChecklistItem(item.id, checkItem.index);
+                                }}
+                              >
+                                <View style={[styles.checklistItemBox, itemDone && styles.checklistItemBoxChecked]}>
+                                  {itemDone && <Text style={styles.checklistItemCheckIcon}>✓</Text>}
+                                </View>
+                                <Text
+                                  style={[styles.checklistItemText, itemDone && styles.checklistItemTextCompleted]}
+                                  maxFontSizeMultiplier={1.1}
+                                >
+                                  {checkItem.text}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+
+                        {/* 後綴備註文字 (若有) */}
+                        {!!checklistData.suffixText && (
+                          <Text
+                            style={[styles.itemContent, isCompleted && styles.itemContentCompleted, { marginTop: 6 }]}
+                            maxFontSizeMultiplier={1.1}
+                          >
+                            {renderContentWithLinks(checklistData.suffixText, isCompleted)}
+                          </Text>
+                        )}
+
+                        {/* 全部打勾完成時的引導提示 */}
+                        {checklistProgressPercent === 100 && !isCompleted && (
+                          <View style={styles.checklistAllDoneHint}>
+                            <Text style={styles.checklistAllDoneHintText} maxFontSizeMultiplier={1.08}>
+                              🎉 項目已全數核對！點擊左側「✓」即可將整單歸檔為已辦妥
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    ) : (
+                      <Text
+                        style={[styles.itemContent, isCompleted && styles.itemContentCompleted]}
+                        maxFontSizeMultiplier={1.1}
+                      >
+                        {renderContentWithLinks(memoData.cleanContent, isCompleted)}
+                      </Text>
+                    )}
 
                     {/* 辦妥回報說明 */}
                     {isCompleted && !!item.completion_note && (
@@ -777,6 +866,96 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#475569',
+  },
+  checklistProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 6,
+    marginBottom: 6,
+  },
+  checklistProgressBarBg: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#E2E8F0',
+    overflow: 'hidden',
+  },
+  checklistProgressBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  checklistProgressText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  checklistContainer: {
+    marginVertical: 4,
+    gap: 5,
+  },
+  checklistItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 0.5,
+    borderColor: '#E2E8F0',
+  },
+  checklistItemRowCompleted: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#E2E8F0',
+    opacity: 0.8,
+  },
+  checklistItemBox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: '#94A3B8',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  checklistItemBoxChecked: {
+    borderColor: '#10B981',
+    backgroundColor: '#10B981',
+  },
+  checklistItemCheckIcon: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+    lineHeight: 13,
+  },
+  checklistItemText: {
+    fontSize: 13.5,
+    color: '#1E293B',
+    flex: 1,
+    lineHeight: 18,
+  },
+  checklistItemTextCompleted: {
+    color: '#94A3B8',
+    textDecorationLine: 'line-through',
+  },
+  checklistAllDoneHint: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  checklistAllDoneHintText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#059669',
   },
 });
 

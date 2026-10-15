@@ -4,7 +4,7 @@ import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { getCategoryIcon } from '../lib/icons';
 import { formatPaymentLabel, parseExpenseDiscount } from '../lib/payment';
-import { parseMemoNote, decodeMemoMerchantTag } from '../lib/memo';
+import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
@@ -22,7 +22,7 @@ interface TransactionItemProps {
 }
 
 export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ transaction, onPress, onCompleteMemo }) => {
-  const { getMemberById, getCategoryById, getAccountById, paymentMethods, toggleMemoSettled, transactions } = useLedger();
+  const { getMemberById, getCategoryById, getAccountById, paymentMethods, toggleMemoSettled, toggleMemoChecklistItem, transactions } = useLedger();
 
   const category = getCategoryById(transaction.category_id, transaction.category);
   const payer = getMemberById(transaction.paid_by) || transaction.payer_profile;
@@ -42,6 +42,10 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
     const reminderRep = transaction.reminder_repeat || decodedMerchant.reminderRepeat;
     const reminderBadge = formatMemoReminderBadge(reminderDate, reminderCal, reminderRep);
     const memoData = parseMemoNote(transaction.note, category?.name, getCategoryIcon(category?.icon));
+    const checklistData = parseMemoChecklist(memoData.cleanContent);
+    const checklistProgressPercent = checklistData.totalCount > 0
+      ? (checklistData.completedCount / checklistData.totalCount) * 100
+      : 0;
     const completer = transaction.completed_by ? getMemberById(transaction.completed_by) : undefined;
     const linkedExpense = transaction.linked_transaction_id ? transactions.find(t => t.id === transaction.linked_transaction_id && t.type !== 'memo') : undefined;
 
@@ -131,13 +135,102 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
           </Text>
         </View>
 
-        <Text
-          style={[styles.memoContentText, isCompleted && styles.memoContentTextCompleted]}
-          allowFontScaling={false}
-          maxFontSizeMultiplier={1.1}
-        >
-          {renderContentWithLinks(memoData.cleanContent, isCompleted)}
-        </Text>
+        {checklistData.isChecklist ? (
+          <View style={{ marginBottom: 8 }}>
+            {/* 檢核進度條 */}
+            <View style={styles.checklistProgressRow}>
+              <View style={styles.checklistProgressBarBg}>
+                <View
+                  style={[
+                    styles.checklistProgressBarFill,
+                    {
+                      width: `${checklistProgressPercent}%`,
+                      backgroundColor: checklistProgressPercent === 100 ? '#10B981' : '#3B82F6',
+                    },
+                  ]}
+                />
+              </View>
+              <Text
+                style={[
+                  styles.checklistProgressText,
+                  { color: checklistProgressPercent === 100 ? '#059669' : '#2563EB' },
+                ]}
+                allowFontScaling={false}
+                maxFontSizeMultiplier={1.08}
+              >
+                {checklistData.completedCount}/{checklistData.totalCount} ({Math.round(checklistProgressPercent)}%)
+              </Text>
+            </View>
+
+            {/* 前綴說明文字 (若有) */}
+            {!!checklistData.prefixText && (
+              <Text
+                style={[styles.memoContentText, isCompleted && styles.memoContentTextCompleted, { marginBottom: 6 }]}
+                allowFontScaling={false}
+                maxFontSizeMultiplier={1.1}
+              >
+                {renderContentWithLinks(checklistData.prefixText, isCompleted)}
+              </Text>
+            )}
+
+            {/* 互動式清單項目列表 */}
+            <View style={styles.checklistContainer}>
+              {checklistData.items.map((item) => {
+                const itemDone = item.completed;
+                return (
+                  <TouchableOpacity
+                    key={item.index}
+                    style={[styles.checklistItemRow, itemDone && styles.checklistItemRowCompleted]}
+                    activeOpacity={0.7}
+                    onPress={(e) => {
+                      e.stopPropagation?.();
+                      toggleMemoChecklistItem(transaction.id, item.index);
+                    }}
+                  >
+                    <View style={[styles.checklistItemBox, itemDone && styles.checklistItemBoxChecked]}>
+                      {itemDone && <Text style={styles.checklistItemCheckIcon}>✓</Text>}
+                    </View>
+                    <Text
+                      style={[styles.checklistItemText, itemDone && styles.checklistItemTextCompleted]}
+                      allowFontScaling={false}
+                      maxFontSizeMultiplier={1.1}
+                    >
+                      {item.text}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* 後綴備註文字 (若有) */}
+            {!!checklistData.suffixText && (
+              <Text
+                style={[styles.memoContentText, isCompleted && styles.memoContentTextCompleted, { marginTop: 6 }]}
+                allowFontScaling={false}
+                maxFontSizeMultiplier={1.1}
+              >
+                {renderContentWithLinks(checklistData.suffixText, isCompleted)}
+              </Text>
+            )}
+
+            {/* 全部打勾完成時的引導提示 */}
+            {checklistProgressPercent === 100 && !isCompleted && (
+              <View style={styles.checklistAllDoneHint}>
+                <Text style={styles.checklistAllDoneHintText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                  🎉 項目已全數核對！點擊左側「✓」即可將整單歸檔為已辦妥
+                </Text>
+              </View>
+            )}
+          </View>
+        ) : (
+          <Text
+            style={[styles.memoContentText, isCompleted && styles.memoContentTextCompleted]}
+            allowFontScaling={false}
+            maxFontSizeMultiplier={1.1}
+          >
+            {renderContentWithLinks(memoData.cleanContent, isCompleted)}
+          </Text>
+        )}
 
         {isCompleted && !!transaction.completion_note && (
           <View style={styles.memoReportBubble}>
@@ -639,6 +732,96 @@ const styles = StyleSheet.create({
   },
   expenseDiscountBadgeText: {
     fontSize: 10.5,
+    fontWeight: '700',
+    color: '#059669',
+  },
+  checklistProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 6,
+    marginBottom: 6,
+  },
+  checklistProgressBarBg: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#E2E8F0',
+    overflow: 'hidden',
+  },
+  checklistProgressBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  checklistProgressText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  checklistContainer: {
+    marginVertical: 4,
+    gap: 5,
+  },
+  checklistItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 0.5,
+    borderColor: '#E2E8F0',
+  },
+  checklistItemRowCompleted: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#E2E8F0',
+    opacity: 0.8,
+  },
+  checklistItemBox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: '#94A3B8',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  checklistItemBoxChecked: {
+    borderColor: '#10B981',
+    backgroundColor: '#10B981',
+  },
+  checklistItemCheckIcon: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+    lineHeight: 13,
+  },
+  checklistItemText: {
+    fontSize: 13.5,
+    color: '#1E293B',
+    flex: 1,
+    lineHeight: 18,
+  },
+  checklistItemTextCompleted: {
+    color: '#94A3B8',
+    textDecorationLine: 'line-through',
+  },
+  checklistAllDoneHint: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  checklistAllDoneHintText: {
+    fontSize: 11.5,
     fontWeight: '700',
     color: '#059669',
   },
