@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 36;
+export const APP_BUILD_REVISION = 37;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.37',
+    date: '2026-10-16',
+    title: '雲端帳本總管可視捲動區域大幅擴展 4 倍 ＋ 容量看板支援一鍵折疊與隨滑動上推',
+    highlights: [
+      '可視捲動區域大幅擴大 4 倍：彈窗高度全面撐開至 92% 全高面板，徹底解決原本因高度限縮與頂部空間吃緊，導致下方帳本清單一次只能看兩行多文字的狹窄問題。',
+      '版面層次智慧重組：分類篩選標籤列（全部/活躍/測試/空帳本）固定於頂部最便捷位置，而龐大的容量指標看板與重新整理按鈕移入捲動區頂端，向下檢閱帳本時自然往上推，整面螢幕（逾 600px）全數提供給帳本卡片。',
+      '容量指標看板支援一鍵收合：容量看板右上角新增「收合 ▲ / 展開詳情 ▼」快速折疊功能，點選即可摺疊為單行精簡數值，盤點檢閱帳本視野極致寬廣。',
+    ],
+  },
   {
     version: '1.0.5.36',
     date: '2026-10-16',

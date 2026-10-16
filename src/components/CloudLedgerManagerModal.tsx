@@ -9,12 +9,15 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Dimensions,
 } from 'react-native';
 import {
   fetchCloudLedgersSummary,
   CloudLedgerSummary,
   CloudDatabaseQuota,
 } from '../lib/cloudLedgerService';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface CloudLedgerManagerModalProps {
   visible: boolean;
@@ -32,6 +35,7 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
   onLedgerDeleted,
 }) => {
   const [loading, setLoading] = useState<boolean>(false);
+  const [quotaExpanded, setQuotaExpanded] = useState<boolean>(true);
   const [ledgers, setLedgers] = useState<CloudLedgerSummary[]>([]);
   const [quota, setQuota] = useState<CloudDatabaseQuota | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'active' | 'test' | 'ghost'>('all');
@@ -73,11 +77,11 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
               <View style={styles.headerBadge}>
-                <Text style={styles.headerBadgeText}>👑 管理員特權 · 雲端空間總管（安全唯讀模式）</Text>
+                <Text style={styles.headerBadgeText}>👑 安全唯讀 · 雲端空間總管</Text>
               </View>
               <Text style={styles.title} maxFontSizeMultiplier={1.2}>☁️ 雲端帳本總管</Text>
               <Text style={styles.subtitle} maxFontSizeMultiplier={1.1}>
-                全資料庫帳本現況盤點與容量監控（安全唯讀檢閱模式）
+                全資料庫帳本現況盤點與 500 MB 容量監控
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -85,68 +89,7 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
             </TouchableOpacity>
           </View>
 
-          {/* 容量指標看板 */}
-          {quota && (
-            <View style={styles.quotaCard}>
-              <View style={styles.quotaRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.quotaTitle}>🗄️ PostgreSQL 資料庫用量</Text>
-                  <Text style={styles.quotaSub}>
-                    約 {quota.dbUsedMb} MB / {quota.dbMaxMb} MB (剩餘約 {quota.dbMaxMb - quota.dbUsedMb} MB · {100 - quota.dbUsedPercent}% 可用)
-                  </Text>
-                </View>
-                <Text style={styles.quotaPercentText}>{quota.dbUsedPercent}%</Text>
-              </View>
-              <View style={styles.quotaBarTrack}>
-                <View style={[styles.quotaBarFill, { width: `${quota.dbUsedPercent}%` }]} />
-              </View>
-
-              <View style={[styles.quotaRow, { marginTop: 10 }]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.quotaTitle}>📦 雲端電子帳單 Storage</Text>
-                  <Text style={styles.quotaSub}>
-                    約 {quota.storageUsedMb} MB / {quota.storageMaxMb} MB (剩餘約 {quota.storageMaxMb - 1} MB)
-                  </Text>
-                </View>
-                <Text style={styles.quotaPercentText}>&lt; 0.1%</Text>
-              </View>
-              <View style={styles.quotaBarTrack}>
-                <View style={[styles.quotaBarFill, { width: '1.5%', backgroundColor: '#10B981' }]} />
-              </View>
-
-              {/* 統計膠囊列 */}
-              <View style={styles.statsPillRow}>
-                <View style={styles.statsPill}>
-                  <Text style={styles.statsPillNum}>{quota.totalLedgers}</Text>
-                  <Text style={styles.statsPillLabel}>總帳本數</Text>
-                </View>
-                <View style={[styles.statsPill, { borderColor: '#86EFAC' }]}>
-                  <Text style={[styles.statsPillNum, { color: '#16A34A' }]}>{quota.activeLedgers}</Text>
-                  <Text style={styles.statsPillLabel}>🟢 活躍帳本</Text>
-                </View>
-                <View style={[styles.statsPill, { borderColor: '#FCA5A5' }]}>
-                  <Text style={[styles.statsPillNum, { color: '#DC2626' }]}>{quota.ghostLedgers}</Text>
-                  <Text style={styles.statsPillLabel}>🔴 空帳本</Text>
-                </View>
-              </View>
-            </View>
-          )}
-
-          {/* 重新整理按鈕 */}
-          <View style={styles.actionBar}>
-            <TouchableOpacity
-              style={styles.refreshBtn}
-              onPress={loadData}
-              disabled={loading}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.refreshBtnText}>
-                {loading ? '載入中...' : '🔄 重新整理雲端現況'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* 篩選切換列 */}
+          {/* 篩選切換列 (置頂固定，切換分類最便捷) */}
           <View style={styles.filterBar}>
             <TouchableOpacity
               style={[styles.filterChip, filterType === 'all' && styles.filterChipActive]}
@@ -185,14 +128,94 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
             </TouchableOpacity>
           </View>
 
-          {/* 帳本清單 */}
+          {/* 帳本清單與捲動區域 */}
           {loading ? (
             <View style={styles.loadingBox}>
               <ActivityIndicator size="large" color="#3B82F6" />
               <Text style={styles.loadingText}>正在從雲端盤點全體帳本...</Text>
             </View>
           ) : (
-            <ScrollView style={styles.listScroll} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              style={styles.listScroll}
+              contentContainerStyle={styles.listScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* 容量指標看板 (移入捲動區，隨滑動自然上推，支援一鍵收合) */}
+              {quota && (
+                <View style={styles.quotaCard}>
+                  <TouchableOpacity
+                    style={styles.quotaRow}
+                    onPress={() => setQuotaExpanded(prev => !prev)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={styles.quotaTitle}>🗄️ PostgreSQL 資料庫用量</Text>
+                      <View style={styles.quotaMiniPercentBadge}>
+                        <Text style={styles.quotaMiniPercentBadgeText}>{quota.dbUsedPercent}%</Text>
+                      </View>
+                    </View>
+                    <View style={styles.quotaToggleBtn}>
+                      <Text style={styles.quotaToggleBtnText}>
+                        {quotaExpanded ? '收合 ▲' : '展開詳情 ▼'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <Text style={styles.quotaSub}>
+                    約 {quota.dbUsedMb} MB / {quota.dbMaxMb} MB (剩餘約 {quota.dbMaxMb - quota.dbUsedMb} MB · {100 - quota.dbUsedPercent}% 可用)
+                  </Text>
+                  <View style={styles.quotaBarTrack}>
+                    <View style={[styles.quotaBarFill, { width: `${quota.dbUsedPercent}%` }]} />
+                  </View>
+
+                  {quotaExpanded && (
+                    <>
+                      <View style={[styles.quotaRow, { marginTop: 10 }]}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.quotaTitle}>📦 雲端電子帳單 Storage</Text>
+                          <Text style={styles.quotaSub}>
+                            約 {quota.storageUsedMb} MB / {quota.storageMaxMb} MB (剩餘約 {quota.storageMaxMb - 1} MB)
+                          </Text>
+                        </View>
+                        <Text style={styles.quotaPercentText}>&lt; 0.1%</Text>
+                      </View>
+                      <View style={styles.quotaBarTrack}>
+                        <View style={[styles.quotaBarFill, { width: '1.5%', backgroundColor: '#10B981' }]} />
+                      </View>
+
+                      {/* 統計膠囊列 */}
+                      <View style={styles.statsPillRow}>
+                        <View style={styles.statsPill}>
+                          <Text style={styles.statsPillNum}>{quota.totalLedgers}</Text>
+                          <Text style={styles.statsPillLabel}>總帳本數</Text>
+                        </View>
+                        <View style={[styles.statsPill, { borderColor: '#86EFAC' }]}>
+                          <Text style={[styles.statsPillNum, { color: '#16A34A' }]}>{quota.activeLedgers}</Text>
+                          <Text style={styles.statsPillLabel}>🟢 活躍帳本</Text>
+                        </View>
+                        <View style={[styles.statsPill, { borderColor: '#FCA5A5' }]}>
+                          <Text style={[styles.statsPillNum, { color: '#DC2626' }]}>{quota.ghostLedgers}</Text>
+                          <Text style={styles.statsPillLabel}>🔴 空帳本</Text>
+                        </View>
+                      </View>
+                    </>
+                  )}
+                </View>
+              )}
+
+              {/* 重新整理按鈕 */}
+              <View style={styles.actionBar}>
+                <TouchableOpacity
+                  style={styles.refreshBtn}
+                  onPress={loadData}
+                  disabled={loading}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.refreshBtnText}>
+                    {loading ? '載入中...' : '🔄 重新整理雲端現況'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
               {filteredLedgers.length === 0 ? (
                 <View style={styles.emptyBox}>
                   <Text style={styles.emptyIcon}>✨</Text>
@@ -285,10 +308,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    paddingTop: 18,
+    paddingTop: 16,
     paddingHorizontal: 16,
-    maxHeight: '92%',
-    minHeight: '75%',
+    height: Platform.OS === 'web' ? '92%' : Math.min(SCREEN_HEIGHT * 0.92, 840),
+    maxHeight: '94%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -6 },
     shadowOpacity: 0.15,
@@ -297,37 +320,37 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingBottom: 12,
+    paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
   headerBadge: {
     alignSelf: 'flex-start',
     backgroundColor: '#FEF3C7',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
     borderRadius: 6,
-    marginBottom: 6,
+    marginBottom: 4,
     borderWidth: 1,
     borderColor: '#FDE68A',
   },
   headerBadgeText: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '800',
     color: '#B45309',
   },
   title: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
     color: '#0F172A',
-    marginBottom: 2,
+    marginBottom: 1,
   },
   subtitle: {
-    fontSize: 12,
+    fontSize: 11.5,
     color: '#64748B',
-    lineHeight: 16,
+    lineHeight: 15,
   },
   closeBtn: {
     padding: 8,
@@ -342,8 +365,8 @@ const styles = StyleSheet.create({
   quotaCard: {
     backgroundColor: '#F8FAFC',
     borderRadius: 14,
-    padding: 12,
-    marginTop: 12,
+    padding: 10,
+    marginTop: 8,
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
@@ -366,6 +389,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     color: '#2563EB',
+  },
+  quotaMiniPercentBadge: {
+    backgroundColor: '#DBEAFE',
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+  },
+  quotaMiniPercentBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#1D4ED8',
+  },
+  quotaToggleBtn: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  quotaToggleBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
   },
   quotaBarTrack: {
     height: 6,
@@ -409,7 +456,8 @@ const styles = StyleSheet.create({
   },
   actionBar: {
     flexDirection: 'row',
-    marginTop: 10,
+    marginTop: 8,
+    marginBottom: 10,
   },
   refreshBtn: {
     flex: 1,
@@ -429,8 +477,9 @@ const styles = StyleSheet.create({
   filterBar: {
     flexDirection: 'row',
     gap: 6,
-    marginTop: 10,
-    marginBottom: 8,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F8FAFC',
   },
   filterChip: {
     paddingHorizontal: 10,
@@ -452,6 +501,10 @@ const styles = StyleSheet.create({
   },
   listScroll: {
     flex: 1,
+  },
+  listScrollContent: {
+    paddingTop: 2,
+    paddingBottom: 40,
   },
   loadingBox: {
     paddingVertical: 60,
