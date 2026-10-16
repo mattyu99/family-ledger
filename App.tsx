@@ -183,6 +183,8 @@ function MainApp() {
     isCloudSynced,
     hasJoinedLedger,
     isOwner,
+    isReadOnly,
+    toggleLedgerReadOnly,
     isAdminMode,
     enableAdminMode,
     disableAdminMode,
@@ -996,6 +998,7 @@ function MainApp() {
   const [newLedgerName, setNewLedgerName] = useState('幸福家庭公帳');
   const [creatorNickname, setCreatorNickname] = useState('爸爸 (我)');
   const [creatorAvatar, setCreatorAvatar] = useState('👨');
+  const [newLedgerIsReadOnly, setNewLedgerIsReadOnly] = useState(false);
 
   const [joinLedgerModalVisible, setJoinLedgerModalVisible] = useState(false);
   const [joinCodeInput, setJoinCodeInput] = useState('');
@@ -1515,9 +1518,14 @@ function MainApp() {
       showAlert('請輸入帳本名稱', '帳本名稱不能為空');
       return;
     }
-    await createLedger(newLedgerName.trim(), creatorNickname.trim() || '爸爸 (我)', creatorAvatar);
+    await createLedger(newLedgerName.trim(), creatorNickname.trim() || '爸爸 (我)', creatorAvatar, newLedgerIsReadOnly);
     setCreateLedgerModalVisible(false);
-    showAlert('建立成功！', `已建立「${newLedgerName.trim()}」！\n系統已為您產生專屬邀請碼，可至「家庭與備份」分享給家人。`);
+    const wasReadOnly = newLedgerIsReadOnly;
+    setNewLedgerIsReadOnly(false);
+    showAlert(
+      '建立成功！',
+      `已建立「${newLedgerName.trim()}」！\n${wasReadOnly ? '🔒 此帳本已啟用「唯讀保護模式」，所有紀錄僅供查詢檢視。\n' : ''}系統已為您產生專屬邀請碼，可至「家庭與備份」分享給家人。`
+    );
   };
 
   const handleJoinLedger = async () => {
@@ -2339,6 +2347,31 @@ function MainApp() {
               onSelectAvatar={setCreatorAvatar}
             />
 
+            <TouchableOpacity
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                marginVertical: 14,
+                padding: 12,
+                backgroundColor: newLedgerIsReadOnly ? '#EFF6FF' : '#F9FAFB',
+                borderRadius: 12,
+                borderWidth: 1.5,
+                borderColor: newLedgerIsReadOnly ? '#3B82F6' : '#E5E7EB',
+              }}
+              onPress={() => setNewLedgerIsReadOnly(prev => !prev)}
+              activeOpacity={0.8}
+            >
+              <Text style={{ fontSize: 22, marginRight: 10 }}>{newLedgerIsReadOnly ? '🔒' : '🔓'}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: newLedgerIsReadOnly ? '#1E40AF' : '#1F2937' }}>
+                  開啟「唯讀封存模式」(僅供查詢)
+                </Text>
+                <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>
+                  特別適合 Adarian 等歷史資料匯入，鎖定後防止任何誤增或誤刪
+                </Text>
+              </View>
+            </TouchableOpacity>
+
             <TouchableOpacity style={styles.submitMemberBtn} onPress={handleCreateLedger}>
               <Text style={styles.submitMemberBtnText}>🚀 確認建立並進入帳本</Text>
             </TouchableOpacity>
@@ -3104,9 +3137,16 @@ function MainApp() {
                         }}
                       >
                         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                          <Text style={{ fontSize: 15, fontWeight: '700', color: isCurrent ? '#4F46E5' : '#1F2937', flexShrink: 1 }} numberOfLines={1}>
-                            {l.name} {isCurrent ? '（使用中 ✓）' : ''}
-                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
+                            <Text style={{ fontSize: 15, fontWeight: '700', color: isCurrent ? '#4F46E5' : '#1F2937', flexShrink: 1 }} numberOfLines={1}>
+                              {l.name} {isCurrent ? '（使用中 ✓）' : ''}
+                            </Text>
+                            {Boolean(l.is_read_only) && (
+                              <View style={{ backgroundColor: '#F1F5F9', borderColor: '#CBD5E1', borderWidth: 1, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                                <Text style={{ fontSize: 10, color: '#475569', fontWeight: '800' }}>🔒 唯讀</Text>
+                              </View>
+                            )}
+                          </View>
                           {!isCurrent && (unreadLedgerMap[l.id] || 0) > 0 && (
                             <View style={styles.modalLedgerUnreadBadge}>
                               <Text style={styles.modalLedgerUnreadBadgeText}>
@@ -3129,6 +3169,34 @@ function MainApp() {
                           ) : null}
                         </View>
                       </TouchableOpacity>
+
+                      {isAdmin && (
+                        <TouchableOpacity
+                          style={{
+                            paddingHorizontal: 8,
+                            paddingVertical: 6,
+                            backgroundColor: l.is_read_only ? '#FEF3C7' : '#F3F4F6',
+                            borderRadius: 8,
+                            marginLeft: 6,
+                            borderWidth: 1,
+                            borderColor: l.is_read_only ? '#F59E0B' : '#E5E7EB',
+                          }}
+                          onPress={async () => {
+                            const nextVal = !l.is_read_only;
+                            await toggleLedgerReadOnly(l.id, nextVal);
+                            showAlert(
+                              nextVal ? '🔒 已開啟唯讀保護' : '🔓 已解除唯讀鎖定',
+                              nextVal
+                                ? `「${l.name}」已設為唯讀模式，防止任何新增、修改或刪除。`
+                                : `「${l.name}」已恢復為一般編輯模式。`
+                            );
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, color: l.is_read_only ? '#B45309' : '#6B7280', fontWeight: '700' }}>
+                            {l.is_read_only ? '🔒 唯讀中' : '🔓 正常'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
 
                       <TouchableOpacity
                         style={{
@@ -3388,6 +3456,12 @@ function MainApp() {
               <Text style={styles.ledgerTitle} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.2}>
                 {currentLedger.name}
               </Text>
+            )}
+
+            {Boolean(currentLedger.is_read_only) && (
+              <View style={styles.topBarReadOnlyBadge}>
+                <Text style={styles.topBarReadOnlyBadgeText}>🔒 唯讀</Text>
+              </View>
             )}
 
             {/* 多本帳本快速切換膠囊入口 (若其他帳本有未讀新動態則亮紅點) */}
@@ -5440,18 +5514,32 @@ function MainApp() {
         )}
       </View>
 
-      {/* 浮動記帳按鈕 (FAB) - 僅在「明細」分頁顯示，避免遮擋家庭成員與設定操作 */}
+      {/* 浮動記帳按鈕 (FAB) - 僅在「明細」分頁顯示，唯讀模式下呈現鎖定狀態 */}
       {activeTab === 'transactions' && (
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => {
-            setModalMode('expense');
-            setModalRecipientId(undefined);
-            setModalVisible(true);
-          }}
-        >
-          <Text style={styles.fabText}>＋</Text>
-        </TouchableOpacity>
+        Boolean(currentLedger.is_read_only) ? (
+          <TouchableOpacity
+            style={[styles.fab, { backgroundColor: '#64748B' }]}
+            onPress={() => {
+              showAlert(
+                '🔒 唯讀帳本保護中',
+                `「${currentLedger.name}」已開啟唯讀封存保護，無法新增記帳。\n若需異動，管理員可至「切換帳本」解除唯讀鎖定。`
+              );
+            }}
+          >
+            <Text style={styles.fabText}>🔒</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.fab}
+            onPress={() => {
+              setModalMode('expense');
+              setModalRecipientId(undefined);
+              setModalVisible(true);
+            }}
+          >
+            <Text style={styles.fabText}>＋</Text>
+          </TouchableOpacity>
+        )
       )}
 
       {/* 底部功能頁籤 */}
@@ -6076,6 +6164,22 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#0F172A',
     flexShrink: 1,
+  },
+  topBarReadOnlyBadge: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#94A3B8',
+    borderWidth: 1,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginLeft: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  topBarReadOnlyBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
   },
   syncBadge: {
     flexDirection: 'row',

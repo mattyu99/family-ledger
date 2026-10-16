@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS public.ledgers (
 -- 為 ledgers 表新增 admin_pin 欄位（管理員 4 位數安全碼，預設 8888）
 ALTER TABLE public.ledgers ADD COLUMN IF NOT EXISTS admin_pin TEXT DEFAULT '8888';
 
+-- 為 ledgers 表新增 is_read_only 欄位（唯讀封存保護模式，預設 FALSE）
+ALTER TABLE public.ledgers ADD COLUMN IF NOT EXISTS is_read_only BOOLEAN DEFAULT FALSE;
+
 -- 3. 帳本成員關聯表 (角色與權限)
 CREATE TABLE IF NOT EXISTS public.ledger_members (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

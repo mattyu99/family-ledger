@@ -126,6 +126,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     members,
     transactions,
     currentUser,
+    currentLedger,
+    isReadOnly,
     isOwner,
     updateTransaction,
     deleteTransaction,
@@ -379,6 +381,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const txPayerName = txPayerProfile?.display_name || transaction?.payer_profile?.display_name || '付款成員';
 
   const canEdit = React.useMemo(() => {
+    if (isReadOnly || currentLedger?.is_read_only) return false;
     if (!transaction || !currentUser?.id) return false;
     // 帳本管理者（在管理員模式下）擁有全域編輯與刪除權限
     if (isOwner) return true;
@@ -386,15 +389,16 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     const isPayerIdMatch = payerId === currentUser.id;
     const isPayerNameMatch = !!txPayerProfile?.display_name && !!currentUser.display_name && txPayerProfile.display_name === currentUser.display_name;
     return Boolean(isPayerIdMatch || isPayerNameMatch);
-  }, [transaction, currentUser, txPayerProfile, isOwner]);
+  }, [transaction, currentUser, txPayerProfile, isOwner, isReadOnly, currentLedger?.is_read_only]);
 
   // 生活記事允許任何已登入家庭成員回報辦妥說明與操作連動
   const canEditCompletion = React.useMemo(() => {
+    if (isReadOnly || currentLedger?.is_read_only) return false;
     if (!transaction || !currentUser?.id) return false;
     if (canEdit) return true;
     if (transaction.type === 'memo') return true;
     return false;
-  }, [transaction, currentUser, canEdit]);
+  }, [transaction, currentUser, canEdit, isReadOnly, currentLedger?.is_read_only]);
 
   // 取得生活記事關聯之支出項目
   const linkedExpense = React.useMemo(() => {
@@ -824,6 +828,29 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
+            {(isReadOnly || currentLedger?.is_read_only) && (
+              <View style={{
+                backgroundColor: '#EFF6FF',
+                borderColor: '#BFDBFE',
+                borderWidth: 1,
+                borderRadius: 12,
+                padding: 12,
+                marginBottom: 16,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+              }}>
+                <Text style={{ fontSize: 20 }}>🔒</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, color: '#1E40AF', fontWeight: '800' }}>
+                    唯讀封存保護中
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#3B82F6', marginTop: 2, lineHeight: 16 }}>
+                    此帳本已開啟唯讀模式，所有歷史明細僅供查詢與統計，無法修改或刪除。
+                  </Text>
+                </View>
+              </View>
+            )}
             {transaction.type === 'memo' ? (
               <>
                 {/* 生活備忘橫幅 */}
@@ -2043,7 +2070,9 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               <Text style={styles.readOnlyCloseBtnText} maxFontSizeMultiplier={1.15}>關閉明細</Text>
             </TouchableOpacity>
             <Text style={styles.readOnlyFooterHint} maxFontSizeMultiplier={1.08}>
-              🔒 僅付款人「{txPayerName}」本人或帳本管理員具有編輯與刪除權限
+              {(isReadOnly || currentLedger?.is_read_only)
+                ? '🔒 此帳本已設定為唯讀封存保護，歷史明細僅供查詢檢視，不可修改或刪除'
+                : `🔒 僅付款人「${txPayerName}」本人或帳本管理員具有編輯與刪除權限`}
             </Text>
           </View>
         )}

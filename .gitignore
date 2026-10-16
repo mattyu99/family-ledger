@@ -40,3 +40,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# local data & backup files
+*.csv
+*_backup.json

@@ -26,6 +26,7 @@ export interface Ledger {
   admin_pin?: string;
   userDisplayName?: string;
   userAvatar?: string;
+  is_read_only?: boolean;
 }
 
 export interface LedgerMember {

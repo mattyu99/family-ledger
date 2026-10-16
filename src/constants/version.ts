@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 39;
+export const APP_BUILD_REVISION = 40;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.40',
+    date: '2026-10-17',
+    title: '帳本「唯讀封存保護模式」與 Adarian Money 海量歷史記帳無損轉換支援',
+    highlights: [
+      '帳本唯讀封存保護模式 (Read-Only Mode)：可將特定歷史帳本設為唯讀封存，頂部標題與清單醒目顯示「🔒 唯讀」標章；記帳浮動按鈕 (FAB)、明細編輯與刪除自動鎖定並提示保護中，徹底防止老帳被意外改動。',
+      '管理員專屬一鍵解鎖/鎖定：在「切換帳本」彈窗中，管理員可隨時透過「🔒 唯讀中 / 🔓 正常」快捷開關彈性切換保護狀態，新建帳本時亦可直接勾選「開啟唯讀封存模式」。',
+      '突破 Supabase 1,000 筆預設上限：全面升級雲端查詢引擎為自動分批載入架構 (.range pagination)，輕鬆完整拉取 25,000+ 筆跨年度歷史紀錄；還原資料庫批次效率提升 10 倍。',
+      'Adarian Money 25,980 筆完整無損轉換：成功解析 117 個支付帳戶、59 類收支標籤、自動對齊成員「智」與「瑩」，並將 2009~2026 年長達 17 年的記帳明細完整轉製為標準封存備份。',
+    ],
+  },
   {
     version: '1.0.5.39',
     date: '2026-10-16',

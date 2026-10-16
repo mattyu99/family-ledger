@@ -362,8 +362,10 @@ interface LedgerContextType {
   };
   hasJoinedLedger: boolean;
   isOwner: boolean;
+  isReadOnly: boolean;
+  toggleLedgerReadOnly: (ledgerId: string, readOnly?: boolean) => Promise<boolean>;
   inviteCode: string;
-  createLedger: (name?: string, creatorName?: string, avatar?: string) => Promise<void>;
+  createLedger: (name?: string, creatorName?: string, avatar?: string, isReadOnly?: boolean) => Promise<void>;
   updateLedgerName: (newName: string) => Promise<boolean>;
   joinLedgerByCode: (
     codeOrUrl: string,
@@ -670,6 +672,8 @@ const STORAGE_KEYS = {
   LAST_VISITED_PREFIX: '@family_ledger_last_visited_',
   DEVICE_ID: '@family_ledger_device_id',
   MEMBER_DEVICES: '@family_ledger_member_devices',
+  LEDGER_READ_ONLY: '@family_ledger_read_only',
+  LEDGERS: '@family_ledger_list',
 };
 
 // 預設常用店家快捷建議清單（涵蓋台灣家庭最普遍的日常採買店家）
@@ -2339,7 +2343,15 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return next;
     });
 
-    // (A-0) 載入帳本最新雲端資訊 (created_by, admin_pin 等)
+    // 檢查此帳本是否開啟唯讀封存保護
+    try {
+      const savedReadOnly = await AsyncStorage.getItem(`${STORAGE_KEYS.LEDGER_READ_ONLY}_${targetLedger.id}`);
+      if (savedReadOnly === 'true' || targetLedger.is_read_only) {
+        targetLedger = { ...targetLedger, is_read_only: true };
+      }
+    } catch {}
+
+    // (A-0) 載入帳本最新雲端資訊 (created_by, admin_pin, is_read_only 等)
     if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
       try {
         const { data: lData } = await supabase
@@ -2353,8 +2365,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             await AsyncStorage.setItem(STORAGE_KEYS.ADMIN_PIN, lData.admin_pin);
             await AsyncStorage.setItem(`${STORAGE_KEYS.ADMIN_PIN}_${targetLedger.id}`, lData.admin_pin);
           }
+          let needsUpdate = false;
+          if (lData.is_read_only !== undefined && lData.is_read_only !== targetLedger.is_read_only) {
+            targetLedger = { ...targetLedger, is_read_only: Boolean(lData.is_read_only) };
+            await AsyncStorage.setItem(`${STORAGE_KEYS.LEDGER_READ_ONLY}_${targetLedger.id}`, String(Boolean(lData.is_read_only)));
+            needsUpdate = true;
+          }
           if (lData.created_by && lData.created_by !== targetLedger.created_by) {
             targetLedger = { ...targetLedger, ...lData };
+            needsUpdate = true;
+          }
+          if (needsUpdate) {
             setCurrentLedger(targetLedger);
             await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(targetLedger));
           }
@@ -2618,11 +2639,31 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     // (D) 載入交易明細
-    const { data: txRows } = await supabase
-      .from('transactions')
-      .select('*')
-      .eq('ledger_id', targetLedger.id)
-      .order('transacted_at', { ascending: false });
+    // 支援海量歷史帳本分批拉取 (突破 Supabase 1,000 筆預設上限，支援 25,000+ 筆完整載入)
+    let txRows: any[] = [];
+    if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+      let from = 0;
+      const batchSize = 1000;
+      let hasMore = true;
+      while (hasMore) {
+        const { data: chunk, error: chunkErr } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('ledger_id', targetLedger.id)
+          .order('transacted_at', { ascending: false })
+          .range(from, from + batchSize - 1);
+        if (chunkErr || !chunk || chunk.length === 0) {
+          hasMore = false;
+        } else {
+          txRows = txRows.concat(chunk);
+          if (chunk.length < batchSize) {
+            hasMore = false;
+          } else {
+            from += batchSize;
+          }
+        }
+      }
+    }
 
     // 檢查是否有未在 aliasMap 中的付款人 ID，額外向 profiles 查詢補充
     if (txRows && txRows.length > 0) {
@@ -2872,8 +2913,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     finalTx.sort((a, b) => new Date(b.transacted_at).getTime() - new Date(a.transacted_at).getTime());
     setTransactions(finalTx);
-    await AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(finalTx));
-    await AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${targetLedger.id}`, JSON.stringify(finalTx));
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(finalTx));
+      await AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${targetLedger.id}`, JSON.stringify(finalTx));
+    } catch (storageErr) {
+      console.warn('本機快取儲存空間限制，略過完整寫入 (資料已在記憶體與雲端安全保留):', storageErr);
+    }
     setIsCloudSynced(true);
 
     // (E) 載入付款帳戶與卡片
@@ -3588,8 +3633,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               }
             } catch {}
           }
+          let ledgerReadOnly = Boolean(l.is_read_only);
+          try {
+            const savedReadOnly = await AsyncStorage.getItem(`${STORAGE_KEYS.LEDGER_READ_ONLY}_${l.id}`);
+            if (savedReadOnly === 'true') ledgerReadOnly = true;
+          } catch {}
           return {
             ...l,
+            is_read_only: ledgerReadOnly,
             userRole: (isCreator ? 'owner' : m.role) as any,
             userDisplayName: savedName,
             userAvatar: savedAvatar,
@@ -4235,7 +4286,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [ledgers, currentLedger.id, isConfigured]);
 
   // 建立新的家庭公帳 (Owner 發起)
-  const createLedger = async (name: string = '幸福家庭帳本', creatorName?: string, avatar?: string) => {
+  const createLedger = async (name: string = '幸福家庭帳本', creatorName?: string, avatar?: string, isReadOnly: boolean = false) => {
     try {
       let { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -4261,6 +4312,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         currency: 'TWD',
         created_by: creatorProfileId,
         created_at: new Date().toISOString(),
+        is_read_only: isReadOnly,
       };
 
       if (isConfigured) {
@@ -4280,6 +4332,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           currency: newLedger.currency,
           created_by: creatorProfileId,
           admin_pin: '8888',
+          is_read_only: isReadOnly,
         });
 
         await supabase.from('ledger_members').insert({
@@ -4305,6 +4358,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await AsyncStorage.setItem(`${STORAGE_KEYS.ADMIN_PIN}_${newLedger.id}`, '8888');
       await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
       setHasJoinedLedger(true);
+      await AsyncStorage.setItem(`${STORAGE_KEYS.LEDGER_READ_ONLY}_${newLedger.id}`, String(isReadOnly));
       setLedgers(prev => [{ ...newLedger, userRole: 'owner', userDisplayName: chosenName, userAvatar: chosenAvatar }, ...prev.filter(l => l.id !== newLedger.id)]);
 
       const updatedMe: Profile = {
@@ -4327,6 +4381,38 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch (err: any) {
       console.warn('建立帳本失敗:', err);
       alert('建立帳本時發生錯誤: ' + (err.message || '請檢查網路連線'));
+    }
+  };
+
+  // 切換指定帳本之唯讀鎖定保護模式 (防止意外異動與歷史歸檔)
+  const toggleLedgerReadOnly = async (ledgerId: string, readOnly?: boolean): Promise<boolean> => {
+    try {
+      const target = ledgers.find(l => l.id === ledgerId) || (currentLedger.id === ledgerId ? currentLedger : null);
+      if (!target) return false;
+      const nextVal = readOnly !== undefined ? readOnly : !target.is_read_only;
+
+      const updatedLedgers = ledgers.map(l => l.id === ledgerId ? { ...l, is_read_only: nextVal } : l);
+      setLedgers(updatedLedgers);
+      await AsyncStorage.setItem(STORAGE_KEYS.LEDGERS, JSON.stringify(updatedLedgers));
+      await AsyncStorage.setItem(`${STORAGE_KEYS.LEDGER_READ_ONLY}_${ledgerId}`, String(nextVal));
+
+      if (currentLedger.id === ledgerId) {
+        const updatedCur = { ...currentLedger, is_read_only: nextVal };
+        setCurrentLedger(updatedCur);
+        await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(updatedCur));
+      }
+
+      if (isConfigured && ledgerId !== DEMO_LEDGER_ID) {
+        try {
+          await supabase.from('ledgers').update({ is_read_only: nextVal }).eq('id', ledgerId);
+        } catch (e) {
+          console.warn('雲端更新 is_read_only 失敗:', e);
+        }
+      }
+      return true;
+    } catch (err) {
+      console.error('toggleLedgerReadOnly 失敗:', err);
+      return false;
     }
   };
 
@@ -5735,6 +5821,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     linked_transaction_id?: string;
     splitWithIds?: string[];
   }): Promise<string> => {
+    if (currentLedger.is_read_only) {
+      safeAlert('🔒 唯讀帳本保護中', `「${currentLedger.name}」已開啟唯讀封存保護，無法新增記帳。\n若需記帳，請先至「切換帳本」解除唯讀鎖定。`);
+      throw new Error('此帳本已開啟唯讀保護，無法新增記帳');
+    }
     const txId = data.id || generateUUID();
     let cleanMerchant = data.merchant ? data.merchant.trim() : undefined;
     const effectiveReminderCal: CalendarSystem | undefined =
@@ -5979,6 +6069,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     transacted_at?: string;
     note?: string;
   }): Promise<{ success: boolean; error?: string; parentTxId?: string; kidTxId?: string; transferTxId?: string }> => {
+    if (currentLedger.is_read_only) {
+      return { success: false, error: '此帳本已開啟唯讀封存保護，無法進行轉帳或零用錢發放' };
+    }
     if (!data.amount || isNaN(data.amount) || data.amount <= 0) {
       return { success: false, error: '請輸入大於 0 的有效金額' };
     }
@@ -6235,6 +6328,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // 刪除交易
   const deleteTransaction = async (id: string) => {
+    if (currentLedger.is_read_only) {
+      safeAlert('🔒 唯讀帳本保護中', `「${currentLedger.name}」已開啟唯讀封存保護，無法刪除記帳。\n若需刪除，請先至「切換帳本」解除唯讀鎖定。`);
+      return;
+    }
     deletedTxIdsRef.current.add(id);
     const targetTx = transactions.find(t => t.id === id);
 
@@ -6388,6 +6485,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       is_settled?: boolean;
     }
   ): Promise<boolean> => {
+    if (currentLedger.is_read_only) {
+      safeAlert('🔒 唯讀帳本保護中', `「${currentLedger.name}」已開啟唯讀封存保護，無法修改記帳。\n若需修改，請先至「切換帳本」解除唯讀鎖定。`);
+      return false;
+    }
     try {
       const targetTx = transactions.find(t => t.id === id);
       const isTargetMemo = data.type === 'memo' || targetTx?.type === 'memo';
@@ -6790,6 +6891,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         id: currentLedger.id,
         name: currentLedger.name,
         invite_code: inviteCode,
+        is_read_only: currentLedger.is_read_only,
       },
       members: members.map(m => ({
         id: m.id,
@@ -6901,6 +7003,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       const isRealCloud = isConfigured && currentLedger?.id && currentLedger.id !== DEMO_LEDGER_ID;
+
+      // 若備份檔標記此帳本為唯讀封存 (is_read_only)，自動同步啟用唯讀保護
+      if (backup.ledger?.is_read_only) {
+        await AsyncStorage.setItem(`${STORAGE_KEYS.LEDGER_READ_ONLY}_${currentLedger.id}`, 'true');
+        setCurrentLedger(prev => ({ ...prev, is_read_only: true }));
+        setLedgers(prev => prev.map(l => l.id === currentLedger.id ? { ...l, is_read_only: true } : l));
+        if (isRealCloud) {
+          try {
+            await supabase.from('ledgers').update({ is_read_only: true }).eq('id', currentLedger.id);
+          } catch {}
+        }
+      }
 
       // 1. 還原/合併 家庭成員 (Members)
       let nextMembers = [...members];
@@ -7411,8 +7525,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return p;
           });
 
-          for (let i = 0; i < txsToUpsert.length; i += 50) {
-            await supabase.from('transactions').upsert(txsToUpsert.slice(i, i + 50));
+          for (let i = 0; i < txsToUpsert.length; i += 500) {
+            await supabase.from('transactions').upsert(txsToUpsert.slice(i, i + 500));
           }
         } catch (cloudErr) {
           console.warn('雲端還原同步交易失敗:', cloudErr);
@@ -8101,6 +8215,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         inviteCode,
         adminPin,
         updateAdminPin,
+        isReadOnly: Boolean(currentLedger.is_read_only),
+        toggleLedgerReadOnly,
         createLedger,
         updateLedgerName,
         joinLedgerByCode,
