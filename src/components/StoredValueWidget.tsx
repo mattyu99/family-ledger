@@ -193,7 +193,9 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
         <View style={styles.titleGroup}>
           <Text style={styles.titleIcon}>🚌</Text>
           <Text style={styles.titleText}>
-            {targetFilteredMember ? `${targetFilteredMember.display_name}的悠遊卡 / 儲值卡` : '悠遊卡 / 儲值卡即時餘額'}
+            {targetFilteredMember
+              ? `${targetFilteredMember.display_name}的悠遊卡 / 儲值卡 (${storedValueCards.length})`
+              : `悠遊卡 / 儲值卡即時餘額 (${storedValueCards.length})`}
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
