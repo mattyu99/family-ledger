@@ -27,6 +27,8 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
   const category = getCategoryById(transaction.category_id, transaction.category);
   const payer = getMemberById(transaction.paid_by) || transaction.payer_profile;
   const isExpense = transaction.type === 'expense';
+  const isTransfer = transaction.type === 'transfer';
+  const recipient = transaction.completed_by ? getMemberById(transaction.completed_by) : undefined;
 
   const date = new Date(transaction.transacted_at);
   const formattedDate = `${date.getMonth() + 1}/${date.getDate()}`;
@@ -285,8 +287,21 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
       onPress={() => onPress?.(transaction)}
     >
       {/* 類別圖示 */}
-      <View style={[styles.iconBox, { backgroundColor: category ? `${category.color}20` : '#F3F4F6' }]}>
-        <Text style={styles.iconText}>{getCategoryIcon(category?.icon)}</Text>
+      <View
+        style={[
+          styles.iconBox,
+          {
+            backgroundColor: isTransfer
+              ? '#EEF2FF'
+              : category
+              ? `${category.color}20`
+              : '#F3F4F6',
+          },
+        ]}
+      >
+        <Text style={styles.iconText}>
+          {isTransfer ? '⇄' : getCategoryIcon(category?.icon)}
+        </Text>
       </View>
 
       {/* 項目與細節 */}
@@ -299,8 +314,13 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
               ellipsizeMode="tail"
               maxFontSizeMultiplier={1.2}
             >
-              {category?.name || '其他'}
+              {isTransfer ? (category?.name || '內部轉帳') : (category?.name || '其他')}
             </Text>
+            {isTransfer && (
+              <View style={styles.transferBadge}>
+                <Text style={styles.transferBadgeText} maxFontSizeMultiplier={1.08}>⇄ 內部轉帳</Text>
+              </View>
+            )}
             {!!transaction.merchant && (
               <View style={styles.merchantBadge}>
                 <Text style={styles.merchantBadgeText} numberOfLines={1} maxFontSizeMultiplier={1.08}>
@@ -324,10 +344,13 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
             )}
           </View>
           <Text
-            style={[styles.amountText, isExpense ? styles.expenseColor : styles.incomeColor]}
+            style={[
+              styles.amountText,
+              isExpense ? styles.expenseColor : isTransfer ? styles.transferColor : styles.incomeColor,
+            ]}
             maxFontSizeMultiplier={1.2}
           >
-            {isExpense ? '-' : '+'} NT$ {Number(transaction.amount).toLocaleString()}
+            {isExpense ? '-' : isTransfer ? '⇄ ' : '+'} NT$ {Number(transaction.amount).toLocaleString()}
           </Text>
         </View>
 
@@ -338,7 +361,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
             ellipsizeMode="tail"
             maxFontSizeMultiplier={1.2}
           >
-            {displayNote}
+            {displayNote || (isTransfer ? '內部資金調撥（不計入總支出）' : '')}
           </Text>
           <View style={styles.metaRow}>
             <Text
@@ -346,7 +369,9 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
               numberOfLines={1}
               maxFontSizeMultiplier={1.2}
             >
-              {payer?.avatar_url || '👤'} {payer?.display_name || '成員'}
+              {isTransfer && recipient
+                ? `${payer?.avatar_url || '👤'} ${payer?.display_name || '出資'} ➔ ${recipient?.avatar_url || '👤'} ${recipient?.display_name || transaction.merchant}`
+                : `${payer?.avatar_url || '👤'} ${payer?.display_name || '成員'}`}
             </Text>
             {!!paymentLabel && (
               <View style={[styles.paymentBadge, { borderColor: `${paymentLabel.color}35`, backgroundColor: `${paymentLabel.color}12` }]}>
@@ -455,6 +480,22 @@ const styles = StyleSheet.create({
   },
   incomeColor: {
     color: '#10B981',
+  },
+  transferColor: {
+    color: '#4F46E5',
+  },
+  transferBadge: {
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  transferBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#4F46E5',
   },
   bottomRow: {
     flexDirection: 'row',

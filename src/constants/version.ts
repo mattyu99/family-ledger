@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 26;
+export const APP_BUILD_REVISION = 27;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.27',
+    date: '2026-10-16',
+    title: '內部轉帳 (Transfer) 機制上線：悠遊卡儲值對帳零誤差 ＋ 孩子零用錢不重複計入總支出',
+    highlights: [
+      '內部轉帳 (Transfer) 正式上線：建立資金在左口袋與右口袋間調撥的專屬會計機制，保留清晰流水明細與卡片/錢包餘額增減，家庭總支出完全不灌水。',
+      '悠遊卡儲值對帳雙向齊全：儲值小工具加值自動記錄為「內部轉帳」，悠遊卡對帳單看得到「加值存入」、信用卡對帳單看得到「自動加值扣款」，但首頁總支出不再被重複計算。',
+      '「🎁 撥零用錢」雙模式自由切換：支援「⭐️ 內部轉帳模式（推薦）」與「雙向收支記帳」。孩子自己拿手機記帳花費時使用轉帳模式，等孩子花錢才算家庭支出，帳目精準不重複。',
+      '交易流水卡片專屬「⇄ 內部轉帳」視覺：卡片以專屬靛藍/紫色高亮標示資金動向（如「信用卡 ➔ 悠遊卡」、「爸爸 ➔ 小寶」）與「內部轉帳」徽章，帳目清楚透明。',
+    ],
+  },
   {
     version: '1.0.5.26',
     date: '2026-10-15',

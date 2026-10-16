@@ -238,6 +238,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const scrollViewRef = useRef<ScrollView>(null);
 
   // 方案 D：撥零用錢專用狀態
+  const [allowanceMode, setAllowanceMode] = useState<'transfer' | 'expense_income'>('transfer');
   const [allowancePayerId, setAllowancePayerId] = useState<string>('');
   const [allowanceRecipientId, setAllowanceRecipientId] = useState<string>('');
   const [allowanceExpenseCatId, setAllowanceExpenseCatId] = useState<string>('');
@@ -537,6 +538,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         amount: numAmount,
         fromMemberId: payer.id,
         toMemberId: recipient.id,
+        mode: allowanceMode,
         expenseCategoryId: allowanceExpenseCatId || undefined,
         paymentMethod,
         accountId: selectedAccountId || undefined,
@@ -549,10 +551,17 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         return;
       }
 
-      safeAlert(
-        '🎉 零用錢發放成功！',
-        `已成功為【${payer.display_name}】記支出 NT$ ${numAmount.toLocaleString()}，並為【${recipient.display_name}】記零用錢收入 NT$ ${numAmount.toLocaleString()}！`
-      );
+      if (allowanceMode === 'transfer') {
+        safeAlert(
+          '🎉 零用錢撥發成功！',
+          `已為【${payer.display_name}】建立內部轉帳至【${recipient.display_name}】NT$ ${numAmount.toLocaleString()}！\n\n此筆款項不計入家庭總支出，等孩子日後使用手機記帳花費時才算入家庭支出。`
+        );
+      } else {
+        safeAlert(
+          '🎉 零用錢發放成功！',
+          `已成功為【${payer.display_name}】記支出 NT$ ${numAmount.toLocaleString()}，並為【${recipient.display_name}】記零用錢收入 NT$ ${numAmount.toLocaleString()}！`
+        );
+      }
 
       // 重設表單並關閉
       setAmount('');
@@ -1213,18 +1222,64 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               </>
             ) : (
               <>
-                {/* 方案 D：撥零用錢專用說明橫幅 */}
+                {/* 方案 D：撥零用錢模式切換與說明橫幅 */}
                 {mode === 'allowance' && (
-                  <View style={styles.allowanceBanner}>
-                    <Text style={styles.allowanceBannerIcon}>💡</Text>
-                    <View style={styles.allowanceBannerContent}>
-                      <Text style={styles.allowanceBannerTitle} maxFontSizeMultiplier={1.15}>一鍵雙向記帳機制</Text>
-                  <Text style={styles.allowanceBannerDesc} maxFontSizeMultiplier={1.08}>
-                    自動為出資家長記「支出」，並為受款小孩記「零用錢收入」。小孩首頁將具備正向結餘，維持家庭收支平衡！
-                  </Text>
-                </View>
-              </View>
-            )}
+                  <>
+                    <View style={styles.allowanceModeSelector}>
+                      <TouchableOpacity
+                        style={[
+                          styles.allowanceModeBtn,
+                          allowanceMode === 'transfer' && styles.allowanceModeBtnActive,
+                        ]}
+                        onPress={() => setAllowanceMode('transfer')}
+                        activeOpacity={0.8}
+                      >
+                        <Text
+                          style={[
+                            styles.allowanceModeBtnText,
+                            allowanceMode === 'transfer' && styles.allowanceModeBtnTextActive,
+                          ]}
+                          maxFontSizeMultiplier={1.12}
+                        >
+                          ⭐️ 內部轉帳模式（推薦）
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.allowanceModeBtn,
+                          allowanceMode === 'expense_income' && styles.allowanceModeBtnActive,
+                        ]}
+                        onPress={() => setAllowanceMode('expense_income')}
+                        activeOpacity={0.8}
+                      >
+                        <Text
+                          style={[
+                            styles.allowanceModeBtnText,
+                            allowanceMode === 'expense_income' && styles.allowanceModeBtnTextActive,
+                          ]}
+                          maxFontSizeMultiplier={1.12}
+                        >
+                          雙向收支記帳
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.allowanceBanner}>
+                      <Text style={styles.allowanceBannerIcon}>💡</Text>
+                      <View style={styles.allowanceBannerContent}>
+                        <Text style={styles.allowanceBannerTitle} maxFontSizeMultiplier={1.15}>
+                          {allowanceMode === 'transfer' ? '內部轉帳模式（推薦）' : '一鍵雙向記帳機制'}
+                        </Text>
+                        <Text style={styles.allowanceBannerDesc} maxFontSizeMultiplier={1.08}>
+                          {allowanceMode === 'transfer'
+                            ? '在成員間調撥資金，保留明細與零用錢錢包餘額，不計入家庭總支出。等孩子日後自己拿手機記帳花費時才算入家庭支出！'
+                            : '自動為出資家長記「支出」，並為受款小孩記「零用錢收入」。適合小孩不拿手機記帳的家庭，直接認列為本期育兒開銷。'}
+                        </Text>
+                      </View>
+                    </View>
+                  </>
+                )}
 
             {/* 金額輸入 */}
             <View style={styles.amountContainer}>
@@ -2506,6 +2561,39 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#64748B',
     marginTop: 1,
+  },
+  allowanceModeSelector: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    padding: 3,
+    marginBottom: 10,
+    gap: 4,
+  },
+  allowanceModeBtn: {
+    flex: 1,
+    paddingVertical: 7,
+    paddingHorizontal: 6,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  allowanceModeBtnActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  allowanceModeBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  allowanceModeBtnTextActive: {
+    color: '#6D28D9',
+    fontWeight: '700',
   },
   allowanceBanner: {
     flexDirection: 'row',

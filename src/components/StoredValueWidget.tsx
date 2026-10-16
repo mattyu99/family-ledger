@@ -386,15 +386,15 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                     onPress={() => setRecordExpense(prev => !prev)}
                   >
                     <Text style={styles.toggleCheckbox}>{recordExpense ? '☑️' : '⬜'}</Text>
-                    <Text style={styles.toggleLabel}>自動為家庭記錄一筆資金扣款明細</Text>
+                    <Text style={styles.toggleLabel}>自動記錄加值轉帳明細（納入對帳）</Text>
                   </TouchableOpacity>
 
                   <Text style={styles.modalHint}>
                     {recordExpense
                       ? (topUpSourceType === 'credit_card'
-                          ? `💡 將從【${creditCards.find(c => c.id === topUpCreditCardId)?.name || '信用卡'}】扣款 NT$ ${Number(customAmount || 0).toLocaleString()}（自動納入當期信用卡帳單對帳），【${activeModalAccount?.name}】餘額增加 +NT$ ${Number(customAmount || 0).toLocaleString()}。`
-                          : `💡 將從【${topUpSourceType === 'cash' ? '💵 現金' : '🏦 銀行轉帳'}】扣款 NT$ ${Number(customAmount || 0).toLocaleString()}，【${activeModalAccount?.name}】餘額增加 +NT$ ${Number(customAmount || 0).toLocaleString()}。`)
-                      : `💡 僅增加【${activeModalAccount?.name}】卡片餘額 +NT$ ${Number(customAmount || 0).toLocaleString()}，不重複記為家庭支出（適合平時每筆搭車都會逐筆記帳者）。`}
+                          ? `💡 將建立內部轉帳明細：【${activeModalAccount?.name}】餘額增加 +NT$ ${Number(customAmount || 0).toLocaleString()}，從【${creditCards.find(c => c.id === topUpCreditCardId)?.name || '信用卡'}】扣款並納入信用卡帳單對帳，且不重複計入家庭總支出！`
+                          : `💡 將建立內部轉帳明細：【${activeModalAccount?.name}】餘額增加 +NT$ ${Number(customAmount || 0).toLocaleString()}，從【${topUpSourceType === 'cash' ? '💵 現金' : '🏦 銀行轉帳'}】扣款，且不重複計入家庭總支出！`)
+                      : `💡 僅手動增加【${activeModalAccount?.name}】卡片餘額 +NT$ ${Number(customAmount || 0).toLocaleString()}，不產生任何交易明細（各卡對帳單將不含此加值紀錄）。`}
                   </Text>
                 </>
               ) : (

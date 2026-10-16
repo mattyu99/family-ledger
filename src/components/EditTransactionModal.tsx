@@ -324,7 +324,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     ? (keyboardOffset + 60)
     : 30;
 
-  const availableCategories = categories.filter(c => c.type === type);
+  const availableCategories = categories.filter(c => c.type === (type === 'transfer' ? 'expense' : type));
   const targetPayerId = paidBy || currentUser?.id;
   const creditCards = React.useMemo(
     () => sortAccountsByUser(paymentAccounts.filter(a => a.type === 'credit_card'), targetPayerId),
@@ -402,7 +402,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
   // 智慧店家快捷建議標籤列表 (結合自學習 recentMerchants + 分類推薦 + 關鍵字即時比對)
   const suggestedMerchants = React.useMemo(() => {
-    const currentCats = categories.filter(c => c.type === type);
+    const currentCats = categories.filter(c => c.type === (type === 'transfer' ? 'expense' : type));
     const targetCategory = currentCats.find(c => c.id === selectedCategoryId) || currentCats[0];
     const categoryPresets = getCategoryPresetMerchants(targetCategory?.name, type);
     const pool = Array.from(new Set([...(recentMerchants || []), ...categoryPresets]));
@@ -709,8 +709,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           )
         : note.trim();
 
-    const currentCats = categories.filter(c => c.type === type);
-    const targetCategory = currentCats.find(c => c.id === selectedCategoryId) || currentCats[0];
+    const currentCats = categories.filter(c => c.type === (type === 'transfer' ? 'expense' : type));
+    const targetCategory = currentCats.find(c => c.id === selectedCategoryId) || currentCats[0] || categories[0];
     const canonicalPayer = getMemberById(transaction.paid_by);
     const targetPayer = paidBy || canonicalPayer?.id || currentUser.id || members[0]?.id;
 
@@ -789,11 +789,11 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             <View>
               <Text style={styles.title} maxFontSizeMultiplier={1.15}>
                 {canEdit
-                  ? (transaction.type === 'memo' ? '📝 編輯生活備忘' : '✏️ 編輯記帳明細')
-                  : (transaction.type === 'memo' ? '👀 查看生活備忘' : '👀 查看記帳明細')}
+                  ? (transaction.type === 'memo' ? '📝 編輯生活備忘' : transaction.type === 'transfer' ? '⇄ 編輯內部轉帳' : '✏️ 編輯記帳明細')
+                  : (transaction.type === 'memo' ? '👀 查看生活備忘' : transaction.type === 'transfer' ? '👀 查看內部轉帳' : '👀 查看記帳明細')}
               </Text>
               <Text style={styles.headerDateBadge} maxFontSizeMultiplier={1.15}>
-                {transaction.type === 'memo' ? '記事日期' : '記帳日期'}：{curDate.getMonth() + 1}/{curDate.getDate()}
+                {transaction.type === 'memo' ? '記事日期' : transaction.type === 'transfer' ? '轉帳日期' : '記帳日期'}：{curDate.getMonth() + 1}/{curDate.getDate()}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -1377,32 +1377,45 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 )}
 
                 {/* 類型切換 (支出 / 收入) */}
-                <View style={[styles.typeToggle, !canEdit && styles.disabledContainer]}>
-                  <TouchableOpacity
-                    disabled={!canEdit}
-                    style={[styles.typeBtn, type === 'expense' && styles.typeBtnActive]}
-                    onPress={() => handleTypeChange('expense')}
-                  >
-                    <Text
-                      style={[styles.typeText, type === 'expense' && styles.typeTextActive]}
-                      maxFontSizeMultiplier={1.15}
+                {/* 類型切換 (支出 / 收入 / 內部轉帳) */}
+                {type === 'transfer' ? (
+                  <View style={styles.transferBanner}>
+                    <Text style={styles.transferBannerIcon}>⇄</Text>
+                    <View style={styles.transferBannerContent}>
+                      <Text style={styles.transferBannerTitle} maxFontSizeMultiplier={1.15}>內部轉帳紀錄</Text>
+                      <Text style={styles.transferBannerDesc} maxFontSizeMultiplier={1.08}>
+                        此筆為內部資金調撥（如悠遊卡加值、零用錢轉移），不計入家庭總支出。
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={[styles.typeToggle, !canEdit && styles.disabledContainer]}>
+                    <TouchableOpacity
+                      disabled={!canEdit}
+                      style={[styles.typeBtn, type === 'expense' && styles.typeBtnActive]}
+                      onPress={() => handleTypeChange('expense')}
                     >
-                      支出
-                    </Text>
-                  </TouchableOpacity>
-              <TouchableOpacity
-                disabled={!canEdit}
-                style={[styles.typeBtn, type === 'income' && styles.typeBtnActiveIncome]}
-                onPress={() => handleTypeChange('income')}
-              >
-                <Text
-                  style={[styles.typeText, type === 'income' && styles.typeTextActive]}
-                  maxFontSizeMultiplier={1.15}
-                >
-                  收入
-                </Text>
-              </TouchableOpacity>
-            </View>
+                      <Text
+                        style={[styles.typeText, type === 'expense' && styles.typeTextActive]}
+                        maxFontSizeMultiplier={1.15}
+                      >
+                        支出
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      disabled={!canEdit}
+                      style={[styles.typeBtn, type === 'income' && styles.typeBtnActiveIncome]}
+                      onPress={() => handleTypeChange('income')}
+                    >
+                      <Text
+                        style={[styles.typeText, type === 'income' && styles.typeTextActive]}
+                        maxFontSizeMultiplier={1.15}
+                      >
+                        收入
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
 
             {/* 金額輸入 */}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -2073,6 +2086,35 @@ const styles = StyleSheet.create({
   scrollContent: {
     width: '100%',
     paddingBottom: 20,
+  },
+  transferBanner: {
+    flexDirection: 'row',
+    backgroundColor: '#EEF2FF',
+    borderColor: '#C7D2FE',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 10,
+    alignItems: 'center',
+    gap: 10,
+  },
+  transferBannerIcon: {
+    fontSize: 22,
+    color: '#4F46E5',
+  },
+  transferBannerContent: {
+    flex: 1,
+  },
+  transferBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#4338CA',
+    marginBottom: 2,
+  },
+  transferBannerDesc: {
+    fontSize: 12,
+    color: '#4F46E5',
+    lineHeight: 16,
   },
   typeToggle: {
     flexDirection: 'row',

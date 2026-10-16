@@ -351,7 +351,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
   // 本期統計：支出總額、回饋折抵總額、實際應繳、加值總額、已核對筆數
   const stats = useMemo(() => {
     if (accountType === 'credit_card') {
-      const spendTxs = cycleTransactions.filter(t => t.type === 'expense');
+      const spendTxs = cycleTransactions.filter(t => t.type === 'expense' || t.type === 'transfer');
       const rebateTxs = cycleTransactions.filter(t => t.type === 'income');
 
       const totalSpend = spendTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
@@ -1180,6 +1180,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                 cycleTransactions.map(tx => {
                   const isTopUp = !isCredit && currentCard && isTopUpTransaction(tx, currentCard);
                   const isRebate = isCredit && tx.type === 'income';
+                  const isCreditTransfer = isCredit && tx.type === 'transfer';
                   const parsedDiscount = tx.type === 'expense' ? parseExpenseDiscount(tx.note) : null;
                   const cat = getCategoryById(tx.category_id, tx.category);
                   const d = new Date(tx.transacted_at);
@@ -1192,12 +1193,12 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                           styles.catIconBox,
                           {
                             backgroundColor:
-                              isTopUp || isRebate ? '#ECFDF5' : `${cat?.color || '#3B82F6'}20`,
+                              isTopUp || isRebate ? '#ECFDF5' : isCreditTransfer ? '#EEF2FF' : `${cat?.color || '#3B82F6'}20`,
                           },
                         ]}
                       >
                         <Text style={styles.catIcon}>
-                          {isTopUp ? '💰' : isRebate ? '🎁' : getCategoryIcon(cat?.icon)}
+                          {isTopUp ? '💰' : isRebate ? '🎁' : isCreditTransfer ? '⇄' : getCategoryIcon(cat?.icon)}
                         </Text>
                       </View>
 
@@ -1219,7 +1220,12 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                                 <Text style={styles.topUpBadgeText}>🎁 折抵/退刷</Text>
                               </View>
                             )}
-                            {isCredit && !isRebate && !!tx.payment_method && tx.payment_method !== 'credit_card' && (() => {
+                            {isCreditTransfer && (
+                              <View style={[styles.topUpBadge, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}>
+                                <Text style={[styles.topUpBadgeText, { color: '#4F46E5' }]}>加值轉出</Text>
+                              </View>
+                            )}
+                            {isCredit && !isRebate && !isCreditTransfer && !!tx.payment_method && tx.payment_method !== 'credit_card' && (() => {
                               const pm = paymentMethods.find(m => m.id === tx.payment_method);
                               return (
                                 <View style={[styles.payMethodTag, { borderColor: `${pm?.color || '#3B82F6'}35`, backgroundColor: `${pm?.color || '#3B82F6'}15` }]}>
@@ -1234,6 +1240,8 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                                 ? (tx.merchant || `${currentCard.name}儲值`)
                                 : isRebate
                                 ? (tx.merchant || cat?.name || '刷卡回饋折抵')
+                                : isCreditTransfer
+                                ? (tx.merchant || '加值轉出扣款')
                                 : (tx.merchant || cat?.name || (isCredit ? '消費' : '悠遊卡扣款'))}
                             </Text>
                             {!!parsedDiscount?.hasDiscount && (
