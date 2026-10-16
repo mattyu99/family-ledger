@@ -3580,7 +3580,7 @@ function MainApp() {
                 <View style={styles.summaryCol}>
                   <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2}>
                     {displaySummary.isMemberFilter && displaySummary.personalTransferIn > 0
-                      ? (displaySummary.totalIncome > 0 ? '總進帳 (含轉入)' : '零用錢 / 轉入')
+                      ? (displaySummary.totalIncome > 0 ? '總進帳 (含轉入)' : '轉入款項')
                       : '總收入'}
                   </Text>
                   <Text
@@ -3597,7 +3597,7 @@ function MainApp() {
 
                 <View style={styles.summaryCol}>
                   <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2}>
-                    {displaySummary.isMemberFilter && displaySummary.personalTransferIn > 0 ? '零用錢結餘' : '結餘'}
+                    {'結餘'}
                   </Text>
                   <Text
                     style={[
@@ -3617,12 +3617,12 @@ function MainApp() {
                 </View>
               </View>
 
-              {/* 個人視角專屬：零用錢轉入與轉出款項透明提示列 */}
+              {/* 個人視角專屬：轉入與轉出款項透明提示列 */}
               {displaySummary.isMemberFilter && (displaySummary.personalTransferIn > 0 || displaySummary.personalTransferOut > 0) && (
                 <View style={styles.summaryTransferHintRow}>
                   {displaySummary.personalTransferIn > 0 && (
                     <Text style={styles.summaryTransferHintText} maxFontSizeMultiplier={1.08}>
-                      🎁 零用錢轉入：+NT$ {displaySummary.personalTransferIn.toLocaleString()}
+                      📥 轉入款項：+NT$ {displaySummary.personalTransferIn.toLocaleString()}
                     </Text>
                   )}
                   {displaySummary.personalTransferOut > 0 && (

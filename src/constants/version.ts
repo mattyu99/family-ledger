@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 37;
+export const APP_BUILD_REVISION = 38;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,15 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.38',
+    date: '2026-10-16',
+    title: '個人收支總覽結餘正名 ＋ 轉入款項（含卡片加值）通用化顯示',
+    highlights: [
+      '收支結餘欄位全面正名為「結餘」：不論全家或單一成員視角，收支總覽卡第三欄一律穩定顯示為「結餘」，不再因有內部轉入或卡片加值而誤冠「零用錢結餘」之稱謂。',
+      '提示列正名為「📥 轉入款項」：將成員視角下方之「🎁 零用錢轉入」正名為客觀通用的「📥 轉入款項」，悠遊卡儲值受款、家人代墊轉帳或零用錢入帳均能自然精確表達。',
+    ],
+  },
   {
     version: '1.0.5.37',
     date: '2026-10-16',
