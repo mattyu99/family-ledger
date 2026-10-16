@@ -131,12 +131,32 @@ export const getCurrentPeriodKey = (rule: RecurringRule, date = new Date()): str
 };
 
 /**
+ * 合併新的已記帳期別標籤至 last_recorded_period 字串中（支援逗號分隔多期，自動保留最近 24 期）
+ */
+export const appendPeriodKey = (currentPeriodStr: string | undefined, newPeriod: string): string => {
+  if (!currentPeriodStr) return newPeriod;
+  const parts = currentPeriodStr.split(',').map(s => s.trim()).filter(Boolean);
+  if (!parts.includes(newPeriod)) {
+    parts.push(newPeriod);
+  }
+  return parts.sort().slice(-24).join(',');
+};
+
+/**
  * 檢查該規則在當前所屬週期是否已經記帳完成
  */
 export const isBillPaidForCurrentPeriod = (rule: RecurringRule, date = new Date()): boolean => {
   if (!rule.last_recorded_period) return false;
   const currentKey = getCurrentPeriodKey(rule, date);
-  return rule.last_recorded_period === currentKey;
+  const parts = rule.last_recorded_period.split(',').map(s => s.trim()).filter(Boolean);
+  if (parts.includes(currentKey)) {
+    return true;
+  }
+  // 相容舊版單一標籤字串：若只有一個標籤且該標籤大於等於 currentKey，視為已結清
+  if (parts.length === 1 && parts[0] >= currentKey) {
+    return true;
+  }
+  return false;
 };
 
 /**

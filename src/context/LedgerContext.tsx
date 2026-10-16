@@ -5,7 +5,7 @@ import { Transaction, Category, Ledger, Profile, TransactionType, CategoryType, 
 import { supabase, isConfigured } from '../lib/supabase';
 import { generateUUID } from '../lib/uuid';
 import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS } from '../lib/payment';
-import { DEFAULT_RECURRING_PRESETS, getCurrentPeriodKey, getBillPeriodLabel, getInstallmentInfo } from '../lib/recurring';
+import { DEFAULT_RECURRING_PRESETS, getCurrentPeriodKey, getBillPeriodLabel, getInstallmentInfo, appendPeriodKey } from '../lib/recurring';
 import { parseMemoNote, encodeMemoMerchantTag, decodeMemoMerchantTag, DEFAULT_MEMO_QUICK_TAGS, extractMemoTag, toggleChecklistItem } from '../lib/memo';
 import { CalendarSystem, MemoRepeatFrequency, getNextMemoReminderDate, formatMemoReminderBadge } from '../lib/lunar';
 import { APP_FULL_VERSION } from '../constants/version';
@@ -307,7 +307,8 @@ interface LedgerContextType {
     ruleId: string,
     customAmount?: number,
     transactedAt?: string,
-    note?: string
+    note?: string,
+    targetPeriodDate?: Date
   ) => Promise<boolean>;
   skipRecurringBill: (ruleId: string, periodKey?: string) => Promise<boolean>;
   restoreDefaultRecurringRules: () => Promise<void>;
@@ -5401,7 +5402,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     ruleId: string,
     customAmount?: number,
     transactedAt?: string,
-    note?: string
+    note?: string,
+    targetPeriodDate?: Date
   ): Promise<boolean> => {
     const rule = recurringRules.find(r => r.id === ruleId);
     if (!rule) return false;
@@ -5413,7 +5415,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     const txDate = transactedAt || new Date().toISOString();
-    const periodLabel = getBillPeriodLabel(rule, new Date(txDate));
+    // 以所屬帳單期別或指定日期作為週期計算基準（例如補繳上期水電時，期別歸屬為上月，入帳日為今天）
+    const periodRefDate = targetPeriodDate || new Date(txDate);
+    const periodLabel = getBillPeriodLabel(rule, periodRefDate);
     const autoNote = note !== undefined && note.trim() !== ''
       ? note.trim()
       : `[${rule.name}] ${periodLabel}`;
@@ -5430,13 +5434,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       note: autoNote,
     });
 
-    const periodKey = getCurrentPeriodKey(rule, new Date(txDate));
+    const periodKey = getCurrentPeriodKey(rule, periodRefDate);
     let nextCurrentInstallment = rule.current_installment;
     let nextIsActive = rule.is_active;
     let isFullyCompleted = false;
 
     if (rule.is_installment && rule.total_installments && rule.total_installments > 0) {
-      const instInfo = getInstallmentInfo(rule, new Date(txDate));
+      const instInfo = getInstallmentInfo(rule, periodRefDate);
       const currentNumber = instInfo ? instInfo.currentInstallmentNumber : (rule.current_installment || 1);
       nextCurrentInstallment = currentNumber + 1;
       if (nextCurrentInstallment > rule.total_installments) {
@@ -5445,11 +5449,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
 
+    const nextPeriodStr = appendPeriodKey(rule.last_recorded_period, periodKey);
+
     const updated = recurringRules.map(r => {
       if (r.id === ruleId) {
         return {
           ...r,
-          last_recorded_period: periodKey,
+          last_recorded_period: nextPeriodStr,
           current_installment: nextCurrentInstallment,
           is_active: nextIsActive,
           updated_at: new Date().toISOString(),
@@ -5463,7 +5469,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
         await supabase.from('recurring_rules').update({
-          last_recorded_period: periodKey,
+          last_recorded_period: nextPeriodStr,
           current_installment: nextCurrentInstallment,
           is_active: nextIsActive,
           updated_at: new Date().toISOString(),
@@ -5499,11 +5505,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
 
+    const nextPeriodStr = appendPeriodKey(rule.last_recorded_period, targetPeriod);
+
     const updated = recurringRules.map(r => {
       if (r.id === ruleId) {
         return {
           ...r,
-          last_recorded_period: targetPeriod,
+          last_recorded_period: nextPeriodStr,
           current_installment: nextCurrentInstallment,
           is_active: nextIsActive,
           updated_at: new Date().toISOString(),
@@ -5517,7 +5525,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
         await supabase.from('recurring_rules').update({
-          last_recorded_period: targetPeriod,
+          last_recorded_period: nextPeriodStr,
           current_installment: nextCurrentInstallment,
           is_active: nextIsActive,
           updated_at: new Date().toISOString(),

@@ -28,6 +28,7 @@ import {
   getInstallmentInfo,
 } from '../lib/recurring';
 import { getCategoryIcon } from '../lib/icons';
+import { DatePickerModal } from './DatePickerModal';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
   <RNText
@@ -111,7 +112,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     return (recurringRules || []).filter(r => !r.ledger_id || r.ledger_id === currentLedger.id);
   }, [recurringRules, currentLedger?.id]);
 
-  // 輸入金額彈窗狀態 (用於浮動金額或自訂金額入帳)
+  // 入帳彈窗狀態 (用於浮動金額、固定金額、分期付款入帳確認)
   const [amountModalVisible, setAmountModalVisible] = useState<boolean>(false);
   const [targetRuleForAmount, setTargetRuleForAmount] = useState<RecurringRule | null>(null);
   const [inputAmount, setInputAmount] = useState<string>('');
@@ -119,6 +120,11 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
   const [inputPaidBy, setInputPaidBy] = useState<string>('');
   const [inputPaymentMethod, setInputPaymentMethod] = useState<PaymentMethod>('credit_card');
   const [inputAccountId, setInputAccountId] = useState<string | undefined>(undefined);
+
+  // 📅 入帳日期狀態（預設「今天」為優先，可切換預定扣款日或自訂某天）
+  const [inputDate, setInputDate] = useState<Date>(new Date());
+  const [dateMode, setDateMode] = useState<'today' | 'scheduled' | 'custom'>('today');
+  const [datePickerVisible, setDatePickerVisible] = useState<boolean>(false);
 
   // 規則編輯/新增彈窗狀態
   const [ruleModalVisible, setRuleModalVisible] = useState<boolean>(false);
@@ -150,6 +156,19 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
   const year = selectedDate.getFullYear();
   const month = selectedDate.getMonth() + 1; // 1 ~ 12
 
+  // 方案 A：限制最早只能切換至「上個月」（當前真實時間的上一月份）
+  const now = useMemo(() => new Date(), []);
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth(); // 0 ~ 11
+
+  // 最早允許切換到上個月
+  const minAllowedYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+  const minAllowedMonth = currentMonth === 0 ? 11 : currentMonth - 1; // 0 ~ 11
+
+  const isAtMinMonth = (year < minAllowedYear) || (year === minAllowedYear && (month - 1) <= minAllowedMonth);
+  const isPastMonth = (year < currentYear) || (year === currentYear && (month - 1) < currentMonth);
+  const isCurrentMonth = (year === currentYear) && (month - 1 === currentMonth);
+
   // 當前月份的應繳週期項目分析
   const { pendingBills, settledBills } = useMemo(() => {
     const pending: RecurringRule[] = [];
@@ -175,8 +194,9 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     return { pendingBills: pending, settledBills: settled };
   }, [scopedRules, year, month, selectedDate]);
 
-  // 切換月份
+  // 切換月份（受限於方案 A：不可早於上個月）
   const handlePrevMonth = () => {
+    if (isAtMinMonth) return;
     setSelectedDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
   };
 
@@ -188,8 +208,15 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     setSelectedDate(new Date());
   };
 
-  // 開啟金額輸入視窗
-  const handleOpenAmountModal = (rule: RecurringRule) => {
+  // 目標規則之預定扣款日（落在當前選定月份）
+  const scheduledDueDate = useMemo(() => {
+    if (!targetRuleForAmount) return new Date();
+    const targetDay = Math.min(targetRuleForAmount.due_day || 1, 28);
+    return new Date(year, month - 1, targetDay, 12, 0, 0);
+  }, [targetRuleForAmount, year, month]);
+
+  // 開啟入帳確認視窗（浮動金額、固定金額、分期付款統一由此彈窗確認，並支援切換入帳日期）
+  const handleOpenRecordModal = (rule: RecurringRule) => {
     setTargetRuleForAmount(rule);
     const defaultVal = rule.default_amount > 0 ? String(rule.default_amount) : '';
     setInputAmount(defaultVal);
@@ -198,7 +225,23 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     setInputAccountId(rule.account_id);
     const periodLabel = getBillPeriodLabel(rule, selectedDate);
     setInputNote(`[${rule.name}] ${periodLabel}`);
+
+    // 使用者指定：預設以「今天」為優先！
+    setInputDate(new Date());
+    setDateMode('today');
+
     setAmountModalVisible(true);
+  };
+
+  // 相容舊函式名稱
+  const handleOpenAmountModal = handleOpenRecordModal;
+  const handleQuickRecordFixed = handleOpenRecordModal;
+
+  // 自訂日期選取完成
+  const handleSelectCustomDate = (pickedDate: Date) => {
+    setInputDate(pickedDate);
+    setDateMode('custom');
+    setDatePickerVisible(false);
   };
 
   // 送出金額並入帳
@@ -211,50 +254,24 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     }
 
     try {
-      // 檢查若使用者修改了付款人或管道，使用自訂備註入帳
+      // 傳入 inputDate（使用者選擇的入帳日期）與 selectedDate（當前帳單期別月份）
       const success = await recordRecurringBill(
         targetRuleForAmount.id,
         amountNum,
-        new Date(year, month - 1, Math.min(targetRuleForAmount.due_day, 28), 12, 0, 0).toISOString(),
-        inputNote
+        inputDate.toISOString(),
+        inputNote,
+        selectedDate
       );
 
       if (success) {
         setAmountModalVisible(false);
+        const recordedRuleName = targetRuleForAmount.name;
         setTargetRuleForAmount(null);
-        showAlert('記帳成功', `已成功將「${targetRuleForAmount.name}」NT$ ${amountNum.toLocaleString()} 寫入收支明細！`);
+        showAlert('記帳成功', `已成功將「${recordedRuleName}」NT$ ${amountNum.toLocaleString()} 寫入收支明細！`);
       }
     } catch (e: any) {
       showAlert('記帳失敗', e?.message || '發生未知錯誤');
     }
-  };
-
-  // 固定金額或分期付款快速一鍵確認入帳
-  const handleQuickRecordFixed = async (rule: RecurringRule) => {
-    const instInfo = rule.is_installment ? getInstallmentInfo(rule, selectedDate) : null;
-    const confirmTitle = rule.is_installment ? '確認分期記帳' : '確認記帳';
-    const confirmMsg = rule.is_installment && instInfo
-      ? `確定將「${rule.name}」(${instInfo.labelText}) 本期金額 NT$ ${rule.default_amount.toLocaleString()} 寫入收支明細？`
-      : `確定將「${rule.name}」固定金額 NT$ ${rule.default_amount.toLocaleString()} 寫入收支明細？`;
-
-    showConfirm(
-      confirmTitle,
-      confirmMsg,
-      async () => {
-        try {
-          const success = await recordRecurringBill(
-            rule.id,
-            rule.default_amount,
-            new Date(year, month - 1, Math.min(rule.due_day, 28), 12, 0, 0).toISOString()
-          );
-          if (success) {
-            showAlert('記帳成功', `已成功記錄「${rule.name}」！`);
-          }
-        } catch (e: any) {
-          showAlert('記帳失敗', e?.message || '發生未知錯誤');
-        }
-      }
-    );
   };
 
   // 略過本期
@@ -554,16 +571,36 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
           {/* Tab 1: 待繳清單 */}
           {activeTab === 'pending' && (
             <View style={styles.tabContent}>
-              {/* 月份切換列 */}
+              {/* 月份切換列（支援方案 A：限制最多到上個月） */}
               <View style={styles.monthSelectorRow}>
-                <TouchableOpacity style={styles.monthNavButton} onPress={handlePrevMonth}>
-                  <Text style={styles.monthNavText}>‹ 上個月</Text>
+                <TouchableOpacity
+                  style={[styles.monthNavButton, isAtMinMonth && styles.monthNavButtonDisabled]}
+                  onPress={handlePrevMonth}
+                  disabled={isAtMinMonth}
+                  activeOpacity={isAtMinMonth ? 1 : 0.7}
+                >
+                  <Text style={[styles.monthNavText, isAtMinMonth && styles.monthNavTextDisabled]}>‹ 上個月</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.currentMonthBadge} onPress={handleResetToCurrentMonth}>
-                  <Text style={styles.currentMonthText}>
-                    📅 {year} 年 {month} 月
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.currentMonthText}>
+                      📅 {year} 年 {month} 月
+                    </Text>
+                    {isCurrentMonth ? (
+                      <View style={styles.monthStatusPillCurrent}>
+                        <Text style={styles.monthStatusPillTextCurrent}>本月</Text>
+                      </View>
+                    ) : isPastMonth ? (
+                      <View style={styles.monthStatusPillPast}>
+                        <Text style={styles.monthStatusPillTextPast}>補記上期</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.monthStatusPillFuture}>
+                        <Text style={styles.monthStatusPillTextFuture}>預估未來</Text>
+                      </View>
+                    )}
+                  </View>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.monthNavButton} onPress={handleNextMonth}>
@@ -572,18 +609,44 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
               </View>
 
               <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+                {/* 補記上期提示橫幅 */}
+                {isPastMonth && (
+                  <View style={styles.pastMonthBanner}>
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={{ fontSize: 18 }}>⚠️</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.pastMonthBannerTitle}>正在查看上月（補記歷史帳單模式）</Text>
+                        <Text style={styles.pastMonthBannerSub}>若上個月有遺漏的水電或卡費，點選確認即可補記入帳</Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.pastMonthBackBtn}
+                      onPress={handleResetToCurrentMonth}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.pastMonthBackBtnText}>回到本月 ❯</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
                 {/* 待確認清單區塊 */}
                 <View style={styles.sectionHeaderRow}>
                   <Text style={styles.sectionTitle}>
-                    🔔 本期待確認記帳 ({pendingBills.length})
+                    {isPastMonth
+                      ? `🔔 上期待補記帳單 (${pendingBills.length})`
+                      : `🔔 本期待確認記帳 (${pendingBills.length})`}
                   </Text>
-                  <Text style={styles.sectionHint}>點選確認後立即寫入收支明細</Text>
+                  <Text style={styles.sectionHint}>
+                    {isPastMonth ? '補繳上期帳單並寫入明細' : '點選確認後立即寫入收支明細'}
+                  </Text>
                 </View>
 
                 {pendingBills.length === 0 ? (
                   <View style={styles.emptyStateBox}>
                     <Text style={styles.emptyStateIcon}>🎉</Text>
-                    <Text style={styles.emptyStateTitle}>太棒了！本期無待繳帳單</Text>
+                    <Text style={styles.emptyStateTitle}>
+                      {isPastMonth ? '太棒了！上期無待補記帳單' : '太棒了！本期無待繳帳單'}
+                    </Text>
                     <Text style={styles.emptyStateSubtitle}>
                       {year} 年 {month} 月所有週期項目皆已入帳，或當月無雙月繳帳單。
                     </Text>
@@ -735,7 +798,9 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                   <View style={styles.settledSection}>
                     <View style={styles.sectionHeaderRow}>
                       <Text style={styles.settledSectionTitle}>
-                        ✅ 本期已完成記帳 / 已略過 ({settledBills.length})
+                        {isPastMonth
+                          ? `✅ 上期已完成記帳 / 已略過 (${settledBills.length})`
+                          : `✅ 本期已完成記帳 / 已略過 (${settledBills.length})`}
                       </Text>
                     </View>
 
@@ -942,7 +1007,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
             </View>
           )}
 
-          {/* 浮動金額填寫入帳 Modal */}
+          {/* 週期帳單確認入帳 Modal（支援浮動金額、固定金額、分期付款，預設「今天」為入帳日期優先） */}
           <Modal
             visible={amountModalVisible}
             transparent
@@ -956,7 +1021,11 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
               >
                 <View style={styles.subModalHeader}>
                   <Text style={styles.subModalTitle}>
-                    ⚡ 填寫當期帳單金額
+                    {targetRuleForAmount?.amount_type === 'variable'
+                      ? '⚡ 填寫金額並入帳'
+                      : targetRuleForAmount?.is_installment
+                      ? '📦 確認分期付款入帳'
+                      : '✅ 確認週期帳單入帳'}
                   </Text>
                   <TouchableOpacity onPress={() => setAmountModalVisible(false)}>
                     <Text style={styles.subModalClose}>✕</Text>
@@ -964,15 +1033,35 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                 </View>
 
                 {targetRuleForAmount && (
-                  <ScrollView style={{ maxHeight: SCREEN_HEIGHT * 0.65 }}>
-                    <Text style={styles.targetRuleName}>{targetRuleForAmount.name}</Text>
-                    <Text style={styles.targetRulePeriod}>
-                      帳單期別：{getBillPeriodLabel(targetRuleForAmount, selectedDate)}
-                    </Text>
+                  <ScrollView style={{ maxHeight: SCREEN_HEIGHT * 0.7 }} showsVerticalScrollIndicator={false}>
+                    <View style={styles.targetRuleCardBox}>
+                      <Text style={styles.targetRuleName}>{targetRuleForAmount.name}</Text>
+                      <View style={styles.targetRuleMetaRow}>
+                        <Text style={styles.targetRulePeriod}>
+                          🗓️ 帳單期別：{getBillPeriodLabel(targetRuleForAmount, selectedDate)}
+                        </Text>
+                        {isPastMonth && (
+                          <View style={styles.pastMonthMiniBadge}>
+                            <Text style={styles.pastMonthMiniBadgeText}>補記上期</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.paymentInfoRow}>
+                        <Text style={styles.paymentInfoLabel}>扣繳管道：</Text>
+                        <Text style={styles.paymentInfoValue}>
+                          {targetRuleForAmount.account_id
+                            ? `💳 ${getAccountById(targetRuleForAmount.account_id)?.name || '指定卡片/帳戶'}`
+                            : targetRuleForAmount.payment_method === 'transfer'
+                            ? '🏦 銀行自動轉帳'
+                            : '💵 現金/其他'}
+                        </Text>
+                      </View>
+                    </View>
 
-                    {/* 金額輸入 */}
+                    {/* 金額輸入 / 確認 */}
                     <Text style={styles.formFieldLabel}>
-                      當期應繳金額 (NT$) <Text style={{ color: '#EF4444' }}>*</Text>
+                      {targetRuleForAmount.amount_type === 'variable' ? '當期應繳金額 (NT$)' : '應繳入帳金額 (NT$)'}{' '}
+                      <Text style={{ color: '#EF4444' }}>*</Text>
                     </Text>
                     <View style={styles.amountInputRow}>
                       <Text style={styles.amountPrefix}>NT$</Text>
@@ -983,8 +1072,53 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                         placeholderTextColor="#9CA3AF"
                         value={inputAmount}
                         onChangeText={setInputAmount}
-                        autoFocus
+                        autoFocus={targetRuleForAmount.amount_type === 'variable'}
                       />
+                    </View>
+
+                    {/* 📅 入帳日期選擇（核心新功能：預設今天為優先，可切換預定扣款日或自訂某天） */}
+                    <View style={styles.dateSectionHeaderRow}>
+                      <Text style={styles.formFieldLabel}>📅 入帳日期（寫入收支明細）</Text>
+                      <Text style={styles.selectedDateBadgeText}>
+                        {inputDate.getFullYear()} 年 {inputDate.getMonth() + 1} 月 {inputDate.getDate()} 日
+                      </Text>
+                    </View>
+                    <View style={styles.dateChipsRow}>
+                      {/* 今天 (預設優先) */}
+                      <TouchableOpacity
+                        style={[styles.dateChip, dateMode === 'today' && styles.dateChipActive]}
+                        onPress={() => {
+                          setInputDate(new Date());
+                          setDateMode('today');
+                        }}
+                      >
+                        <Text style={[styles.dateChipText, dateMode === 'today' && styles.dateChipTextActive]}>
+                          ⚡ 今天 ({now.getMonth() + 1}/{now.getDate()})
+                        </Text>
+                      </TouchableOpacity>
+
+                      {/* 預定扣款日 */}
+                      <TouchableOpacity
+                        style={[styles.dateChip, dateMode === 'scheduled' && styles.dateChipActive]}
+                        onPress={() => {
+                          setInputDate(scheduledDueDate);
+                          setDateMode('scheduled');
+                        }}
+                      >
+                        <Text style={[styles.dateChipText, dateMode === 'scheduled' && styles.dateChipTextActive]}>
+                          🗓 預定扣款日 ({month}/{Math.min(targetRuleForAmount.due_day || 1, 28)})
+                        </Text>
+                      </TouchableOpacity>
+
+                      {/* 自訂某天 */}
+                      <TouchableOpacity
+                        style={[styles.dateChip, dateMode === 'custom' && styles.dateChipActive]}
+                        onPress={() => setDatePickerVisible(true)}
+                      >
+                        <Text style={[styles.dateChipText, dateMode === 'custom' && styles.dateChipTextActive]}>
+                          📅 自訂某天{dateMode === 'custom' ? ` (${inputDate.getMonth() + 1}/${inputDate.getDate()})` : '...'}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
 
                     {/* 備註說明 */}
@@ -1030,7 +1164,11 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                         style={styles.subModalConfirmBtn}
                         onPress={handleConfirmAmountAndRecord}
                       >
-                        <Text style={styles.subModalConfirmText}>✅ 確認記帳</Text>
+                        <Text style={styles.subModalConfirmText}>
+                          {targetRuleForAmount.amount_type === 'variable'
+                            ? '✅ 確認填寫並入帳'
+                            : '✅ 確認記帳入帳'}
+                        </Text>
                       </TouchableOpacity>
                     </View>
                   </ScrollView>
@@ -1038,6 +1176,16 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
               </KeyboardAvoidingView>
             </View>
           </Modal>
+
+          {/* 📅 自訂入帳日期選取器 */}
+          <DatePickerModal
+            visible={datePickerVisible}
+            onClose={() => setDatePickerVisible(false)}
+            selectedDate={inputDate}
+            onSelectDate={handleSelectCustomDate}
+            title="📅 選擇帳單入帳日期"
+            subtitle="可選擇實際扣款日期或自訂記帳日"
+          />
 
           {/* 新增/編輯規則 Modal */}
           <Modal
@@ -2726,5 +2874,162 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#6B21A8',
     lineHeight: 16,
+  },
+  // 月份導航禁用與狀態標籤
+  monthNavButtonDisabled: {
+    opacity: 0.35,
+  },
+  monthNavTextDisabled: {
+    color: '#94A3B8',
+  },
+  monthStatusPillCurrent: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  monthStatusPillTextCurrent: {
+    fontSize: 11,
+    color: '#166534',
+    fontWeight: '700',
+  },
+  monthStatusPillPast: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  monthStatusPillTextPast: {
+    fontSize: 11,
+    color: '#92400E',
+    fontWeight: '700',
+  },
+  monthStatusPillFuture: {
+    backgroundColor: '#E0E7FF',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  monthStatusPillTextFuture: {
+    fontSize: 11,
+    color: '#3730A3',
+    fontWeight: '700',
+  },
+  // 補記上期警示橫幅
+  pastMonthBanner: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pastMonthBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  pastMonthBannerSub: {
+    fontSize: 11,
+    color: '#B45309',
+    marginTop: 2,
+  },
+  pastMonthBackBtn: {
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  pastMonthBackBtnText: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  // 入帳彈窗卡片與日期區塊
+  targetRuleCardBox: {
+    backgroundColor: '#F8FAFC',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  targetRuleMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+    flexWrap: 'wrap',
+  },
+  pastMonthMiniBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  pastMonthMiniBadgeText: {
+    fontSize: 10,
+    color: '#B45309',
+    fontWeight: '700',
+  },
+  dateSectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  selectedDateBadgeText: {
+    fontSize: 12,
+    color: '#4F46E5',
+    fontWeight: '700',
+  },
+  dateChipsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+    flexWrap: 'wrap',
+  },
+  dateChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  dateChipActive: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#6366F1',
+  },
+  dateChipText: {
+    fontSize: 12,
+    color: '#475569',
+    fontWeight: '600',
+  },
+  dateChipTextActive: {
+    color: '#4F46E5',
+    fontWeight: '700',
+  },
+  paymentInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  paymentInfoLabel: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  paymentInfoValue: {
+    fontSize: 12,
+    color: '#334155',
+    fontWeight: '600',
   },
 });

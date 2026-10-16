@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 31;
+export const APP_BUILD_REVISION = 32;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.32',
+    date: '2026-10-16',
+    title: '週期扣款入帳支援「今天/預定日/自訂日期」彈性切換 ＋ 上月歷史帳單補繳模式',
+    highlights: [
+      '入帳日期彈性自訂：待確認記帳點選「確認記帳」或「輸入金額」時，全面升級為專屬入帳確認面板，預設以「今天」為入帳優先日，並支援 1 鍵切換「預定扣款日」或自訂任意扣繳日期，記帳更貼近銀行扣款實況。',
+      '方案 A 上月歷史帳單補繳機制：月份導航最早限制為「上個月」，徹底杜絕無限倒退至陳年舊月的混亂；查看上月時清楚標示「⚠️ 補記歷史帳單」與「回到本月」快捷鍵，水電、卡費跨月補繳輕鬆搞定。',
+      '多期記帳狀態精密追蹤：週期規則支援歷史多期記帳標籤保存與期別歸屬比對，上期補繳與當期扣款狀態互不干擾，分期付款與週期項目入帳更精準。',
+    ],
+  },
   {
     version: '1.0.5.31',
     date: '2026-10-16',
