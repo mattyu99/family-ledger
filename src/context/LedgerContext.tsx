@@ -2366,9 +2366,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             await AsyncStorage.setItem(`${STORAGE_KEYS.ADMIN_PIN}_${targetLedger.id}`, lData.admin_pin);
           }
           let needsUpdate = false;
-          if (lData.is_read_only !== undefined && lData.is_read_only !== targetLedger.is_read_only) {
-            targetLedger = { ...targetLedger, is_read_only: Boolean(lData.is_read_only) };
-            await AsyncStorage.setItem(`${STORAGE_KEYS.LEDGER_READ_ONLY}_${targetLedger.id}`, String(Boolean(lData.is_read_only)));
+          const cloudReadOnly = Boolean(lData.is_read_only || lData.description?.includes('[READ_ONLY]'));
+          if (cloudReadOnly !== Boolean(targetLedger.is_read_only)) {
+            targetLedger = { ...targetLedger, is_read_only: cloudReadOnly };
+            await AsyncStorage.setItem(`${STORAGE_KEYS.LEDGER_READ_ONLY}_${targetLedger.id}`, String(cloudReadOnly));
             needsUpdate = true;
           }
           if (lData.created_by && lData.created_by !== targetLedger.created_by) {
@@ -3633,7 +3634,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               }
             } catch {}
           }
-          let ledgerReadOnly = Boolean(l.is_read_only);
+          let ledgerReadOnly = Boolean(l.is_read_only || l.description?.includes('[READ_ONLY]'));
           try {
             const savedReadOnly = await AsyncStorage.getItem(`${STORAGE_KEYS.LEDGER_READ_ONLY}_${l.id}`);
             if (savedReadOnly === 'true') ledgerReadOnly = true;
@@ -4325,15 +4326,22 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           is_locked: Boolean(userGoogleEmail),
         });
 
-        await supabase.from('ledgers').insert({
+        const ledgerDesc = isReadOnly ? '[READ_ONLY] 全家共享日常開銷帳本' : '全家共享日常開銷帳本';
+        const ledgerInsertPayload: any = {
           id: newLedger.id,
           name: newLedger.name,
-          description: newLedger.description,
+          description: ledgerDesc,
           currency: newLedger.currency,
           created_by: creatorProfileId,
           admin_pin: '8888',
+        };
+        const { error: lErr } = await supabase.from('ledgers').insert({
+          ...ledgerInsertPayload,
           is_read_only: isReadOnly,
         });
+        if (lErr) {
+          await supabase.from('ledgers').insert(ledgerInsertPayload);
+        }
 
         await supabase.from('ledger_members').insert({
           ledger_id: newLedger.id,
@@ -4404,6 +4412,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       if (isConfigured && ledgerId !== DEMO_LEDGER_ID) {
         try {
+          const currentDesc = target.description || '';
+          let newDesc = currentDesc;
+          if (nextVal) {
+            if (!newDesc.includes('[READ_ONLY]')) {
+              newDesc = `[READ_ONLY] ${newDesc}`.trim();
+            }
+          } else {
+            newDesc = newDesc.replace(/\[READ_ONLY\]\s*/g, '').trim();
+          }
+          if (newDesc !== currentDesc) {
+            await supabase.from('ledgers').update({ description: newDesc }).eq('id', ledgerId);
+          }
           await supabase.from('ledgers').update({ is_read_only: nextVal }).eq('id', ledgerId);
         } catch (e) {
           console.warn('雲端更新 is_read_only 失敗:', e);
