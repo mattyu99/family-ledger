@@ -3756,12 +3756,12 @@ function MainApp() {
               )}
             </View>
 
-            {/* 📝 ✕ 💳 明細類型快捷切換列：全部紀錄 / 💳 僅看收支 / 📝 僅看生活備忘 */}
+            {/* 📝 ✕ 💳 明細類型快捷切換列：全部紀錄 / 💳 僅看收支 / 📝 僅看記事 */}
             <View style={styles.typeFilterContainer}>
               <TouchableOpacity
                 style={[
                   styles.typeFilterTab,
-                  transactionTypeFilter === 'all' && styles.typeFilterTabActive,
+                  transactionTypeFilter === 'all' && styles.typeFilterTabActiveAll,
                 ]}
                 onPress={() => setTransactionTypeFilter('all')}
                 activeOpacity={0.7}
@@ -3769,7 +3769,7 @@ function MainApp() {
                 <Text
                   style={[
                     styles.typeFilterTabText,
-                    transactionTypeFilter === 'all' && styles.typeFilterTabTextActive,
+                    transactionTypeFilter === 'all' && styles.typeFilterTabTextActiveAll,
                   ]}
                   maxFontSizeMultiplier={1.08}
                 >
@@ -3780,7 +3780,7 @@ function MainApp() {
               <TouchableOpacity
                 style={[
                   styles.typeFilterTab,
-                  transactionTypeFilter === 'financial' && styles.typeFilterTabActive,
+                  transactionTypeFilter === 'financial' && styles.typeFilterTabActiveFinancial,
                 ]}
                 onPress={() => setTransactionTypeFilter('financial')}
                 activeOpacity={0.7}
@@ -3788,7 +3788,7 @@ function MainApp() {
                 <Text
                   style={[
                     styles.typeFilterTabText,
-                    transactionTypeFilter === 'financial' && styles.typeFilterTabTextActive,
+                    transactionTypeFilter === 'financial' && styles.typeFilterTabTextActiveFinancial,
                   ]}
                   maxFontSizeMultiplier={1.08}
                 >
@@ -3811,7 +3811,7 @@ function MainApp() {
                   ]}
                   maxFontSizeMultiplier={1.08}
                 >
-                  📝 僅看生活備忘 ({typeCountStats.memo})
+                  📝 僅看記事 ({typeCountStats.memo})
                 </Text>
               </TouchableOpacity>
             </View>
@@ -6212,9 +6212,31 @@ const styles = StyleSheet.create({
   },
   typeFilterTabActive: {
     backgroundColor: '#FFFFFF',
-    shadowColor: '#0F172A',
+    borderColor: '#E2E8F0',
+    borderWidth: 1,
+    shadowColor: '#4F46E5',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  typeFilterTabActiveAll: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E2E8F0',
+    borderWidth: 1,
+    shadowColor: '#4F46E5',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  typeFilterTabActiveFinancial: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#3B82F6',
+    borderWidth: 1,
+    shadowColor: '#1D4ED8',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
   },
@@ -6234,7 +6256,15 @@ const styles = StyleSheet.create({
     color: '#64748B',
   },
   typeFilterTabTextActive: {
-    color: '#0F172A',
+    color: '#4F46E5',
+    fontWeight: '800',
+  },
+  typeFilterTabTextActiveAll: {
+    color: '#4F46E5',
+    fontWeight: '800',
+  },
+  typeFilterTabTextActiveFinancial: {
+    color: '#1D4ED8',
     fontWeight: '800',
   },
   typeFilterTabTextActiveMemo: {
