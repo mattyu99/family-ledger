@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 38;
+export const APP_BUILD_REVISION = 39;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.39',
+    date: '2026-10-16',
+    title: '週期扣款支援水電瓦斯帳單附件上傳歸檔與歷年對帳調閱 (方案 1)',
+    highlights: [
+      '水電瓦斯與固定帳單電子帳單歸檔：在「待繳核對清單」確認記帳時，可直接拍照上傳水電收據或挑選電子帳單 PDF，系統自動依週期期別（如 2026-10期）永久歸檔至雲端專屬帳單庫。',
+      '待繳清單與已繳項目即時檢視：待繳卡片自動顯示「📎 PDF 帳單」或「📎 圖片帳單」標籤，點選即可一秒調閱原單明細；即使入帳完成，已繳項目依然常駐「📎 帳單」按鈕，隨時回查。',
+      '水電瓦斯歷年帳單歸檔庫：頂部新增「📂 帳單庫」專區，支援依規則（台電、自來水、瓦斯、電信等）快速篩選，集中調閱跨年份、跨期別之所有歷史電子帳單與繳費憑證，告別在數百筆每日流水帳翻找帳單的困擾。',
+      '全螢幕圖片燈箱與 PDF 原生檢視：手機與網頁端支援帳單圖片全螢幕縮放預覽與外部瀏覽器下載，PDF 原始檔完整保留身分證加密與銀行/公用事業官方格式。',
+    ],
+  },
   {
     version: '1.0.5.38',
     date: '2026-10-16',

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   View,
   Text as RNText,
@@ -14,6 +14,10 @@ import {
   TextInputProps,
   Switch,
   KeyboardAvoidingView,
+  Linking,
+  AppState,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
 import { RecurringRule, RecurringFrequency, RecurringAmountType, PaymentMethod, PaymentAccount, Profile, Category } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
@@ -30,6 +34,17 @@ import {
 import { getCategoryIcon } from '../lib/icons';
 import { DatePickerModal } from './DatePickerModal';
 import { DEFAULT_PAYMENT_METHODS } from '../lib/payment';
+import {
+  StatementFile,
+  loadCachedRecurringStatements,
+  listAllRecurringStatements,
+  pickAndUploadStatementOnWeb,
+  deleteCardStatement,
+  formatFileSize,
+  isImageStatement,
+  buildMobileUploadBridgeUrl,
+  getRuleTargetId,
+} from '../lib/statementStorage';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
   <RNText
@@ -153,6 +168,174 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
 
   // 常用範本選擇彈窗
   const [presetModalVisible, setPresetModalVisible] = useState<boolean>(false);
+
+  // 📎 水電瓦斯與固定帳單雲端附件庫狀態
+  const [statements, setStatements] = useState<StatementFile[]>([]);
+  const [loadingStatements, setLoadingStatements] = useState<boolean>(false);
+  const [uploadingStatement, setUploadingStatement] = useState<boolean>(false);
+  const [previewImageStatement, setPreviewImageStatement] = useState<StatementFile | null>(null);
+  const [showStatementVault, setShowStatementVault] = useState<boolean>(false);
+  const [vaultFilterRuleId, setVaultFilterRuleId] = useState<string>('');
+
+  // 同步載入快取與雲端水電帳單清單
+  const refreshStatements = useCallback(async () => {
+    if (!currentLedger?.id || scopedRules.length === 0) {
+      setStatements([]);
+      return;
+    }
+    try {
+      const cached = await loadCachedRecurringStatements(currentLedger.id);
+      if (cached.length > 0) {
+        setStatements(cached);
+      }
+      setLoadingStatements(true);
+      const ruleIds = scopedRules.map(r => r.id);
+      const fresh = await listAllRecurringStatements(currentLedger.id, ruleIds);
+      setStatements(fresh);
+    } catch {
+      // 保留快取
+    } finally {
+      setLoadingStatements(false);
+    }
+  }, [currentLedger?.id, scopedRules]);
+
+  // 當彈窗開關時同步載入帳單
+  useEffect(() => {
+    if (visible) {
+      refreshStatements();
+      setShowStatementVault(false);
+    } else {
+      setShowStatementVault(false);
+      setPreviewImageStatement(null);
+    }
+  }, [visible, refreshStatements]);
+
+  // 手機版從外部瀏覽器上傳電子帳單返回 App 時，自動重新整理帳單清單
+  useEffect(() => {
+    if (!visible || Platform.OS === 'web') return;
+
+    const appStateSub = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active') {
+        refreshStatements();
+        setTimeout(() => {
+          refreshStatements();
+        }, 700);
+      }
+    });
+
+    return () => {
+      appStateSub.remove();
+    };
+  }, [visible, refreshStatements]);
+
+  // 取得特定週期規則在特定週期的帳單附件
+  const getRuleStatementForPeriod = useCallback(
+    (ruleId: string, periodKey: string): StatementFile | null => {
+      const target = getRuleTargetId(ruleId);
+      return (
+        statements.find(
+          s =>
+            (s.ruleId === ruleId || s.targetId === target || s.cardId === target) &&
+            s.cycleKey === periodKey
+        ) || null
+      );
+    },
+    [statements]
+  );
+
+  // 開啟或預覽帳單
+  const handleOpenStatement = (stmt: StatementFile) => {
+    if (!stmt?.publicUrl) return;
+    if (isImageStatement(stmt)) {
+      setPreviewImageStatement(stmt);
+      return;
+    }
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.open(stmt.publicUrl, '_blank', 'noopener,noreferrer');
+    } else {
+      Linking.openURL(stmt.publicUrl).catch(() => {
+        showAlert('無法開啟檔案', '請確認裝置是否支援開啟 PDF 檔案');
+      });
+    }
+  };
+
+  // 刪除帳單附件
+  const handleDeleteStatement = (stmt: StatementFile) => {
+    const ruleObj = scopedRules.find(r => r.id === stmt.ruleId || getRuleTargetId(r.id) === stmt.targetId);
+    const ruleLabel = ruleObj ? ruleObj.name : '週期帳單';
+    showConfirm(
+      '刪除帳單附件',
+      `確定要刪除【${ruleLabel} · ${stmt.cycleKey}】的帳單「${stmt.originalName}」（${formatFileSize(stmt.size)}）嗎？\n\n刪除後將立即釋放雲端 Storage 空間。`,
+      async () => {
+        try {
+          setUploadingStatement(true);
+          const ok = await deleteCardStatement(stmt.path);
+          if (ok) {
+            await refreshStatements();
+            showAlert('已刪除', '已成功刪除該期帳單附件');
+          } else {
+            showAlert('刪除失敗', '無法從雲端刪除該帳單檔案，請稍後再試');
+          }
+        } finally {
+          setUploadingStatement(false);
+        }
+      }
+    );
+  };
+
+  // 處理上傳帳單附件
+  const handleUploadRuleStatement = async (rule: RecurringRule, periodKey: string, periodLabel: string) => {
+    if (!currentLedger?.id) return;
+    const targetId = getRuleTargetId(rule.id);
+
+    if (Platform.OS === 'web') {
+      try {
+        const uploaded = await pickAndUploadStatementOnWeb({
+          ledgerId: currentLedger.id,
+          cardId: targetId,
+          cycleKey: periodKey,
+          onUploadingChange: setUploadingStatement,
+        });
+        if (uploaded) {
+          await refreshStatements();
+          showAlert(
+            '📎 帳單已歸檔',
+            `已成功上傳「${uploaded.originalName}」（${formatFileSize(uploaded.size)}）至 ${rule.name} 的 ${periodLabel}！`
+          );
+        }
+      } catch (err: any) {
+        showAlert('上傳失敗', err?.message || '帳單附件上傳失敗，請稍後再試');
+      }
+    } else {
+      const bridgeUrl = buildMobileUploadBridgeUrl({
+        ledgerId: currentLedger.id,
+        cardId: targetId,
+        cardName: rule.name,
+        cycleKey: periodKey,
+        cycleName: periodLabel,
+        badge: '📎 水電瓦斯／固定帳單電子帳單歸檔',
+        title: `上傳「${rule.name}」本期帳單`,
+        sub: '支援電力公司、自來水、天然瓦斯、電信帳單 PDF 或手機繳費單截圖',
+        targetLabel: '🏷️ 週期項目',
+        uploadSub: '從「檔案」選取水電/瓦斯電子帳單 PDF<br/>或從「相簿」選取繳費收據截圖（單檔上限 20MB）',
+      });
+      Linking.openURL(bridgeUrl).catch(() => {
+        showAlert('無法開啟上傳頁面', '請確認網路連線正常');
+      });
+    }
+  };
+
+  const filteredVaultStatements = useMemo(() => {
+    if (!vaultFilterRuleId) return statements;
+    const target = getRuleTargetId(vaultFilterRuleId);
+    return statements.filter(
+      s => s.ruleId === vaultFilterRuleId || s.targetId === target || s.cardId === target
+    );
+  }, [statements, vaultFilterRuleId]);
+
+  const totalVaultBytes = useMemo(() => {
+    return statements.reduce((sum, s) => sum + Number(s.size || 0), 0);
+  }, [statements]);
 
   // 啟用之付款方式清單
   const activePaymentMethods = useMemo(() => {
@@ -595,12 +778,144 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
               <Text style={styles.headerTitle}>🗓️ 週期扣款與固定帳單</Text>
               <Text style={styles.headerSubtitle}>水電、瓦斯、電信費手動確認入帳</Text>
             </View>
-            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-              <Text style={styles.closeButtonText}>✕</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <TouchableOpacity
+                style={[styles.vaultToggleBtn, showStatementVault && styles.vaultToggleBtnActive]}
+                onPress={() => {
+                  setShowStatementVault(prev => !prev);
+                  setVaultFilterRuleId('');
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.vaultToggleBtnText, showStatementVault && styles.vaultToggleBtnTextActive]}>
+                  {showStatementVault ? '✕ 清單' : `📂 帳單庫${statements.length > 0 ? ` (${statements.length})` : ''}`}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+                <Text style={styles.closeButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
-          {/* Tab 切換器 */}
+          {/* 若處於水電瓦斯與固定帳單歸檔庫模式 */}
+          {showStatementVault ? (
+            <View style={styles.tabContent}>
+              {/* 歸檔庫統計橫幅 */}
+              <View style={styles.vaultBanner}>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.vaultBannerTitle}>📂 水電瓦斯與固定帳單雲端歸檔庫</Text>
+                    {loadingStatements && <ActivityIndicator size="small" color="#2563EB" />}
+                  </View>
+                  <Text style={styles.vaultBannerSub}>
+                    已歸檔 {filteredVaultStatements.length} 份帳單附件 · 佔用容量 {formatFileSize(totalVaultBytes)}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.vaultCloseBtn}
+                  onPress={() => setShowStatementVault(false)}
+                >
+                  <Text style={styles.vaultCloseBtnText}>✕ 返回核對</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* 規則分類篩選滑軌 */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.vaultFilterScroll}>
+                <TouchableOpacity
+                  style={[styles.vaultFilterChip, !vaultFilterRuleId && styles.vaultFilterChipActive]}
+                  onPress={() => setVaultFilterRuleId('')}
+                >
+                  <Text style={[styles.vaultFilterChipText, !vaultFilterRuleId && styles.vaultFilterChipTextActive]}>
+                    全部項目 ({statements.length})
+                  </Text>
+                </TouchableOpacity>
+
+                {scopedRules.map(rule => {
+                  const target = getRuleTargetId(rule.id);
+                  const count = statements.filter(s => s.ruleId === rule.id || s.targetId === target || s.cardId === target).length;
+                  const isSelected = vaultFilterRuleId === rule.id;
+                  return (
+                    <TouchableOpacity
+                      key={rule.id}
+                      style={[styles.vaultFilterChip, isSelected && styles.vaultFilterChipActive]}
+                      onPress={() => setVaultFilterRuleId(rule.id)}
+                    >
+                      <Text style={[styles.vaultFilterChipText, isSelected && styles.vaultFilterChipTextActive]}>
+                        {rule.name} ({count})
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              {/* 帳單清單 */}
+              <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+                {filteredVaultStatements.length === 0 ? (
+                  <View style={styles.emptyStateBox}>
+                    <Text style={styles.emptyStateIcon}>📄</Text>
+                    <Text style={styles.emptyStateTitle}>尚未歸檔任何帳單附件</Text>
+                    <Text style={styles.emptyStateSubtitle}>
+                      在「待繳核對清單」點選確認記帳時，即可一鍵拍照上傳水電瓦斯收據或選取電子帳單 PDF，系統將自動依期別永久歸檔在此！
+                    </Text>
+                  </View>
+                ) : (
+                  filteredVaultStatements.map(stmt => {
+                    const rule = scopedRules.find(r => r.id === stmt.ruleId || getRuleTargetId(r.id) === stmt.targetId || getRuleTargetId(r.id) === stmt.cardId);
+                    const isImg = isImageStatement(stmt);
+                    const uploadDateStr = stmt.createdAt ? new Date(stmt.createdAt).toLocaleDateString('zh-TW') : '';
+                    return (
+                      <View key={stmt.path} style={styles.vaultItemCard}>
+                        <View style={styles.vaultItemHeader}>
+                          <View style={styles.vaultItemIconBox}>
+                            <Text style={{ fontSize: 22 }}>{isImg ? '🖼️' : '📄'}</Text>
+                          </View>
+                          <View style={{ flex: 1, marginRight: 8 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <View style={styles.vaultCycleBadge}>
+                                <Text style={styles.vaultCycleBadgeText}>{stmt.cycleKey} 期</Text>
+                              </View>
+                              <Text style={styles.vaultRuleName}>
+                                🏷️ {rule?.name || '固定帳單'}
+                              </Text>
+                            </View>
+                            <Text style={styles.vaultFileName} numberOfLines={1}>
+                              {stmt.originalName}
+                            </Text>
+                            <Text style={styles.vaultFileMeta}>
+                              {isImg ? '圖片帳單' : 'PDF 電子帳單'} · {formatFileSize(stmt.size)} · 歸檔於 {uploadDateStr}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.vaultItemActions}>
+                          <TouchableOpacity
+                            style={styles.vaultActionPrimary}
+                            onPress={() => handleOpenStatement(stmt)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.vaultActionPrimaryText}>
+                              {isImg ? '🖼️ 預覽帳單圖片' : '📄 開啟電子帳單'}
+                            </Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={styles.vaultActionDanger}
+                            onPress={() => handleDeleteStatement(stmt)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.vaultActionDangerText}>🗑️</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    );
+                  })
+                )}
+                <View style={{ height: 32 }} />
+              </ScrollView>
+            </View>
+          ) : (
+            <>
+              {/* Tab 切換器 */}
           <View style={styles.tabBar}>
             <TouchableOpacity
               style={[styles.tabItem, activeTab === 'pending' && styles.tabItemActive]}
@@ -724,6 +1039,8 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                     const payer = getMemberById(rule.paid_by);
                     const isFixed = rule.amount_type === 'fixed';
                     const periodLabel = getBillPeriodLabel(rule, selectedDate);
+                    const periodKey = getCurrentPeriodKey(rule, selectedDate);
+                    const billStmt = getRuleStatementForPeriod(rule.id, periodKey);
                     const instInfo = rule.is_installment ? getInstallmentInfo(rule, selectedDate) : null;
 
                     return (
@@ -742,6 +1059,25 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                                   📦 分期 {instInfo ? instInfo.labelText : ''}
                                 </Text>
                               </View>
+                            )}
+                            {billStmt ? (
+                              <TouchableOpacity
+                                style={styles.cardAttachedStmtPill}
+                                onPress={() => handleOpenStatement(billStmt)}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={styles.cardAttachedStmtPillText}>
+                                  📎 {isImageStatement(billStmt) ? '圖片帳單' : 'PDF 帳單'}
+                                </Text>
+                              </TouchableOpacity>
+                            ) : (
+                              <TouchableOpacity
+                                style={styles.cardAddStmtPill}
+                                onPress={() => handleUploadRuleStatement(rule, periodKey, periodLabel)}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={styles.cardAddStmtPillText}>+ 附帳單</Text>
+                              </TouchableOpacity>
                             )}
                           </View>
                           <Text style={styles.periodLabelText}>{periodLabel}</Text>
@@ -859,6 +1195,8 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
 
                     {settledBills.map(rule => {
                       const cat = getCategoryById(rule.category_id);
+                      const settledKey = getCurrentPeriodKey(rule, selectedDate);
+                      const settledStmt = getRuleStatementForPeriod(rule.id, settledKey);
                       return (
                         <View key={rule.id} style={styles.settledCard}>
                           <Text style={styles.settledIcon}>{getCategoryIcon(cat?.icon)}</Text>
@@ -866,8 +1204,19 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                             <Text style={styles.settledName}>{rule.name}</Text>
                             <Text style={styles.settledFreq}>{getFrequencyBadgeText(rule)}</Text>
                           </View>
-                          <View style={styles.settledBadge}>
-                            <Text style={styles.settledBadgeText}>已完成</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            {settledStmt && (
+                              <TouchableOpacity
+                                style={styles.settledStmtBtn}
+                                onPress={() => handleOpenStatement(settledStmt)}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={styles.settledStmtBtnText}>📎 帳單</Text>
+                              </TouchableOpacity>
+                            )}
+                            <View style={styles.settledBadge}>
+                              <Text style={styles.settledBadgeText}>已完成</Text>
+                            </View>
                           </View>
                         </View>
                       );
@@ -897,6 +1246,18 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                   onPress={() => setPresetModalVisible(true)}
                 >
                   <Text style={styles.importPresetButtonText}>📋 常用範本</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.vaultToolbarButton}
+                  onPress={() => {
+                    setVaultFilterRuleId('');
+                    setShowStatementVault(true);
+                  }}
+                >
+                  <Text style={styles.vaultToolbarButtonText}>
+                    📂 帳單庫{statements.length > 0 ? ` (${statements.length})` : ''}
+                  </Text>
                 </TouchableOpacity>
               </View>
 
@@ -1034,21 +1395,39 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                         </View>
 
                         {/* 底部按鈕 */}
-                        <View style={styles.ruleCardButtonsRow}>
-                          <TouchableOpacity
-                            style={styles.ruleEditBtn}
-                            onPress={() => handleOpenRuleModal(rule)}
-                          >
-                            <Text style={styles.ruleEditBtnText}>✏️ 編輯設定</Text>
-                          </TouchableOpacity>
+                        {(() => {
+                          const target = getRuleTargetId(rule.id);
+                          const ruleStmtCount = statements.filter(s => s.ruleId === rule.id || s.targetId === target || s.cardId === target).length;
+                          return (
+                            <View style={styles.ruleCardButtonsRow}>
+                              <TouchableOpacity
+                                style={styles.ruleVaultBtn}
+                                onPress={() => {
+                                  setVaultFilterRuleId(rule.id);
+                                  setShowStatementVault(true);
+                                }}
+                              >
+                                <Text style={styles.ruleVaultBtnText}>
+                                  📂 歷年帳單{ruleStmtCount > 0 ? ` (${ruleStmtCount})` : ''}
+                                </Text>
+                              </TouchableOpacity>
 
-                          <TouchableOpacity
-                            style={styles.ruleDeleteBtn}
-                            onPress={() => handleDeleteRule(rule)}
-                          >
-                            <Text style={styles.ruleDeleteBtnText}>🗑️ 刪除</Text>
-                          </TouchableOpacity>
-                        </View>
+                              <TouchableOpacity
+                                style={styles.ruleEditBtn}
+                                onPress={() => handleOpenRuleModal(rule)}
+                              >
+                                <Text style={styles.ruleEditBtnText}>✏️ 編輯</Text>
+                              </TouchableOpacity>
+
+                              <TouchableOpacity
+                                style={styles.ruleDeleteBtn}
+                                onPress={() => handleDeleteRule(rule)}
+                              >
+                                <Text style={styles.ruleDeleteBtnText}>🗑️ 刪除</Text>
+                              </TouchableOpacity>
+                            </View>
+                          );
+                        })()}
                       </View>
                     );
                   })
@@ -1058,6 +1437,8 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
               </ScrollView>
             </View>
           )}
+        </>
+      )}
 
           {/* 週期帳單確認入帳 Modal（支援浮動金額、固定金額、分期付款，預設「今天」為入帳日期優先） */}
           <Modal
@@ -1168,6 +1549,89 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                         </Text>
                       </TouchableOpacity>
                     </View>
+
+                    {/* 📎 本期帳單附件（水電瓦斯/固定扣款電子帳單） */}
+                    {(() => {
+                      const targetPeriodKey = getCurrentPeriodKey(targetRuleForAmount, selectedDate);
+                      const targetPeriodLabel = getBillPeriodLabel(targetRuleForAmount, selectedDate);
+                      const currentPeriodStatement = getRuleStatementForPeriod(targetRuleForAmount.id, targetPeriodKey);
+                      return (
+                        <View style={styles.stmtSectionBox}>
+                          <View style={styles.stmtSectionHeaderRow}>
+                            <Text style={styles.formFieldLabel}>📎 本期帳單附件 (PDF / 繳費單截圖)</Text>
+                            {currentPeriodStatement && (
+                              <View style={styles.stmtAttachedBadgeMini}>
+                                <Text style={styles.stmtAttachedBadgeMiniText}>已附加</Text>
+                              </View>
+                            )}
+                          </View>
+
+                          {currentPeriodStatement ? (
+                            <View style={styles.attachedStmtBar}>
+                              <TouchableOpacity
+                                style={styles.attachedStmtMain}
+                                onPress={() => handleOpenStatement(currentPeriodStatement)}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={{ fontSize: 20, marginRight: 8 }}>
+                                  {isImageStatement(currentPeriodStatement) ? '🖼️' : '📄'}
+                                </Text>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={styles.attachedStmtTitle} numberOfLines={1}>
+                                    {currentPeriodStatement.originalName}
+                                  </Text>
+                                  <Text style={styles.attachedStmtMeta}>
+                                    {isImageStatement(currentPeriodStatement) ? '圖片帳單' : 'PDF 電子帳單'} · {formatFileSize(currentPeriodStatement.size)} · 點擊查看
+                                  </Text>
+                                </View>
+                              </TouchableOpacity>
+
+                              <View style={styles.attachedStmtActions}>
+                                <TouchableOpacity
+                                  style={styles.stmtMiniBtn}
+                                  onPress={() => handleOpenStatement(currentPeriodStatement)}
+                                >
+                                  <Text style={styles.stmtMiniBtnPrimaryText}>查看</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.stmtMiniBtn}
+                                  onPress={() => handleUploadRuleStatement(targetRuleForAmount, targetPeriodKey, targetPeriodLabel)}
+                                  disabled={uploadingStatement}
+                                >
+                                  <Text style={styles.stmtMiniBtnText}>重傳</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={[styles.stmtMiniBtn, styles.stmtMiniBtnDanger]}
+                                  onPress={() => handleDeleteStatement(currentPeriodStatement)}
+                                  disabled={uploadingStatement}
+                                >
+                                  <Text style={styles.stmtMiniBtnDangerText}>🗑️</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          ) : (
+                            <TouchableOpacity
+                              style={styles.uploadStmtBtn}
+                              onPress={() => handleUploadRuleStatement(targetRuleForAmount, targetPeriodKey, targetPeriodLabel)}
+                              disabled={uploadingStatement}
+                              activeOpacity={0.7}
+                            >
+                              {uploadingStatement ? (
+                                <ActivityIndicator size="small" color="#2563EB" />
+                              ) : (
+                                <>
+                                  <Text style={styles.uploadStmtBtnIcon}>📤</Text>
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={styles.uploadStmtBtnText}>上傳／拍照本期帳單 (PDF 或收據截圖)</Text>
+                                    <Text style={styles.uploadStmtBtnSub}>選填 · 自動歸檔至雲端，日後對帳隨時一鍵調閱原單</Text>
+                                  </View>
+                                </>
+                              )}
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      );
+                    })()}
 
                     {/* 備註說明 */}
                     <Text style={styles.formFieldLabel}>記帳備註說明</Text>
@@ -1857,6 +2321,59 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
           </Modal>
         </View>
       </View>
+
+      {/* 🖼️ 圖片格式電子帳單全螢幕預覽彈窗 */}
+      <Modal
+        visible={!!previewImageStatement}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewImageStatement(null)}
+      >
+        <View style={styles.imgPreviewOverlay}>
+          <View style={styles.imgPreviewHeader}>
+            <View style={{ flex: 1, marginRight: 8 }}>
+              <Text style={styles.imgPreviewTitle} numberOfLines={1}>
+                {previewImageStatement?.originalName || '帳單附件預覽'}
+              </Text>
+              <Text style={styles.imgPreviewSub}>
+                {previewImageStatement?.cycleKey} 期帳單 · {formatFileSize(previewImageStatement?.size)}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.imgPreviewCloseBtn}
+              onPress={() => setPreviewImageStatement(null)}
+            >
+              <Text style={styles.imgPreviewCloseText}>✕ 關閉</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.imgPreviewBody}>
+            {!!previewImageStatement?.publicUrl && (
+              <Image
+                source={{ uri: previewImageStatement.publicUrl }}
+                style={styles.imgPreviewImage}
+                resizeMode="contain"
+              />
+            )}
+          </View>
+
+          <View style={styles.imgPreviewFooter}>
+            <TouchableOpacity
+              style={styles.imgPreviewExternalBtn}
+              onPress={() => {
+                if (!previewImageStatement?.publicUrl) return;
+                if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                  window.open(previewImageStatement.publicUrl, '_blank', 'noopener,noreferrer');
+                } else {
+                  Linking.openURL(previewImageStatement.publicUrl).catch(() => {});
+                }
+              }}
+            >
+              <Text style={styles.imgPreviewExternalText}>🌐 於瀏覽器開啟原圖 / 下載檔案</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 };
@@ -3214,5 +3731,406 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#334155',
     fontWeight: '600',
+  },
+  vaultToggleBtn: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 10,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    marginRight: 6,
+  },
+  vaultToggleBtnActive: {
+    backgroundColor: '#1D4ED8',
+    borderColor: '#1D4ED8',
+  },
+  vaultToggleBtnText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  vaultToggleBtnTextActive: {
+    color: '#FFFFFF',
+  },
+  cardAttachedStmtPill: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#93C5FD',
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  cardAttachedStmtPillText: {
+    fontSize: 11,
+    color: '#1D4ED8',
+    fontWeight: '700',
+  },
+  cardAddStmtPill: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderStyle: 'dashed',
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  cardAddStmtPillText: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  settledStmtBtn: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginRight: 6,
+  },
+  settledStmtBtnText: {
+    fontSize: 11.5,
+    color: '#1D4ED8',
+    fontWeight: '700',
+  },
+  stmtSectionBox: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    padding: 12,
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  stmtSectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  stmtAttachedBadgeMini: {
+    backgroundColor: '#DCFCE7',
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  stmtAttachedBadgeMiniText: {
+    fontSize: 10.5,
+    color: '#15803D',
+    fontWeight: '700',
+  },
+  attachedStmtBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 12,
+    padding: 10,
+  },
+  attachedStmtMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  attachedStmtTitle: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  attachedStmtMeta: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  attachedStmtActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginLeft: 6,
+  },
+  stmtMiniBtn: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 7,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  stmtMiniBtnPrimaryText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  stmtMiniBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  stmtMiniBtnDanger: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+  },
+  stmtMiniBtnDangerText: {
+    fontSize: 11,
+    color: '#EF4444',
+  },
+  uploadStmtBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#93C5FD',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    padding: 12,
+    gap: 10,
+  },
+  uploadStmtBtnIcon: {
+    fontSize: 22,
+  },
+  uploadStmtBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  uploadStmtBtnSub: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  vaultToolbarButton: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  vaultToolbarButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  ruleVaultBtn: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginRight: 6,
+  },
+  ruleVaultBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  vaultBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+  },
+  vaultBannerTitle: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#1E3A8A',
+  },
+  vaultBannerSub: {
+    fontSize: 11.5,
+    color: '#3B82F6',
+    marginTop: 2,
+  },
+  vaultCloseBtn: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    marginLeft: 8,
+  },
+  vaultCloseBtnText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  vaultFilterScroll: {
+    maxHeight: 38,
+    marginBottom: 10,
+  },
+  vaultFilterChip: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 9,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginRight: 8,
+  },
+  vaultFilterChipActive: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+  },
+  vaultFilterChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  vaultFilterChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  vaultItemCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  vaultItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  vaultItemIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#EFF6FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  vaultCycleBadge: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  vaultCycleBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  vaultRuleName: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  vaultFileName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#334155',
+    marginTop: 4,
+  },
+  vaultFileMeta: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  vaultItemActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  vaultActionPrimary: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#93C5FD',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  vaultActionPrimaryText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  vaultActionDanger: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  vaultActionDangerText: {
+    fontSize: 12,
+    color: '#EF4444',
+  },
+  imgPreviewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.94)',
+    justifyContent: 'space-between',
+    paddingVertical: 36,
+    paddingHorizontal: 16,
+  },
+  imgPreviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  imgPreviewTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  imgPreviewSub: {
+    fontSize: 11.5,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  imgPreviewCloseBtn: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  imgPreviewCloseText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  imgPreviewBody: {
+    flex: 1,
+    marginVertical: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imgPreviewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  imgPreviewFooter: {
+    alignItems: 'center',
+  },
+  imgPreviewExternalBtn: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  imgPreviewExternalText: {
+    color: '#FFFFFF',
+    fontSize: 12.5,
+    fontWeight: '700',
   },
 });

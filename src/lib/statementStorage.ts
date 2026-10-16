@@ -3,17 +3,21 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, supabase } from './supabase';
 
 export const STATEMENT_BUCKET = 'statements';
 
-export interface CreditCardStatementFile {
-  path: string;          // 儲存桶完整路徑：`${ledgerId}/${cardId}/${fileName}`
+export interface StatementFile {
+  path: string;          // 儲存桶完整路徑：`${ledgerId}/${targetId}/${fileName}`
   fileName: string;      // 儲存桶檔名：`${cycleKey}__${timestamp}__${hexName}.${ext}`
-  cardId: string;
+  targetId: string;      // 目標主體 ID：cardId 或 `rule_${rule.id}`
+  cardId: string;        // 相容舊有欄位（等同 targetId）
+  ruleId?: string;       // 若為週期扣款規則，解析出的 ruleId
   cycleKey: string;      // 例如 "2026-10"
-  originalName: string;  // 原始檔名，例如 "國泰CUBE_10月電子帳單.pdf"
+  originalName: string;  // 原始檔名，例如 "國泰CUBE_10月電子帳單.pdf" 或 "台電10月繳費單.pdf"
   mimeType: string;      // "application/pdf" | "image/jpeg" | "image/png" ...
   size: number;          // 檔案大小 (Bytes)
   createdAt: string;     // 上傳時間 ISO 字串
   publicUrl: string;     // 公開檢視連結
 }
+
+export type CreditCardStatementFile = StatementFile;
 
 const STORAGE_FALLBACK_CODES = [
   120, 103, 100, 120, 106, 104, 119, 106, 121, 100, 121, 54, 122, 59, 92, 110,
@@ -26,6 +30,10 @@ export const getStorageServiceToken = (): string => {
 };
 
 const getStatementCacheKey = (ledgerId: string) => `@family_ledger_statements_${ledgerId}`;
+const getRecurringStatementCacheKey = (ledgerId: string) => `@family_ledger_recurring_statements_${ledgerId}`;
+
+// 週期扣款規則之 Storage targetId 格式
+export const getRuleTargetId = (ruleId: string): string => `rule_${ruleId}`;
 
 // 將任意 UTF-8 字串轉為純小寫 Hex，避免 Supabase Storage 因中文檔名拋出 InvalidKey
 export const toHexUtf8 = (str: string): string => {
@@ -68,7 +76,7 @@ export const formatFileSize = (bytes?: number): string => {
   return `${(b / (1024 * 1024)).toFixed(2)} MB`;
 };
 
-export const isImageStatement = (file?: CreditCardStatementFile | null): boolean => {
+export const isImageStatement = (file?: StatementFile | null): boolean => {
   if (!file) return false;
   if (file.mimeType && file.mimeType.startsWith('image/')) return true;
   const lower = (file.fileName || file.originalName || '').toLowerCase();
@@ -80,7 +88,7 @@ export const parseStorageObject = (
   ledgerId: string,
   cardId: string,
   obj: any
-): CreditCardStatementFile | null => {
+): StatementFile | null => {
   const name: string = obj?.name || '';
   if (!name || name === '.emptyFolderPlaceholder') return null;
 
@@ -116,10 +124,15 @@ export const parseStorageObject = (
   const createdAt = obj?.created_at || obj?.updated_at || new Date().toISOString();
   const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${STATEMENT_BUCKET}/${fullPath}`;
 
+  const isRule = cardId.startsWith('rule_');
+  const ruleId = isRule ? cardId.replace('rule_', '') : undefined;
+
   return {
     path: fullPath,
     fileName: name,
+    targetId: cardId,
     cardId,
+    ruleId,
     cycleKey,
     originalName,
     mimeType,
@@ -130,7 +143,7 @@ export const parseStorageObject = (
 };
 
 // 讀取本地快取的電子帳單清單
-export const loadCachedStatements = async (ledgerId: string): Promise<CreditCardStatementFile[]> => {
+export const loadCachedStatements = async (ledgerId: string): Promise<StatementFile[]> => {
   if (!ledgerId) return [];
   try {
     const raw = await AsyncStorage.getItem(getStatementCacheKey(ledgerId));
@@ -145,11 +158,35 @@ export const loadCachedStatements = async (ledgerId: string): Promise<CreditCard
 // 儲存電子帳單清單至本地快取
 export const saveCachedStatements = async (
   ledgerId: string,
-  list: CreditCardStatementFile[]
+  list: StatementFile[]
 ): Promise<void> => {
   if (!ledgerId) return;
   try {
     await AsyncStorage.setItem(getStatementCacheKey(ledgerId), JSON.stringify(list));
+  } catch {}
+};
+
+// 讀取本地快取的週期水電固定帳單清單
+export const loadCachedRecurringStatements = async (ledgerId: string): Promise<StatementFile[]> => {
+  if (!ledgerId) return [];
+  try {
+    const raw = await AsyncStorage.getItem(getRecurringStatementCacheKey(ledgerId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+// 儲存週期水電固定帳單清單至本地快取
+export const saveCachedRecurringStatements = async (
+  ledgerId: string,
+  list: StatementFile[]
+): Promise<void> => {
+  if (!ledgerId) return;
+  try {
+    await AsyncStorage.setItem(getRecurringStatementCacheKey(ledgerId), JSON.stringify(list));
   } catch {}
 };
 
@@ -185,11 +222,11 @@ const fetchStorageWithAuth = async (url: string, init: RequestInit): Promise<Res
   });
 };
 
-// 列出單一卡片底下的所有電子帳單
+// 列出單一主體（卡片或週期規則）底下的所有電子帳單
 export const listCardStatements = async (
   ledgerId: string,
   cardId: string
-): Promise<CreditCardStatementFile[]> => {
+): Promise<StatementFile[]> => {
   if (!ledgerId || !cardId) return [];
   try {
     const res = await fetchStorageWithAuth(
@@ -210,7 +247,7 @@ export const listCardStatements = async (
     if (!Array.isArray(data)) return [];
 
     // 每個 cycleKey 只保留最新的一筆
-    const byCycle = new Map<string, CreditCardStatementFile>();
+    const byCycle = new Map<string, StatementFile>();
     for (const item of data) {
       const parsed = parseStorageObject(ledgerId, cardId, item);
       if (!parsed) continue;
@@ -229,7 +266,7 @@ export const listCardStatements = async (
 export const listLedgerStatements = async (
   ledgerId: string,
   cardIds: string[]
-): Promise<CreditCardStatementFile[]> => {
+): Promise<StatementFile[]> => {
   if (!ledgerId || !cardIds || cardIds.length === 0) return [];
   try {
     const results = await Promise.all(cardIds.map(cid => listCardStatements(ledgerId, cid)));
@@ -244,6 +281,37 @@ export const listLedgerStatements = async (
     return merged;
   } catch {
     return loadCachedStatements(ledgerId);
+  }
+};
+
+// 列出單一週期規則底下的水電固定帳單
+export const listRuleStatements = async (
+  ledgerId: string,
+  ruleId: string
+): Promise<StatementFile[]> => {
+  return listCardStatements(ledgerId, getRuleTargetId(ruleId));
+};
+
+// 列出整個帳本所有週期扣款規則的水電固定帳單（並更新本地快取）
+export const listAllRecurringStatements = async (
+  ledgerId: string,
+  ruleIds: string[]
+): Promise<StatementFile[]> => {
+  if (!ledgerId || !ruleIds || ruleIds.length === 0) return [];
+  try {
+    const targetIds = ruleIds.map(getRuleTargetId);
+    const results = await Promise.all(targetIds.map(tid => listCardStatements(ledgerId, tid)));
+    const merged = results
+      .flat()
+      .sort((a, b) => {
+        const cmp = b.cycleKey.localeCompare(a.cycleKey);
+        if (cmp !== 0) return cmp;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+    await saveCachedRecurringStatements(ledgerId, merged);
+    return merged;
+  } catch {
+    return loadCachedRecurringStatements(ledgerId);
   }
 };
 
@@ -384,10 +452,15 @@ export const uploadStatementFileOnWeb = async (params: {
   }
 
   const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${STATEMENT_BUCKET}/${fullPath}`;
+  const isRule = cardId.startsWith('rule_');
+  const ruleId = isRule ? cardId.replace('rule_', '') : undefined;
+
   return {
     path: fullPath,
     fileName: objectName,
+    targetId: cardId,
     cardId,
+    ruleId,
     cycleKey,
     originalName: `${rawBaseName.slice(0, 32)}.${ext}`,
     mimeType,
@@ -458,13 +531,18 @@ export const pickAndUploadStatementOnWeb = (params: {
   });
 };
 
-// 產生手機版 App 專用上傳橋接頁網址
+// 產生手機版 App 專用上傳橋接頁網址（支援信用卡與週期水電固定帳單自訂標籤）
 export const buildMobileUploadBridgeUrl = (params: {
   ledgerId: string;
   cardId: string;
   cardName: string;
   cycleKey: string;
   cycleName: string;
+  badge?: string;
+  title?: string;
+  sub?: string;
+  targetLabel?: string;
+  uploadSub?: string;
 }): string => {
   const q = [
     `ledgerId=${encodeURIComponent(params.ledgerId)}`,
@@ -472,7 +550,13 @@ export const buildMobileUploadBridgeUrl = (params: {
     `cardName=${encodeURIComponent(params.cardName)}`,
     `cycleKey=${encodeURIComponent(params.cycleKey)}`,
     `cycleName=${encodeURIComponent(params.cycleName)}`,
-  ].join('&');
-  return `https://mattyu99.github.io/family-ledger/upload-statement.html?${q}`;
+  ];
+  if (params.badge) q.push(`badge=${encodeURIComponent(params.badge)}`);
+  if (params.title) q.push(`title=${encodeURIComponent(params.title)}`);
+  if (params.sub) q.push(`sub=${encodeURIComponent(params.sub)}`);
+  if (params.targetLabel) q.push(`targetLabel=${encodeURIComponent(params.targetLabel)}`);
+  if (params.uploadSub) q.push(`uploadSub=${encodeURIComponent(params.uploadSub)}`);
+  return `https://mattyu99.github.io/family-ledger/upload-statement.html?${q.join('&')}`;
 };
+
 
