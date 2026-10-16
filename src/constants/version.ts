@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 32;
+export const APP_BUILD_REVISION = 33;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.33',
+    date: '2026-10-16',
+    title: '生活備忘與待辦總覽分頁切換自動置頂 ＋ 查看/編輯關閉平滑返回總覽頁面',
+    highlights: [
+      '分頁切換捲動即時歸零：修復在「已辦妥」等分頁向下捲動後切換至「日常雜記」或「未到期預告」時捲動位移未重置的問題，點選任一分頁標籤即時歸零置頂。',
+      '子母視窗上一頁導航返回：點選記事卡片進入「查看生活備忘」後，點選右上角「✕」關閉（或儲存/刪除）時，自動返回上一頁「📋 生活備忘與待辦總覽」，不再誤跳回「明細」主畫面。',
+      '記憶當前分頁：返回總覽視窗時完整保留當前選中的分頁（例如停留在「已辦妥」），檢閱與修改多筆記事流暢不中斷。',
+    ],
+  },
   {
     version: '1.0.5.32',
     date: '2026-10-16',

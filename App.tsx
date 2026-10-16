@@ -5539,7 +5539,7 @@ function MainApp() {
 
       {/* 生活備忘與待辦總覽彈窗 */}
       <MemoTodoModal
-        visible={memoTodoModalVisible && !completingMemo && !modalVisible}
+        visible={memoTodoModalVisible && !completingMemo && !modalVisible && !editingTransaction}
         onClose={() => setMemoTodoModalVisible(false)}
         onEditMemo={(tx) => setEditingTransaction(tx)}
         onAddMemo={() => {

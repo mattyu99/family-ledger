@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   View,
   Text as RNText,
@@ -46,6 +46,20 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
 }) => {
   const { transactions, getMemberById, toggleMemoSettled, toggleMemoChecklistItem } = useLedger();
   const [activeTab, setActiveTab] = useState<TodoTab>('all');
+  const scrollRef = useRef<ScrollView>(null);
+
+  // 切換分頁時捲動位置即時歸零置頂
+  const handleTabChange = (newTab: TodoTab) => {
+    setActiveTab(newTab);
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  };
+
+  // 顯式關閉彈窗時歸零分頁與位置
+  const handleExplicitClose = () => {
+    setActiveTab('all');
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    onClose();
+  };
 
   // 每次開啟彈窗或交易更新時，精準取得本地最新日期 (避免空依賴緩存或 UTC 時區差)
   const todayYmd = useMemo(() => getLocalDateYmd(), [visible, transactions]);
@@ -167,14 +181,12 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
     });
   };
 
-  if (!visible) return null;
-
   return (
     <Modal
       visible={visible}
       transparent
       animationType="slide"
-      onRequestClose={onClose}
+      onRequestClose={handleExplicitClose}
     >
       <View style={styles.overlay}>
         <View style={styles.modalCard}>
@@ -186,7 +198,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                 全家日常採買、生活雜記與未來排程提醒
               </Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity onPress={handleExplicitClose} style={styles.closeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Text style={styles.closeText} maxFontSizeMultiplier={1.15}>✕</Text>
             </TouchableOpacity>
           </View>
@@ -195,7 +207,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
           <View style={styles.metricsRow}>
             <TouchableOpacity
               style={[styles.metricCard, activeTab === 'today' && styles.metricCardActive]}
-              onPress={() => setActiveTab('today')}
+              onPress={() => handleTabChange('today')}
               activeOpacity={0.7}
             >
               <Text style={styles.metricLabel} maxFontSizeMultiplier={1.08}>今日/逾期 🚨</Text>
@@ -206,7 +218,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
 
             <TouchableOpacity
               style={[styles.metricCard, activeTab === 'upcoming' && styles.metricCardActive]}
-              onPress={() => setActiveTab('upcoming')}
+              onPress={() => handleTabChange('upcoming')}
               activeOpacity={0.7}
             >
               <Text style={styles.metricLabel} maxFontSizeMultiplier={1.08}>未到期預告 🗓️</Text>
@@ -217,7 +229,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
 
             <TouchableOpacity
               style={[styles.metricCard, activeTab === 'completed' && styles.metricCardActive]}
-              onPress={() => setActiveTab('completed')}
+              onPress={() => handleTabChange('completed')}
               activeOpacity={0.7}
             >
               <Text style={styles.metricLabel} maxFontSizeMultiplier={1.08}>已辦妥 ✓</Text>
@@ -242,7 +254,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                   <TouchableOpacity
                     key={t.key}
                     style={[styles.tabChip, isSelected && styles.tabChipActive]}
-                    onPress={() => setActiveTab(t.key as TodoTab)}
+                    onPress={() => handleTabChange(t.key as TodoTab)}
                     activeOpacity={0.7}
                   >
                     <Text
@@ -257,8 +269,10 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
             </HorizontalScrollView>
           </View>
 
-          {/* 待辦事項列表 */}
+          {/* 待辦事項列表（切換分頁自動歸零置頂） */}
           <ScrollView
+            ref={scrollRef}
+            key={activeTab}
             style={styles.listArea}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
@@ -307,7 +321,6 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                     style={[styles.itemCard, isCompleted && styles.itemCardCompleted]}
                     activeOpacity={0.7}
                     onPress={() => {
-                      onClose();
                       onEditMemo(item);
                     }}
                   >
@@ -473,7 +486,6 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                         activeOpacity={0.7}
                         onPress={(e) => {
                           e.stopPropagation?.();
-                          onClose();
                           onEditMemo(linkedExpense);
                         }}
                       >
@@ -508,7 +520,6 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
             <TouchableOpacity
               style={styles.addMemoBtn}
               onPress={() => {
-                onClose();
                 onAddMemo();
               }}
               activeOpacity={0.8}
@@ -520,7 +531,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
 
             <TouchableOpacity
               style={styles.closeFooterBtn}
-              onPress={onClose}
+              onPress={handleExplicitClose}
               activeOpacity={0.8}
             >
               <Text style={styles.closeFooterBtnText} maxFontSizeMultiplier={1.12}>
