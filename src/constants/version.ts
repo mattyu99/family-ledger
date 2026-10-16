@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 35;
+export const APP_BUILD_REVISION = 36;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.36',
+    date: '2026-10-16',
+    title: '智慧保護 Markdown 待辦清單方框 ＋ 修正首行待辦事項消失問題',
+    highlights: [
+      '徹底修正首行待辦消失與被挖空問題：修復系統在解析生活記事主題標籤時，將 Markdown 檢核清單方框「- [ ]」誤判為空標籤並由內文中挖除的重大缺陷。',
+      '全待辦清單完整呈現與零位移勾選：首行待辦事項不再誤變為普通前綴文字，第 1 至第 4（或任意多項）清單項目均完整顯示為獨立待辦方框，勾選互動項目精準對齊，不再發生索引位移錯位。',
+      '主題標籤與待辦清單完美並存：強化主題標籤解析規則，自動排除 [ ]、[x]、[✓] 等方框符號，使記事同時包含主題分類標籤（如 [出國必備]）與檢核清單時均能精準提取。',
+    ],
+  },
   {
     version: '1.0.5.35',
     date: '2026-10-16',

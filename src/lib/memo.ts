@@ -51,14 +51,53 @@ export function getMergedMemoTags(recentTags: string[] = []): string[] {
 }
 
 /**
+ * 尋找內文中的首個有效生活記事主題標籤 (支援 [標籤]、［標籤］、【標籤】)
+ * 自動避開 Markdown 檢核清單方框 (如 - [ ]、- [x]、[✓]) 與系統中繼標籤
+ */
+export function findMemoTopicTagMatch(text?: string): RegExpExecArray | null {
+  if (!text) return null;
+  const tagRegex = /[\[［【]([^\[\]［］【】\n]{1,16})[\]］】]/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = tagRegex.exec(text)) !== null) {
+    const rawInner = match[1];
+    const trimmed = rawInner.trim();
+
+    // 1. 排除待辦方框：空白/無內容、x、X、✓、✔、v、V 等
+    if (!trimmed || ['x', 'X', '✓', '✔', 'v', 'V'].includes(trimmed)) {
+      continue;
+    }
+
+    // 2. 排除網址與系統內部標籤
+    if (
+      trimmed.startsWith('http://') ||
+      trimmed.startsWith('https://') ||
+      trimmed === '辦妥' ||
+      trimmed.startsWith('remind:') ||
+      trimmed.startsWith('done:') ||
+      trimmed.startsWith('merchant:') ||
+      trimmed.startsWith('id:') ||
+      trimmed.startsWith('linked:')
+    ) {
+      continue;
+    }
+
+    // 找到首個真正的主題標籤
+    return match;
+  }
+
+  return null;
+}
+
+/**
  * 從文字中提取生活記事標籤（支援 [標籤]、［標籤］、【標籤】）
  */
 export function extractMemoTag(text?: string): string | undefined {
   if (!text) return undefined;
-  const match = text.match(/[\[［【]([^\[\]［］【】\n]{1,16})[\]］】]/);
+  const match = findMemoTopicTagMatch(text);
   if (!match) return undefined;
   const raw = match[1].trim();
-  if (!raw || raw.length < 2 || raw.startsWith('http') || raw === '辦妥' || raw.startsWith('remind:')) return undefined;
+  if (!raw || raw.length < 2) return undefined;
   return raw;
 }
 
@@ -77,6 +116,7 @@ const EMOJI_REGEX = /(\p{Extended_Pictographic}|\p{Emoji_Presentation})(?:\uFE0F
  * 2. 自動識別標籤內的 Emoji 作為卡片圖示徽章
  * 3. 內文自動移除重複的括號標籤，還原乾淨排版
  * 4. 徹底告別財務分類 (如「餐飲伙食」) 的干擾
+ * 5. 智慧保護 Markdown 待辦清單方框 (- [ ] / - [x]) 不被誤判或抹除
  */
 export function parseMemoNote(noteText?: string, categoryName?: string, categoryIcon?: string): ParsedMemo {
   if (!noteText || !noteText.trim()) {
@@ -88,8 +128,8 @@ export function parseMemoNote(noteText?: string, categoryName?: string, category
   }
 
   const raw = noteText.trim();
-  // 支援半形中括號 [ ]、全形中括號 ［ ］、粗括號 【 】 (依文本出現順序由左至右優先解析首個標籤)
-  const match = raw.match(/[\[［【]([^\[\]［］【】\n]{1,16})[\]］】]/);
+  // 支援半形中括號 [標籤]、全形中括號 ［標籤］、粗括號 【標籤】 (依文本出現順序由左至右優先解析首個主題標籤，自動略過待辦方框 - [ ] / [x])
+  const match = findMemoTopicTagMatch(raw);
 
   if (!match) {
     const isMemoCategory =
@@ -134,7 +174,7 @@ export function parseMemoNote(noteText?: string, categoryName?: string, category
  */
 export function isMemoTagActive(currentNote: string, tag: string): boolean {
   if (!currentNote) return false;
-  const match = currentNote.match(/[\[［【]([^\[\]［］【】\n]{1,16})[\]］】]/);
+  const match = findMemoTopicTagMatch(currentNote);
   if (!match) return false;
   const raw = match[1].trim();
   const core = raw.replace(EMOJI_REGEX, '').trim();
@@ -146,10 +186,10 @@ export function isMemoTagActive(currentNote: string, tag: string): boolean {
  * 快捷切換備忘標籤：
  * - 點擊相同標籤：取消選取 (移除)
  * - 點擊不同標籤：替換既有括號標籤
- * - 原本無標籤：加到文字字首
+ * - 原本無標籤：加到文字字首 (若已有清單則以換行隔開)
  */
 export function toggleMemoTag(currentNote: string, tag: string): string {
-  const match = currentNote.match(/[\[［【]([^\[\]［］【】\n]{1,16})[\]］】]/);
+  const match = findMemoTopicTagMatch(currentNote);
   const tagCore = tag.replace(EMOJI_REGEX, '').trim();
 
   if (match) {
@@ -166,7 +206,7 @@ export function toggleMemoTag(currentNote: string, tag: string): string {
   }
 
   // 若原本沒有標籤 -> 加到開頭
-  return currentNote.trim() ? `[${tag}] ${currentNote.trim()}` : `[${tag}] `;
+  return currentNote.trim() ? `[${tag}]\n${currentNote.trim()}` : `[${tag}] `;
 }
 
 /**
@@ -301,9 +341,13 @@ export function parseMemoChecklist(noteText?: string): ParsedMemoChecklist {
 
   for (const line of lines) {
     const trimmed = line.trim();
-    // 忽略獨立的中括號標籤行如 [✈️ 出國必備]
-    if (/^[\[［【]([^\[\]［］【】\n]{1,16})[\]］】]$/.test(trimmed)) {
-      continue;
+    // 忽略獨立的中括號標籤行如 [✈️ 出國必備] (但排除待辦方框行)
+    const tagMatch = trimmed.match(/^[\[［【]([^\[\]［］【】\n]{1,16})[\]］】]$/);
+    if (tagMatch) {
+      const inner = tagMatch[1].trim();
+      if (inner && !['x', 'X', '✓', '✔', 'v', 'V'].includes(inner)) {
+        continue;
+      }
     }
 
     const match = line.match(CHECKLIST_LINE_REGEX);
