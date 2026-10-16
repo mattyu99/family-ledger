@@ -282,6 +282,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     ? (currentMethodObj.type === 'stored_value' || currentMethodObj.id === 'stored_value')
     : paymentMethod === 'stored_value';
 
+  const isBankTransfer = currentMethodObj
+    ? (currentMethodObj.type === 'bank' || currentMethodObj.id === 'transfer')
+    : paymentMethod === 'transfer';
+
   // 監聽鍵盤高度 (Android, iOS 與 Mobile Web)
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -362,6 +366,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     () => sortAccountsByUser(paymentAccounts.filter(a => a.type === 'stored_value'), targetPayerId),
     [paymentAccounts, targetPayerId]
   );
+  const bankAccounts = React.useMemo(
+    () => sortAccountsByUser(paymentAccounts.filter(a => a.type === 'bank'), targetPayerId),
+    [paymentAccounts, targetPayerId]
+  );
 
   const today = React.useMemo(() => new Date(), []);
   const tomorrow = React.useMemo(() => {
@@ -406,6 +414,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     }
     const isCc = mObj ? !!mObj.supports_credit_card : (method === 'credit_card' || method === 'line_pay' || method === 'px_pay');
     const isSv = mObj ? (mObj.type === 'stored_value' || mObj.id === 'stored_value') : method === 'stored_value';
+    const isBank = mObj ? (mObj.type === 'bank' || mObj.id === 'transfer') : method === 'transfer';
 
     if (isCc) {
       const userCard = creditCards.find(c => c.user_id === paidBy) || creditCards[0];
@@ -413,6 +422,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     } else if (isSv) {
       const userCard = storedValueCards.find(c => c.user_id === paidBy) || storedValueCards[0];
       if (userCard) setSelectedAccountId(userCard.id);
+    } else if (isBank) {
+      const userBank = bankAccounts.find(a => a.user_id === paidBy) || bankAccounts[0];
+      if (userBank) setSelectedAccountId(userBank.id);
     } else {
       setSelectedAccountId('');
     }
@@ -1642,6 +1654,45 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   </View>
                 )}
 
+                {/* 子層：當選擇銀行轉帳時，展開銀行帳戶列表 */}
+                {isBankTransfer && bankAccounts.length > 0 && (
+                  <View style={styles.subCardContainer}>
+                    <Text style={styles.subCardLabel} maxFontSizeMultiplier={1.15}>
+                      🏦 選擇入帳銀行帳戶 (選填)：
+                    </Text>
+                    <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
+                      {bankAccounts.map(account => {
+                        const isAccountSelected = selectedAccountId === account.id;
+                        const cardholder = getMemberById(account.user_id);
+                        return (
+                          <TouchableOpacity
+                            key={account.id}
+                            style={[
+                              styles.cardChip,
+                              isAccountSelected && { borderColor: account.color || '#8B5CF6', backgroundColor: '#F5F3FF' },
+                            ]}
+                            onPress={() => setSelectedAccountId(isAccountSelected ? '' : account.id)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.cardChipIcon}>🏦</Text>
+                            <View>
+                              <Text
+                                style={[styles.cardChipName, isAccountSelected && { color: account.color || '#8B5CF6', fontWeight: '700' }]}
+                                maxFontSizeMultiplier={1.15}
+                              >
+                                {account.name}{account.last_four_digits ? ` (*${account.last_four_digits})` : ''}
+                              </Text>
+                              <Text style={styles.cardChipSub} maxFontSizeMultiplier={1.15}>
+                                {cardholder ? cardholder.display_name : '全家通用'}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </HorizontalScrollView>
+                  </View>
+                )}
+
                 {/* 記帳日期選擇 */}
                 <View style={styles.sectionLabelRow}>
                   <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>發放日期</Text>
@@ -1893,6 +1944,45 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                               </Text>
                               <Text style={styles.cardChipSub} maxFontSizeMultiplier={1.15}>
                                 持卡人：{cardholder ? cardholder.display_name : '全家通用'}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </HorizontalScrollView>
+                  </View>
+                )}
+
+                {/* 子層：當選擇銀行轉帳時，展開銀行帳戶列表 */}
+                {isBankTransfer && bankAccounts.length > 0 && (
+                  <View style={styles.subCardContainer}>
+                    <Text style={styles.subCardLabel} maxFontSizeMultiplier={1.15}>
+                      🏦 選擇扣款銀行帳戶 (選填)：
+                    </Text>
+                    <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
+                      {bankAccounts.map(account => {
+                        const isAccountSelected = selectedAccountId === account.id;
+                        const cardholder = getMemberById(account.user_id);
+                        return (
+                          <TouchableOpacity
+                            key={account.id}
+                            style={[
+                              styles.cardChip,
+                              isAccountSelected && { borderColor: account.color || '#8B5CF6', backgroundColor: '#F5F3FF' },
+                            ]}
+                            onPress={() => setSelectedAccountId(isAccountSelected ? '' : account.id)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.cardChipIcon}>🏦</Text>
+                            <View>
+                              <Text
+                                style={[styles.cardChipName, isAccountSelected && { color: account.color || '#8B5CF6', fontWeight: '700' }]}
+                                maxFontSizeMultiplier={1.15}
+                              >
+                                {account.name}{account.last_four_digits ? ` (*${account.last_four_digits})` : ''}
+                              </Text>
+                              <Text style={styles.cardChipSub} maxFontSizeMultiplier={1.15}>
+                                {cardholder ? cardholder.display_name : '全家通用'}
                               </Text>
                             </View>
                           </TouchableOpacity>

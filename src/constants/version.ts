@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 33;
+export const APP_BUILD_REVISION = 34;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.34',
+    date: '2026-10-16',
+    title: '支付帳戶新增「🏦 銀行帳戶」分類 ＋ 週期扣款完整支援全付款方式與扣款帳戶綁定',
+    highlights: [
+      '支付帳戶管理新增「🏦 銀行帳戶」分頁：在「💳 支付卡片與帳戶管理」正式開放「🏦 銀行帳戶」類別，支援登記銀行名稱（如玉山銀行 薪轉戶、台新 Richart）、帳號末碼、歸屬家庭成員與專屬識別色。',
+      '週期扣款規則全付款方式解鎖：新增與編輯週期規則時，扣繳付款方式不再受限，完整支援街口支付、LINE Pay、全支付、悠遊付、信用卡、悠遊卡、現金及銀行轉帳。',
+      '動態扣款卡片與帳戶選單：選取行動支付或信用卡即展開信用卡選單；選取儲值卡展開儲值卡選單；選取銀行轉帳即展開銀行帳戶選單（若未建立則提供貼心引導），規則卡片與入帳彈窗清楚顯示扣繳管道（如「🏦 銀行轉帳 (玉山銀行)」）。',
+      '日常記帳同步串聯銀行帳戶：平時「記一筆」與「編輯明細」點選「銀行轉帳」時，亦同步提供銀行帳戶挑選列，轉帳支出與入帳紀錄更加完整詳實。',
+    ],
+  },
   {
     version: '1.0.5.33',
     date: '2026-10-16',

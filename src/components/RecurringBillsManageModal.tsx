@@ -29,6 +29,7 @@ import {
 } from '../lib/recurring';
 import { getCategoryIcon } from '../lib/icons';
 import { DatePickerModal } from './DatePickerModal';
+import { DEFAULT_PAYMENT_METHODS } from '../lib/payment';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
   <RNText
@@ -152,6 +153,63 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
 
   // 常用範本選擇彈窗
   const [presetModalVisible, setPresetModalVisible] = useState<boolean>(false);
+
+  // 啟用之付款方式清單
+  const activePaymentMethods = useMemo(() => {
+    const list = paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS;
+    return list.filter(m => m.is_enabled !== false).sort((a, b) => a.sort_order - b.sort_order);
+  }, [paymentMethods]);
+
+  const creditCards = useMemo(
+    () => paymentAccounts.filter(a => a.type === 'credit_card'),
+    [paymentAccounts]
+  );
+  const storedValueCards = useMemo(
+    () => paymentAccounts.filter(a => a.type === 'stored_value'),
+    [paymentAccounts]
+  );
+  const bankAccounts = useMemo(
+    () => paymentAccounts.filter(a => a.type === 'bank'),
+    [paymentAccounts]
+  );
+
+  const currentFormMethodObj = useMemo(() => {
+    const list = paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS;
+    return list.find(m => m.id === formPaymentMethod);
+  }, [paymentMethods, formPaymentMethod]);
+
+  const formSupportsCreditCard = currentFormMethodObj
+    ? !!currentFormMethodObj.supports_credit_card
+    : (formPaymentMethod === 'credit_card' || formPaymentMethod === 'line_pay' || formPaymentMethod === 'px_pay' || formPaymentMethod === 'easycard_pay' || formPaymentMethod === 'jkopay');
+
+  const formIsStoredValue = currentFormMethodObj
+    ? (currentFormMethodObj.type === 'stored_value' || currentFormMethodObj.id === 'stored_value')
+    : formPaymentMethod === 'stored_value';
+
+  const formIsBankTransfer = currentFormMethodObj
+    ? (currentFormMethodObj.type === 'bank' || currentFormMethodObj.id === 'transfer')
+    : formPaymentMethod === 'transfer';
+
+  const getRulePaymentBadge = (methodId: PaymentMethod, accountId?: string) => {
+    const list = paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS;
+    const methodObj = list.find(m => m.id === methodId);
+    const acc = accountId ? getAccountById(accountId) : undefined;
+    const methodName = methodObj?.name || (methodId === 'credit_card' ? '信用卡' : methodId === 'transfer' ? '銀行轉帳' : methodId === 'cash' ? '現金' : methodId);
+    const methodIcon = methodObj?.icon || (methodId === 'transfer' ? '🏦' : methodId === 'cash' ? '💵' : '💳');
+
+    if (acc) {
+      const lastDigits = acc.last_four_digits ? ` (*${acc.last_four_digits})` : '';
+      if (methodId === 'credit_card') {
+        return `💳 ${acc.name}${lastDigits}`;
+      }
+      if (methodId === 'transfer') {
+        return `🏦 ${acc.name}${lastDigits}`;
+      }
+      return `${methodIcon} ${methodName} (${acc.name})`;
+    }
+
+    return `${methodIcon} ${methodName}`;
+  };
 
   const year = selectedDate.getFullYear();
   const month = selectedDate.getMonth() + 1; // 1 ~ 12
@@ -412,7 +470,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
         due_day: Math.min(Math.max(1, formDueDay), 31),
         paid_by: paidBy,
         payment_method: formPaymentMethod,
-        account_id: formPaymentMethod === 'credit_card' ? formAccountId : undefined,
+        account_id: (formSupportsCreditCard || formIsStoredValue || formIsBankTransfer) ? (formAccountId || undefined) : undefined,
         is_active: formIsActive,
         note: formNote.trim() || undefined,
         is_installment: formIsInstallment,
@@ -433,7 +491,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
         due_day: Math.min(Math.max(1, formDueDay), 31),
         paid_by: paidBy,
         payment_method: formPaymentMethod,
-        account_id: formPaymentMethod === 'credit_card' ? formAccountId : undefined,
+        account_id: (formSupportsCreditCard || formIsStoredValue || formIsBankTransfer) ? (formAccountId || undefined) : undefined,
         is_active: formIsActive,
         note: formNote.trim() || undefined,
         is_installment: formIsInstallment,
@@ -664,7 +722,6 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                     const dueBadge = getDueStatusBadge(rule);
                     const cat = getCategoryById(rule.category_id);
                     const payer = getMemberById(rule.paid_by);
-                    const card = rule.account_id ? getAccountById(rule.account_id) : undefined;
                     const isFixed = rule.amount_type === 'fixed';
                     const periodLabel = getBillPeriodLabel(rule, selectedDate);
                     const instInfo = rule.is_installment ? getInstallmentInfo(rule, selectedDate) : null;
@@ -704,13 +761,9 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                                   {payer.avatar_url || '👤'} {payer.display_name}
                                 </Text>
                               )}
-                              {card ? (
-                                <Text style={styles.tagCardText}>
-                                  💳 {card.name} {card.last_four_digits ? `(${card.last_four_digits})` : ''}
-                                </Text>
-                              ) : rule.payment_method === 'transfer' ? (
-                                <Text style={styles.tagCardText}>🏦 銀行自動轉帳</Text>
-                              ) : null}
+                              <Text style={styles.tagCardText}>
+                                {getRulePaymentBadge(rule.payment_method, rule.account_id)}
+                              </Text>
                             </View>
                           </View>
 
@@ -866,7 +919,6 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                   scopedRules.map(rule => {
                     const cat = getCategoryById(rule.category_id);
                     const payer = getMemberById(rule.paid_by);
-                    const card = rule.account_id ? getAccountById(rule.account_id) : undefined;
                     const isFixed = rule.amount_type === 'fixed';
                     const instInfo = rule.is_installment ? getInstallmentInfo(rule, new Date()) : null;
 
@@ -967,7 +1019,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                           <View style={styles.ruleDetailItem}>
                             <Text style={styles.ruleDetailLabel}>扣繳方式：</Text>
                             <Text style={styles.ruleDetailValue}>
-                              {card ? `💳 ${card.name}` : rule.payment_method === 'transfer' ? '🏦 帳戶轉帳' : '💵 現金/其他'}
+                              {getRulePaymentBadge(rule.payment_method, rule.account_id)}
                             </Text>
                           </View>
 
@@ -1049,11 +1101,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                       <View style={styles.paymentInfoRow}>
                         <Text style={styles.paymentInfoLabel}>扣繳管道：</Text>
                         <Text style={styles.paymentInfoValue}>
-                          {targetRuleForAmount.account_id
-                            ? `💳 ${getAccountById(targetRuleForAmount.account_id)?.name || '指定卡片/帳戶'}`
-                            : targetRuleForAmount.payment_method === 'transfer'
-                            ? '🏦 銀行自動轉帳'
-                            : '💵 現金/其他'}
+                          {getRulePaymentBadge(targetRuleForAmount.payment_method, targetRuleForAmount.account_id)}
                         </Text>
                       </View>
                     </View>
@@ -1557,61 +1605,168 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
 
                   {/* 付款方式 */}
                   <Text style={styles.formFieldLabel}>扣繳付款方式</Text>
-                  <View style={styles.methodToggleRow}>
-                    <TouchableOpacity
-                      style={[styles.methodToggleBtn, formPaymentMethod === 'credit_card' && styles.methodToggleBtnActive]}
-                      onPress={() => setFormPaymentMethod('credit_card')}
-                    >
-                      <Text style={[styles.methodToggleBtnText, formPaymentMethod === 'credit_card' && styles.methodToggleBtnTextActive]}>
-                        💳 信用卡扣繳
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.methodToggleBtn, formPaymentMethod === 'transfer' && styles.methodToggleBtnActive]}
-                      onPress={() => setFormPaymentMethod('transfer')}
-                    >
-                      <Text style={[styles.methodToggleBtnText, formPaymentMethod === 'transfer' && styles.methodToggleBtnTextActive]}>
-                        🏦 帳戶轉帳
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.methodToggleBtn, formPaymentMethod === 'cash' && styles.methodToggleBtnActive]}
-                      onPress={() => setFormPaymentMethod('cash')}
-                    >
-                      <Text style={[styles.methodToggleBtnText, formPaymentMethod === 'cash' && styles.methodToggleBtnTextActive]}>
-                        💵 超商/現金
-                      </Text>
-                    </TouchableOpacity>
+                  <View style={styles.methodChipsWrap}>
+                    {activePaymentMethods.map(m => {
+                      const isSelected = formPaymentMethod === m.id;
+                      return (
+                        <TouchableOpacity
+                          key={m.id}
+                          style={[
+                            styles.methodChipBtn,
+                            isSelected && {
+                              backgroundColor: m.color ? `${m.color}15` : '#EFF6FF',
+                              borderColor: m.color || '#2563EB',
+                            },
+                          ]}
+                          onPress={() => {
+                            setFormPaymentMethod(m.id);
+                            if (m.supports_credit_card) {
+                              if (!creditCards.some(c => c.id === formAccountId)) {
+                                const userCard = creditCards.find(c => c.user_id === formPaidBy) || creditCards[0];
+                                setFormAccountId(userCard?.id);
+                              }
+                            } else if (m.type === 'stored_value' || m.id === 'stored_value') {
+                              if (!storedValueCards.some(c => c.id === formAccountId)) {
+                                const userCard = storedValueCards.find(c => c.user_id === formPaidBy) || storedValueCards[0];
+                                setFormAccountId(userCard?.id);
+                              }
+                            } else if (m.type === 'bank' || m.id === 'transfer') {
+                              if (!bankAccounts.some(b => b.id === formAccountId)) {
+                                const userBank = bankAccounts.find(b => b.user_id === formPaidBy) || bankAccounts[0];
+                                setFormAccountId(userBank?.id);
+                              }
+                            } else {
+                              setFormAccountId(undefined);
+                            }
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.methodChipEmoji}>{m.icon}</Text>
+                          <Text
+                            style={[
+                              styles.methodChipText,
+                              isSelected && { color: m.color || '#2563EB', fontWeight: '700' },
+                            ]}
+                          >
+                            {m.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
 
-                  {/* 若選擇信用卡，提供卡片選擇 */}
-                  {formPaymentMethod === 'credit_card' && (
+                  {/* 若選擇支援信用卡之付款方式（信用卡、LINE Pay、街口、全支付、悠遊付等），提供卡片選擇 */}
+                  {formSupportsCreditCard && (
                     <View style={styles.cardPickerContainer}>
-                      <Text style={styles.formFieldLabel}>選擇自動扣繳信用卡</Text>
-                      {paymentAccounts.filter(a => a.type === 'credit_card').length === 0 ? (
+                      <Text style={styles.formFieldLabel}>選擇自動扣繳信用卡 (選填)</Text>
+                      {creditCards.length === 0 ? (
                         <Text style={styles.noCardHint}>
                           (尚未新增信用卡，入帳時將以一般信用卡記錄)
                         </Text>
                       ) : (
                         <View style={styles.cardChipsWrap}>
-                          {paymentAccounts
-                            .filter(a => a.type === 'credit_card')
-                            .map(c => {
-                              const isSelected = formAccountId === c.id;
-                              return (
-                                <TouchableOpacity
-                                  key={c.id}
-                                  style={[styles.cardChip, isSelected && styles.cardChipActive]}
-                                  onPress={() => setFormAccountId(c.id)}
-                                >
-                                  <Text style={styles.cardChipText}>
-                                    💳 {c.name} {c.last_four_digits ? `(•${c.last_four_digits})` : ''}
-                                  </Text>
-                                </TouchableOpacity>
-                              );
-                            })}
+                          <TouchableOpacity
+                            style={[styles.cardChip, !formAccountId && styles.cardChipActive]}
+                            onPress={() => setFormAccountId(undefined)}
+                          >
+                            <Text style={[styles.cardChipText, !formAccountId && styles.cardChipTextActive]}>
+                              不指定特定卡片
+                            </Text>
+                          </TouchableOpacity>
+                          {creditCards.map(c => {
+                            const isSelected = formAccountId === c.id;
+                            const holder = members.find(m => m.id === c.user_id);
+                            return (
+                              <TouchableOpacity
+                                key={c.id}
+                                style={[styles.cardChip, isSelected && styles.cardChipActive]}
+                                onPress={() => setFormAccountId(c.id)}
+                              >
+                                <Text style={[styles.cardChipText, isSelected && styles.cardChipTextActive]}>
+                                  💳 {c.name} {c.last_four_digits ? `(•${c.last_four_digits})` : ''}
+                                  {holder ? ` · ${holder.display_name}` : ''}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+                  {/* 若選擇悠遊卡/儲值卡，提供儲值卡選擇 */}
+                  {formIsStoredValue && (
+                    <View style={styles.cardPickerContainer}>
+                      <Text style={styles.formFieldLabel}>選擇自動扣款儲值卡 (選填)</Text>
+                      {storedValueCards.length === 0 ? (
+                        <Text style={styles.noCardHint}>
+                          (尚未新增儲值卡，入帳時將以一般儲值卡記錄)
+                        </Text>
+                      ) : (
+                        <View style={styles.cardChipsWrap}>
+                          <TouchableOpacity
+                            style={[styles.cardChip, !formAccountId && styles.cardChipActive]}
+                            onPress={() => setFormAccountId(undefined)}
+                          >
+                            <Text style={[styles.cardChipText, !formAccountId && styles.cardChipTextActive]}>
+                              不指定特定卡片
+                            </Text>
+                          </TouchableOpacity>
+                          {storedValueCards.map(c => {
+                            const isSelected = formAccountId === c.id;
+                            const holder = members.find(m => m.id === c.user_id);
+                            return (
+                              <TouchableOpacity
+                                key={c.id}
+                                style={[styles.cardChip, isSelected && styles.cardChipActive]}
+                                onPress={() => setFormAccountId(c.id)}
+                              >
+                                <Text style={[styles.cardChipText, isSelected && styles.cardChipTextActive]}>
+                                  {c.icon || '🚌'} {c.name}
+                                  {holder ? ` · ${holder.display_name}` : ''}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+                  {/* 若選擇銀行轉帳，提供扣款銀行帳戶選擇 */}
+                  {formIsBankTransfer && (
+                    <View style={styles.cardPickerContainer}>
+                      <Text style={styles.formFieldLabel}>選擇自動扣款銀行帳戶 (選填)</Text>
+                      {bankAccounts.length === 0 ? (
+                        <Text style={styles.noCardHint}>
+                          (尚未建立銀行帳戶，可至「更多 → 支付卡片與帳戶管理」建立，或直接於下方備註填寫)
+                        </Text>
+                      ) : (
+                        <View style={styles.cardChipsWrap}>
+                          <TouchableOpacity
+                            style={[styles.cardChip, !formAccountId && styles.cardChipActive]}
+                            onPress={() => setFormAccountId(undefined)}
+                          >
+                            <Text style={[styles.cardChipText, !formAccountId && styles.cardChipTextActive]}>
+                              不指定特定帳戶
+                            </Text>
+                          </TouchableOpacity>
+                          {bankAccounts.map(b => {
+                            const isSelected = formAccountId === b.id;
+                            const holder = members.find(m => m.id === b.user_id);
+                            return (
+                              <TouchableOpacity
+                                key={b.id}
+                                style={[styles.cardChip, isSelected && styles.cardChipActive]}
+                                onPress={() => setFormAccountId(b.id)}
+                              >
+                                <Text style={[styles.cardChipText, isSelected && styles.cardChipTextActive]}>
+                                  🏦 {b.name} {b.last_four_digits ? `(*${b.last_four_digits})` : ''}
+                                  {holder ? ` · ${holder.display_name}` : ''}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
                         </View>
                       )}
                     </View>
@@ -2576,6 +2731,30 @@ const styles = StyleSheet.create({
     color: '#1D4ED8',
     fontWeight: '700',
   },
+  methodChipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  methodChipBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 4,
+  },
+  methodChipEmoji: {
+    fontSize: 13,
+  },
+  methodChipText: {
+    fontSize: 12,
+    color: '#475569',
+    fontWeight: '600',
+  },
   cardPickerContainer: {
     marginTop: 8,
   },
@@ -2605,6 +2784,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#334155',
     fontWeight: '600',
+  },
+  cardChipTextActive: {
+    color: '#1D4ED8',
+    fontWeight: '700',
   },
   formSwitchRow: {
     flexDirection: 'row',

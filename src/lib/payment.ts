@@ -373,6 +373,14 @@ export const formatPaymentLabel = (
         color: account.color || '#0284C7',
       };
     }
+    if (account.type === 'bank') {
+      const lastDigits = account.last_four_digits ? `*${account.last_four_digits}` : '';
+      return {
+        icon: account.icon || '🏦',
+        text: `轉帳·${account.name}${lastDigits ? `(${lastDigits})` : ''}`,
+        color: account.color || '#8B5CF6',
+      };
+    }
     return {
       icon: account.icon || '💳',
       text: account.name,

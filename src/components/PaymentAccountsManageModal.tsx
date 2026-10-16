@@ -51,7 +51,7 @@ const COLOR_PALETTE = [
 interface PaymentAccountsManageModalProps {
   visible: boolean;
   onClose: () => void;
-  initialTab?: 'credit_card' | 'stored_value';
+  initialTab?: 'credit_card' | 'stored_value' | 'bank';
 }
 
 export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProps> = ({
@@ -69,7 +69,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     }
   };
 
-  const [activeTab, setActiveTab] = useState<'credit_card' | 'stored_value'>(initialTab || 'credit_card');
+  const [activeTab, setActiveTab] = useState<'credit_card' | 'stored_value' | 'bank'>(initialTab || 'credit_card');
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
@@ -152,24 +152,25 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
 
   const creditCards = sortAccountsByUser(paymentAccounts.filter(a => a.type === 'credit_card'), currentUser.id);
   const storedValueCards = sortAccountsByUser(paymentAccounts.filter(a => a.type === 'stored_value'), currentUser.id);
+  const bankAccounts = sortAccountsByUser(paymentAccounts.filter(a => a.type === 'bank'), currentUser.id);
 
   const handleOpenAdd = (type: AccountType) => {
     if (!isOwner) {
       showAlert('權限不足', '只有帳本管理員才能新增支付卡片與帳戶');
       return;
     }
-    if (type === 'stored_value' || type === 'credit_card') {
+    if (type === 'stored_value' || type === 'credit_card' || type === 'bank') {
       setActiveTab(type);
     }
     setIsEditing(true);
     setEditingId(null);
     setFormType(type);
-    setFormName(type === 'credit_card' ? '富邦 Costco 卡' : '悠遊卡');
+    setFormName(type === 'credit_card' ? '富邦 Costco 卡' : type === 'bank' ? '玉山銀行 薪轉戶' : '悠遊卡');
     setFormUserId(currentUser?.id || '');
     setFormLastFour('');
     setFormCycleDate('15');
     setFormBalance('0');
-    setFormColor(type === 'credit_card' ? COLOR_PALETTE[0] : COLOR_PALETTE[4]);
+    setFormColor(type === 'credit_card' ? COLOR_PALETTE[0] : type === 'bank' ? COLOR_PALETTE[6] : COLOR_PALETTE[4]);
   };
 
   const handleOpenEdit = (acc: PaymentAccount) => {
@@ -178,7 +179,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
       return;
     }
     const matchedMember = acc.user_id && members.find(m => m.id === acc.user_id);
-    if (acc.type === 'stored_value' || acc.type === 'credit_card') {
+    if (acc.type === 'stored_value' || acc.type === 'credit_card' || acc.type === 'bank') {
       setActiveTab(acc.type);
     }
     setIsEditing(true);
@@ -189,7 +190,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     setFormLastFour(acc.last_four_digits || '');
     setFormCycleDate(String(acc.billing_cycle_date || 15));
     setFormBalance(String(acc.balance || 0));
-    setFormColor(acc.color || COLOR_PALETTE[0]);
+    setFormColor(acc.color || (acc.type === 'bank' ? COLOR_PALETTE[6] : COLOR_PALETTE[0]));
   };
 
   const handleSaveForm = async () => {
@@ -227,12 +228,12 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
         billing_cycle_date: formType === 'credit_card' ? validCycle : undefined,
         balance: formType === 'stored_value' ? balanceNum : 0,
         color: formColor,
-        icon: formType === 'credit_card' ? '💳' : '🚌',
+        icon: formType === 'credit_card' ? '💳' : formType === 'bank' ? '🏦' : '🚌',
         sort_order: paymentAccounts.length + 1,
       });
     }
 
-    if (formType === 'stored_value' || formType === 'credit_card') {
+    if (formType === 'stored_value' || formType === 'credit_card' || formType === 'bank') {
       setActiveTab(formType);
     }
     setIsEditing(false);
@@ -299,18 +300,24 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                   ? (editingId ? '✏️ 編輯卡片設定' : '＋ 新增卡片或帳戶')
                   : activeTab === 'credit_card'
                     ? (isOwner ? '💳 管理家庭信用卡' : '💳 家庭信用卡一覽')
-                    : (isOwner ? '🚌 管理家庭悠遊卡' : '🚌 家庭悠遊卡一覽')}
+                    : activeTab === 'bank'
+                      ? (isOwner ? '🏦 管理家庭銀行帳戶' : '🏦 家庭銀行帳戶一覽')
+                      : (isOwner ? '🚌 管理家庭悠遊卡' : '🚌 家庭悠遊卡一覽')}
               </Text>
               <Text style={styles.subtitle} maxFontSizeMultiplier={1.15}>
                 {isEditing
-                  ? '設定卡片名稱、持卡人與每月結帳日'
+                  ? '設定卡片或帳戶名稱、歸屬成員與相關資訊'
                   : activeTab === 'credit_card'
                     ? (isOwner
                       ? '設定全家的信用卡、持卡人與每月結帳日'
                       : '家庭成員瀏覽模式（僅帳本管理員可新增、修改或刪除信用卡）')
-                    : (isOwner
-                      ? '設定全家的悠遊卡 / 儲值卡與即時餘額'
-                      : '家庭成員瀏覽模式（僅帳本管理員可新增、修改或刪除悠遊卡）')}
+                    : activeTab === 'bank'
+                      ? (isOwner
+                        ? '設定全家的銀行帳戶與持有人，供轉帳與週期扣繳對帳'
+                        : '家庭成員瀏覽模式（僅帳本管理員可新增、修改或刪除銀行帳戶）')
+                      : (isOwner
+                        ? '設定全家的悠遊卡 / 儲值卡與即時餘額'
+                        : '家庭成員瀏覽模式（僅帳本管理員可新增、修改或刪除悠遊卡）')}
               </Text>
             </View>
             <TouchableOpacity
@@ -340,7 +347,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
               >
                 <Text
                   style={[styles.tabItemText, activeTab === 'credit_card' && styles.tabItemTextActive]}
-                  maxFontSizeMultiplier={1.15}
+                  maxFontSizeMultiplier={1.12}
                 >
                   💳 信用卡 ({creditCards.length})
                 </Text>
@@ -353,9 +360,22 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
               >
                 <Text
                   style={[styles.tabItemText, activeTab === 'stored_value' && styles.tabItemTextActive]}
-                  maxFontSizeMultiplier={1.15}
+                  maxFontSizeMultiplier={1.12}
                 >
                   🚌 悠遊卡 ({storedValueCards.length})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.tabItem, activeTab === 'bank' && styles.tabItemActive]}
+                onPress={() => setActiveTab('bank')}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[styles.tabItemText, activeTab === 'bank' && styles.tabItemTextActive]}
+                  maxFontSizeMultiplier={1.12}
+                >
+                  🏦 銀行帳戶 ({bankAccounts.length})
                 </Text>
               </TouchableOpacity>
             </View>
@@ -376,7 +396,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
             >
               <View style={styles.formHeaderRow}>
                 <Text style={styles.formSectionTitle}>
-                  {editingId ? '編輯卡片設定' : '新增卡片或帳戶'}
+                  {editingId ? '編輯設定' : '新增卡片或帳戶'}
                 </Text>
                 {keyboardOffset > 0 && (
                   <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -389,7 +409,10 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
               <View style={styles.typeToggle}>
                 <TouchableOpacity
                   style={[styles.typeBtn, formType === 'credit_card' && styles.typeBtnActive]}
-                  onPress={() => setFormType('credit_card')}
+                  onPress={() => {
+                    setFormType('credit_card');
+                    if (!editingId && formName === '玉山銀行 薪轉戶') setFormName('富邦 Costco 卡');
+                  }}
                 >
                   <Text style={[styles.typeBtnText, formType === 'credit_card' && styles.typeBtnTextActive]}>
                     💳 信用卡
@@ -397,27 +420,51 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.typeBtn, formType === 'stored_value' && styles.typeBtnActive]}
-                  onPress={() => setFormType('stored_value')}
+                  onPress={() => {
+                    setFormType('stored_value');
+                    if (!editingId && (formName === '富邦 Costco 卡' || formName === '玉山銀行 薪轉戶')) setFormName('悠遊卡');
+                  }}
                 >
                   <Text style={[styles.typeBtnText, formType === 'stored_value' && styles.typeBtnTextActive]}>
-                    🚌 悠遊卡 / 儲值卡
+                    🚌 儲值卡
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.typeBtn, formType === 'bank' && styles.typeBtnActive]}
+                  onPress={() => {
+                    setFormType('bank');
+                    if (!editingId && (formName === '富邦 Costco 卡' || formName === '悠遊卡')) setFormName('玉山銀行 薪轉戶');
+                  }}
+                >
+                  <Text style={[styles.typeBtnText, formType === 'bank' && styles.typeBtnTextActive]}>
+                    🏦 銀行帳戶
                   </Text>
                 </TouchableOpacity>
               </View>
 
-              {/* 卡片名稱 */}
-              <Text style={styles.fieldLabel}>卡片名稱</Text>
+              {/* 卡片/帳戶名稱 */}
+              <Text style={styles.fieldLabel}>
+                {formType === 'credit_card' ? '卡片名稱' : formType === 'bank' ? '銀行 / 帳戶名稱' : '卡片名稱'}
+              </Text>
               <TextInput
                 style={styles.textInput}
                 value={formName}
                 onChangeText={setFormName}
-                placeholder={formType === 'credit_card' ? '例如：富邦 Costco 聯名卡' : '例如：爸爸悠遊卡'}
+                placeholder={
+                  formType === 'credit_card'
+                    ? '例如：富邦 Costco 聯名卡'
+                    : formType === 'bank'
+                    ? '例如：玉山銀行 薪轉戶、台新 Richart'
+                    : '例如：爸爸悠遊卡'
+                }
                 onFocus={() => handleInputFocus('name')}
                 returnKeyType="next"
               />
 
-              {/* 持卡人 */}
-              <Text style={styles.fieldLabel}>持卡人 / 歸屬家庭成員</Text>
+              {/* 持卡人 / 帳戶持有人 */}
+              <Text style={styles.fieldLabel}>
+                {formType === 'bank' ? '帳戶持有人 / 歸屬家庭成員' : '持卡人 / 歸屬家庭成員'}
+              </Text>
               <View style={styles.memberChipsRow}>
                 <TouchableOpacity
                   style={[styles.memberChip, !formUserId && styles.memberChipActive]}
@@ -476,6 +523,25 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     💡 設定結帳日後，每月對帳時系統會精確鎖定上月{parseInt(formCycleDate, 10) + 1 || 16}日到本月{formCycleDate || 15}日的帳單消費。
                   </Text>
                 </>
+              ) : formType === 'bank' ? (
+                <>
+                  {/* 銀行帳號末碼 */}
+                  <Text style={styles.fieldLabel}>帳號末五碼 / 末四碼 (選填，方便對帳辨識)</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={formLastFour}
+                    onChangeText={setFormLastFour}
+                    placeholder="例如：12345"
+                    keyboardType="numeric"
+                    maxLength={10}
+                    onFocus={() => handleInputFocus('lastFour')}
+                    returnKeyType="done"
+                    onSubmitEditing={Keyboard.dismiss}
+                  />
+                  <Text style={styles.fieldHint}>
+                    💡 建立銀行帳戶後，在「銀行轉帳」或設定水電週期自動扣款時，即可點選該銀行帳戶進行精確扣繳記錄。
+                  </Text>
+                </>
               ) : (
                 <>
                   {/* 當前餘額 */}
@@ -493,8 +559,10 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                 </>
               )}
 
-              {/* 卡片顏色 */}
-              <Text style={styles.fieldLabel}>卡片識別顏色</Text>
+              {/* 卡片/帳戶顏色 */}
+              <Text style={styles.fieldLabel}>
+                {formType === 'bank' ? '帳戶識別顏色' : '卡片識別顏色'}
+              </Text>
               <View style={styles.colorPaletteRow}>
                 {COLOR_PALETTE.map(c => (
                   <TouchableOpacity
@@ -595,7 +663,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     })
                   )}
                 </>
-              ) : (
+              ) : activeTab === 'stored_value' ? (
                 /* 🚌 悠遊卡 / 儲值卡分頁 */
                 <>
                   <View style={styles.sectionHeaderRow}>
@@ -644,6 +712,68 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                                 <Text style={styles.editText}>編輯</Text>
                               </TouchableOpacity>
                               <TouchableOpacity style={styles.delBtn} onPress={() => handleDelete(card)}>
+                                <Text style={styles.delText}>刪除</Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })
+                  )}
+                </>
+              ) : (
+                /* 🏦 銀行帳戶分頁 */
+                <>
+                  <View style={styles.sectionHeaderRow}>
+                    <Text style={styles.sectionTitle}>🏦 銀行帳戶清單 ({bankAccounts.length})</Text>
+                    {isOwner && (
+                      <TouchableOpacity
+                        style={styles.addMiniBtn}
+                        onPress={() => handleOpenAdd('bank')}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.addMiniText}>+ 新增銀行帳戶</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {bankAccounts.length === 0 ? (
+                    <View style={styles.emptyStateContainer}>
+                      <Text style={styles.emptyNotice}>尚未設定銀行帳戶</Text>
+                      {isOwner && (
+                        <TouchableOpacity
+                          style={styles.emptyAddBtn}
+                          onPress={() => handleOpenAdd('bank')}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.emptyAddBtnText}>＋ 新增第一個銀行帳戶</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ) : (
+                    bankAccounts.map(acc => {
+                      const holder = members.find(m => m.id === acc.user_id);
+                      return (
+                        <View key={acc.id} style={[styles.cardItemRow, { borderLeftColor: acc.color || '#8B5CF6' }]}>
+                          <View style={styles.cardInfoCol}>
+                            <View style={styles.cardNameRow}>
+                              <Text style={styles.cardNameText}>{acc.name}</Text>
+                              {!!acc.last_four_digits && (
+                                <View style={styles.tagBadge}>
+                                  <Text style={styles.tagBadgeText}>*{acc.last_four_digits}</Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text style={styles.cardSubText}>
+                              {holder ? `${holder.avatar_url || '👤'} ${holder.display_name}` : '🏠 全家通用'}
+                            </Text>
+                          </View>
+                          {isOwner && (
+                            <View style={styles.cardActionGroup}>
+                              <TouchableOpacity style={styles.editBtn} onPress={() => handleOpenEdit(acc)}>
+                                <Text style={styles.editText}>編輯</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity style={styles.delBtn} onPress={() => handleDelete(acc)}>
                                 <Text style={styles.delText}>刪除</Text>
                               </TouchableOpacity>
                             </View>
@@ -753,7 +883,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   tabItemText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: '#64748B',
   },
@@ -936,7 +1066,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   typeBtnText: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '600',
     color: '#64748B',
   },
