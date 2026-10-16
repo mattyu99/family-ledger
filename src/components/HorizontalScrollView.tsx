@@ -30,20 +30,33 @@ export const HorizontalScrollView = forwardRef<ScrollView, HorizontalScrollViewP
       }
     };
 
+    const getDomNode = (): HTMLElement | null => {
+      if (!innerRef.current) return null;
+      const current = innerRef.current as any;
+      if (typeof current.getScrollableNode === 'function') {
+        return current.getScrollableNode();
+      }
+      if (current instanceof HTMLElement) {
+        return current;
+      }
+      return null;
+    };
+
+    const handleContentSizeChange = (w: number, h: number) => {
+      restProps.onContentSizeChange?.(w, h);
+      if (Platform.OS === 'web') {
+        const node = getDomNode();
+        if (node && node.scrollLeft > 0) {
+          const maxScroll = Math.max(0, node.scrollWidth - node.clientWidth);
+          if (node.scrollLeft > maxScroll) {
+            node.scrollLeft = maxScroll;
+          }
+        }
+      }
+    };
+
     useEffect(() => {
       if (Platform.OS !== 'web') return;
-
-      const getDomNode = (): HTMLElement | null => {
-        if (!innerRef.current) return null;
-        const current = innerRef.current as any;
-        if (typeof current.getScrollableNode === 'function') {
-          return current.getScrollableNode();
-        }
-        if (current instanceof HTMLElement) {
-          return current;
-        }
-        return null;
-      };
 
       let cleanupListeners: (() => void) | undefined;
 
@@ -191,6 +204,7 @@ export const HorizontalScrollView = forwardRef<ScrollView, HorizontalScrollViewP
         style={[webStyles.scrollView, style]}
         contentContainerStyle={contentContainerStyle}
         {...restProps}
+        onContentSizeChange={handleContentSizeChange}
       >
         {children}
       </ScrollView>

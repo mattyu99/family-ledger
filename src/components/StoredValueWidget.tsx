@@ -66,6 +66,13 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
     return sortAccountsByUser(cards, currentUser?.id);
   }, [paymentAccounts, currentUser, filterMemberId, targetFilteredMember]);
 
+  const scrollRef = React.useRef<ScrollView | null>(null);
+
+  // 當篩選成員切換或卡片數量變動時，重設滾動位置至最左側 (x: 0)，避免切換成員後因殘留捲動位移導致卡片落在可視範圍外
+  React.useEffect(() => {
+    scrollRef.current?.scrollTo({ x: 0, y: 0, animated: false });
+  }, [filterMemberId, storedValueCards.length]);
+
   const creditCards = React.useMemo(
     () => paymentAccounts.filter(a => a.type === 'credit_card'),
     [paymentAccounts]
@@ -204,8 +211,15 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
       </View>
 
       <HorizontalScrollView
+        key={filterMemberId || 'all'}
+        ref={scrollRef}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        onContentSizeChange={(w) => {
+          if (w > 0 && storedValueCards.length <= 1) {
+            scrollRef.current?.scrollTo({ x: 0, y: 0, animated: false });
+          }
+        }}
       >
         {storedValueCards.map(card => {
           const owner = getMemberById(card.user_id);

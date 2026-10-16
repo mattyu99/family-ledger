@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 28;
+export const APP_BUILD_REVISION = 29;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,15 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.29',
+    date: '2026-10-16',
+    title: '修復悠遊卡小工具右滑到底後切換成員出現空白卡片之顯示異常',
+    highlights: [
+      '徹底解決水平捲動位移殘留問題：修復在「全部成員」右滑至最後一張卡片後，切換至單一成員（如本機成員或小寶）時卡片暫時隱沒在視窗外、需再次觸碰滑動才顯現的問題。',
+      '多重防護自動歸位：成員篩選切換時自動綁定獨立 key 與 scrollTo(x: 0)，並於卡片容器內容寬度縮小及尺寸變化時全面自動校準捲動位移，確保成員卡片秒開即見。',
+    ],
+  },
   {
     version: '1.0.5.28',
     date: '2026-10-16',
