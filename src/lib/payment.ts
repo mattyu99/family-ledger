@@ -577,5 +577,54 @@ export const getSmartDiscountLabels = (
   return merged;
 };
 
+/**
+ * 判斷一筆轉帳交易是否為指定成員的「轉入款項 / 零用錢進帳」
+ * 包含：
+ * 1. completed_by 為該成員 ID
+ * 2. merchant 欄位等於該成員暱稱 (如 "小寶")
+ * 3. 悠遊卡儲值且該儲值卡屬於該成員 (透過 linked_transaction_id 反查卡片或名稱)
+ * 4. merchant 欄位包含該成員暱稱 (如 "小寶悠遊卡儲值")
+ */
+export const isTransferToMember = (
+  transaction: {
+    type?: string;
+    completed_by?: string;
+    merchant?: string;
+    linked_transaction_id?: string;
+  },
+  memberId?: string,
+  memberDisplayName?: string,
+  accounts?: { id: string; user_id?: string; name: string }[]
+): boolean => {
+  if (!transaction || transaction.type !== 'transfer' || !memberId) return false;
+
+  // 1. 指定受款人 ID
+  if (transaction.completed_by && transaction.completed_by === memberId) {
+    return true;
+  }
+
+  // 2. 受款店家名稱精確等於成員暱稱 (例如 "小寶")
+  if (memberDisplayName && transaction.merchant === memberDisplayName) {
+    return true;
+  }
+
+  // 3. 悠遊卡/儲值卡充值：關聯卡片的持卡人為該成員
+  if (transaction.linked_transaction_id && accounts && accounts.length > 0) {
+    const acc = accounts.find(a => a.id === transaction.linked_transaction_id);
+    if (acc) {
+      if (acc.user_id && acc.user_id === memberId) return true;
+      if (memberDisplayName && acc.name.includes(memberDisplayName)) return true;
+    }
+  }
+
+  // 4. 受款店家名稱包含成員暱稱 (例如 "小寶悠遊卡儲值")
+  if (memberDisplayName && transaction.merchant && transaction.merchant.includes(memberDisplayName)) {
+    return true;
+  }
+
+  return false;
+};
+
+
 
 

@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 27;
+export const APP_BUILD_REVISION = 28;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.28',
+    date: '2026-10-16',
+    title: '孩子視角零用錢進帳與結餘即時查閱 ＋ 悠遊卡儲值卡依篩選成員動態過濾',
+    highlights: [
+      '孩子視角零用錢進帳清清楚楚：家長透過「🎁 撥零用錢」轉帳後，孩子在自己手機上（或切換至該成員篩選視角）可立即看到「🎁 零用錢轉入 +NT$ 金額」，清楚標註「由 爸爸 撥入」。',
+      '個人收支與零用錢結餘自動結算：成員視角下首頁總覽卡自動連動計算「零用錢/轉入 - 個人支出 = 零用錢結餘」，孩子隨時掌握自己的零用錢口袋剩餘花費。',
+      '頂部悠遊卡/儲值卡動態過濾：首頁頂部儲值卡小工具依選取的成員動態篩選，篩選「小寶」時僅列出「小寶的悠遊卡/學生卡」，無卡成員自動隱藏不佔版面，全家視角則完整列出所有卡片。',
+      '轉帳方向智慧感知：明細清單自動依當前查看成員切換顯示「🎁 零用錢轉入 (+綠色)」、「📤 轉出款項 (-紫色)」或「🚌 自有卡片儲值 (⇄調撥)」，全家總覽則維持「⇄ 內部轉帳」，兼顧家庭公帳真實性與個人錢包獨立性。',
+    ],
+  },
   {
     version: '1.0.5.27',
     date: '2026-10-16',

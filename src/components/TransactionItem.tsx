@@ -3,7 +3,7 @@ import { View, Text as RNText, StyleSheet, TouchableOpacity, TextProps, Linking 
 import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { getCategoryIcon } from '../lib/icons';
-import { formatPaymentLabel, parseExpenseDiscount } from '../lib/payment';
+import { formatPaymentLabel, parseExpenseDiscount, isTransferToMember } from '../lib/payment';
 import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 
@@ -17,18 +17,45 @@ const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultip
 
 interface TransactionItemProps {
   transaction: Transaction;
+  viewingMemberId?: string;
   onPress?: (transaction: Transaction) => void;
   onCompleteMemo?: (transaction: Transaction) => void;
 }
 
-export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ transaction, onPress, onCompleteMemo }) => {
-  const { getMemberById, getCategoryById, getAccountById, paymentMethods, toggleMemoSettled, toggleMemoChecklistItem, transactions } = useLedger();
+export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
+  transaction,
+  viewingMemberId,
+  onPress,
+  onCompleteMemo,
+}) => {
+  const { getMemberById, getCategoryById, getAccountById, paymentMethods, toggleMemoSettled, toggleMemoChecklistItem, transactions, members, currentUser } = useLedger();
 
   const category = getCategoryById(transaction.category_id, transaction.category);
   const payer = getMemberById(transaction.paid_by) || transaction.payer_profile;
   const isExpense = transaction.type === 'expense';
   const isTransfer = transaction.type === 'transfer';
   const recipient = transaction.completed_by ? getMemberById(transaction.completed_by) : undefined;
+
+  // 視角感知：判定在當前檢視成員下的轉帳方向
+  const isMemberPerspective = !!viewingMemberId && viewingMemberId !== 'all';
+  const targetViewingMember = isMemberPerspective
+    ? (members.find(m => m.id === viewingMemberId) || (currentUser?.id === viewingMemberId ? currentUser : undefined))
+    : undefined;
+
+  const isTransferIn = isTransfer && isMemberPerspective && isTransferToMember(
+    transaction,
+    viewingMemberId,
+    targetViewingMember?.display_name,
+    transaction.linked_transaction_id ? [getAccountById(transaction.linked_transaction_id)].filter(Boolean) as any : undefined
+  );
+
+  const isTransferOut = isTransfer && isMemberPerspective && !isTransferIn && (
+    transaction.paid_by === viewingMemberId
+  );
+
+  const isSelfTransfer = isTransfer && isMemberPerspective && isTransferIn && (
+    transaction.paid_by === viewingMemberId
+  );
 
   const date = new Date(transaction.transacted_at);
   const formattedDate = `${date.getMonth() + 1}/${date.getDate()}`;
@@ -291,7 +318,9 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
         style={[
           styles.iconBox,
           {
-            backgroundColor: isTransfer
+            backgroundColor: isTransferIn && !isSelfTransfer
+              ? '#ECFDF5'
+              : isTransfer
               ? '#EEF2FF'
               : category
               ? `${category.color}20`
@@ -300,7 +329,13 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
         ]}
       >
         <Text style={styles.iconText}>
-          {isTransfer ? '⇄' : getCategoryIcon(category?.icon)}
+          {isTransferIn && !isSelfTransfer
+            ? (transaction.merchant?.includes('儲值') || transaction.linked_transaction_id ? '🚌' : '🎁')
+            : isTransferOut
+            ? '📤'
+            : isTransfer
+            ? '⇄'
+            : getCategoryIcon(category?.icon)}
         </Text>
       </View>
 
@@ -317,8 +352,31 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
               {isTransfer ? (category?.name || '內部轉帳') : (category?.name || '其他')}
             </Text>
             {isTransfer && (
-              <View style={styles.transferBadge}>
-                <Text style={styles.transferBadgeText} maxFontSizeMultiplier={1.08}>⇄ 內部轉帳</Text>
+              <View
+                style={[
+                  styles.transferBadge,
+                  isTransferIn && !isSelfTransfer && styles.transferInBadge,
+                  isTransferOut && styles.transferOutBadge,
+                  isSelfTransfer && styles.transferSelfBadge,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.transferBadgeText,
+                    isTransferIn && !isSelfTransfer && styles.transferInBadgeText,
+                    isTransferOut && styles.transferOutBadgeText,
+                    isSelfTransfer && styles.transferSelfBadgeText,
+                  ]}
+                  maxFontSizeMultiplier={1.08}
+                >
+                  {isSelfTransfer
+                    ? '🚌 自有卡片儲值'
+                    : isTransferIn
+                    ? (transaction.merchant?.includes('儲值') || transaction.linked_transaction_id ? '🚌 卡片加值入帳' : (transaction.note?.includes('零用') || category?.name?.includes('零用') ? '🎁 零用錢轉入' : '📥 轉入入帳'))
+                    : isTransferOut
+                    ? '📤 轉出款項'
+                    : '⇄ 內部轉帳'}
+                </Text>
               </View>
             )}
             {!!transaction.merchant && (
@@ -346,11 +404,27 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
           <Text
             style={[
               styles.amountText,
-              isExpense ? styles.expenseColor : isTransfer ? styles.transferColor : styles.incomeColor,
+              isExpense
+                ? styles.expenseColor
+                : isTransferIn && !isSelfTransfer
+                ? styles.incomeColor
+                : isTransferOut
+                ? styles.transferColor
+                : isTransfer
+                ? styles.transferColor
+                : styles.incomeColor,
             ]}
             maxFontSizeMultiplier={1.2}
           >
-            {isExpense ? '-' : isTransfer ? '⇄ ' : '+'} NT$ {Number(transaction.amount).toLocaleString()}
+            {isExpense
+              ? '-'
+              : isTransferIn && !isSelfTransfer
+              ? '+'
+              : isTransferOut
+              ? '-'
+              : isTransfer
+              ? '⇄ '
+              : '+'} NT$ {Number(transaction.amount).toLocaleString()}
           </Text>
         </View>
 
@@ -369,7 +443,13 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({ tra
               numberOfLines={1}
               maxFontSizeMultiplier={1.2}
             >
-              {isTransfer && recipient
+              {isSelfTransfer
+                ? `存入【${transaction.merchant || '儲值卡'}】`
+                : isTransferIn
+                ? `由 ${payer?.avatar_url || '👤'} ${payer?.display_name || '出資人'} 撥入`
+                : isTransferOut
+                ? `轉出至 ${recipient?.avatar_url || '👤'} ${recipient?.display_name || transaction.merchant}`
+                : isTransfer && recipient
                 ? `${payer?.avatar_url || '👤'} ${payer?.display_name || '出資'} ➔ ${recipient?.avatar_url || '👤'} ${recipient?.display_name || transaction.merchant}`
                 : `${payer?.avatar_url || '👤'} ${payer?.display_name || '成員'}`}
             </Text>
@@ -496,6 +576,27 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: '#4F46E5',
+  },
+  transferInBadge: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+  },
+  transferInBadgeText: {
+    color: '#059669',
+  },
+  transferOutBadge: {
+    backgroundColor: '#F5F3FF',
+    borderColor: '#DDD6FE',
+  },
+  transferOutBadgeText: {
+    color: '#7C3AED',
+  },
+  transferSelfBadge: {
+    backgroundColor: '#F0F9FF',
+    borderColor: '#BAE6FD',
+  },
+  transferSelfBadgeText: {
+    color: '#0284C7',
   },
   bottomRow: {
     flexDirection: 'row',

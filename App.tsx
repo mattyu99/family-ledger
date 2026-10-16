@@ -83,6 +83,7 @@ import { APP_FULL_VERSION } from './src/constants/version';
 import { HorizontalScrollView } from './src/components/HorizontalScrollView';
 import { Transaction, Profile, MemberDevice } from './src/types/database';
 import { getCategoryIcon } from './src/lib/icons';
+import { isTransferToMember } from './src/lib/payment';
 import { getDevicePlatformIcon, formatDeviceRelativeTime } from './src/lib/device';
 import * as Updates from 'expo-updates';
 import appConfig from './app.json';
@@ -750,14 +751,16 @@ function MainApp() {
         if (ym !== filterMonth) return;
       }
 
-      // 2. 成員篩選
+      // 2. 成員篩選 (出資人或受款轉入人)
       if (filterMemberId !== 'all') {
         const payer = getMemberById(t.paid_by) || t.payer_profile;
         const targetMember = members.find(m => m.id === filterMemberId) || (currentUser?.id === filterMemberId ? currentUser : undefined);
+        const isTransferIn = isTransferToMember(t, filterMemberId, targetMember?.display_name, paymentAccounts);
         const isMatch =
           (payer && payer.id === filterMemberId) ||
           t.paid_by === filterMemberId ||
-          (targetMember && (payer?.display_name === targetMember.display_name || (t as any).payer_name === targetMember.display_name));
+          (targetMember && (payer?.display_name === targetMember.display_name || (t as any).payer_name === targetMember.display_name)) ||
+          isTransferIn;
         if (!isMatch) return;
       }
 
@@ -779,7 +782,7 @@ function MainApp() {
     });
 
     return { all, financial, memo };
-  }, [transactions, filterMonth, filterMemberId, searchQuery, getMemberById, getCategoryById, members, currentUser]);
+  }, [transactions, filterMonth, filterMemberId, searchQuery, getMemberById, getCategoryById, members, currentUser, paymentAccounts]);
 
   // 依據選取的月份、成員、店家關鍵字與明細類型進行即時篩選
   const filteredTransactions = useMemo(() => {
@@ -799,14 +802,16 @@ function MainApp() {
         if (ym !== filterMonth) return false;
       }
 
-      // 2. 成員篩選
+      // 2. 成員篩選 (出資人或受款轉入人)
       if (filterMemberId !== 'all') {
         const payer = getMemberById(t.paid_by) || t.payer_profile;
         const targetMember = members.find(m => m.id === filterMemberId) || (currentUser?.id === filterMemberId ? currentUser : undefined);
+        const isTransferIn = isTransferToMember(t, filterMemberId, targetMember?.display_name, paymentAccounts);
         const isMatch =
           (payer && payer.id === filterMemberId) ||
           t.paid_by === filterMemberId ||
-          (targetMember && (payer?.display_name === targetMember.display_name || (t as any).payer_name === targetMember.display_name));
+          (targetMember && (payer?.display_name === targetMember.display_name || (t as any).payer_name === targetMember.display_name)) ||
+          isTransferIn;
         if (!isMatch) return false;
       }
 
@@ -821,7 +826,7 @@ function MainApp() {
 
       return true;
     });
-  }, [transactions, transactionTypeFilter, filterMonth, filterMemberId, searchQuery, getMemberById, getCategoryById, members, currentUser]);
+  }, [transactions, transactionTypeFilter, filterMonth, filterMemberId, searchQuery, getMemberById, getCategoryById, members, currentUser, paymentAccounts]);
 
   // 方案 A：依分批上限動態切片明細清單 (避免一次渲染過多元件)
   const displayedTransactions = useMemo(() => {
@@ -834,25 +839,50 @@ function MainApp() {
   // 判定是否偏離預設視角（預設視角為：當前月份 + 本機使用成員 + 無搜尋 + 全部類型）
   const isFiltered = filterMonth !== currentMonthYm || filterMemberId !== defaultMemberId || !!searchQuery.trim() || transactionTypeFilter !== 'all';
 
-  // 當前檢視範圍之收支總計 (完全精確連動當前月份或指定篩選範圍)
+  // 當前檢視範圍之收支總計 (完全精確連動當前月份或指定篩選範圍，支援個人視角之零用錢/轉入與結餘計算)
   const activeFilterSummary = useMemo(() => {
     let totalExpense = 0;
     let totalIncome = 0;
+    let personalTransferIn = 0;
+    let personalTransferOut = 0;
+
+    const targetMember = filterMemberId !== 'all'
+      ? (members.find(m => m.id === filterMemberId) || (currentUser?.id === filterMemberId ? currentUser : undefined))
+      : undefined;
 
     filteredTransactions.forEach(t => {
       if (t.type === 'expense') {
         totalExpense += Number(t.amount);
       } else if (t.type === 'income') {
         totalIncome += Number(t.amount);
+      } else if (t.type === 'transfer' && filterMemberId !== 'all') {
+        const isTransferIn = isTransferToMember(t, filterMemberId, targetMember?.display_name, paymentAccounts);
+        const isTransferOut = t.paid_by === filterMemberId;
+        // 若出資者與受款人為同一人（例如自己的信用卡儲值到自己的悠遊卡），屬於自有資金調撥，不列入跨成員轉出或進帳
+        if (isTransferIn && !isTransferOut) {
+          personalTransferIn += Number(t.amount);
+        } else if (isTransferOut && !isTransferIn) {
+          personalTransferOut += Number(t.amount);
+        }
       }
     });
+
+    const isMemberFilter = filterMemberId !== 'all';
+    const effectiveIncome = isMemberFilter ? (totalIncome + personalTransferIn) : totalIncome;
+    const effectiveExpense = isMemberFilter ? (totalExpense + personalTransferOut) : totalExpense;
+    const netBalance = effectiveIncome - effectiveExpense;
 
     return {
       totalExpense,
       totalIncome,
-      netBalance: totalIncome - totalExpense,
+      personalTransferIn,
+      personalTransferOut,
+      effectiveIncome,
+      effectiveExpense,
+      netBalance,
+      isMemberFilter,
     };
-  }, [filteredTransactions]);
+  }, [filteredTransactions, filterMemberId, members, currentUser, paymentAccounts]);
 
   const displaySummary = activeFilterSummary;
 
@@ -3532,45 +3562,76 @@ function MainApp() {
 
               <View style={styles.summaryGrid}>
                 <View style={styles.summaryCol}>
-                  <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2}>總支出</Text>
+                  <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2}>
+                    {displaySummary.isMemberFilter && displaySummary.personalTransferOut > 0 ? '總支出 (含轉出)' : '總支出'}
+                  </Text>
                   <Text
                     style={[styles.summaryVal, styles.expenseVal]}
                     maxFontSizeMultiplier={1.2}
                     numberOfLines={1}
                     adjustsFontSizeToFit
                   >
-                    -NT$ {displaySummary.totalExpense.toLocaleString()}
+                    -NT$ {displaySummary.effectiveExpense.toLocaleString()}
                   </Text>
                 </View>
 
                 <View style={styles.summaryDivider} />
 
                 <View style={styles.summaryCol}>
-                  <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2}>總收入</Text>
+                  <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2}>
+                    {displaySummary.isMemberFilter && displaySummary.personalTransferIn > 0
+                      ? (displaySummary.totalIncome > 0 ? '總進帳 (含轉入)' : '零用錢 / 轉入')
+                      : '總收入'}
+                  </Text>
                   <Text
                     style={[styles.summaryVal, styles.incomeVal]}
                     maxFontSizeMultiplier={1.2}
                     numberOfLines={1}
                     adjustsFontSizeToFit
                   >
-                    +NT$ {displaySummary.totalIncome.toLocaleString()}
+                    +NT$ {displaySummary.effectiveIncome.toLocaleString()}
                   </Text>
                 </View>
 
                 <View style={styles.summaryDivider} />
 
                 <View style={styles.summaryCol}>
-                  <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2}>結餘</Text>
+                  <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2}>
+                    {displaySummary.isMemberFilter && displaySummary.personalTransferIn > 0 ? '零用錢結餘' : '結餘'}
+                  </Text>
                   <Text
-                    style={styles.summaryVal}
+                    style={[
+                      styles.summaryVal,
+                      displaySummary.netBalance > 0
+                        ? styles.incomeVal
+                        : displaySummary.netBalance < 0
+                        ? styles.expenseVal
+                        : null,
+                    ]}
                     maxFontSizeMultiplier={1.2}
                     numberOfLines={1}
                     adjustsFontSizeToFit
                   >
-                    NT$ {displaySummary.netBalance.toLocaleString()}
+                    {displaySummary.netBalance > 0 ? '+' : ''}NT$ {displaySummary.netBalance.toLocaleString()}
                   </Text>
                 </View>
               </View>
+
+              {/* 個人視角專屬：零用錢轉入與轉出款項透明提示列 */}
+              {displaySummary.isMemberFilter && (displaySummary.personalTransferIn > 0 || displaySummary.personalTransferOut > 0) && (
+                <View style={styles.summaryTransferHintRow}>
+                  {displaySummary.personalTransferIn > 0 && (
+                    <Text style={styles.summaryTransferHintText} maxFontSizeMultiplier={1.08}>
+                      🎁 零用錢轉入：+NT$ {displaySummary.personalTransferIn.toLocaleString()}
+                    </Text>
+                  )}
+                  {displaySummary.personalTransferOut > 0 && (
+                    <Text style={styles.summaryTransferHintText} maxFontSizeMultiplier={1.08}>
+                      📤 轉出款項：-NT$ {displaySummary.personalTransferOut.toLocaleString()}
+                    </Text>
+                  )}
+                </View>
+              )}
             </View>
 
             {/* 🗓️ 待繳週期帳單提醒膠囊 (方案 B: 到期提醒核對入帳) */}
@@ -3668,6 +3729,7 @@ function MainApp() {
 
             {/* 悠遊卡 / 一卡通 即時餘額與快捷儲值小工具 */}
             <StoredValueWidget
+              filterMemberId={filterMemberId}
               onOpenCreditCardReconcile={() => {
                 setReconcileAccountType('credit_card');
                 setReconcileAccountId(undefined);
@@ -3932,6 +3994,7 @@ function MainApp() {
                   <TransactionItem
                     key={item.id}
                     transaction={item}
+                    viewingMemberId={filterMemberId}
                     onPress={tx => setEditingTransaction(tx)}
                     onCompleteMemo={handleOpenMemoCompletion}
                   />
@@ -6098,6 +6161,22 @@ const styles = StyleSheet.create({
   },
   incomeVal: {
     color: '#6EE7B7',
+  },
+  summaryTransferHintRow: {
+    marginTop: 14,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.15)',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  summaryTransferHintText: {
+    fontSize: 12,
+    color: '#E0E7FF',
+    fontWeight: '600',
   },
   sectionHeader: {
     flexDirection: 'row',

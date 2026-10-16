@@ -38,19 +38,33 @@ interface StoredValueWidgetProps {
   onManageAccounts?: () => void;
   onOpenReconcile?: (account?: PaymentAccount) => void;
   onOpenCreditCardReconcile?: () => void;
+  filterMemberId?: string;
 }
 
 export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
   onManageAccounts,
   onOpenReconcile,
   onOpenCreditCardReconcile,
+  filterMemberId,
 }) => {
   const { paymentAccounts, topUpAccountBalance, adjustAccountBalance, getMemberById, isOwner, currentUser, members } = useLedger();
 
-  const storedValueCards = React.useMemo(
-    () => sortAccountsByUser(paymentAccounts.filter(a => a.type === 'stored_value'), currentUser?.id),
-    [paymentAccounts, currentUser]
-  );
+  const targetFilteredMember = React.useMemo(() => {
+    if (!filterMemberId || filterMemberId === 'all') return undefined;
+    return members.find(m => m.id === filterMemberId) || (currentUser?.id === filterMemberId ? currentUser : undefined);
+  }, [filterMemberId, members, currentUser]);
+
+  const storedValueCards = React.useMemo(() => {
+    let cards = paymentAccounts.filter(a => a.type === 'stored_value');
+    if (filterMemberId && filterMemberId !== 'all') {
+      cards = cards.filter(a => {
+        if (a.user_id === filterMemberId) return true;
+        if (!a.user_id && targetFilteredMember && a.name.includes(targetFilteredMember.display_name)) return true;
+        return false;
+      });
+    }
+    return sortAccountsByUser(cards, currentUser?.id);
+  }, [paymentAccounts, currentUser, filterMemberId, targetFilteredMember]);
 
   const creditCards = React.useMemo(
     () => paymentAccounts.filter(a => a.type === 'credit_card'),
@@ -171,7 +185,9 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
       <View style={styles.headerRow}>
         <View style={styles.titleGroup}>
           <Text style={styles.titleIcon}>🚌</Text>
-          <Text style={styles.titleText}>悠遊卡 / 儲值卡即時餘額</Text>
+          <Text style={styles.titleText}>
+            {targetFilteredMember ? `${targetFilteredMember.display_name}的悠遊卡 / 儲值卡` : '悠遊卡 / 儲值卡即時餘額'}
+          </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           {onOpenCreditCardReconcile && (
