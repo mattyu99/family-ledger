@@ -5294,7 +5294,7 @@ function MainApp() {
                     </View>
                   </View>
                   <Text style={[styles.restoreEntryBtnSub, { color: '#3B82F6' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    盤點雲端全部帳本、監控 500 MB 空間、清理無成員或測試帳本
+                    盤點雲端全部帳本現況、監控 500 MB 空間用量（安全唯讀模式）
                   </Text>
                 </TouchableOpacity>
               )}

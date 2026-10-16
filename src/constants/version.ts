@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 34;
+export const APP_BUILD_REVISION = 35;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.35',
+    date: '2026-10-16',
+    title: '雲端帳本總管全面轉為安全唯讀模式 ＋ 徹底移除刪除與批次清理功能',
+    highlights: [
+      '全面轉為安全唯讀模式：因雲端刪除為高風險不可逆操作，雲端帳本總管已全面升級為「安全唯讀檢閱模式」，徹底保護家庭所有雲端帳本與珍貴歷史記帳明細資料。',
+      '移除危險刪除與一鍵清理按鈕：各帳本卡片右上方之「🗑️ 刪除」按鈕以及頂部之「🧹 一鍵清理空帳本」功能已全數移除，避免誤觸或意外抹除資料庫紀錄。',
+      '完整保留現況盤點與容量監控：500 MB PostgreSQL 資料庫用量進度條、電子帳單 Storage 容量比率、全部/活躍/測試/空帳本分類統計及成員名冊檢閱功能持續運作，隨時掌握雲端健全狀態。',
+    ],
+  },
   {
     version: '1.0.5.34',
     date: '2026-10-16',

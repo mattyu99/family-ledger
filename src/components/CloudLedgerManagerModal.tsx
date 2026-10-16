@@ -12,8 +12,6 @@ import {
 } from 'react-native';
 import {
   fetchCloudLedgersSummary,
-  deleteCloudLedger,
-  batchPurgeGhostLedgers,
   CloudLedgerSummary,
   CloudDatabaseQuota,
 } from '../lib/cloudLedgerService';
@@ -34,7 +32,6 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
   onLedgerDeleted,
 }) => {
   const [loading, setLoading] = useState<boolean>(false);
-  const [operating, setOperating] = useState<boolean>(false);
   const [ledgers, setLedgers] = useState<CloudLedgerSummary[]>([]);
   const [quota, setQuota] = useState<CloudDatabaseQuota | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'active' | 'test' | 'ghost'>('all');
@@ -68,86 +65,6 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
 
   const ghostLedgers = useMemo(() => ledgers.filter(l => l.isGhost), [ledgers]);
 
-  const handleDeleteLedger = (ledger: CloudLedgerSummary) => {
-    if (ledger.id === currentLedgerId) {
-      Alert.alert('無法刪除', '此帳本為您當前正在使用的帳本，請先切換至其他帳本後再行刪除。');
-      return;
-    }
-
-    const confirmMsg =
-      `確定要徹底刪除【${ledger.name}】嗎？\n\n` +
-      `• 成員人數：${ledger.memberCount} 人\n` +
-      `• 交易筆數：${ledger.txCount} 筆\n` +
-      `• 建立日期：${ledger.createdAt}\n\n` +
-      `⚠️ 此動作將從雲端資料庫永久抹除此帳本及其所有明細，無法復原！`;
-
-    Alert.alert('🗑️ 徹底刪除帳本確認', confirmMsg, [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '確定刪除',
-        style: 'destructive',
-        onPress: async () => {
-          setOperating(true);
-          try {
-            const ok = await deleteCloudLedger(ledger.id);
-            if (ok) {
-              setLedgers(prev => prev.filter(l => l.id !== ledger.id));
-              if (onLedgerDeleted) onLedgerDeleted(ledger.id);
-              Alert.alert('已刪除', `已成功自雲端永久抹除【${ledger.name}】！`);
-            } else {
-              const tip =
-                Platform.OS === 'web'
-                  ? '雲端資料庫刪除失敗（Web 網頁版受瀏覽器限制，建議使用手機 App 一鍵刪除，或在 Supabase SQL Editor 執行最新 RPC 腳本解鎖 Web 刪除權限）。'
-                  : '雲端資料庫刪除回應異常，請稍後重試。';
-              Alert.alert('刪除失敗', tip);
-            }
-          } catch (e) {
-            Alert.alert('刪除失敗', '網路連線異常，請重試。');
-          } finally {
-            setOperating(false);
-          }
-        },
-      },
-    ]);
-  };
-
-  const handleBatchPurgeGhosts = () => {
-    if (ghostLedgers.length === 0) return;
-
-    Alert.alert(
-      '🧹 一鍵清理無用空帳本',
-      `偵測到雲端資料庫共有 ${ghostLedgers.length} 本「0 成員且 0 交易」的幽靈空帳本。\n\n確定要一次全數清理嗎？`,
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: `確定清除 (${ghostLedgers.length} 本)`,
-          style: 'destructive',
-          onPress: async () => {
-            setOperating(true);
-            try {
-              const ids = ghostLedgers.map(g => g.id);
-              const count = await batchPurgeGhostLedgers(ids);
-              if (count > 0) {
-                Alert.alert('清理完成', `已成功清除 ${count} 本無成員幽靈空帳本！`);
-                loadData();
-              } else {
-                const tip =
-                  Platform.OS === 'web'
-                    ? '清理未成功（Web 網頁版受瀏覽器限制，請使用手機 App 一鍵清理，或於 Supabase SQL Editor 執行最新 RPC 腳本）。'
-                    : '清理回應異常，請稍後重試。';
-                Alert.alert('清理失敗', tip);
-              }
-            } catch (e) {
-              Alert.alert('清理失敗', '網路連線異常，請重試。');
-            } finally {
-              setOperating(false);
-            }
-          },
-        },
-      ]
-    );
-  };
-
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
@@ -156,11 +73,11 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
               <View style={styles.headerBadge}>
-                <Text style={styles.headerBadgeText}>👑 管理員特權 · 雲端空間總管</Text>
+                <Text style={styles.headerBadgeText}>👑 管理員特權 · 雲端空間總管（安全唯讀模式）</Text>
               </View>
               <Text style={styles.title} maxFontSizeMultiplier={1.2}>☁️ 雲端帳本總管</Text>
               <Text style={styles.subtitle} maxFontSizeMultiplier={1.1}>
-                全資料庫帳本現況盤點、容量監控與無用帳本清理
+                全資料庫帳本現況盤點與容量監控（安全唯讀檢閱模式）
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -215,29 +132,16 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
             </View>
           )}
 
-          {/* 快捷清理與重新整理按鈕 */}
+          {/* 重新整理按鈕 */}
           <View style={styles.actionBar}>
-            {ghostLedgers.length > 0 && (
-              <TouchableOpacity
-                style={styles.purgeBtn}
-                onPress={handleBatchPurgeGhosts}
-                disabled={operating || loading}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.purgeBtnText}>
-                  🧹 一鍵清理 {ghostLedgers.length} 本空帳本
-                </Text>
-              </TouchableOpacity>
-            )}
-
             <TouchableOpacity
               style={styles.refreshBtn}
               onPress={loadData}
-              disabled={loading || operating}
+              disabled={loading}
               activeOpacity={0.7}
             >
               <Text style={styles.refreshBtnText}>
-                {loading ? '載入中...' : '🔄 重新整理'}
+                {loading ? '載入中...' : '🔄 重新整理雲端現況'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -329,17 +233,6 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
                             建立：{l.createdAt} · 邀請碼：{l.inviteCode || '無'} · ID: {l.id.slice(0, 8)}...
                           </Text>
                         </View>
-
-                        {!isCurrent && (
-                          <TouchableOpacity
-                            style={styles.deleteBtn}
-                            onPress={() => handleDeleteLedger(l)}
-                            disabled={operating}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={styles.deleteBtnText}>🗑️ 刪除</Text>
-                          </TouchableOpacity>
-                        )}
                       </View>
 
                       {/* 成員列表 */}
@@ -516,35 +409,22 @@ const styles = StyleSheet.create({
   },
   actionBar: {
     flexDirection: 'row',
-    gap: 8,
     marginTop: 10,
   },
-  purgeBtn: {
-    flex: 1,
-    backgroundColor: '#FEE2E2',
-    borderWidth: 1,
-    borderColor: '#FECACA',
-    borderRadius: 10,
-    paddingVertical: 9,
-    alignItems: 'center',
-  },
-  purgeBtnText: {
-    fontSize: 12.5,
-    fontWeight: '800',
-    color: '#DC2626',
-  },
   refreshBtn: {
+    flex: 1,
     backgroundColor: '#F1F5F9',
     borderRadius: 10,
-    paddingHorizontal: 14,
     paddingVertical: 9,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   refreshBtnText: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '700',
-    color: '#475569',
+    color: '#334155',
   },
   filterBar: {
     flexDirection: 'row',
@@ -665,18 +545,6 @@ const styles = StyleSheet.create({
   },
   badgeGhostText: {
     fontSize: 10,
-    fontWeight: '700',
-    color: '#DC2626',
-  },
-  deleteBtn: {
-    backgroundColor: '#FEE2E2',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    marginLeft: 8,
-  },
-  deleteBtnText: {
-    fontSize: 11.5,
     fontWeight: '700',
     color: '#DC2626',
   },
