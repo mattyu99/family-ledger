@@ -120,13 +120,13 @@
 </head>
 <body>
   <div class="card">
-    <div class="badge">📎 信用卡電子帳單雲端歸檔</div>
-    <h1>上傳本期電子帳單</h1>
-    <div style="font-size: 12.5px; color: #64748B;">支援銀行原始加密 PDF 檔或手機帳單螢幕截圖</div>
+    <div class="badge" id="badgeText">📎 信用卡電子帳單雲端歸檔</div>
+    <h1 id="pageTitleText">上傳本期電子帳單</h1>
+    <div id="pageSubText" style="font-size: 12.5px; color: #64748B;">支援銀行原始加密 PDF 檔或手機帳單螢幕截圖</div>
 
     <div class="meta-box">
       <div class="meta-row">
-        <span class="meta-label">💳 目標信用卡</span>
+        <span class="meta-label" id="targetLabelText">💳 目標信用卡</span>
         <span class="meta-val" id="cardNameText">讀取中...</span>
       </div>
       <div class="meta-row">
@@ -140,7 +140,7 @@
     <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
       <div class="upload-icon">📄</div>
       <div class="upload-title">點此選擇手機內的 PDF 或圖片</div>
-      <div class="upload-sub">
+      <div class="upload-sub" id="uploadSubText">
         從「下載項目 / 檔案」選取銀行 PDF 電子帳單<br/>或從「相簿」選取帳單截圖（單檔上限 20MB）
       </div>
     </div>
@@ -172,6 +172,21 @@
     const cardName = params.get('cardName') || '信用卡';
     const cycleKey = params.get('cycleKey') || '';
     const cycleName = params.get('cycleName') || cycleKey;
+
+    const badgeParam = params.get('badge');
+    const titleParam = params.get('title');
+    const subParam = params.get('sub');
+    const targetLabelParam = params.get('targetLabel');
+    const uploadSubParam = params.get('uploadSub');
+
+    if (badgeParam) document.getElementById('badgeText').textContent = badgeParam;
+    if (titleParam) {
+      document.getElementById('pageTitleText').textContent = titleParam;
+      document.title = `${titleParam} - 甜心記帳本`;
+    }
+    if (subParam) document.getElementById('pageSubText').textContent = subParam;
+    if (targetLabelParam) document.getElementById('targetLabelText').textContent = targetLabelParam;
+    if (uploadSubParam) document.getElementById('uploadSubText').innerHTML = uploadSubParam;
 
     document.getElementById('cardNameText').textContent = cardName;
     document.getElementById('cycleNameText').textContent = cycleName || cycleKey;
