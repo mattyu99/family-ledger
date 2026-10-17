@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text as RNText,
@@ -19,9 +19,10 @@ const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultip
 export interface MonthPickerModalProps {
   visible: boolean;
   onClose: () => void;
-  selectedMonth: string; // 'all' or 'YYYY-MM'
+  selectedMonth: string; // 'all' or 'YYYY-MM' or 'YYYY'
   onSelectMonth: (month: string) => void;
   availableMonths?: { ym: string; count: number }[];
+  availableYears?: { year: number; count: number }[];
 }
 
 export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
@@ -30,6 +31,7 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
   selectedMonth,
   onSelectMonth,
   availableMonths = [],
+  availableYears = [],
 }) => {
   const now = new Date();
   const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -41,12 +43,30 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
 
   // 年份切換器 (預設選中月份的年份或當前年份)
   const [pickerYear, setPickerYear] = useState<number>(() => {
-    if (selectedMonth && selectedMonth !== 'all' && selectedMonth.includes('-')) {
-      const y = parseInt(selectedMonth.split('-')[0], 10);
-      if (!isNaN(y)) return y;
+    if (selectedMonth && selectedMonth !== 'all') {
+      if (selectedMonth.includes('-')) {
+        const y = parseInt(selectedMonth.split('-')[0], 10);
+        if (!isNaN(y)) return y;
+      } else if (/^\d{4}$/.test(selectedMonth)) {
+        const y = parseInt(selectedMonth, 10);
+        if (!isNaN(y)) return y;
+      }
     }
     return now.getFullYear();
   });
+
+  // 當彈窗開啟或 selectedMonth 變更時，同步切換至對應年份
+  useEffect(() => {
+    if (visible && selectedMonth && selectedMonth !== 'all') {
+      if (selectedMonth.includes('-')) {
+        const y = parseInt(selectedMonth.split('-')[0], 10);
+        if (!isNaN(y)) setPickerYear(y);
+      } else if (/^\d{4}$/.test(selectedMonth)) {
+        const y = parseInt(selectedMonth, 10);
+        if (!isNaN(y)) setPickerYear(y);
+      }
+    }
+  }, [visible, selectedMonth]);
 
   // 月份交易次數 Map
   const txCountMap = useMemo(() => {
@@ -56,6 +76,18 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
     });
     return map;
   }, [availableMonths]);
+
+  // 當前 pickerYear 之全年度交易筆數
+  const yearCount = useMemo(() => {
+    if (availableYears && availableYears.length > 0) {
+      const found = availableYears.find(y => y.year === pickerYear);
+      if (found) return found.count;
+    }
+    const prefix = `${pickerYear}-`;
+    return availableMonths
+      .filter(m => m.ym.startsWith(prefix))
+      .reduce((sum, m) => sum + m.count, 0);
+  }, [availableMonths, availableYears, pickerYear]);
 
   if (!visible) return null;
 
@@ -69,8 +101,8 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
           {/* 頂部標題 */}
           <View style={styles.headerRow}>
             <View>
-              <Text style={styles.title}>📅 選擇統計月份</Text>
-              <Text style={styles.subtitle}>自由選擇任意年份與月份查看財務分析</Text>
+              <Text style={styles.title}>📅 選擇統計期間</Text>
+              <Text style={styles.subtitle}>自由選擇全年度或任意月份查看財務分析</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <Text style={styles.closeText}>✕</Text>
@@ -106,6 +138,19 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
             </TouchableOpacity>
 
             <TouchableOpacity
+              style={[styles.quickChip, selectedMonth === String(now.getFullYear()) && styles.quickChipActive]}
+              onPress={() => {
+                onSelectMonth(String(now.getFullYear()));
+                onClose();
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.quickChipText, selectedMonth === String(now.getFullYear()) && styles.quickChipTextActive]}>
+                🗓️ 今年
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={[styles.quickChip, selectedMonth === 'all' && styles.quickChipActive]}
               onPress={() => {
                 onSelectMonth('all');
@@ -114,7 +159,7 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
               activeOpacity={0.7}
             >
               <Text style={[styles.quickChipText, selectedMonth === 'all' && styles.quickChipTextActive]}>
-                🌐 全部歷史
+                🌐 全部
               </Text>
             </TouchableOpacity>
           </View>
@@ -139,6 +184,45 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
               <Text style={styles.yearArrowText}>▶</Text>
             </TouchableOpacity>
           </View>
+
+          {/* 全年度統計選擇按鈕 */}
+          <TouchableOpacity
+            style={[
+              styles.fullYearBtn,
+              selectedMonth === String(pickerYear) && styles.fullYearBtnActive,
+            ]}
+            onPress={() => {
+              onSelectMonth(String(pickerYear));
+              onClose();
+            }}
+            activeOpacity={0.7}
+          >
+            <View style={styles.fullYearBtnLeft}>
+              <Text
+                style={[
+                  styles.fullYearBtnText,
+                  selectedMonth === String(pickerYear) && styles.fullYearBtnTextActive,
+                ]}
+              >
+                🗓️ 查看 {pickerYear} 全年度統計
+              </Text>
+              <Text
+                style={[
+                  styles.fullYearCountText,
+                  selectedMonth === String(pickerYear) && styles.fullYearCountTextActive,
+                ]}
+              >
+                ({yearCount} 筆記帳)
+              </Text>
+            </View>
+            {selectedMonth === String(pickerYear) ? (
+              <View style={styles.fullYearActiveBadge}>
+                <Text style={styles.fullYearActiveBadgeText}>✓ 目前選取</Text>
+              </View>
+            ) : (
+              <Text style={styles.fullYearArrowHint}>選擇 ➔</Text>
+            )}
+          </TouchableOpacity>
 
           {/* 12 個月份網格 (4 列 x 3 行) */}
           <View style={styles.monthGrid}>
@@ -305,6 +389,60 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     color: '#1E293B',
+  },
+  fullYearBtn: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 14,
+  },
+  fullYearBtnActive: {
+    backgroundColor: '#4F46E5',
+    borderColor: '#4338CA',
+  },
+  fullYearBtnLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 1,
+  },
+  fullYearBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  fullYearBtnTextActive: {
+    color: '#FFFFFF',
+  },
+  fullYearCountText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#64748B',
+  },
+  fullYearCountTextActive: {
+    color: '#E0E7FF',
+  },
+  fullYearActiveBadge: {
+    backgroundColor: '#4338CA',
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+  },
+  fullYearActiveBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  fullYearArrowHint: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6366F1',
   },
   monthGrid: {
     flexDirection: 'row',

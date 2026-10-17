@@ -569,6 +569,31 @@ function MainApp() {
       }));
   }, [transactions]);
 
+  // 統計分頁之可篩選年份清單 (依交易紀錄動態彙整)
+  const availableYears = useMemo(() => {
+    const yearMap = new Map<number, number>();
+    const currentYear = new Date().getFullYear();
+    yearMap.set(currentYear, 0);
+
+    transactions.forEach(t => {
+      if (t.transacted_at) {
+        const d = new Date(t.transacted_at);
+        if (!isNaN(d.getTime())) {
+          const y = d.getFullYear();
+          yearMap.set(y, (yearMap.get(y) || 0) + 1);
+        }
+      }
+    });
+
+    return Array.from(yearMap.entries())
+      .sort((a, b) => b[0] - a[0])
+      .map(([year, count]) => ({
+        year,
+        label: `${year} 全年`,
+        count,
+      }));
+  }, [transactions]);
+
   // 統計分頁之時間篩選狀態 (預設當前月份)
   const [analyticsMonth, setAnalyticsMonth] = useState<string>(() => {
     const now = new Date();
@@ -581,13 +606,18 @@ function MainApp() {
   // 統計分頁之收支分類排行榜切換 ('expense' | 'income')
   const [analyticsCategoryType, setAnalyticsCategoryType] = useState<'expense' | 'income'>('expense');
 
-  // 統計分頁選定時間之交易紀錄
+  // 統計分頁選定時間之交易紀錄 (支援單月、全年度、全部歷史)
   const analyticsTransactions = useMemo(() => {
     if (analyticsMonth === 'all') return transactions;
+    const isYear = /^\d{4}$/.test(analyticsMonth);
+    const targetYear = isYear ? parseInt(analyticsMonth, 10) : 0;
     return transactions.filter(t => {
       if (!t.transacted_at) return false;
       const d = new Date(t.transacted_at);
       if (isNaN(d.getTime())) return false;
+      if (isYear) {
+        return d.getFullYear() === targetYear;
+      }
       const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       return ym === analyticsMonth;
     });
@@ -626,6 +656,14 @@ function MainApp() {
 
   const analyticsMonthLabel = useMemo(() => {
     if (analyticsMonth === 'all') return '全部歷史累計';
+    if (/^\d{4}$/.test(analyticsMonth)) {
+      const year = parseInt(analyticsMonth, 10);
+      const currentYear = new Date().getFullYear();
+      if (year === currentYear) {
+        return `今年度 (${year} 全年)`;
+      }
+      return `${year} 年度 (全年)`;
+    }
     if (analyticsMonth === currentMonthYm) {
       const parts = currentMonthYm.split('-');
       return `本月 (${parts[0]}年${parseInt(parts[1], 10)}月)`;
@@ -710,6 +748,25 @@ function MainApp() {
     if (analyticsSummary.totalExpense <= 0) return 0;
 
     const now = new Date();
+    // 全年度統計平均每日支出
+    if (/^\d{4}$/.test(analyticsMonth)) {
+      const year = parseInt(analyticsMonth, 10);
+      const currentYear = now.getFullYear();
+      if (year === currentYear) {
+        // 今年：以今年已過天數計算
+        const startOfYear = new Date(year, 0, 1);
+        const daySpan = Math.max(1, Math.floor((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+        return Math.round(analyticsSummary.totalExpense / daySpan);
+      } else if (year < currentYear) {
+        // 過去年份：以整年天數計算（閏年判斷）
+        const isLeapYear = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+        const daysInYear = isLeapYear ? 366 : 365;
+        return Math.round(analyticsSummary.totalExpense / daysInYear);
+      } else {
+        return Math.round(analyticsSummary.totalExpense / 365);
+      }
+    }
+
     if (analyticsMonth === currentMonthYm) {
       const dayOfMonth = Math.max(1, now.getDate());
       return Math.round(analyticsSummary.totalExpense / dayOfMonth);
@@ -4223,6 +4280,41 @@ function MainApp() {
                   </TouchableOpacity>
                 ) : null}
 
+                {/* 年度篩選膠囊 (依 availableYears 呈現) */}
+                {availableYears.map(y => {
+                  const yStr = String(y.year);
+                  const nowY = new Date().getFullYear();
+                  const isCurrentYear = y.year === nowY;
+                  const isLastYear = y.year === nowY - 1;
+                  const chipLabel = isCurrentYear
+                    ? `🗓️ 今年 (${y.year})`
+                    : isLastYear
+                    ? `🗓️ 去年 (${y.year})`
+                    : `🗓️ ${y.year} 全年`;
+                  return (
+                    <TouchableOpacity
+                      key={yStr}
+                      style={[
+                        styles.analyticsFilterChip,
+                        analyticsMonth === yStr && styles.analyticsFilterChipActive,
+                      ]}
+                      onPress={() => setAnalyticsMonth(yStr)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        allowFontScaling={false}
+                        maxFontSizeMultiplier={1.08}
+                        style={[
+                          styles.analyticsFilterText,
+                          analyticsMonth === yStr && styles.analyticsFilterTextActive,
+                        ]}
+                      >
+                        {chipLabel}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+
                 {/* 全部歷史 */}
                 <TouchableOpacity
                   style={[
@@ -4244,10 +4336,11 @@ function MainApp() {
                   </Text>
                 </TouchableOpacity>
 
-                {/* 若選中了特定月份 (且非本月/上月/全部，且不在 availableMonths 中)，顯示選中標籤 */}
+                {/* 若選中了特定月份或自訂年份 (且非本月/上月/全部/已列出的年份，且不在 availableMonths 中)，顯示選中標籤 */}
                 {analyticsMonth !== currentMonthYm &&
                   analyticsMonth !== lastMonthYm &&
                   analyticsMonth !== 'all' &&
+                  !availableYears.some(y => String(y.year) === analyticsMonth) &&
                   !availableMonths.some(m => m.ym === analyticsMonth) && (
                     <TouchableOpacity
                       style={[styles.analyticsFilterChip, styles.analyticsFilterChipActive]}
@@ -4259,7 +4352,7 @@ function MainApp() {
                         maxFontSizeMultiplier={1.08}
                         style={[styles.analyticsFilterText, styles.analyticsFilterTextActive]}
                       >
-                        📅 {analyticsMonthLabel} ✓
+                        🗓️ {analyticsMonthLabel} ✓
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -4290,7 +4383,7 @@ function MainApp() {
                     </TouchableOpacity>
                   ))}
 
-                {/* 選擇特定月份按鈕 (任意年份/12個月網格彈窗) */}
+                {/* 選擇特定月份或年份按鈕 (任意年份/全年度/12個月網格彈窗) */}
                 <TouchableOpacity
                   style={[
                     styles.analyticsFilterChip,
@@ -4304,7 +4397,7 @@ function MainApp() {
                     maxFontSizeMultiplier={1.08}
                     style={styles.analyticsFilterSelectMoreText}
                   >
-                    🔍 選擇特定月份 ▾
+                    🔍 更多月份/年份 ▾
                   </Text>
                 </TouchableOpacity>
               </HorizontalScrollView>
@@ -5752,13 +5845,14 @@ function MainApp() {
         getMemberById={getMemberById}
       />
 
-      {/* 統計分析任意月份選擇彈窗 */}
+      {/* 統計分析任意月份與年份選擇彈窗 */}
       <MonthPickerModal
         visible={monthPickerVisible}
         onClose={() => setMonthPickerVisible(false)}
         selectedMonth={analyticsMonth}
         onSelectMonth={setAnalyticsMonth}
         availableMonths={availableMonths}
+        availableYears={availableYears}
       />
 
       {/* 💳 信用卡與悠遊卡智慧對帳看板 */}

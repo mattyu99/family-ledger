@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 46;
+export const APP_BUILD_REVISION = 47;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.47',
+    date: '2026-10-17',
+    title: '統計分析頁面新增全年度與年份維度篩選功能',
+    highlights: [
+      '橫向快選窗條新增年份膠囊：在統計分析頁面頂部時間維度中，自動依據所有記帳紀錄動態生成年份膠囊（例如「🗓️ 今年 (2026)」、「🗓️ 去年 (2025)」或「🗓️ 2024 全年」），一鍵即可切換整年收支大盤。',
+      '統計彈窗全年度一鍵選取：升級統計期間選擇彈窗，在各年份切換列下方新增專屬「🗓️ 查看 YYYY 全年度統計」按鈕，即時顯示該年度記帳總筆數與選取狀態，並於頂部快捷新增「🗓️ 今年」一鍵切換。',
+      '年度日均支出與排行榜動態試算：全年度模式下自動精確計算日均支出（今年度依至今已過天數試算、過往年度自動依平閏年 365/366 天試算），且分類收支排行榜與各成員出資佔比自動彙整年度累計總額。',
+      '狀態標籤與期間標示清晰連動：頂部統計範圍與收支總覽卡片清晰標示「今年度 (2026 全年)」或「2025 年度 (全年)」，自由切換單月份、全年度或全部歷史累計。',
+    ],
+  },
   {
     version: '1.0.5.46',
     date: '2026-10-17',
