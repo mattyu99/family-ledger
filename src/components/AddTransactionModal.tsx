@@ -46,6 +46,7 @@ import {
   PAYMENT_METHOD_OPTIONS,
   DEFAULT_PAYMENT_METHODS,
   sortAccountsByUser,
+  filterAccountsForUser,
   DISCOUNT_PRESET_LABELS,
   getRecommendedDiscountLabel,
   formatExpenseNoteWithDiscount,
@@ -152,7 +153,11 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     recentMemoTags,
     recordMemoTag,
     removeRecentMemoTag,
+    isOwner,
+    isAdminMode,
   } = useLedger();
+
+  const inAdminMode = Boolean(isAdminMode || isOwner);
 
   const smartDiscountLabels = React.useMemo(
     () => getSmartDiscountLabels(transactions),
@@ -359,16 +364,37 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const availableCategories = categories.filter(c => c.type === type);
   const targetPayerId = paidBy || currentUser?.id;
   const creditCards = React.useMemo(
-    () => sortAccountsByUser(paymentAccounts.filter(a => a.type === 'credit_card'), targetPayerId),
-    [paymentAccounts, targetPayerId]
+    () => filterAccountsForUser(paymentAccounts, {
+      type: 'credit_card',
+      currentUser,
+      inAdminMode,
+      selectedAccountId,
+      getMemberById,
+      targetPayerId,
+    }),
+    [paymentAccounts, currentUser, inAdminMode, selectedAccountId, getMemberById, targetPayerId]
   );
   const storedValueCards = React.useMemo(
-    () => sortAccountsByUser(paymentAccounts.filter(a => a.type === 'stored_value'), targetPayerId),
-    [paymentAccounts, targetPayerId]
+    () => filterAccountsForUser(paymentAccounts, {
+      type: 'stored_value',
+      currentUser,
+      inAdminMode,
+      selectedAccountId,
+      getMemberById,
+      targetPayerId,
+    }),
+    [paymentAccounts, currentUser, inAdminMode, selectedAccountId, getMemberById, targetPayerId]
   );
   const bankAccounts = React.useMemo(
-    () => sortAccountsByUser(paymentAccounts.filter(a => a.type === 'bank'), targetPayerId),
-    [paymentAccounts, targetPayerId]
+    () => filterAccountsForUser(paymentAccounts, {
+      type: 'bank',
+      currentUser,
+      inAdminMode,
+      selectedAccountId,
+      getMemberById,
+      targetPayerId,
+    }),
+    [paymentAccounts, currentUser, inAdminMode, selectedAccountId, getMemberById, targetPayerId]
   );
 
   const today = React.useMemo(() => new Date(), []);
@@ -1623,7 +1649,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 {supportsCreditCard && creditCards.length > 0 && (
                   <View style={styles.subCardContainer}>
                     <Text style={styles.subCardLabel} maxFontSizeMultiplier={1.15}>
-                      💳 選擇扣款卡片 (對帳核算使用)：
+                      💳 選擇扣款卡片 (對帳核算使用){inAdminMode ? ' · 👑 管理員模式(全體卡片)' : ''}：
                     </Text>
                     <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
                       {creditCards.map(card => {
@@ -1653,12 +1679,19 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     </HorizontalScrollView>
                   </View>
                 )}
+                {supportsCreditCard && creditCards.length === 0 && paymentMethod === 'credit_card' && (
+                  <View style={[styles.subCardContainer, { paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#F9FAFB', borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: '#E5E7EB' }]}>
+                    <Text style={{ fontSize: 12, color: '#6B7280', lineHeight: 18 }} maxFontSizeMultiplier={1.15}>
+                      💳 目前尚未綁定屬於您的信用卡。{!inAdminMode && '（如需選用其他成員卡片，可至「家庭設定」啟用管理員模式）'}
+                    </Text>
+                  </View>
+                )}
 
                 {/* 子層：當選擇銀行轉帳時，展開銀行帳戶列表 */}
                 {isBankTransfer && bankAccounts.length > 0 && (
                   <View style={styles.subCardContainer}>
                     <Text style={styles.subCardLabel} maxFontSizeMultiplier={1.15}>
-                      🏦 選擇入帳銀行帳戶 (選填)：
+                      🏦 選擇入帳銀行帳戶 (選填){inAdminMode ? ' · 👑 管理員模式(全體帳戶)' : ''}：
                     </Text>
                     <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
                       {bankAccounts.map(account => {
@@ -1690,6 +1723,13 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         );
                       })}
                     </HorizontalScrollView>
+                  </View>
+                )}
+                {isBankTransfer && bankAccounts.length === 0 && (
+                  <View style={[styles.subCardContainer, { paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#F9FAFB', borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: '#E5E7EB' }]}>
+                    <Text style={{ fontSize: 12, color: '#6B7280', lineHeight: 18 }} maxFontSizeMultiplier={1.15}>
+                      🏦 目前尚未綁定屬於您的銀行帳戶。{!inAdminMode && '（如需選用其他成員帳戶，可至「家庭設定」啟用管理員模式）'}
+                    </Text>
                   </View>
                 )}
 
@@ -1879,7 +1919,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 {supportsCreditCard && creditCards.length > 0 && (
                   <View style={styles.subCardContainer}>
                     <Text style={styles.subCardLabel} maxFontSizeMultiplier={1.15}>
-                      💳 選擇卡片 (對帳核算使用)：
+                      💳 選擇卡片 (對帳核算使用){inAdminMode ? ' · 👑 管理員模式(全體卡片)' : ''}：
                     </Text>
                     <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
                       {creditCards.map(card => {
@@ -1913,12 +1953,19 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     </HorizontalScrollView>
                   </View>
                 )}
+                {supportsCreditCard && creditCards.length === 0 && paymentMethod === 'credit_card' && (
+                  <View style={[styles.subCardContainer, { paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#F9FAFB', borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: '#E5E7EB' }]}>
+                    <Text style={{ fontSize: 12, color: '#6B7280', lineHeight: 18 }} maxFontSizeMultiplier={1.15}>
+                      💳 目前尚未綁定屬於您的信用卡。{!inAdminMode && '（如需選用其他成員卡片，可至「家庭設定」啟用管理員模式）'}
+                    </Text>
+                  </View>
+                )}
 
                 {/* 子層：當選擇悠遊卡/儲值卡時，展開儲值卡列表 */}
                 {isStoredValue && storedValueCards.length > 0 && (
                   <View style={styles.subCardContainer}>
                     <Text style={styles.subCardLabel} maxFontSizeMultiplier={1.15}>
-                      🚌 選擇儲值卡 (將自動扣減餘額)：
+                      🚌 選擇儲值卡 (將自動扣減餘額){inAdminMode ? ' · 👑 管理員模式(全體卡片)' : ''}：
                     </Text>
                     <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
                       {storedValueCards.map(card => {
@@ -1952,12 +1999,19 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     </HorizontalScrollView>
                   </View>
                 )}
+                {isStoredValue && storedValueCards.length === 0 && (
+                  <View style={[styles.subCardContainer, { paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#F9FAFB', borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: '#E5E7EB' }]}>
+                    <Text style={{ fontSize: 12, color: '#6B7280', lineHeight: 18 }} maxFontSizeMultiplier={1.15}>
+                      🚌 目前尚未綁定屬於您的儲值卡/悠遊卡。{!inAdminMode && '（如需選用其他成員卡片，可至「家庭設定」啟用管理員模式）'}
+                    </Text>
+                  </View>
+                )}
 
                 {/* 子層：當選擇銀行轉帳時，展開銀行帳戶列表 */}
                 {isBankTransfer && bankAccounts.length > 0 && (
                   <View style={styles.subCardContainer}>
                     <Text style={styles.subCardLabel} maxFontSizeMultiplier={1.15}>
-                      🏦 選擇扣款銀行帳戶 (選填)：
+                      🏦 選擇扣款銀行帳戶 (選填){inAdminMode ? ' · 👑 管理員模式(全體帳戶)' : ''}：
                     </Text>
                     <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
                       {bankAccounts.map(account => {
@@ -1989,6 +2043,13 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         );
                       })}
                     </HorizontalScrollView>
+                  </View>
+                )}
+                {isBankTransfer && bankAccounts.length === 0 && (
+                  <View style={[styles.subCardContainer, { paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#F9FAFB', borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: '#E5E7EB' }]}>
+                    <Text style={{ fontSize: 12, color: '#6B7280', lineHeight: 18 }} maxFontSizeMultiplier={1.15}>
+                      🏦 目前尚未綁定屬於您的銀行帳戶。{!inAdminMode && '（如需選用其他成員帳戶，可至「家庭設定」啟用管理員模式）'}
+                    </Text>
                   </View>
                 )}
 

@@ -1,4 +1,4 @@
-import { PaymentMethod, PaymentAccount, AccountType, CustomPaymentMethod } from '../types/database';
+import { PaymentMethod, PaymentAccount, AccountType, CustomPaymentMethod, Profile } from '../types/database';
 
 export interface PaymentMethodOption {
   key: PaymentMethod;
@@ -435,6 +435,81 @@ export const sortAccountsByUser = (
     }
     return (a.sort_order || 0) - (b.sort_order || 0);
   });
+};
+
+/**
+ * 依據管理員模式與本機使用成員過濾支付卡片/帳戶：
+ * - 管理員模式 (inAdminMode = true)：列出該類別的所有帳戶，並將優先成員 (targetPayerId) 排序在最前
+ * - 日常成員模式 (inAdminMode = false)：僅列出綁定目前本機使用成員 (currentUser) 的卡片與帳戶，
+ *   避免誤用到其他成員的卡片或帳戶；若當前明細已選定某帳戶 (selectedAccountId)，亦一併保留以供檢視目前狀態
+ */
+export const filterAccountsForUser = (
+  accounts: PaymentAccount[],
+  options: {
+    type: 'credit_card' | 'stored_value' | 'bank' | 'other' | 'all';
+    currentUser?: Profile | null;
+    inAdminMode?: boolean;
+    selectedAccountId?: string;
+    getMemberById?: (id?: string) => Profile | undefined;
+    targetPayerId?: string;
+  }
+): PaymentAccount[] => {
+  if (!accounts || accounts.length === 0) return [];
+  const {
+    type,
+    currentUser,
+    inAdminMode = false,
+    selectedAccountId,
+    getMemberById,
+    targetPayerId,
+  } = options;
+
+  // 1. 先依帳戶類型過濾
+  const ofType = type === 'all' ? accounts : accounts.filter(a => a.type === type);
+  if (ofType.length === 0) return [];
+
+  const preferredUser = targetPayerId || currentUser?.id;
+
+  // 2. 若為管理員模式，顯示全部帳戶（依優先成員排序）
+  if (inAdminMode) {
+    return sortAccountsByUser(ofType, preferredUser);
+  }
+
+  // 3. 非管理員模式（日常成員模式）：僅列出綁定至目前本機使用成員 (currentUser) 的帳戶
+  const currentUserId = currentUser?.id;
+  const currentDisplayName = currentUser?.display_name?.trim().toLowerCase();
+
+  const filtered = ofType.filter(acc => {
+    // 若此卡已被當前交易選定，保留顯示以供檢視目前狀態
+    if (selectedAccountId && acc.id === selectedAccountId) {
+      return true;
+    }
+
+    if (!acc.user_id) {
+      // 未綁定特定成員的帳戶在日常模式下不屬於個人卡
+      return false;
+    }
+
+    // 直接 ID 吻合
+    if (currentUserId && acc.user_id === currentUserId) {
+      return true;
+    }
+
+    // 透過別名/名冊比對 (例如 Google 影子帳號或同名成員)
+    if (getMemberById) {
+      const owner = getMemberById(acc.user_id);
+      if (owner) {
+        if (currentUserId && owner.id === currentUserId) return true;
+        if (currentDisplayName && owner.display_name?.trim().toLowerCase() === currentDisplayName) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  });
+
+  return sortAccountsByUser(filtered, preferredUser);
 };
 
 export const DISCOUNT_PRESET_LABELS: string[] = [

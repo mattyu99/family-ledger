@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 41;
+export const APP_BUILD_REVISION = 42;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.42',
+    date: '2026-10-17',
+    title: '記帳與編輯明細之支付卡片依本機成員專屬過濾防呆',
+    highlights: [
+      '支付卡片個人化專屬過濾：在「新增一筆支出」與「編輯記帳明細」選擇信用卡、悠遊卡/儲值卡、銀行轉帳時，預設僅列出綁定目前本機使用成員的卡片與帳戶，徹底避免誤選或誤刷到其他家人的卡片。',
+      '管理員模式彈性支援：當在家庭設定中啟用「管理員模式」時，自動完整解鎖並呈現全家所有卡片與帳戶清單（依付款人優先排序），方便家長或帳本管理員替全家統一查帳與調度。',
+      '無卡友善防呆指引：若目前成員尚未綁定該類別卡片，自動顯示友善提示，既不影響記帳流程，又清晰告知如何切換或綁定。',
+    ],
+  },
   {
     version: '1.0.5.41',
     date: '2026-10-17',
