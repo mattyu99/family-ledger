@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   SafeAreaView,
   View,
@@ -469,6 +469,63 @@ function MainApp() {
   const [filterModalType, setFilterModalType] = useState<'month' | 'member' | null>(null);
   // 明細類型快捷篩選：'all' 全部紀錄 | 'financial' 僅看收支 | 'memo' 僅看生活備忘
   const [transactionTypeFilter, setTransactionTypeFilter] = useState<'all' | 'financial' | 'memo'>('all');
+
+  // 帳單與支付資產頁面範圍：預設 'my' 僅列出綁定本機使用者的卡片與週期項目，亦可切換 'all' 檢視全家所有資產
+  const [billsScope, setBillsScope] = useState<'my' | 'all'>('my');
+
+  // 帳單與支付資產：判斷成員 ID 是否歸屬目前本機使用者 (支援 ID 直接比對、名稱別名比對與名冊連動)
+  const isMatchedToCurrentUser = useCallback(
+    (memberId?: string | null) => {
+      if (!memberId || !currentUser) return false;
+      if (memberId === currentUser.id) return true;
+      const member = getMemberById(memberId);
+      if (member) {
+        if (member.id === currentUser.id) return true;
+        if (
+          member.display_name &&
+          currentUser.display_name &&
+          member.display_name.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase()
+        ) {
+          return true;
+        }
+      }
+      return false;
+    },
+    [currentUser, getMemberById]
+  );
+
+  // 帳單支付專屬：當前帳本有效啟用之所有週期規則
+  const scopedRecurringRules = useMemo(() => {
+    return (recurringRules || []).filter(
+      r => (!r.ledger_id || r.ledger_id === currentLedger?.id) && r.is_active
+    );
+  }, [recurringRules, currentLedger?.id]);
+
+  // 僅綁定本機使用者之週期扣款規則
+  const myRecurringRules = useMemo(() => {
+    return scopedRecurringRules.filter(r => isMatchedToCurrentUser(r.paid_by));
+  }, [scopedRecurringRules, isMatchedToCurrentUser]);
+
+  // 僅綁定本機使用者之支付卡片與帳戶
+  const myPaymentAccounts = useMemo(() => {
+    return (paymentAccounts || []).filter(acc => isMatchedToCurrentUser(acc.user_id));
+  }, [paymentAccounts, isMatchedToCurrentUser]);
+
+  // 本機待核對帳單筆數
+  const myPendingRecurringBillsCount = useMemo(() => {
+    const now = new Date();
+    const currYear = now.getFullYear();
+    const currMonth = now.getMonth() + 1;
+    return myRecurringRules.filter(rule => {
+      if (!isBillDueInMonth(rule, currYear, currMonth)) return false;
+      return !isBillPaidForCurrentPeriod(rule, now);
+    }).length;
+  }, [myRecurringRules]);
+
+  // 帳單支付頁面當前呈現之項目清單
+  const displayedRecurringRules = billsScope === 'my' ? myRecurringRules : scopedRecurringRules;
+  const displayedPaymentAccounts = billsScope === 'my' ? myPaymentAccounts : paymentAccounts;
+  const activePendingBillsCount = billsScope === 'my' ? myPendingRecurringBillsCount : pendingRecurringBillsCount;
 
   // 當本機使用者身分載入或切換時，若使用者尚未手動指定其他成員，自動同步預設為本機成員
   useEffect(() => {
@@ -4581,9 +4638,33 @@ function MainApp() {
               </View>
               <View style={styles.billsHeroSummaryChip}>
                 <Text style={styles.billsHeroSummaryText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                  {paymentAccounts.length} 帳戶 · {(recurringRules || []).filter(r => !r.ledger_id || r.ledger_id === currentLedger?.id).length} 項定期
+                  {billsScope === 'my'
+                    ? `${myPaymentAccounts.length} 帳戶 · ${myRecurringRules.length} 項定期 (本機)`
+                    : `${paymentAccounts.length} 帳戶 · ${scopedRecurringRules.length} 項定期 (全家)`}
                 </Text>
               </View>
+            </View>
+
+            {/* 切換檢視範圍：👤 我的 (本機) vs 👨‍👩‍👧‍👦 全家 */}
+            <View style={styles.billsScopeToggleRow}>
+              <TouchableOpacity
+                style={[styles.billsScopeTab, billsScope === 'my' && styles.billsScopeTabActive]}
+                onPress={() => setBillsScope('my')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.billsScopeTabText, billsScope === 'my' && styles.billsScopeTabTextActive]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                  👤 我的 ({myPaymentAccounts.length + myRecurringRules.length})
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.billsScopeTab, billsScope === 'all' && styles.billsScopeTabActive]}
+                onPress={() => setBillsScope('all')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.billsScopeTabText, billsScope === 'all' && styles.billsScopeTabTextActive]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                  👨‍👩‍👧‍👦 全家 ({paymentAccounts.length + scopedRecurringRules.length})
+                </Text>
+              </TouchableOpacity>
             </View>
 
             {/* 🗓️ 週期扣款與固定帳單 (水電瓦斯、電信寬頻、定期帳單管理、分期付款) */}
@@ -4591,16 +4672,18 @@ function MainApp() {
               <View style={styles.sectionHeaderRow}>
                 <View style={styles.sectionHeaderLeft}>
                   <Text style={styles.cardSectionTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    🗓️ 週期扣款與固定帳單 ({(recurringRules || []).filter(r => !r.ledger_id || r.ledger_id === currentLedger?.id).length})
+                    🗓️ 週期扣款與固定帳單 ({displayedRecurringRules.length})
                   </Text>
                   <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    {isOwner
+                    {billsScope === 'my'
+                      ? `僅列出綁定本機「${currentUser?.display_name || '我'}」負責之定期項目`
+                      : isOwner
                       ? '管理水電瓦斯、房租通訊、分期攤提等定期週期項目，到期手動確認記帳'
                       : '查看家庭固定週期扣款設定與出帳月份'}
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 6 }}>
-                  {pendingRecurringBillsCount > 0 && (
+                  {activePendingBillsCount > 0 && (
                     <TouchableOpacity
                       style={[styles.manageCategoryBtn, { backgroundColor: '#FEE2E2', borderColor: '#FECACA' }]}
                       onPress={() => {
@@ -4609,7 +4692,7 @@ function MainApp() {
                       }}
                     >
                       <Text style={[styles.manageCategoryBtnText, { color: '#DC2626' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                        🔔 待核對 ({pendingRecurringBillsCount})
+                        🔔 待核對 ({activePendingBillsCount})
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -4628,8 +4711,9 @@ function MainApp() {
               </View>
 
               <View style={styles.paymentAccountPreviewRow}>
-                {(recurringRules || []).filter(r => (!r.ledger_id || r.ledger_id === currentLedger?.id) && r.is_active).map(rule => {
+                {displayedRecurringRules.map(rule => {
                   const cat = getCategoryById(rule.category_id);
+                  const payer = rule.paid_by ? getMemberById(rule.paid_by) : null;
                   return (
                     <TouchableOpacity
                       key={rule.id}
@@ -4642,7 +4726,7 @@ function MainApp() {
                     >
                       <Text style={styles.paymentAccountPreviewIcon}>{getCategoryIcon(cat?.icon)}</Text>
                       <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                        {rule.name}
+                        {rule.name}{billsScope === 'all' && payer?.display_name ? ` · ${payer.display_name}` : ''}
                       </Text>
                       <View style={[styles.paymentAccountBadge, { backgroundColor: '#EFF6FF' }]}>
                         <Text style={[styles.paymentAccountBadgeText, { color: '#1D4ED8' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
@@ -4652,7 +4736,7 @@ function MainApp() {
                     </TouchableOpacity>
                   );
                 })}
-                {(recurringRules || []).filter(r => !r.ledger_id || r.ledger_id === currentLedger?.id).length === 0 && (
+                {displayedRecurringRules.length === 0 && (
                   <TouchableOpacity
                     style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
                     onPress={() => {
@@ -4661,7 +4745,9 @@ function MainApp() {
                     }}
                   >
                     <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                      ＋ 新增水電瓦斯或定期帳單規則
+                      {billsScope === 'my'
+                        ? '＋ 尚無綁定您的定期扣款規則 (點此新增)'
+                        : '＋ 新增水電瓦斯或定期帳單規則'}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -4673,10 +4759,12 @@ function MainApp() {
               <View style={styles.sectionHeaderRow}>
                 <View style={styles.sectionHeaderLeft}>
                   <Text style={styles.cardSectionTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    💳 支付卡片與帳戶 ({paymentAccounts.length})
+                    💳 支付卡片與帳戶 ({displayedPaymentAccounts.length})
                   </Text>
                   <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    {isOwner
+                    {billsScope === 'my'
+                      ? `僅列出綁定本機「${currentUser?.display_name || '我'}」專屬之卡片與帳戶`
+                      : isOwner
                       ? '管理信用卡結帳週期、悠遊卡/一卡通餘額與帳單對帳'
                       : '查看全家信用卡結帳日與悠遊卡即時餘額（僅管理員可增修）'}
                   </Text>
@@ -4702,8 +4790,9 @@ function MainApp() {
               </View>
 
               <View style={styles.paymentAccountPreviewRow}>
-                {paymentAccounts.map(acc => {
+                {displayedPaymentAccounts.map(acc => {
                   const isCard = acc.type === 'credit_card';
+                  const cardholder = acc.user_id ? getMemberById(acc.user_id) : null;
                   return (
                     <TouchableOpacity
                       key={acc.id}
@@ -4728,6 +4817,7 @@ function MainApp() {
                         maxFontSizeMultiplier={1.08}
                       >
                         {acc.name}{acc.last_four_digits ? ` (*${acc.last_four_digits})` : ''}
+                        {billsScope === 'all' && cardholder?.display_name ? ` · ${cardholder.display_name}` : ''}
                       </Text>
                       {isCard && acc.billing_cycle_date ? (
                         <View style={[styles.paymentAccountBadge, { backgroundColor: '#EEF2FF' }]}>
@@ -4745,20 +4835,20 @@ function MainApp() {
                     </TouchableOpacity>
                   );
                 })}
-                {paymentAccounts.length === 0 && (
+                {displayedPaymentAccounts.length === 0 && (
                   isOwner ? (
                     <TouchableOpacity
                       style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
                       onPress={() => setAccountsManageModalVisible(true)}
                     >
                       <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                        ＋ 新增第一張信用卡或悠遊卡
+                        {billsScope === 'my' ? '＋ 尚無綁定您的支付卡片 (點此新增)' : '＋ 新增第一張信用卡或悠遊卡'}
                       </Text>
                     </TouchableOpacity>
                   ) : (
                     <View style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}>
                       <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                        尚無支付卡片或帳戶
+                        {billsScope === 'my' ? '尚無綁定您的支付卡片或帳戶' : '尚無支付卡片或帳戶'}
                       </Text>
                     </View>
                   )
@@ -9692,5 +9782,37 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#475569',
+  },
+  billsScopeToggleRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    padding: 3,
+    marginBottom: 14,
+    gap: 4,
+  },
+  billsScopeTab: {
+    flex: 1,
+    paddingVertical: 7,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  billsScopeTabActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  billsScopeTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  billsScopeTabTextActive: {
+    fontWeight: '800',
+    color: '#4F46E5',
   },
 });

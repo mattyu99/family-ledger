@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 44;
+export const APP_BUILD_REVISION = 45;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.45',
+    date: '2026-10-17',
+    title: '帳單支付頁面支援本機成員專屬視角與全家項目自由切換',
+    highlights: [
+      '預設僅列出本機使用者資產：在「帳單支付」頁面中，下方「週期扣款與固定帳單」與「支付卡片與帳戶」預設僅列出綁定目前本機使用者的項目，不再受全家其他成員卡片干擾，快速掌握個人扣款與卡片餘額。',
+      '輕巧分頁範圍切換鈕：新增「👤 我的」與「👨‍👩‍👧‍👦 全家」頂部快捷切換窗條，預設聚焦本機個人資產，若有查閱全家所有卡片與週期項目需求，一鍵即可展開並標註持卡人/出資者姓名。',
+      '個人化待核對通知精準過濾：在「👤 我的」視角下，待核對帳單膠囊僅統計目前本機使用者負責之週期扣款，不被他人帳單干擾；切換至「👨‍👩‍👧‍👦 全家」視角時自動呈現全家總數。',
+    ],
+  },
   {
     version: '1.0.5.44',
     date: '2026-10-17',
