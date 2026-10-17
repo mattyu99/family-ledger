@@ -92,12 +92,14 @@ export interface RecurringBillsManageModalProps {
   visible: boolean;
   onClose: () => void;
   initialTab?: 'pending' | 'rules';
+  scope?: 'my' | 'all';
 }
 
 export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps> = ({
   visible,
   onClose,
   initialTab = 'pending',
+  scope = 'my',
 }) => {
   const {
     recurringRules,
@@ -117,6 +119,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     getMemberById,
     getCategoryById,
     getPaymentMethodById,
+    isOwner,
   } = useLedger();
 
   const [activeTab, setActiveTab] = useState<'pending' | 'rules'>(initialTab);
@@ -129,11 +132,41 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     }
   }, [visible, initialTab]);
 
-  // 依當前帳本嚴格過濾週期規則，確保絕不混入其他帳本規則
+  // 判斷某個成員 ID 是否對應當前本機使用者 (支援 ID 直接比對、名稱別名比對與名冊連動)
+  const isRuleBoundToCurrentUser = useCallback(
+    (paidById?: string | null) => {
+      if (!paidById || !currentUser) return false;
+      if (paidById === currentUser.id) return true;
+      const member = members.find(m => m.id === paidById);
+      if (member) {
+        if (member.id === currentUser.id) return true;
+        if (
+          member.display_name &&
+          currentUser.display_name &&
+          member.display_name.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase()
+        ) {
+          return true;
+        }
+      }
+      return false;
+    },
+    [currentUser, members]
+  );
+
+  // 權限判定：帳本管理員隨時可管理；一般家庭成員在「我的」視角下可自主管理個人規則與帳單
+  const canManage = isOwner || scope === 'my';
+
+  // 依當前帳本嚴格過濾週期規則，且在「我的」視角下嚴格過濾屬於自己的扣繳項目
   const scopedRules = useMemo(() => {
-    if (!currentLedger?.id) return recurringRules || [];
-    return (recurringRules || []).filter(r => !r.ledger_id || r.ledger_id === currentLedger.id);
-  }, [recurringRules, currentLedger?.id]);
+    let list = recurringRules || [];
+    if (currentLedger?.id) {
+      list = list.filter(r => !r.ledger_id || r.ledger_id === currentLedger.id);
+    }
+    if (scope === 'my') {
+      list = list.filter(r => isRuleBoundToCurrentUser(r.paid_by));
+    }
+    return list;
+  }, [recurringRules, currentLedger?.id, scope, isRuleBoundToCurrentUser]);
 
   // 入帳彈窗狀態 (用於浮動金額、固定金額、分期付款入帳確認)
   const [amountModalVisible, setAmountModalVisible] = useState<boolean>(false);
@@ -350,17 +383,24 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     return list.filter(m => m.is_enabled !== false).sort((a, b) => a.sort_order - b.sort_order);
   }, [paymentMethods]);
 
+  const filteredAccounts = useMemo(() => {
+    if (!isOwner && scope === 'my') {
+      return (paymentAccounts || []).filter(a => isRuleBoundToCurrentUser(a.user_id));
+    }
+    return paymentAccounts || [];
+  }, [paymentAccounts, isOwner, scope, isRuleBoundToCurrentUser]);
+
   const creditCards = useMemo(
-    () => paymentAccounts.filter(a => a.type === 'credit_card'),
-    [paymentAccounts]
+    () => filteredAccounts.filter(a => a.type === 'credit_card'),
+    [filteredAccounts]
   );
   const storedValueCards = useMemo(
-    () => paymentAccounts.filter(a => a.type === 'stored_value'),
-    [paymentAccounts]
+    () => filteredAccounts.filter(a => a.type === 'stored_value'),
+    [filteredAccounts]
   );
   const bankAccounts = useMemo(
-    () => paymentAccounts.filter(a => a.type === 'bank'),
-    [paymentAccounts]
+    () => filteredAccounts.filter(a => a.type === 'bank'),
+    [filteredAccounts]
   );
 
   const currentFormMethodObj = useMemo(() => {
@@ -465,6 +505,10 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
 
   // 開啟入帳確認視窗（浮動金額、固定金額、分期付款統一由此彈窗確認，並支援切換入帳日期）
   const handleOpenRecordModal = (rule: RecurringRule) => {
+    if (!canManage) {
+      showAlert('純瀏覽模式', '全家一覽僅供查看待繳狀態；若需核對或記帳，請切換至「我的」視角。');
+      return;
+    }
     setTargetRuleForAmount(rule);
     const defaultVal = rule.default_amount > 0 ? String(rule.default_amount) : '';
     setInputAmount(defaultVal);
@@ -524,6 +568,10 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
 
   // 略過本期
   const handleSkipBill = (rule: RecurringRule) => {
+    if (!canManage) {
+      showAlert('純瀏覽模式', '全家一覽僅供查看待繳狀態；若需核對或略過，請切換至「我的」視角。');
+      return;
+    }
     const periodLabel = getBillPeriodLabel(rule, selectedDate);
     showConfirm(
       '略過本期帳單',
@@ -538,6 +586,17 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
 
   // 開啟新增/編輯規則
   const handleOpenRuleModal = (rule?: RecurringRule) => {
+    if (!canManage) {
+      showAlert('純瀏覽模式', '全家一覽僅供查看規則；若需新增或管理個人規則，請切換至「我的」視角。');
+      return;
+    }
+    if (rule) {
+      const isMyRule = isRuleBoundToCurrentUser(rule.paid_by);
+      if (!isOwner && !isMyRule) {
+        showAlert('權限不足', '您僅能編輯屬於自己的週期扣款規則');
+        return;
+      }
+    }
     const now = new Date();
     const currPeriodStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
@@ -615,6 +674,11 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
 
   // 儲存規則
   const handleSaveRule = async () => {
+    if (!canManage) {
+      showAlert('權限不足', '只有帳本管理員才能在全家一覽中儲存規則');
+      return;
+    }
+
     if (!formName.trim()) {
       showAlert('請輸入名稱', '請為週期項目設定名稱（例如：台電電費、iPhone 16 分期）');
       return;
@@ -627,7 +691,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     }
 
     const categoryId = formCategoryId || categories[0]?.id || '';
-    const paidBy = formPaidBy || currentUser.id;
+    const targetPaidBy = (!isOwner && scope === 'my') ? currentUser.id : (formPaidBy || currentUser.id);
 
     let totalInst: number | undefined = undefined;
     let currInst: number | undefined = undefined;
@@ -658,7 +722,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
         frequency: effectiveFrequency,
         bimonthly_start_month: !formIsInstallment && effectiveFrequency === 'bimonthly' ? formBimonthlyStartMonth : undefined,
         due_day: Math.min(Math.max(1, formDueDay), 31),
-        paid_by: paidBy,
+        paid_by: targetPaidBy,
         payment_method: formPaymentMethod,
         account_id: (formSupportsCreditCard || formIsStoredValue || formIsBankTransfer) ? (formAccountId || undefined) : undefined,
         is_active: formIsActive,
@@ -679,7 +743,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
         frequency: effectiveFrequency,
         bimonthly_start_month: !formIsInstallment && effectiveFrequency === 'bimonthly' ? formBimonthlyStartMonth : undefined,
         due_day: Math.min(Math.max(1, formDueDay), 31),
-        paid_by: paidBy,
+        paid_by: targetPaidBy,
         payment_method: formPaymentMethod,
         account_id: (formSupportsCreditCard || formIsStoredValue || formIsBankTransfer) ? (formAccountId || undefined) : undefined,
         is_active: formIsActive,
@@ -697,6 +761,15 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
 
   // 刪除規則
   const handleDeleteRule = (rule: RecurringRule) => {
+    const isMyRule = isRuleBoundToCurrentUser(rule.paid_by);
+    if (!isOwner && !isMyRule) {
+      showAlert('權限不足', '您僅能刪除屬於自己的週期扣款規則');
+      return;
+    }
+    if (scope === 'all' && !isOwner) {
+      showAlert('純瀏覽模式', '在全家一覽中僅供查看；如需刪除您的規則，請切換至「我的」視角進行管理。');
+      return;
+    }
     showConfirm(
       '刪除規則',
       `確定刪除週期規則「${rule.name}」？\n(過去已入帳的明細不會被刪除)`,
@@ -709,6 +782,10 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
 
   // 從預設範本快速導入規則
   const handleApplyPreset = (preset: typeof DEFAULT_RECURRING_PRESETS[0]) => {
+    if (!canManage) {
+      showAlert('純瀏覽模式', '全家一覽僅供查看規則；若需導入常用範本，請切換至「我的」視角。');
+      return;
+    }
     const utilityCat = categories.find(c => c.name.includes('水電') || c.name.includes('居家')) || categories[0];
     const defaultCard = paymentAccounts.find(a => a.type === 'credit_card');
 
@@ -782,8 +859,16 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerTitleContainer}>
-              <Text style={styles.headerTitle}>🗓️ 週期扣款與固定帳單</Text>
-              <Text style={styles.headerSubtitle}>水電、瓦斯、電信費手動確認入帳</Text>
+              <Text style={styles.headerTitle}>
+                {scope === 'my' ? '🗓️ 我的週期扣款與固定帳單' : '🗓️ 全家週期扣款與固定帳單'}
+              </Text>
+              <Text style={styles.headerSubtitle}>
+                {scope === 'my'
+                  ? '水電、瓦斯、電信費手動確認入帳與個人規則自主管理'
+                  : (isOwner
+                      ? '全家固定扣繳規則與待繳帳單管理'
+                      : '全家固定扣繳一覽（純瀏覽模式，僅管理員可異動規則）')}
+              </Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <TouchableOpacity
@@ -989,6 +1074,19 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
               </View>
 
               <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+                {/* 全家模式唯讀提示橫幅 */}
+                {!canManage && (
+                  <View style={[styles.pastMonthBanner, { backgroundColor: '#FEF3C7', borderColor: '#FDE68A', marginBottom: 10 }]}>
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={{ fontSize: 18 }}>👀</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.pastMonthBannerTitle, { color: '#92400E' }]}>全家待繳帳單一覽（純瀏覽模式）</Text>
+                        <Text style={[styles.pastMonthBannerSub, { color: '#B45309' }]}>在此僅供查看全家固定帳單待繳狀況。如需確認入帳，請切換至「我的」視角。</Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
+
                 {/* 補記上期提示橫幅 */}
                 {isPastMonth && (
                   <View style={styles.pastMonthBanner}>
@@ -1147,43 +1245,52 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                         </View>
 
                         {/* 動作按鈕列 */}
-                        <View style={styles.cardActionRow}>
-                          <TouchableOpacity
-                            style={styles.skipButton}
-                            onPress={() => handleSkipBill(rule)}
-                          >
-                            <Text style={styles.skipButtonText}>略過本期</Text>
-                          </TouchableOpacity>
+                        {canManage ? (
+                          <View style={styles.cardActionRow}>
+                            <TouchableOpacity
+                              style={styles.skipButton}
+                              onPress={() => handleSkipBill(rule)}
+                            >
+                              <Text style={styles.skipButtonText}>略過本期</Text>
+                            </TouchableOpacity>
 
-                          {rule.is_installment ? (
-                            <TouchableOpacity
-                              style={styles.recordPrimaryButton}
-                              onPress={() => handleQuickRecordFixed(rule)}
-                            >
-                              <Text style={styles.recordPrimaryButtonText}>
-                                ✅ 確認記帳 ({instInfo?.labelText || ''} NT$ {rule.default_amount.toLocaleString()})
-                              </Text>
-                            </TouchableOpacity>
-                          ) : isFixed ? (
-                            <TouchableOpacity
-                              style={styles.recordPrimaryButton}
-                              onPress={() => handleQuickRecordFixed(rule)}
-                            >
-                              <Text style={styles.recordPrimaryButtonText}>
-                                ✅ 確認記帳 (NT$ {rule.default_amount.toLocaleString()})
-                              </Text>
-                            </TouchableOpacity>
-                          ) : (
-                            <TouchableOpacity
-                              style={styles.recordVariableButton}
-                              onPress={() => handleOpenAmountModal(rule)}
-                            >
-                              <Text style={styles.recordVariableButtonText}>
-                                ⚡ 輸入金額並入帳
-                              </Text>
-                            </TouchableOpacity>
-                          )}
-                        </View>
+                            {rule.is_installment ? (
+                              <TouchableOpacity
+                                style={styles.recordPrimaryButton}
+                                onPress={() => handleQuickRecordFixed(rule)}
+                              >
+                                <Text style={styles.recordPrimaryButtonText}>
+                                  ✅ 確認記帳 ({instInfo?.labelText || ''} NT$ {rule.default_amount.toLocaleString()})
+                                </Text>
+                              </TouchableOpacity>
+                            ) : isFixed ? (
+                              <TouchableOpacity
+                                style={styles.recordPrimaryButton}
+                                onPress={() => handleQuickRecordFixed(rule)}
+                              >
+                                <Text style={styles.recordPrimaryButtonText}>
+                                  ✅ 確認記帳 (NT$ {rule.default_amount.toLocaleString()})
+                                </Text>
+                              </TouchableOpacity>
+                            ) : (
+                              <TouchableOpacity
+                                style={styles.recordVariableButton}
+                                onPress={() => handleOpenAmountModal(rule)}
+                              >
+                                <Text style={styles.recordVariableButtonText}>
+                                  ⚡ 輸入金額並入帳
+                                </Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        ) : (
+                          <View style={{ paddingVertical: 8, paddingHorizontal: 12, backgroundColor: '#F3F4F6', borderRadius: 8, marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={{ fontSize: 13 }}>🔒</Text>
+                            <Text style={{ fontSize: 12, color: '#6B7280', flex: 1 }}>
+                              全家瀏覽模式僅供查看待繳狀態；若需核對或記帳，請切換至「我的」視角
+                            </Text>
+                          </View>
+                        )}
                       </View>
                     );
                   })
@@ -1239,21 +1346,37 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
           {/* Tab 2: 規則設定 */}
           {activeTab === 'rules' && (
             <View style={styles.tabContent}>
+              {!canManage && (
+                <View style={[styles.pastMonthBanner, { backgroundColor: '#FEF3C7', borderColor: '#FDE68A', marginHorizontal: 16, marginTop: 12, marginBottom: 4 }]}>
+                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={{ fontSize: 18 }}>👀</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.pastMonthBannerTitle, { color: '#92400E' }]}>全家週期規則一覽（純瀏覽模式）</Text>
+                      <Text style={[styles.pastMonthBannerSub, { color: '#B45309' }]}>在此僅供查看全家扣繳規則。如需新增或管理個人規則，請切換至「我的」視角。</Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+
               {/* 工具列 */}
               <View style={styles.rulesActionToolbar}>
-                <TouchableOpacity
-                  style={styles.addCustomRuleButton}
-                  onPress={() => handleOpenRuleModal()}
-                >
-                  <Text style={styles.addCustomRuleButtonText}>+ 新增規則</Text>
-                </TouchableOpacity>
+                {canManage && (
+                  <TouchableOpacity
+                    style={styles.addCustomRuleButton}
+                    onPress={() => handleOpenRuleModal()}
+                  >
+                    <Text style={styles.addCustomRuleButtonText}>+ 新增規則</Text>
+                  </TouchableOpacity>
+                )}
 
-                <TouchableOpacity
-                  style={styles.importPresetButton}
-                  onPress={() => setPresetModalVisible(true)}
-                >
-                  <Text style={styles.importPresetButtonText}>📋 常用範本</Text>
-                </TouchableOpacity>
+                {canManage && (
+                  <TouchableOpacity
+                    style={styles.importPresetButton}
+                    onPress={() => setPresetModalVisible(true)}
+                  >
+                    <Text style={styles.importPresetButtonText}>📋 常用範本</Text>
+                  </TouchableOpacity>
+                )}
 
                 <TouchableOpacity
                   style={styles.vaultToolbarButton}
@@ -1276,12 +1399,14 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                     <Text style={styles.emptyStateSubtitle}>
                       設定水費、電費、手機費或房租管理費，每月到期自動產生待繳核對清單！
                     </Text>
-                    <TouchableOpacity
-                      style={styles.addRuleQuickButton}
-                      onPress={() => setPresetModalVisible(true)}
-                    >
-                      <Text style={styles.addRuleQuickButtonText}>📋 一鍵導入常用範本</Text>
-                    </TouchableOpacity>
+                    {canManage && (
+                      <TouchableOpacity
+                        style={styles.addRuleQuickButton}
+                        onPress={() => setPresetModalVisible(true)}
+                      >
+                        <Text style={styles.addRuleQuickButtonText}>📋 一鍵導入常用範本</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 ) : (
                   scopedRules.map(rule => {
@@ -1289,6 +1414,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                     const payer = getMemberById(rule.paid_by);
                     const isFixed = rule.amount_type === 'fixed';
                     const instInfo = rule.is_installment ? getInstallmentInfo(rule, new Date()) : null;
+                    const canEditRule = isOwner || (scope === 'my' && isRuleBoundToCurrentUser(rule.paid_by));
 
                     return (
                       <View
@@ -1322,6 +1448,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                             </Text>
                             <Switch
                               value={rule.is_active}
+                              disabled={!canEditRule}
                               onValueChange={val => {
                                 updateRecurringRule(rule.id, { is_active: val });
                               }}
@@ -1419,19 +1546,23 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                                 </Text>
                               </TouchableOpacity>
 
-                              <TouchableOpacity
-                                style={styles.ruleEditBtn}
-                                onPress={() => handleOpenRuleModal(rule)}
-                              >
-                                <Text style={styles.ruleEditBtnText}>✏️ 編輯</Text>
-                              </TouchableOpacity>
+                              {canEditRule && (
+                                <TouchableOpacity
+                                  style={styles.ruleEditBtn}
+                                  onPress={() => handleOpenRuleModal(rule)}
+                                >
+                                  <Text style={styles.ruleEditBtnText}>✏️ 編輯</Text>
+                                </TouchableOpacity>
+                              )}
 
-                              <TouchableOpacity
-                                style={styles.ruleDeleteBtn}
-                                onPress={() => handleDeleteRule(rule)}
-                              >
-                                <Text style={styles.ruleDeleteBtnText}>🗑️ 刪除</Text>
-                              </TouchableOpacity>
+                              {canEditRule && (
+                                <TouchableOpacity
+                                  style={styles.ruleDeleteBtn}
+                                  onPress={() => handleDeleteRule(rule)}
+                                >
+                                  <Text style={styles.ruleDeleteBtnText}>🗑️ 刪除</Text>
+                                </TouchableOpacity>
+                              )}
                             </View>
                           );
                         })()}
@@ -2058,6 +2189,9 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                   <Text style={styles.formFieldLabel}>預設出資人</Text>
                   <View style={styles.memberChipsRow}>
                     {members.map(m => {
+                      if (!isOwner && scope === 'my' && !isRuleBoundToCurrentUser(m.id)) {
+                        return null;
+                      }
                       const isSelected = formPaidBy === m.id;
                       return (
                         <TouchableOpacity

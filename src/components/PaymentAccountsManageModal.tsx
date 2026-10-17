@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text as RNText,
@@ -52,12 +52,14 @@ interface PaymentAccountsManageModalProps {
   visible: boolean;
   onClose: () => void;
   initialTab?: 'credit_card' | 'stored_value' | 'bank';
+  scope?: 'my' | 'all';
 }
 
 export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProps> = ({
   visible,
   onClose,
   initialTab,
+  scope = 'my',
 }) => {
   const { paymentAccounts, addPaymentAccount, updatePaymentAccount, deletePaymentAccount, restoreDefaultAccounts, members, currentUser, isOwner } = useLedger();
 
@@ -150,13 +152,53 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   const [formBalance, setFormBalance] = useState<string>('0');
   const [formColor, setFormColor] = useState<string>(COLOR_PALETTE[0]);
 
-  const creditCards = sortAccountsByUser(paymentAccounts.filter(a => a.type === 'credit_card'), currentUser.id);
-  const storedValueCards = sortAccountsByUser(paymentAccounts.filter(a => a.type === 'stored_value'), currentUser.id);
-  const bankAccounts = sortAccountsByUser(paymentAccounts.filter(a => a.type === 'bank'), currentUser.id);
+  // 判斷某個綁定成員 ID 是否對應當前本機使用者 (支援 ID 直接比對、名稱別名比對與名冊連動)
+  const isMatchedToCurrentUser = useCallback(
+    (memberId?: string | null) => {
+      if (!memberId || !currentUser) return false;
+      if (memberId === currentUser.id) return true;
+      const member = members.find(m => m.id === memberId);
+      if (member) {
+        if (member.id === currentUser.id) return true;
+        if (
+          member.display_name &&
+          currentUser.display_name &&
+          member.display_name.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase()
+        ) {
+          return true;
+        }
+      }
+      return false;
+    },
+    [currentUser, members]
+  );
+
+  const filteredPaymentAccounts = useMemo(() => {
+    if (scope === 'my') {
+      return (paymentAccounts || []).filter(a => isMatchedToCurrentUser(a.user_id));
+    }
+    return paymentAccounts || [];
+  }, [paymentAccounts, scope, isMatchedToCurrentUser]);
+
+  const creditCards = useMemo(
+    () => sortAccountsByUser(filteredPaymentAccounts.filter(a => a.type === 'credit_card'), currentUser.id),
+    [filteredPaymentAccounts, currentUser.id]
+  );
+  const storedValueCards = useMemo(
+    () => sortAccountsByUser(filteredPaymentAccounts.filter(a => a.type === 'stored_value'), currentUser.id),
+    [filteredPaymentAccounts, currentUser.id]
+  );
+  const bankAccounts = useMemo(
+    () => sortAccountsByUser(filteredPaymentAccounts.filter(a => a.type === 'bank'), currentUser.id),
+    [filteredPaymentAccounts, currentUser.id]
+  );
+
+  // 管理權限：在「我的」模式下每位成員均可管理自己的卡片；在「全家」模式下僅管理員可管理
+  const canManage = isOwner || scope === 'my';
 
   const handleOpenAdd = (type: AccountType) => {
-    if (!isOwner) {
-      showAlert('權限不足', '只有帳本管理員才能新增支付卡片與帳戶');
+    if (!canManage) {
+      showAlert('權限不足', '只有帳本管理員才能在全家一覽中新增卡片與帳戶；若要新增個人卡片，請至「我的」新增。');
       return;
     }
     if (type === 'stored_value' || type === 'credit_card' || type === 'bank') {
@@ -174,8 +216,13 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   };
 
   const handleOpenEdit = (acc: PaymentAccount) => {
-    if (!isOwner) {
-      showAlert('權限不足', '只有帳本管理員才能編輯支付卡片與帳戶');
+    const isMyCard = isMatchedToCurrentUser(acc.user_id);
+    if (!isOwner && !isMyCard) {
+      showAlert('權限不足', '您僅能編輯屬於自己的卡片與帳戶');
+      return;
+    }
+    if (scope === 'all' && !isOwner) {
+      showAlert('純瀏覽模式', '在全家一覽中僅供查看；如需編輯您的卡片，請切換至「我的」視角進行管理。');
       return;
     }
     const matchedMember = acc.user_id && members.find(m => m.id === acc.user_id);
@@ -186,7 +233,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     setEditingId(acc.id);
     setFormType(acc.type);
     setFormName(acc.name);
-    setFormUserId(matchedMember ? matchedMember.id : '');
+    setFormUserId(matchedMember ? matchedMember.id : (currentUser?.id || ''));
     setFormLastFour(acc.last_four_digits || '');
     setFormCycleDate(String(acc.billing_cycle_date || 15));
     setFormBalance(String(acc.balance || 0));
@@ -194,8 +241,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   };
 
   const handleSaveForm = async () => {
-    if (!isOwner) {
-      showAlert('權限不足', '只有帳本管理員才能儲存卡片設定');
+    if (!canManage) {
+      showAlert('權限不足', '只有帳本管理員才能儲存全家卡片設定');
       return;
     }
     const cleanName = formName.trim();
@@ -207,7 +254,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     const cycleNum = parseInt(formCycleDate, 10);
     const validCycle = isNaN(cycleNum) ? 15 : Math.max(1, Math.min(31, cycleNum));
     const balanceNum = parseFloat(formBalance) || 0;
-    const targetUserId = formUserId ? formUserId : (null as any);
+    const targetUserId = (!isOwner && scope === 'my') ? (currentUser?.id || null) : (formUserId ? formUserId : (null as any));
 
     if (editingId) {
       await updatePaymentAccount(editingId, {
@@ -241,8 +288,13 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   };
 
   const handleDelete = (acc: PaymentAccount) => {
-    if (!isOwner) {
-      showAlert('權限不足', '只有帳本管理員才能刪除支付卡片與帳戶');
+    const isMyCard = isMatchedToCurrentUser(acc.user_id);
+    if (!isOwner && !isMyCard) {
+      showAlert('權限不足', '您僅能刪除屬於自己的卡片與帳戶');
+      return;
+    }
+    if (scope === 'all' && !isOwner) {
+      showAlert('純瀏覽模式', '在全家一覽中僅供查看；如需刪除您的卡片，請切換至「我的」視角進行管理。');
       return;
     }
     const confirmMessage = `確定要刪除「${acc.name}」嗎？此操作不會刪除歷史記帳明細。`;
@@ -299,25 +351,25 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                 {isEditing
                   ? (editingId ? '✏️ 編輯卡片設定' : '＋ 新增卡片或帳戶')
                   : activeTab === 'credit_card'
-                    ? (isOwner ? '💳 管理家庭信用卡' : '💳 家庭信用卡一覽')
+                    ? (canManage ? (scope === 'my' ? '💳 管理我的信用卡' : '💳 管理家庭信用卡') : '💳 家庭信用卡一覽 (純瀏覽)')
                     : activeTab === 'bank'
-                      ? (isOwner ? '🏦 管理家庭銀行帳戶' : '🏦 家庭銀行帳戶一覽')
-                      : (isOwner ? '🚌 管理家庭悠遊卡' : '🚌 家庭悠遊卡一覽')}
+                      ? (canManage ? (scope === 'my' ? '🏦 管理我的銀行帳戶' : '🏦 管理家庭銀行帳戶') : '🏦 家庭銀行帳戶一覽 (純瀏覽)')
+                      : (canManage ? (scope === 'my' ? '🚌 管理我的悠遊卡' : '🚌 管理家庭悠遊卡') : '🚌 家庭悠遊卡一覽 (純瀏覽)')}
               </Text>
               <Text style={styles.subtitle} maxFontSizeMultiplier={1.15}>
                 {isEditing
                   ? '設定卡片或帳戶名稱、歸屬成員與相關資訊'
                   : activeTab === 'credit_card'
-                    ? (isOwner
-                      ? '設定全家的信用卡、持卡人與每月結帳日'
-                      : '家庭成員瀏覽模式（僅帳本管理員可新增、修改或刪除信用卡）')
+                    ? (canManage
+                      ? (scope === 'my' ? `管理屬於「${currentUser?.display_name || '我'}」之信用卡與結帳日` : '設定全家的信用卡、持卡人與每月結帳日')
+                      : '全家一覽瀏覽模式（僅帳本管理員可新增、修改或刪除全家信用卡）')
                     : activeTab === 'bank'
-                      ? (isOwner
-                        ? '設定全家的銀行帳戶與持有人，供轉帳與週期扣繳對帳'
-                        : '家庭成員瀏覽模式（僅帳本管理員可新增、修改或刪除銀行帳戶）')
-                      : (isOwner
-                        ? '設定全家的悠遊卡 / 儲值卡與即時餘額'
-                        : '家庭成員瀏覽模式（僅帳本管理員可新增、修改或刪除悠遊卡）')}
+                      ? (canManage
+                        ? (scope === 'my' ? `管理屬於「${currentUser?.display_name || '我'}」之銀行帳戶` : '設定全家的銀行帳戶與持有人，供轉帳與週期扣繳對帳')
+                        : '全家一覽瀏覽模式（僅帳本管理員可新增、修改或刪除銀行帳戶）')
+                      : (canManage
+                        ? (scope === 'my' ? `管理屬於「${currentUser?.display_name || '我'}」之悠遊卡與即時餘額` : '設定全家的悠遊卡 / 儲值卡與即時餘額')
+                        : '全家一覽瀏覽模式（僅帳本管理員可新增、修改或刪除悠遊卡）')}
               </Text>
             </View>
             <TouchableOpacity
@@ -466,16 +518,21 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                 {formType === 'bank' ? '帳戶持有人 / 歸屬家庭成員' : '持卡人 / 歸屬家庭成員'}
               </Text>
               <View style={styles.memberChipsRow}>
-                <TouchableOpacity
-                  style={[styles.memberChip, !formUserId && styles.memberChipActive]}
-                  onPress={() => setFormUserId('')}
-                >
-                  <Text style={styles.memberChipAvatar}>🏠</Text>
-                  <Text style={[styles.memberChipName, !formUserId && styles.memberChipNameActive]}>
-                    全家通用
-                  </Text>
-                </TouchableOpacity>
+                {isOwner && (
+                  <TouchableOpacity
+                    style={[styles.memberChip, !formUserId && styles.memberChipActive]}
+                    onPress={() => setFormUserId('')}
+                  >
+                    <Text style={styles.memberChipAvatar}>🏠</Text>
+                    <Text style={[styles.memberChipName, !formUserId && styles.memberChipNameActive]}>
+                      全家通用
+                    </Text>
+                  </TouchableOpacity>
+                )}
                 {members.map(m => {
+                  if (!isOwner && scope === 'my' && !isMatchedToCurrentUser(m.id)) {
+                    return null;
+                  }
                   const isSelected = formUserId === m.id;
                   return (
                     <TouchableOpacity
@@ -592,10 +649,10 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
           ) : (
             /* 卡片清單列表 */
             <ScrollView style={styles.listScroll} showsVerticalScrollIndicator={false}>
-              {!isOwner && (
+              {!canManage && (
                 <View style={styles.memberNoticeBox}>
                   <Text style={styles.memberNoticeText} maxFontSizeMultiplier={1.15}>
-                    🔒 只有帳本管理員才能新增、修改或刪除卡片與帳戶
+                    🔒 全家瀏覽模式：在此僅供查看全家卡片與帳戶。如需管理或新增個人卡片，請切換至「我的」視角。
                   </Text>
                 </View>
               )}
@@ -605,7 +662,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                 <>
                   <View style={styles.sectionHeaderRow}>
                     <Text style={styles.sectionTitle}>💳 信用卡清單 ({creditCards.length})</Text>
-                    {isOwner && (
+                    {canManage && (
                       <TouchableOpacity
                         style={styles.addMiniBtn}
                         onPress={() => handleOpenAdd('credit_card')}
@@ -619,7 +676,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                   {creditCards.length === 0 ? (
                     <View style={styles.emptyStateContainer}>
                       <Text style={styles.emptyNotice}>尚未設定信用卡</Text>
-                      {isOwner && (
+                      {canManage && (
                         <TouchableOpacity
                           style={styles.emptyAddBtn}
                           onPress={() => handleOpenAdd('credit_card')}
@@ -632,6 +689,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                   ) : (
                     creditCards.map(card => {
                       const cardholder = members.find(m => m.id === card.user_id);
+                      const isMyCard = isMatchedToCurrentUser(card.user_id);
+                      const canEditCard = isOwner || (scope === 'my' && isMyCard);
                       return (
                         <View key={card.id} style={[styles.cardItemRow, { borderLeftColor: card.color || '#3B82F6' }]}>
                           <View style={styles.cardInfoCol}>
@@ -648,7 +707,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                               每月 {card.billing_cycle_date || 15} 號結帳
                             </Text>
                           </View>
-                          {isOwner && (
+                          {canEditCard && (
                             <View style={styles.cardActionGroup}>
                               <TouchableOpacity style={styles.editBtn} onPress={() => handleOpenEdit(card)}>
                                 <Text style={styles.editText}>編輯</Text>
@@ -668,7 +727,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                 <>
                   <View style={styles.sectionHeaderRow}>
                     <Text style={styles.sectionTitle}>🚌 悠遊卡 / 儲值卡 ({storedValueCards.length})</Text>
-                    {isOwner && (
+                    {canManage && (
                       <TouchableOpacity
                         style={styles.addMiniBtn}
                         onPress={() => handleOpenAdd('stored_value')}
@@ -682,7 +741,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                   {storedValueCards.length === 0 ? (
                     <View style={styles.emptyStateContainer}>
                       <Text style={styles.emptyNotice}>尚未設定儲值卡</Text>
-                      {isOwner && (
+                      {canManage && (
                         <TouchableOpacity
                           style={styles.emptyAddBtn}
                           onPress={() => handleOpenAdd('stored_value')}
@@ -695,6 +754,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                   ) : (
                     storedValueCards.map(card => {
                       const cardholder = members.find(m => m.id === card.user_id);
+                      const isMyCard = isMatchedToCurrentUser(card.user_id);
+                      const canEditCard = isOwner || (scope === 'my' && isMyCard);
                       return (
                         <View key={card.id} style={[styles.cardItemRow, { borderLeftColor: card.color || '#0284C7' }]}>
                           <View style={styles.cardInfoCol}>
@@ -706,7 +767,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                               {cardholder ? `${cardholder.avatar_url || '👤'} ${cardholder.display_name}` : '🏠 全家通用'}
                             </Text>
                           </View>
-                          {isOwner && (
+                          {canEditCard && (
                             <View style={styles.cardActionGroup}>
                               <TouchableOpacity style={styles.editBtn} onPress={() => handleOpenEdit(card)}>
                                 <Text style={styles.editText}>編輯</Text>
@@ -726,7 +787,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                 <>
                   <View style={styles.sectionHeaderRow}>
                     <Text style={styles.sectionTitle}>🏦 銀行帳戶清單 ({bankAccounts.length})</Text>
-                    {isOwner && (
+                    {canManage && (
                       <TouchableOpacity
                         style={styles.addMiniBtn}
                         onPress={() => handleOpenAdd('bank')}
@@ -740,7 +801,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                   {bankAccounts.length === 0 ? (
                     <View style={styles.emptyStateContainer}>
                       <Text style={styles.emptyNotice}>尚未設定銀行帳戶</Text>
-                      {isOwner && (
+                      {canManage && (
                         <TouchableOpacity
                           style={styles.emptyAddBtn}
                           onPress={() => handleOpenAdd('bank')}
@@ -753,6 +814,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                   ) : (
                     bankAccounts.map(acc => {
                       const holder = members.find(m => m.id === acc.user_id);
+                      const isMyAccount = isMatchedToCurrentUser(acc.user_id);
+                      const canEditAccount = isOwner || (scope === 'my' && isMyAccount);
                       return (
                         <View key={acc.id} style={[styles.cardItemRow, { borderLeftColor: acc.color || '#8B5CF6' }]}>
                           <View style={styles.cardInfoCol}>
@@ -768,7 +831,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                               {holder ? `${holder.avatar_url || '👤'} ${holder.display_name}` : '🏠 全家通用'}
                             </Text>
                           </View>
-                          {isOwner && (
+                          {canEditAccount && (
                             <View style={styles.cardActionGroup}>
                               <TouchableOpacity style={styles.editBtn} onPress={() => handleOpenEdit(acc)}>
                                 <Text style={styles.editText}>編輯</Text>

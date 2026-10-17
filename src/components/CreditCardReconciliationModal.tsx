@@ -96,6 +96,7 @@ export interface CreditCardReconciliationModalProps {
   onEditTransaction?: (tx: Transaction) => void;
   initialAccountType?: 'credit_card' | 'stored_value';
   initialAccountId?: string;
+  scope?: 'my' | 'all';
 }
 
 // 輔助函式：判斷是否為悠遊卡/儲值卡加值存入紀錄
@@ -113,6 +114,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
   onEditTransaction,
   initialAccountType,
   initialAccountId,
+  scope = 'my',
 }) => {
   const {
     currentLedger,
@@ -127,6 +129,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
     currentUser,
     members,
     paymentMethods,
+    isOwner,
   } = useLedger();
 
   const [accountType, setAccountType] = useState<'credit_card' | 'stored_value'>('credit_card');
@@ -183,14 +186,42 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
     }, 260);
   };
 
+  // 判斷某個綁定成員 ID 是否對應當前本機使用者 (支援 ID 直接比對、名稱別名比對與名冊連動)
+  const isMatchedToCurrentUser = useCallback(
+    (memberId?: string | null) => {
+      if (!memberId || !currentUser) return false;
+      if (memberId === currentUser.id) return true;
+      const member = members.find(m => m.id === memberId);
+      if (member) {
+        if (member.id === currentUser.id) return true;
+        if (
+          member.display_name &&
+          currentUser.display_name &&
+          member.display_name.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase()
+        ) {
+          return true;
+        }
+      }
+      return false;
+    },
+    [currentUser, members]
+  );
+
+  const filteredPaymentAccounts = useMemo(() => {
+    if (scope === 'my') {
+      return (paymentAccounts || []).filter(a => isMatchedToCurrentUser(a.user_id));
+    }
+    return paymentAccounts || [];
+  }, [paymentAccounts, scope, isMatchedToCurrentUser]);
+
   const creditCards = useMemo(
-    () => sortAccountsByUser(paymentAccounts.filter(a => a.type === 'credit_card'), currentUser?.id),
-    [paymentAccounts, currentUser]
+    () => sortAccountsByUser(filteredPaymentAccounts.filter(a => a.type === 'credit_card'), currentUser?.id),
+    [filteredPaymentAccounts, currentUser]
   );
 
   const storedValueCards = useMemo(
-    () => sortAccountsByUser(paymentAccounts.filter(a => a.type === 'stored_value'), currentUser?.id),
-    [paymentAccounts, currentUser]
+    () => sortAccountsByUser(filteredPaymentAccounts.filter(a => a.type === 'stored_value'), currentUser?.id),
+    [filteredPaymentAccounts, currentUser]
   );
 
   const ledgerId = currentLedger?.id || '';
@@ -276,6 +307,10 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
   const currentCard = useMemo(() => {
     return activeCards.find(c => c.id === selectedCardId) || activeCards[0];
   }, [activeCards, selectedCardId]);
+
+  // 判斷當前選中之卡片是否屬於當前使用者，或使用者為帳本管理員
+  const isMySelectedCard = isMatchedToCurrentUser(currentCard?.user_id);
+  const canManageCurrentCard = isOwner || isMySelectedCard;
 
   // 計算該卡片的帳單週期清單 (信用卡依結帳日動態計算，悠遊卡依自然月份計算)
   const billingCycles = useMemo(() => {
@@ -416,6 +451,10 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
   // 處理上傳電子帳單
   const handleUploadStatement = async () => {
     if (!currentCard || !currentCycle || !ledgerId) return;
+    if (!canManageCurrentCard) {
+      showAlert('權限不足', '此卡片屬於其他家庭成員，僅持卡人或帳本管理員可上傳帳單');
+      return;
+    }
 
     if (Platform.OS === 'web') {
       try {
@@ -467,6 +506,10 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
 
   // 刪除電子帳單
   const handleDeleteStatement = (stmt: CreditCardStatementFile) => {
+    if (!canManageCurrentCard) {
+      showAlert('權限不足', '此卡片屬於其他家庭成員，僅持卡人或帳本管理員可刪除帳單');
+      return;
+    }
     const cardObj = creditCards.find(c => c.id === stmt.cardId);
     const cardLabel = cardObj ? cardObj.name : '信用卡';
     showConfirm(
@@ -491,6 +534,10 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
   // 快速新增本期刷卡回饋折抵 / 退刷
   const handleSaveRebate = async () => {
     if (!currentCard || !currentCycle) return;
+    if (!canManageCurrentCard) {
+      showAlert('權限不足', '此卡片屬於其他家庭成員，僅持卡人或帳本管理員可登記折抵');
+      return;
+    }
     const num = parseFloat(rebateAmount);
     if (isNaN(num) || num <= 0) {
       showAlert('金額無效', '請輸入大於 0 的回饋折抵或退刷金額');
@@ -549,6 +596,14 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
     }
   };
 
+  const handleToggleReconcile = (tx: Transaction) => {
+    if (!canManageCurrentCard) {
+      showAlert('權限不足', '此卡片屬於其他家庭成員，僅持卡人或帳本管理員可執行對帳核對');
+      return;
+    }
+    toggleReconcileTransaction(tx.id);
+  };
+
   if (!visible) return null;
 
   const isCredit = accountType === 'credit_card';
@@ -567,9 +622,15 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                 {isCredit ? '💳 信用卡帳單精確對帳' : '🚌 悠遊卡自然月對帳'}
               </Text>
               <Text style={styles.subtitle} maxFontSizeMultiplier={1.15}>
-                {isCredit
-                  ? '依結帳日比對每筆消費、登記回饋折抵與存放電子帳單'
-                  : '依自然月檢視悠遊卡每筆扣款與加值，精確掌握卡片餘額'}
+                {scope === 'my'
+                  ? (isCredit
+                      ? `依結帳日比對「${currentUser?.display_name || '我'}」的消費、登記回饋折抵與存放電子帳單`
+                      : `依自然月檢視「${currentUser?.display_name || '我'}」的悠遊卡扣款與加值`)
+                  : (canManageCurrentCard
+                      ? (isCredit
+                          ? '依結帳日比對每筆消費、登記回饋折抵與存放電子帳單'
+                          : '依自然月檢視悠遊卡每筆扣款與加值，精確掌握卡片餘額')
+                      : '全家一覽瀏覽模式（您正在查看其他成員卡片，僅供瀏覽明細）')}
               </Text>
             </View>
 
@@ -1048,43 +1109,52 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                         </View>
                       ) : null}
 
-                      <View style={styles.creditActionBtnRow}>
-                        {!currentStatement && (
+                      {canManageCurrentCard ? (
+                        <View style={styles.creditActionBtnRow}>
+                          {!currentStatement && (
+                            <TouchableOpacity
+                              style={styles.creditActionBtnStmt}
+                              onPress={handleUploadStatement}
+                              disabled={uploadingStatement}
+                              activeOpacity={0.7}
+                            >
+                              {uploadingStatement ? (
+                                <ActivityIndicator size="small" color="#1D4ED8" />
+                              ) : (
+                                <Text style={styles.creditActionBtnStmtText} maxFontSizeMultiplier={1.08}>
+                                  📤 上傳本期電子帳單 (PDF/圖片)
+                                </Text>
+                              )}
+                            </TouchableOpacity>
+                          )}
+
                           <TouchableOpacity
-                            style={styles.creditActionBtnStmt}
-                            onPress={handleUploadStatement}
-                            disabled={uploadingStatement}
+                            style={[
+                              styles.creditActionBtnRebate,
+                              showRebateForm && styles.creditActionBtnRebateActive,
+                            ]}
+                            onPress={() => setShowRebateForm(prev => !prev)}
                             activeOpacity={0.7}
                           >
-                            {uploadingStatement ? (
-                              <ActivityIndicator size="small" color="#1D4ED8" />
-                            ) : (
-                              <Text style={styles.creditActionBtnStmtText} maxFontSizeMultiplier={1.08}>
-                                📤 上傳本期電子帳單 (PDF/圖片)
-                              </Text>
-                            )}
+                            <Text
+                              style={[
+                                styles.creditActionBtnRebateText,
+                                showRebateForm && styles.creditActionBtnRebateTextActive,
+                              ]}
+                              maxFontSizeMultiplier={1.08}
+                            >
+                              {showRebateForm ? '✕ 收起回饋折抵' : '🎁 ＋記一筆回饋折抵 / 退刷'}
+                            </Text>
                           </TouchableOpacity>
-                        )}
-
-                        <TouchableOpacity
-                          style={[
-                            styles.creditActionBtnRebate,
-                            showRebateForm && styles.creditActionBtnRebateActive,
-                          ]}
-                          onPress={() => setShowRebateForm(prev => !prev)}
-                          activeOpacity={0.7}
-                        >
-                          <Text
-                            style={[
-                              styles.creditActionBtnRebateText,
-                              showRebateForm && styles.creditActionBtnRebateTextActive,
-                            ]}
-                            maxFontSizeMultiplier={1.08}
-                          >
-                            {showRebateForm ? '✕ 收起回饋折抵' : '🎁 ＋記一筆回饋折抵 / 退刷'}
+                        </View>
+                      ) : (
+                        <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, marginHorizontal: 16, marginTop: 10, marginBottom: 4, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={{ fontSize: 13 }}>🔒</Text>
+                          <Text style={{ fontSize: 12, color: '#92400E', flex: 1 }}>
+                            全家瀏覽模式：此卡片屬於其他成員，僅供瀏覽消費明細。若需進行對帳或折抵，請切換至「我的」視角。
                           </Text>
-                        </TouchableOpacity>
-                      </View>
+                        </View>
+                      )}
 
                       {/* 🎁 快速新增本期回饋折抵面板 */}
                       {showRebateForm && (
@@ -1270,9 +1340,13 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
 
                       {/* 核對勾選按鈕 */}
                       <TouchableOpacity
-                        style={[styles.reconcileBtn, tx.is_reconciled && styles.reconcileBtnActive]}
-                        onPress={() => toggleReconcileTransaction(tx.id)}
-                        activeOpacity={0.7}
+                        style={[
+                          styles.reconcileBtn,
+                          tx.is_reconciled && styles.reconcileBtnActive,
+                          !canManageCurrentCard && { opacity: 0.5 },
+                        ]}
+                        onPress={() => handleToggleReconcile(tx)}
+                        activeOpacity={canManageCurrentCard ? 0.7 : 1}
                       >
                         <Text style={[styles.reconcileBtnText, tx.is_reconciled && styles.reconcileBtnTextActive]}>
                           {tx.is_reconciled ? '✓ 已核對' : '○ 待核對'}

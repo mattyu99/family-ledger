@@ -4676,10 +4676,10 @@ function MainApp() {
                   </Text>
                   <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                     {billsScope === 'my'
-                      ? `僅列出綁定本機「${currentUser?.display_name || '我'}」負責之定期項目`
+                      ? `僅列出綁定本機「${currentUser?.display_name || '我'}」負責之定期項目，可自主管理規則與確認入帳`
                       : isOwner
                       ? '管理水電瓦斯、房租通訊、分期攤提等定期週期項目，到期手動確認記帳'
-                      : '查看家庭固定週期扣款設定與出帳月份'}
+                      : '查看家庭固定週期扣款設定與出帳月份（全家純瀏覽模式）'}
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 6 }}>
@@ -4704,7 +4704,7 @@ function MainApp() {
                     }}
                   >
                     <Text style={styles.manageCategoryBtnText} maxFontSizeMultiplier={1.2}>
-                      {isOwner ? '⚙️ 管理規則' : '👀 查看規則'}
+                      {billsScope === 'my' || isOwner ? '⚙️ 管理規則' : '👀 查看規則'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -4763,10 +4763,10 @@ function MainApp() {
                   </Text>
                   <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                     {billsScope === 'my'
-                      ? `僅列出綁定本機「${currentUser?.display_name || '我'}」專屬之卡片與帳戶`
+                      ? `僅列出綁定本機「${currentUser?.display_name || '我'}」專屬之卡片與帳戶，可自主管理與對帳`
                       : isOwner
                       ? '管理信用卡結帳週期、悠遊卡/一卡通餘額與帳單對帳'
-                      : '查看全家信用卡結帳日與悠遊卡即時餘額（僅管理員可增修）'}
+                      : '查看全家信用卡結帳日與悠遊卡即時餘額（全家純瀏覽模式）'}
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 6 }}>
@@ -4783,7 +4783,7 @@ function MainApp() {
                     onPress={() => setAccountsManageModalVisible(true)}
                   >
                     <Text style={styles.manageCategoryBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                      {isOwner ? '⚙️ 管理' : '👀 查看'}
+                      {billsScope === 'my' || isOwner ? '⚙️ 管理' : '👀 查看'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -5768,12 +5768,14 @@ function MainApp() {
         onEditTransaction={tx => setEditingTransaction(tx)}
         initialAccountType={reconcileAccountType}
         initialAccountId={reconcileAccountId}
+        scope={billsScope}
       />
 
       {/* 💳 支付卡片與帳戶管理彈窗 */}
       <PaymentAccountsManageModal
         visible={accountsManageModalVisible}
         onClose={() => setAccountsManageModalVisible(false)}
+        scope={billsScope}
       />
 
       {/* 📱 常用付款方式管理彈窗 */}
@@ -5787,6 +5789,7 @@ function MainApp() {
         visible={recurringModalVisible}
         initialTab={recurringModalInitialTab}
         onClose={() => setRecurringModalVisible(false)}
+        scope={billsScope}
       />
 
       {/* 📜 版本更新歷程彈窗 */}
