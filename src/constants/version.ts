@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 47;
+export const APP_BUILD_REVISION = 48;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.48',
+    date: '2026-10-17',
+    title: '編輯明細顯示完整年份時間與明細列表支援全年度篩選',
+    highlights: [
+      '「✏️ 編輯記帳明細」頂部標示完整年份與精確時間：將編輯記帳彈窗標題下方的「記帳日期：MM/DD」升級為顯示完整年份與精確時間（例如「記帳日期：YYYY/MM/DD HH:mm」），無論一般支出、內部轉帳或生活備忘，皆能一目了然原始記帳的時間細節。',
+      '「近期明細」清單支援全年度篩選：點擊收支明細頁面上方的「📅 時間篩選」按鈕，彈窗新增「🗓️ 全年度篩選」專屬區塊，動態列出記帳資料中的各年份（例如「2026 年 (今年度全年)」、「2025 年 (去年度全年)」）與筆數，一鍵即可展開整年記帳明細。',
+      '明細總覽卡片與篩選膠囊狀態連動：選取全年度後，上方收支總覽卡片標題清晰呈現「今年 (2026 全年)」或「2025 全年」，支出、收入與結餘自動統計該整年度，且切換成員視角時亦能精準計算個人全年度收支。',
+    ],
+  },
   {
     version: '1.0.5.47',
     date: '2026-10-17',

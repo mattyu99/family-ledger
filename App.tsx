@@ -858,13 +858,17 @@ function MainApp() {
     let memo = 0;
 
     transactions.forEach(t => {
-      // 1. 月份篩選
+      // 1. 月份與年份篩選
       if (filterMonth !== 'all') {
         if (!t.transacted_at) return;
         const d = new Date(t.transacted_at);
         if (isNaN(d.getTime())) return;
-        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        if (ym !== filterMonth) return;
+        if (/^\d{4}$/.test(filterMonth)) {
+          if (d.getFullYear() !== parseInt(filterMonth, 10)) return;
+        } else {
+          const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          if (ym !== filterMonth) return;
+        }
       }
 
       // 2. 成員篩選 (出資人或受款轉入人)
@@ -909,13 +913,17 @@ function MainApp() {
       if (transactionTypeFilter === 'financial' && t.type === 'memo') return false;
       if (transactionTypeFilter === 'memo' && t.type !== 'memo') return false;
 
-      // 1. 月份篩選
+      // 1. 月份與年份篩選
       if (filterMonth !== 'all') {
         if (!t.transacted_at) return false;
         const d = new Date(t.transacted_at);
         if (isNaN(d.getTime())) return false;
-        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        if (ym !== filterMonth) return false;
+        if (/^\d{4}$/.test(filterMonth)) {
+          if (d.getFullYear() !== parseInt(filterMonth, 10)) return false;
+        } else {
+          const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          if (ym !== filterMonth) return false;
+        }
       }
 
       // 2. 成員篩選 (出資人或受款轉入人)
@@ -1025,6 +1033,10 @@ function MainApp() {
     const parts: string[] = [];
     if (filterMonth === 'all') {
       parts.push('全部歷史');
+    } else if (/^\d{4}$/.test(filterMonth)) {
+      const year = parseInt(filterMonth, 10);
+      const nowY = new Date().getFullYear();
+      parts.push(year === nowY ? `今年 (${year} 全年)` : `${year} 全年`);
     } else if (selectedMonthObj) {
       parts.push(selectedMonthObj.label);
     } else if (filterMonth && filterMonth.includes('-')) {
@@ -4064,19 +4076,23 @@ function MainApp() {
 
             {/* 篩選工具列 (月份與成員) */}
             <View style={styles.filterToolbar}>
-              {/* 月份篩選按鈕 */}
+              {/* 月份與年份篩選按鈕 */}
               <TouchableOpacity
                 activeOpacity={0.7}
                 style={[styles.filterChip, filterMonth !== currentMonthYm && styles.filterChipActive]}
                 onPress={() => setFilterModalType('month')}
               >
-                <Text style={styles.filterChipIcon}>📅</Text>
+                <Text style={styles.filterChipIcon}>
+                  {/^\d{4}$/.test(filterMonth) ? '🗓️' : filterMonth === 'all' ? '🌐' : '📅'}
+                </Text>
                 <Text
                   style={[styles.filterChipText, filterMonth !== currentMonthYm && styles.filterChipTextActive]}
                   numberOfLines={1}
                 >
                   {filterMonth === 'all'
                     ? '全部月份'
+                    : /^\d{4}$/.test(filterMonth)
+                    ? (parseInt(filterMonth, 10) === new Date().getFullYear() ? `今年 (${filterMonth} 全年)` : `${filterMonth} 全年`)
                     : filterMonth === currentMonthYm
                     ? `本月 (${parseInt(currentMonthYm.split('-')[1], 10)}月)`
                     : (selectedMonthObj?.label || filterMonth)}
@@ -5839,6 +5855,7 @@ function MainApp() {
           setHasManuallySelectedMember(true);
         }}
         availableMonths={availableMonths}
+        availableYears={availableYears}
         members={members}
         currentUser={currentUser}
         transactions={transactions}

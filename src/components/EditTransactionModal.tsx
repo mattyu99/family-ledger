@@ -579,6 +579,16 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const isCustomDate = !isOriginal && !isToday && !isYesterday && !isDayBeforeYesterday;
   const isCustomReminder = !!memoReminderDate && memoReminderDate !== todayYmd && memoReminderDate !== tomorrowYmd;
 
+  const curDateFormattedWithTime = React.useMemo(() => {
+    if (isNaN(curDate.getTime())) return '';
+    const yyyy = curDate.getFullYear();
+    const mm = String(curDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(curDate.getDate()).padStart(2, '0');
+    const hh = String(curDate.getHours()).padStart(2, '0');
+    const min = String(curDate.getMinutes()).padStart(2, '0');
+    return `${yyyy}/${mm}/${dd} ${hh}:${min}`;
+  }, [curDate]);
+
   const setQuickDate = (targetDate: Date) => {
     const orig = transaction?.transacted_at ? new Date(transaction.transacted_at) : new Date();
     const d = new Date(targetDate);
@@ -834,7 +844,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   : (transaction.type === 'memo' ? '👀 查看生活備忘' : transaction.type === 'transfer' ? '👀 查看內部轉帳' : '👀 查看記帳明細')}
               </Text>
               <Text style={styles.headerDateBadge} maxFontSizeMultiplier={1.15}>
-                {transaction.type === 'memo' ? '記事日期' : transaction.type === 'transfer' ? '轉帳日期' : '記帳日期'}：{curDate.getMonth() + 1}/{curDate.getDate()}
+                {transaction.type === 'memo' ? '記事日期' : transaction.type === 'transfer' ? '轉帳日期' : '記帳日期'}：{curDateFormattedWithTime}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -1924,7 +1934,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記帳日期</Text>
               {!isOriginal && (
                 <Text style={styles.dateHintText} maxFontSizeMultiplier={1.15}>
-                  (已改為：{curDate.getFullYear()}/{curDate.getMonth() + 1}/{curDate.getDate()})
+                  (已改為：{curDateFormattedWithTime})
                 </Text>
               )}
             </View>

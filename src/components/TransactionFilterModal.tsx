@@ -28,15 +28,22 @@ export interface MonthOption {
   count: number;
 }
 
+export interface YearOption {
+  year: number;
+  count: number;
+  label?: string;
+}
+
 interface TransactionFilterModalProps {
   visible: boolean;
   type: 'month' | 'member' | null;
   onClose: () => void;
-  selectedMonth: string; // 'all' or 'YYYY-MM'
+  selectedMonth: string; // 'all' or 'YYYY-MM' or 'YYYY'
   onSelectMonth: (month: string) => void;
   selectedMemberId: string; // 'all' or member.id
   onSelectMember: (memberId: string) => void;
   availableMonths: MonthOption[];
+  availableYears?: YearOption[];
   members: Profile[];
   currentUser: Profile;
   transactions: Transaction[];
@@ -52,19 +59,51 @@ export const TransactionFilterModal: React.FC<TransactionFilterModalProps> = ({
   selectedMemberId,
   onSelectMember,
   availableMonths,
+  availableYears,
   members,
   currentUser,
   transactions,
   getMemberById,
 }) => {
-  // 依當前選取的月份設定範圍篩選交易明細（連動月份篩選範圍）
+  // 萃取可用年份（若外部有傳入則使用，否則動態從交易紀錄彙整）
+  const yearsList = React.useMemo(() => {
+    if (availableYears && availableYears.length > 0) {
+      return availableYears;
+    }
+    const yearMap = new Map<number, number>();
+    const currentYear = new Date().getFullYear();
+    yearMap.set(currentYear, 0);
+
+    transactions.forEach(t => {
+      if (t.transacted_at) {
+        const d = new Date(t.transacted_at);
+        if (!isNaN(d.getTime())) {
+          const y = d.getFullYear();
+          yearMap.set(y, (yearMap.get(y) || 0) + 1);
+        }
+      }
+    });
+
+    return Array.from(yearMap.entries())
+      .sort((a, b) => b[0] - a[0])
+      .map(([year, count]) => ({
+        year,
+        count,
+        label: `${year} 全年`,
+      }));
+  }, [availableYears, transactions]);
+
+  // 依當前選取的月份/年份設定範圍篩選交易明細（連動月份/年份篩選範圍）
   const monthScopedTransactions = React.useMemo(() => {
     if (!visible || !type) return [];
     if (selectedMonth === 'all') return transactions;
+    const isYear = /^\d{4}$/.test(selectedMonth);
+    const targetYear = isYear ? parseInt(selectedMonth, 10) : 0;
     return transactions.filter(t => {
       if (!t.transacted_at) return false;
       const d = new Date(t.transacted_at);
       if (isNaN(d.getTime())) return false;
+      if (isYear) return d.getFullYear() === targetYear;
       const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       return ym === selectedMonth;
     });
@@ -72,10 +111,12 @@ export const TransactionFilterModal: React.FC<TransactionFilterModalProps> = ({
 
   if (!visible || !type) return null;
 
-  // 取得當前選定月份之中文標籤
+  // 取得當前選定月份/年份之中文標籤
   const selectedMonthObj = availableMonths.find(m => m.ym === selectedMonth);
   const selectedMonthLabel = selectedMonth === 'all'
-    ? '全部月份'
+    ? '全部歷史'
+    : /^\d{4}$/.test(selectedMonth)
+    ? (parseInt(selectedMonth, 10) === new Date().getFullYear() ? `今年度 (${selectedMonth} 全年)` : `${selectedMonth} 年度 (全年)`)
     : (selectedMonthObj?.label || (selectedMonth.includes('-') ? `${selectedMonth.split('-')[0]} 年 ${parseInt(selectedMonth.split('-')[1], 10)} 月` : selectedMonth));
 
 
@@ -102,11 +143,11 @@ export const TransactionFilterModal: React.FC<TransactionFilterModalProps> = ({
           <View style={styles.header}>
             <View>
               <Text style={styles.title} maxFontSizeMultiplier={1.15}>
-                {isMonth ? '📅 選擇篩選月份' : '👤 選擇付款成員'}
+                {isMonth ? '📅 選擇篩選時間' : '👤 選擇付款成員'}
               </Text>
               <Text style={styles.subtitle} maxFontSizeMultiplier={1.15}>
                 {isMonth
-                  ? '只顯示特定月份的記帳紀錄'
+                  ? '可選擇全年度、指定月份或全部歷史紀錄'
                   : `只顯示「${selectedMonthLabel}」特定家庭成員的記帳紀錄`}
               </Text>
             </View>
@@ -117,9 +158,9 @@ export const TransactionFilterModal: React.FC<TransactionFilterModalProps> = ({
 
           <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
             {isMonth ? (
-              /* 月份選項列表 */
+              /* 月份與年份選項列表 */
               <View style={styles.optionList}>
-                {/* 全部月份 */}
+                {/* 全部月份與歷史 */}
                 <TouchableOpacity
                   style={[styles.optionItem, selectedMonth === 'all' && styles.optionItemActive]}
                   onPress={() => {
@@ -129,13 +170,13 @@ export const TransactionFilterModal: React.FC<TransactionFilterModalProps> = ({
                 >
                   <View style={styles.optionLeft}>
                     <View style={[styles.optionIconBox, selectedMonth === 'all' && styles.optionIconBoxActive]}>
-                      <Text style={styles.optionIcon}>🗓️</Text>
+                      <Text style={styles.optionIcon}>🌐</Text>
                     </View>
                     <View>
                       <Text style={[styles.optionLabel, selectedMonth === 'all' && styles.optionLabelActive]}>
-                        全部月份
+                        全部月份 / 歷史紀錄
                       </Text>
-                      <Text style={styles.optionSublabel}>所有歷史收支紀錄</Text>
+                      <Text style={styles.optionSublabel}>所有歷史收支與記帳明細</Text>
                     </View>
                   </View>
                   <View style={styles.optionRight}>
@@ -143,6 +184,62 @@ export const TransactionFilterModal: React.FC<TransactionFilterModalProps> = ({
                     {selectedMonth === 'all' && <Text style={styles.checkIcon}>✓</Text>}
                   </View>
                 </TouchableOpacity>
+
+                {/* 🗓️ 全年度篩選分組 */}
+                {yearsList.length > 0 && (
+                  <View style={styles.groupHeaderContainer}>
+                    <Text style={styles.groupHeaderText}>🗓️ 全年度篩選</Text>
+                  </View>
+                )}
+
+                {yearsList.map(y => {
+                  const yStr = String(y.year);
+                  const isSelected = selectedMonth === yStr;
+                  const nowY = new Date().getFullYear();
+                  const isThisYear = y.year === nowY;
+                  const isLastYear = y.year === nowY - 1;
+                  const yearTitle = isThisYear
+                    ? `${y.year} 年 (今年度全年)`
+                    : isLastYear
+                    ? `${y.year} 年 (去年度全年)`
+                    : `${y.year} 年 (全年度)`;
+
+                  return (
+                    <TouchableOpacity
+                      key={yStr}
+                      style={[styles.optionItem, isSelected && styles.optionItemActive]}
+                      onPress={() => {
+                        onSelectMonth(yStr);
+                        onClose();
+                      }}
+                    >
+                      <View style={styles.optionLeft}>
+                        <View style={[styles.optionIconBox, isSelected && styles.optionIconBoxActive]}>
+                          <Text style={styles.optionIcon}>🗓️</Text>
+                        </View>
+                        <View>
+                          <Text style={[styles.optionLabel, isSelected && styles.optionLabelActive]}>
+                            {yearTitle}
+                          </Text>
+                          <Text style={styles.optionSublabel}>
+                            {y.year} 年 1 月 ～ 12 月整年度累計明細
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.optionRight}>
+                        <Text style={styles.countBadge}>{y.count} 筆</Text>
+                        {isSelected && <Text style={styles.checkIcon}>✓</Text>}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+
+                {/* 📅 單月份篩選分組 */}
+                {availableMonths.length > 0 && (
+                  <View style={styles.groupHeaderContainer}>
+                    <Text style={styles.groupHeaderText}>📅 單月份篩選</Text>
+                  </View>
+                )}
 
                 {/* 各月份列表 */}
                 {availableMonths.map(m => {
@@ -382,5 +479,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#4F46E5',
     marginLeft: 2,
+  },
+  groupHeaderContainer: {
+    paddingTop: 12,
+    paddingBottom: 4,
+    paddingHorizontal: 4,
+  },
+  groupHeaderText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#4F46E5',
+    letterSpacing: 0.5,
   },
 });
