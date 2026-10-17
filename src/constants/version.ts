@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 42;
+export const APP_BUILD_REVISION = 43;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,15 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.43',
+    date: '2026-10-17',
+    title: '新增支出表單關閉與重開徹底重設狀態防呆',
+    highlights: [
+      '取消關閉狀態即時清空：在「新增一筆支出」中，無論點擊右上角「✕」關閉按鈕或系統返回鍵取消，表單皆自動徹底重設所有欄位（金額、分類、付款方式、卡片帳戶、商家、備註與折扣等）。',
+      '杜絕前次殘留設定干擾：再次點開記帳彈窗時保證呈現最純淨的初始預設狀態（金額為空、預設第一筆分類與現金付款），徹底避免因前次未完成的編輯殘留而導致誤記帳。',
+    ],
+  },
   {
     version: '1.0.5.42',
     date: '2026-10-17',

@@ -469,71 +469,89 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     return pool.filter(m => m.toLowerCase().includes(query)).slice(0, 10);
   }, [categories, type, selectedCategoryId, recentMerchants, merchant]);
 
-  // 當彈窗開啟、或成員/分類/當前使用者載入時，自動同步預設選中值
-  React.useEffect(() => {
-    if (visible) {
-      setSelectedDate(new Date());
-      setDatePickerVisible(false);
-      setMerchant('');
-      setMemoReminderDate('');
-      setMemoReminderCalendar('solar');
-      setMemoReminderRepeat('once');
-      setReminderPickerInitialMode('solar');
-      setReminderDatePickerVisible(false);
-      setShowDiscountPanel(false);
-      setDiscountAmount('');
-      setDiscountLabel('LINE Points');
-      setDiscountLabelTouched(false);
-      setDiscountCalcMode('subtract');
+  // 表單重設函式：全面清空金額、分類、付款方式、卡片與備註，回到初始純淨狀態
+  const resetForm = React.useCallback(() => {
+    setSelectedDate(new Date());
+    setDatePickerVisible(false);
+    setAmount('');
+    setPaymentMethod('cash');
+    setSelectedAccountId('');
+    setMerchant('');
+    setMemoReminderDate('');
+    setMemoReminderCalendar('solar');
+    setMemoReminderRepeat('once');
+    setReminderPickerInitialMode('solar');
+    setReminderDatePickerVisible(false);
+    setShowDiscountPanel(false);
+    setDiscountAmount('');
+    setDiscountLabel('LINE Points');
+    setDiscountLabelTouched(false);
+    setDiscountCalcMode('subtract');
+    setAllowanceMode('transfer');
 
-      const targetMode = initialMode || 'expense';
-      setMode(targetMode);
-      if (targetMode === 'expense' || targetMode === 'income' || targetMode === 'memo') {
-        setType(targetMode);
-      }
+    const targetMode = initialMode || 'expense';
+    setMode(targetMode);
+    if (targetMode === 'expense' || targetMode === 'income' || targetMode === 'memo') {
+      setType(targetMode);
+    }
 
-      if (defaultNote) {
-        setNote(defaultNote);
-      } else {
-        setNote('');
-      }
+    if (defaultNote) {
+      setNote(defaultNote);
+    } else {
+      setNote('');
+    }
 
-      const activeMember = (defaultPayerId && members.find(m => m.id === defaultPayerId))
-        || members.find(m => m.id === currentUser.id)
-        || getMemberById(currentUser.id)
-        || members.find(m => (m.display_name || '').trim().toLowerCase() === (currentUser.display_name || '').trim().toLowerCase())
-        || members[0];
-      if (activeMember) {
-        setPaidBy(activeMember.id);
-        setAllowancePayerId(activeMember.id);
-      }
+    const activeMember = (defaultPayerId && members.find(m => m.id === defaultPayerId))
+      || members.find(m => m.id === currentUser.id)
+      || getMemberById(currentUser.id)
+      || members.find(m => (m.display_name || '').trim().toLowerCase() === (currentUser.display_name || '').trim().toLowerCase())
+      || members[0];
+    if (activeMember) {
+      setPaidBy(activeMember.id);
+      setAllowancePayerId(activeMember.id);
+    }
 
-      // 零用錢受款者預設值
-      if (defaultRecipientId && members.some(m => m.id === defaultRecipientId)) {
-        setAllowanceRecipientId(defaultRecipientId);
-      } else {
-        const others = members.filter(m => m.id !== (activeMember?.id || currentUser.id));
-        const kid = others.find(m => m.display_name.includes('寶') || m.display_name.includes('兒') || m.display_name.includes('小') || m.display_name.includes('弟') || m.display_name.includes('妹')) || others[0];
-        if (kid) {
-          setAllowanceRecipientId(kid.id);
-        } else if (others.length > 0) {
-          setAllowanceRecipientId(others[0].id);
-        }
-      }
-
-      // 零用錢支出預設分類 (育兒教育)
-      const parentingCat = categories.find(c => c.type === 'expense' && (c.name.includes('育兒') || c.name.includes('教育') || c.name.includes('零用')))
-        || categories.find(c => c.type === 'expense');
-      if (parentingCat) {
-        setAllowanceExpenseCatId(parentingCat.id);
-      }
-
-      const activeCats = categories.filter(c => c.type === (targetMode === 'income' ? 'income' : 'expense'));
-      if (activeCats.length > 0 && !activeCats.some(c => c.id === selectedCategoryId)) {
-        setSelectedCategoryId(activeCats[0].id);
+    // 零用錢受款者預設值
+    if (defaultRecipientId && members.some(m => m.id === defaultRecipientId)) {
+      setAllowanceRecipientId(defaultRecipientId);
+    } else {
+      const others = members.filter(m => m.id !== (activeMember?.id || currentUser.id));
+      const kid = others.find(m => m.display_name.includes('寶') || m.display_name.includes('兒') || m.display_name.includes('小') || m.display_name.includes('弟') || m.display_name.includes('妹')) || others[0];
+      if (kid) {
+        setAllowanceRecipientId(kid.id);
+      } else if (others.length > 0) {
+        setAllowanceRecipientId(others[0].id);
       }
     }
-  }, [visible, initialMode, defaultRecipientId, defaultPayerId, defaultNote, currentUser, members, categories, getMemberById]);
+
+    // 零用錢支出預設分類 (育兒教育)
+    const parentingCat = categories.find(c => c.type === 'expense' && (c.name.includes('育兒') || c.name.includes('教育') || c.name.includes('零用')))
+      || categories.find(c => c.type === 'expense');
+    if (parentingCat) {
+      setAllowanceExpenseCatId(parentingCat.id);
+    }
+
+    // 預設分類：回到該收支類型之第一個預設分類
+    const activeCats = categories.filter(c => c.type === (targetMode === 'income' ? 'income' : 'expense'));
+    if (activeCats.length > 0) {
+      setSelectedCategoryId(activeCats[0].id);
+    } else {
+      setSelectedCategoryId('');
+    }
+  }, [initialMode, defaultNote, defaultPayerId, defaultRecipientId, currentUser, members, categories, getMemberById]);
+
+  // 當彈窗開啟時，全面執行 resetForm 確保畫面乾淨無前次殘留
+  React.useEffect(() => {
+    if (visible) {
+      resetForm();
+    }
+  }, [visible, resetForm]);
+
+  // 關閉彈窗時同步清空重設表單狀態
+  const handleClose = React.useCallback(() => {
+    resetForm();
+    onClose();
+  }, [resetForm, onClose]);
 
   // 快捷金額累加
   const handleQuickAddAmount = (addVal: number) => {
@@ -784,7 +802,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.overlay}
@@ -795,7 +813,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             <Text style={styles.title} maxFontSizeMultiplier={1.15}>
               {mode === 'allowance' ? '🎁 撥發零用錢 (雙向記帳)' : mode === 'income' ? '新增一筆收入' : mode === 'memo' ? '📝 新增生活記事與備忘' : '新增一筆支出'}
             </Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+            <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
               <Text style={styles.closeText} maxFontSizeMultiplier={1.15}>✕</Text>
             </TouchableOpacity>
           </View>
