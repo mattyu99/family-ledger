@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 43;
+export const APP_BUILD_REVISION = 44;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.44',
+    date: '2026-10-17',
+    title: '帳單支付頁面總覽膠囊去重與週期扣款分頁跳轉同步修復',
+    highlights: [
+      '帳單與支付總覽 Hero 卡片重疊去重：移除頂部 Hero 卡片與下方「週期扣款與固定帳單」重複的「待核對」紅色膠囊按鈕，轉為顯示「全家支付與定期總覽摘要」，將操作按鈕清晰收斂聚焦於對應的卡片區塊。',
+      '週期扣款「查看規則」目標分頁校正：修正點擊「管理規則 / 查看規則」按鈕時因待核對筆數大於 0 而被錯誤導向待繳清單的邏輯，點選規則時保證精確進入「規則設定」分頁。',
+      '週期帳單彈窗分頁狀態即時同步防呆：新增彈窗開啟時的目標分頁自動同步機制，徹底解決先前在彈窗內切換過分頁後退出，下次點擊「待核對」或「查看規則」膠囊時會殘留前次分頁的相反跳轉問題。',
+    ],
+  },
   {
     version: '1.0.5.43',
     date: '2026-10-17',

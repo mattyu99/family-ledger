@@ -4579,26 +4579,11 @@ function MainApp() {
                   定期扣款・分期攤提・信用卡結帳・悠遊卡與電子支付
                 </Text>
               </View>
-              {pendingRecurringBillsCount > 0 ? (
-                <TouchableOpacity
-                  style={styles.billsHeroBadgeDue}
-                  activeOpacity={0.8}
-                  onPress={() => {
-                    setRecurringModalInitialTab('pending');
-                    setRecurringModalVisible(true);
-                  }}
-                >
-                  <Text style={styles.billsHeroBadgeTextDue} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    🔔 {pendingRecurringBillsCount} 筆待核對
-                  </Text>
-                </TouchableOpacity>
-              ) : (
-                <View style={styles.billsHeroBadgeOk}>
-                  <Text style={styles.billsHeroBadgeTextOk} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    ✅ 帳單皆已核對
-                  </Text>
-                </View>
-              )}
+              <View style={styles.billsHeroSummaryChip}>
+                <Text style={styles.billsHeroSummaryText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                  {paymentAccounts.length} 帳戶 · {(recurringRules || []).filter(r => !r.ledger_id || r.ledger_id === currentLedger?.id).length} 項定期
+                </Text>
+              </View>
             </View>
 
             {/* 🗓️ 週期扣款與固定帳單 (水電瓦斯、電信寬頻、定期帳單管理、分期付款) */}
@@ -4631,7 +4616,7 @@ function MainApp() {
                   <TouchableOpacity
                     style={styles.manageCategoryBtn}
                     onPress={() => {
-                      setRecurringModalInitialTab(pendingRecurringBillsCount > 0 ? 'pending' : 'rules');
+                      setRecurringModalInitialTab('rules');
                       setRecurringModalVisible(true);
                     }}
                   >
@@ -9694,5 +9679,18 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#059669',
+  },
+  billsHeroSummaryChip: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  billsHeroSummaryText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
   },
 });

@@ -122,6 +122,13 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
   const [activeTab, setActiveTab] = useState<'pending' | 'rules'>(initialTab);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
+  // 當彈窗開啟或外部傳入 initialTab 時，自動同步為指定的分頁（待核對 vs 規則管理）
+  useEffect(() => {
+    if (visible) {
+      setActiveTab(initialTab);
+    }
+  }, [visible, initialTab]);
+
   // 依當前帳本嚴格過濾週期規則，確保絕不混入其他帳本規則
   const scopedRules = useMemo(() => {
     if (!currentLedger?.id) return recurringRules || [];
