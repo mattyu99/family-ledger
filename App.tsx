@@ -299,6 +299,8 @@ function MainApp() {
   const [paymentMethodsModalVisible, setPaymentMethodsModalVisible] = useState(false);
   const [recurringModalVisible, setRecurringModalVisible] = useState(false);
   const [recurringModalInitialTab, setRecurringModalInitialTab] = useState<'pending' | 'rules'>('pending');
+  const [recurringModalScope, setRecurringModalScope] = useState<'my' | 'all'>('my');
+  const [recurringModalTargetMemberId, setRecurringModalTargetMemberId] = useState<string | undefined>(undefined);
   const [memoTodoModalVisible, setMemoTodoModalVisible] = useState(false);
 
   // 本期待繳帳單筆數 (方案 B: 到期需手動確認記帳之項目)
@@ -494,6 +496,28 @@ function MainApp() {
     [currentUser, getMemberById]
   );
 
+  // 帳單與支付資產：判斷成員 ID 是否歸屬指定目標成員 (支援 ID 直接比對、名稱別名比對與名冊連動)
+  const isMatchedToTargetMember = useCallback(
+    (memberId?: string | null, targetId?: string) => {
+      if (!memberId || !targetId) return false;
+      if (memberId === targetId) return true;
+      const targetM = getMemberById(targetId) || members.find(m => m.id === targetId);
+      const payerM = getMemberById(memberId) || members.find(m => m.id === memberId);
+      if (targetM && payerM) {
+        if (targetM.id === payerM.id) return true;
+        if (
+          targetM.display_name &&
+          payerM.display_name &&
+          targetM.display_name.trim().toLowerCase() === payerM.display_name.trim().toLowerCase()
+        ) {
+          return true;
+        }
+      }
+      return false;
+    },
+    [getMemberById, members]
+  );
+
   // 帳單支付專屬：當前帳本有效啟用之所有週期規則
   const scopedRecurringRules = useMemo(() => {
     return (recurringRules || []).filter(
@@ -526,6 +550,33 @@ function MainApp() {
   const displayedRecurringRules = billsScope === 'my' ? myRecurringRules : scopedRecurringRules;
   const displayedPaymentAccounts = billsScope === 'my' ? myPaymentAccounts : paymentAccounts;
   const activePendingBillsCount = billsScope === 'my' ? myPendingRecurringBillsCount : pendingRecurringBillsCount;
+
+  // 明細頁面專屬：100% 依據當前選取的成員篩選 (filterMemberId)，動態計算該視角下的本期待繳項目 (方式 1 完全連動)
+  const currentFilterPendingBills = useMemo(() => {
+    const now = new Date();
+    const currYear = now.getFullYear();
+    const currMonth = now.getMonth() + 1;
+
+    const allDueBills = scopedRecurringRules.filter(rule => {
+      if (!isBillDueInMonth(rule, currYear, currMonth)) return false;
+      return !isBillPaidForCurrentPeriod(rule, now);
+    });
+
+    if (filterMemberId === 'all') {
+      return allDueBills;
+    }
+
+    const targetM = members.find(m => m.id === filterMemberId);
+    const isMe =
+      filterMemberId === currentUser?.id ||
+      (!!currentUser?.display_name && targetM?.display_name === currentUser.display_name);
+
+    if (isMe) {
+      return allDueBills.filter(rule => isMatchedToCurrentUser(rule.paid_by));
+    }
+
+    return allDueBills.filter(rule => isMatchedToTargetMember(rule.paid_by, filterMemberId));
+  }, [scopedRecurringRules, filterMemberId, currentUser, members, isMatchedToCurrentUser, isMatchedToTargetMember]);
 
   // 當本機使用者身分載入或切換時，若使用者尚未手動指定其他成員，自動同步預設為本機成員
   useEffect(() => {
@@ -3834,29 +3885,57 @@ function MainApp() {
               )}
             </View>
 
-            {/* 🗓️ 待繳週期帳單提醒膠囊 (方案 B: 到期提醒核對入帳) */}
-            {pendingRecurringBillsCount > 0 && (
+            {/* 🗓️ 待繳週期帳單提醒膠囊 (方式 1: 100% 跟隨選定成員切換視角連動) */}
+            {currentFilterPendingBills.length > 0 && (
               <TouchableOpacity
                 style={styles.pendingRecurringBanner}
                 activeOpacity={0.8}
                 onPress={() => {
                   setRecurringModalInitialTab('pending');
+                  if (filterMemberId === 'all') {
+                    setRecurringModalScope('all');
+                    setRecurringModalTargetMemberId(undefined);
+                  } else {
+                    const targetM = members.find(m => m.id === filterMemberId);
+                    const isMe =
+                      filterMemberId === currentUser?.id ||
+                      (!!currentUser?.display_name && targetM?.display_name === currentUser.display_name);
+                    if (isMe) {
+                      setRecurringModalScope('my');
+                      setRecurringModalTargetMemberId(undefined);
+                    } else {
+                      setRecurringModalScope('all');
+                      setRecurringModalTargetMemberId(filterMemberId);
+                    }
+                  }
                   setRecurringModalVisible(true);
                 }}
               >
                 <View style={styles.pendingRecurringLeft}>
                   <View style={styles.pendingRecurringBadge}>
                     <Text style={styles.pendingRecurringBadgeText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                      🗓️ 待繳
+                      {filterMemberId === 'all' ? '🗓️ 全家待繳' : '🗓️ 待繳'}
                     </Text>
                   </View>
                   <Text style={styles.pendingRecurringTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    本期有 <Text style={styles.pendingRecurringCountHighlight}>{pendingRecurringBillsCount}</Text> 筆週期帳單待確認
+                    {filterMemberId === 'all' ? (
+                      <>全家本期有 <Text style={styles.pendingRecurringCountHighlight}>{currentFilterPendingBills.length}</Text> 筆週期帳單待確認</>
+                    ) : (filterMemberId === currentUser?.id || (!!currentUser?.display_name && members.find(m => m.id === filterMemberId)?.display_name === currentUser.display_name)) ? (
+                      <>您本期有 <Text style={styles.pendingRecurringCountHighlight}>{currentFilterPendingBills.length}</Text> 筆週期帳單待確認</>
+                    ) : (
+                      <>「{members.find(m => m.id === filterMemberId)?.display_name || '該成員'}」本期有 <Text style={styles.pendingRecurringCountHighlight}>{currentFilterPendingBills.length}</Text> 筆週期帳單待確認</>
+                    )}
                   </Text>
                 </View>
                 <View style={styles.pendingRecurringAction}>
                   <Text style={styles.pendingRecurringActionText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    核對記帳 ›
+                    {(() => {
+                      const isMe =
+                        filterMemberId === currentUser?.id ||
+                        (!!currentUser?.display_name && members.find(m => m.id === filterMemberId)?.display_name === currentUser.display_name);
+                      const canAct = isOwner || isMe || filterMemberId === 'all';
+                      return canAct ? '核對記帳 ›' : '查看帳單 ›';
+                    })()}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -4796,6 +4875,8 @@ function MainApp() {
                     <TouchableOpacity
                       style={[styles.manageCategoryBtn, { backgroundColor: '#FEE2E2', borderColor: '#FECACA' }]}
                       onPress={() => {
+                        setRecurringModalScope(billsScope);
+                        setRecurringModalTargetMemberId(undefined);
                         setRecurringModalInitialTab('pending');
                         setRecurringModalVisible(true);
                       }}
@@ -4808,6 +4889,8 @@ function MainApp() {
                   <TouchableOpacity
                     style={styles.manageCategoryBtn}
                     onPress={() => {
+                      setRecurringModalScope(billsScope);
+                      setRecurringModalTargetMemberId(undefined);
                       setRecurringModalInitialTab('rules');
                       setRecurringModalVisible(true);
                     }}
@@ -4828,6 +4911,8 @@ function MainApp() {
                       key={rule.id}
                       style={[styles.paymentAccountPreviewChip, { borderColor: '#E2E8F0' }]}
                       onPress={() => {
+                        setRecurringModalScope(billsScope);
+                        setRecurringModalTargetMemberId(undefined);
                         setRecurringModalInitialTab('pending');
                         setRecurringModalVisible(true);
                       }}
@@ -4849,6 +4934,8 @@ function MainApp() {
                   <TouchableOpacity
                     style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
                     onPress={() => {
+                      setRecurringModalScope(billsScope);
+                      setRecurringModalTargetMemberId(undefined);
                       setRecurringModalInitialTab('rules');
                       setRecurringModalVisible(true);
                     }}
@@ -5899,8 +5986,12 @@ function MainApp() {
       <RecurringBillsManageModal
         visible={recurringModalVisible}
         initialTab={recurringModalInitialTab}
-        onClose={() => setRecurringModalVisible(false)}
-        scope={billsScope}
+        onClose={() => {
+          setRecurringModalVisible(false);
+          setRecurringModalTargetMemberId(undefined);
+        }}
+        scope={recurringModalScope}
+        targetMemberId={recurringModalTargetMemberId}
       />
 
       {/* 📜 版本更新歷程彈窗 */}

@@ -93,6 +93,7 @@ export interface RecurringBillsManageModalProps {
   onClose: () => void;
   initialTab?: 'pending' | 'rules';
   scope?: 'my' | 'all';
+  targetMemberId?: string;
 }
 
 export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps> = ({
@@ -100,6 +101,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
   onClose,
   initialTab = 'pending',
   scope = 'my',
+  targetMemberId,
 }) => {
   const {
     recurringRules,
@@ -153,20 +155,67 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     [currentUser, members]
   );
 
-  // 權限判定：帳本管理員隨時可管理；一般家庭成員在「我的」視角下可自主管理個人規則與帳單
-  const canManage = isOwner || scope === 'my';
+  // 判斷某個付款人 ID 是否對應指定目標成員 (支援 ID 或別名比對)
+  const isRuleBoundToTargetMember = useCallback(
+    (paidById?: string | null, targetId?: string) => {
+      if (!paidById || !targetId) return false;
+      if (paidById === targetId) return true;
+      const targetM = members.find(m => m.id === targetId);
+      const payerM = members.find(m => m.id === paidById);
+      if (targetM && payerM) {
+        if (targetM.id === payerM.id) return true;
+        if (
+          targetM.display_name &&
+          payerM.display_name &&
+          targetM.display_name.trim().toLowerCase() === payerM.display_name.trim().toLowerCase()
+        ) {
+          return true;
+        }
+      }
+      return false;
+    },
+    [members]
+  );
 
-  // 依當前帳本嚴格過濾週期規則，且在「我的」視角下嚴格過濾屬於自己的扣繳項目
+  // 目標成員物件與是否鎖定為非本人視角
+  const targetMemberObj = useMemo(() => {
+    if (!targetMemberId || targetMemberId === 'all') return undefined;
+    return members.find(m => m.id === targetMemberId);
+  }, [targetMemberId, members]);
+
+  const isTargetingOtherMember = useMemo(() => {
+    if (!targetMemberObj) return false;
+    if (currentUser?.id && targetMemberObj.id === currentUser.id) return false;
+    if (
+      currentUser?.display_name &&
+      targetMemberObj.display_name &&
+      targetMemberObj.display_name.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase()
+    ) {
+      return false;
+    }
+    return true;
+  }, [targetMemberObj, currentUser]);
+
+  // 權限判定：帳本管理員隨時可管理；一般家庭成員在「我的」視角下可自主管理個人規則與帳單；查閱其他成員時唯讀防呆
+  const canManage = isOwner || (scope === 'my' && !isTargetingOtherMember);
+
+  // 依當前帳本嚴格過濾週期規則，且在指定視角下嚴格過濾扣繳項目
   const scopedRules = useMemo(() => {
     let list = recurringRules || [];
     if (currentLedger?.id) {
       list = list.filter(r => !r.ledger_id || r.ledger_id === currentLedger.id);
     }
-    if (scope === 'my') {
+    if (targetMemberId && targetMemberId !== 'all') {
+      if (isTargetingOtherMember) {
+        list = list.filter(r => isRuleBoundToTargetMember(r.paid_by, targetMemberId));
+      } else {
+        list = list.filter(r => isRuleBoundToCurrentUser(r.paid_by));
+      }
+    } else if (scope === 'my') {
       list = list.filter(r => isRuleBoundToCurrentUser(r.paid_by));
     }
     return list;
-  }, [recurringRules, currentLedger?.id, scope, isRuleBoundToCurrentUser]);
+  }, [recurringRules, currentLedger?.id, scope, targetMemberId, isTargetingOtherMember, isRuleBoundToCurrentUser, isRuleBoundToTargetMember]);
 
   // 入帳彈窗狀態 (用於浮動金額、固定金額、分期付款入帳確認)
   const [amountModalVisible, setAmountModalVisible] = useState<boolean>(false);
@@ -860,10 +909,16 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
           <View style={styles.header}>
             <View style={styles.headerTitleContainer}>
               <Text style={styles.headerTitle}>
-                {scope === 'my' ? '🗓️ 我的週期扣款與固定帳單' : '🗓️ 全家週期扣款與固定帳單'}
+                {targetMemberObj && isTargetingOtherMember
+                  ? `🗓️ ${targetMemberObj.display_name} 的週期扣款`
+                  : scope === 'my'
+                  ? '🗓️ 我的週期扣款與固定帳單'
+                  : '🗓️ 全家週期扣款與固定帳單'}
               </Text>
               <Text style={styles.headerSubtitle}>
-                {scope === 'my'
+                {targetMemberObj && isTargetingOtherMember
+                  ? `檢視 ${targetMemberObj.display_name} 負責扣繳之各項固定帳單與分期`
+                  : scope === 'my'
                   ? '水電、瓦斯、電信費手動確認入帳與個人規則自主管理'
                   : (isOwner
                       ? '全家固定扣繳規則與待繳帳單管理'
@@ -1287,7 +1342,9 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                           <View style={{ paddingVertical: 8, paddingHorizontal: 12, backgroundColor: '#F3F4F6', borderRadius: 8, marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                             <Text style={{ fontSize: 13 }}>🔒</Text>
                             <Text style={{ fontSize: 12, color: '#6B7280', flex: 1 }}>
-                              全家瀏覽模式僅供查看待繳狀態；若需核對或記帳，請切換至「我的」視角
+                              {targetMemberObj && isTargetingOtherMember
+                                ? `此為「${targetMemberObj.display_name}」負責之扣繳項目（純瀏覽查看模式；若需代為核對入帳，可至家庭設定啟用管理員模式）`
+                                : '全家瀏覽模式僅供查看待繳狀態；若需核對或記帳，請切換至「我的」視角'}
                             </Text>
                           </View>
                         )}
