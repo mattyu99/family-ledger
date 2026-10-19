@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 54;
+export const APP_BUILD_REVISION = 55;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.55',
+    date: '2026-10-19',
+    title: '明細唯讀模式顯著標示、消除日期假選項、開放代記帳人權限與特定日期按鈕更名',
+    highlights: [
+      '唯讀狀態清楚標示與頂部提示：非本人出資且未開啟管理員模式時，頂部標題明確顯示「🔒 唯讀模式」徽章，表單頂部同步新增提示橫幅，清楚告知此紀錄出資人與如何開啟管理員模式代修，不再產生無提示的困惑。',
+      '唯讀狀態消除日期假按鈕：唯讀檢視下不再顯示「原日期/今天/昨天」等無意義的反灰停用按鈕，改為直接優雅呈現「📅 發生時間：YYYY/MM/DD HH:mm」，徹底杜絕「只能選這三天」的誤解。',
+      '開放代記帳人（建立者）編輯權限：若明細由您帳號代為記錄建立，即使出資付款人選擇其他家庭成員，您依然具備完整編輯權限，不再記完自己變唯讀。',
+      '特定日期按鈕明確更名為「📅 選擇特定日期...」：記帳與編輯明細彈窗中的自訂日期按鈕，由模糊的「更多...」正式更名為「📅 選擇特定日期...」，並強化視覺顯眼度，點選日曆一目了然。',
+    ],
+  },
   {
     version: '1.0.5.54',
     date: '2026-10-19',

@@ -421,7 +421,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     const payerId = txPayerProfile ? txPayerProfile.id : transaction.paid_by;
     const isPayerIdMatch = payerId === currentUser.id;
     const isPayerNameMatch = !!txPayerProfile?.display_name && !!currentUser.display_name && txPayerProfile.display_name === currentUser.display_name;
-    return Boolean(isPayerIdMatch || isPayerNameMatch);
+    const isCreatorMatch = !!transaction.creator_id && transaction.creator_id === currentUser.id;
+    return Boolean(isPayerIdMatch || isPayerNameMatch || isCreatorMatch);
   }, [transaction, currentUser, txPayerProfile, isOwner, isReadOnly, currentLedger?.is_read_only]);
 
   // 生活記事允許任何已登入家庭成員回報辦妥說明與操作連動
@@ -954,12 +955,19 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         <View style={styles.sheet}>
           {/* 頂部把手與標題 */}
           <View style={styles.header}>
-            <View>
-              <Text style={styles.title} maxFontSizeMultiplier={1.15}>
-                {canEdit
-                  ? (transaction.type === 'memo' ? '📝 編輯生活備忘' : transaction.type === 'transfer' ? '⇄ 編輯內部轉帳' : '✏️ 編輯記帳明細')
-                  : (transaction.type === 'memo' ? '👀 查看生活備忘' : transaction.type === 'transfer' ? '👀 查看內部轉帳' : '👀 查看記帳明細')}
-              </Text>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <Text style={styles.title} maxFontSizeMultiplier={1.15}>
+                  {canEdit
+                    ? (transaction.type === 'memo' ? '📝 編輯生活備忘' : transaction.type === 'transfer' ? '⇄ 編輯內部轉帳' : '✏️ 編輯記帳明細')
+                    : (transaction.type === 'memo' ? '👀 生活備忘' : transaction.type === 'transfer' ? '👀 內部轉帳' : '👀 記帳明細')}
+                </Text>
+                {!canEdit && (
+                  <View style={styles.readOnlyBadge}>
+                    <Text style={styles.readOnlyBadgeText} maxFontSizeMultiplier={1.08}>🔒 唯讀模式</Text>
+                  </View>
+                )}
+              </View>
               <Text style={styles.headerDateBadge} maxFontSizeMultiplier={1.15}>
                 發生時間：{curDateFormattedWithTime}
               </Text>
@@ -980,25 +988,17 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
-            {(isReadOnly || currentLedger?.is_read_only) && (
-              <View style={{
-                backgroundColor: '#EFF6FF',
-                borderColor: '#BFDBFE',
-                borderWidth: 1,
-                borderRadius: 12,
-                padding: 12,
-                marginBottom: 16,
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 10,
-              }}>
-                <Text style={{ fontSize: 20 }}>🔒</Text>
+            {!canEdit && (
+              <View style={styles.readOnlyTopBanner}>
+                <Text style={styles.readOnlyTopBannerIcon}>🔒</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 13, color: '#1E40AF', fontWeight: '800' }}>
-                    唯讀封存保護中
+                  <Text style={styles.readOnlyTopBannerTitle} maxFontSizeMultiplier={1.15}>
+                    {(isReadOnly || currentLedger?.is_read_only) ? '唯讀封存保護中' : '此明細處於唯讀狀態 (純瀏覽)'}
                   </Text>
-                  <Text style={{ fontSize: 11, color: '#3B82F6', marginTop: 2, lineHeight: 16 }}>
-                    此帳本已開啟唯讀模式，所有歷史明細僅供查詢與統計，無法修改或刪除。
+                  <Text style={styles.readOnlyTopBannerDesc} maxFontSizeMultiplier={1.08}>
+                    {(isReadOnly || currentLedger?.is_read_only)
+                      ? '此帳本已開啟唯讀模式，所有歷史明細僅供查詢與統計，無法修改或刪除。'
+                      : `此紀錄出資付款人為「${txPayerName}」，僅付款人本人、代記帳人或帳本管理員具有編輯權限。如需代為修改，可至「家庭設定」開啟管理員模式。`}
                   </Text>
                 </View>
               </View>
@@ -1242,73 +1242,77 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
                 {/* 記事日期與發生時間 */}
                 <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記事日期與發生時間</Text>
-                <View style={styles.dateRow}>
-                  <TouchableOpacity
-                    disabled={!canEdit}
-                    style={[styles.dateChip, isOriginal && styles.dateChipActive]}
-                    onPress={() => {
-                      if (transaction?.transacted_at) {
-                        setTransactedAt(transaction.transacted_at);
-                        const orig = new Date(transaction.transacted_at);
-                        setHourStr(String(orig.getHours()).padStart(2, '0'));
-                        setMinuteStr(String(orig.getMinutes()).padStart(2, '0'));
-                      }
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.dateChipText, isOriginal && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
-                      原日期 ({origDateFormatted})
+                {!canEdit ? (
+                  <View style={styles.readOnlyDateCard}>
+                    <Text style={styles.readOnlyDateCardText} maxFontSizeMultiplier={1.15}>
+                      📅 發生時間：{curDateFormattedWithTime}
                     </Text>
-                  </TouchableOpacity>
+                  </View>
+                ) : (
+                  <>
+                    <View style={styles.dateRow}>
+                      <TouchableOpacity
+                        style={[styles.dateChip, isOriginal && styles.dateChipActive]}
+                        onPress={() => {
+                          if (transaction?.transacted_at) {
+                            setTransactedAt(transaction.transacted_at);
+                            const orig = new Date(transaction.transacted_at);
+                            setHourStr(String(orig.getHours()).padStart(2, '0'));
+                            setMinuteStr(String(orig.getMinutes()).padStart(2, '0'));
+                          }
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.dateChipText, isOriginal && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                          📅 原日期 ({origDateFormatted})
+                        </Text>
+                      </TouchableOpacity>
 
-                  <TouchableOpacity
-                    disabled={!canEdit}
-                    style={[styles.dateChip, !isOriginal && isToday && styles.dateChipActive]}
-                    onPress={() => setQuickDate(today)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.dateChipText, !isOriginal && isToday && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
-                      今天 ({today.getMonth() + 1}/{today.getDate()})
-                    </Text>
-                  </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.dateChip, !isOriginal && isToday && styles.dateChipActive]}
+                        onPress={() => setQuickDate(today)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.dateChipText, !isOriginal && isToday && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                          今天 ({today.getMonth() + 1}/{today.getDate()})
+                        </Text>
+                      </TouchableOpacity>
 
-                  <TouchableOpacity
-                    disabled={!canEdit}
-                    style={[styles.dateChip, !isOriginal && isYesterday && styles.dateChipActive]}
-                    onPress={() => setQuickDate(yesterday)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.dateChipText, !isOriginal && isYesterday && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
-                      昨天 ({yesterday.getMonth() + 1}/{yesterday.getDate()})
-                    </Text>
-                  </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.dateChip, !isOriginal && isYesterday && styles.dateChipActive]}
+                        onPress={() => setQuickDate(yesterday)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.dateChipText, !isOriginal && isYesterday && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                          昨天 ({yesterday.getMonth() + 1}/{yesterday.getDate()})
+                        </Text>
+                      </TouchableOpacity>
 
-                  {isCustomDate && (
-                    <TouchableOpacity
-                      disabled={!canEdit}
-                      style={[styles.dateChip, styles.dateChipActive, styles.dateChipCustom]}
-                      onPress={() => setDatePickerVisible(true)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.dateChipText, styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
-                        🗓️ {curDate.getMonth() + 1}/{curDate.getDate()} (自訂)
-                      </Text>
-                    </TouchableOpacity>
-                  )}
+                      {isCustomDate && (
+                        <TouchableOpacity
+                          style={[styles.dateChip, styles.dateChipActive, styles.dateChipCustom]}
+                          onPress={() => setDatePickerVisible(true)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.dateChipText, styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                            🗓️ {curDate.getMonth() + 1}/{curDate.getDate()} (特定日期)
+                          </Text>
+                        </TouchableOpacity>
+                      )}
 
-                  {canEdit && (
-                    <TouchableOpacity
-                      style={[styles.dateMoreBtn, isCustomDate && styles.dateMoreBtnSelected]}
-                      onPress={() => setDatePickerVisible(true)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.dateMoreBtnText, isCustomDate && styles.dateMoreBtnTextSelected]} maxFontSizeMultiplier={1.15}>
-                        {isCustomDate ? '✏️ 改選' : '🗓️ 更多...'}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-                {renderTimeInputRow()}
+                      <TouchableOpacity
+                        style={[styles.dateMoreBtn, isCustomDate && styles.dateMoreBtnSelected]}
+                        onPress={() => setDatePickerVisible(true)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.dateMoreBtnText, isCustomDate && styles.dateMoreBtnTextSelected]} maxFontSizeMultiplier={1.15}>
+                          {isCustomDate ? '✏️ 改選其他日期' : '📅 選擇特定日期...'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    {renderTimeInputRow()}
+                  </>
+                )}
 
                 {/* ⏰ 待辦提醒日期與週期設定 (選填) */}
                 <View style={styles.sectionLabelRow}>
@@ -2057,95 +2061,99 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             {/* 發生日期與時間調整 */}
             <View style={styles.sectionLabelRow}>
               <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>發生日期與時間</Text>
-              {!isOriginal && (
+              {canEdit && !isOriginal && (
                 <Text style={styles.dateHintText} maxFontSizeMultiplier={1.15}>
                   (已改為：{curDateFormattedWithTime})
                 </Text>
               )}
             </View>
-            <View style={styles.dateRow}>
-              <TouchableOpacity
-                disabled={!canEdit}
-                style={[styles.dateChip, isOriginal && styles.dateChipActive, !canEdit && !isOriginal && styles.readOnlyUnselectedChip]}
-                onPress={() => {
-                  if (transaction?.transacted_at) {
-                    setTransactedAt(transaction.transacted_at);
-                    const orig = new Date(transaction.transacted_at);
-                    setHourStr(String(orig.getHours()).padStart(2, '0'));
-                    setMinuteStr(String(orig.getMinutes()).padStart(2, '0'));
-                  }
-                }}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={[styles.dateChipText, isOriginal && styles.dateChipTextActive]}
-                  maxFontSizeMultiplier={1.15}
-                >
-                  📅 原日期 ({origDateFormatted})
+            {!canEdit ? (
+              <View style={styles.readOnlyDateCard}>
+                <Text style={styles.readOnlyDateCardText} maxFontSizeMultiplier={1.15}>
+                  📅 發生時間：{curDateFormattedWithTime}
                 </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                disabled={!canEdit}
-                style={[styles.dateChip, isToday && !isOriginal && styles.dateChipActive, !canEdit && !(isToday && !isOriginal) && styles.readOnlyUnselectedChip]}
-                onPress={() => setQuickDate(today)}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={[styles.dateChipText, isToday && !isOriginal && styles.dateChipTextActive]}
-                  maxFontSizeMultiplier={1.15}
-                >
-                  今天 ({today.getMonth() + 1}/{today.getDate()})
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                disabled={!canEdit}
-                style={[styles.dateChip, isYesterday && !isOriginal && styles.dateChipActive, !canEdit && !(isYesterday && !isOriginal) && styles.readOnlyUnselectedChip]}
-                onPress={() => setQuickDate(yesterday)}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={[styles.dateChipText, isYesterday && !isOriginal && styles.dateChipActive]}
-                  maxFontSizeMultiplier={1.15}
-                >
-                  昨天 ({yesterday.getMonth() + 1}/{yesterday.getDate()})
-                </Text>
-              </TouchableOpacity>
-
-              {/* 若選擇了其他自訂日期 */}
-              {isCustomDate && (
-                <TouchableOpacity
-                  disabled={!canEdit}
-                  style={[styles.dateChip, styles.dateChipActive, styles.dateChipCustom]}
-                  onPress={() => canEdit && setDatePickerVisible(true)}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={[styles.dateChipText, styles.dateChipTextActive]}
-                    maxFontSizeMultiplier={1.15}
+              </View>
+            ) : (
+              <>
+                <View style={styles.dateRow}>
+                  <TouchableOpacity
+                    style={[styles.dateChip, isOriginal && styles.dateChipActive]}
+                    onPress={() => {
+                      if (transaction?.transacted_at) {
+                        setTransactedAt(transaction.transacted_at);
+                        const orig = new Date(transaction.transacted_at);
+                        setHourStr(String(orig.getHours()).padStart(2, '0'));
+                        setMinuteStr(String(orig.getMinutes()).padStart(2, '0'));
+                      }
+                    }}
+                    activeOpacity={0.7}
                   >
-                    🗓️ {curDate.getMonth() + 1}/{curDate.getDate()} (自訂)
-                  </Text>
-                </TouchableOpacity>
-              )}
+                    <Text
+                      style={[styles.dateChipText, isOriginal && styles.dateChipTextActive]}
+                      maxFontSizeMultiplier={1.15}
+                    >
+                      📅 原日期 ({origDateFormatted})
+                    </Text>
+                  </TouchableOpacity>
 
-              {canEdit && (
-                <TouchableOpacity
-                  style={[styles.dateMoreBtn, isCustomDate && styles.dateMoreBtnSelected]}
-                  onPress={() => setDatePickerVisible(true)}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={[styles.dateMoreBtnText, isCustomDate && styles.dateMoreBtnTextSelected]}
-                    maxFontSizeMultiplier={1.15}
+                  <TouchableOpacity
+                    style={[styles.dateChip, isToday && !isOriginal && styles.dateChipActive]}
+                    onPress={() => setQuickDate(today)}
+                    activeOpacity={0.7}
                   >
-                    {isCustomDate ? '✏️ 改選' : '🗓️ 更多...'}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            {renderTimeInputRow()}
+                    <Text
+                      style={[styles.dateChipText, isToday && !isOriginal && styles.dateChipTextActive]}
+                      maxFontSizeMultiplier={1.15}
+                    >
+                      今天 ({today.getMonth() + 1}/{today.getDate()})
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.dateChip, isYesterday && !isOriginal && styles.dateChipActive]}
+                    onPress={() => setQuickDate(yesterday)}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[styles.dateChipText, isYesterday && !isOriginal && styles.dateChipActive]}
+                      maxFontSizeMultiplier={1.15}
+                    >
+                      昨天 ({yesterday.getMonth() + 1}/{yesterday.getDate()})
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* 若選擇了其他自訂日期 */}
+                  {isCustomDate && (
+                    <TouchableOpacity
+                      style={[styles.dateChip, styles.dateChipActive, styles.dateChipCustom]}
+                      onPress={() => setDatePickerVisible(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[styles.dateChipText, styles.dateChipTextActive]}
+                        maxFontSizeMultiplier={1.15}
+                      >
+                        🗓️ {curDate.getMonth() + 1}/{curDate.getDate()} (特定日期)
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                  <TouchableOpacity
+                    style={[styles.dateMoreBtn, isCustomDate && styles.dateMoreBtnSelected]}
+                    onPress={() => setDatePickerVisible(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[styles.dateMoreBtnText, isCustomDate && styles.dateMoreBtnTextSelected]}
+                      maxFontSizeMultiplier={1.15}
+                    >
+                      {isCustomDate ? '✏️ 改選其他日期' : '📅 選擇特定日期...'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {renderTimeInputRow()}
+              </>
+            )}
 
             {/* 店家 / 對象 (選填) */}
             <View onLayout={(e) => setMerchantSectionY(e.nativeEvent.layout.y)}>
@@ -2339,6 +2347,58 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginTop: 2,
     fontWeight: '500',
+  },
+  readOnlyBadge: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+  },
+  readOnlyBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  readOnlyTopBanner: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FCD34D',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  readOnlyTopBannerIcon: {
+    fontSize: 20,
+  },
+  readOnlyTopBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  readOnlyTopBannerDesc: {
+    fontSize: 11.5,
+    color: '#B45309',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  readOnlyDateCard: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
+  readOnlyDateCardText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#334155',
   },
   closeBtn: {
     paddingHorizontal: 6,
@@ -2630,24 +2690,23 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 8,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F0F9FF',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderStyle: 'dashed',
+    borderColor: '#BAE6FD',
     alignItems: 'center',
     justifyContent: 'center',
   },
   dateMoreBtnSelected: {
     backgroundColor: '#EEF2FF',
     borderColor: '#6366F1',
-    borderStyle: 'solid',
   },
   dateMoreBtnText: {
     fontSize: 12,
-    color: '#4F46E5',
-    fontWeight: '600',
+    color: '#0284C7',
+    fontWeight: '700',
   },
   dateMoreBtnTextSelected: {
+    color: '#4F46E5',
     fontWeight: '700',
   },
   clearMerchantText: {

@@ -2131,7 +2131,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         style={[styles.dateChipText, styles.dateChipTextActive]}
                         maxFontSizeMultiplier={1.15}
                       >
-                        🗓️ {selectedDate.getMonth() + 1}/{selectedDate.getDate()} (自訂)
+                        🗓️ {selectedDate.getMonth() + 1}/{selectedDate.getDate()} (特定日期)
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -2145,7 +2145,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       style={[styles.dateMoreBtnText, isCustomDate && styles.dateMoreBtnTextSelected]}
                       maxFontSizeMultiplier={1.15}
                     >
-                      {isCustomDate ? '✏️ 改選' : '🗓️ 更多...'}
+                      {isCustomDate ? '✏️ 改選其他日期' : '📅 選擇特定日期...'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -2525,25 +2525,24 @@ const styles = StyleSheet.create({
   dateMoreBtn: {
     paddingVertical: 6,
     paddingHorizontal: 10,
-    borderRadius: 10,
-    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    backgroundColor: '#F0F9FF',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderStyle: 'dashed',
+    borderColor: '#BAE6FD',
     alignItems: 'center',
     justifyContent: 'center',
   },
   dateMoreBtnSelected: {
     backgroundColor: '#EEF2FF',
     borderColor: '#6366F1',
-    borderStyle: 'solid',
   },
   dateMoreBtnText: {
     fontSize: 12,
-    color: '#4F46E5',
-    fontWeight: '600',
+    color: '#0284C7',
+    fontWeight: '700',
   },
   dateMoreBtnTextSelected: {
+    color: '#4F46E5',
     fontWeight: '700',
   },
   clearMerchantText: {
