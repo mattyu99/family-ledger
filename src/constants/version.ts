@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 56;
+export const APP_BUILD_REVISION = 57;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.57',
+    date: '2026-10-19',
+    title: '內部轉帳明細新增專屬「📥 轉入目標卡片 / 受款成員」視覺卡片',
+    highlights: [
+      '轉入終點獨立專屬呈現：查看或編輯內部轉帳紀錄時，若為儲值卡加值，直接於表單中獨立展開「📥 轉入目標卡片：🚌 卡片名稱 (持卡人·即時餘額)」，資訊起訖兩端完全對稱。',
+      '擺脫對備註文字依賴：系統全面讀取底層結構化 linked_transaction_id，即使備註欄留白或被清空，畫面上轉入目標卡片永遠清晰可見，徹底杜絕疑慮。',
+      '零用錢轉帳自動對應受款成員：若為家庭成員間發放零用錢之內部轉帳，同步清楚標示「📥 轉入受款成員：👤 成員名稱 (零用錢錢包入帳)」，資金流向一目了然。',
+    ],
+  },
   {
     version: '1.0.5.56',
     date: '2026-10-19',

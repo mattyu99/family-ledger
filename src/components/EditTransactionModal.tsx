@@ -134,6 +134,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     deleteTransaction,
     getMemberById,
     getCategoryById,
+    getAccountById,
     recentMerchants,
     paymentAccounts,
     paymentMethods,
@@ -445,6 +446,39 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     if (!transaction?.linked_transaction_id) return undefined;
     return transactions.find(t => t.id === transaction.linked_transaction_id && t.type === 'memo');
   }, [transaction?.linked_transaction_id, transactions]);
+
+  // 內部轉帳專屬：取得轉入存入目標卡片 (若為加值/轉帳至儲值卡)
+  const targetLinkedAccount = React.useMemo(() => {
+    if (type !== 'transfer') return undefined;
+    const targetId = linkedTxId || transaction?.linked_transaction_id;
+    if (targetId) {
+      const acc = getAccountById?.(targetId) || paymentAccounts.find(a => a.id === targetId);
+      if (acc) return acc;
+    }
+    // Fallback: 如果加值明細未記 ID，從 note 或 merchant 自動比對儲值卡
+    return paymentAccounts.find(a =>
+      a.type === 'stored_value' && (
+        (note && note.includes(`【${a.name}】`)) ||
+        (merchant && merchant.includes(a.name))
+      )
+    );
+  }, [type, linkedTxId, transaction?.linked_transaction_id, getAccountById, paymentAccounts, note, merchant]);
+
+  // 內部轉帳專屬：目標卡片持卡人
+  const targetLinkedCardholder = React.useMemo(() => {
+    if (!targetLinkedAccount?.user_id) return undefined;
+    return getMemberById(targetLinkedAccount.user_id);
+  }, [targetLinkedAccount, getMemberById]);
+
+  // 內部轉帳專屬：取得轉入受款成員 (若為發放零用錢等成員間調撥)
+  const targetRecipientMember = React.useMemo(() => {
+    if (type !== 'transfer') return undefined;
+    const recipientId = transaction?.completed_by;
+    if (recipientId) {
+      return members.find(m => m.id === recipientId) || getMemberById(recipientId);
+    }
+    return undefined;
+  }, [type, transaction?.completed_by, members, getMemberById]);
 
   // 智慧店家快捷建議標籤列表 (結合自學習 recentMerchants + 分類推薦 + 關鍵字即時比對)
   const suggestedMerchants = React.useMemo(() => {
@@ -2058,6 +2092,56 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               </View>
             )}
 
+            {/* 內部轉帳專屬：轉入終點（卡片或受款成員） */}
+            {type === 'transfer' && (targetLinkedAccount || targetRecipientMember) && (
+              <View style={styles.destinationSection}>
+                <View style={styles.sectionLabelRow}>
+                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>
+                    {targetLinkedAccount ? '📥 轉入目標卡片 (終點)' : '📥 轉入受款成員 (終點)'}
+                  </Text>
+                </View>
+                {targetLinkedAccount && (
+                  <View style={[styles.destinationCardBox, { borderColor: `${targetLinkedAccount.color || '#0284C7'}50` }]}>
+                    <View style={[styles.destinationCardIconBox, { backgroundColor: `${targetLinkedAccount.color || '#0284C7'}15` }]}>
+                      <Text style={styles.destinationCardIcon}>{targetLinkedAccount.icon || '🚌'}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[styles.destinationCardName, { color: targetLinkedAccount.color || '#0284C7' }]}
+                        maxFontSizeMultiplier={1.15}
+                      >
+                        {targetLinkedAccount.name}{targetLinkedAccount.last_four_digits ? ` (*${targetLinkedAccount.last_four_digits})` : ''}
+                      </Text>
+                      <Text style={styles.destinationCardSub} maxFontSizeMultiplier={1.15}>
+                        持卡人：{targetLinkedCardholder ? targetLinkedCardholder.display_name : '全家通用'} · 卡片即時餘額：NT$ {targetLinkedAccount.balance.toLocaleString()}
+                      </Text>
+                    </View>
+                    <View style={styles.destinationBadge}>
+                      <Text style={styles.destinationBadgeText} maxFontSizeMultiplier={1.08}>入帳卡片</Text>
+                    </View>
+                  </View>
+                )}
+                {targetRecipientMember && (
+                  <View style={styles.destinationMemberBox}>
+                    <View style={styles.destinationMemberAvatarBox}>
+                      <Text style={styles.destinationMemberAvatar}>{targetRecipientMember.avatar_url || '👤'}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.destinationMemberName} maxFontSizeMultiplier={1.15}>
+                        {targetRecipientMember.display_name}
+                      </Text>
+                      <Text style={styles.destinationMemberSub} maxFontSizeMultiplier={1.15}>
+                        家庭零用錢錢包入帳
+                      </Text>
+                    </View>
+                    <View style={[styles.destinationBadge, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}>
+                      <Text style={[styles.destinationBadgeText, { color: '#059669' }]} maxFontSizeMultiplier={1.08}>受款入帳</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
+
             {/* 發生日期與時間調整 */}
             <View style={styles.sectionLabelRow}>
               <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>發生日期與時間</Text>
@@ -3540,5 +3624,82 @@ const styles = StyleSheet.create({
   },
   discountSummaryTextError: {
     color: '#DC2626',
+  },
+  destinationSection: {
+    marginVertical: 10,
+  },
+  destinationCardBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#F0F9FF',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  destinationCardIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  destinationCardIcon: {
+    fontSize: 18,
+  },
+  destinationCardName: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  destinationCardSub: {
+    fontSize: 11,
+    color: '#64748B',
+  },
+  destinationBadge: {
+    backgroundColor: '#E0F2FE',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  destinationBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  destinationMemberBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  destinationMemberAvatarBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#EEF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  destinationMemberAvatar: {
+    fontSize: 18,
+  },
+  destinationMemberName: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginBottom: 2,
+  },
+  destinationMemberSub: {
+    fontSize: 11,
+    color: '#64748B',
   },
 });
