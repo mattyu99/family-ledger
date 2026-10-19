@@ -5032,7 +5032,7 @@ function MainApp() {
                   );
                 })}
                 {displayedPaymentAccounts.length === 0 && (
-                  isOwner ? (
+                  billsScope === 'my' || isOwner ? (
                     <TouchableOpacity
                       style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
                       onPress={() => setAccountsManageModalVisible(true)}
@@ -5044,7 +5044,7 @@ function MainApp() {
                   ) : (
                     <View style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}>
                       <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                        {billsScope === 'my' ? '尚無綁定您的支付卡片或帳戶' : '尚無支付卡片或帳戶'}
+                        尚無支付卡片或帳戶
                       </Text>
                     </View>
                   )

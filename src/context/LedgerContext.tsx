@@ -5061,11 +5061,33 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  // 判斷某個成員 ID 是否歸屬於當前使用者本人 (支援 ID 直接比對、名稱別名比對與名冊連動)
+  const isAccountBoundToCurrentUser = (userId?: string | null) => {
+    if (!userId || !effectiveCurrentUser) return false;
+    if (userId === effectiveCurrentUser.id) return true;
+    const member = members.find(m => m.id === userId);
+    if (member) {
+      if (member.id === effectiveCurrentUser.id) return true;
+      if (
+        member.display_name &&
+        effectiveCurrentUser.display_name &&
+        member.display_name.trim().toLowerCase() === effectiveCurrentUser.display_name.trim().toLowerCase()
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   // 新增付款帳戶 / 信用卡 / 儲值卡
   const addPaymentAccount = async (accountData: Omit<PaymentAccount, 'id' | 'ledger_id' | 'created_at'>): Promise<PaymentAccount> => {
-    if (!effectiveIsOwner) {
-      safeAlert('權限不足', '只有帳本管理員才能新增支付卡片與帳戶');
-      throw new Error('只有帳本管理員才能新增支付卡片與帳戶');
+    // 方案 A 權限體系：
+    // - 帳本管理員 (effectiveIsOwner) 可為全家新增任何卡片與帳戶
+    // - 一般家庭成員可在「我的」視角下自主新增屬於自己的卡片或帳戶
+    const isTargetingSelf = !accountData.user_id || isAccountBoundToCurrentUser(accountData.user_id);
+    if (!effectiveIsOwner && !isTargetingSelf) {
+      safeAlert('權限不足', '只有帳本管理員才能新增全家或其他成員的支付卡片與帳戶');
+      throw new Error('只有帳本管理員才能新增全家或其他成員的支付卡片與帳戶');
     }
 
     const newAcc: PaymentAccount = {
@@ -5095,8 +5117,15 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // 修改付款帳戶
   const updatePaymentAccount = async (id: string, data: Partial<PaymentAccount>): Promise<boolean> => {
-    if (!effectiveIsOwner) {
-      safeAlert('權限不足', '只有帳本管理員才能修改支付卡片與帳戶');
+    const existing = paymentAccounts.find(a => a.id === id);
+    // 方案 A 權限體系：
+    // - 帳本管理員可修改全家任何卡片與帳戶
+    // - 一般家庭成員僅能修改屬於自己的卡片與帳戶，且不可轉移給其他成員
+    const isOwnerOfCard = existing && isAccountBoundToCurrentUser(existing.user_id);
+    const isChangingToOther = data.user_id !== undefined && data.user_id !== null && !isAccountBoundToCurrentUser(data.user_id);
+
+    if (!effectiveIsOwner && (!isOwnerOfCard || isChangingToOther)) {
+      safeAlert('權限不足', '只有帳本管理員才能修改全家或其他成員的支付卡片與帳戶');
       return false;
     }
 
@@ -5120,12 +5149,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // 刪除付款帳戶
   const deletePaymentAccount = async (id: string): Promise<boolean> => {
-    if (!effectiveIsOwner) {
-      safeAlert('權限不足', '只有帳本管理員才能刪除支付卡片與帳戶');
+    const deletedAcc = paymentAccounts.find(a => a.id === id);
+    // 方案 A 權限體系：
+    // - 帳本管理員可刪除全家任何卡片與帳戶
+    // - 一般家庭成員僅能刪除屬於自己的卡片與帳戶
+    const isOwnerOfCard = deletedAcc && isAccountBoundToCurrentUser(deletedAcc.user_id);
+
+    if (!effectiveIsOwner && !isOwnerOfCard) {
+      safeAlert('權限不足', '只有帳本管理員才能刪除全家或其他成員的支付卡片與帳戶');
       return false;
     }
 
-    const deletedAcc = paymentAccounts.find(a => a.id === id);
     const updated = paymentAccounts.filter(a => a.id !== id);
     setPaymentAccounts(updated);
     await savePaymentAccountsToStorage(updated);
@@ -5747,10 +5781,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  // 直接校正儲值卡餘額 (僅管理員可操作)
+  // 直接校正儲值卡餘額 (管理員或持卡人本人可操作)
   const adjustAccountBalance = async (id: string, newBalance: number): Promise<boolean> => {
-    if (!effectiveIsOwner) {
-      safeAlert('權限不足', '只有帳本管理員才能校正卡片餘額');
+    const targetAcc = paymentAccounts.find(a => a.id === id);
+    const isOwnerOfCard = targetAcc && isAccountBoundToCurrentUser(targetAcc.user_id);
+
+    if (!effectiveIsOwner && !isOwnerOfCard) {
+      safeAlert('權限不足', '只有帳本管理員或持卡人本人才能校正卡片餘額');
       return false;
     }
     try {

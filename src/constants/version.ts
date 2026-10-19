@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 49;
+export const APP_BUILD_REVISION = 50;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.50',
+    date: '2026-10-19',
+    title: '解除支付卡片儲存權限限制，落實個人自主管理 (方案 A)',
+    highlights: [
+      '修復個人卡片儲存權限不足問題：解決在「帳單支付」進入「💳 支付卡片與帳戶」新增或編輯個人信用卡、悠遊卡、銀行帳戶時，填寫完成點選「儲存設定」跳出「權限不足：只有帳本管理員才能修改/新增支付卡片與帳戶」之阻斷問題。',
+      '落實方案 A 自主管理與全家防呆架構：底層資料服務解除舊版全域管理員限制，每位家庭成員在個人視角下皆享有對自身支付卡片之完整新增、編輯、刪除與餘額校正權限，管理員則保留對全家所有卡片之代管特權。',
+      '跨成員卡片純瀏覽唯讀防護：在「全家」一覽模式下，非管理員進入依然維持純瀏覽唯讀防護，防止誤改或誤刪其他家庭成員之卡片與帳戶資料。',
+    ],
+  },
   {
     version: '1.0.5.49',
     date: '2026-10-18',

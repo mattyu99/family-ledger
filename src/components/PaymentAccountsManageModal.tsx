@@ -208,7 +208,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     setEditingId(null);
     setFormType(type);
     setFormName(type === 'credit_card' ? '富邦 Costco 卡' : type === 'bank' ? '玉山銀行 薪轉戶' : '悠遊卡');
-    setFormUserId(currentUser?.id || '');
+    const myMember = members.find(m => isMatchedToCurrentUser(m.id));
+    setFormUserId(myMember ? myMember.id : (currentUser?.id || ''));
     setFormLastFour('');
     setFormCycleDate('15');
     setFormBalance('0');
@@ -226,6 +227,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
       return;
     }
     const matchedMember = acc.user_id && members.find(m => m.id === acc.user_id);
+    const myMember = members.find(m => isMatchedToCurrentUser(m.id));
     if (acc.type === 'stored_value' || acc.type === 'credit_card' || acc.type === 'bank') {
       setActiveTab(acc.type);
     }
@@ -233,7 +235,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     setEditingId(acc.id);
     setFormType(acc.type);
     setFormName(acc.name);
-    setFormUserId(matchedMember ? matchedMember.id : (currentUser?.id || ''));
+    setFormUserId(matchedMember ? matchedMember.id : (myMember ? myMember.id : (currentUser?.id || '')));
     setFormLastFour(acc.last_four_digits || '');
     setFormCycleDate(String(acc.billing_cycle_date || 15));
     setFormBalance(String(acc.balance || 0));
@@ -254,7 +256,9 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     const cycleNum = parseInt(formCycleDate, 10);
     const validCycle = isNaN(cycleNum) ? 15 : Math.max(1, Math.min(31, cycleNum));
     const balanceNum = parseFloat(formBalance) || 0;
-    const targetUserId = (!isOwner && scope === 'my') ? (currentUser?.id || null) : (formUserId ? formUserId : (null as any));
+    const targetUserId = (!isOwner && scope === 'my')
+      ? (formUserId && isMatchedToCurrentUser(formUserId) ? formUserId : (currentUser?.id || null))
+      : (formUserId ? formUserId : (null as any));
 
     if (editingId) {
       await updatePaymentAccount(editingId, {

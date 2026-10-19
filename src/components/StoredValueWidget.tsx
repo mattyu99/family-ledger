@@ -133,6 +133,26 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
     return null;
   }
 
+  const isMatchedToCurrentUser = React.useCallback(
+    (userId?: string | null) => {
+      if (!userId || !currentUser) return false;
+      if (userId === currentUser.id) return true;
+      const member = members.find(m => m.id === userId);
+      if (member) {
+        if (member.id === currentUser.id) return true;
+        if (
+          member.display_name &&
+          currentUser.display_name &&
+          member.display_name.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase()
+        ) {
+          return true;
+        }
+      }
+      return false;
+    },
+    [currentUser, members]
+  );
+
   const handleOpenTopUp = (acc: PaymentAccount) => {
     setActiveModalAccount(acc);
     setModalMode('topup');
@@ -145,9 +165,10 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
   };
 
   const handleOpenAdjust = (acc: PaymentAccount) => {
-    if (!isOwner) {
-      if (Platform.OS === 'web') alert('權限不足：只有帳本管理員才能校正卡片餘額');
-      else Alert.alert('權限不足', '只有帳本管理員才能校正卡片餘額');
+    const isMyCard = isMatchedToCurrentUser(acc.user_id);
+    if (!isOwner && !isMyCard) {
+      if (Platform.OS === 'web') alert('權限不足：只有帳本管理員或持卡人本人才能校正卡片餘額');
+      else Alert.alert('權限不足', '只有帳本管理員或持卡人本人才能校正卡片餘額');
       return;
     }
     setActiveModalAccount(acc);
@@ -175,9 +196,10 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
         setActiveModalAccount(null);
       }
     } else {
-      if (!isOwner) {
-        if (Platform.OS === 'web') alert('權限不足：只有帳本管理員才能校正卡片餘額');
-        else Alert.alert('權限不足', '只有帳本管理員才能校正卡片餘額');
+      const isMyCard = isMatchedToCurrentUser(activeModalAccount.user_id);
+      if (!isOwner && !isMyCard) {
+        if (Platform.OS === 'web') alert('權限不足：只有帳本管理員或持卡人本人才能校正卡片餘額');
+        else Alert.alert('權限不足', '只有帳本管理員或持卡人本人才能校正卡片餘額');
         return;
       }
       const success = await adjustAccountBalance(activeModalAccount.id, num);
