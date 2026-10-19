@@ -6011,6 +6011,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const isOnlinePublishing = isConfigured && isCloudSynced && newTx.ledger_id !== DEMO_LEDGER_ID;
     (newTx as any)._isPendingSync = true;
     const updated = [newTx, ...transactions];
+    updated.sort((a, b) => new Date(b.transacted_at).getTime() - new Date(a.transacted_at).getTime());
     setTransactions(updated);
     await saveTransactionsToStorage(updated);
 
@@ -6091,7 +6092,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } else {
           // 雲端確認成功寫入，解除待同步標記並更新快取
           delete (newTx as any)._isPendingSync;
-          saveTransactionsToStorage([newTx, ...transactions.filter(t => t.id !== newTx.id)]).catch(() => {});
+          const freshList = [newTx, ...transactions.filter(t => t.id !== newTx.id)];
+          freshList.sort((a, b) => new Date(b.transacted_at).getTime() - new Date(a.transacted_at).getTime());
+          saveTransactionsToStorage(freshList).catch(() => {});
 
           if (newTx.splits && newTx.splits.length > 0) {
             // 同步分攤明細至 transaction_splits
@@ -6731,6 +6734,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       const finalTxs = nextMemoTx ? [nextMemoTx, ...updatedTxs] : updatedTxs;
+      finalTxs.sort((a, b) => new Date(b.transacted_at).getTime() - new Date(a.transacted_at).getTime());
       await saveTransactionsToStorage(finalTxs);
 
       if (nextMemoTx) {

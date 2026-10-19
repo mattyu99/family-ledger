@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 52;
+export const APP_BUILD_REVISION = 53;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.53',
+    date: '2026-10-19',
+    title: '編輯明細支援發生時間 (時:分) 自訂微調與即時時序歸位',
+    highlights: [
+      '「編輯明細」支援精確發生時間調整：在編輯收支明細、內部轉帳與生活備忘彈窗中，新增「🕒 發生時間：[ HH ] : [ mm ]」時分微調輸入區，並提供「設為現在」快捷鍵，徹底解決早上記錄昨晚消費導致時間順序顛倒（晚餐出現在早餐之前）的痛點。',
+      '語意化「發生時間」標示：頂部摘要與調整標籤全面統稱「發生時間」，精準表達消費或事情在真實世界中實際發生的時刻，避免「記帳時間」帶來的混淆。',
+      '即時重新排序精準歸位：編輯或補記儲存後，系統自動依最新發生時間降冪排序，明細清單立刻歸入該日期的對應時間點，無須重開或手動下拉重新整理。',
+      '新增記帳維持零負擔極速操作：日常新增記帳維持不強制要求輸入時間，由系統自動代入當下時間，保持記帳流程順暢無摩擦。',
+    ],
+  },
   {
     version: '1.0.5.52',
     date: '2026-10-19',

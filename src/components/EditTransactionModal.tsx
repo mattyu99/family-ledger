@@ -240,6 +240,14 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const [completionNote, setCompletionNote] = useState<string>(() => transaction?.completion_note || '');
   const [linkedTxId, setLinkedTxId] = useState<string>(() => transaction?.linked_transaction_id || '');
   const [transactedAt, setTransactedAt] = useState<string>(() => transaction?.transacted_at || new Date().toISOString());
+  const [hourStr, setHourStr] = useState<string>(() => {
+    const d = transaction?.transacted_at ? new Date(transaction.transacted_at) : new Date();
+    return isNaN(d.getTime()) ? '00' : String(d.getHours()).padStart(2, '0');
+  });
+  const [minuteStr, setMinuteStr] = useState<string>(() => {
+    const d = transaction?.transacted_at ? new Date(transaction.transacted_at) : new Date();
+    return isNaN(d.getTime()) ? '00' : String(d.getMinutes()).padStart(2, '0');
+  });
   const [datePickerVisible, setDatePickerVisible] = useState<boolean>(false);
   const [reminderDatePickerVisible, setReminderDatePickerVisible] = useState<boolean>(false);
   const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
@@ -589,19 +597,128 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     return `${yyyy}/${mm}/${dd} ${hh}:${min}`;
   }, [curDate]);
 
+  // 當使用者輸入小時
+  const handleHourChange = (text: string) => {
+    const clean = text.replace(/[^0-9]/g, '').slice(0, 2);
+    setHourStr(clean);
+    if (clean.length > 0) {
+      const h = Math.min(23, Math.max(0, parseInt(clean, 10)));
+      const cur = new Date(transactedAt || transaction?.transacted_at || new Date());
+      cur.setHours(h);
+      setTransactedAt(cur.toISOString());
+    }
+  };
+
+  const handleHourBlur = () => {
+    let h = parseInt(hourStr, 10);
+    if (isNaN(h) || h < 0) h = 0;
+    if (h > 23) h = 23;
+    const formatted = String(h).padStart(2, '0');
+    setHourStr(formatted);
+    const cur = new Date(transactedAt || transaction?.transacted_at || new Date());
+    cur.setHours(h);
+    setTransactedAt(cur.toISOString());
+  };
+
+  // 當使用者輸入分鐘
+  const handleMinuteChange = (text: string) => {
+    const clean = text.replace(/[^0-9]/g, '').slice(0, 2);
+    setMinuteStr(clean);
+    if (clean.length > 0) {
+      const m = Math.min(59, Math.max(0, parseInt(clean, 10)));
+      const cur = new Date(transactedAt || transaction?.transacted_at || new Date());
+      cur.setMinutes(m);
+      setTransactedAt(cur.toISOString());
+    }
+  };
+
+  const handleMinuteBlur = () => {
+    let m = parseInt(minuteStr, 10);
+    if (isNaN(m) || m < 0) m = 0;
+    if (m > 59) m = 59;
+    const formatted = String(m).padStart(2, '0');
+    setMinuteStr(formatted);
+    const cur = new Date(transactedAt || transaction?.transacted_at || new Date());
+    cur.setMinutes(m);
+    setTransactedAt(cur.toISOString());
+  };
+
+  // 設為現在時間
+  const handleSetCurrentTime = () => {
+    const now = new Date();
+    const cur = new Date(transactedAt || transaction?.transacted_at || new Date());
+    cur.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+    setTransactedAt(cur.toISOString());
+    setHourStr(String(now.getHours()).padStart(2, '0'));
+    setMinuteStr(String(now.getMinutes()).padStart(2, '0'));
+  };
+
   const setQuickDate = (targetDate: Date) => {
-    const orig = transaction?.transacted_at ? new Date(transaction.transacted_at) : new Date();
+    const cur = new Date(transactedAt || transaction?.transacted_at || new Date());
     const d = new Date(targetDate);
-    d.setHours(orig.getHours(), orig.getMinutes(), orig.getSeconds(), orig.getMilliseconds());
+    let h = parseInt(hourStr, 10);
+    let m = parseInt(minuteStr, 10);
+    if (isNaN(h)) h = cur.getHours();
+    if (isNaN(m)) m = cur.getMinutes();
+    d.setHours(h, m, 0, 0);
     setTransactedAt(d.toISOString());
   };
 
   const handleSelectDate = (newDate: Date) => {
-    const orig = transaction?.transacted_at ? new Date(transaction.transacted_at) : new Date();
+    const cur = new Date(transactedAt || transaction?.transacted_at || new Date());
     const d = new Date(newDate);
-    d.setHours(orig.getHours(), orig.getMinutes(), orig.getSeconds(), orig.getMilliseconds());
+    let h = parseInt(hourStr, 10);
+    let m = parseInt(minuteStr, 10);
+    if (isNaN(h)) h = cur.getHours();
+    if (isNaN(m)) m = cur.getMinutes();
+    d.setHours(h, m, 0, 0);
     setTransactedAt(d.toISOString());
   };
+
+  const renderTimeInputRow = () => (
+    <View style={styles.timeInputRow}>
+      <View style={styles.timeLabelContainer}>
+        <Text style={styles.timeLabelIcon}>🕒</Text>
+        <Text style={styles.timeLabelText} maxFontSizeMultiplier={1.12}>發生時間：</Text>
+      </View>
+      <View style={styles.timeInputsWrapper}>
+        <TextInput
+          editable={canEdit}
+          style={[styles.timeDigitInput, !canEdit && styles.readOnlyTextInput]}
+          value={hourStr}
+          onChangeText={handleHourChange}
+          onBlur={handleHourBlur}
+          keyboardType="number-pad"
+          maxLength={2}
+          placeholder="HH"
+          placeholderTextColor="#9CA3AF"
+          selectTextOnFocus
+        />
+        <Text style={styles.timeColonText}>:</Text>
+        <TextInput
+          editable={canEdit}
+          style={[styles.timeDigitInput, !canEdit && styles.readOnlyTextInput]}
+          value={minuteStr}
+          onChangeText={handleMinuteChange}
+          onBlur={handleMinuteBlur}
+          keyboardType="number-pad"
+          maxLength={2}
+          placeholder="mm"
+          placeholderTextColor="#9CA3AF"
+          selectTextOnFocus
+        />
+        {canEdit && (
+          <TouchableOpacity
+            style={styles.timeNowBtn}
+            onPress={handleSetCurrentTime}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.timeNowBtnText} maxFontSizeMultiplier={1.08}>設為現在</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
 
   const handleLinkExpensePress = async () => {
     if (!transaction) return;
@@ -844,7 +961,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   : (transaction.type === 'memo' ? '👀 查看生活備忘' : transaction.type === 'transfer' ? '👀 查看內部轉帳' : '👀 查看記帳明細')}
               </Text>
               <Text style={styles.headerDateBadge} maxFontSizeMultiplier={1.15}>
-                {transaction.type === 'memo' ? '記事日期' : transaction.type === 'transfer' ? '轉帳日期' : '記帳日期'}：{curDateFormattedWithTime}
+                發生時間：{curDateFormattedWithTime}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -1123,13 +1240,20 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   </View>
                 )}
 
-                {/* 記事日期 */}
-                <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記事日期</Text>
+                {/* 記事日期與發生時間 */}
+                <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記事日期與發生時間</Text>
                 <View style={styles.dateRow}>
                   <TouchableOpacity
                     disabled={!canEdit}
                     style={[styles.dateChip, isOriginal && styles.dateChipActive]}
-                    onPress={() => setQuickDate(origDate)}
+                    onPress={() => {
+                      if (transaction?.transacted_at) {
+                        setTransactedAt(transaction.transacted_at);
+                        const orig = new Date(transaction.transacted_at);
+                        setHourStr(String(orig.getHours()).padStart(2, '0'));
+                        setMinuteStr(String(orig.getMinutes()).padStart(2, '0'));
+                      }
+                    }}
                     activeOpacity={0.7}
                   >
                     <Text style={[styles.dateChipText, isOriginal && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
@@ -1184,6 +1308,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                     </TouchableOpacity>
                   )}
                 </View>
+                {renderTimeInputRow()}
 
                 {/* ⏰ 待辦提醒日期與週期設定 (選填) */}
                 <View style={styles.sectionLabelRow}>
@@ -1929,9 +2054,9 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               </View>
             )}
 
-            {/* 記帳日期調整 */}
+            {/* 發生日期與時間調整 */}
             <View style={styles.sectionLabelRow}>
-              <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記帳日期</Text>
+              <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>發生日期與時間</Text>
               {!isOriginal && (
                 <Text style={styles.dateHintText} maxFontSizeMultiplier={1.15}>
                   (已改為：{curDateFormattedWithTime})
@@ -1942,7 +2067,14 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               <TouchableOpacity
                 disabled={!canEdit}
                 style={[styles.dateChip, isOriginal && styles.dateChipActive, !canEdit && !isOriginal && styles.readOnlyUnselectedChip]}
-                onPress={() => setTransactedAt(transaction.transacted_at)}
+                onPress={() => {
+                  if (transaction?.transacted_at) {
+                    setTransactedAt(transaction.transacted_at);
+                    const orig = new Date(transaction.transacted_at);
+                    setHourStr(String(orig.getHours()).padStart(2, '0'));
+                    setMinuteStr(String(orig.getMinutes()).padStart(2, '0'));
+                  }
+                }}
                 activeOpacity={0.7}
               >
                 <Text
@@ -1974,7 +2106,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 activeOpacity={0.7}
               >
                 <Text
-                  style={[styles.dateChipText, isYesterday && !isOriginal && styles.dateChipTextActive]}
+                  style={[styles.dateChipText, isYesterday && !isOriginal && styles.dateChipActive]}
                   maxFontSizeMultiplier={1.15}
                 >
                   昨天 ({yesterday.getMonth() + 1}/{yesterday.getDate()})
@@ -2013,6 +2145,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 </TouchableOpacity>
               )}
             </View>
+            {renderTimeInputRow()}
 
             {/* 店家 / 對象 (選填) */}
             <View onLayout={(e) => setMerchantSectionY(e.nativeEvent.layout.y)}>
@@ -2401,7 +2534,72 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
-    marginBottom: 12,
+    marginBottom: 8,
+  },
+  timeInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginTop: 0,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  timeLabelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  timeLabelIcon: {
+    fontSize: 14,
+  },
+  timeLabelText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  timeInputsWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  timeDigitInput: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    width: 44,
+    height: 36,
+    textAlign: 'center',
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1F2937',
+    paddingVertical: 0,
+  },
+  timeColonText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#4B5563',
+  },
+  timeNowBtn: {
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 4,
+  },
+  timeNowBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#4F46E5',
   },
   dateChip: {
     paddingVertical: 6,
