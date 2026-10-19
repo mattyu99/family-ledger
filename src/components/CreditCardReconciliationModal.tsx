@@ -100,13 +100,59 @@ export interface CreditCardReconciliationModalProps {
   targetMemberId?: string;
 }
 
-// 輔助函式：判斷是否為悠遊卡/儲值卡加值存入紀錄
-const isTopUpTransaction = (t: Transaction, card: PaymentAccount): boolean => {
+// 輔助函式：判斷是否為特定悠遊卡/儲值卡加值存入紀錄
+const isTopUpTransaction = (t: Transaction, card: PaymentAccount, allAccounts?: PaymentAccount[]): boolean => {
   if (!card) return false;
-  if (t.linked_transaction_id && t.linked_transaction_id === card.id) return true;
-  if (t.merchant === `${card.name}儲值` || t.merchant === `${card.name}加值` || t.merchant === '悠遊卡加值' || t.merchant === '一卡通加值') return true;
+
+  // 1. 若資料庫記錄了明確的關聯帳戶 ID (linked_transaction_id)：
+  // 具有最高優先權與排他性：指向當前卡片才為 true，指向別張卡片或別筆交易時絕非當前卡片之加值
+  if (t.linked_transaction_id) {
+    return t.linked_transaction_id === card.id;
+  }
+
+  // 2. 備註明確標註存入特定卡片名稱 (如「存入【富邦J悠遊卡】」)
+  const bracketMatch = t.note?.match(/存入【(.*?)】/);
+  if (bracketMatch) {
+    const targetCardName = bracketMatch[1].trim();
+    if (targetCardName === card.name.trim()) return true;
+    if (card.last_four_digits && targetCardName.includes(card.last_four_digits)) return true;
+    // 既然備註明確指定了存入別張卡片，絕不可匹配此卡
+    return false;
+  }
+
+  // 3. 備註或店家包含該特定卡片專屬名稱
   if (t.note?.includes(`存入【${card.name}】`)) return true;
   if (t.note?.includes(`${card.name}儲值`) || t.note?.includes(`${card.name}加值`)) return true;
+  if (t.merchant === `${card.name}儲值` || t.merchant === `${card.name}加值`) return true;
+
+  // 4. 若店家提及其他儲值卡名稱，絕對排除
+  if (allAccounts && allAccounts.length > 0) {
+    const otherStoredAccounts = allAccounts.filter(a => a.id !== card.id && a.type === 'stored_value');
+    const mentionsOtherCard = otherStoredAccounts.some(
+      other =>
+        (t.merchant && (t.merchant === `${other.name}儲值` || t.merchant === `${other.name}加值` || t.merchant.includes(other.name))) ||
+        (t.note && (t.note.includes(`【${other.name}】`) || t.note.includes(`${other.name}儲值`) || t.note.includes(`${other.name}加值`)))
+    );
+    if (mentionsOtherCard) return false;
+  }
+
+  // 5. 若店家僅為通用「悠遊卡加值」或「一卡通加值」且無卡片備註（多為極早期未綁定卡片之舊資料）：
+  const isGenericTopUp = t.merchant === '悠遊卡加值' || t.merchant === '一卡通加值' || t.merchant === '儲值卡加值';
+  if (isGenericTopUp) {
+    // 若持卡人不一致，絕不可跨人跨卡匹配
+    if (card.user_id && t.paid_by && card.user_id !== t.paid_by && card.user_id !== t.completed_by) {
+      return false;
+    }
+    // 檢查卡種是否相符
+    const isEasyCard = card.name.includes('悠遊') || card.name.includes('市民');
+    const isIPass = card.name.includes('一卡通');
+    if (t.merchant === '悠遊卡加值' && !isEasyCard) return false;
+    if (t.merchant === '一卡通加值' && !isIPass) return false;
+
+    // 若持卡人一致且無其他卡片指向，才作為最寬鬆的舊資料回退
+    return true;
+  }
+
   return false;
 };
 
@@ -430,15 +476,18 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
         // 1. 刷卡消費扣款
         const isCardSpend =
           t.account_id === currentCard.id ||
-          (t.payment_method === 'stored_value' && !t.account_id && t.paid_by === currentCard.user_id);
+          (t.payment_method === 'stored_value' &&
+            !t.account_id &&
+            t.paid_by === currentCard.user_id &&
+            (!t.note || !paymentAccounts.some(a => a.id !== currentCard.id && a.type === 'stored_value' && t.note?.includes(a.name))));
         // 2. 加值存入
-        const isCardTopUp = isTopUpTransaction(t, currentCard);
+        const isCardTopUp = isTopUpTransaction(t, currentCard, paymentAccounts);
 
         if (!isCardSpend && !isCardTopUp) return false;
       }
       return isDateInBillingCycle(t.transacted_at, currentCycle.startDate, currentCycle.endDate);
     });
-  }, [transactions, currentCard, currentCycle, accountType]);
+  }, [transactions, currentCard, currentCycle, accountType, paymentAccounts]);
 
   // 本期統計：支出總額、回饋折抵總額、實際應繳、加值總額、已核對筆數
   const stats = useMemo(() => {
@@ -475,7 +524,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
       let topUpCount = 0;
 
       cycleTransactions.forEach(t => {
-        if (currentCard && isTopUpTransaction(t, currentCard)) {
+        if (currentCard && isTopUpTransaction(t, currentCard, paymentAccounts)) {
           totalTopUp += Number(t.amount || 0);
           topUpCount += 1;
         } else {
@@ -503,7 +552,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
         topUpCount,
       };
     }
-  }, [cycleTransactions, accountType, currentCard]);
+  }, [cycleTransactions, accountType, currentCard, paymentAccounts]);
 
   // 處理上傳電子帳單
   const handleUploadStatement = async () => {
@@ -1317,7 +1366,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                 </View>
               ) : (
                 cycleTransactions.map(tx => {
-                  const isTopUp = !isCredit && currentCard && isTopUpTransaction(tx, currentCard);
+                  const isTopUp = !isCredit && currentCard && isTopUpTransaction(tx, currentCard, paymentAccounts);
                   const isRebate = isCredit && tx.type === 'income';
                   const isCreditTransfer = isCredit && tx.type === 'transfer';
                   const parsedDiscount = tx.type === 'expense' ? parseExpenseDiscount(tx.note) : null;

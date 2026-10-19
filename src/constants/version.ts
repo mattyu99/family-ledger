@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 57;
+export const APP_BUILD_REVISION = 58;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.58',
+    date: '2026-10-19',
+    title: '悠遊卡對帳加值明細嚴格卡片歸屬校正（排除非所屬卡片錯置）',
+    highlights: [
+      '修復跨卡加值錯列問題：徹底解決先前對帳邏輯中因店家名稱包含「悠遊卡加值」引發無條件通配的缺陷，不再導致全家所有悠遊卡都列出同一筆加值。',
+      '結構化 linked_transaction_id 與備註嚴格排他：加值紀錄優先以專屬帳戶 ID (linked_transaction_id) 或備註卡名精準比對，若明確指向其他卡片，一律 100% 嚴格排除。',
+      '自然月對帳數據精準無誤：悠遊卡對帳中的「當月收支與加值明細」與「本月加值存入」統計，僅如實反映真正存入該卡之金流，徹底消弭跨卡重複計入疑慮。',
+    ],
+  },
   {
     version: '1.0.5.57',
     date: '2026-10-19',
