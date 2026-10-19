@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 53;
+export const APP_BUILD_REVISION = 54;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.54',
+    date: '2026-10-19',
+    title: '悠遊卡快速加值依出資人動態過濾卡片與轉帳明細精簡',
+    highlights: [
+      '出資人動態卡片過濾：快速加值彈窗中，扣款出資來源自動跟隨「出資付款人」動態篩選其名下卡片，畫面清爽不再塞滿全家所有卡片；並提供「展開全家卡片 (N) ▾ / 僅顯示出資人卡片 ▴」切換按鈕，保留靈活代付彈性。',
+      '彈窗欄位順序更直覺：將「出資付款人」調整至「扣款出資來源」上方，符合「先選誰出資、再選扣哪張卡/現金」的直覺思維順序。',
+      '內部轉帳店家與備註精簡：加值產生的內部轉帳紀錄，店家統稱為「悠遊卡加值」（可隨時改填實際地點如 7-11、捷運站）；備註剔除重複的來源與金額冗贅字串，精簡為「存入【卡片名稱】」。',
+      '關聯卡片解耦強化：明細列表與信用卡對帳全面結合 `linked_transaction_id` 反查目標卡片，即使店家被自訂為消費場所，對帳與卡片存入標籤依然 100% 精準無誤。',
+    ],
+  },
   {
     version: '1.0.5.53',
     date: '2026-10-19',

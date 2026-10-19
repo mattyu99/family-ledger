@@ -5751,25 +5751,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           || members[0];
         const validPaidBy = matchedPayer?.id || currentUser.id;
 
-        // 取得扣款出資來源顯示文字
-        let sourceLabel = '現金';
-        if (sourceType === 'credit_card' && sourceAccountId) {
-          const matchedCard = paymentAccounts.find(a => a.id === sourceAccountId);
-          sourceLabel = matchedCard ? matchedCard.name : '信用卡';
-        } else if (sourceType === 'transfer') {
-          sourceLabel = '銀行轉帳';
-        }
+        const isEasyCard = targetAcc.name.includes('悠遊') || targetAcc.name.includes('市民');
+        const defaultMerchant = isEasyCard ? '悠遊卡加值' : `${targetAcc.name}加值`;
 
         await addTransaction({
           amount: topUpAmount,
           type: 'transfer',
           category_id: trafficCat ? trafficCat.id : categories[0]?.id,
           paid_by: validPaidBy,
-          merchant: `${targetAcc.name}儲值`,
+          merchant: defaultMerchant,
           payment_method: sourceType,
           account_id: sourceAccountId, // 扣款信用卡 ID；若為現金或轉帳則為 undefined（絕不能設為悠遊卡 ID）
           linked_transaction_id: targetAcc.id,
-          note: opts.note || `存入【${targetAcc.name}】（自 ${sourceLabel} 轉入 NT$ ${topUpAmount.toLocaleString()}）`,
+          note: opts.note !== undefined ? opts.note : `存入【${targetAcc.name}】`,
           transacted_at: new Date().toISOString(),
         });
       }

@@ -103,7 +103,8 @@ export interface CreditCardReconciliationModalProps {
 // 輔助函式：判斷是否為悠遊卡/儲值卡加值存入紀錄
 const isTopUpTransaction = (t: Transaction, card: PaymentAccount): boolean => {
   if (!card) return false;
-  if (t.merchant === `${card.name}儲值` || t.merchant === `${card.name}加值`) return true;
+  if (t.linked_transaction_id && t.linked_transaction_id === card.id) return true;
+  if (t.merchant === `${card.name}儲值` || t.merchant === `${card.name}加值` || t.merchant === '悠遊卡加值' || t.merchant === '一卡通加值') return true;
   if (t.note?.includes(`存入【${card.name}】`)) return true;
   if (t.note?.includes(`${card.name}儲值`) || t.note?.includes(`${card.name}加值`)) return true;
   return false;

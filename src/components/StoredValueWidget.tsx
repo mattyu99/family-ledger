@@ -107,7 +107,26 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
   const [topUpSourceType, setTopUpSourceType] = useState<'cash' | 'credit_card' | 'transfer'>('cash');
   const [topUpCreditCardId, setTopUpCreditCardId] = useState<string>('');
   const [topUpPayerId, setTopUpPayerId] = useState<string>('');
+  const [showAllCreditCards, setShowAllCreditCards] = useState<boolean>(false);
   const [recordExpense, setRecordExpense] = useState<boolean>(true);
+
+  // 依據當前選取的出資付款人 (topUpPayerId) 動態過濾其專屬之信用卡
+  const payerCreditCards = React.useMemo(() => {
+    if (!topUpPayerId) return creditCards;
+    const targetM = members.find(m => m.id === topUpPayerId);
+    return creditCards.filter(c => {
+      if (c.user_id === topUpPayerId) return true;
+      if (targetM && targetM.display_name && c.name.includes(targetM.display_name)) return true;
+      return false;
+    });
+  }, [creditCards, topUpPayerId, members]);
+
+  const displayedCreditCards = React.useMemo(() => {
+    if (showAllCreditCards || payerCreditCards.length === 0) {
+      return creditCards;
+    }
+    return payerCreditCards;
+  }, [showAllCreditCards, payerCreditCards, creditCards]);
 
   // 監聽鍵盤高度 (Android, iOS 與 Mobile Web)
   useEffect(() => {
@@ -154,9 +173,19 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
     setModalMode('topup');
     setCustomAmount('500');
     setTopUpSourceType('cash');
-    setTopUpCreditCardId(creditCards[0]?.id || '');
+    setShowAllCreditCards(false);
+
     const matchedMember = acc.user_id && members.find(m => m.id === acc.user_id);
-    setTopUpPayerId(matchedMember ? matchedMember.id : (currentUser?.id || members[0]?.id || ''));
+    const defaultPayerId = matchedMember ? matchedMember.id : (currentUser?.id || members[0]?.id || '');
+    setTopUpPayerId(defaultPayerId);
+
+    const targetM = members.find(m => m.id === defaultPayerId);
+    const targetCards = creditCards.filter(c => {
+      if (c.user_id === defaultPayerId) return true;
+      if (targetM && targetM.display_name && c.name.includes(targetM.display_name)) return true;
+      return false;
+    });
+    setTopUpCreditCardId(targetCards[0]?.id || creditCards[0]?.id || '');
     setRecordExpense(true);
   };
 
@@ -375,8 +404,51 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                     />
                   </View>
 
+                  {/* 出資付款人 */}
+                  <Text style={[styles.inputLabel, { marginTop: 4 }]}>出資付款人</Text>
+                  <View style={styles.payerChipsRow}>
+                    {members.map(m => {
+                      const isSelected = topUpPayerId === m.id;
+                      return (
+                        <TouchableOpacity
+                          key={m.id}
+                          style={[styles.payerChip, isSelected && styles.payerChipActive]}
+                          onPress={() => {
+                            setTopUpPayerId(m.id);
+                            setShowAllCreditCards(false);
+                            const targetCards = creditCards.filter(c => {
+                              if (c.user_id === m.id) return true;
+                              if (m.display_name && c.name.includes(m.display_name)) return true;
+                              return false;
+                            });
+                            if (targetCards.length > 0) {
+                              setTopUpCreditCardId(targetCards[0].id);
+                            }
+                          }}
+                        >
+                          <Text style={styles.payerChipAvatar}>{m.avatar_url || '👤'}</Text>
+                          <Text style={[styles.payerChipName, isSelected && styles.payerChipNameActive]}>
+                            {m.display_name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
                   {/* 扣款出資來源 */}
-                  <Text style={[styles.inputLabel, { marginTop: 4 }]}>扣款出資來源</Text>
+                  <View style={styles.inputLabelRow}>
+                    <Text style={[styles.inputLabel, { marginBottom: 0 }]}>扣款出資來源</Text>
+                    {payerCreditCards.length > 0 && creditCards.length > payerCreditCards.length && (
+                      <TouchableOpacity
+                        onPress={() => setShowAllCreditCards(prev => !prev)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={styles.toggleAllCardsLinkText}>
+                          {showAllCreditCards ? '僅顯示出資人卡片 ▴' : `展開全家卡片 (${creditCards.length}) ▾`}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                   <View style={styles.sourceChipsRow}>
                     <TouchableOpacity
                       style={[styles.sourceChip, topUpSourceType === 'cash' && styles.sourceChipActive]}
@@ -386,7 +458,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                         💵 皮夾現金
                       </Text>
                     </TouchableOpacity>
-                    {creditCards.map(cc => {
+                    {displayedCreditCards.map(cc => {
                       const isCcActive = topUpSourceType === 'credit_card' && topUpCreditCardId === cc.id;
                       return (
                         <TouchableOpacity
@@ -411,26 +483,6 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                         🏦 銀行轉帳
                       </Text>
                     </TouchableOpacity>
-                  </View>
-
-                  {/* 出資付款人 */}
-                  <Text style={[styles.inputLabel, { marginTop: 4 }]}>出資付款人</Text>
-                  <View style={styles.payerChipsRow}>
-                    {members.map(m => {
-                      const isSelected = topUpPayerId === m.id;
-                      return (
-                        <TouchableOpacity
-                          key={m.id}
-                          style={[styles.payerChip, isSelected && styles.payerChipActive]}
-                          onPress={() => setTopUpPayerId(m.id)}
-                        >
-                          <Text style={styles.payerChipAvatar}>{m.avatar_url || '👤'}</Text>
-                          <Text style={[styles.payerChipName, isSelected && styles.payerChipNameActive]}>
-                            {m.display_name}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
                   </View>
 
                   {/* 自動記帳開關 */}
@@ -733,6 +785,11 @@ const styles = StyleSheet.create({
     color: '#0284C7',
     fontWeight: '600',
     marginLeft: 'auto',
+  },
+  toggleAllCardsLinkText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: '#0284C7',
   },
   inputLabel: {
     fontSize: 12,

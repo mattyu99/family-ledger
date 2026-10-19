@@ -61,6 +61,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
   const formattedDate = `${date.getMonth() + 1}/${date.getDate()}`;
 
   const account = transaction.payment_account || (transaction.account_id ? getAccountById(transaction.account_id) : undefined);
+  const linkedCard = transaction.linked_transaction_id ? getAccountById(transaction.linked_transaction_id) : undefined;
   const paymentLabel = formatPaymentLabel(transaction.payment_method, account, paymentMethods);
 
   if (transaction.type === 'memo') {
@@ -444,7 +445,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
               maxFontSizeMultiplier={1.2}
             >
               {isSelfTransfer
-                ? `存入【${transaction.merchant || '儲值卡'}】`
+                ? `存入【${linkedCard?.name || transaction.merchant || '儲值卡'}】`
                 : isTransferIn
                 ? `由 ${payer?.avatar_url || '👤'} ${payer?.display_name || '出資人'} 撥入`
                 : isTransferOut
