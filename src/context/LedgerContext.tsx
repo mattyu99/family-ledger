@@ -316,7 +316,7 @@ interface LedgerContextType {
     id: string,
     amount: number,
     options?: {
-      sourceType?: 'cash' | 'credit_card' | 'transfer';
+      sourceType?: PaymentMethod | 'cash' | 'credit_card' | 'transfer' | string;
       sourceAccountId?: string;
       payerId?: string;
       recordExpense?: boolean;
@@ -5713,7 +5713,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     id: string,
     topUpAmount: number,
     options?: {
-      sourceType?: 'cash' | 'credit_card' | 'transfer';
+      sourceType?: PaymentMethod | 'cash' | 'credit_card' | 'transfer' | string;
       sourceAccountId?: string;
       payerId?: string;
       recordExpense?: boolean;
@@ -5726,11 +5726,24 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       const opts = typeof options === 'string' ? { note: options } : (options || {});
       const recordExpense = opts.recordExpense !== false;
-      const sourceType = opts.sourceType || 'cash';
-      const sourceAccountId = sourceType === 'credit_card' ? opts.sourceAccountId : undefined;
+      const sourceType = (opts.sourceType || 'cash') as PaymentMethod;
+      const sourceAccountId = opts.sourceAccountId;
 
       const newBalance = Number((targetAcc.balance + topUpAmount).toFixed(2));
-      const updatedAccounts = paymentAccounts.map(a => a.id === id ? { ...a, balance: newBalance } : a);
+      let updatedAccounts = paymentAccounts.map(a => a.id === id ? { ...a, balance: newBalance } : a);
+
+      // 若來源帳戶也是儲值卡 (stored_value) 且非目標卡，自動扣減來源儲值卡之餘額
+      if (sourceAccountId && sourceAccountId !== id) {
+        const sourceAcc = paymentAccounts.find(a => a.id === sourceAccountId);
+        if (sourceAcc && sourceAcc.type === 'stored_value') {
+          const srcNewBal = Number((sourceAcc.balance - topUpAmount).toFixed(2));
+          updatedAccounts = updatedAccounts.map(a => a.id === sourceAccountId ? { ...a, balance: srcNewBal } : a);
+          if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID && !sourceAccountId.startsWith('50000000')) {
+            supabase.from('payment_accounts').update({ balance: srcNewBal }).eq('id', sourceAccountId).then();
+          }
+        }
+      }
+
       setPaymentAccounts(updatedAccounts);
       await savePaymentAccountsToStorage(updatedAccounts);
 
@@ -5761,7 +5774,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           paid_by: validPaidBy,
           merchant: defaultMerchant,
           payment_method: sourceType,
-          account_id: sourceAccountId, // 扣款信用卡 ID；若為現金或轉帳則為 undefined（絕不能設為悠遊卡 ID）
+          account_id: sourceAccountId, // 扣款信用卡 ID / 銀行帳戶 ID / 來源儲值卡 ID；若未指定則為 undefined
           linked_transaction_id: targetAcc.id,
           note: opts.note !== undefined ? opts.note : `存入【${targetAcc.name}】`,
           transacted_at: new Date().toISOString(),

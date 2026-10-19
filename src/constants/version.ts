@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 55;
+export const APP_BUILD_REVISION = 56;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.56',
+    date: '2026-10-19',
+    title: '悠遊卡加值出資來源全面重構為動態支付方式與卡片/銀行子帳戶連動',
+    highlights: [
+      '出資來源動態化（告別硬編碼打補丁）：悠遊卡/儲值卡快速加值小工具全面重構，不再寫死固定選項，而是直接動態讀取家庭啟用的支付方式體系（現金、信用卡、銀行轉帳、悠遊付、街口支付、全支付、LINE Pay 等）。',
+      '完美支援悠遊付/電子支付靠卡加值：點選悠遊付或街口支付時，預設直接以「錢包餘額/直接扣款」轉入悠遊卡，亦可自選綁定之信用卡出資，完整支援台灣日常手機 NFC 靠卡感應加值情境！',
+      '銀行轉帳動態連動特定銀行帳戶：點選「銀行轉帳」時，系統會自動展開該出資人的銀行帳戶清單（如玉山銀行、台新 Richart），亦可選「一般轉帳（不指定銀行）」，清楚追蹤哪家銀行出資。',
+      '自動轉帳明細智慧標記：加值確認提示與產生的內部轉帳明細，精準標記出資管道（如「悠遊付錢包」、「銀行轉帳·玉山銀行」、「信用卡·富邦J卡」），並納入各卡或帳戶核算，不重複計入家庭總支出。',
+    ],
+  },
   {
     version: '1.0.5.55',
     date: '2026-10-19',

@@ -13,9 +13,9 @@ import {
   Platform,
   Keyboard,
 } from 'react-native';
-import { PaymentAccount } from '../types/database';
+import { PaymentAccount, PaymentMethod, CustomPaymentMethod } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
-import { sortAccountsByUser } from '../lib/payment';
+import { sortAccountsByUser, DEFAULT_PAYMENT_METHODS } from '../lib/payment';
 import { HorizontalScrollView } from './HorizontalScrollView';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
@@ -47,7 +47,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
   onOpenCreditCardReconcile,
   filterMemberId,
 }) => {
-  const { paymentAccounts, topUpAccountBalance, adjustAccountBalance, getMemberById, isOwner, currentUser, members } = useLedger();
+  const { paymentAccounts, paymentMethods, topUpAccountBalance, adjustAccountBalance, getMemberById, isOwner, currentUser, members } = useLedger();
 
   const targetFilteredMember = React.useMemo(() => {
     if (!filterMemberId || filterMemberId === 'all') return undefined;
@@ -78,6 +78,11 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
     [paymentAccounts]
   );
 
+  const bankAccounts = React.useMemo(
+    () => paymentAccounts.filter(a => a.type === 'bank'),
+    [paymentAccounts]
+  );
+
   const isMatchedToCurrentUser = React.useCallback(
     (userId?: string | null) => {
       if (!userId || !currentUser) return false;
@@ -103,12 +108,58 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
   const [customAmount, setCustomAmount] = useState<string>('');
   const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
 
-  // 加值扣款來源設定
-  const [topUpSourceType, setTopUpSourceType] = useState<'cash' | 'credit_card' | 'transfer'>('cash');
-  const [topUpCreditCardId, setTopUpCreditCardId] = useState<string>('');
+  // 加值扣款來源設定（全面動態化支援所有支付方式與關聯卡片/銀行）
+  const [topUpPaymentMethod, setTopUpPaymentMethod] = useState<PaymentMethod>('cash');
+  const [topUpAccountId, setTopUpAccountId] = useState<string>('');
   const [topUpPayerId, setTopUpPayerId] = useState<string>('');
-  const [showAllCreditCards, setShowAllCreditCards] = useState<boolean>(false);
+  const [showAllSubAccounts, setShowAllSubAccounts] = useState<boolean>(false);
   const [recordExpense, setRecordExpense] = useState<boolean>(true);
+
+  // 其他儲值卡（排除目前正在加值的卡片）
+  const otherStoredValueCards = React.useMemo(
+    () => paymentAccounts.filter(a => a.type === 'stored_value' && a.id !== activeModalAccount?.id),
+    [paymentAccounts, activeModalAccount]
+  );
+
+  // 取得有效啟用的出資支付方式清單（動態支援現金、信用卡、銀行轉帳、悠遊付、街口等）
+  const activeTopUpPaymentMethods = React.useMemo(() => {
+    const list = paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS;
+    const enabled = list.filter(m => m.is_enabled !== false);
+    const result: CustomPaymentMethod[] = [];
+    const cashObj = enabled.find(m => m.id === 'cash') || list.find(m => m.id === 'cash') || DEFAULT_PAYMENT_METHODS[0];
+    result.push(cashObj);
+    for (const m of enabled) {
+      if (m.id === 'cash') continue;
+      // 若為儲值卡，但家庭中沒有其他儲值卡可供轉出，則不顯示
+      if (m.id === 'stored_value' || m.type === 'stored_value') {
+        const others = paymentAccounts.filter(a => a.type === 'stored_value' && a.id !== activeModalAccount?.id);
+        if (others.length === 0) continue;
+      }
+      result.push(m);
+    }
+    return result;
+  }, [paymentMethods, paymentAccounts, activeModalAccount]);
+
+  const currentMethodObj = React.useMemo(() => {
+    const list = paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS;
+    return list.find(m => m.id === topUpPaymentMethod);
+  }, [paymentMethods, topUpPaymentMethod]);
+
+  const isPureCreditCard = currentMethodObj
+    ? (currentMethodObj.id === 'credit_card' || currentMethodObj.type === 'credit_card')
+    : topUpPaymentMethod === 'credit_card';
+
+  const isBankTransfer = currentMethodObj
+    ? (currentMethodObj.type === 'bank' || currentMethodObj.id === 'transfer')
+    : topUpPaymentMethod === 'transfer';
+
+  const isStoredValue = currentMethodObj
+    ? (currentMethodObj.type === 'stored_value' || currentMethodObj.id === 'stored_value')
+    : topUpPaymentMethod === 'stored_value';
+
+  const isEWallet = currentMethodObj
+    ? (currentMethodObj.type === 'e_wallet' || (!!currentMethodObj.supports_credit_card && !isPureCreditCard))
+    : (topUpPaymentMethod === 'easycard_pay' || topUpPaymentMethod === 'jkopay' || topUpPaymentMethod === 'line_pay' || topUpPaymentMethod === 'px_pay');
 
   // 依據當前選取的出資付款人 (topUpPayerId) 動態過濾其專屬之信用卡
   const payerCreditCards = React.useMemo(() => {
@@ -122,11 +173,47 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
   }, [creditCards, topUpPayerId, members]);
 
   const displayedCreditCards = React.useMemo(() => {
-    if (showAllCreditCards || payerCreditCards.length === 0) {
+    if (showAllSubAccounts || payerCreditCards.length === 0) {
       return creditCards;
     }
     return payerCreditCards;
-  }, [showAllCreditCards, payerCreditCards, creditCards]);
+  }, [showAllSubAccounts, payerCreditCards, creditCards]);
+
+  // 依據出資付款人動態過濾其銀行帳戶
+  const payerBankAccounts = React.useMemo(() => {
+    if (!topUpPayerId) return bankAccounts;
+    const targetM = members.find(m => m.id === topUpPayerId);
+    return bankAccounts.filter(b => {
+      if (b.user_id === topUpPayerId) return true;
+      if (targetM && targetM.display_name && b.name.includes(targetM.display_name)) return true;
+      return false;
+    });
+  }, [bankAccounts, topUpPayerId, members]);
+
+  const displayedBankAccounts = React.useMemo(() => {
+    if (showAllSubAccounts || payerBankAccounts.length === 0) {
+      return bankAccounts;
+    }
+    return payerBankAccounts;
+  }, [showAllSubAccounts, payerBankAccounts, bankAccounts]);
+
+  // 依據出資付款人動態過濾其他儲值卡
+  const payerOtherStoredCards = React.useMemo(() => {
+    if (!topUpPayerId) return otherStoredValueCards;
+    const targetM = members.find(m => m.id === topUpPayerId);
+    return otherStoredValueCards.filter(s => {
+      if (s.user_id === topUpPayerId) return true;
+      if (targetM && targetM.display_name && s.name.includes(targetM.display_name)) return true;
+      return false;
+    });
+  }, [otherStoredValueCards, topUpPayerId, members]);
+
+  const displayedOtherStoredCards = React.useMemo(() => {
+    if (showAllSubAccounts || payerOtherStoredCards.length === 0) {
+      return otherStoredValueCards;
+    }
+    return payerOtherStoredCards;
+  }, [showAllSubAccounts, payerOtherStoredCards, otherStoredValueCards]);
 
   // 監聽鍵盤高度 (Android, iOS 與 Mobile Web)
   useEffect(() => {
@@ -168,25 +255,104 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
     };
   }, []);
 
+  const handlePaymentMethodChange = (newMethod: PaymentMethod) => {
+    setTopUpPaymentMethod(newMethod);
+    const mObj = (paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS).find(m => m.id === newMethod);
+    const mPureCc = mObj ? (mObj.id === 'credit_card' || mObj.type === 'credit_card') : newMethod === 'credit_card';
+    const mBank = mObj ? (mObj.type === 'bank' || mObj.id === 'transfer') : newMethod === 'transfer';
+    const mSv = mObj ? (mObj.type === 'stored_value' || mObj.id === 'stored_value') : newMethod === 'stored_value';
+
+    if (mPureCc) {
+      // 信用卡：預設選取該付款人的第一張卡片
+      const userCard = payerCreditCards[0] || creditCards[0];
+      setTopUpAccountId(userCard?.id || '');
+    } else if (mBank) {
+      // 銀行轉帳：預設不強制指定特定帳戶
+      setTopUpAccountId('');
+    } else if (mSv) {
+      // 其他儲值卡：預設選第一張其他儲值卡
+      const userCard = payerOtherStoredCards[0] || otherStoredValueCards[0];
+      setTopUpAccountId(userCard?.id || '');
+    } else {
+      // 現金或電子錢包：預設帳戶為空（電子錢包留空代表「錢包餘額/直接扣款」）
+      setTopUpAccountId('');
+    }
+  };
+
+  const handlePayerChange = (newPayerId: string) => {
+    setTopUpPayerId(newPayerId);
+    setShowAllSubAccounts(false);
+    if (isPureCreditCard) {
+      const targetM = members.find(m => m.id === newPayerId);
+      const userCard = creditCards.find(c => {
+        if (c.user_id === newPayerId) return true;
+        if (targetM?.display_name && c.name.includes(targetM.display_name)) return true;
+        return false;
+      }) || creditCards[0];
+      setTopUpAccountId(userCard?.id || '');
+    } else if (isStoredValue) {
+      const targetM = members.find(m => m.id === newPayerId);
+      const userCard = otherStoredValueCards.find(c => {
+        if (c.user_id === newPayerId) return true;
+        if (targetM?.display_name && c.name.includes(targetM.display_name)) return true;
+        return false;
+      }) || otherStoredValueCards[0];
+      setTopUpAccountId(userCard?.id || '');
+    } else {
+      setTopUpAccountId('');
+    }
+  };
+
   const handleOpenTopUp = (acc: PaymentAccount) => {
     setActiveModalAccount(acc);
     setModalMode('topup');
     setCustomAmount('500');
-    setTopUpSourceType('cash');
-    setShowAllCreditCards(false);
+    setTopUpPaymentMethod('cash');
+    setTopUpAccountId('');
+    setShowAllSubAccounts(false);
 
     const matchedMember = acc.user_id && members.find(m => m.id === acc.user_id);
     const defaultPayerId = matchedMember ? matchedMember.id : (currentUser?.id || members[0]?.id || '');
     setTopUpPayerId(defaultPayerId);
-
-    const targetM = members.find(m => m.id === defaultPayerId);
-    const targetCards = creditCards.filter(c => {
-      if (c.user_id === defaultPayerId) return true;
-      if (targetM && targetM.display_name && c.name.includes(targetM.display_name)) return true;
-      return false;
-    });
-    setTopUpCreditCardId(targetCards[0]?.id || creditCards[0]?.id || '');
     setRecordExpense(true);
+  };
+
+  const renderModalHint = () => {
+    const formattedAmount = Number(customAmount || 0).toLocaleString();
+    if (!recordExpense) {
+      return `💡 僅手動增加【${activeModalAccount?.name}】卡片餘額 +NT$ ${formattedAmount}，不產生任何交易明細（各卡對帳單將不含此加值紀錄）。`;
+    }
+
+    if (isPureCreditCard) {
+      const card = paymentAccounts.find(c => c.id === topUpAccountId);
+      const cardName = card ? card.name : '信用卡';
+      return `💡 將建立內部轉帳明細：【${activeModalAccount?.name}】餘額增加 +NT$ ${formattedAmount}，從【${cardName}】扣款並納入信用卡帳單對帳，且不重複計入家庭總支出！`;
+    }
+
+    if (isBankTransfer) {
+      const bank = paymentAccounts.find(a => a.id === topUpAccountId);
+      const bankName = bank ? bank.name : null;
+      return `💡 將建立內部轉帳明細：【${activeModalAccount?.name}】餘額增加 +NT$ ${formattedAmount}，從【${bankName ? `🏦 ${bankName}` : '🏦 銀行轉帳'}】扣款，且不重複計入家庭總支出！`;
+    }
+
+    if (isEWallet) {
+      const linkedCard = topUpAccountId ? paymentAccounts.find(a => a.id === topUpAccountId) : null;
+      const methodName = currentMethodObj?.name || '電子支付';
+      const methodIcon = currentMethodObj?.icon || '🩵';
+      const sourceDesc = linkedCard ? `${methodName} (綁定 ${linkedCard.name})` : `${methodName} 錢包餘額 / 帳戶直接扣款`;
+      return `💡 將建立內部轉帳明細：【${activeModalAccount?.name}】餘額增加 +NT$ ${formattedAmount}，從【${methodIcon} ${sourceDesc}】扣款，且不重複計入家庭總支出！`;
+    }
+
+    if (isStoredValue) {
+      const srcCard = paymentAccounts.find(a => a.id === topUpAccountId);
+      return `💡 將建立內部轉帳明細：【${activeModalAccount?.name}】餘額增加 +NT$ ${formattedAmount}，從【🚌 ${srcCard ? srcCard.name : '儲值卡'}】餘額扣除轉入，且不重複計入家庭總支出！`;
+    }
+
+    if (topUpPaymentMethod === 'cash') {
+      return `💡 將建立內部轉帳明細：【${activeModalAccount?.name}】餘額增加 +NT$ ${formattedAmount}，從【💵 皮夾現金】扣款，且不重複計入家庭總支出！`;
+    }
+
+    return `💡 將建立內部轉帳明細：【${activeModalAccount?.name}】餘額增加 +NT$ ${formattedAmount}，從【${currentMethodObj?.icon || ''} ${currentMethodObj?.name || '其他出資管道'}】扣款，且不重複計入家庭總支出！`;
   };
 
   const handleOpenAdjust = (acc: PaymentAccount) => {
@@ -212,8 +378,8 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
 
     if (modalMode === 'topup') {
       const success = await topUpAccountBalance(activeModalAccount.id, num, {
-        sourceType: topUpSourceType,
-        sourceAccountId: topUpSourceType === 'credit_card' ? topUpCreditCardId : undefined,
+        sourceType: topUpPaymentMethod,
+        sourceAccountId: topUpAccountId || undefined,
         payerId: topUpPayerId,
         recordExpense: recordExpense,
       });
@@ -413,18 +579,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                         <TouchableOpacity
                           key={m.id}
                           style={[styles.payerChip, isSelected && styles.payerChipActive]}
-                          onPress={() => {
-                            setTopUpPayerId(m.id);
-                            setShowAllCreditCards(false);
-                            const targetCards = creditCards.filter(c => {
-                              if (c.user_id === m.id) return true;
-                              if (m.display_name && c.name.includes(m.display_name)) return true;
-                              return false;
-                            });
-                            if (targetCards.length > 0) {
-                              setTopUpCreditCardId(targetCards[0].id);
-                            }
-                          }}
+                          onPress={() => handlePayerChange(m.id)}
                         >
                           <Text style={styles.payerChipAvatar}>{m.avatar_url || '👤'}</Text>
                           <Text style={[styles.payerChipName, isSelected && styles.payerChipNameActive]}>
@@ -435,55 +590,199 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                     })}
                   </View>
 
-                  {/* 扣款出資來源 */}
+                  {/* 出資支付方式 (第一層：動態支付方式) */}
                   <View style={styles.inputLabelRow}>
-                    <Text style={[styles.inputLabel, { marginBottom: 0 }]}>扣款出資來源</Text>
-                    {payerCreditCards.length > 0 && creditCards.length > payerCreditCards.length && (
-                      <TouchableOpacity
-                        onPress={() => setShowAllCreditCards(prev => !prev)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Text style={styles.toggleAllCardsLinkText}>
-                          {showAllCreditCards ? '僅顯示出資人卡片 ▴' : `展開全家卡片 (${creditCards.length}) ▾`}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
+                    <Text style={[styles.inputLabel, { marginBottom: 0 }]}>出資支付方式</Text>
                   </View>
                   <View style={styles.sourceChipsRow}>
-                    <TouchableOpacity
-                      style={[styles.sourceChip, topUpSourceType === 'cash' && styles.sourceChipActive]}
-                      onPress={() => setTopUpSourceType('cash')}
-                    >
-                      <Text style={[styles.sourceChipText, topUpSourceType === 'cash' && styles.sourceChipTextActive]}>
-                        💵 皮夾現金
-                      </Text>
-                    </TouchableOpacity>
-                    {displayedCreditCards.map(cc => {
-                      const isCcActive = topUpSourceType === 'credit_card' && topUpCreditCardId === cc.id;
+                    {activeTopUpPaymentMethods.map(m => {
+                      const isSelected = topUpPaymentMethod === m.id;
                       return (
                         <TouchableOpacity
-                          key={cc.id}
-                          style={[styles.sourceChip, isCcActive && styles.sourceChipActive]}
-                          onPress={() => {
-                            setTopUpSourceType('credit_card');
-                            setTopUpCreditCardId(cc.id);
-                          }}
+                          key={m.id}
+                          style={[
+                            styles.sourceChip,
+                            isSelected && {
+                              borderColor: m.color || '#0284C7',
+                              backgroundColor: `${m.color || '#0284C7'}18`,
+                            },
+                          ]}
+                          onPress={() => handlePaymentMethodChange(m.id as any)}
                         >
-                          <Text style={[styles.sourceChipText, isCcActive && styles.sourceChipTextActive]}>
-                            💳 {cc.name}{cc.last_four_digits ? ` (*${cc.last_four_digits})` : ''}
+                          <Text
+                            style={[
+                              styles.sourceChipText,
+                              isSelected && { color: m.color || '#0284C7', fontWeight: '700' },
+                            ]}
+                          >
+                            {m.icon} {m.name}
                           </Text>
                         </TouchableOpacity>
                       );
                     })}
-                    <TouchableOpacity
-                      style={[styles.sourceChip, topUpSourceType === 'transfer' && styles.sourceChipActive]}
-                      onPress={() => setTopUpSourceType('transfer')}
-                    >
-                      <Text style={[styles.sourceChipText, topUpSourceType === 'transfer' && styles.sourceChipTextActive]}>
-                        🏦 銀行轉帳
-                      </Text>
-                    </TouchableOpacity>
                   </View>
+
+                  {/* 第二層：關聯卡片與帳戶連動 */}
+                  {/* 子層：當選擇信用卡時 */}
+                  {isPureCreditCard && (
+                    <View style={styles.subAccountSection}>
+                      <View style={styles.inputLabelRow}>
+                        <Text style={styles.subAccountLabel}>💳 選擇扣款信用卡 (納入對帳)</Text>
+                        {payerCreditCards.length > 0 && creditCards.length > payerCreditCards.length && (
+                          <TouchableOpacity
+                            onPress={() => setShowAllSubAccounts(prev => !prev)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Text style={styles.toggleAllCardsLinkText}>
+                              {showAllSubAccounts ? '僅顯示出資人卡片 ▴' : `展開全家卡片 (${creditCards.length}) ▾`}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      <View style={styles.sourceChipsRow}>
+                        {displayedCreditCards.map(cc => {
+                          const isSelected = topUpAccountId === cc.id;
+                          return (
+                            <TouchableOpacity
+                              key={cc.id}
+                              style={[styles.sourceChip, isSelected && styles.sourceChipActive]}
+                              onPress={() => setTopUpAccountId(cc.id)}
+                            >
+                              <Text style={[styles.sourceChipText, isSelected && styles.sourceChipTextActive]}>
+                                💳 {cc.name}{cc.last_four_digits ? ` (*${cc.last_four_digits})` : ''}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                        {displayedCreditCards.length === 0 && (
+                          <Text style={styles.emptyAccountHint}>💳 目前尚未建立屬於該出資人的信用卡</Text>
+                        )}
+                      </View>
+                    </View>
+                  )}
+
+                  {/* 子層：當選擇電子錢包/行動支付時 (悠遊付、街口、全支付、LINE Pay 等) */}
+                  {isEWallet && (
+                    <View style={styles.subAccountSection}>
+                      <View style={styles.inputLabelRow}>
+                        <Text style={styles.subAccountLabel}>
+                          {currentMethodObj?.icon || '🩵'} 選擇扣款來源方式
+                        </Text>
+                        {payerCreditCards.length > 0 && creditCards.length > payerCreditCards.length && (
+                          <TouchableOpacity
+                            onPress={() => setShowAllSubAccounts(prev => !prev)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Text style={styles.toggleAllCardsLinkText}>
+                              {showAllSubAccounts ? '僅顯示出資人卡片 ▴' : `展開全家卡片 (${creditCards.length}) ▾`}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      <View style={styles.sourceChipsRow}>
+                        <TouchableOpacity
+                          style={[styles.sourceChip, !topUpAccountId && styles.sourceChipActive]}
+                          onPress={() => setTopUpAccountId('')}
+                        >
+                          <Text style={[styles.sourceChipText, !topUpAccountId && styles.sourceChipTextActive]}>
+                            {currentMethodObj?.icon || '🩵'} {currentMethodObj?.name || '電子錢包'}餘額 / 帳戶直接扣款
+                          </Text>
+                        </TouchableOpacity>
+                        {displayedCreditCards.map(cc => {
+                          const isSelected = topUpAccountId === cc.id;
+                          return (
+                            <TouchableOpacity
+                              key={cc.id}
+                              style={[styles.sourceChip, isSelected && styles.sourceChipActive]}
+                              onPress={() => setTopUpAccountId(cc.id)}
+                            >
+                              <Text style={[styles.sourceChipText, isSelected && styles.sourceChipTextActive]}>
+                                💳 綁定 {cc.name}{cc.last_four_digits ? ` (*${cc.last_four_digits})` : ''}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  )}
+
+                  {/* 子層：當選擇銀行轉帳時 */}
+                  {isBankTransfer && bankAccounts.length > 0 && (
+                    <View style={styles.subAccountSection}>
+                      <View style={styles.inputLabelRow}>
+                        <Text style={styles.subAccountLabel}>🏦 選擇扣款銀行帳戶 (選填)</Text>
+                        {payerBankAccounts.length > 0 && bankAccounts.length > payerBankAccounts.length && (
+                          <TouchableOpacity
+                            onPress={() => setShowAllSubAccounts(prev => !prev)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Text style={styles.toggleAllCardsLinkText}>
+                              {showAllSubAccounts ? '僅顯示出資人帳戶 ▴' : `展開全家帳戶 (${bankAccounts.length}) ▾`}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      <View style={styles.sourceChipsRow}>
+                        <TouchableOpacity
+                          style={[styles.sourceChip, !topUpAccountId && styles.sourceChipActive]}
+                          onPress={() => setTopUpAccountId('')}
+                        >
+                          <Text style={[styles.sourceChipText, !topUpAccountId && styles.sourceChipTextActive]}>
+                            🏦 一般轉帳 (不指定銀行)
+                          </Text>
+                        </TouchableOpacity>
+                        {displayedBankAccounts.map(ba => {
+                          const isSelected = topUpAccountId === ba.id;
+                          return (
+                            <TouchableOpacity
+                              key={ba.id}
+                              style={[styles.sourceChip, isSelected && styles.sourceChipActive]}
+                              onPress={() => setTopUpAccountId(ba.id)}
+                            >
+                              <Text style={[styles.sourceChipText, isSelected && styles.sourceChipTextActive]}>
+                                🏦 {ba.name}{ba.last_four_digits ? ` (*${ba.last_four_digits})` : ''}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  )}
+
+                  {/* 子層：當選擇其他儲值卡互轉時 */}
+                  {isStoredValue && otherStoredValueCards.length > 0 && (
+                    <View style={styles.subAccountSection}>
+                      <View style={styles.inputLabelRow}>
+                        <Text style={styles.subAccountLabel}>🚌 選擇出資轉出之卡片</Text>
+                        {payerOtherStoredCards.length > 0 && otherStoredValueCards.length > payerOtherStoredCards.length && (
+                          <TouchableOpacity
+                            onPress={() => setShowAllSubAccounts(prev => !prev)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Text style={styles.toggleAllCardsLinkText}>
+                              {showAllSubAccounts ? '僅顯示出資人卡片 ▴' : `展開全家卡片 (${otherStoredValueCards.length}) ▾`}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      <View style={styles.sourceChipsRow}>
+                        {displayedOtherStoredCards.map(sc => {
+                          const isSelected = topUpAccountId === sc.id;
+                          return (
+                            <TouchableOpacity
+                              key={sc.id}
+                              style={[styles.sourceChip, isSelected && styles.sourceChipActive]}
+                              onPress={() => setTopUpAccountId(sc.id)}
+                            >
+                              <Text style={[styles.sourceChipText, isSelected && styles.sourceChipTextActive]}>
+                                🚌 {sc.name} (餘額: ${sc.balance})
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  )}
 
                   {/* 自動記帳開關 */}
                   <TouchableOpacity
@@ -496,11 +795,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                   </TouchableOpacity>
 
                   <Text style={styles.modalHint}>
-                    {recordExpense
-                      ? (topUpSourceType === 'credit_card'
-                          ? `💡 將建立內部轉帳明細：【${activeModalAccount?.name}】餘額增加 +NT$ ${Number(customAmount || 0).toLocaleString()}，從【${creditCards.find(c => c.id === topUpCreditCardId)?.name || '信用卡'}】扣款並納入信用卡帳單對帳，且不重複計入家庭總支出！`
-                          : `💡 將建立內部轉帳明細：【${activeModalAccount?.name}】餘額增加 +NT$ ${Number(customAmount || 0).toLocaleString()}，從【${topUpSourceType === 'cash' ? '💵 現金' : '🏦 銀行轉帳'}】扣款，且不重複計入家庭總支出！`)
-                      : `💡 僅手動增加【${activeModalAccount?.name}】卡片餘額 +NT$ ${Number(customAmount || 0).toLocaleString()}，不產生任何交易明細（各卡對帳單將不含此加值紀錄）。`}
+                    {renderModalHint()}
                   </Text>
                 </>
               ) : (
@@ -921,6 +1216,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#334155',
+  },
+  subAccountSection: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 10,
+    marginBottom: 10,
+  },
+  subAccountLabel: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  emptyAccountHint: {
+    fontSize: 11,
+    color: '#94A3B8',
+    paddingVertical: 4,
   },
   modalHint: {
     fontSize: 11,
