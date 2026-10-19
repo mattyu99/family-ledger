@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 50;
+export const APP_BUILD_REVISION = 51;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,15 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.51',
+    date: '2026-10-19',
+    title: '修復悠遊卡小工具 Hook 調用順序導致的閃退問題',
+    highlights: [
+      '修復啟動時閃退與白畫面異常：修復 StoredValueWidget（悠遊卡/儲值卡小工具）中 useCallback 落在早退條件式後方違反 React Hooks 規範，導致卡片資料非同步載入時觸發 React 致命錯誤而閃退與白畫面之問題。',
+      '確保所有 Hook 無條件在組件頂部依序調用：重構 Hook 調用順序，將卡片歸屬判定與生命週期 Hook 統一置於組件頂層，確保資料載入與畫面渲染生命週期 100% 穩定相容。',
+    ],
+  },
   {
     version: '1.0.5.50',
     date: '2026-10-19',

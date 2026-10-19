@@ -78,6 +78,26 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
     [paymentAccounts]
   );
 
+  const isMatchedToCurrentUser = React.useCallback(
+    (userId?: string | null) => {
+      if (!userId || !currentUser) return false;
+      if (userId === currentUser.id) return true;
+      const member = members.find(m => m.id === userId);
+      if (member) {
+        if (member.id === currentUser.id) return true;
+        if (
+          member.display_name &&
+          currentUser.display_name &&
+          member.display_name.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase()
+        ) {
+          return true;
+        }
+      }
+      return false;
+    },
+    [currentUser, members]
+  );
+
   const [activeModalAccount, setActiveModalAccount] = useState<PaymentAccount | null>(null);
   const [modalMode, setModalMode] = useState<'topup' | 'adjust'>('topup');
   const [customAmount, setCustomAmount] = useState<string>('');
@@ -128,30 +148,6 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
       if (removeViewportListener) removeViewportListener();
     };
   }, []);
-
-  if (storedValueCards.length === 0) {
-    return null;
-  }
-
-  const isMatchedToCurrentUser = React.useCallback(
-    (userId?: string | null) => {
-      if (!userId || !currentUser) return false;
-      if (userId === currentUser.id) return true;
-      const member = members.find(m => m.id === userId);
-      if (member) {
-        if (member.id === currentUser.id) return true;
-        if (
-          member.display_name &&
-          currentUser.display_name &&
-          member.display_name.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase()
-        ) {
-          return true;
-        }
-      }
-      return false;
-    },
-    [currentUser, members]
-  );
 
   const handleOpenTopUp = (acc: PaymentAccount) => {
     setActiveModalAccount(acc);
@@ -208,6 +204,10 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
       }
     }
   };
+
+  if (storedValueCards.length === 0) {
+    return null;
+  }
 
   return (
     <View style={styles.container}>
