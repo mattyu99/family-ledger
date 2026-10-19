@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.5';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.5 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 51;
+export const APP_BUILD_REVISION = 52;
 
 // 完整版本字串 (例如 "1.0.5.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.5.52',
+    date: '2026-10-19',
+    title: '明細頁面信用卡對帳視角與成員篩選連動對齊',
+    highlights: [
+      '明細頁面對帳視角與成員篩選動態連動：收支明細頁面點擊「信用卡對帳」時，彈窗不再固定跟隨「帳單支付」頁面狀態，而是 100% 依據明細成員篩選對齊。篩選「我 (本機)」時直接開啟個人卡片對帳；篩選「全部成員」時展開全家所有卡片；篩選「其他特定成員（如太太）」時精準過濾該成員所屬卡片。',
+      '非本人卡片純瀏覽防護與管理員權限：選取其他家庭成員對帳時，一般成員進入自動切換為純瀏覽模式（頂部顯示「👀 查看「成員」卡片對帳」），不可任意核對他人卡片或增刪電子帳單；帳本管理員則具備代為對帳權限，保障家庭隱私與操作彈性。',
+      '帳單支付頁面獨立維持「我的/全家」切換：從「帳單支付」頁面點擊對帳時，依舊維持繼承該頁面的「👤 我的」或「👨‍👩‍👧‍👦 全家」視角切換，雙向體驗自然流暢。',
+    ],
+  },
   {
     version: '1.0.5.51',
     date: '2026-10-19',

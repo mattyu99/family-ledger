@@ -97,6 +97,7 @@ export interface CreditCardReconciliationModalProps {
   initialAccountType?: 'credit_card' | 'stored_value';
   initialAccountId?: string;
   scope?: 'my' | 'all';
+  targetMemberId?: string;
 }
 
 // 輔助函式：判斷是否為悠遊卡/儲值卡加值存入紀錄
@@ -115,6 +116,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
   initialAccountType,
   initialAccountId,
   scope = 'my',
+  targetMemberId,
 }) => {
   const {
     currentLedger,
@@ -207,12 +209,66 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
     [currentUser, members]
   );
 
-  const filteredPaymentAccounts = useMemo(() => {
-    if (scope === 'my') {
-      return (paymentAccounts || []).filter(a => isMatchedToCurrentUser(a.user_id));
+  // 判斷某個付款人/持卡人 ID 是否對應指定目標成員 (支援 ID 或別名比對)
+  const isAccountBoundToTargetMember = useCallback(
+    (userId?: string | null, targetId?: string) => {
+      if (!userId || !targetId) return false;
+      if (userId === targetId) return true;
+      const targetM = members.find(m => m.id === targetId);
+      const payerM = members.find(m => m.id === userId);
+      if (targetM && payerM) {
+        if (targetM.id === payerM.id) return true;
+        if (
+          targetM.display_name &&
+          payerM.display_name &&
+          targetM.display_name.trim().toLowerCase() === payerM.display_name.trim().toLowerCase()
+        ) {
+          return true;
+        }
+      }
+      return false;
+    },
+    [members]
+  );
+
+  const targetMemberObj = useMemo(() => {
+    if (!targetMemberId || targetMemberId === 'all') return undefined;
+    return members.find(m => m.id === targetMemberId);
+  }, [targetMemberId, members]);
+
+  const isTargetingOtherMember = useMemo(() => {
+    if (!targetMemberObj) return false;
+    if (currentUser?.id && targetMemberObj.id === currentUser.id) return false;
+    if (
+      currentUser?.display_name &&
+      targetMemberObj.display_name &&
+      targetMemberObj.display_name.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase()
+    ) {
+      return false;
     }
-    return paymentAccounts || [];
-  }, [paymentAccounts, scope, isMatchedToCurrentUser]);
+    return true;
+  }, [targetMemberObj, currentUser]);
+
+  const filteredPaymentAccounts = useMemo(() => {
+    let list = paymentAccounts || [];
+    if (targetMemberId && targetMemberId !== 'all') {
+      if (isTargetingOtherMember) {
+        list = list.filter(a => isAccountBoundToTargetMember(a.user_id, targetMemberId));
+      } else {
+        list = list.filter(a => isMatchedToCurrentUser(a.user_id));
+      }
+    } else if (scope === 'my') {
+      list = list.filter(a => isMatchedToCurrentUser(a.user_id));
+    }
+    // 特例防呆：如果傳入了 initialAccountId，確保該卡片能被選中（若不在篩選清單內則補充進來）
+    if (initialAccountId) {
+      const initCard = (paymentAccounts || []).find(a => a.id === initialAccountId);
+      if (initCard && !list.some(a => a.id === initCard.id)) {
+        list = [initCard, ...list];
+      }
+    }
+    return list;
+  }, [paymentAccounts, scope, targetMemberId, isTargetingOtherMember, isMatchedToCurrentUser, isAccountBoundToTargetMember, initialAccountId]);
 
   const creditCards = useMemo(
     () => sortAccountsByUser(filteredPaymentAccounts.filter(a => a.type === 'credit_card'), currentUser?.id),
@@ -310,7 +366,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
 
   // 判斷當前選中之卡片是否屬於當前使用者，或使用者為帳本管理員
   const isMySelectedCard = isMatchedToCurrentUser(currentCard?.user_id);
-  const canManageCurrentCard = isOwner || isMySelectedCard;
+  const canManageCurrentCard = isOwner || (!isTargetingOtherMember && isMySelectedCard);
 
   // 計算該卡片的帳單週期清單 (信用卡依結帳日動態計算，悠遊卡依自然月份計算)
   const billingCycles = useMemo(() => {
@@ -619,10 +675,16 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
           <View style={styles.header}>
             <View style={{ flex: 1, marginRight: 8 }}>
               <Text style={styles.title} maxFontSizeMultiplier={1.15}>
-                {isCredit ? '💳 信用卡帳單精確對帳' : '🚌 悠遊卡自然月對帳'}
+                {targetMemberObj && isTargetingOtherMember
+                  ? (isCredit ? `💳 ${targetMemberObj.display_name} 的信用卡對帳` : `🚌 ${targetMemberObj.display_name} 的悠遊卡對帳`)
+                  : (isCredit ? '💳 信用卡帳單精確對帳' : '🚌 悠遊卡自然月對帳')}
               </Text>
               <Text style={styles.subtitle} maxFontSizeMultiplier={1.15}>
-                {scope === 'my'
+                {targetMemberObj && isTargetingOtherMember
+                  ? (isCredit
+                      ? `檢視 ${targetMemberObj.display_name} 的信用卡消費、折抵與電子帳單（純瀏覽模式）`
+                      : `檢視 ${targetMemberObj.display_name} 的悠遊卡扣款與加值（純瀏覽模式）`)
+                  : scope === 'my'
                   ? (isCredit
                       ? `依結帳日比對「${currentUser?.display_name || '我'}」的消費、登記回饋折抵與存放電子帳單`
                       : `依自然月檢視「${currentUser?.display_name || '我'}」的悠遊卡扣款與加值`)
@@ -696,12 +758,18 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyIcon}>{isCredit ? '💳' : '🚌'}</Text>
               <Text style={styles.emptyText}>
-                {isCredit ? '目前尚未設定任何信用卡' : '目前尚未設定任何悠遊卡或儲值卡'}
+                {targetMemberObj && isTargetingOtherMember
+                  ? (isCredit ? `「${targetMemberObj.display_name}」尚未綁定任何信用卡` : `「${targetMemberObj.display_name}」尚未綁定任何悠遊卡或儲值卡`)
+                  : scope === 'my'
+                  ? (isCredit ? '您目前尚未綁定任何信用卡' : '您目前尚未綁定任何悠遊卡或儲值卡')
+                  : (isCredit ? '目前全家尚未設定任何信用卡' : '目前全家尚未設定任何悠遊卡或儲值卡')}
               </Text>
               <Text style={styles.emptySubtext}>
-                {isCredit
-                  ? '請至「家庭與備份」設定家裡的信用卡與結帳日，即可開始智慧對帳！'
-                  : '請至「家庭與備份」新增家裡的悠遊卡或儲值卡，即可開始智慧對帳！'}
+                {targetMemberObj && isTargetingOtherMember
+                  ? '該成員目前尚無相關支付卡片或帳戶紀錄'
+                  : scope === 'my'
+                  ? (isCredit ? '可至「帳單支付」新增您的信用卡與結帳日，即可開始智慧對帳！' : '可至「帳單支付」新增您的悠遊卡或儲值卡，即可開始智慧對帳！')
+                  : (isCredit ? '請至「帳單支付」設定家裡的信用卡與結帳日，即可開始智慧對帳！' : '請至「帳單支付」新增家裡的悠遊卡或儲值卡，即可開始智慧對帳！')}
               </Text>
             </View>
           ) : isCredit && showStatementVault ? (

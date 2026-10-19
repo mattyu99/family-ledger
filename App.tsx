@@ -295,6 +295,8 @@ function MainApp() {
   const [reconcileModalVisible, setReconcileModalVisible] = useState(false);
   const [reconcileAccountType, setReconcileAccountType] = useState<'credit_card' | 'stored_value'>('credit_card');
   const [reconcileAccountId, setReconcileAccountId] = useState<string | undefined>(undefined);
+  const [reconcileModalScope, setReconcileModalScope] = useState<'my' | 'all'>('my');
+  const [reconcileModalTargetMemberId, setReconcileModalTargetMemberId] = useState<string | undefined>(undefined);
   const [accountsManageModalVisible, setAccountsManageModalVisible] = useState(false);
   const [paymentMethodsModalVisible, setPaymentMethodsModalVisible] = useState(false);
   const [recurringModalVisible, setRecurringModalVisible] = useState(false);
@@ -584,6 +586,29 @@ function MainApp() {
       setFilterMemberId(currentUser.id);
     }
   }, [currentUser?.id, hasManuallySelectedMember]);
+
+  // 開啟信用卡/悠遊卡智慧對帳看板（依據明細成員篩選 filterMemberId 自動對齊視角）
+  const openReconcileModalForCurrentFilter = (accountType: 'credit_card' | 'stored_value', accountId?: string) => {
+    setReconcileAccountType(accountType);
+    setReconcileAccountId(accountId);
+    if (filterMemberId === 'all') {
+      setReconcileModalScope('all');
+      setReconcileModalTargetMemberId(undefined);
+    } else {
+      const targetM = members.find(m => m.id === filterMemberId);
+      const isMe =
+        filterMemberId === currentUser?.id ||
+        (!!currentUser?.display_name && targetM?.display_name === currentUser.display_name);
+      if (isMe) {
+        setReconcileModalScope('my');
+        setReconcileModalTargetMemberId(undefined);
+      } else {
+        setReconcileModalScope('all');
+        setReconcileModalTargetMemberId(filterMemberId);
+      }
+    }
+    setReconcileModalVisible(true);
+  };
 
   // 方案 A：收支明細分批動態載入控制 (預設每批 40 筆，避免一次渲染大量元件導致掉幀)
   const PAGE_SIZE = 40;
@@ -4009,16 +4034,8 @@ function MainApp() {
             {/* 悠遊卡 / 一卡通 即時餘額與快捷儲值小工具 */}
             <StoredValueWidget
               filterMemberId={filterMemberId}
-              onOpenCreditCardReconcile={() => {
-                setReconcileAccountType('credit_card');
-                setReconcileAccountId(undefined);
-                setReconcileModalVisible(true);
-              }}
-              onOpenReconcile={(card) => {
-                setReconcileAccountType('stored_value');
-                setReconcileAccountId(card?.id);
-                setReconcileModalVisible(true);
-              }}
+              onOpenCreditCardReconcile={() => openReconcileModalForCurrentFilter('credit_card')}
+              onOpenReconcile={(card) => openReconcileModalForCurrentFilter('stored_value', card?.id)}
             />
 
             {/* 交易列表標題 */}
@@ -4968,7 +4985,13 @@ function MainApp() {
                 <View style={{ flexDirection: 'row', gap: 6 }}>
                   <TouchableOpacity
                     style={[styles.manageCategoryBtn, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}
-                    onPress={() => setReconcileModalVisible(true)}
+                    onPress={() => {
+                      setReconcileAccountType('credit_card');
+                      setReconcileAccountId(undefined);
+                      setReconcileModalScope(billsScope);
+                      setReconcileModalTargetMemberId(undefined);
+                      setReconcileModalVisible(true);
+                    }}
                   >
                     <Text style={[styles.manageCategoryBtnText, { color: '#4F46E5' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                       📊 對帳
@@ -4996,6 +5019,8 @@ function MainApp() {
                       onPress={() => {
                         setReconcileAccountType(isCard ? 'credit_card' : 'stored_value');
                         setReconcileAccountId(acc.id);
+                        setReconcileModalScope(billsScope);
+                        setReconcileModalTargetMemberId(undefined);
                         setReconcileModalVisible(true);
                       }}
                       style={[
@@ -5962,11 +5987,15 @@ function MainApp() {
       {/* 💳 信用卡與悠遊卡智慧對帳看板 */}
       <CreditCardReconciliationModal
         visible={reconcileModalVisible}
-        onClose={() => setReconcileModalVisible(false)}
+        onClose={() => {
+          setReconcileModalVisible(false);
+          setReconcileModalTargetMemberId(undefined);
+        }}
         onEditTransaction={tx => setEditingTransaction(tx)}
         initialAccountType={reconcileAccountType}
         initialAccountId={reconcileAccountId}
-        scope={billsScope}
+        scope={reconcileModalScope}
+        targetMemberId={reconcileModalTargetMemberId}
       />
 
       {/* 💳 支付卡片與帳戶管理彈窗 */}
