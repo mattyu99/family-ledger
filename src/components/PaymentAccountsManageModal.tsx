@@ -127,12 +127,13 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     };
   }, []);
 
-  const handleInputFocus = (field: 'name' | 'lastFour' | 'cycleDate' | 'balance') => {
+  const handleInputFocus = (field: 'name' | 'lastFour' | 'cycleDate' | 'balance' | 'cardNumber') => {
     const scrollMap: Record<string, number> = {
       name: 0,
       lastFour: 110,
       cycleDate: 190,
       balance: 140,
+      cardNumber: 180,
     };
     setTimeout(() => {
       formScrollRef.current?.scrollTo({ y: scrollMap[field] ?? 0, animated: true });
@@ -148,6 +149,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   const [formName, setFormName] = useState<string>('');
   const [formUserId, setFormUserId] = useState<string>(currentUser.id);
   const [formLastFour, setFormLastFour] = useState<string>('');
+  const [formCardNumber, setFormCardNumber] = useState<string>('');
   const [formCycleDate, setFormCycleDate] = useState<string>('15');
   const [formBalance, setFormBalance] = useState<string>('0');
   const [formColor, setFormColor] = useState<string>(COLOR_PALETTE[0]);
@@ -211,6 +213,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     const myMember = members.find(m => isMatchedToCurrentUser(m.id));
     setFormUserId(myMember ? myMember.id : (currentUser?.id || ''));
     setFormLastFour('');
+    setFormCardNumber('');
     setFormCycleDate('15');
     setFormBalance('0');
     setFormColor(type === 'credit_card' ? COLOR_PALETTE[0] : type === 'bank' ? COLOR_PALETTE[6] : COLOR_PALETTE[4]);
@@ -237,6 +240,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     setFormName(acc.name);
     setFormUserId(matchedMember ? matchedMember.id : (myMember ? myMember.id : (currentUser?.id || '')));
     setFormLastFour(acc.last_four_digits || '');
+    setFormCardNumber(acc.card_number || (acc.type === 'stored_value' ? (acc.last_four_digits || '') : ''));
     setFormCycleDate(String(acc.billing_cycle_date || 15));
     setFormBalance(String(acc.balance || 0));
     setFormColor(acc.color || (acc.type === 'bank' ? COLOR_PALETTE[6] : COLOR_PALETTE[0]));
@@ -253,6 +257,13 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
       return;
     }
 
+    const cleanCardNumber = formCardNumber.trim();
+    const cleanLastFour = formLastFour.trim();
+    const finalCardNumber = formType === 'stored_value' ? (cleanCardNumber || undefined) : undefined;
+    const finalLastFour = formType === 'stored_value'
+      ? (cleanCardNumber ? (cleanCardNumber.length > 4 ? cleanCardNumber.slice(-4) : cleanCardNumber) : (cleanLastFour || undefined))
+      : (cleanLastFour || undefined);
+
     const cycleNum = parseInt(formCycleDate, 10);
     const validCycle = isNaN(cycleNum) ? 15 : Math.max(1, Math.min(31, cycleNum));
     const balanceNum = parseFloat(formBalance) || 0;
@@ -265,7 +276,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
         name: cleanName,
         type: formType,
         user_id: targetUserId,
-        last_four_digits: formLastFour.trim() || undefined,
+        last_four_digits: finalLastFour,
+        card_number: finalCardNumber,
         billing_cycle_date: formType === 'credit_card' ? validCycle : undefined,
         balance: formType === 'stored_value' ? balanceNum : 0,
         color: formColor,
@@ -275,7 +287,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
         name: cleanName,
         type: formType,
         user_id: targetUserId,
-        last_four_digits: formLastFour.trim() || undefined,
+        last_four_digits: finalLastFour,
+        card_number: finalCardNumber,
         billing_cycle_date: formType === 'credit_card' ? validCycle : undefined,
         balance: formType === 'stored_value' ? balanceNum : 0,
         color: formColor,
@@ -614,9 +627,25 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     placeholder="0"
                     keyboardType="numeric"
                     onFocus={() => handleInputFocus('balance')}
+                    returnKeyType="next"
+                  />
+
+                  {/* 悠遊卡完整卡號 */}
+                  <Text style={styles.fieldLabel}>悠遊卡卡號 (選填，10 碼或 16 碼，方便官網查餘額與明細)</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={formCardNumber}
+                    onChangeText={setFormCardNumber}
+                    placeholder="例如：0123456789 (舊卡10碼 / 新卡16碼)"
+                    keyboardType="numeric"
+                    maxLength={19}
+                    onFocus={() => handleInputFocus('cardNumber')}
                     returnKeyType="done"
                     onSubmitEditing={Keyboard.dismiss}
                   />
+                  <Text style={styles.fieldHint}>
+                    💡 卡號通常印在悠遊卡背面右下角。填寫後可在首頁餘額旁一鍵複製，或在「對帳」時直接點捷徑跳轉悠遊卡官網快速查詢。
+                  </Text>
                 </>
               )}
 
@@ -765,10 +794,18 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                           <View style={styles.cardInfoCol}>
                             <View style={styles.cardNameRow}>
                               <Text style={styles.cardNameText}>{card.name}</Text>
+                              {(card.last_four_digits || card.card_number) && (
+                                <View style={styles.tagBadge}>
+                                  <Text style={styles.tagBadgeText}>
+                                    *{(card.last_four_digits || card.card_number)?.slice(-4)}
+                                  </Text>
+                                </View>
+                              )}
                               <Text style={styles.balanceTag}>餘額: NT$ {Number(card.balance).toLocaleString()}</Text>
                             </View>
                             <Text style={styles.cardSubText}>
                               {cardholder ? `${cardholder.avatar_url || '👤'} ${cardholder.display_name}` : '🏠 全家通用'}
+                              {card.card_number ? ` · 卡號: ${card.card_number}` : ''}
                             </Text>
                           </View>
                           {canEditCard && (

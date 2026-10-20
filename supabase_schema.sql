@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS public.payment_accounts (
     type TEXT CHECK (type IN ('credit_card', 'stored_value', 'cash', 'bank', 'other')) NOT NULL,
     user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL, -- 持卡人 / 歸屬成員
     last_four_digits TEXT, -- 末四碼 (如 8829)
+    card_number TEXT, -- 完整卡號 (悠遊卡/一卡通 10~16 碼，供官網查帳與一鍵複製)
     billing_cycle_date INT CHECK (billing_cycle_date BETWEEN 1 AND 31), -- 結帳日 (每月 1~31 號)
     balance NUMERIC(12, 2) DEFAULT 0 NOT NULL, -- 儲值卡/帳戶餘額 (悠遊卡使用)
     color TEXT DEFAULT '#3B82F6',
@@ -1003,4 +1004,8 @@ CREATE POLICY "成員可刪除所屬帳本的付款方式" ON public.payment_met
 
 -- 確保 Realtime 事件可用
 ALTER TABLE public.payment_methods REPLICA IDENTITY FULL;
+
+-- 補齊 payment_accounts 悠遊卡完整卡號支援 (card_number)
+ALTER TABLE public.payment_accounts ADD COLUMN IF NOT EXISTS card_number TEXT;
+
 

@@ -94,6 +94,7 @@ export interface PaymentAccount {
   type: AccountType; // 'credit_card' | 'stored_value' | 'cash' | 'bank' | 'other'
   user_id?: string; // 持卡人 / 歸屬成員 ID
   last_four_digits?: string; // 末四碼 (如 8829)
+  card_number?: string; // 完整卡號 (悠遊卡/一卡通可填 10~16 碼，供官網查帳與一鍵複製)
   billing_cycle_date?: number; // 信用卡結帳日 (每月 1~31 號)
   balance: number; // 儲值卡/帳戶餘額 (悠遊卡使用)
   color?: string; // 卡片識別色

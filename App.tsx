@@ -5045,7 +5045,7 @@ function MainApp() {
                         allowFontScaling={false}
                         maxFontSizeMultiplier={1.08}
                       >
-                        {acc.name}{acc.last_four_digits ? ` (*${acc.last_four_digits})` : ''}
+                        {acc.name}{(acc.last_four_digits || acc.card_number) ? ` (*${(acc.last_four_digits || acc.card_number)!.slice(-4)})` : ''}
                         {billsScope === 'all' && cardholder?.display_name ? ` · ${cardholder.display_name}` : ''}
                       </Text>
                       {isCard && acc.billing_cycle_date ? (

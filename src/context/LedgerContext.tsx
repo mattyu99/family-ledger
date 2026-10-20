@@ -5345,7 +5345,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
-        await supabase.from('payment_accounts').insert(newAcc);
+        const { error: insErr } = await supabase.from('payment_accounts').insert(newAcc);
+        if (insErr && (insErr.code === '42703' || insErr.message?.includes('card_number'))) {
+          // 資料庫若尚未執行 card_number 欄位遷移，降級移除該欄位後寫入
+          const { card_number: _, ...fallbackAcc } = newAcc;
+          await supabase.from('payment_accounts').insert(fallbackAcc);
+        }
       } catch (e) {
         console.warn('雲端新增付款帳戶連線失敗 (已保留本地):', e);
       }
@@ -5377,7 +5382,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
-        await supabase.from('payment_accounts').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id);
+        const { error: updErr } = await supabase.from('payment_accounts').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id);
+        if (updErr && (updErr.code === '42703' || updErr.message?.includes('card_number'))) {
+          // 資料庫若尚未執行 card_number 欄位遷移，降級移除該欄位後寫入
+          const { card_number: _, ...fallbackData } = data;
+          await supabase.from('payment_accounts').update({ ...fallbackData, updated_at: new Date().toISOString() }).eq('id', id);
+        }
       } catch (e) {
         console.warn('雲端更新付款帳戶失敗:', e);
       }

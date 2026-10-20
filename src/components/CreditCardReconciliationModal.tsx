@@ -17,6 +17,7 @@ import {
   Image,
   ActivityIndicator,
   Keyboard,
+  Clipboard,
 } from 'react-native';
 import { PaymentAccount, Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
@@ -710,6 +711,43 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
     toggleReconcileTransaction(tx.id);
   };
 
+  const handleCopyEasyCardNumber = async (num: string) => {
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(num);
+      } else if (Clipboard && typeof Clipboard.setString === 'function') {
+        Clipboard.setString(num);
+      }
+      showAlert('已複製卡號 📋', `悠遊卡號「${num}」已複製至剪貼簿！可直接至官網貼上查詢。`);
+    } catch {
+      showAlert('悠遊卡號', num);
+    }
+  };
+
+  const handleOpenOfficialEasyCardQuery = async (cardNum?: string) => {
+    if (cardNum) {
+      try {
+        if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+          await navigator.clipboard.writeText(cardNum);
+        } else if (Clipboard && typeof Clipboard.setString === 'function') {
+          Clipboard.setString(cardNum);
+        }
+      } catch {}
+      showAlert(
+        '已複製卡號並前往官網 🔗',
+        `卡號「${cardNum}」已自動複製至剪貼簿！\n\n即將開啟悠遊卡官方歷史交易查詢系統，請於網頁中長按貼上卡號即可查詢。`
+      );
+    } else {
+      showAlert(
+        '提示',
+        '此悠遊卡尚未填寫完整卡號，可至「支付卡片與帳戶管理」補填。\n\n即將為您開啟悠遊卡官方歷史交易查詢系統...'
+      );
+    }
+    Linking.openURL('https://ezweb.easycard.com.tw/').catch(() => {
+      showAlert('無法開啟網頁', '請於瀏覽器開啟網址：https://ezweb.easycard.com.tw/');
+    });
+  };
+
   if (!visible) return null;
 
   const isCredit = accountType === 'credit_card';
@@ -1341,6 +1379,54 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                           </TouchableOpacity>
                         </View>
                       )}
+                    </View>
+                  )}
+
+                  {/* 🚌 悠遊卡專屬：卡號展示、一鍵複製與官網查詢工具列 */}
+                  {!isCredit && currentCard && (
+                    <View style={styles.easyCardToolsContainer}>
+                      <View style={styles.easyCardBar}>
+                        <View style={styles.easyCardMainInfo}>
+                          <Text style={{ fontSize: 20, marginRight: 8 }}>🚌</Text>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <Text style={styles.easyCardTitle}>悠遊卡卡號：</Text>
+                              {currentCard.card_number || currentCard.last_four_digits ? (
+                                <Text style={styles.easyCardNumberCode} selectable>
+                                  {currentCard.card_number || currentCard.last_four_digits}
+                                </Text>
+                              ) : (
+                                <Text style={styles.easyCardNumberUnset}>尚未設定（可至卡片管理補填）</Text>
+                              )}
+                            </View>
+                            <Text style={styles.easyCardMeta}>
+                              官網查詢悠遊卡歷史搭乘明細與即時餘額需輸入完整卡號
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.easyCardActions}>
+                          {(currentCard.card_number || currentCard.last_four_digits) && (
+                            <TouchableOpacity
+                              style={styles.easyCardCopyBtn}
+                              onPress={() => {
+                                const num = currentCard.card_number || currentCard.last_four_digits || '';
+                                handleCopyEasyCardNumber(num);
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={styles.easyCardCopyBtnText}>📋 複製卡號</Text>
+                            </TouchableOpacity>
+                          )}
+                          <TouchableOpacity
+                            style={styles.easyCardQueryBtn}
+                            onPress={() => handleOpenOfficialEasyCardQuery(currentCard.card_number || currentCard.last_four_digits)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.easyCardQueryBtnText}>🔗 悠遊卡官網查詢</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
                     </View>
                   )}
                 </View>
@@ -2069,6 +2155,73 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12.5,
     fontWeight: '700',
+  },
+  easyCardToolsContainer: {
+    marginTop: 10,
+    backgroundColor: '#F0F9FF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    padding: 10,
+  },
+  easyCardBar: {
+    gap: 8,
+  },
+  easyCardMainInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  easyCardTitle: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#0369A1',
+  },
+  easyCardNumberCode: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0284C7',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    letterSpacing: 0.5,
+  },
+  easyCardNumberUnset: {
+    fontSize: 11.5,
+    color: '#94A3B8',
+    fontStyle: 'italic',
+  },
+  easyCardMeta: {
+    fontSize: 10.5,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  easyCardActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 4,
+  },
+  easyCardCopyBtn: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#0284C7',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+  },
+  easyCardCopyBtnText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  easyCardQueryBtn: {
+    backgroundColor: '#0284C7',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 6,
+  },
+  easyCardQueryBtnText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   vaultBannerCard: {
     backgroundColor: '#EFF6FF',

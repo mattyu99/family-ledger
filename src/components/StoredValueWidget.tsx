@@ -12,6 +12,7 @@ import {
   Alert,
   Platform,
   Keyboard,
+  Clipboard,
 } from 'react-native';
 import { PaymentAccount, PaymentMethod, CustomPaymentMethod } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
@@ -400,6 +401,24 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
     }
   };
 
+  const handleCopyCardNumber = async (card: PaymentAccount) => {
+    const fullNum = card.card_number || card.last_four_digits;
+    if (!fullNum) return;
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(fullNum);
+      } else if (Clipboard && typeof Clipboard.setString === 'function') {
+        Clipboard.setString(fullNum);
+      }
+      const msg = `悠遊卡「${card.name}」完整卡號「${fullNum}」已複製至剪貼簿！可直接貼至官網查詢餘額與搭乘明細。`;
+      if (Platform.OS === 'web') alert(msg);
+      else Alert.alert('已複製完整卡號 📋', msg);
+    } catch {
+      if (Platform.OS === 'web') alert(`卡號：${fullNum}`);
+      else Alert.alert('卡號', fullNum);
+    }
+  };
+
   if (storedValueCards.length === 0) {
     return null;
   }
@@ -443,6 +462,8 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
         {storedValueCards.map(card => {
           const owner = getMemberById(card.user_id);
           const isLow = card.balance < 100;
+          const fullCardNum = card.card_number || card.last_four_digits;
+          const displayLastFour = fullCardNum ? fullCardNum.slice(-4) : '';
           return (
             <View key={card.id} style={[styles.cardItem, { borderColor: card.color || '#0284C7' }]}>
               {/* 卡片標頭 */}
@@ -458,15 +479,29 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                 )}
               </View>
 
-              {/* 餘額顯示 */}
+              {/* 餘額顯示 ＆ 方案 B 微型卡號標籤 */}
               <View style={styles.balanceRow}>
-                <Text style={styles.balanceLabel}>目前餘額</Text>
-                <Text
-                  style={[styles.balanceValue, isLow && styles.balanceValueLow]}
-                  numberOfLines={1}
-                >
-                  NT$ {Number(card.balance).toLocaleString()}
-                </Text>
+                <View>
+                  <Text style={styles.balanceLabel}>目前餘額</Text>
+                  <Text
+                    style={[styles.balanceValue, isLow && styles.balanceValueLow]}
+                    numberOfLines={1}
+                  >
+                    NT$ {Number(card.balance).toLocaleString()}
+                  </Text>
+                </View>
+                {fullCardNum ? (
+                  <TouchableOpacity
+                    style={styles.cardNumBadge}
+                    onPress={() => handleCopyCardNumber(card)}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Text style={styles.cardNumBadgeText}>
+                      *{displayLastFour} 📋
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
 
               {/* 操作按鈕群 */}
@@ -954,7 +989,26 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   balanceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
     marginBottom: 8,
+  },
+  cardNumBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2.5,
+    marginBottom: 2,
+  },
+  cardNumBadgeText: {
+    fontSize: 9.5,
+    fontWeight: '700',
+    color: '#475569',
   },
   balanceLabel: {
     fontSize: 10,
