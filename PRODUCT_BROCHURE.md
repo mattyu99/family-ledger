@@ -199,4 +199,10 @@ flowchart TD
 
 ---
 
+### 👨‍💻 產品團隊與協同創作
+* **產品設計與架構**：甜心記帳本團隊 (Sweetheart Family Ledger Team)
+* **協同開發**：Crafted with ❤️ by 甜心記帳本團隊 & AI Pair Programmer
+
+---
+
 > 💖 **甜心記帳本 —— 讓每一筆柴米油鹽的日常，都化作守護家庭溫暖的足跡。**
