@@ -19,6 +19,7 @@ import {
   Dimensions,
   Clipboard,
   Image,
+  Switch,
 } from 'react-native';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -189,6 +190,8 @@ function MainApp() {
     isAdminMode,
     enableAdminMode,
     disableAdminMode,
+    allowNewMembers,
+    updateAllowNewMembers,
     inviteCode,
     adminPin,
     updateAdminPin,
@@ -1238,6 +1241,9 @@ function MainApp() {
         setPreviewLedgerName('');
         setPreviewMembers([]);
         setIsCreatingNewMember(true);
+        if (res.isGateLocked || res.message) {
+          showAlert('無法預覽或加入', res.message || '此家庭公帳目前已關閉新成員加入通道！');
+        }
       }
     } catch {
       setPreviewLedgerName('');
@@ -5425,6 +5431,63 @@ function MainApp() {
                     </View>
                   </View>
                 )}
+
+                {/* 🔒 家庭門禁安全鎖 (允許新成員加入開關) */}
+                <View style={styles.gatekeeperSectionWrapper}>
+                  <View style={styles.gatekeeperHeaderRow}>
+                    <View style={{ flex: 1, marginRight: 12 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                        <Text style={styles.gatekeeperHeaderTitle}>🔒 家庭門禁安全鎖</Text>
+                        <View style={[styles.gatekeeperBadge, allowNewMembers ? styles.gatekeeperBadgeOpen : styles.gatekeeperBadgeLocked]}>
+                          <Text style={[styles.gatekeeperBadgeText, allowNewMembers ? styles.gatekeeperBadgeTextOpen : styles.gatekeeperBadgeTextLocked]}>
+                            {allowNewMembers ? '🟢 開放加入中' : '🔒 門禁已上鎖'}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.gatekeeperHeaderDesc}>
+                        {allowNewMembers
+                          ? '開放中：家人可憑邀請碼加入或認領身分。家人全數就位後建議關閉上鎖，防範邀請碼外流風險。'
+                          : '已上鎖：全面阻斷新成員加入並隱藏家庭名冊，現有已加入之家人日常記帳完全不受影響。'}
+                      </Text>
+                    </View>
+                    {isOwner ? (
+                      <Switch
+                        value={allowNewMembers}
+                        onValueChange={async (newVal) => {
+                          if (!newVal) {
+                            showConfirm(
+                              '上鎖家庭門禁',
+                              '確定要關閉新成員加入通道嗎？\n\n上鎖後：\n• 任何持邀請碼的新訪客均無法加入或預覽此家庭\n• 絕不洩露家庭成員名冊\n• 現有已加入的家人不受任何影響\n\n您可隨時在此重新解鎖開啟！',
+                              async () => {
+                                const res = await updateAllowNewMembers(false);
+                                if (res.success) {
+                                  showAlert('門禁已上鎖 🔒', '已成功關閉新成員加入通道，有效防範邀請碼外流！');
+                                } else {
+                                  showAlert('更新失敗', res.message || '無法更新門禁設定');
+                                }
+                              }
+                            );
+                          } else {
+                            const res = await updateAllowNewMembers(true);
+                            if (res.success) {
+                              showAlert('門禁已開啟 🟢', '已開放新成員加入通道，家人現在可憑邀請碼加入！');
+                            } else {
+                              showAlert('更新失敗', res.message || '無法更新門禁設定');
+                            }
+                          }
+                        }}
+                        trackColor={{ false: '#FECACA', true: '#BBF7D0' }}
+                        thumbColor={allowNewMembers ? '#16A34A' : '#DC2626'}
+                      />
+                    ) : (
+                      <View style={styles.gatekeeperReadonlyTag}>
+                        <Text style={styles.gatekeeperReadonlyTagText}>
+                          {allowNewMembers ? '開放中' : '已上鎖'}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
               </View>
 
               {/* 切換帳本入口 */}
@@ -9737,6 +9800,62 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  gatekeeperSectionWrapper: {
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  gatekeeperHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  gatekeeperHeaderTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  gatekeeperHeaderDesc: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 17,
+    marginTop: 2,
+  },
+  gatekeeperBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  gatekeeperBadgeOpen: {
+    backgroundColor: '#DCFCE7',
+  },
+  gatekeeperBadgeLocked: {
+    backgroundColor: '#FEE2E2',
+  },
+  gatekeeperBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  gatekeeperBadgeTextOpen: {
+    color: '#15803D',
+  },
+  gatekeeperBadgeTextLocked: {
+    color: '#B91C1C',
+  },
+  gatekeeperReadonlyTag: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  gatekeeperReadonlyTagText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
   },
   claimAdminBanner: {
     flexDirection: 'row',

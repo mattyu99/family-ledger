@@ -35,6 +35,9 @@ ALTER TABLE public.ledgers ADD COLUMN IF NOT EXISTS admin_pin TEXT DEFAULT '8888
 -- 為 ledgers 表新增 is_read_only 欄位（唯讀封存保護模式，預設 FALSE）
 ALTER TABLE public.ledgers ADD COLUMN IF NOT EXISTS is_read_only BOOLEAN DEFAULT FALSE;
 
+-- 為 ledgers 表新增 allow_new_members 欄位（家庭門禁安全鎖：允許新成員加入，預設 TRUE）
+ALTER TABLE public.ledgers ADD COLUMN IF NOT EXISTS allow_new_members BOOLEAN DEFAULT TRUE;
+
 -- 3. 帳本成員關聯表 (角色與權限)
 CREATE TABLE IF NOT EXISTS public.ledger_members (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -293,6 +296,20 @@ BEGIN
         SELECT * INTO target_ledger FROM public.ledgers WHERE id = target_invite.ledger_id;
     END IF;
 
+    -- 門禁安全鎖檢查：若帳本已關閉新成員加入，且呼叫者既非建立者也非既有成員，則阻斷加入
+    IF COALESCE(target_ledger.allow_new_members, TRUE) = FALSE THEN
+        IF (target_ledger.created_by IS NULL OR target_ledger.created_by != auth.uid()) AND NOT EXISTS (
+            SELECT 1 FROM public.ledger_members 
+            WHERE ledger_id = target_ledger.id AND user_id = auth.uid()
+        ) THEN
+            RETURN jsonb_build_object(
+                'success', false,
+                'is_gate_locked', true,
+                'message', '🔒 此家庭公帳已啟動門禁安全防護（已關閉新成員加入通道），無法加入。若您是家庭成員，請聯繫管理員暫時開啟門禁！'
+            );
+        END IF;
+    END IF;
+
     -- 若目前呼叫者為該帳本建立者，角色自動恢復為 'owner'
     IF target_ledger.created_by = auth.uid() THEN
         assigned_role := 'owner';
@@ -370,6 +387,34 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.update_admin_pin(UUID, TEXT) TO anon, authenticated;
 
+-- 切換家庭門禁安全鎖 (僅限 Owner/Admin 操作)
+DROP FUNCTION IF EXISTS public.update_allow_new_members(UUID, BOOLEAN);
+
+CREATE OR REPLACE FUNCTION public.update_allow_new_members(
+    target_ledger_id UUID,
+    is_allowed BOOLEAN
+)
+RETURNS JSONB AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM public.ledger_members 
+        WHERE ledger_id = target_ledger_id 
+          AND user_id = auth.uid() 
+          AND role IN ('owner', 'admin')
+    ) AND (SELECT created_by FROM public.ledgers WHERE id = target_ledger_id) != auth.uid() THEN
+        RETURN jsonb_build_object('success', false, 'message', '只有帳本管理員才能調整門禁安全設定');
+    END IF;
+
+    UPDATE public.ledgers
+    SET allow_new_members = is_allowed
+    WHERE id = target_ledger_id;
+
+    RETURN jsonb_build_object('success', true, 'allow_new_members', is_allowed);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.update_allow_new_members(UUID, BOOLEAN) TO anon, authenticated;
+
 -- 取得帳本邀請預覽與成員名冊 (SECURITY DEFINER 供訪客在加入前預覽帳本資訊與認領成員)
 DROP FUNCTION IF EXISTS public.get_ledger_invite_preview(TEXT);
 
@@ -399,6 +444,21 @@ BEGIN
 
     IF target_ledger IS NULL OR target_ledger.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'message', '找不到此邀請碼對應的帳本或邀請碼已失效');
+    END IF;
+
+    -- 門禁安全鎖檢查：若帳本已關閉新成員加入，且呼叫者既非建立者也非既有成員，直接阻斷預覽，保護成員名冊絕不外洩
+    IF COALESCE(target_ledger.allow_new_members, TRUE) = FALSE THEN
+        IF (target_ledger.created_by IS NULL OR target_ledger.created_by != auth.uid()) AND NOT EXISTS (
+            SELECT 1 FROM public.ledger_members 
+            WHERE ledger_id = target_ledger.id AND user_id = auth.uid()
+        ) THEN
+            RETURN jsonb_build_object(
+                'success', false,
+                'is_gate_locked', true,
+                'ledger_name', target_ledger.name,
+                'message', '🔒 此家庭公帳已啟動門禁安全防護（已關閉新成員加入通道），無法加入。若您是家庭成員，請聯繫管理員暫時開啟門禁！'
+            );
+        END IF;
     END IF;
 
     -- 3. 查詢該帳本既有成員清單 (依 display_name 去重，保留最早加入者)
@@ -808,6 +868,7 @@ BEGIN
             l.description,
             l.created_at,
             l.created_by,
+            COALESCE(l.allow_new_members, TRUE) AS allow_new_members,
             COALESCE(inv.invite_code, '') AS invite_code,
             COALESCE(m.member_count, 0) AS member_count,
             COALESCE(m.members, '[]'::jsonb) AS members,

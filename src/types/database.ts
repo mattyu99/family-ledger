@@ -27,6 +27,7 @@ export interface Ledger {
   userDisplayName?: string;
   userAvatar?: string;
   is_read_only?: boolean;
+  allow_new_members?: boolean;
 }
 
 export interface LedgerMember {

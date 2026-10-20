@@ -364,6 +364,8 @@ interface LedgerContextType {
   isOwner: boolean;
   isReadOnly: boolean;
   toggleLedgerReadOnly: (ledgerId: string, readOnly?: boolean) => Promise<boolean>;
+  allowNewMembers: boolean;
+  updateAllowNewMembers: (allowed: boolean) => Promise<{ success: boolean; message?: string }>;
   inviteCode: string;
   createLedger: (name?: string, creatorName?: string, avatar?: string, isReadOnly?: boolean) => Promise<void>;
   updateLedgerName: (newName: string) => Promise<boolean>;
@@ -382,6 +384,7 @@ interface LedgerContextType {
     ledgerName?: string;
     members?: Profile[];
     message?: string;
+    isGateLocked?: boolean;
   }>;
   regenerateInviteCode: () => Promise<string>;
   updateInviteCode: (customCode: string) => Promise<boolean>;
@@ -673,6 +676,7 @@ const STORAGE_KEYS = {
   DEVICE_ID: '@family_ledger_device_id',
   MEMBER_DEVICES: '@family_ledger_member_devices',
   LEDGER_READ_ONLY: '@family_ledger_read_only',
+  LEDGER_ALLOW_NEW_MEMBERS: '@family_ledger_allow_new_members',
   LEDGERS: '@family_ledger_list',
 };
 
@@ -2343,15 +2347,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return next;
     });
 
-    // 檢查此帳本是否開啟唯讀封存保護
+    // 檢查此帳本是否開啟唯讀封存保護與門禁安全鎖
     try {
       const savedReadOnly = await AsyncStorage.getItem(`${STORAGE_KEYS.LEDGER_READ_ONLY}_${targetLedger.id}`);
       if (savedReadOnly === 'true' || targetLedger.is_read_only) {
         targetLedger = { ...targetLedger, is_read_only: true };
       }
+      const savedAllowNewMembers = await AsyncStorage.getItem(`${STORAGE_KEYS.LEDGER_ALLOW_NEW_MEMBERS}_${targetLedger.id}`);
+      if (savedAllowNewMembers !== null) {
+        targetLedger = { ...targetLedger, allow_new_members: savedAllowNewMembers === 'true' };
+      }
     } catch {}
 
-    // (A-0) 載入帳本最新雲端資訊 (created_by, admin_pin, is_read_only 等)
+    // (A-0) 載入帳本最新雲端資訊 (created_by, admin_pin, is_read_only, allow_new_members 等)
     if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
       try {
         const { data: lData } = await supabase
@@ -2370,6 +2378,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (cloudReadOnly !== Boolean(targetLedger.is_read_only)) {
             targetLedger = { ...targetLedger, is_read_only: cloudReadOnly };
             await AsyncStorage.setItem(`${STORAGE_KEYS.LEDGER_READ_ONLY}_${targetLedger.id}`, String(cloudReadOnly));
+            needsUpdate = true;
+          }
+          if (lData.allow_new_members !== undefined && lData.allow_new_members !== targetLedger.allow_new_members) {
+            targetLedger = { ...targetLedger, allow_new_members: lData.allow_new_members };
+            await AsyncStorage.setItem(`${STORAGE_KEYS.LEDGER_ALLOW_NEW_MEMBERS}_${targetLedger.id}`, String(lData.allow_new_members));
             needsUpdate = true;
           }
           if (lData.created_by && lData.created_by !== targetLedger.created_by) {
@@ -4314,6 +4327,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         created_by: creatorProfileId,
         created_at: new Date().toISOString(),
         is_read_only: isReadOnly,
+        allow_new_members: true,
       };
 
       if (isConfigured) {
@@ -4334,6 +4348,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           currency: newLedger.currency,
           created_by: creatorProfileId,
           admin_pin: '8888',
+          allow_new_members: true,
         };
         const { error: lErr } = await supabase.from('ledgers').insert({
           ...ledgerInsertPayload,
@@ -4367,6 +4382,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
       setHasJoinedLedger(true);
       await AsyncStorage.setItem(`${STORAGE_KEYS.LEDGER_READ_ONLY}_${newLedger.id}`, String(isReadOnly));
+      await AsyncStorage.setItem(`${STORAGE_KEYS.LEDGER_ALLOW_NEW_MEMBERS}_${newLedger.id}`, 'true');
       setLedgers(prev => [{ ...newLedger, userRole: 'owner', userDisplayName: chosenName, userAvatar: chosenAvatar }, ...prev.filter(l => l.id !== newLedger.id)]);
 
       const updatedMe: Profile = {
@@ -4433,6 +4449,51 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch (err) {
       console.error('toggleLedgerReadOnly 失敗:', err);
       return false;
+    }
+  };
+
+  // 切換家庭門禁安全鎖 (僅限 Owner/Admin 操作，關閉時阻斷新成員加入)
+  const updateAllowNewMembers = async (allowed: boolean): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const targetId = currentLedger.id;
+      if (targetId === DEMO_LEDGER_ID) {
+        const updated = { ...currentLedger, allow_new_members: allowed };
+        setCurrentLedger(updated);
+        await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(updated));
+        await AsyncStorage.setItem(`${STORAGE_KEYS.LEDGER_ALLOW_NEW_MEMBERS}_${targetId}`, String(allowed));
+        return { success: true };
+      }
+
+      if (isConfigured) {
+        // 1. 優先呼叫 RPC
+        const { data: rpcRes, error: rpcErr } = await supabase.rpc('update_allow_new_members', {
+          target_ledger_id: targetId,
+          is_allowed: allowed,
+        });
+
+        if (rpcErr || (rpcRes && !rpcRes.success)) {
+          // 2. 備用：直接更新 ledgers 表
+          const { error: updErr } = await supabase
+            .from('ledgers')
+            .update({ allow_new_members: allowed })
+            .eq('id', targetId);
+
+          if (updErr) {
+            console.warn('雲端更新 allow_new_members 失敗:', updErr);
+            return { success: false, message: updErr.message || '更新家庭門禁設定失敗' };
+          }
+        }
+      }
+
+      const updated = { ...currentLedger, allow_new_members: allowed };
+      setCurrentLedger(updated);
+      setLedgers(prev => prev.map(l => (l.id === targetId ? { ...l, allow_new_members: allowed } : l)));
+      await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(updated));
+      await AsyncStorage.setItem(`${STORAGE_KEYS.LEDGER_ALLOW_NEW_MEMBERS}_${targetId}`, String(allowed));
+      return { success: true };
+    } catch (err: any) {
+      console.warn('切換家庭門禁安全鎖出錯:', err);
+      return { success: false, message: err?.message || '操作失敗，請稍後重試' };
     }
   };
 
@@ -4570,6 +4631,26 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       const isCreator = targetLedger.created_by === authUserId;
 
+      // 門禁安全鎖檢查：若帳本已關閉新成員加入，且呼叫者既非建立者也非現有成員，則阻斷加入
+      if (targetLedger.allow_new_members === false) {
+        let isExistingMember = false;
+        if (isConfigured) {
+          const { data: memCheck } = await supabase
+            .from('ledger_members')
+            .select('user_id')
+            .eq('ledger_id', targetLedger.id)
+            .eq('user_id', authUserId)
+            .maybeSingle();
+          if (memCheck) isExistingMember = true;
+        }
+        if (!isCreator && !isExistingMember) {
+          return {
+            success: false,
+            message: '🔒 此家庭公帳已啟動門禁安全防護（已關閉新成員加入通道），無法加入。若您是家庭成員，請聯繫管理員暫時開啟門禁！',
+          };
+        }
+      }
+
       // 若非原始建立者，但試圖認領管理員身分，進行安全 PIN 碼核對
       if (!isCreator && isClaimingAdmin) {
         const expectedPin = (targetLedger as any)?.admin_pin || '8888';
@@ -4662,6 +4743,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     ledgerName?: string;
     members?: Profile[];
     message?: string;
+    isGateLocked?: boolean;
   }> => {
     try {
       if (!codeOrUrl || !codeOrUrl.trim()) {
@@ -4705,6 +4787,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               ledgerName: rpcRes.ledger_name,
               members: deduplicateMembers(rawMems),
             };
+          } else if (rpcRes && !rpcRes.success && (rpcRes.is_gate_locked || rpcRes.message?.includes('門禁') || rpcRes.message?.includes('關閉'))) {
+            return {
+              success: false,
+              isGateLocked: true,
+              message: rpcRes.message || '🔒 此家庭公帳已啟動門禁安全防護（已關閉新成員加入通道），無法加入。若您是家庭成員，請聯繫管理員暫時開啟門禁！',
+            };
           }
         } catch (rpcErr) {
           console.warn('RPC 預覽邀請碼失敗，改用備用查詢:', rpcErr);
@@ -4717,13 +4805,33 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (!targetLedgerId && lookupCode) {
           const { data: invRow } = await supabase
             .from('ledger_invites')
-            .select('ledger_id, ledgers(id, name)')
+            .select('ledger_id, ledgers(id, name, created_by, allow_new_members)')
             .ilike('invite_code', lookupCode)
             .maybeSingle();
 
           if (invRow) {
             targetLedgerId = invRow.ledger_id;
             targetLedgerName = (invRow.ledgers as any)?.name || '';
+            const ledgerMeta = invRow.ledgers as any;
+            if (ledgerMeta && ledgerMeta.allow_new_members === false) {
+              const { data: { session } } = await supabase.auth.getSession();
+              const uid = session?.user?.id || currentUser.id;
+              const isCreator = ledgerMeta.created_by === uid;
+              const { data: existingMem } = await supabase
+                .from('ledger_members')
+                .select('user_id')
+                .eq('ledger_id', targetLedgerId)
+                .eq('user_id', uid)
+                .maybeSingle();
+
+              if (!isCreator && !existingMem) {
+                return {
+                  success: false,
+                  isGateLocked: true,
+                  message: '🔒 此家庭公帳已啟動門禁安全防護（已關閉新成員加入通道），無法加入。若您是家庭成員，請聯繫管理員暫時開啟門禁！',
+                };
+              }
+            }
           }
         }
 
@@ -4731,10 +4839,31 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (!targetLedgerName) {
             const { data: lData } = await supabase
               .from('ledgers')
-              .select('id, name')
+              .select('id, name, created_by, allow_new_members')
               .eq('id', targetLedgerId)
               .maybeSingle();
-            if (lData) targetLedgerName = lData.name;
+            if (lData) {
+              targetLedgerName = lData.name;
+              if (lData.allow_new_members === false) {
+                const { data: { session } } = await supabase.auth.getSession();
+                const uid = session?.user?.id || currentUser.id;
+                const isCreator = lData.created_by === uid;
+                const { data: existingMem } = await supabase
+                  .from('ledger_members')
+                  .select('user_id')
+                  .eq('ledger_id', targetLedgerId)
+                  .eq('user_id', uid)
+                  .maybeSingle();
+
+                if (!isCreator && !existingMem) {
+                  return {
+                    success: false,
+                    isGateLocked: true,
+                    message: '🔒 此家庭公帳已啟動門禁安全防護（已關閉新成員加入通道），無法加入。若您是家庭成員，請聯繫管理員暫時開啟門禁！',
+                  };
+                }
+              }
+            }
           }
 
           const { data: memRows } = await supabase
@@ -8285,6 +8414,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updateAdminPin,
         isReadOnly: Boolean(currentLedger.is_read_only),
         toggleLedgerReadOnly,
+        allowNewMembers: currentLedger.allow_new_members !== false,
+        updateAllowNewMembers,
         createLedger,
         updateLedgerName,
         joinLedgerByCode,
