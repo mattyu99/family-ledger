@@ -78,6 +78,7 @@ import { MemoCompletionModal } from './src/components/MemoCompletionModal';
 import { getLocalDateYmd, parseMemoNote } from './src/lib/memo';
 import { isBillDueInMonth, isBillPaidForCurrentPeriod } from './src/lib/recurring';
 import { ChangelogModal } from './src/components/ChangelogModal';
+import { ProductGuideModal } from './src/components/ProductGuideModal';
 import { CloudLedgerManagerModal } from './src/components/CloudLedgerManagerModal';
 import { APP_FULL_VERSION } from './src/constants/version';
 import { HorizontalScrollView } from './src/components/HorizontalScrollView';
@@ -449,6 +450,7 @@ function MainApp() {
   const APP_VERSION = APP_FULL_VERSION;
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [changelogModalVisible, setChangelogModalVisible] = useState(false);
+  const [productGuideModalVisible, setProductGuideModalVisible] = useState(false);
 
   // 當前與上一月份字串
   const currentMonthYm = useMemo(() => {
@@ -5670,6 +5672,37 @@ function MainApp() {
               )}
             </View>
 
+            {/* 📖 產品介紹與常用操作指南卡片 */}
+            <View style={styles.cardSection}>
+              <TouchableOpacity
+                style={styles.guideEntryCard}
+                onPress={() => setProductGuideModalVisible(true)}
+                activeOpacity={0.75}
+              >
+                <View style={styles.guideEntryLeft}>
+                  <View style={styles.guideEntryIconCircle}>
+                    <Text style={styles.guideEntryIcon}>📖</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.guideEntryTitleRow}>
+                      <Text style={styles.guideEntryTitle} numberOfLines={1} adjustsFontSizeToFit>
+                        產品介紹與常用操作指南
+                      </Text>
+                      <View style={styles.guideEntryBadge}>
+                        <Text style={styles.guideEntryBadgeText}>速查手冊</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.guideEntryDesc} numberOfLines={2}>
+                      家庭公帳記帳、撥零用錢、待辦連動、加值與對帳速查
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.guideEntryChevronWrap}>
+                  <Text style={styles.guideEntryChevron}>›</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
             {/* 系統版本與更新狀態卡片 */}
             <View style={styles.cardSection}>
               <View style={styles.versionHeaderRow}>
@@ -5728,15 +5761,27 @@ function MainApp() {
                 )}
               </View>
 
-              <TouchableOpacity
-                style={[styles.checkUpdateBtn, isCheckingUpdate && styles.checkUpdateBtnDisabled]}
-                onPress={handleCheckForUpdates}
-                disabled={isCheckingUpdate}
-              >
-                <Text style={styles.checkUpdateBtnText} numberOfLines={1} adjustsFontSizeToFit>
-                  {isCheckingUpdate ? '⏳ 正在檢查雲端更新...' : '🔄 檢查並載入最新版本'}
-                </Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                <TouchableOpacity
+                  style={[styles.checkUpdateBtn, { flex: 1, marginTop: 0 }, isCheckingUpdate && styles.checkUpdateBtnDisabled]}
+                  onPress={handleCheckForUpdates}
+                  disabled={isCheckingUpdate}
+                >
+                  <Text style={styles.checkUpdateBtnText} numberOfLines={1} adjustsFontSizeToFit>
+                    {isCheckingUpdate ? '⏳ 檢查中...' : '🔄 檢查更新'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.viewChangelogBtn, { flex: 1 }]}
+                  onPress={() => setChangelogModalVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.viewChangelogBtnText} numberOfLines={1} adjustsFontSizeToFit>
+                    📜 更新歷程
+                  </Text>
+                </TouchableOpacity>
+              </View>
 
               {isOwner && (
                 <TouchableOpacity
@@ -6021,6 +6066,12 @@ function MainApp() {
         }}
         scope={recurringModalScope}
         targetMemberId={recurringModalTargetMemberId}
+      />
+
+      {/* 📖 產品介紹與常用操作指南彈窗 */}
+      <ProductGuideModal
+        visible={productGuideModalVisible}
+        onClose={() => setProductGuideModalVisible(false)}
       />
 
       {/* 📜 版本更新歷程彈窗 */}
@@ -9787,6 +9838,92 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#334155',
+  },
+  viewChangelogBtn: {
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewChangelogBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#4F46E5',
+  },
+  guideEntryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFF1F2',
+    borderWidth: 1.5,
+    borderColor: '#FECDD3',
+    borderRadius: 16,
+    padding: 14,
+  },
+  guideEntryLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
+  guideEntryIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFE4E6',
+    borderWidth: 1,
+    borderColor: '#FDA4AF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  guideEntryIcon: {
+    fontSize: 22,
+  },
+  guideEntryTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+    flexWrap: 'wrap',
+  },
+  guideEntryTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#881337',
+  },
+  guideEntryBadge: {
+    backgroundColor: '#E11D48',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  guideEntryBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10.5,
+    fontWeight: '800',
+  },
+  guideEntryDesc: {
+    fontSize: 12,
+    color: '#9F1239',
+    lineHeight: 16,
+  },
+  guideEntryChevronWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#FFE4E6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  guideEntryChevron: {
+    fontSize: 18,
+    color: '#E11D48',
+    fontWeight: '800',
+    marginTop: -2,
   },
   manageCategoryBtn: {
     paddingHorizontal: 10,

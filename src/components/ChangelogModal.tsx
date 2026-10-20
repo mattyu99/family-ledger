@@ -53,7 +53,7 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ visible, onClose
                 <View style={styles.currentBadge}>
                   <Text style={styles.currentBadgeText}>✨ 當前運行版本：v{APP_FULL_VERSION}</Text>
                 </View>
-                <Text style={styles.currentDateText}>發布於 2026/10/09</Text>
+                <Text style={styles.currentDateText}>發布於 {CHANGELOG_HISTORY[0]?.date || '2026-10-20'}</Text>
               </View>
               <Text style={styles.currentBannerDesc}>
                 💡 甜心記帳本採用 EAS OTA 雲端無感熱更新。每次小版號遞增代表最新功能與修復已推送至雲端，重新啟動 App 即可自動同步至最新狀態！
