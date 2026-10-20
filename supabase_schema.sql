@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS public.transactions (
     creator_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE SET NULL,
     category_id UUID REFERENCES public.categories(id) ON DELETE SET NULL,
     amount NUMERIC(12, 2) NOT NULL,
-    type TEXT CHECK (type IN ('expense', 'income', 'transfer')) DEFAULT 'expense' NOT NULL,
+    type TEXT CHECK (type IN ('expense', 'income', 'transfer', 'memo')) DEFAULT 'expense' NOT NULL,
     paid_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL, -- 實際付款人
     merchant TEXT, -- 店家 / 付款對象 (選填)
     transacted_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
@@ -94,6 +94,31 @@ ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS linked_transaction_id U
 
 -- 確保 Supabase Realtime DELETE 事件包含完整欄位（含 ledger_id 與 id），防止 RLS 阻斷 DELETE 推播
 ALTER TABLE public.transactions REPLICA IDENTITY FULL;
+
+-- 放寬 transactions.type 支援 'memo' (生活記事手帳)
+ALTER TABLE public.transactions DROP CONSTRAINT IF EXISTS transactions_type_check;
+ALTER TABLE public.transactions ADD CONSTRAINT transactions_type_check 
+    CHECK (type IN ('expense', 'income', 'transfer', 'memo'));
+
+-- 建立交易明細高效能複合索引 (大幅加速海量歷史帳本載入與排序，消弭全表掃描)
+CREATE INDEX IF NOT EXISTS idx_transactions_ledger_transacted 
+    ON public.transactions(ledger_id, transacted_at DESC);
+CREATE INDEX IF NOT EXISTS idx_transactions_ledger_updated 
+    ON public.transactions(ledger_id, updated_at DESC);
+
+-- 自動維護 transactions.updated_at 時間戳觸發器
+CREATE OR REPLACE FUNCTION public.handle_update_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = timezone('utc'::text, now());
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS tr_transactions_updated_at ON public.transactions;
+CREATE TRIGGER tr_transactions_updated_at
+    BEFORE UPDATE ON public.transactions
+    FOR EACH ROW EXECUTE FUNCTION public.handle_update_timestamp();
 
 -- 6. 付款卡片與資產帳戶表 (信用卡、悠遊卡、儲值錢包)
 CREATE TABLE IF NOT EXISTS public.payment_accounts (

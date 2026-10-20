@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.6';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.6 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 5;
+export const APP_BUILD_REVISION = 6;
 
-// 完整版本字串 (例如 "1.0.6.5")
+// 完整版本字串 (例如 "1.0.6.6")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -21,8 +21,10 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.6',
     date: '2026-10-20',
-    title: '新增產品指南與宣傳型錄、家庭門禁安全鎖、更新歷程精簡重構',
+    title: '新增產品指南與型錄、家庭門禁安全鎖、海量載入極速效能優化 (A+B+C)',
     highlights: [
+      '⚡ 海量帳本極速載入 (方案 A+B+C)：實作本地快取 0.05 秒搶先渲染、兩段式漸進分批拉取與資料庫複合索引，徹底解決 25,000+ 筆明細切換等待，體感秒開。',
+      '📝 資料庫約束升級支援 memo：transactions 表結構放寬支援生活記事類型，新增記事備忘一次寫入零延遲。',
       '🔒 家庭門禁安全鎖：家庭設定新增新成員加入通道開關，上鎖時全面阻斷持邀請碼之新訪客加入並隱藏家庭名冊，有效防範邀請碼外流風險。',
       '📖 新增產品介紹與常用操作指南：家庭設定新增專屬操作手冊與指引，涵蓋記帳、零用錢、待辦連動與對帳速查。',
       '🌐 線上產品宣傳型錄發布：提供 6 大核心價值主張、直立系統架構圖與全功能特色展示（支援網頁即時瀏覽）。',

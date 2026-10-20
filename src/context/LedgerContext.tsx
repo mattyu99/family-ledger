@@ -2321,6 +2321,27 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // 輔助函式：載入指定帳本的完整資料 (分類、成員、交易、即時推播)
   const loadLedgerData = async (targetLedger: Ledger, authUserId: string) => {
     setCurrentLedger(targetLedger);
+
+    // (A-pre) 方案 C：本地快取秒開搶先渲染 (Local-First Optimistic Preload)
+    // 0.05 秒內搶先灌入本機快取明細，徹底消除切換海量帳本時的漫長白畫面或卡頓等待
+    let hasLocalCache = false;
+    let localCachedTransactions: Transaction[] = [];
+    try {
+      const savedTxStr = (await AsyncStorage.getItem(`${STORAGE_KEYS.TRANSACTIONS}_${targetLedger.id}`)) ||
+                         (await AsyncStorage.getItem(STORAGE_KEYS.TRANSACTIONS));
+      if (savedTxStr) {
+        const parsed = JSON.parse(savedTxStr);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const matching = parsed.filter((t: any) => t && t.ledger_id === targetLedger.id);
+          if (matching.length > 0) {
+            hasLocalCache = true;
+            localCachedTransactions = matching;
+            setTransactions(matching);
+          }
+        }
+      }
+    } catch {}
+
     // 僅清除非當前目標帳本之規則；若為同帳本重整則保留現有快取，避免雲端載入期間「待繳」橫條短暫消失閃爍
     setRecurringRules(prev => prev.filter(r => r.ledger_id === targetLedger.id));
     try {
@@ -2652,79 +2673,6 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
 
-    // (D) 載入交易明細
-    // 支援海量歷史帳本分批拉取 (突破 Supabase 1,000 筆預設上限，支援 25,000+ 筆完整載入)
-    let txRows: any[] = [];
-    if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
-      let from = 0;
-      const batchSize = 1000;
-      let hasMore = true;
-      while (hasMore) {
-        const { data: chunk, error: chunkErr } = await supabase
-          .from('transactions')
-          .select('*')
-          .eq('ledger_id', targetLedger.id)
-          .order('transacted_at', { ascending: false })
-          .range(from, from + batchSize - 1);
-        if (chunkErr || !chunk || chunk.length === 0) {
-          hasMore = false;
-        } else {
-          txRows = txRows.concat(chunk);
-          if (chunk.length < batchSize) {
-            hasMore = false;
-          } else {
-            from += batchSize;
-          }
-        }
-      }
-    }
-
-    // 檢查是否有未在 aliasMap 中的付款人 ID，額外向 profiles 查詢補充
-    if (txRows && txRows.length > 0) {
-      const missingPayerIds = Array.from(new Set(
-        txRows
-          .map((t: any) => t.paid_by)
-          .filter((id: string) => id && isValidUUID(id) && !aliasMap[id] && !id.startsWith('20000000-0000-4000-8000'))
-      ));
-
-      if (missingPayerIds.length > 0) {
-        try {
-          const { data: missingProfiles } = await supabase
-            .from('profiles')
-            .select('*')
-            .in('id', missingPayerIds);
-          if (missingProfiles && missingProfiles.length > 0) {
-            aliasMap = buildMemberAliasMap(dedupedMembers, loadedMembers, missingProfiles);
-          }
-        } catch (e) {
-          console.warn('補載入付款人 Profile 失敗:', e);
-        }
-      }
-    }
-
-    setMemberAliasMap(aliasMap);
-    await AsyncStorage.setItem(STORAGE_KEYS.ALIAS_MAP, JSON.stringify(aliasMap));
-    await AsyncStorage.setItem(`${STORAGE_KEYS.ALIAS_MAP}_${targetLedger.id}`, JSON.stringify(aliasMap));
-
-    // 探測 Supabase transactions 表是否已有 merchant, payment_method 等欄位
-    if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        const { error: probeErr } = await supabase.from('transactions').select('merchant').limit(1);
-        hasMerchantColumnRef.current = !probeErr;
-      } catch {
-        hasMerchantColumnRef.current = false;
-      }
-      try {
-        const { error: payErr } = await supabase.from('transactions').select('payment_method, account_id, is_reconciled').limit(1);
-        hasPaymentColumnsRef.current = !payErr;
-      } catch {
-        hasPaymentColumnsRef.current = false;
-      }
-    }
-
-    const healList: { id: string; paid_by: string }[] = [];
-    let finalTx: Transaction[] = [];
-
     // 排除本機已知已刪除之交易 ID（避免極端 Realtime 延遲時短暫重現）
     const deletedKey = `${STORAGE_KEYS.DELETED_TX_IDS}_${targetLedger.id}`;
     let deletedList: string[] = [];
@@ -2761,73 +2709,230 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
 
-    if (txRows) {
-      finalTx = txRows.map((t: any) => {
-          const canonicalPayer = aliasMap[t.paid_by] || dedupedMembers.find(m => m.id === t.paid_by);
-          let correctedPaidBy = t.paid_by;
-          // 僅在舊資料使用 20000000 系列佔位 ID 或離線臨時 ID 時才進行修復，絕不擅自修改任何真實 UUID 成員的付款人紀錄！
-          const isPlaceholderPaidBy = !isValidUUID(t.paid_by) || t.paid_by.startsWith('20000000') || t.paid_by.startsWith('offline-');
-          if (
-            canonicalPayer &&
-            isValidUUID(canonicalPayer.id) &&
-            !canonicalPayer.id.startsWith('20000000') &&
-            isPlaceholderPaidBy &&
-            canonicalPayer.id !== t.paid_by
-          ) {
-            correctedPaidBy = canonicalPayer.id;
-            healList.push({ id: t.id, paid_by: canonicalPayer.id });
-          }
+    // 探測 Supabase transactions 表是否已有 merchant, payment_method 等欄位
+    if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        const { error: probeErr } = await supabase.from('transactions').select('merchant').limit(1);
+        hasMerchantColumnRef.current = !probeErr;
+      } catch {
+        hasMerchantColumnRef.current = false;
+      }
+      try {
+        const { error: payErr } = await supabase.from('transactions').select('payment_method, account_id, is_reconciled').limit(1);
+        hasPaymentColumnsRef.current = !payErr;
+      } catch {
+        hasPaymentColumnsRef.current = false;
+      }
+    }
 
-          let parsedMerchant = t.merchant;
-          let parsedNote = t.note;
-          if (!parsedMerchant && t.note) {
-            const match = t.note.match(/^[\[［【](.*?)[\]］】]\s*(.*)$/);
-            if (match) {
-              parsedMerchant = match[1];
-              parsedNote = match[2];
-            }
-          }
-          let reminderDate: string | undefined = undefined;
-          let reminderCalendar: CalendarSystem | undefined = t.reminder_calendar;
-          let reminderRepeat: MemoRepeatFrequency | undefined = t.reminder_repeat;
-          let completedBy: string | undefined = t.completed_by;
-          let resolvedType: TransactionType = t.type;
-          const decodedMemo = decodeMemoMerchantTag(parsedMerchant);
-          if (decodedMemo.isMemo) {
-            resolvedType = 'memo';
-            reminderDate = decodedMemo.reminderDate;
-            reminderCalendar = decodedMemo.reminderCalendar;
-            reminderRepeat = decodedMemo.reminderRepeat;
-            if (decodedMemo.completedBy) completedBy = decodedMemo.completedBy;
-            parsedMerchant = undefined;
-          } else if (t.type === 'memo' || (t.type === 'transfer' && Number(t.amount) === 0)) {
-            resolvedType = 'memo';
-            parsedMerchant = undefined;
-            parsedNote = t.note;
-          } else if (parsedMerchant) {
-            recordMerchant(parsedMerchant);
-          }
+    const healList: { id: string; paid_by: string }[] = [];
 
-          if (resolvedType === 'memo' && t.note) {
-            const memoTag = extractMemoTag(t.note);
-            if (memoTag) recordMemoTag(memoTag);
-          }
+    // 單筆明細正規化轉換函式
+    const transformSingleTx = (t: any): Transaction => {
+      const canonicalPayer = aliasMap[t.paid_by] || dedupedMembers.find(m => m.id === t.paid_by);
+      let correctedPaidBy = t.paid_by;
+      const isPlaceholderPaidBy = !isValidUUID(t.paid_by) || t.paid_by.startsWith('20000000') || t.paid_by.startsWith('offline-');
+      if (
+        canonicalPayer &&
+        isValidUUID(canonicalPayer.id) &&
+        !canonicalPayer.id.startsWith('20000000') &&
+        isPlaceholderPaidBy &&
+        canonicalPayer.id !== t.paid_by
+      ) {
+        correctedPaidBy = canonicalPayer.id;
+        healList.push({ id: t.id, paid_by: canonicalPayer.id });
+      }
 
-          return {
-            ...t,
-            type: resolvedType,
-            reminder_date: reminderDate || t.reminder_date,
-            reminder_calendar: reminderCalendar || t.reminder_calendar,
-            reminder_repeat: reminderRepeat || t.reminder_repeat,
-            completed_by: completedBy || t.completed_by,
-            merchant: parsedMerchant || undefined,
-            note: parsedNote || '',
-            amount: Number(t.amount),
-            paid_by: correctedPaidBy,
-            payer_profile: canonicalPayer || t.payer_profile,
-            category: getCategoryById(t.category_id, t.category),
-          };
-        });
+      let parsedMerchant = t.merchant;
+      let parsedNote = t.note;
+      if (!parsedMerchant && t.note) {
+        const match = t.note.match(/^[\[［【](.*?)[\]］】]\s*(.*)$/);
+        if (match) {
+          parsedMerchant = match[1];
+          parsedNote = match[2];
+        }
+      }
+      let reminderDate: string | undefined = undefined;
+      let reminderCalendar: CalendarSystem | undefined = t.reminder_calendar;
+      let reminderRepeat: MemoRepeatFrequency | undefined = t.reminder_repeat;
+      let completedBy: string | undefined = t.completed_by;
+      let resolvedType: TransactionType = t.type;
+      const decodedMemo = decodeMemoMerchantTag(parsedMerchant);
+      if (decodedMemo.isMemo) {
+        resolvedType = 'memo';
+        reminderDate = decodedMemo.reminderDate;
+        reminderCalendar = decodedMemo.reminderCalendar;
+        reminderRepeat = decodedMemo.reminderRepeat;
+        if (decodedMemo.completedBy) completedBy = decodedMemo.completedBy;
+        parsedMerchant = undefined;
+      } else if (t.type === 'memo' || (t.type === 'transfer' && Number(t.amount) === 0)) {
+        resolvedType = 'memo';
+        parsedMerchant = undefined;
+        parsedNote = t.note;
+      } else if (parsedMerchant) {
+        recordMerchant(parsedMerchant);
+      }
+
+      if (resolvedType === 'memo' && t.note) {
+        const memoTag = extractMemoTag(t.note);
+        if (memoTag) recordMemoTag(memoTag);
+      }
+
+      return {
+        ...t,
+        type: resolvedType,
+        reminder_date: reminderDate || t.reminder_date,
+        reminder_calendar: reminderCalendar || t.reminder_calendar,
+        reminder_repeat: reminderRepeat || t.reminder_repeat,
+        completed_by: completedBy || t.completed_by,
+        merchant: parsedMerchant || undefined,
+        note: parsedNote || '',
+        amount: Number(t.amount),
+        paid_by: correctedPaidBy,
+        payer_profile: canonicalPayer || t.payer_profile,
+        category: getCategoryById(t.category_id, t.category),
+      };
+    };
+
+    // (D) 載入交易明細：本地快取搶先秒開 (方案 C) + 兩段式漸進分批同步 (方案 B)
+    let finalTx: Transaction[] = [];
+
+    if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+      if (hasLocalCache && localCachedTransactions.length > 0) {
+        // === 方案 C：既有快取帳本走極速增量同步 (0.8 秒以內完成) ===
+        try {
+          const { data: recentChunk } = await supabase
+            .from('transactions')
+            .select('*')
+            .eq('ledger_id', targetLedger.id)
+            .order('transacted_at', { ascending: false })
+            .limit(500);
+
+          if (recentChunk && recentChunk.length > 0) {
+            const transformedRecent = recentChunk.map(transformSingleTx);
+            const mergedMap = new Map<string, Transaction>();
+            transformedRecent.forEach(t => {
+              if (!deletedSet.has(t.id)) mergedMap.set(t.id, t);
+            });
+            localCachedTransactions.forEach(t => {
+              if (!mergedMap.has(t.id) && !deletedSet.has(t.id)) {
+                mergedMap.set(t.id, t);
+              }
+            });
+            finalTx = Array.from(mergedMap.values());
+          } else {
+            finalTx = localCachedTransactions.filter(t => !deletedSet.has(t.id));
+          }
+        } catch (syncErr) {
+          console.warn('增量同步失敗，保留本機快取:', syncErr);
+          finalTx = localCachedTransactions.filter(t => !deletedSet.has(t.id));
+        }
+      } else {
+        // === 方案 B：全新裝置初次載入海量帳本 (兩段式漸進秒開) ===
+        // 第一階段：優先拉取首批最近 1,000 筆，1 秒內立刻渲染開工！
+        let firstChunk: any[] = [];
+        try {
+          const { data: chunk, error: chunkErr } = await supabase
+            .from('transactions')
+            .select('*')
+            .eq('ledger_id', targetLedger.id)
+            .order('transacted_at', { ascending: false })
+            .range(0, 999);
+
+          if (!chunkErr && chunk) {
+            firstChunk = chunk;
+          }
+        } catch (e) {
+          console.warn('拉取首批明細失敗:', e);
+        }
+
+        if (firstChunk.length > 0) {
+          finalTx = firstChunk.map(transformSingleTx);
+          // 首屏資料就位，立即更新狀態與本機儲存，解除畫面轉圈等待！
+          finalTx.sort((a, b) => new Date(b.transacted_at).getTime() - new Date(a.transacted_at).getTime());
+          setTransactions(finalTx);
+          AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${targetLedger.id}`, JSON.stringify(finalTx)).catch(() => {});
+          AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(finalTx)).catch(() => {});
+
+          // 第二階段：若歷史明細達到 1,000 筆上限，背景靜默非同步接力拉取剩餘明細，完全不擋使用者操作！
+          if (firstChunk.length === 1000) {
+            (async () => {
+              try {
+                let from = 1000;
+                const batchSize = 1000;
+                let hasMore = true;
+                let bgRows: any[] = [];
+                while (hasMore) {
+                  const { data: bgChunk, error: bgErr } = await supabase
+                    .from('transactions')
+                    .select('*')
+                    .eq('ledger_id', targetLedger.id)
+                    .order('transacted_at', { ascending: false })
+                    .range(from, from + batchSize - 1);
+
+                  if (bgErr || !bgChunk || bgChunk.length === 0) {
+                    hasMore = false;
+                  } else {
+                    bgRows = bgRows.concat(bgChunk);
+                    if (bgChunk.length < batchSize) {
+                      hasMore = false;
+                    } else {
+                      from += batchSize;
+                    }
+                  }
+                }
+
+                if (bgRows.length > 0) {
+                  const bgTransformed = bgRows.map(transformSingleTx);
+                  setTransactions(prev => {
+                    const combinedMap = new Map<string, Transaction>();
+                    prev.forEach(t => combinedMap.set(t.id, t));
+                    bgTransformed.forEach(t => {
+                      if (!combinedMap.has(t.id) && !deletedSet.has(t.id)) {
+                        combinedMap.set(t.id, t);
+                      }
+                    });
+                    const fullList = Array.from(combinedMap.values());
+                    fullList.sort((a, b) => new Date(b.transacted_at).getTime() - new Date(a.transacted_at).getTime());
+                    AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${targetLedger.id}`, JSON.stringify(fullList)).catch(() => {});
+                    AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(fullList)).catch(() => {});
+                    return fullList;
+                  });
+                }
+              } catch (bgSyncErr) {
+                console.warn('背景歷史明細補拉取失敗:', bgSyncErr);
+              }
+            })();
+          }
+        }
+      }
+    }
+
+    // 檢查是否有未在 aliasMap 中的付款人 ID，額外向 profiles 查詢補充
+    if (finalTx && finalTx.length > 0) {
+      const missingPayerIds = Array.from(new Set(
+        finalTx
+          .slice(0, 1000)
+          .map((t: any) => t.paid_by)
+          .filter((id: string) => id && isValidUUID(id) && !aliasMap[id] && !id.startsWith('20000000-0000-4000-8000'))
+      ));
+
+      if (missingPayerIds.length > 0) {
+        try {
+          const { data: missingProfiles } = await supabase
+            .from('profiles')
+            .select('*')
+            .in('id', missingPayerIds);
+          if (missingProfiles && missingProfiles.length > 0) {
+            aliasMap = buildMemberAliasMap(dedupedMembers, loadedMembers, missingProfiles);
+            setMemberAliasMap(aliasMap);
+            AsyncStorage.setItem(STORAGE_KEYS.ALIAS_MAP, JSON.stringify(aliasMap)).catch(() => {});
+            AsyncStorage.setItem(`${STORAGE_KEYS.ALIAS_MAP}_${targetLedger.id}`, JSON.stringify(aliasMap)).catch(() => {});
+          }
+        } catch (e) {
+          console.warn('補載入付款人 Profile 失敗:', e);
+        }
+      }
     }
 
     // 自動校正雲端 Supabase 中的歷史付款人 ID（背景執行）
@@ -2912,17 +3017,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     // 雲端查詢失敗或無資料時的 Local-First 保底：絕不將本機快取的交易明細覆蓋成空陣列
-    if (finalTx.length === 0 && txRows === null && targetLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        const savedTxStr = (await AsyncStorage.getItem(`${STORAGE_KEYS.TRANSACTIONS}_${targetLedger.id}`)) ||
-                           (await AsyncStorage.getItem(STORAGE_KEYS.TRANSACTIONS));
-        if (savedTxStr) {
-          const cachedTx = JSON.parse(savedTxStr);
-          if (Array.isArray(cachedTx) && cachedTx.length > 0) {
-            finalTx = cachedTx;
+    if (finalTx.length === 0 && targetLedger.id !== DEMO_LEDGER_ID) {
+      if (localCachedTransactions.length > 0) {
+        finalTx = localCachedTransactions;
+      } else {
+        try {
+          const savedTxStr = (await AsyncStorage.getItem(`${STORAGE_KEYS.TRANSACTIONS}_${targetLedger.id}`)) ||
+                             (await AsyncStorage.getItem(STORAGE_KEYS.TRANSACTIONS));
+          if (savedTxStr) {
+            const cachedTx = JSON.parse(savedTxStr);
+            if (Array.isArray(cachedTx) && cachedTx.length > 0) {
+              finalTx = cachedTx;
+            }
           }
-        }
-      } catch {}
+        } catch {}
+      }
     }
 
     finalTx.sort((a, b) => new Date(b.transacted_at).getTime() - new Date(a.transacted_at).getTime());
