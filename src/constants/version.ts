@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.6';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.6 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 3;
+export const APP_BUILD_REVISION = 4;
 
-// 完整版本字串 (例如 "1.0.6.3")
+// 完整版本字串 (例如 "1.0.6.4")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -33,7 +33,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
     date: '2026-10-12 ~ 2026-10-20',
     title: '悠遊卡通用動態加值、內部轉帳終點可視化、對帳排他校正與 Google 身分鎖 (v1.0.5.1 ~ v1.0.5.58)',
     highlights: [
-      '🚌 悠遊卡加值出資來源動態化：出資管道連動全家支付方式（悠遊付、街口、銀行、信用卡），支援手機 NFC 靠卡感應加值。',
+      '🚌 悠遊卡加值出資來源動態化：出資管道連動全家支付方式（悠遊付、街口、銀行、信用卡），支援記錄日常透過悠遊付 App 靠卡加值之出資管道。',
       '📥 內部轉帳專屬終點卡片：加值或轉帳明細中獨立展示「轉入目標卡片/受款成員」；店家與備註 100% 自由填寫不影響對帳。',
       '🎯 悠遊卡對帳排他校正：重構對帳篩選演算法，以專屬帳戶 ID 判定，徹底排除跨卡加值錯列與重複計入。',
       '🔗 信用卡對帳與待繳視角對齊：明細頁面點擊對帳與待繳橫條時，自動對齊當前選取的成員篩選，筆數 1:1 精確一致。',
