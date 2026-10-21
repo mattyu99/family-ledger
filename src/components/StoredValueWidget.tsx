@@ -479,7 +479,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                 )}
               </View>
 
-              {/* 餘額顯示 ＆ 方案 B 微型卡號標籤 */}
+              {/* 餘額顯示 ＆ 微型卡號標籤 */}
               <View style={styles.balanceRow}>
                 <View>
                   <Text style={styles.balanceLabel}>目前餘額</Text>

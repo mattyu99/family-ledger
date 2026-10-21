@@ -257,7 +257,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
       return;
     }
 
-    const cleanCardNumber = formCardNumber.trim();
+    const cleanCardNumber = formCardNumber.replace(/\D/g, '').slice(0, 16);
     const cleanLastFour = formLastFour.trim();
     const finalCardNumber = formType === 'stored_value' ? (cleanCardNumber || undefined) : undefined;
     const finalLastFour = formType === 'stored_value'
@@ -631,20 +631,26 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                   />
 
                   {/* 悠遊卡完整卡號 */}
-                  <Text style={styles.fieldLabel}>悠遊卡卡號 (選填，10 碼或 16 碼，方便官網查餘額與明細)</Text>
+                  <Text style={styles.fieldLabel}>悠遊卡卡號 (選填，嚴格上限 16 碼，方便官網查餘額與明細)</Text>
                   <TextInput
                     style={styles.textInput}
                     value={formCardNumber}
-                    onChangeText={setFormCardNumber}
+                    onChangeText={text => setFormCardNumber(text.replace(/\D/g, '').slice(0, 16))}
                     placeholder="例如：0123456789 (舊卡10碼 / 新卡16碼)"
                     keyboardType="numeric"
-                    maxLength={19}
+                    maxLength={16}
                     onFocus={() => handleInputFocus('cardNumber')}
                     returnKeyType="done"
                     onSubmitEditing={Keyboard.dismiss}
                   />
-                  <Text style={styles.fieldHint}>
-                    💡 卡號通常印在悠遊卡背面右下角。填寫後可在首頁餘額旁一鍵複製，或在「對帳」時直接點捷徑跳轉悠遊卡官網快速查詢。
+                  <Text style={[styles.fieldHint, (formCardNumber.length === 10 || formCardNumber.length === 16) && { color: '#059669', fontWeight: '600' }]}>
+                    {formCardNumber.length === 10
+                      ? '✓ 已輸入 10 碼（舊版悠遊卡標準長度）'
+                      : formCardNumber.length === 16
+                      ? '✓ 已輸入 16 碼（新版晶片卡 / 市民卡標準長度）'
+                      : formCardNumber.length > 0
+                      ? `已輸入 ${formCardNumber.length} 碼（上限 16 碼，悠遊卡標準通常為 10 碼或 16 碼）`
+                      : '💡 卡號通常印在悠遊卡背面右下角（嚴格上限 16 碼）。填寫後可在首頁餘額旁一鍵複製，或在「對帳」時跳轉官網快速查詢。'}
                   </Text>
                 </>
               )}
