@@ -2339,6 +2339,34 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setCurrentLedger(targetLedger);
     activeLoadingLedgerIdRef.current = targetLedger.id;
 
+    // 立即同步預載目標帳本之專屬使用者身分與成員快取 (Local-First Optimistic User & Members)
+    // 確保 currentLedger 與 currentUser 同步切換，絕不殘留上一本帳本之稱謂 (徹底杜絕「倉鼠」短暫閃爍為「智爸」之問題)
+    try {
+      const savedUserStr = await AsyncStorage.getItem(`${STORAGE_KEYS.CURRENT_USER}_${targetLedger.id}`);
+      if (savedUserStr) {
+        const parsedUser = JSON.parse(savedUserStr);
+        if (parsedUser && parsedUser.display_name) {
+          setCurrentUser(parsedUser);
+        }
+      } else if (targetLedger.userDisplayName) {
+        setCurrentUser(prev => ({
+          ...prev,
+          display_name: targetLedger.userDisplayName!,
+          avatar_url: targetLedger.userAvatar || prev.avatar_url,
+        }));
+      }
+    } catch {}
+
+    try {
+      const savedMembersStr = await AsyncStorage.getItem(`${STORAGE_KEYS.MEMBERS}_${targetLedger.id}`);
+      if (savedMembersStr) {
+        const parsedMembers = JSON.parse(savedMembersStr);
+        if (Array.isArray(parsedMembers) && parsedMembers.length > 0) {
+          setMembers(parsedMembers);
+        }
+      }
+    } catch {}
+
     // 本地快取秒開搶先渲染 (Local-First Optimistic Preload)
     // 優先檢查記憶體快取 (RAM cache)：若本會話已載入過海量明細，0 秒即刻完整展示；否則讀取 AsyncStorage 於 0.05 秒內搶先渲染最新明細
     let hasLocalCache = false;
@@ -5284,6 +5312,37 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setUserRole(validRole);
         await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, validRole);
         await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(targetLedger));
+
+        // 關鍵防閃爍機制：切換前立即預載目標帳本之專屬使用者身分與成員快取
+        // 確保 currentLedger 與 currentUser 同步切換，絕不殘留上一本帳本之稱謂 (避免「倉鼠」短暫閃爍為「智爸」)
+        let targetUser: Profile | null = null;
+        try {
+          const savedUserStr = await AsyncStorage.getItem(`${STORAGE_KEYS.CURRENT_USER}_${targetLedgerId}`);
+          if (savedUserStr) {
+            targetUser = JSON.parse(savedUserStr);
+          }
+        } catch {}
+
+        if (targetUser && targetUser.display_name) {
+          setCurrentUser(targetUser);
+        } else if (targetLedger?.userDisplayName) {
+          setCurrentUser(prev => ({
+            ...prev,
+            display_name: targetLedger!.userDisplayName!,
+            avatar_url: targetLedger!.userAvatar || prev.avatar_url,
+            role: validRole,
+          }));
+        }
+
+        try {
+          const savedMembersStr = await AsyncStorage.getItem(`${STORAGE_KEYS.MEMBERS}_${targetLedgerId}`);
+          if (savedMembersStr) {
+            const parsedMems = JSON.parse(savedMembersStr);
+            if (Array.isArray(parsedMems) && parsedMems.length > 0) {
+              setMembers(parsedMems);
+            }
+          }
+        } catch {}
 
         await loadLedgerData(targetLedger, authUserId);
       }

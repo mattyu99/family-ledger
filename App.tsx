@@ -1270,10 +1270,13 @@ function MainApp() {
     const loadLedgerUsers = async () => {
       const map: Record<string, { displayName: string; avatarUrl?: string }> = {};
       for (const l of ledgers) {
-        if (l.id === currentLedger.id) {
-          map[l.id] = { displayName: currentUser.display_name, avatarUrl: currentUser.avatar_url };
+        // 1. 若帳本物件自身已保存該帳本之稱謂 (l.userDisplayName)，此為最具權威且帳本專屬之紀錄，優先採納
+        if (l.userDisplayName) {
+          map[l.id] = { displayName: l.userDisplayName, avatarUrl: l.userAvatar };
           continue;
         }
+
+        // 2. 其次讀取本機為該帳本記憶之 Profile 快取
         try {
           const userStr = await AsyncStorage.getItem(`@family_ledger_current_user_${l.id}`);
           if (userStr) {
@@ -1295,8 +1298,10 @@ function MainApp() {
             }
           }
         } catch {}
-        if (l.userDisplayName) {
-          map[l.id] = { displayName: l.userDisplayName, avatarUrl: l.userAvatar };
+
+        // 3. 保底：若為當前帳本且無專屬紀錄，才採納全域 currentUser
+        if (l.id === currentLedger.id && currentUser.display_name) {
+          map[l.id] = { displayName: currentUser.display_name, avatarUrl: currentUser.avatar_url };
         }
       }
       if (!isCancelled) {
@@ -3321,8 +3326,8 @@ function MainApp() {
                   const isCurrent = l.id === currentLedger.id;
                   const isAdmin = l.userRole === 'owner' || l.userRole === 'admin';
                   const userInfo = ledgerUserMap[l.id];
-                  const userDisplayName = userInfo?.displayName || (isCurrent ? currentUser.display_name : (l.userDisplayName || ''));
-                  const userAvatar = userInfo?.avatarUrl || (isCurrent ? currentUser.avatar_url : (l.userAvatar || ''));
+                  const userDisplayName = l.userDisplayName || userInfo?.displayName || (isCurrent ? currentUser.display_name : '');
+                  const userAvatar = l.userAvatar || userInfo?.avatarUrl || (isCurrent ? currentUser.avatar_url : '');
                   return (
                     <View
                       key={l.id}
