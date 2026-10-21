@@ -559,6 +559,23 @@ function MainApp() {
   const displayedPaymentAccounts = billsScope === 'my' ? myPaymentAccounts : paymentAccounts;
   const activePendingBillsCount = billsScope === 'my' ? myPendingRecurringBillsCount : pendingRecurringBillsCount;
 
+  // 帳單支付專屬：當前待核對/未完成之週期規則 ID 集合 (用於在週期規則膠囊右上角標註紅點提示)
+  const pendingRecurringRuleIds = useMemo(() => {
+    const now = new Date();
+    const currYear = now.getFullYear();
+    const currMonth = now.getMonth() + 1;
+    const set = new Set<string>();
+    (recurringRules || []).forEach(rule => {
+      if (rule.ledger_id && currentLedger?.id && rule.ledger_id !== currentLedger.id) return;
+      if (!rule.is_active) return;
+      if (!isBillDueInMonth(rule, currYear, currMonth)) return;
+      if (!isBillPaidForCurrentPeriod(rule, now)) {
+        set.add(rule.id);
+      }
+    });
+    return set;
+  }, [recurringRules, currentLedger?.id]);
+
   // 明細頁面專屬：100% 依據當前選取的成員篩選 (filterMemberId)，動態計算該視角下的本期待繳項目 (方式 1 完全連動)
   const currentFilterPendingBills = useMemo(() => {
     const now = new Date();
@@ -4945,28 +4962,47 @@ function MainApp() {
                 {displayedRecurringRules.map(rule => {
                   const cat = getCategoryById(rule.category_id);
                   const payer = rule.paid_by ? getMemberById(rule.paid_by) : null;
+                  const isPending = pendingRecurringRuleIds.has(rule.id);
                   return (
-                    <TouchableOpacity
-                      key={rule.id}
-                      style={[styles.paymentAccountPreviewChip, { borderColor: '#E2E8F0' }]}
-                      onPress={() => {
-                        setRecurringModalScope(billsScope);
-                        setRecurringModalTargetMemberId(undefined);
-                        setRecurringModalInitialTab('pending');
-                        setRecurringModalVisible(true);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.paymentAccountPreviewIcon}>{getCategoryIcon(cat?.icon)}</Text>
-                      <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                        {rule.name}{billsScope === 'all' && payer?.display_name ? ` · ${payer.display_name}` : ''}
-                      </Text>
-                      <View style={[styles.paymentAccountBadge, { backgroundColor: '#EFF6FF' }]}>
-                        <Text style={[styles.paymentAccountBadgeText, { color: '#1D4ED8' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                          {rule.due_day}日
+                    <View key={rule.id} style={{ position: 'relative', overflow: 'visible' }}>
+                      <TouchableOpacity
+                        style={[
+                          styles.paymentAccountPreviewChip,
+                          { borderColor: isPending ? '#FECACA' : '#E2E8F0' },
+                          isPending && { backgroundColor: '#FFF5F5' },
+                        ]}
+                        onPress={() => {
+                          setRecurringModalScope(billsScope);
+                          setRecurringModalTargetMemberId(undefined);
+                          setRecurringModalInitialTab('pending');
+                          setRecurringModalVisible(true);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.paymentAccountPreviewIcon}>{getCategoryIcon(cat?.icon)}</Text>
+                        <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                          {rule.name}{billsScope === 'all' && payer?.display_name ? ` · ${payer.display_name}` : ''}
                         </Text>
-                      </View>
-                    </TouchableOpacity>
+                        <View
+                          style={[
+                            styles.paymentAccountBadge,
+                            { backgroundColor: isPending ? '#FEE2E2' : '#EFF6FF' },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.paymentAccountBadgeText,
+                              { color: isPending ? '#DC2626' : '#1D4ED8' },
+                            ]}
+                            allowFontScaling={false}
+                            maxFontSizeMultiplier={1.08}
+                          >
+                            {rule.due_day}日
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                      {isPending && <View pointerEvents="none" style={styles.ruleChipPendingDot} />}
+                    </View>
                   );
                 })}
                 {displayedRecurringRules.length === 0 && (
@@ -10146,6 +10182,19 @@ const styles = StyleSheet.create({
   paymentAccountBadgeText: {
     fontSize: 10,
     fontWeight: '700',
+  },
+  ruleChipPendingDot: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: '#EF4444',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+    zIndex: 10,
+    elevation: 3,
   },
   previewModeBanner: {
     backgroundColor: '#FFFBEB',
