@@ -242,7 +242,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // 方案 D：撥零用錢專用狀態
+  // 撥零用錢專用狀態
   const [allowanceMode, setAllowanceMode] = useState<'transfer' | 'expense_income'>('transfer');
   const [allowancePayerId, setAllowancePayerId] = useState<string>('');
   const [allowanceRecipientId, setAllowanceRecipientId] = useState<string>('');
@@ -564,7 +564,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     setNote(tag);
   };
 
-  // 方案 D：送出撥零用錢 (一鍵雙向記帳)
+  // 送出撥零用錢 (一鍵雙向記帳)
   const handleAllowanceSubmit = async () => {
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount <= 0) {
@@ -1278,7 +1278,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               </>
             ) : (
               <>
-                {/* 方案 D：撥零用錢模式切換與說明橫幅 */}
+                {/* 撥零用錢模式切換與說明橫幅 */}
                 {mode === 'allowance' && (
                   <>
                     <View style={styles.allowanceModeSelector}>
@@ -1407,7 +1407,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               )}
             </View>
 
-            {/* 🎁 方案一：點數 / 回饋折抵面板（算在原先支出的一環，不額外產生第 2 筆交易） */}
+            {/* 🎁 點數 / 回饋折抵面板（算在原先支出的一環，不額外產生第 2 筆交易） */}
             {mode === 'expense' && showDiscountPanel && (
               <View
                 style={styles.discountPanelBox}

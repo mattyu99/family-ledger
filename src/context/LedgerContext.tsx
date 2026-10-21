@@ -354,6 +354,7 @@ interface LedgerContextType {
   unbindDevice: () => Promise<void>;
   switchCurrentUser: (member: Profile, pin?: string) => Promise<{ success: boolean; message?: string }>;
   isCloudSynced: boolean;
+  historySyncProgress: { loaded: number; total: number } | null;
   settlementInfo: {
     totalExpense: number;
     totalIncome: number;
@@ -721,6 +722,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [recurringRules, setRecurringRules] = useState<RecurringRule[]>([]);
   const [currentUser, setCurrentUser] = useState<Profile>(DEFAULT_MEMBERS[0]);
   const [isCloudSynced, setIsCloudSynced] = useState<boolean>(false);
+  const [historySyncProgress, setHistorySyncProgress] = useState<{ loaded: number; total: number } | null>(null);
+  const activeLoadingLedgerIdRef = useRef<string | null>(null);
+  const inMemoryLedgerTxCacheRef = useRef<Map<string, Transaction[]>>(new Map());
+
+  // 本地快取儲存容量防禦：僅寫入最新 1,500 筆至 AsyncStorage / localStorage，安全避開瀏覽器 5MB 配額限制
+  const persistTransactionsCache = async (txList: Transaction[], ledgerId: string) => {
+    try {
+      const safeList = txList.length > 1500 ? txList.slice(0, 1500) : txList;
+      const jsonStr = JSON.stringify(safeList);
+      await AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, jsonStr);
+      await AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${ledgerId}`, jsonStr);
+    } catch (err) {
+      console.warn('本機快取寫入容量防禦保護:', err);
+    }
+  };
   const [isDeviceBound, setIsDeviceBound] = useState<boolean>(false);
   const [hasJoinedLedger, setHasJoinedLedger] = useState<boolean>(true);
   const [inviteCode, setInviteCode] = useState<string>('FAM-8823');
@@ -732,7 +748,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isGoogleAuthenticated, setIsGoogleAuthenticated] = useState<boolean>(false);
   const [googleUserEmail, setGoogleUserEmail] = useState<string | null>(null);
 
-  // 方案 A：即時 App 內通知泡泡 (In-App Toast Notification)
+  // 即時 App 內通知泡泡 (In-App Toast Notification)
   const [liveToast, setLiveToast] = useState<LiveToastNotification | null>(null);
   const currentUserRef = useRef<Profile>(currentUser);
   const isMountedRef = useRef<boolean>(true);
@@ -1307,12 +1323,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               category: getCategoryById(newRow.category_id, newRow.category),
             };
             const updated = [item, ...prev];
-            AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
-            AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${ledgerId}`, JSON.stringify(updated));
+            inMemoryLedgerTxCacheRef.current.set(ledgerId, updated);
+            persistTransactionsCache(updated, ledgerId);
             return updated;
           });
 
-          // 方案 A：若這筆記帳/記事由其他裝置寫入，觸發即時通知泡泡
+          // 若這筆記帳/記事由其他裝置寫入，觸發即時通知泡泡
           const myId = currentUserRef.current?.id;
           const isFromOther = !myId || (newRow.creator_id && newRow.creator_id !== myId);
           if (isFromOther && shouldShowToast(newRow.id, 'insert')) {
@@ -1421,12 +1437,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                   }
                 : t
             );
-            AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
-            AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${ledgerId}`, JSON.stringify(updated));
+            inMemoryLedgerTxCacheRef.current.set(ledgerId, updated);
+            persistTransactionsCache(updated, ledgerId);
             return updated;
           });
 
-          // 方案 A：若更新由其他裝置發起，觸發即時通知泡泡
+          // 若更新由其他裝置發起，觸發即時通知泡泡
           const myId = currentUserRef.current?.id;
           const isMemo = resolvedType === 'memo' || prevTx?.type === 'memo';
 
@@ -1551,8 +1567,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                   }
                 : t
             );
-            AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
-            AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${ledgerId}`, JSON.stringify(updated));
+            inMemoryLedgerTxCacheRef.current.set(ledgerId, updated);
+            persistTransactionsCache(updated, ledgerId);
             return updated;
           });
 
@@ -1608,12 +1624,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           setTransactions((prev) => {
             if (!prev.some((t) => t.id === deletedId)) return prev;
             const updated = prev.filter((t) => t.id !== deletedId);
-            AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
-            AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${ledgerId}`, JSON.stringify(updated));
+            inMemoryLedgerTxCacheRef.current.set(ledgerId, updated);
+            persistTransactionsCache(updated, ledgerId);
             return updated;
           });
 
-          // 方案 A：即時通知泡泡
+          // 即時通知泡泡
           setLiveToast({
             id: `delete-${deletedId}-${Date.now()}`,
             type: 'delete',
@@ -1651,12 +1667,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             setTransactions((prev) => {
               if (!prev.some((t) => t.id === deletedId)) return prev;
               const updated = prev.filter((t) => t.id !== deletedId);
-              AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(updated));
-              AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${ledgerId}`, JSON.stringify(updated));
+              inMemoryLedgerTxCacheRef.current.set(ledgerId, updated);
+              persistTransactionsCache(updated, ledgerId);
               return updated;
             });
 
-            // 方案 A：即時通知泡泡
+            // 即時通知泡泡
             setLiveToast({
               id: `delete-${deletedId}-${Date.now()}`,
               type: 'delete',
@@ -2321,26 +2337,35 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // 輔助函式：載入指定帳本的完整資料 (分類、成員、交易、即時推播)
   const loadLedgerData = async (targetLedger: Ledger, authUserId: string) => {
     setCurrentLedger(targetLedger);
+    activeLoadingLedgerIdRef.current = targetLedger.id;
 
-    // (A-pre) 方案 C：本地快取秒開搶先渲染 (Local-First Optimistic Preload)
-    // 0.05 秒內搶先灌入本機快取明細，徹底消除切換海量帳本時的漫長白畫面或卡頓等待
+    // 本地快取秒開搶先渲染 (Local-First Optimistic Preload)
+    // 優先檢查記憶體快取 (RAM cache)：若本會話已載入過海量明細，0 秒即刻完整展示；否則讀取 AsyncStorage 於 0.05 秒內搶先渲染最新明細
     let hasLocalCache = false;
     let localCachedTransactions: Transaction[] = [];
-    try {
-      const savedTxStr = (await AsyncStorage.getItem(`${STORAGE_KEYS.TRANSACTIONS}_${targetLedger.id}`)) ||
-                         (await AsyncStorage.getItem(STORAGE_KEYS.TRANSACTIONS));
-      if (savedTxStr) {
-        const parsed = JSON.parse(savedTxStr);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const matching = parsed.filter((t: any) => t && t.ledger_id === targetLedger.id);
-          if (matching.length > 0) {
-            hasLocalCache = true;
-            localCachedTransactions = matching;
-            setTransactions(matching);
+
+    const memCached = inMemoryLedgerTxCacheRef.current.get(targetLedger.id);
+    if (memCached && memCached.length > 0) {
+      hasLocalCache = true;
+      localCachedTransactions = memCached;
+      setTransactions(memCached);
+    } else {
+      try {
+        const savedTxStr = (await AsyncStorage.getItem(`${STORAGE_KEYS.TRANSACTIONS}_${targetLedger.id}`)) ||
+                           (await AsyncStorage.getItem(STORAGE_KEYS.TRANSACTIONS));
+        if (savedTxStr) {
+          const parsed = JSON.parse(savedTxStr);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const matching = parsed.filter((t: any) => t && t.ledger_id === targetLedger.id);
+            if (matching.length > 0) {
+              hasLocalCache = true;
+              localCachedTransactions = matching;
+              setTransactions(matching);
+            }
           }
         }
-      }
-    } catch {}
+      } catch {}
+    }
 
     // 僅清除非當前目標帳本之規則；若為同帳本重整則保留現有快取，避免雲端載入期間「待繳」橫條短暫消失閃爍
     setRecurringRules(prev => prev.filter(r => r.ledger_id === targetLedger.id));
@@ -2794,117 +2819,46 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       };
     };
 
-    // (D) 載入交易明細：本地快取搶先秒開 (方案 C) + 兩段式漸進分批同步 (方案 B)
+    // (D) 載入交易明細：本地快取搶先秒開 + 高效並發漸進載入海量歷史明細
     let finalTx: Transaction[] = [];
+    let cloudTotalCount: number | null = null;
+    let firstChunk: any[] = [];
 
     if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
-      if (hasLocalCache && localCachedTransactions.length > 0) {
-        // === 方案 C：既有快取帳本走極速增量同步 (0.8 秒以內完成) ===
-        try {
-          const { data: recentChunk } = await supabase
-            .from('transactions')
-            .select('*')
-            .eq('ledger_id', targetLedger.id)
-            .order('transacted_at', { ascending: false })
-            .limit(500);
+      try {
+        const { data: chunk, count: totalCount, error: chunkErr } = await supabase
+          .from('transactions')
+          .select('*', { count: 'exact' })
+          .eq('ledger_id', targetLedger.id)
+          .order('transacted_at', { ascending: false })
+          .range(0, 999);
 
-          if (recentChunk && recentChunk.length > 0) {
-            const transformedRecent = recentChunk.map(transformSingleTx);
-            const mergedMap = new Map<string, Transaction>();
-            transformedRecent.forEach(t => {
-              if (!deletedSet.has(t.id)) mergedMap.set(t.id, t);
-            });
-            localCachedTransactions.forEach(t => {
-              if (!mergedMap.has(t.id) && !deletedSet.has(t.id)) {
-                mergedMap.set(t.id, t);
-              }
-            });
-            finalTx = Array.from(mergedMap.values());
-          } else {
-            finalTx = localCachedTransactions.filter(t => !deletedSet.has(t.id));
-          }
-        } catch (syncErr) {
-          console.warn('增量同步失敗，保留本機快取:', syncErr);
-          finalTx = localCachedTransactions.filter(t => !deletedSet.has(t.id));
+        if (!chunkErr && chunk) {
+          firstChunk = chunk;
+          cloudTotalCount = totalCount;
+        } else if (chunkErr) {
+          console.warn('拉取首批明細異常:', chunkErr.message);
         }
-      } else {
-        // === 方案 B：全新裝置初次載入海量帳本 (兩段式漸進秒開) ===
-        // 第一階段：優先拉取首批最近 1,000 筆，1 秒內立刻渲染開工！
-        let firstChunk: any[] = [];
-        try {
-          const { data: chunk, error: chunkErr } = await supabase
-            .from('transactions')
-            .select('*')
-            .eq('ledger_id', targetLedger.id)
-            .order('transacted_at', { ascending: false })
-            .range(0, 999);
+      } catch (e) {
+        console.warn('拉取首批明細網路失敗:', e);
+      }
 
-          if (!chunkErr && chunk) {
-            firstChunk = chunk;
-          }
-        } catch (e) {
-          console.warn('拉取首批明細失敗:', e);
+      if (firstChunk.length > 0) {
+        const transformedFirst = firstChunk.map(transformSingleTx);
+        const mergedMap = new Map<string, Transaction>();
+        transformedFirst.forEach(t => {
+          if (!deletedSet.has(t.id)) mergedMap.set(t.id, t);
+        });
+        if (hasLocalCache && localCachedTransactions.length > 0) {
+          localCachedTransactions.forEach(t => {
+            if (!mergedMap.has(t.id) && !deletedSet.has(t.id)) {
+              mergedMap.set(t.id, t);
+            }
+          });
         }
-
-        if (firstChunk.length > 0) {
-          finalTx = firstChunk.map(transformSingleTx);
-          // 首屏資料就位，立即更新狀態與本機儲存，解除畫面轉圈等待！
-          finalTx.sort((a, b) => new Date(b.transacted_at).getTime() - new Date(a.transacted_at).getTime());
-          setTransactions(finalTx);
-          AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${targetLedger.id}`, JSON.stringify(finalTx)).catch(() => {});
-          AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(finalTx)).catch(() => {});
-
-          // 第二階段：若歷史明細達到 1,000 筆上限，背景靜默非同步接力拉取剩餘明細，完全不擋使用者操作！
-          if (firstChunk.length === 1000) {
-            (async () => {
-              try {
-                let from = 1000;
-                const batchSize = 1000;
-                let hasMore = true;
-                let bgRows: any[] = [];
-                while (hasMore) {
-                  const { data: bgChunk, error: bgErr } = await supabase
-                    .from('transactions')
-                    .select('*')
-                    .eq('ledger_id', targetLedger.id)
-                    .order('transacted_at', { ascending: false })
-                    .range(from, from + batchSize - 1);
-
-                  if (bgErr || !bgChunk || bgChunk.length === 0) {
-                    hasMore = false;
-                  } else {
-                    bgRows = bgRows.concat(bgChunk);
-                    if (bgChunk.length < batchSize) {
-                      hasMore = false;
-                    } else {
-                      from += batchSize;
-                    }
-                  }
-                }
-
-                if (bgRows.length > 0) {
-                  const bgTransformed = bgRows.map(transformSingleTx);
-                  setTransactions(prev => {
-                    const combinedMap = new Map<string, Transaction>();
-                    prev.forEach(t => combinedMap.set(t.id, t));
-                    bgTransformed.forEach(t => {
-                      if (!combinedMap.has(t.id) && !deletedSet.has(t.id)) {
-                        combinedMap.set(t.id, t);
-                      }
-                    });
-                    const fullList = Array.from(combinedMap.values());
-                    fullList.sort((a, b) => new Date(b.transacted_at).getTime() - new Date(a.transacted_at).getTime());
-                    AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${targetLedger.id}`, JSON.stringify(fullList)).catch(() => {});
-                    AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(fullList)).catch(() => {});
-                    return fullList;
-                  });
-                }
-              } catch (bgSyncErr) {
-                console.warn('背景歷史明細補拉取失敗:', bgSyncErr);
-              }
-            })();
-          }
-        }
+        finalTx = Array.from(mergedMap.values());
+      } else if (hasLocalCache && localCachedTransactions.length > 0) {
+        finalTx = localCachedTransactions.filter(t => !deletedSet.has(t.id));
       }
     }
 
@@ -3034,15 +2988,124 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
 
-    finalTx.sort((a, b) => new Date(b.transacted_at).getTime() - new Date(a.transacted_at).getTime());
+    finalTx.sort((a, b) => (b.transacted_at > a.transacted_at ? 1 : b.transacted_at < a.transacted_at ? -1 : 0));
     setTransactions(finalTx);
-    try {
-      await AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(finalTx));
-      await AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${targetLedger.id}`, JSON.stringify(finalTx));
-    } catch (storageErr) {
-      console.warn('本機快取儲存空間限制，略過完整寫入 (資料已在記憶體與雲端安全保留):', storageErr);
-    }
+    inMemoryLedgerTxCacheRef.current.set(targetLedger.id, finalTx);
+    await persistTransactionsCache(finalTx, targetLedger.id);
     setIsCloudSynced(true);
+
+    // 若雲端總筆數大於目前已載入筆數 (例如 25,980 > 1,000)，啟動高效並發分批接力拉取，補齊海量歷史明細 (Concurrency = 5)
+    const targetLedgerId = targetLedger.id;
+    const needsHistoricalSync = Boolean(
+      isConfigured &&
+      targetLedgerId !== DEMO_LEDGER_ID &&
+      ((cloudTotalCount !== null && cloudTotalCount > finalTx.length) || (cloudTotalCount === null && firstChunk.length === 1000))
+    );
+
+    if (needsHistoricalSync) {
+      const expectedTotal = cloudTotalCount || 26000;
+      setHistorySyncProgress({ loaded: finalTx.length, total: expectedTotal });
+
+      (async () => {
+        try {
+          const CHUNK_SIZE = 1000;
+          const CONCURRENCY = 5;
+          let from = 1000;
+          let hasMore = true;
+
+          while (hasMore && activeLoadingLedgerIdRef.current === targetLedgerId) {
+            const chunkPromises: Promise<any[]>[] = [];
+            for (let i = 0; i < CONCURRENCY; i++) {
+              const chunkFrom = from + i * CHUNK_SIZE;
+              if (cloudTotalCount !== null && chunkFrom >= cloudTotalCount) {
+                break;
+              }
+              const chunkTo = chunkFrom + CHUNK_SIZE - 1;
+              chunkPromises.push(
+                (async () => {
+                  for (let attempt = 0; attempt <= 2; attempt++) {
+                    try {
+                      const { data, error } = await supabase
+                        .from('transactions')
+                        .select('*')
+                        .eq('ledger_id', targetLedgerId)
+                        .order('transacted_at', { ascending: false })
+                        .range(chunkFrom, chunkTo);
+                      if (!error && data) return data;
+                      if (attempt < 2) await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
+                    } catch {
+                      if (attempt < 2) await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
+                    }
+                  }
+                  return [];
+                })()
+              );
+            }
+
+            if (chunkPromises.length === 0) {
+              hasMore = false;
+              break;
+            }
+
+            const chunkResults = await Promise.all(chunkPromises);
+
+            if (activeLoadingLedgerIdRef.current !== targetLedgerId) {
+              break;
+            }
+
+            const allNewRawRows = chunkResults.flat();
+            if (allNewRawRows.length === 0) {
+              hasMore = false;
+              break;
+            }
+
+            const transformedBatch = allNewRawRows.map(transformSingleTx);
+
+            let currentTotalLoaded = 0;
+            let currentCombinedList: Transaction[] = [];
+            setTransactions(prev => {
+              if (activeLoadingLedgerIdRef.current !== targetLedgerId) return prev;
+              const map = new Map<string, Transaction>();
+              prev.forEach(t => map.set(t.id, t));
+              transformedBatch.forEach(t => {
+                if (!map.has(t.id) && !deletedSet.has(t.id)) {
+                  map.set(t.id, t);
+                }
+              });
+              const combined = Array.from(map.values());
+              combined.sort((a, b) => (b.transacted_at > a.transacted_at ? 1 : b.transacted_at < a.transacted_at ? -1 : 0));
+              currentTotalLoaded = combined.length;
+              currentCombinedList = combined;
+              return combined;
+            });
+
+            if (currentCombinedList.length > 0) {
+              inMemoryLedgerTxCacheRef.current.set(targetLedgerId, currentCombinedList);
+            }
+
+            const displayTotal = cloudTotalCount || Math.max(expectedTotal, currentTotalLoaded);
+            setHistorySyncProgress({ loaded: currentTotalLoaded, total: displayTotal });
+
+            const anyChunkHasLessThanFull = chunkResults.some(res => res.length < CHUNK_SIZE);
+            if (anyChunkHasLessThanFull || (cloudTotalCount !== null && (from + chunkPromises.length * CHUNK_SIZE) >= cloudTotalCount)) {
+              hasMore = false;
+            } else {
+              from += chunkPromises.length * CHUNK_SIZE;
+            }
+          }
+        } catch (bgErr) {
+          console.warn('海量歷史資料接力拉取異常:', bgErr);
+        } finally {
+          if (activeLoadingLedgerIdRef.current === targetLedgerId) {
+            setHistorySyncProgress(null);
+            const cachedAll = inMemoryLedgerTxCacheRef.current.get(targetLedgerId);
+            if (cachedAll && cachedAll.length > 0) {
+              persistTransactionsCache(cachedAll, targetLedgerId);
+            }
+          }
+        }
+      })();
+    }
 
     // (E) 載入付款帳戶與卡片
     try {
@@ -5280,10 +5343,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // 更新交易並保存至本地快取
   const saveTransactionsToStorage = async (newTx: Transaction[]) => {
     setTransactions(newTx);
-    try {
-      await AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(newTx));
-    } catch (e) {
-      console.warn('儲存本地記帳資料失敗:', e);
+    if (currentLedger?.id) {
+      inMemoryLedgerTxCacheRef.current.set(currentLedger.id, newTx);
+      await persistTransactionsCache(newTx, currentLedger.id);
     }
   };
 
@@ -5319,7 +5381,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // 新增付款帳戶 / 信用卡 / 儲值卡
   const addPaymentAccount = async (accountData: Omit<PaymentAccount, 'id' | 'ledger_id' | 'created_at'>): Promise<PaymentAccount> => {
-    // 方案 A 權限體系：
+    // 卡片與帳戶權限體系：
     // - 帳本管理員 (effectiveIsOwner) 可為全家新增任何卡片與帳戶
     // - 一般家庭成員可在「我的」視角下自主新增屬於自己的卡片或帳戶
     const isTargetingSelf = !accountData.user_id || isAccountBoundToCurrentUser(accountData.user_id);
@@ -5361,7 +5423,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // 修改付款帳戶
   const updatePaymentAccount = async (id: string, data: Partial<PaymentAccount>): Promise<boolean> => {
     const existing = paymentAccounts.find(a => a.id === id);
-    // 方案 A 權限體系：
+    // 卡片與帳戶權限體系：
     // - 帳本管理員可修改全家任何卡片與帳戶
     // - 一般家庭成員僅能修改屬於自己的卡片與帳戶，且不可轉移給其他成員
     const isOwnerOfCard = existing && isAccountBoundToCurrentUser(existing.user_id);
@@ -5398,7 +5460,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // 刪除付款帳戶
   const deletePaymentAccount = async (id: string): Promise<boolean> => {
     const deletedAcc = paymentAccounts.find(a => a.id === id);
-    // 方案 A 權限體系：
+    // 卡片與帳戶權限體系：
     // - 帳本管理員可刪除全家任何卡片與帳戶
     // - 一般家庭成員僅能刪除屬於自己的卡片與帳戶
     const isOwnerOfCard = deletedAcc && isAccountBoundToCurrentUser(deletedAcc.user_id);
@@ -5785,7 +5847,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return true;
   };
 
-  // 確認記帳（方案 B：將待繳項目寫入記帳交易並標記本期已記帳）
+  // 確認記帳（將待繳項目寫入記帳交易並標記本期已記帳）
   const recordRecurringBill = async (
     ruleId: string,
     customAmount?: number,
@@ -6371,7 +6433,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return txId;
   };
 
-  // 方案 D：家長一鍵撥款 / 轉帳記帳（支援「內部轉帳」與「雙向收支記帳」雙模式）
+  // 家長一鍵撥款 / 轉帳記帳（支援「內部轉帳」與「雙向收支記帳」雙模式）
   const transferAllowance = async (data: {
     amount: number;
     fromMemberId: string;
@@ -6931,7 +6993,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return t;
       });
 
-      // 方案 2：辦妥週期提醒生活記事時，自動接力產生下一期未辦妥提醒
+      // 辦妥週期提醒生活記事時，自動接力產生下一期未辦妥提醒
       let nextMemoTx: Transaction | null = null;
       if (
         isTargetMemo &&
@@ -8509,6 +8571,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         unbindDevice,
         switchCurrentUser,
         isCloudSynced,
+        historySyncProgress,
         settlementInfo,
         hasJoinedLedger,
         isOwner: effectiveIsOwner,

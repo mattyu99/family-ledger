@@ -183,6 +183,7 @@ function MainApp() {
     updateMember,
     deleteMember,
     isCloudSynced,
+    historySyncProgress,
     hasJoinedLedger,
     isOwner,
     isReadOnly,
@@ -267,7 +268,7 @@ function MainApp() {
   const [completionTempCompleter, setCompletionTempCompleter] = useState<string>('');
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
-  // 方案 B：待辦打勾彈出辦妥確認與連動記帳彈窗
+  // 待辦打勾彈出辦妥確認與連動記帳彈窗
   const handleOpenMemoCompletion = (tx: Transaction) => {
     setCompletingMemo(tx);
     setCompletionTempNote(tx.completion_note || '');
@@ -309,7 +310,7 @@ function MainApp() {
   const [recurringModalTargetMemberId, setRecurringModalTargetMemberId] = useState<string | undefined>(undefined);
   const [memoTodoModalVisible, setMemoTodoModalVisible] = useState(false);
 
-  // 本期待繳帳單筆數 (方案 B: 到期需手動確認記帳之項目)
+  // 本期待繳帳單筆數 (到期需手動確認記帳之項目)
   const pendingRecurringBillsCount = useMemo(() => {
     const now = new Date();
     const currYear = now.getFullYear();
@@ -615,7 +616,7 @@ function MainApp() {
     setReconcileModalVisible(true);
   };
 
-  // 方案 A：收支明細分批動態載入控制 (預設每批 40 筆，避免一次渲染大量元件導致掉幀)
+  // 收支明細分批動態載入控制 (預設每批 40 筆，避免一次渲染大量元件導致掉幀)
   const PAGE_SIZE = 40;
   const [displayCount, setDisplayCount] = useState<number>(PAGE_SIZE);
 
@@ -1033,7 +1034,7 @@ function MainApp() {
     });
   }, [transactions, transactionTypeFilter, filterMonth, filterMemberId, searchQuery, getMemberById, getCategoryById, members, currentUser, paymentAccounts]);
 
-  // 方案 A：依分批上限動態切片明細清單 (避免一次渲染過多元件)
+  // 依分批上限動態切片明細清單 (避免一次渲染過多元件)
   const displayedTransactions = useMemo(() => {
     return filteredTransactions.slice(0, displayCount);
   }, [filteredTransactions, displayCount]);
@@ -1492,6 +1493,13 @@ function MainApp() {
           ]
         );
       }
+      return;
+    }
+    if (historySyncProgress && (tab === 'csv' || tab === 'json')) {
+      showAlert(
+        '歷史明細同步中',
+        `系統目前正高速同步海量歷史資料中（已載入 ${historySyncProgress.loaded.toLocaleString()} / 總 ${historySyncProgress.total.toLocaleString()} 筆）。\n\n建議稍候數秒同步完成後再行匯出，以確保備份檔案完整包含所有歷史紀錄。`
+      );
       return;
     }
     const csv = exportToCSV();
@@ -3624,7 +3632,7 @@ function MainApp() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
 
-      {/* 方案 A: App 內即時溫馨動態泡泡 */}
+      {/* App 內即時溫馨動態泡泡 */}
       <LiveToastBanner toast={liveToast} onDismiss={dismissLiveToast} />
 
       {/* 頂部導航列 */}
@@ -3697,9 +3705,9 @@ function MainApp() {
           onPress={handleRefresh}
           activeOpacity={0.7}
         >
-          <Text style={styles.syncDot}>{isRefreshing ? '🔄' : (isCloudSynced ? '🟢' : '🟡')}</Text>
+          <Text style={styles.syncDot}>{historySyncProgress || isRefreshing ? '🔄' : (isCloudSynced ? '🟢' : '🟡')}</Text>
           <Text style={styles.syncText} maxFontSizeMultiplier={1.2}>
-            {isRefreshing ? '同步更新中...' : (isCloudSynced ? '雲端即時同步' : '本地離線快取')}
+            {historySyncProgress ? '歷史同步中...' : isRefreshing ? '同步更新中...' : (isCloudSynced ? '雲端即時同步' : '本地離線快取')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -4049,7 +4057,7 @@ function MainApp() {
             {/* 交易列表標題 */}
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>
-                {transactionTypeFilter === 'memo' ? '📝 生活備忘記事' : transactionTypeFilter === 'financial' ? '💳 日常收支明細' : '近期收支明細'} {filteredTransactions.length < transactions.length ? `(${filteredTransactions.length} / 總 ${transactions.length})` : `(總 ${transactions.length})`}
+                {transactionTypeFilter === 'memo' ? '📝 生活備忘記事' : transactionTypeFilter === 'financial' ? '💳 日常收支明細' : '近期收支明細'} {historySyncProgress ? `(同步中 ${historySyncProgress.loaded.toLocaleString()} / ${historySyncProgress.total.toLocaleString()})` : (filteredTransactions.length < transactions.length ? `(${filteredTransactions.length.toLocaleString()} / 總 ${transactions.length.toLocaleString()})` : `(總 ${transactions.length.toLocaleString()})`)}
               </Text>
               {keyboardOffset > 0 ? (
                 <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -4308,7 +4316,7 @@ function MainApp() {
                   />
                 ))}
 
-                {/* 方案 A：分批動態載入控制列 */}
+                {/* 分批動態載入控制列 */}
                 {filteredTransactions.length > displayCount && (
                   <View style={styles.loadMoreContainer}>
                     <TouchableOpacity
@@ -5520,7 +5528,7 @@ function MainApp() {
                 </View>
                 <View style={[styles.roleBadge, isCloudSynced ? styles.roleBadgeOwner : styles.roleBadgeMember]}>
                   <Text style={[styles.roleBadgeText, isCloudSynced ? styles.roleBadgeTextOwner : styles.roleBadgeTextMember]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    {isCloudSynced ? '🟢 雲端已同步' : '💾 本機離線模式'}
+                    {historySyncProgress ? `🔄 歷史資料同步中 (${historySyncProgress.loaded.toLocaleString()} / ${historySyncProgress.total.toLocaleString()})` : (isCloudSynced ? '🟢 雲端已同步' : '💾 本機離線模式')}
                   </Text>
                 </View>
               </View>
@@ -5531,7 +5539,7 @@ function MainApp() {
                 <View style={styles.backupStatsRow}>
                   <View style={styles.backupStatItem}>
                     <Text style={styles.backupStatVal} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                      {transactions.length}
+                      {transactions.length.toLocaleString()}
                     </Text>
                     <Text style={styles.backupStatLabel} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                       📝 交易明細
@@ -6041,7 +6049,7 @@ function MainApp() {
         onCompleteMemo={handleOpenMemoCompletion}
       />
 
-      {/* 辦妥待辦確認與連動記帳彈窗 (方案 B) */}
+      {/* 辦妥待辦確認與連動記帳彈窗 */}
       <MemoCompletionModal
         visible={!!completingMemo && !modalVisible}
         memo={completingMemo}

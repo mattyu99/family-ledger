@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.6';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.6 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 8;
+export const APP_BUILD_REVISION = 9;
 
-// 完整版本字串 (例如 "1.0.6.8")
+// 完整版本字串 (例如 "1.0.6.9")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -20,11 +20,11 @@ export interface ChangelogItem {
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.6',
-    date: '2026-10-20',
+    date: '2026-10-20 ~ 2026-10-21',
     title: '悠遊卡查帳整合、產品型錄指南、家庭門禁安全鎖、海量極速載入',
     highlights: [
       '🚌 悠遊卡完整卡號與官網查帳整合：支援記錄完整卡號 (嚴格上限 16 碼)，首頁餘額右側提供微型末四碼複製標籤，對帳頁面提供完整卡號展示、一鍵複製與悠遊卡官網即時跳轉捷徑。',
-      '⚡ 海量帳本極速載入：實作本地快取 0.05 秒搶先渲染、兩段式漸進分批拉取與資料庫複合索引，徹底解決 25,000+ 筆明細切換等待，體感秒開。',
+      '⚡ 海量歷史明細並發載入與快取容量防禦：徹底解決歷史帳本被 1,000 筆快取截斷之問題，實作多執行緒並發分批接力拉取全量歷史明細 (25,000+ 筆於數秒內全數載入)，兼具本地快取容量防禦機制避開瀏覽器限制。',
       '📝 資料庫約束升級支援 memo：transactions 表結構放寬支援生活記事類型，新增記事備忘一次寫入零延遲。',
       '🔒 家庭門禁安全鎖：家庭設定新增新成員加入通道開關，上鎖時全面阻斷持邀請碼之新訪客加入並隱藏家庭名冊，有效防範邀請碼外流風險。',
       '📖 新增產品介紹與常用操作指南：家庭設定新增專屬操作手冊與指引，涵蓋記帳、零用錢、待辦連動與對帳速查。',

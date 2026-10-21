@@ -384,7 +384,7 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
               </View>
             </>
           ) : (
-            /* 方案 B：農曆直接指定選取器 */
+            /* 農曆直接指定選取器 */
             <ScrollView style={styles.lunarPickerArea} showsVerticalScrollIndicator={false}>
               {/* 農曆年份選擇 */}
               <View style={styles.lunarYearNavRow}>

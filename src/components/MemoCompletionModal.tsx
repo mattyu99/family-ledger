@@ -264,7 +264,7 @@ export const MemoCompletionModal: React.FC<MemoCompletionModalProps> = ({
               ))}
             </View>
 
-            {/* 操作按鈕群 (方案 B 核心：連動記帳 vs 僅打勾完成) */}
+            {/* 操作按鈕群 (連動記帳 vs 僅打勾完成) */}
             <View style={styles.actionsContainer}>
               <TouchableOpacity
                 style={styles.linkExpenseBtn}

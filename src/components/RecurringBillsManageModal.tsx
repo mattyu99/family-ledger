@@ -493,7 +493,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
   const year = selectedDate.getFullYear();
   const month = selectedDate.getMonth() + 1; // 1 ~ 12
 
-  // 方案 A：限制最早只能切換至「上個月」（當前真實時間的上一月份）
+  // 限制最早只能切換至「上個月」（當前真實時間的上一月份）
   const now = useMemo(() => new Date(), []);
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth(); // 0 ~ 11
@@ -531,7 +531,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     return { pendingBills: pending, settledBills: settled };
   }, [scopedRules, year, month, selectedDate]);
 
-  // 切換月份（受限於方案 A：不可早於上個月）
+  // 切換月份（不可早於上個月）
   const handlePrevMonth = () => {
     if (isAtMinMonth) return;
     setSelectedDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
@@ -1091,7 +1091,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
           {/* Tab 1: 待繳清單 */}
           {activeTab === 'pending' && (
             <View style={styles.tabContent}>
-              {/* 月份切換列（支援方案 A：限制最多到上個月） */}
+              {/* 月份切換列（限制最多到上個月） */}
               <View style={styles.monthSelectorRow}>
                 <TouchableOpacity
                   style={[styles.monthNavButton, isAtMinMonth && styles.monthNavButtonDisabled]}
