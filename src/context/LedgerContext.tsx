@@ -3041,6 +3041,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           let from = 1000;
           let hasMore = true;
 
+          // 建立累積對照表，直接在記憶體中維護即時全量資料 (不依賴 React 非同步 state updater 回調，確保計數零延遲準確)
+          const accumulatedMap = new Map<string, Transaction>();
+          finalTx.forEach(t => {
+            if (!deletedSet.has(t.id)) accumulatedMap.set(t.id, t);
+          });
+
           while (hasMore && activeLoadingLedgerIdRef.current === targetLedgerId) {
             const chunkPromises: Promise<any[]>[] = [];
             for (let i = 0; i < CONCURRENCY; i++) {
@@ -3088,28 +3094,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
 
             const transformedBatch = allNewRawRows.map(transformSingleTx);
-
-            let currentTotalLoaded = 0;
-            let currentCombinedList: Transaction[] = [];
-            setTransactions(prev => {
-              if (activeLoadingLedgerIdRef.current !== targetLedgerId) return prev;
-              const map = new Map<string, Transaction>();
-              prev.forEach(t => map.set(t.id, t));
-              transformedBatch.forEach(t => {
-                if (!map.has(t.id) && !deletedSet.has(t.id)) {
-                  map.set(t.id, t);
-                }
-              });
-              const combined = Array.from(map.values());
-              combined.sort((a, b) => (b.transacted_at > a.transacted_at ? 1 : b.transacted_at < a.transacted_at ? -1 : 0));
-              currentTotalLoaded = combined.length;
-              currentCombinedList = combined;
-              return combined;
+            transformedBatch.forEach(t => {
+              if (!deletedSet.has(t.id)) {
+                accumulatedMap.set(t.id, t);
+              }
             });
 
-            if (currentCombinedList.length > 0) {
-              inMemoryLedgerTxCacheRef.current.set(targetLedgerId, currentCombinedList);
-            }
+            const combinedList = Array.from(accumulatedMap.values());
+            combinedList.sort((a, b) => (b.transacted_at > a.transacted_at ? 1 : b.transacted_at < a.transacted_at ? -1 : 0));
+            const currentTotalLoaded = combinedList.length;
+
+            inMemoryLedgerTxCacheRef.current.set(targetLedgerId, combinedList);
+            setTransactions(combinedList);
 
             const displayTotal = cloudTotalCount || Math.max(expectedTotal, currentTotalLoaded);
             setHistorySyncProgress({ loaded: currentTotalLoaded, total: displayTotal });

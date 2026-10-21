@@ -1501,9 +1501,10 @@ function MainApp() {
       return;
     }
     if (historySyncProgress && (tab === 'csv' || tab === 'json')) {
+      const currentLoaded = Math.max(historySyncProgress.loaded, transactions.length);
       showAlert(
         '歷史明細同步中',
-        `系統目前正高速同步海量歷史資料中（已載入 ${historySyncProgress.loaded.toLocaleString()} / 總 ${historySyncProgress.total.toLocaleString()} 筆）。\n\n建議稍候數秒同步完成後再行匯出，以確保備份檔案完整包含所有歷史紀錄。`
+        `系統目前正高速同步海量歷史資料中（已載入 ${currentLoaded.toLocaleString()} / 總 ${historySyncProgress.total.toLocaleString()} 筆）。\n\n建議稍候數秒同步完成後再行匯出，以確保備份檔案完整包含所有歷史紀錄。`
       );
       return;
     }
@@ -4062,7 +4063,7 @@ function MainApp() {
             {/* 交易列表標題 */}
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>
-                {transactionTypeFilter === 'memo' ? '📝 生活備忘記事' : transactionTypeFilter === 'financial' ? '💳 日常收支明細' : '近期收支明細'} {historySyncProgress ? `(同步中 ${historySyncProgress.loaded.toLocaleString()} / ${historySyncProgress.total.toLocaleString()})` : (filteredTransactions.length < transactions.length ? `(${filteredTransactions.length.toLocaleString()} / 總 ${transactions.length.toLocaleString()})` : `(總 ${transactions.length.toLocaleString()})`)}
+                {transactionTypeFilter === 'memo' ? '📝 生活備忘記事' : transactionTypeFilter === 'financial' ? '💳 日常收支明細' : '近期收支明細'} {historySyncProgress ? `(同步中 ${Math.max(historySyncProgress.loaded, transactions.length).toLocaleString()} / ${historySyncProgress.total.toLocaleString()})` : (filteredTransactions.length < transactions.length ? `(${filteredTransactions.length.toLocaleString()} / 總 ${transactions.length.toLocaleString()})` : `(總 ${transactions.length.toLocaleString()})`)}
               </Text>
               {keyboardOffset > 0 ? (
                 <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -5533,7 +5534,7 @@ function MainApp() {
                 </View>
                 <View style={[styles.roleBadge, isCloudSynced ? styles.roleBadgeOwner : styles.roleBadgeMember]}>
                   <Text style={[styles.roleBadgeText, isCloudSynced ? styles.roleBadgeTextOwner : styles.roleBadgeTextMember]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    {historySyncProgress ? `🔄 歷史資料同步中 (${historySyncProgress.loaded.toLocaleString()} / ${historySyncProgress.total.toLocaleString()})` : (isCloudSynced ? '🟢 雲端已同步' : '💾 本機離線模式')}
+                    {historySyncProgress ? `🔄 歷史資料同步中 (${Math.max(historySyncProgress.loaded, transactions.length).toLocaleString()} / ${historySyncProgress.total.toLocaleString()})` : (isCloudSynced ? '🟢 雲端已同步' : '💾 本機離線模式')}
                   </Text>
                 </View>
               </View>

@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.6';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.6 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 10;
+export const APP_BUILD_REVISION = 11;
 
-// 完整版本字串 (例如 "1.0.6.10")
+// 完整版本字串 (例如 "1.0.6.11")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -23,6 +23,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
     date: '2026-10-20 ~ 2026-10-21',
     title: '悠遊卡查帳整合、產品型錄指南、家庭門禁安全鎖、海量極速載入',
     highlights: [
+      '⚡ 即時歷史同步進度計數修復：解決 React 批次狀態閉包導致「歷史資料同步中 (0 / 25,980)」停留為 0 之問題，實作同步累積對照表，使同步計數與交易明細數字 1:1 即時同步攀升。',
       '🛡️ 帳本切換身分稱謂零延遲防閃爍：徹底解決切換帳本時被切換帳本之稱謂短暫閃爍上一帳本舊名字（如「倉鼠」短暫閃為「智爸」）之非同步競態，實作帳本稱謂專屬優先綁定與雙向即時預切換。',
       '🚌 悠遊卡完整卡號與官網查帳整合：支援記錄完整卡號 (嚴格上限 16 碼)，首頁餘額右側提供微型末四碼複製標籤，對帳頁面提供完整卡號展示、一鍵複製與悠遊卡官網即時跳轉捷徑。',
       '⚡ 海量歷史明細並發載入與快取容量防禦：徹底解決歷史帳本被 1,000 筆快取截斷之問題，實作多執行緒並發分批接力拉取全量歷史明細 (25,000+ 筆於數秒內全數載入)，兼具本地快取容量防禦機制避開瀏覽器限制。',
