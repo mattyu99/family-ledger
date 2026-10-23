@@ -80,6 +80,7 @@ import {
   isValidInvoiceNumber,
   stripInvoiceTag,
   fetchMerchantOnlineByTaxId,
+  cleanBusinessName,
   ParsedInvoiceData,
 } from '../lib/invoice';
 import { checkInvoiceWinning } from '../lib/lottery';
@@ -311,9 +312,10 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       } catch {}
     }
     if (parsed.merchantName) {
-      setMerchant(parsed.merchantName);
+      const cleanName = cleanBusinessName(parsed.merchantName);
+      setMerchant(cleanName);
       if (parsed.sellerTaxId) {
-        recordTaxIdMerchant(parsed.sellerTaxId, parsed.merchantName);
+        recordTaxIdMerchant(parsed.sellerTaxId, cleanName);
       }
     } else if (parsed.sellerTaxId) {
       // 若發票包含賣方統編但靜態庫未收錄，非同步背景即時查詢財政部稅籍並補正店家與分類
@@ -321,8 +323,9 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       fetchMerchantOnlineByTaxId(targetTaxId, 2500)
         .then(onlineInfo => {
           if (onlineInfo && onlineInfo.name) {
-            setMerchant(prev => (prev ? prev : onlineInfo.name));
-            recordTaxIdMerchant(targetTaxId, onlineInfo.name);
+            const cleanName = cleanBusinessName(onlineInfo.name);
+            setMerchant(prev => (prev ? prev : cleanName));
+            recordTaxIdMerchant(targetTaxId, cleanName);
             if (onlineInfo.defaultCategoryName && type === 'expense') {
               const matchedCat = categories.find(
                 c =>
@@ -430,7 +433,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     } else {
       safeAlert(
         '發票辨識成功',
-        `發票號碼：${resolvedData.invoiceNumber || '未包含號碼'}${resolvedData.merchantName ? `\n店家：${resolvedData.merchantName}` : ''}${resolvedData.totalAmount ? `\n金額：NT$ ${resolvedData.totalAmount.toLocaleString()}` : ''}${resolvedData.items && resolvedData.items.length > 0 ? `\n商品明細：共 ${resolvedData.items.length} 項 (已帶入備註)` : ''}`
+        `發票號碼：${resolvedData.invoiceNumber || '未包含號碼'}${resolvedData.merchantName ? `\n店家：${cleanBusinessName(resolvedData.merchantName)}` : ''}${resolvedData.totalAmount ? `\n金額：NT$ ${resolvedData.totalAmount.toLocaleString()}` : ''}${resolvedData.items && resolvedData.items.length > 0 ? `\n商品明細：共 ${resolvedData.items.length} 項 (已帶入備註)` : ''}`
       );
     }
   };
@@ -467,7 +470,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             } else {
               safeAlert(
                 '發票解析成功',
-                `已辨識並帶入發票資訊！\n號碼：${parsed.invoiceNumber || '未包含號碼'}${parsed.merchantName ? `\n店家：${parsed.merchantName}` : ''}${parsed.totalAmount ? `\n金額：NT$ ${parsed.totalAmount.toLocaleString()}` : ''}`
+                `已辨識並帶入發票資訊！\n號碼：${parsed.invoiceNumber || '未包含號碼'}${parsed.merchantName ? `\n店家：${cleanBusinessName(parsed.merchantName)}` : ''}${parsed.totalAmount ? `\n金額：NT$ ${parsed.totalAmount.toLocaleString()}` : ''}`
               );
             }
             return;

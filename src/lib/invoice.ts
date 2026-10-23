@@ -32,71 +32,71 @@ export interface ParsedInvoiceData {
 
 /**
  * 台灣常見連鎖通路統一編號對照庫 (自動帶入店家與對應分類)
- * 統編全面校正為真實登記統編，供離線即時秒速比對
+ * 統編全面校正為真實登記統編，名稱採用簡明單一識別品牌，供離線即時秒速比對
  */
 export const COMMON_TAIWAN_SELLERS: Record<string, { name: string; defaultCategoryName: string }> = {
   // 生鮮量販與超市
-  '16740494': { name: '全聯福利中心', defaultCategoryName: '生鮮超市' },
-  '96972798': { name: '好市多 Costco', defaultCategoryName: '生鮮超市' },
-  '22662550': { name: '家樂福 Carrefour', defaultCategoryName: '生鮮超市' },
-  '54164937': { name: '美廉社 Simple Mart', defaultCategoryName: '生鮮超市' },
-  '97165560': { name: '大潤發 RT-MART', defaultCategoryName: '生鮮超市' },
+  '16740494': { name: '全聯', defaultCategoryName: '生鮮超市' },
+  '96972798': { name: '好市多', defaultCategoryName: '生鮮超市' },
+  '22662550': { name: '家樂福', defaultCategoryName: '生鮮超市' },
+  '54164937': { name: '美廉社', defaultCategoryName: '生鮮超市' },
+  '97165560': { name: '大潤發', defaultCategoryName: '生鮮超市' },
 
   // 超商便利商店
-  '22555003': { name: '7-ELEVEN 統一超商', defaultCategoryName: '餐飲伙食' },
-  '23060248': { name: '全家便利商店 FamilyMart', defaultCategoryName: '餐飲伙食' },
-  '23285582': { name: '萊爾富 Hi-Life', defaultCategoryName: '餐飲伙食' },
-  '22853565': { name: 'OK便利商店', defaultCategoryName: '餐飲伙食' },
+  '22555003': { name: '7-ELEVEN', defaultCategoryName: '餐飲伙食' },
+  '23060248': { name: '全家', defaultCategoryName: '餐飲伙食' },
+  '23285582': { name: '萊爾富', defaultCategoryName: '餐飲伙食' },
+  '22853565': { name: 'OK超商', defaultCategoryName: '餐飲伙食' },
 
   // 連鎖餐飲與速食
-  '12411160': { name: '麥當勞 McDonald\'s', defaultCategoryName: '餐飲伙食' },
-  '97161500': { name: '肯德基 / 必勝客 KFC & Pizza Hut', defaultCategoryName: '餐飲伙食' },
-  '23928945': { name: '摩斯漢堡 MOS BURGER', defaultCategoryName: '餐飲伙食' },
-  '16097091': { name: '星巴克 Starbucks', defaultCategoryName: '餐飲伙食' },
+  '12411160': { name: '麥當勞', defaultCategoryName: '餐飲伙食' },
+  '97161500': { name: '肯德基/必勝客', defaultCategoryName: '餐飲伙食' },
+  '23928945': { name: '摩斯漢堡', defaultCategoryName: '餐飲伙食' },
+  '16097091': { name: '星巴克', defaultCategoryName: '餐飲伙食' },
   '70472679': { name: '八方雲集', defaultCategoryName: '餐飲伙食' },
-  '54857699': { name: '路易莎咖啡 Louisa', defaultCategoryName: '餐飲伙食' },
-  '84630426': { name: '王品集團', defaultCategoryName: '餐飲伙食' },
-  '97286918': { name: '爭鮮迴轉壽司', defaultCategoryName: '餐飲伙食' },
-  '70843031': { name: '瓦城泰統集團', defaultCategoryName: '餐飲伙食' },
-  '22721208': { name: '鬍鬚張魯肉飯', defaultCategoryName: '餐飲伙食' },
+  '54857699': { name: '路易莎', defaultCategoryName: '餐飲伙食' },
+  '84630426': { name: '王品', defaultCategoryName: '餐飲伙食' },
+  '97286918': { name: '爭鮮', defaultCategoryName: '餐飲伙食' },
+  '70843031': { name: '瓦城', defaultCategoryName: '餐飲伙食' },
+  '22721208': { name: '鬍鬚張', defaultCategoryName: '餐飲伙食' },
 
   // 藥局美妝與日用
-  '23224657': { name: '屈臣氏 Watsons', defaultCategoryName: '醫療保健' },
-  '89589328': { name: '康是美 Cosmed', defaultCategoryName: '醫療保健' },
-  '97151664': { name: 'POYA 寶雅生活館', defaultCategoryName: '生鮮超市' },
+  '23224657': { name: '屈臣氏', defaultCategoryName: '醫療保健' },
+  '89589328': { name: '康是美', defaultCategoryName: '醫療保健' },
+  '97151664': { name: '寶雅', defaultCategoryName: '生鮮超市' },
   '12803476': { name: '大樹藥局', defaultCategoryName: '醫療保健' },
-  '86649006': { name: '杏一醫療器材', defaultCategoryName: '醫療保健' },
-  '16115725': { name: '丁丁連鎖藥局', defaultCategoryName: '醫療保健' },
+  '86649006': { name: '杏一醫療', defaultCategoryName: '醫療保健' },
+  '16115725': { name: '丁丁藥局', defaultCategoryName: '醫療保健' },
 
   // 交通加油與通勤
-  '03707901': { name: '台灣中油 CPC', defaultCategoryName: '交通出行' },
+  '03707901': { name: '台灣中油', defaultCategoryName: '交通出行' },
   '22958907': { name: '全國加油站', defaultCategoryName: '交通出行' },
-  '16446274': { name: '台灣高鐵 THSR', defaultCategoryName: '交通出行' },
-  '07524729': { name: '臺灣鐵路 TR', defaultCategoryName: '交通出行' },
-  '27767961': { name: '台灣大車隊 55688', defaultCategoryName: '交通出行' },
-  '70765909': { name: '悠遊卡公司', defaultCategoryName: '交通出行' },
+  '16446274': { name: '台灣高鐵', defaultCategoryName: '交通出行' },
+  '07524729': { name: '台鐵', defaultCategoryName: '交通出行' },
+  '27767961': { name: '台灣大車隊', defaultCategoryName: '交通出行' },
+  '70765909': { name: '悠遊卡', defaultCategoryName: '交通出行' },
 
   // 居家水電寬頻電信
-  '03795904': { name: '台灣電力公司', defaultCategoryName: '居家水電' },
-  '52242444': { name: '台灣自來水公司', defaultCategoryName: '居家水電' },
-  '03774909': { name: '台北自來水事業處', defaultCategoryName: '居家水電' },
+  '03795904': { name: '台電', defaultCategoryName: '居家水電' },
+  '52242444': { name: '台水', defaultCategoryName: '居家水電' },
+  '03774909': { name: '北水處', defaultCategoryName: '居家水電' },
   '96979933': { name: '中華電信', defaultCategoryName: '居家水電' },
   '97176270': { name: '台灣大哥大', defaultCategoryName: '居家水電' },
   '97179430': { name: '遠傳電信', defaultCategoryName: '居家水電' },
 
   // 電商與外送
-  '27365925': { name: 'momo 購物網', defaultCategoryName: '生鮮超市' },
-  '16606102': { name: 'PChome 線上購物', defaultCategoryName: '休閒娛樂' },
-  '24941832': { name: '蝦皮購物 Shopee', defaultCategoryName: '休閒娛樂' },
-  '91002999': { name: '酷澎 Coupang', defaultCategoryName: '生鮮超市' },
+  '27365925': { name: 'momo購物', defaultCategoryName: '生鮮超市' },
+  '16606102': { name: 'PChome', defaultCategoryName: '休閒娛樂' },
+  '24941832': { name: '蝦皮購物', defaultCategoryName: '休閒娛樂' },
+  '91002999': { name: '酷澎', defaultCategoryName: '生鮮超市' },
 
   // 百貨居家休閒
-  '84309586': { name: 'IKEA 宜家家居', defaultCategoryName: '居家水電' },
-  '89390488': { name: '特力屋 B&Q', defaultCategoryName: '居家水電' },
+  '84309586': { name: 'IKEA', defaultCategoryName: '居家水電' },
+  '89390488': { name: '特力屋', defaultCategoryName: '居家水電' },
   '97268593': { name: '小北百貨', defaultCategoryName: '居家水電' },
-  '12811308': { name: '大創百貨 DAISO', defaultCategoryName: '居家水電' },
-  '80518858': { name: '無印良品 MUJI', defaultCategoryName: '休閒娛樂' },
-  '16086448': { name: '威秀影城 Vieshow', defaultCategoryName: '休閒娛樂' },
+  '12811308': { name: '大創百貨', defaultCategoryName: '居家水電' },
+  '80518858': { name: '無印良品', defaultCategoryName: '休閒娛樂' },
+  '16086448': { name: '威秀影城', defaultCategoryName: '休閒娛樂' },
 };
 
 export interface OnlineMerchantInfo {
@@ -110,101 +110,217 @@ export interface OnlineMerchantInfo {
 const onlineMerchantCache = new Map<string, OnlineMerchantInfo>();
 
 /**
- * 智慧清理營業人名稱，將冗贅之公司型態去除，並將大型連鎖分公司美化為易讀門市名稱
+ * 智慧清理營業人名稱：
+ * 1. 簡短且高辨識度：知名企業取單一識別名稱（例如「7-ELEVEN」、「全家」、「麥當勞」），不重複中英文。
+ * 2. 徹底去除後方分公司與營業所字樣（例如「台北市第八四一分公司」）。
  */
 export const cleanBusinessName = (rawName: string, hqBan?: string): string => {
   if (!rawName) return '';
   const name = rawName.trim();
 
-  // 1. 常見大型連鎖企業分公司辨識
-  if (hqBan === '22555003' || name.includes('統一超商')) {
-    const branch = name.replace('統一超商股份有限公司', '').replace('統一超商', '').trim();
-    return branch ? `7-ELEVEN 統一超商 (${branch})` : '7-ELEVEN 統一超商';
+  // 1. 常見大型連鎖企業辨識（取簡短、單一、易識別品牌名，完全去掉分公司後綴）
+  if (
+    hqBan === '22555003' ||
+    name.includes('統一超商') ||
+    name.includes('7-ELEVEN') ||
+    name.includes('7-11')
+  ) {
+    return '7-ELEVEN';
   }
-  if (hqBan === '23060248' || name.includes('全家便利商店')) {
-    const branch = name.replace('全家便利商店股份有限公司', '').replace('全家便利商店', '').trim();
-    return branch ? `全家便利商店 (${branch})` : '全家便利商店';
+  if (
+    hqBan === '23060248' ||
+    name.includes('全家便利') ||
+    name.includes('全家超商')
+  ) {
+    return '全家';
   }
-  if (hqBan === '16740494' || name.includes('全聯實業')) {
-    const branch = name.replace('全聯實業股份有限公司', '').replace('全聯實業', '').trim();
-    return branch ? `全聯福利中心 (${branch})` : '全聯福利中心';
+  if (
+    hqBan === '16740494' ||
+    name.includes('全聯實業') ||
+    name.includes('全聯福利')
+  ) {
+    return '全聯';
   }
-  if (hqBan === '22662550' || name.includes('家福股份') || name.includes('康達盛通')) {
-    const branch = name
-      .replace('家福股份有限公司', '')
-      .replace('康達盛通生活事業股份有限公司', '')
-      .trim();
-    return branch ? `家樂福 Carrefour (${branch})` : '家樂福 Carrefour';
+  if (
+    hqBan === '22662550' ||
+    name.includes('家福股份') ||
+    name.includes('康達盛通') ||
+    name.includes('家樂福')
+  ) {
+    return '家樂福';
   }
-  if (hqBan === '12411160' || name.includes('和德昌')) {
-    const branch = name.replace('和德昌股份有限公司', '').trim();
-    return branch ? `麥當勞 McDonald's (${branch})` : '麥當勞 McDonald\'s';
+  if (hqBan === '12411160' || name.includes('和德昌') || name.includes('麥當勞')) {
+    return '麥當勞';
   }
-  if (hqBan === '23928945' || name.includes('安心食品')) {
-    const branch = name.replace('安心食品服務股份有限公司', '').trim();
-    return branch ? `摩斯漢堡 MOS BURGER (${branch})` : '摩斯漢堡 MOS BURGER';
+  if (hqBan === '23928945' || name.includes('安心食品') || name.includes('摩斯漢堡')) {
+    return '摩斯漢堡';
   }
-  if (hqBan === '97161500' || name.includes('富利餐飲')) {
-    const branch = name.replace('富利餐飲股份有限公司', '').trim();
-    return branch ? `肯德基/必勝客 (${branch})` : '肯德基/必勝客';
+  if (
+    hqBan === '97161500' ||
+    name.includes('富利餐飲') ||
+    name.includes('肯德基') ||
+    name.includes('必勝客')
+  ) {
+    if (name.includes('肯德基')) return '肯德基';
+    if (name.includes('必勝客')) return '必勝客';
+    return '肯德基/必勝客';
   }
-  if (hqBan === '16097091' || name.includes('悠旅生活')) {
-    const branch = name.replace('悠旅生活事業股份有限公司', '').trim();
-    return branch ? `星巴克 Starbucks (${branch})` : '星巴克 Starbucks';
+  if (hqBan === '16097091' || name.includes('悠旅生活') || name.includes('星巴克')) {
+    return '星巴克';
   }
-  if (hqBan === '89589328' || name.includes('統一生活')) {
-    const branch = name.replace('統一生活事業股份有限公司', '').trim();
-    return branch ? `康是美 Cosmed (${branch})` : '康是美 Cosmed';
+  if (hqBan === '89589328' || name.includes('統一生活') || name.includes('康是美')) {
+    return '康是美';
   }
   if (hqBan === '23224657' || name.includes('屈臣氏')) {
-    const branch = name
-      .replace('台灣屈臣氏個人用品商店股份有限公司', '')
-      .replace('屈臣氏', '')
-      .trim();
-    return branch ? `屈臣氏 Watsons (${branch})` : '屈臣氏 Watsons';
+    return '屈臣氏';
   }
-  if (hqBan === '54164937' || name.includes('三商家購')) {
-    const branch = name.replace('三商家購股份有限公司', '').trim();
-    return branch ? `美廉社 Simple Mart (${branch})` : '美廉社 Simple Mart';
+  if (hqBan === '54164937' || name.includes('三商家購') || name.includes('美廉社')) {
+    return '美廉社';
   }
   if (hqBan === '23285582' || name.includes('萊爾富')) {
-    const branch = name.replace('萊爾富國際股份有限公司', '').trim();
-    return branch ? `萊爾富 Hi-Life (${branch})` : '萊爾富 Hi-Life';
+    return '萊爾富';
   }
-  if (hqBan === '22853565' || name.includes('來來超商') || name.includes('富達零售')) {
-    const branch = name
-      .replace('來來超商股份有限公司', '')
-      .replace('富達零售股份有限公司', '')
-      .trim();
-    return branch ? `OK便利商店 (${branch})` : 'OK便利商店';
+  if (
+    hqBan === '22853565' ||
+    name.includes('來來超商') ||
+    name.includes('富達零售') ||
+    name.includes('OK便利') ||
+    name.includes('OK超商')
+  ) {
+    return 'OK超商';
   }
-  if (hqBan === '97151664' || name.includes('寶雅國際')) {
-    const branch = name.replace('寶雅國際股份有限公司', '').trim();
-    return branch ? `POYA 寶雅生活館 (${branch})` : 'POYA 寶雅生活館';
+  if (hqBan === '97151664' || name.includes('寶雅')) {
+    return '寶雅';
   }
-  if (hqBan === '12803476' || name.includes('大樹醫藥')) {
-    const branch = name.replace('大樹醫藥股份有限公司', '').trim();
-    return branch ? `大樹藥局 (${branch})` : '大樹藥局';
+  if (hqBan === '96972798' || name.includes('好市多')) {
+    return '好市多';
   }
-  if (hqBan === '86649006' || name.includes('杏一醫療')) {
-    const branch = name.replace('杏一醫療用品股份有限公司', '').trim();
-    return branch ? `杏一醫療器材 (${branch})` : '杏一醫療器材';
+  if (hqBan === '97165560' || name.includes('大潤發')) {
+    return '大潤發';
   }
-  if (hqBan === '16115725' || name.includes('諾貝兒寶貝')) {
-    const branch = name.replace('諾貝兒寶貝股份有限公司', '').trim();
-    return branch ? `丁丁連鎖藥局 (${branch})` : '丁丁連鎖藥局';
+  if (
+    hqBan === '12803476' ||
+    name.includes('大樹醫藥') ||
+    name.includes('大樹藥局')
+  ) {
+    return '大樹藥局';
   }
-  if (hqBan === '03707901' || name.includes('台灣中油')) {
-    const branch = name.replace('台灣中油股份有限公司', '').trim();
-    return branch ? `台灣中油 CPC (${branch})` : '台灣中油 CPC';
+  if (hqBan === '86649006' || name.includes('杏一')) {
+    return '杏一醫療';
+  }
+  if (
+    hqBan === '16115725' ||
+    name.includes('諾貝兒') ||
+    name.includes('丁丁藥局') ||
+    name.includes('丁丁連鎖')
+  ) {
+    return '丁丁藥局';
+  }
+  if (hqBan === '03707901' || name.includes('台灣中油') || name.includes('中油')) {
+    return '台灣中油';
   }
   if (hqBan === '22958907' || name.includes('全國加油站')) {
-    const branch = name.replace('全國加油站股份有限公司', '').trim();
-    return branch ? `全國加油站 (${branch})` : '全國加油站';
+    return '全國加油站';
+  }
+  if (
+    hqBan === '16446274' ||
+    name.includes('台灣高速鐵路') ||
+    name.includes('台灣高鐵')
+  ) {
+    return '台灣高鐵';
+  }
+  if (
+    hqBan === '07524729' ||
+    name.includes('臺灣鐵路') ||
+    name.includes('台灣鐵路') ||
+    name.includes('臺鐵') ||
+    name.includes('台鐵')
+  ) {
+    return '台鐵';
+  }
+  if (hqBan === '27767961' || name.includes('台灣大車隊')) {
+    return '台灣大車隊';
+  }
+  if (hqBan === '70765909' || name.includes('悠遊卡')) {
+    return '悠遊卡';
+  }
+  if (hqBan === '03795904' || name.includes('台灣電力') || name.includes('台電')) {
+    return '台電';
+  }
+  if (hqBan === '52242444' || name.includes('台灣自來水') || name.includes('台水')) {
+    return '台水';
+  }
+  if (
+    hqBan === '03774909' ||
+    name.includes('臺北自來水') ||
+    name.includes('台北自來水') ||
+    name.includes('北水處')
+  ) {
+    return '北水處';
+  }
+  if (hqBan === '96979933' || name.includes('中華電信')) {
+    return '中華電信';
+  }
+  if (hqBan === '97176270' || name.includes('台灣大哥大')) {
+    return '台灣大哥大';
+  }
+  if (hqBan === '97179430' || name.includes('遠傳電信')) {
+    return '遠傳電信';
+  }
+  if (hqBan === '27365925' || name.includes('富邦媒體') || name.includes('momo')) {
+    return 'momo購物';
+  }
+  if (hqBan === '16606102' || name.includes('網路家庭') || name.includes('PChome')) {
+    return 'PChome';
+  }
+  if (hqBan === '24941832' || name.includes('樂購蝦皮') || name.includes('蝦皮')) {
+    return '蝦皮購物';
+  }
+  if (hqBan === '91002999' || name.includes('酷澎') || name.includes('Coupang')) {
+    return '酷澎';
+  }
+  if (hqBan === '84309586' || name.includes('宜家家居') || name.includes('IKEA')) {
+    return 'IKEA';
+  }
+  if (hqBan === '89390488' || name.includes('特力屋')) {
+    return '特力屋';
+  }
+  if (hqBan === '97268593' || name.includes('小北百貨')) {
+    return '小北百貨';
+  }
+  if (hqBan === '12811308' || name.includes('大創')) {
+    return '大創百貨';
+  }
+  if (hqBan === '80518858' || name.includes('無印良品')) {
+    return '無印良品';
+  }
+  if (hqBan === '16086448' || name.includes('威秀影城')) {
+    return '威秀影城';
+  }
+  if (hqBan === '70472679' || name.includes('八方雲集')) {
+    return '八方雲集';
+  }
+  if (hqBan === '54857699' || name.includes('路易莎')) {
+    return '路易莎';
+  }
+  if (hqBan === '84630426' || name.includes('王品')) {
+    return '王品';
+  }
+  if (hqBan === '97286918' || name.includes('爭鮮')) {
+    return '爭鮮';
+  }
+  if (hqBan === '70843031' || name.includes('瓦城')) {
+    return '瓦城';
+  }
+  if (hqBan === '22721208' || name.includes('鬍鬚張')) {
+    return '鬍鬚張';
   }
 
-  // 2. 一般商號與公司名稱清理：去除結尾或中間贅字（若清理後名稱長度足夠）
+  // 2. 一般商號與公司名稱清理：去除括號分公司、去除分公司/營業所/門市以及組織型態贅字
   let cleaned = name
+    .replace(/\s*[\(（][^\)）]*(?:分公司|營業所|門市|分行|分處|營運處|辦事處)[^\)）]*[\)）]/g, '')
+    .replace(/(?:股份有限公司|有限公司|合夥|獨資).*$/g, '')
+    .replace(/(?:分公司|營業所|門市|分行|分部|分處|服務處).*$/g, '')
     .replace(/股份有限公司/g, '')
     .replace(/有限公司/g, '')
     .replace(/企業社$/g, '')
@@ -368,11 +484,11 @@ export const lookupMerchantByTaxId = (
   if (!taxId) return null;
   const clean = taxId.trim();
   if (customMapping && customMapping[clean]) {
-    return { name: customMapping[clean] };
+    return { name: cleanBusinessName(customMapping[clean]) };
   }
   if (onlineMerchantCache.has(clean)) {
     const cached = onlineMerchantCache.get(clean)!;
-    return { name: cached.name, defaultCategoryName: cached.defaultCategoryName };
+    return { name: cleanBusinessName(cached.name), defaultCategoryName: cached.defaultCategoryName };
   }
   if (COMMON_TAIWAN_SELLERS[clean]) {
     return COMMON_TAIWAN_SELLERS[clean];
