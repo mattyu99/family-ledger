@@ -57,9 +57,23 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
       });
     });
 
+    // 3. 確保歷史交易中出現的所有發票期別都有對應的切換膠囊
+    transactions.forEach(t => {
+      if (t.invoice_number && t.transacted_at) {
+        const pk = getInvoicePeriodKey(t.transacted_at);
+        if (!set.has(pk.periodKey)) {
+          set.set(pk.periodKey, {
+            periodKey: pk.periodKey,
+            periodLabel: pk.periodLabel,
+            draw: OFFICIAL_LOTTERY_DRAWS[pk.periodKey],
+          });
+        }
+      }
+    });
+
     // 依期別字串降序排序（最新期別在最前面）
     return Array.from(set.values()).sort((a, b) => b.periodKey.localeCompare(a.periodKey));
-  }, []);
+  }, [transactions]);
 
   const [selectedPeriodKey, setSelectedPeriodKey] = useState<string>(() => {
     return initialPeriodKey || availablePeriods[0]?.periodKey || '2026-08';
@@ -73,7 +87,7 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
   const periodTransactions = useMemo(() => {
     return transactions.filter(t => {
       if (!t.invoice_number) return false;
-      const pKey = t.invoice_period || getInvoicePeriodKey(t.transacted_at).periodKey;
+      const pKey = t.transacted_at ? getInvoicePeriodKey(t.transacted_at).periodKey : (t.invoice_period || getInvoicePeriodKey(new Date()).periodKey);
       return pKey === selectedPeriodKey;
     });
   }, [transactions, selectedPeriodKey]);

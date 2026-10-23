@@ -503,8 +503,12 @@ export const hydrateTransactionWithInvoice = (t: any): Transaction => {
   if (invoiceNumber) {
     invoiceNumber = formatInvoiceNumber(invoiceNumber);
 
-    if (!periodKey && t.transacted_at) {
+    // 發票開獎期別嚴格由消費發生日期 (transacted_at) 唯一決定，
+    // 自動即時校正先前因日期格式解析瑕疵而誤存於 note 標籤中的歷史期別
+    if (t.transacted_at) {
       periodKey = getInvoicePeriodKey(t.transacted_at).periodKey;
+    } else if (!periodKey) {
+      periodKey = getInvoicePeriodKey(new Date()).periodKey;
     }
 
     // 若尚未領獎，自動比對官方開獎號碼庫

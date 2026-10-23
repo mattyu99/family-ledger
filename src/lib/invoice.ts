@@ -281,9 +281,30 @@ export const formatInvoiceNumber = (raw: string): string => {
  * 根據日期取得統一發票雙月期別代碼 (例如：2026-09-15 屬於 2026-10 期)
  */
 export const getInvoicePeriodKey = (dateInput: Date | string): { periodKey: string; periodLabel: string } => {
-  const date = typeof dateInput === 'string' ? new Date(dateInput.replace(/-/g, '/')) : dateInput;
-  const year = isNaN(date.getFullYear()) ? new Date().getFullYear() : date.getFullYear();
-  const month = isNaN(date.getMonth()) ? new Date().getMonth() + 1 : date.getMonth() + 1;
+  let year: number;
+  let month: number;
+
+  if (typeof dateInput === 'string') {
+    // 優先以正規表達式直接擷取 YYYY 与 MM，免疫於任何時區偏差與 ISO 8601 "T/Z" 格式異常
+    const match = dateInput.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    if (match) {
+      year = parseInt(match[1], 10);
+      month = parseInt(match[2], 10);
+    } else {
+      const d = new Date(dateInput);
+      const valid = !isNaN(d.getTime());
+      year = valid ? d.getFullYear() : new Date().getFullYear();
+      month = valid ? d.getMonth() + 1 : new Date().getMonth() + 1;
+    }
+  } else if (dateInput instanceof Date && !isNaN(dateInput.getTime())) {
+    year = dateInput.getFullYear();
+    month = dateInput.getMonth() + 1;
+  } else {
+    const now = new Date();
+    year = now.getFullYear();
+    month = now.getMonth() + 1;
+  }
+
   const rocYear = year - 1911;
 
   // 雙月期別歸類：1~2月歸 02, 3~4月歸 04, 5~6月歸 06, 7~8月歸 08, 9~10月歸 10, 11~12月歸 12
