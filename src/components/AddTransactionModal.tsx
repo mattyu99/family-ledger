@@ -77,6 +77,7 @@ import {
   formatInvoiceNumber,
   getInvoicePeriodKey,
   isValidInvoiceNumber,
+  fetchMerchantOnlineByTaxId,
   ParsedInvoiceData,
 } from '../lib/invoice';
 import { checkInvoiceWinning } from '../lib/lottery';
@@ -306,6 +307,29 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       if (parsed.sellerTaxId) {
         recordTaxIdMerchant(parsed.sellerTaxId, parsed.merchantName);
       }
+    } else if (parsed.sellerTaxId) {
+      // 若發票包含賣方統編但靜態庫未收錄，非同步背景即時查詢財政部稅籍並補正店家與分類
+      const targetTaxId = parsed.sellerTaxId;
+      fetchMerchantOnlineByTaxId(targetTaxId, 2500)
+        .then(onlineInfo => {
+          if (onlineInfo && onlineInfo.name) {
+            setMerchant(prev => (prev ? prev : onlineInfo.name));
+            recordTaxIdMerchant(targetTaxId, onlineInfo.name);
+            if (onlineInfo.defaultCategoryName && type === 'expense') {
+              const matchedCat = categories.find(
+                c =>
+                  c.type === 'expense' &&
+                  (c.name === onlineInfo.defaultCategoryName ||
+                    c.name.includes(onlineInfo.defaultCategoryName!) ||
+                    onlineInfo.defaultCategoryName!.includes(c.name))
+              );
+              if (matchedCat) {
+                setSelectedCategoryId(matchedCat.id);
+              }
+            }
+          }
+        })
+        .catch(() => {});
     }
     if (parsed.defaultCategoryName && type === 'expense') {
       const catName = parsed.defaultCategoryName;
@@ -370,9 +394,24 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     setInvoiceNumber(formatInvoiceNumber(text));
   };
 
-  const handleScanSuccess = (data: ParsedInvoiceData) => {
-    applyParsedInvoice(data);
-    const cleaned = data.invoiceNumber ? formatInvoiceNumber(data.invoiceNumber) : '';
+  const handleScanSuccess = async (data: ParsedInvoiceData) => {
+    let resolvedData = data;
+    // 若靜態庫未能比對出店家，且發票具備賣方統編，立即觸發即時線上稅籍登記查詢 (限時 1.8 秒快速超時，絕不卡頓)
+    if (!resolvedData.merchantName && resolvedData.sellerTaxId) {
+      try {
+        const onlineInfo = await fetchMerchantOnlineByTaxId(resolvedData.sellerTaxId, 1800);
+        if (onlineInfo?.name) {
+          resolvedData = {
+            ...resolvedData,
+            merchantName: onlineInfo.name,
+            defaultCategoryName: resolvedData.defaultCategoryName || onlineInfo.defaultCategoryName,
+          };
+        }
+      } catch {}
+    }
+
+    applyParsedInvoice(resolvedData);
+    const cleaned = resolvedData.invoiceNumber ? formatInvoiceNumber(resolvedData.invoiceNumber) : '';
     const dup = cleaned ? transactions.find(t => t.invoice_number && formatInvoiceNumber(t.invoice_number) === cleaned) : null;
 
     if (dup) {
@@ -385,7 +424,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     } else {
       safeAlert(
         '發票辨識成功',
-        `發票號碼：${data.invoiceNumber || '未包含號碼'}${data.merchantName ? `\n店家：${data.merchantName}` : ''}${data.totalAmount ? `\n金額：NT$ ${data.totalAmount.toLocaleString()}` : ''}${data.items && data.items.length > 0 ? `\n商品明細：共 ${data.items.length} 項 (已帶入備註)` : ''}`
+        `發票號碼：${resolvedData.invoiceNumber || '未包含號碼'}${resolvedData.merchantName ? `\n店家：${resolvedData.merchantName}` : ''}${resolvedData.totalAmount ? `\n金額：NT$ ${resolvedData.totalAmount.toLocaleString()}` : ''}${resolvedData.items && resolvedData.items.length > 0 ? `\n商品明細：共 ${resolvedData.items.length} 項 (已帶入備註)` : ''}`
       );
     }
   };
@@ -395,8 +434,20 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
         const text = await navigator.clipboard.readText();
         if (text && text.trim()) {
-          const parsed = parseTaiwanInvoiceQRCode(text.trim(), taxIdMerchantMap);
+          let parsed = parseTaiwanInvoiceQRCode(text.trim(), taxIdMerchantMap);
           if (parsed && (parsed.invoiceNumber || parsed.items)) {
+            if (!parsed.merchantName && parsed.sellerTaxId) {
+              try {
+                const onlineInfo = await fetchMerchantOnlineByTaxId(parsed.sellerTaxId, 1800);
+                if (onlineInfo?.name) {
+                  parsed = {
+                    ...parsed,
+                    merchantName: onlineInfo.name,
+                    defaultCategoryName: parsed.defaultCategoryName || onlineInfo.defaultCategoryName,
+                  };
+                }
+              } catch {}
+            }
             applyParsedInvoice(parsed);
             const cleaned = parsed.invoiceNumber ? formatInvoiceNumber(parsed.invoiceNumber) : '';
             const dup = cleaned ? transactions.find(t => t.invoice_number && formatInvoiceNumber(t.invoice_number) === cleaned) : null;
