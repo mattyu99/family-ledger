@@ -345,6 +345,8 @@ interface LedgerContextType {
   getAccountById: (id?: string) => PaymentAccount | undefined;
   recentMerchants: string[];
   recordMerchant: (merchant: string) => Promise<void>;
+  taxIdMerchantMap: Record<string, string>;
+  recordTaxIdMerchant: (taxId: string, merchantName: string) => Promise<void>;
   recentMemoTags: string[];
   recordMemoTag: (tag: string) => Promise<void>;
   removeRecentMemoTag: (tag: string) => Promise<void>;
@@ -764,6 +766,7 @@ const STORAGE_KEYS = {
   LEDGER_READ_ONLY: '@family_ledger_read_only',
   LEDGER_ALLOW_NEW_MEMBERS: '@family_ledger_allow_new_members',
   LEDGERS: '@family_ledger_list',
+  TAX_ID_MERCHANTS: '@family_ledger_tax_id_merchants',
 };
 
 // 預設常用店家快捷建議清單（涵蓋台灣家庭最普遍的日常採買店家）
@@ -910,6 +913,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const filtered = prev.filter(item => item.toLowerCase() !== clean.toLowerCase());
       const updated = [clean, ...filtered].slice(0, 50);
       AsyncStorage.setItem(STORAGE_KEYS.RECENT_MERCHANTS, JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
+  }, []);
+
+  // 統一編號與自訂店家記憶對照
+  const [taxIdMerchantMap, setTaxIdMerchantMap] = useState<Record<string, string>>({});
+
+  const recordTaxIdMerchant = React.useCallback(async (taxId: string, merchantName: string) => {
+    const cleanId = (taxId || '').trim();
+    const cleanName = (merchantName || '').trim();
+    if (!cleanId || !cleanName) return;
+    setTaxIdMerchantMap(prev => {
+      if (prev[cleanId] === cleanName) return prev;
+      const updated = { ...prev, [cleanId]: cleanName };
+      AsyncStorage.setItem(STORAGE_KEYS.TAX_ID_MERCHANTS, JSON.stringify(updated)).catch(() => {});
       return updated;
     });
   }, []);
@@ -1259,6 +1277,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const parsed = JSON.parse(savedRecentMemoTags);
             if (Array.isArray(parsed) && parsed.length > 0) {
               setRecentMemoTags(parsed);
+            }
+          } catch {}
+        }
+
+        const savedTaxIdMerchants = await AsyncStorage.getItem(STORAGE_KEYS.TAX_ID_MERCHANTS);
+        if (savedTaxIdMerchants) {
+          try {
+            const parsed = JSON.parse(savedTaxIdMerchants);
+            if (parsed && typeof parsed === 'object') {
+              setTaxIdMerchantMap(parsed);
             }
           } catch {}
         }
@@ -8890,6 +8918,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         transferAllowance,
         recentMerchants,
         recordMerchant,
+        taxIdMerchantMap,
+        recordTaxIdMerchant,
         recentMemoTags,
         recordMemoTag,
         removeRecentMemoTag,

@@ -2,6 +2,13 @@
  * 台灣統一發票與電子發票解析核心模組
  */
 
+export interface InvoiceItem {
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  amount: number;
+}
+
 export interface ParsedInvoiceData {
   invoiceNumber: string;       // 標準格式 "AB-12345678"
   rawInvoiceNumber: string;    // 原始10碼 "AB12345678"
@@ -13,8 +20,153 @@ export interface ParsedInvoiceData {
   salesAmount?: number;        // 未稅銷售額 (十進位)
   buyerTaxId?: string;         // 買方統編 (8碼)
   sellerTaxId?: string;        // 賣方統編 (8碼)
+  merchantName?: string;       // 自動辨識之店家名稱 (例如 "全聯福利中心", "好市多")
+  defaultCategoryName?: string;// 建議之記帳分類 (例如 "生鮮超市", "餐飲伙食")
+  items?: InvoiceItem[];       // 右方 QR Code 或商品品項明細
+  itemsNote?: string;          // 品項明細排版文字 (例如 "全脂鮮奶 x1 $89、草莓土司 x1 $40")
   isQRCode: boolean;           // 是否從 QR Code 解析
 }
+
+/**
+ * 台灣常見連鎖通路統一編號對照庫 (自動帶入店家與對應分類)
+ */
+export const COMMON_TAIWAN_SELLERS: Record<string, { name: string; defaultCategoryName: string }> = {
+  // 生鮮量販與超市
+  '03795504': { name: '全聯福利中心', defaultCategoryName: '生鮮超市' },
+  '28414434': { name: '全聯福利中心', defaultCategoryName: '生鮮超市' },
+  '96972798': { name: '好市多 Costco', defaultCategoryName: '生鮮超市' },
+  '04435889': { name: '家樂福 Carrefour', defaultCategoryName: '生鮮超市' },
+  '22662257': { name: '家樂福便利購', defaultCategoryName: '生鮮超市' },
+  '86383610': { name: '大潤發 RT-MART', defaultCategoryName: '生鮮超市' },
+  '23525827': { name: '愛買 a.mart', defaultCategoryName: '生鮮超市' },
+  '27546377': { name: '美廉社 Simple Mart', defaultCategoryName: '生鮮超市' },
+  '84149963': { name: '楓康超市', defaultCategoryName: '生鮮超市' },
+  '22555026': { name: 'Mia C\'bon', defaultCategoryName: '生鮮超市' },
+
+  // 超商便利商店
+  '22555003': { name: '7-ELEVEN 統一超商', defaultCategoryName: '餐飲伙食' },
+  '23060248': { name: '全家便利商店 FamilyMart', defaultCategoryName: '餐飲伙食' },
+  '23285582': { name: '萊爾富 Hi-Life', defaultCategoryName: '餐飲伙食' },
+  '22555018': { name: 'OK便利商店', defaultCategoryName: '餐飲伙食' },
+
+  // 連鎖餐飲與速食
+  '16097091': { name: '麥當勞 McDonald\'s', defaultCategoryName: '餐飲伙食' },
+  '22555024': { name: '肯德基 KFC', defaultCategoryName: '餐飲伙食' },
+  '12404368': { name: '摩斯漢堡 MOS BURGER', defaultCategoryName: '餐飲伙食' },
+  '16744883': { name: '爭鮮迴轉壽司', defaultCategoryName: '餐飲伙食' },
+  '16097092': { name: '星巴克 Starbucks', defaultCategoryName: '餐飲伙食' },
+  '70557451': { name: '八方雲集', defaultCategoryName: '餐飲伙食' },
+  '28414436': { name: '路易莎咖啡 Louisa', defaultCategoryName: '餐飲伙食' },
+  '22555025': { name: '必勝客 Pizza Hut', defaultCategoryName: '餐飲伙食' },
+  '23820245': { name: '鬍鬚張魯肉飯', defaultCategoryName: '餐飲伙食' },
+  '23525828': { name: '瓦城泰統集團', defaultCategoryName: '餐飲伙食' },
+  '84149964': { name: '王品集團', defaultCategoryName: '餐飲伙食' },
+
+  // 藥局美妝與日用
+  '23285585': { name: '屈臣氏 Watsons', defaultCategoryName: '醫療保健' },
+  '84149961': { name: '康是美 Cosmed', defaultCategoryName: '醫療保健' },
+  '27934057': { name: 'POYA 寶雅生活館', defaultCategoryName: '生鮮超市' },
+  '28746377': { name: '大樹藥局', defaultCategoryName: '醫療保健' },
+  '84149965': { name: '杏一醫療器材', defaultCategoryName: '醫療保健' },
+  '23525830': { name: '丁丁連鎖藥局', defaultCategoryName: '醫療保健' },
+
+  // 交通加油與通勤
+  '89396340': { name: '台灣中油 CPC', defaultCategoryName: '交通出行' },
+  '70771218': { name: '台塑石油 Formosa', defaultCategoryName: '交通出行' },
+  '23285583': { name: '全國加油站', defaultCategoryName: '交通出行' },
+  '16446274': { name: '台灣高鐵 THSR', defaultCategoryName: '交通出行' },
+  '03795906': { name: '台灣鐵路局', defaultCategoryName: '交通出行' },
+  '70771219': { name: '悠遊卡公司', defaultCategoryName: '交通出行' },
+  '27546378': { name: '嘟嘟房停車場', defaultCategoryName: '交通出行' },
+  '80677597': { name: '台灣大車隊 55688', defaultCategoryName: '交通出行' },
+
+  // 居家水電寬頻電信
+  '03795904': { name: '台灣電力公司', defaultCategoryName: '居家水電' },
+  '11454653': { name: '台灣自來水公司', defaultCategoryName: '居家水電' },
+  '03795905': { name: '台北自來水事業處', defaultCategoryName: '居家水電' },
+  '27376037': { name: '中華電信', defaultCategoryName: '居家水電' },
+  '03750249': { name: '遠傳電信', defaultCategoryName: '居家水電' },
+  '70771217': { name: '台灣大哥大', defaultCategoryName: '居家水電' },
+
+  // 電商與外送
+  '80677598': { name: '蝦皮購物 Shopee', defaultCategoryName: '休閒娛樂' },
+  '28428581': { name: 'momo 購物網', defaultCategoryName: '生鮮超市' },
+  '70845600': { name: 'PChome 線上購物', defaultCategoryName: '休閒娛樂' },
+  '83569779': { name: '酷澎 Coupang', defaultCategoryName: '生鮮超市' },
+  '70771221': { name: 'foodpanda 空腹熊貓', defaultCategoryName: '餐飲伙食' },
+  '80677596': { name: 'Uber Eats 優食', defaultCategoryName: '餐飲伙食' },
+
+  // 百貨居家休閒
+  '84149962': { name: 'IKEA 宜家家居', defaultCategoryName: '居家水電' },
+  '23525829': { name: '特力屋 B&Q', defaultCategoryName: '居家水電' },
+  '28414435': { name: '小北百貨', defaultCategoryName: '居家水電' },
+  '27546379': { name: '大創百貨 DAISO', defaultCategoryName: '居家水電' },
+  '80677599': { name: '無印良品 MUJI', defaultCategoryName: '休閒娛樂' },
+  '70771220': { name: '威秀影城 Vieshow', defaultCategoryName: '休閒娛樂' },
+  '23525831': { name: '國賓影城', defaultCategoryName: '休閒娛樂' },
+  '22555027': { name: '錢櫃 KTV', defaultCategoryName: '休閒娛樂' },
+};
+
+/**
+ * 依據 8 碼賣方統一編號查詢店家名稱與預設分類
+ */
+export const lookupMerchantByTaxId = (
+  taxId: string | undefined,
+  customMapping?: Record<string, string>
+): { name: string; defaultCategoryName?: string } | null => {
+  if (!taxId) return null;
+  const clean = taxId.trim();
+  if (customMapping && customMapping[clean]) {
+    return { name: customMapping[clean] };
+  }
+  if (COMMON_TAIWAN_SELLERS[clean]) {
+    return COMMON_TAIWAN_SELLERS[clean];
+  }
+  return null;
+};
+
+/**
+ * 解析電子發票右側 QR Code 或條碼尾端所攜帶之商品品項清單
+ * 規範格式：**品名:數量:單價:金額:品名:數量:單價:金額...
+ */
+export const parseTaiwanInvoiceRightQRCode = (qrText: string): InvoiceItem[] => {
+  if (!qrText || typeof qrText !== 'string') return [];
+  let raw = qrText.trim();
+  if (raw.startsWith('**')) {
+    raw = raw.slice(2);
+  } else if (raw.includes(':**')) {
+    raw = raw.split(':**')[1];
+  } else {
+    const idx = raw.indexOf('**');
+    if (idx !== -1) raw = raw.slice(idx + 2);
+    else return [];
+  }
+  if (!raw) return [];
+
+  const parts = raw.split(':');
+  const items: InvoiceItem[] = [];
+  // 每 4 個分段為一組品項：[品名, 數量, 單價, 金額]
+  for (let i = 0; i + 3 < parts.length; i += 4) {
+    const name = parts[i]?.trim();
+    const qty = parseFloat(parts[i + 1]) || 1;
+    const unitPrice = parseFloat(parts[i + 2]) || 0;
+    const amount = parseFloat(parts[i + 3]) || (qty * unitPrice);
+    if (name) {
+      items.push({ name, quantity: qty, unitPrice, amount });
+    }
+  }
+  return items;
+};
+
+/**
+ * 將發票品項明細格式化為排版整潔的備註文字
+ */
+export const formatInvoiceItemsToNote = (items: InvoiceItem[]): string => {
+  if (!items || items.length === 0) return '';
+  return items
+    .map(it => `${it.name}${it.quantity > 1 ? ` x${it.quantity}` : ''} $${it.amount}`)
+    .join('、');
+};
 
 /**
  * 檢查字串是否為合法的台灣發票號碼格式 (2碼英文字軌 + 8碼數字，允許含或不含連字號)
@@ -71,11 +223,32 @@ export const getInvoicePeriodKey = (dateInput: Date | string): { periodKey: stri
  * [45:53] : 賣方統編 8 碼
  * [53:77] : 加密驗證資訊 24 碼
  */
-export const parseTaiwanInvoiceQRCode = (qrText: string): ParsedInvoiceData | null => {
+export const parseTaiwanInvoiceQRCode = (
+  qrText: string,
+  customTaxIdMapping?: Record<string, string>
+): ParsedInvoiceData | null => {
   if (!qrText || typeof qrText !== 'string') return null;
   const raw = qrText.trim();
 
-  // 若文字開頭符合 2 碼英文 + 8 碼數字且長度 >= 77
+  // 若使用者只掃描了右方 QR Code (開頭為 **)
+  if (raw.startsWith('**')) {
+    const items = parseTaiwanInvoiceRightQRCode(raw);
+    const itemsNote = formatInvoiceItemsToNote(items);
+    const sumAmount = items.reduce((acc, it) => acc + (it.amount || 0), 0);
+    return {
+      invoiceNumber: '',
+      rawInvoiceNumber: '',
+      invoiceDate: new Date().toISOString().split('T')[0],
+      periodKey: getInvoicePeriodKey(new Date()).periodKey,
+      periodLabel: getInvoicePeriodKey(new Date()).periodLabel,
+      totalAmount: sumAmount > 0 ? sumAmount : undefined,
+      items,
+      itemsNote,
+      isQRCode: true,
+    };
+  }
+
+  // 若文字開頭符合 2 碼英文 + 8 碼數字且長度 >= 77 (標準左側 QR Code)
   if (raw.length >= 77 && /^[A-Za-z]{2}\d{8}/.test(raw)) {
     try {
       const rawNum = raw.slice(0, 10).toUpperCase();
@@ -99,6 +272,18 @@ export const parseTaiwanInvoiceQRCode = (qrText: string): ParsedInvoiceData | nu
 
       const { periodKey, periodLabel } = getInvoicePeriodKey(invoiceDate);
 
+      // 依據賣方統編自動辨識店家與預設記帳分類
+      const cleanSellerTaxId = sellerTaxId === '00000000' ? undefined : sellerTaxId;
+      const matchedSeller = lookupMerchantByTaxId(cleanSellerTaxId, customTaxIdMapping);
+
+      // 檢查 QR Code 尾端是否同時包含商品品項明細 (規範 :** 後續)
+      let items: InvoiceItem[] | undefined = undefined;
+      let itemsNote: string | undefined = undefined;
+      if (raw.includes(':**') || raw.includes('**')) {
+        items = parseTaiwanInvoiceRightQRCode(raw);
+        itemsNote = formatInvoiceItemsToNote(items);
+      }
+
       return {
         invoiceNumber: formatInvoiceNumber(rawNum),
         rawInvoiceNumber: rawNum,
@@ -109,7 +294,11 @@ export const parseTaiwanInvoiceQRCode = (qrText: string): ParsedInvoiceData | nu
         salesAmount: isNaN(salesAmount) ? undefined : salesAmount,
         totalAmount: isNaN(totalAmount) ? undefined : totalAmount,
         buyerTaxId: buyerTaxId === '00000000' ? undefined : buyerTaxId,
-        sellerTaxId: sellerTaxId === '00000000' ? undefined : sellerTaxId,
+        sellerTaxId: cleanSellerTaxId,
+        merchantName: matchedSeller?.name,
+        defaultCategoryName: matchedSeller?.defaultCategoryName,
+        items,
+        itemsNote,
         isQRCode: true,
       };
     } catch {

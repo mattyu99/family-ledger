@@ -77,9 +77,11 @@ import {
   formatInvoiceNumber,
   getInvoicePeriodKey,
   isValidInvoiceNumber,
+  ParsedInvoiceData,
 } from '../lib/invoice';
 import { checkInvoiceWinning } from '../lib/lottery';
 import { DatePickerModal } from './DatePickerModal';
+import { InvoiceScannerModal } from './InvoiceScannerModal';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -160,6 +162,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     recentMemoTags,
     recordMemoTag,
     removeRecentMemoTag,
+    taxIdMerchantMap,
+    recordTaxIdMerchant,
     isOwner,
     isAdminMode,
   } = useLedger();
@@ -274,26 +278,61 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   // 統一發票資訊狀態
   const [invoiceNumber, setInvoiceNumber] = useState<string>('');
   const [invoiceRandomCode, setInvoiceRandomCode] = useState<string>('');
+  const [scannerModalVisible, setScannerModalVisible] = useState<boolean>(false);
+
+  const applyParsedInvoice = React.useCallback((parsed: ParsedInvoiceData) => {
+    if (parsed.invoiceNumber) {
+      setInvoiceNumber(parsed.invoiceNumber);
+    }
+    if (parsed.randomCode) {
+      setInvoiceRandomCode(parsed.randomCode);
+    }
+    if (parsed.totalAmount && parsed.totalAmount > 0) {
+      setAmount(String(parsed.totalAmount));
+    }
+    if (parsed.invoiceDate) {
+      try {
+        const d = new Date(parsed.invoiceDate);
+        if (!isNaN(d.getTime())) setSelectedDate(d);
+      } catch {}
+    }
+    if (parsed.merchantName) {
+      setMerchant(parsed.merchantName);
+      if (parsed.sellerTaxId) {
+        recordTaxIdMerchant(parsed.sellerTaxId, parsed.merchantName);
+      }
+    }
+    if (parsed.defaultCategoryName && type === 'expense') {
+      const catName = parsed.defaultCategoryName;
+      const matchedCat = categories.find(
+        c => c.type === 'expense' && (c.name === catName || c.name.includes(catName) || catName.includes(c.name))
+      );
+      if (matchedCat) {
+        setSelectedCategoryId(matchedCat.id);
+      }
+    }
+    if (parsed.itemsNote) {
+      setNote(prev => (prev && prev.trim() ? `${prev.trim()}\n${parsed.itemsNote}` : parsed.itemsNote || ''));
+    }
+  }, [type, categories, recordTaxIdMerchant]);
 
   const handleInvoiceInput = (text: string) => {
-    // 檢查是否為 QR Code 掃描/貼上字串 (77碼以上規範)
-    const parsed = parseTaiwanInvoiceQRCode(text);
+    // 檢查是否為 QR Code 掃描/貼上字串 (77碼以上規範或右側品項 QR Code)
+    const parsed = parseTaiwanInvoiceQRCode(text, taxIdMerchantMap);
     if (parsed && parsed.isQRCode) {
-      setInvoiceNumber(parsed.invoiceNumber);
-      if (parsed.randomCode) setInvoiceRandomCode(parsed.randomCode);
-      if (parsed.totalAmount && (!amount || amount === '0' || amount === '')) {
-        setAmount(String(parsed.totalAmount));
-      }
-      if (parsed.invoiceDate) {
-        try {
-          const d = new Date(parsed.invoiceDate);
-          if (!isNaN(d.getTime())) setSelectedDate(d);
-        } catch {}
-      }
+      applyParsedInvoice(parsed);
       return;
     }
     // 否則自動格式化為 AB-12345678
     setInvoiceNumber(formatInvoiceNumber(text));
+  };
+
+  const handleScanSuccess = (data: ParsedInvoiceData) => {
+    applyParsedInvoice(data);
+    safeAlert(
+      '發票辨識成功',
+      `發票號碼：${data.invoiceNumber || '未包含號碼'}${data.merchantName ? `\n店家：${data.merchantName}` : ''}${data.totalAmount ? `\n金額：NT$ ${data.totalAmount.toLocaleString()}` : ''}${data.items && data.items.length > 0 ? `\n商品明細：共 ${data.items.length} 項 (已帶入備註)` : ''}`
+    );
   };
 
   const handlePasteInvoice = async () => {
@@ -301,8 +340,17 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
         const text = await navigator.clipboard.readText();
         if (text && text.trim()) {
+          const parsed = parseTaiwanInvoiceQRCode(text.trim(), taxIdMerchantMap);
+          if (parsed && (parsed.invoiceNumber || parsed.items)) {
+            applyParsedInvoice(parsed);
+            safeAlert(
+              '發票解析成功',
+              `已辨識並帶入發票資訊！\n號碼：${parsed.invoiceNumber || '未包含號碼'}${parsed.merchantName ? `\n店家：${parsed.merchantName}` : ''}${parsed.totalAmount ? `\n金額：NT$ ${parsed.totalAmount.toLocaleString()}` : ''}`
+            );
+            return;
+          }
           handleInvoiceInput(text.trim());
-          safeAlert('發票解析成功', `已辨識並帶入發票資訊！\n號碼：${formatInvoiceNumber(text.slice(0, 10))}`);
+          safeAlert('發票快速帶入', `已辨識發票號碼：${formatInvoiceNumber(text.slice(0, 10))}`);
           return;
         }
       }
@@ -535,6 +583,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     setPaymentMethod('cash');
     setSelectedAccountId('');
     setMerchant('');
+    setInvoiceNumber('');
+    setInvoiceRandomCode('');
     setMemoReminderDate('');
     setMemoReminderCalendar('solar');
     setMemoReminderRepeat('once');
@@ -2300,13 +2350,22 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>🧾 統一發票</Text>
                       <Text style={styles.optionalBadgeText} maxFontSizeMultiplier={1.08}>(選填 · 自動對獎)</Text>
                     </View>
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      style={styles.invoicePasteBtn}
-                      onPress={handlePasteInvoice}
-                    >
-                      <Text style={styles.invoicePasteBtnText} maxFontSizeMultiplier={1.08}>📋 貼上/解析發票</Text>
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        style={styles.invoiceScanBtn}
+                        onPress={() => setScannerModalVisible(true)}
+                      >
+                        <Text style={styles.invoiceScanBtnText} maxFontSizeMultiplier={1.08}>📷 掃描發票</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        style={styles.invoicePasteBtn}
+                        onPress={handlePasteInvoice}
+                      >
+                        <Text style={styles.invoicePasteBtnText} maxFontSizeMultiplier={1.08}>📋 貼上</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
 
                   <View style={styles.invoiceInputRow}>
@@ -2411,6 +2470,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       }
       setReminderDatePickerVisible(false);
     }}
+  />
+
+  <InvoiceScannerModal
+    visible={scannerModalVisible}
+    onClose={() => setScannerModalVisible(false)}
+    onScanSuccess={handleScanSuccess}
   />
 </Modal>
   );
@@ -3388,6 +3453,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9CA3AF',
     fontWeight: '500',
+  },
+  invoiceScanBtn: {
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  invoiceScanBtnText: {
+    fontSize: 11.5,
+    color: '#059669',
+    fontWeight: '700',
   },
   invoicePasteBtn: {
     backgroundColor: '#EFF6FF',

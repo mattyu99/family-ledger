@@ -16,7 +16,11 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.mattyu.familyledger"
+      "bundleIdentifier": "com.mattyu.familyledger",
+      "infoPlist": {
+        "NSCameraUsageDescription": "允許使用相機掃描台灣電子發票 QR Code",
+        "NSPhotoLibraryUsageDescription": "允許選取發票截圖進行辨識"
+      }
     },
     "android": {
       "package": "com.mattyu.familyledger",
@@ -25,8 +29,26 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png"
       },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE"
+      ],
       "predictiveBackGestureEnabled": false
     },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "允許使用相機掃描台灣電子發票 QR Code"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "允許選取發票截圖進行辨識"
+        }
+      ]
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
     },
