@@ -150,7 +150,7 @@ export const LiveToastBanner: React.FC<LiveToastBannerProps> = ({ toast, onDismi
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 52 : Platform.OS === 'android' ? 38 : 18,
+    top: Platform.OS === 'ios' ? 52 : Platform.OS === 'android' ? 14 : 18,
     left: 12,
     right: 12,
     zIndex: 99999,

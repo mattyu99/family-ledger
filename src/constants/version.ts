@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.6';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.6 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 12;
+export const APP_BUILD_REVISION = 13;
 
-// 完整版本字串 (例如 "1.0.6.12")
+// 完整版本字串 (例如 "1.0.6.13")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -20,9 +20,10 @@ export interface ChangelogItem {
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.6',
-    date: '2026-10-20 ~ 2026-10-21',
+    date: '2026-10-20 ~ 2026-10-23',
     title: '悠遊卡查帳整合、產品型錄指南、家庭門禁安全鎖、海量極速載入',
     highlights: [
+      '📐 頂部狀態列留白與色彩一體化優化：消除 Android 雙重預留狀態列高度導致的頂部突兀空隙，並將狀態列底色與導航列純白一體化融合，視覺更緊湊舒適。',
       '🗓️ 週期帳單膠囊未完成紅點標註：於「週期扣款與固定帳單」各項目膠囊右上角即時標註紅點與提示樣式，直觀辨識本期尚未確認記帳之待繳項目。',
       '⚡ 即時歷史同步進度計數修復：解決 React 批次狀態閉包導致「歷史資料同步中 (0 / 25,980)」停留為 0 之問題，實作同步累積對照表，使同步計數與交易明細數字 1:1 即時同步攀升。',
       '🛡️ 帳本切換身分稱謂零延遲防閃爍：徹底解決切換帳本時被切換帳本之稱謂短暫閃爍上一帳本舊名字（如「倉鼠」短暫閃為「智爸」）之非同步競態，實作帳本稱謂專屬優先綁定與雙向即時預切換。',
