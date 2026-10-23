@@ -138,8 +138,8 @@ export const parseInvoiceItemsFromTokens = (tokens: string[]): InvoiceItem[] => 
   let i = 0;
   while (i < tokens.length) {
     const rawName = tokens[i]?.trim();
-    // 忽略空字串或純星號 (營業人自用區標記 ********** 或填充碼)
-    if (!rawName || /^\*+$/.test(rawName)) {
+    // 忽略空字串、純星號 (營業人自用區標記 ********** 或填充碼) 或純單碼 0 標記
+    if (!rawName || /^\*+$/.test(rawName) || rawName === '0') {
       i++;
       continue;
     }
@@ -182,7 +182,7 @@ export interface LeftQRCodeTailParseResult {
 
 /**
  * 解析電子發票左側 QR Code 尾端 (77 碼固定表頭之後) 攜帶之商品品項清單與筆數資訊
- * 財政部標準延伸表頭：:營業人自用區(10碼):二維條碼記載完整品目筆數:該張發票交易品目總筆數:中文編碼參數:品名1:數量1:單價1...
+ * 財政部標準延伸表頭：:營業人自用區(0~10碼):二維條碼記載完整品目筆數:該張發票交易品目總筆數:中文編碼參數:品名1:數量1:單價1...
  */
 export const parseTaiwanInvoiceLeftQRCodeItems = (qrText: string): LeftQRCodeTailParseResult => {
   if (!qrText || qrText.length <= 77) return { items: [] };
@@ -193,13 +193,39 @@ export const parseTaiwanInvoiceLeftQRCodeItems = (qrText: string): LeftQRCodeTai
   let recordedItemsCount: number | undefined = undefined;
   let totalItemsCount: number | undefined = undefined;
 
-  // 檢查是否符合標準延伸表頭：[營業人自用區(10碼或純星號), 品目筆數, 總品目筆數, 中文編碼參數, 品名1...]
-  if (tokens.length >= 7 && (/^\*+$/.test(tokens[0]) || tokens[0].length === 10) && !isNaN(parseFloat(tokens[1]))) {
+  // 檢查是否符合財政部標準延伸表頭：
+  // 欄位 0：營業人自用區 (長度 0~10 碼，常見值如 "**********"、"0"、空字串或自訂代碼)
+  // 欄位 1：二維條碼記載完整品目筆數 (整數 >= 0)
+  // 欄位 2：該張發票交易品目總筆數 (整數 >= 0)
+  // 欄位 3：中文編碼參數 (整數，如 1=Big5, 2=UTF-8, 0=Base64)
+  // 欄位 4~：商品品項明細 (品名:數量:單價...)
+  const isStandardHeader =
+    tokens.length >= 4 &&
+    tokens[0].length <= 10 &&
+    /^\d+$/.test(tokens[1]) &&
+    /^\d+$/.test(tokens[2]) &&
+    /^\d+$/.test(tokens[3]);
+
+  if (isStandardHeader) {
     recordedItemsCount = parseInt(tokens[1], 10);
     totalItemsCount = parseInt(tokens[2], 10);
     const items = parseInvoiceItemsFromTokens(tokens.slice(4));
     return { items, recordedItemsCount, totalItemsCount };
   }
+
+  // 寬鬆容錯：相容其他廠商延伸表頭（前欄長度 <= 10 且第 1, 2 欄為有效整數）
+  if (
+    tokens.length >= 4 &&
+    tokens[0].length <= 10 &&
+    !isNaN(parseInt(tokens[1], 10)) &&
+    !isNaN(parseInt(tokens[2], 10))
+  ) {
+    recordedItemsCount = parseInt(tokens[1], 10);
+    totalItemsCount = parseInt(tokens[2], 10);
+    const items = parseInvoiceItemsFromTokens(tokens.slice(4));
+    return { items, recordedItemsCount, totalItemsCount };
+  }
+
   return { items: parseInvoiceItemsFromTokens(tokens) };
 };
 
@@ -250,7 +276,7 @@ export const mergeParsedInvoiceData = (
 export const formatInvoiceItemsToNote = (items: InvoiceItem[]): string => {
   if (!items || items.length === 0) return '';
   return items
-    .filter(it => it.name && !/^\*+$/.test(it.name.trim()))
+    .filter(it => it.name && !/^\*+$/.test(it.name.trim()) && it.name.trim() !== '0')
     .map(it => `${it.name}${it.quantity > 1 ? ` x${it.quantity}` : ''} $${it.amount}`)
     .join('、');
 };

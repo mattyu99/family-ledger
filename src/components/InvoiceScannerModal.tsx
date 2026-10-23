@@ -205,8 +205,8 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
 
       // 檢查發票是否有右側溢位品項 (總筆數 > 條碼所載筆數)
       const hasOverflow = Boolean(
-        parsed.totalItemsCount &&
-        parsed.recordedItemsCount &&
+        parsed.totalItemsCount !== undefined &&
+        parsed.recordedItemsCount !== undefined &&
         parsed.totalItemsCount > parsed.recordedItemsCount
       );
 
