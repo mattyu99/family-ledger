@@ -199,10 +199,39 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
   const [showRebateForm, setShowRebateForm] = useState<boolean>(false);
   const [rebateAmount, setRebateAmount] = useState<string>('');
   const [rebateTitle, setRebateTitle] = useState<string>('現金回饋折抵');
+  const [selectedRebateCategoryId, setSelectedRebateCategoryId] = useState<string>('');
   const [savingRebate, setSavingRebate] = useState<boolean>(false);
   const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
   const scrollViewRef = useRef<ScrollView>(null);
   const activeRebateFocusRef = useRef<boolean>(false);
+
+  // 所有可用的收入分類清單
+  const incomeCategories = useMemo(() => {
+    return categories.filter(c => c.type === 'income');
+  }, [categories]);
+
+  // 預設折抵收入分類（優先鎖定「獎金回饋」，其次含「回饋」、「折抵」、「獎金」的分類）
+  const defaultRebateCategory = useMemo(() => {
+    return (
+      incomeCategories.find(c => c.name === '獎金回饋' || (c.name.includes('獎') && c.name.includes('回饋'))) ||
+      incomeCategories.find(c => c.name.includes('回饋') || c.name.includes('折抵')) ||
+      incomeCategories.find(c => c.name.includes('其他') || c.name.includes('零用') || c.name.includes('獎')) ||
+      incomeCategories.find(c => c.name.includes('理財')) ||
+      incomeCategories[0] ||
+      categories[0]
+    );
+  }, [incomeCategories, categories]);
+
+  // 當開啟折抵表單時，如果 selectedRebateCategoryId 為空或無效，自動設定為預設分類
+  useEffect(() => {
+    if (showRebateForm) {
+      if (!selectedRebateCategoryId || !categories.some(c => c.id === selectedRebateCategoryId)) {
+        if (defaultRebateCategory) {
+          setSelectedRebateCategoryId(defaultRebateCategory.id);
+        }
+      }
+    }
+  }, [showRebateForm, defaultRebateCategory, selectedRebateCategoryId, categories]);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -651,11 +680,11 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
       return;
     }
 
-    // 選擇最適合的收入分類（優先找回饋/利息/其他收入）
-    const incomeCats = categories.filter(c => c.type === 'income');
+    // 優先使用使用者手動點選的分類，其次使用預設獎金回饋分類
     const targetCat =
-      incomeCats.find(c => c.name.includes('回饋') || c.name.includes('折抵') || c.name.includes('獎') || c.name.includes('息') || c.name.includes('其他')) ||
-      incomeCats[0] ||
+      categories.find(c => c.id === selectedRebateCategoryId && c.type === 'income') ||
+      defaultRebateCategory ||
+      incomeCategories[0] ||
       categories[0];
 
     if (!targetCat) {
@@ -1361,6 +1390,51 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                                 placeholderTextColor="#94A3B8"
                               />
                             </View>
+                          </View>
+
+                          {/* 🎁 入帳分類切換按鈕 (Item 3) */}
+                          <View style={styles.rebateCategorySection}>
+                            <View style={styles.rebateCategoryHeaderRow}>
+                              <Text style={styles.rebateInputLabel}>入帳分類 (點擊切換)</Text>
+                              <Text style={styles.rebateCategoryHint}>
+                                預設為獎金回饋，不灌水薪資收入
+                              </Text>
+                            </View>
+                            <HorizontalScrollView
+                              showsHorizontalScrollIndicator={false}
+                              contentContainerStyle={styles.rebateCategoryList}
+                            >
+                              {incomeCategories.map(cat => {
+                                const isSelected =
+                                  (selectedRebateCategoryId || defaultRebateCategory?.id) === cat.id;
+                                return (
+                                  <TouchableOpacity
+                                    key={cat.id}
+                                    style={[
+                                      styles.rebateCategoryChip,
+                                      isSelected && styles.rebateCategoryChipActive,
+                                    ]}
+                                    onPress={() => setSelectedRebateCategoryId(cat.id)}
+                                    activeOpacity={0.7}
+                                  >
+                                    <Text style={styles.rebateCategoryChipIcon}>
+                                      {getCategoryIcon(cat.icon)}
+                                    </Text>
+                                    <Text
+                                      style={[
+                                        styles.rebateCategoryChipText,
+                                        isSelected && styles.rebateCategoryChipTextActive,
+                                      ]}
+                                    >
+                                      {cat.name}
+                                    </Text>
+                                    {isSelected && (
+                                      <Text style={styles.rebateCategoryChipCheck}>✓</Text>
+                                    )}
+                                  </TouchableOpacity>
+                                );
+                              })}
+                            </HorizontalScrollView>
                           </View>
 
                           <TouchableOpacity
@@ -2140,6 +2214,58 @@ const styles = StyleSheet.create({
   rebateAmountInput: {
     fontWeight: '700',
     color: '#059669',
+  },
+  rebateCategorySection: {
+    marginBottom: 10,
+  },
+  rebateCategoryHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  rebateCategoryHint: {
+    fontSize: 10,
+    color: '#059669',
+    fontWeight: '600',
+  },
+  rebateCategoryList: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  rebateCategoryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  rebateCategoryChipActive: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#059669',
+  },
+  rebateCategoryChipIcon: {
+    fontSize: 12,
+  },
+  rebateCategoryChipText: {
+    fontSize: 11,
+    color: '#475569',
+    fontWeight: '600',
+  },
+  rebateCategoryChipTextActive: {
+    color: '#065F46',
+    fontWeight: '700',
+  },
+  rebateCategoryChipCheck: {
+    fontSize: 10,
+    color: '#059669',
+    fontWeight: '800',
+    marginLeft: 2,
   },
   rebateSubmitBtn: {
     backgroundColor: '#059669',

@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.7';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.7 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 3;
+export const APP_BUILD_REVISION = 4;
 
 // 完整版本字串 (例如 "1.0.7.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -23,6 +23,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
     date: '2026-10-23',
     title: '相機雙 QR Code 智慧對焦掃描、開獎號碼全自動聯網同步、發票防重複防呆與獎金兌領',
     highlights: [
+      '🎁 信用卡折抵專屬「獎金回饋」分類與切換支援：帳本新增專屬「🎁 獎金回饋」收入分類，折抵款項預設精準入帳，徹底杜絕灌水薪資收入；對帳彈窗同步提供橫向滑動分類選擇列，支援一鍵點選切換分類。',
       '💳 信用卡對帳視窗高度擴展優化：對帳視窗高度由 68% 全面擴展至 92%，完整展現卡片清單、帳單週期與對帳明細，免上下滑動即可直觀瀏覽全畫面。',
       '🎁 刷卡回饋折抵記帳流程修復：解決登記回饋折抵後因非同步二次更新競態覆寫導致閃退消失之問題，新增時一步到位原子標記已核對，確保回饋折抵即刻永久入帳並正確扣減應繳金額。',
       '🌐 財政部開獎號碼全自動聯網同步：開獎日系統自動透過財政部官方 XML 與 CDN 端點抓取最新中獎號碼並快取至本機，打開 App 即刻自動比對全家人歷史發票，無需手動下載或重新更新。',

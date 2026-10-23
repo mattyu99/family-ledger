@@ -44,6 +44,7 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { id: '30000000-0000-4000-8000-000000000008', name: '薪資收入', icon: '💰', color: '#059669', type: 'income', sort_order: 8 },
   { id: '30000000-0000-4000-8000-000000000009', name: '投資理財', icon: '📈', color: '#2563EB', type: 'income', sort_order: 9 },
   { id: '30000000-0000-4000-8000-000000000010', name: '零用錢', icon: '💵', color: '#10B981', type: 'income', sort_order: 10 },
+  { id: '30000000-0000-4000-8000-000000000011', name: '獎金回饋', icon: '🎁', color: '#F59E0B', type: 'income', sort_order: 11 },
 ];
 
 export const DEFAULT_MEMBERS: Profile[] = [
@@ -1108,6 +1109,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               if (!parsed.some((c: any) => c.type === 'income' && (c.name.includes('零用') || c.name === '零用錢'))) {
                 const allowanceCat = DEFAULT_CATEGORIES.find(c => c.name === '零用錢');
                 if (allowanceCat) parsed.push(allowanceCat);
+              }
+              if (!parsed.some((c: any) => c.type === 'income' && (c.name === '獎金回饋' || c.name.includes('獎金') || c.name.includes('回饋')))) {
+                const bonusCat = DEFAULT_CATEGORIES.find(c => c.name === '獎金回饋');
+                if (bonusCat) parsed.push(bonusCat);
               }
               activeCategories = parsed;
               setCategories(parsed);
@@ -2658,6 +2663,28 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } else if (!hasAllowance) {
         const defaultAllowance = DEFAULT_CATEGORIES.find(c => c.name === '零用錢');
         if (defaultAllowance) finalCats.push(defaultAllowance);
+      }
+
+      const hasBonusRebate = finalCats.some(c => c.type === 'income' && (c.name === '獎金回饋' || c.name.includes('獎金') || c.name.includes('回饋')));
+      if (!hasBonusRebate && isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+        const bonusCat = {
+          id: generateUUID(),
+          ledger_id: targetLedger.id,
+          name: '獎金回饋',
+          icon: '🎁',
+          color: '#F59E0B',
+          type: 'income' as CategoryType,
+          sort_order: (finalCats[finalCats.length - 1]?.sort_order || 10) + 1,
+        };
+        try {
+          supabase.from('categories').insert(bonusCat).then(({ error }) => {
+            if (error) console.warn('自動同步獎金回饋分類失敗:', error.message);
+          });
+          finalCats.push(bonusCat);
+        } catch {}
+      } else if (!hasBonusRebate) {
+        const defaultBonus = DEFAULT_CATEGORIES.find(c => c.name === '獎金回饋');
+        if (defaultBonus) finalCats.push(defaultBonus);
       }
       setCategories(finalCats);
       await AsyncStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(finalCats));
@@ -7554,10 +7581,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         invoice_status: 'claimed',
       });
 
-      // 2. 自動尋找收入分類 (優先尋找「零用錢」、「投資理財」或「薪資收入」，或任何 income 分類)
+      // 2. 自動尋找收入分類 (優先尋找「獎金回饋」、「零用錢」、「投資理財」或「薪資收入」，或任何 income 分類)
       const incomeCategory =
-        categories.find(c => c.type === 'income' && (c.name.includes('獎') || c.name.includes('零用') || c.name.includes('理財') || c.name.includes('薪資'))) ||
+        categories.find(c => c.type === 'income' && (c.name === '獎金回饋' || c.name.includes('獎') || c.name.includes('回饋'))) ||
+        categories.find(c => c.type === 'income' && (c.name.includes('零用') || c.name.includes('理財') || c.name.includes('薪資'))) ||
         categories.find(c => c.type === 'income') ||
+        DEFAULT_CATEGORIES.find(c => c.name === '獎金回饋') ||
         DEFAULT_CATEGORIES[9]; // 零用錢
 
       // 3. 自動新增一筆收入 (歸屬於發票持有/記帳者)
