@@ -843,11 +843,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // 即時 App 內通知泡泡 (In-App Toast Notification)
   const [liveToast, setLiveToast] = useState<LiveToastNotification | null>(null);
   const currentUserRef = useRef<Profile>(currentUser);
+  const transactionsRef = useRef<Transaction[]>(transactions);
   const isMountedRef = useRef<boolean>(true);
 
   useEffect(() => {
     currentUserRef.current = currentUser;
   }, [currentUser]);
+
+  useEffect(() => {
+    transactionsRef.current = transactions;
+  }, [transactions]);
 
   const dismissLiveToast = React.useCallback(() => {
     setLiveToast(null);
@@ -6563,8 +6568,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // 樂觀更新本地畫面（預先標記 _isPendingSync，確保在收到雲端成功回執前若重新整理頁面絕不遺失）
     const isOnlinePublishing = isConfigured && isCloudSynced && newTx.ledger_id !== DEMO_LEDGER_ID;
     (newTx as any)._isPendingSync = true;
-    const updated = [newTx, ...transactions];
+    const currentTxList = transactionsRef.current && transactionsRef.current.length > 0 ? transactionsRef.current : transactions;
+    const updated = [newTx, ...currentTxList.filter(t => t.id !== newTx.id)];
     updated.sort((a, b) => new Date(b.transacted_at).getTime() - new Date(a.transacted_at).getTime());
+    transactionsRef.current = updated;
     setTransactions(updated);
     await saveTransactionsToStorage(updated);
 
@@ -7109,7 +7116,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return false;
     }
     try {
-      const targetTx = transactions.find(t => t.id === id);
+      const currentList = transactionsRef.current && transactionsRef.current.length > 0 ? transactionsRef.current : transactions;
+      const targetTx = currentList.find(t => t.id === id);
       const isTargetMemo = data.type === 'memo' || targetTx?.type === 'memo';
       let cleanMerchant = data.merchant !== undefined ? (data.merchant ? data.merchant.trim() : undefined) : undefined;
 
@@ -7261,7 +7269,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
       }
 
-      const updatedTxs = transactions.map(t => {
+      const baseTxs = transactionsRef.current && transactionsRef.current.length > 0 ? transactionsRef.current : transactions;
+      const updatedTxs = baseTxs.map(t => {
         if (t.id === id) {
           const effectivePaidBy = data.paid_by !== undefined ? data.paid_by : t.paid_by;
           const canonicalPayer = getMemberById(effectivePaidBy);
@@ -7274,13 +7283,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           return {
             ...t,
             ...data,
-            note: effectiveNote,
-            invoice_number: formattedInvoiceNumber,
-            invoice_period: invoicePeriod,
-            invoice_random_code: invoiceRandomCode,
-            invoice_status: formattedInvoiceNumber ? invoiceStatus : undefined,
-            invoice_prize_amount: formattedInvoiceNumber ? invoicePrizeAmount : undefined,
-            invoice_prize_name: formattedInvoiceNumber ? invoicePrizeName : undefined,
+            note: (data.note !== undefined || formattedInvoiceNumber !== undefined) ? effectiveNote : t.note,
+            invoice_number: formattedInvoiceNumber !== undefined ? formattedInvoiceNumber : t.invoice_number,
+            invoice_period: invoicePeriod !== undefined ? invoicePeriod : t.invoice_period,
+            invoice_random_code: invoiceRandomCode !== undefined ? invoiceRandomCode : t.invoice_random_code,
+            invoice_status: formattedInvoiceNumber ? invoiceStatus : (data.invoice_status !== undefined ? data.invoice_status : t.invoice_status),
+            invoice_prize_amount: formattedInvoiceNumber ? invoicePrizeAmount : (data.invoice_prize_amount !== undefined ? data.invoice_prize_amount : t.invoice_prize_amount),
+            invoice_prize_name: formattedInvoiceNumber ? invoicePrizeName : (data.invoice_prize_name !== undefined ? data.invoice_prize_name : t.invoice_prize_name),
             amount: isTargetMemo ? 0 : (data.amount !== undefined ? data.amount : t.amount),
             reminder_date: isTargetMemo ? effectiveReminder : (data.reminder_date !== undefined ? (data.reminder_date || undefined) : t.reminder_date),
             reminder_calendar: isTargetMemo ? effectiveCalendar : t.reminder_calendar,
@@ -7356,6 +7365,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       const finalTxs = nextMemoTx ? [nextMemoTx, ...updatedTxs] : updatedTxs;
       finalTxs.sort((a, b) => new Date(b.transacted_at).getTime() - new Date(a.transacted_at).getTime());
+      transactionsRef.current = finalTxs;
+      setTransactions(finalTxs);
       await saveTransactionsToStorage(finalTxs);
 
       if (nextMemoTx) {
@@ -7393,13 +7404,15 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         if (hasMerchantColumnRef.current) {
           if (data.merchant !== undefined || isTargetMemo) updatePayload.merchant = cleanMerchant || null;
-          updatePayload.note = effectiveNote;
+          if (data.note !== undefined || formattedInvoiceNumber !== undefined) updatePayload.note = effectiveNote;
         } else {
           // 若雲端無 merchant 欄位，包裝進 note
-          const effectiveMerchant = (data.merchant !== undefined || isTargetMemo) ? cleanMerchant : targetTx?.merchant;
-          updatePayload.note = effectiveMerchant
-            ? `[${effectiveMerchant}] ${effectiveNote}`.trim()
-            : effectiveNote;
+          if (data.note !== undefined || data.merchant !== undefined || isTargetMemo || formattedInvoiceNumber !== undefined) {
+            const effectiveMerchant = (data.merchant !== undefined || isTargetMemo) ? cleanMerchant : targetTx?.merchant;
+            updatePayload.note = effectiveMerchant
+              ? `[${effectiveMerchant}] ${effectiveNote}`.trim()
+              : effectiveNote;
+          }
         }
 
         let { error } = await supabase

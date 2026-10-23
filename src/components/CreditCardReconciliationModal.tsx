@@ -677,7 +677,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
 
     try {
       setSavingRebate(true);
-      const createdId = await addTransaction({
+      await addTransaction({
         amount: num,
         type: 'income',
         category_id: targetCat.id,
@@ -685,14 +685,10 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
         merchant: titleText,
         payment_method: 'credit_card',
         account_id: currentCard.id,
+        is_reconciled: true,
         note: `【${currentCard.name}】${currentCycle.cycleName} · ${titleText}`,
         transacted_at: txDate.toISOString(),
       });
-
-      // 自動標記為已核對
-      if (createdId) {
-        await updateTransaction(createdId, { is_reconciled: true }).catch(() => {});
-      }
 
       setRebateAmount('');
       setShowRebateForm(false);
@@ -1595,7 +1591,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
             {!!previewImageStatement?.publicUrl && (
               <Image
                 source={{ uri: previewImageStatement.publicUrl }}
-                style={styles.imgPreviewImage}
+                style={styles.imgPreviewImage as any}
                 resizeMode="contain"
               />
             )}
@@ -1637,8 +1633,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: SCREEN_HEIGHT * 0.92,
-    minHeight: SCREEN_HEIGHT * 0.68,
+    height: (Platform.OS === 'web' ? '92vh' : Math.round(SCREEN_HEIGHT * 0.92)) as any,
+    maxHeight: Math.round(SCREEN_HEIGHT * 0.94),
     paddingTop: 16,
     paddingHorizontal: 16,
   },
