@@ -288,6 +288,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const [invoiceSellerTaxId, setInvoiceSellerTaxId] = useState<string>('');
   const [invoiceSectionY, setInvoiceSectionY] = useState<number>(0);
   const [scannerModalVisible, setScannerModalVisible] = useState<boolean>(false);
+  const lastScannedItemsNoteRef = useRef<string>('');
 
   const applyParsedInvoice = React.useCallback((parsed: ParsedInvoiceData) => {
     if (parsed.invoiceNumber) {
@@ -324,7 +325,45 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       }
     }
     if (parsed.itemsNote) {
-      setNote(prev => (prev && prev.trim() ? `${prev.trim()}\n${parsed.itemsNote}` : parsed.itemsNote || ''));
+      const newItemsNote = parsed.itemsNote.trim();
+      setNote(prev => {
+        const rawPrev = (prev || '').trim();
+        const lastScanned = (lastScannedItemsNoteRef.current || '').trim();
+
+        // 容錯防護：清除先前可能殘留的 "0 $1" 幽靈字串
+        const cleanPrev = rawPrev
+          .replace(/^0\s*\$1[、\n\s]*/g, '')
+          .replace(/[、\n\s]*0\s*\$1/g, '')
+          .trim();
+
+        // 1. 若當前備註為空，直接帶入發票品項
+        if (!cleanPrev) {
+          lastScannedItemsNoteRef.current = newItemsNote;
+          return newItemsNote;
+        }
+
+        // 2. 若當前備註即為上次掃描的品項（或與本次品項相同），直接替換，絕不重複疊加
+        if (cleanPrev === lastScanned || cleanPrev === newItemsNote) {
+          lastScannedItemsNoteRef.current = newItemsNote;
+          return newItemsNote;
+        }
+
+        // 3. 若當前備註包含上次掃描的品項（例如：自訂備註\n前次品項），精確替換該段落
+        if (lastScanned && cleanPrev.includes(lastScanned)) {
+          lastScannedItemsNoteRef.current = newItemsNote;
+          return cleanPrev.replace(lastScanned, newItemsNote);
+        }
+
+        // 4. 若當前備註已經包含完全相同的新品項（例如重複掃碼），保持原樣不重複串接
+        if (cleanPrev.includes(newItemsNote)) {
+          lastScannedItemsNoteRef.current = newItemsNote;
+          return cleanPrev;
+        }
+
+        // 5. 若先前已有使用者手動輸入的備註，以換行接續在後方
+        lastScannedItemsNoteRef.current = newItemsNote;
+        return `${cleanPrev}\n${newItemsNote}`;
+      });
     }
   }, [type, categories, recordTaxIdMerchant]);
 

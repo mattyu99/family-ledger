@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.7';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.7 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 5;
+export const APP_BUILD_REVISION = 6;
 
 // 完整版本字串 (例如 "1.0.7.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -23,6 +23,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
     date: '2026-10-23',
     title: '相機雙 QR Code 智慧對焦掃描、開獎號碼全自動聯網同步、發票防重複防呆與獎金兌領',
     highlights: [
+      '🛡️ 發票掃碼備註重複串接智慧防呆：解決重複掃碼或更換發票時品項明細重複拼接累加之問題，實作精確替換與防重複比對機制，並自動清除殘留幽靈字串，確保備註欄位乾淨正確。',
       '🧾 電子發票 QR Code 延伸規格解析校正：修復營業人自用區為「0」或單碼字串時被誤解析為商品之問題，徹底消除備註「0 $1」幽靈品項；並校正品項為 0 筆時之右碼溢位偵測邏輯，確保發票明細完整抓取。',
       '🎁 信用卡折抵專屬「獎金回饋」分類與切換支援：帳本新增專屬「🎁 獎金回饋」收入分類，折抵款項預設精準入帳，徹底杜絕灌水薪資收入；對帳彈窗同步提供橫向滑動分類選擇列，支援一鍵點選切換分類。',
       '💳 信用卡對帳視窗高度擴展優化：對帳視窗高度由 68% 全面擴展至 92%，完整展現卡片清單、帳單週期與對帳明細，免上下滑動即可直觀瀏覽全畫面。',
