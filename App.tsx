@@ -3653,7 +3653,7 @@ function MainApp() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" translucent={true} />
 
       {/* App 內即時溫馨動態泡泡 */}
       <LiveToastBanner toast={liveToast} onDismiss={dismissLiveToast} />
@@ -6613,7 +6613,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: Platform.OS === 'android' ? ((StatusBar.currentHeight || 28) + 8) : 12,
     paddingBottom: 10,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
@@ -9069,6 +9069,7 @@ const styles = StyleSheet.create({
   },
   welcomeScroll: {
     padding: 20,
+    paddingTop: Platform.OS === 'android' ? ((StatusBar.currentHeight || 28) + 16) : 20,
     paddingBottom: 60,
     alignItems: 'center',
   },

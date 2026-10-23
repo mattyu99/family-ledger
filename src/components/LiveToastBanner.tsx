@@ -6,6 +6,7 @@ import {
   View,
   Text as RNText,
   Platform,
+  StatusBar,
   TextProps,
 } from 'react-native';
 import { LiveToastNotification } from '../context/LedgerContext';
@@ -150,7 +151,7 @@ export const LiveToastBanner: React.FC<LiveToastBannerProps> = ({ toast, onDismi
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 52 : Platform.OS === 'android' ? 14 : 18,
+    top: Platform.OS === 'ios' ? 52 : Platform.OS === 'android' ? ((StatusBar.currentHeight || 28) + 12) : 18,
     left: 12,
     right: 12,
     zIndex: 99999,
