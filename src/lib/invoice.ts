@@ -126,8 +126,71 @@ export const lookupMerchantByTaxId = (
 };
 
 /**
- * 解析電子發票右側 QR Code 或條碼尾端所攜帶之商品品項清單
- * 規範格式：**品名:數量:單價:金額:品名:數量:單價:金額...
+ * 從冒號分隔的 token 陣列中解析商品品項明細
+ * 財政部規範每品項為 3 欄位：[品名, 數量, 單價]
+ * 部分 POS 機或廠商延伸格式容錯支援 4 欄位：[品名, 數量, 單價, 總額]
+ */
+export const parseInvoiceItemsFromTokens = (tokens: string[]): InvoiceItem[] => {
+  const items: InvoiceItem[] = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const rawName = tokens[i]?.trim();
+    // 忽略空字串或純星號 (營業人自用區標記 ********** 或填充碼)
+    if (!rawName || /^\*+$/.test(rawName)) {
+      i++;
+      continue;
+    }
+    // 檢查次一 token 是否為數量 (有效數字)
+    const nextToken = tokens[i + 1]?.trim();
+    const qty = parseFloat(nextToken);
+    if (isNaN(qty) || qty <= 0) {
+      i++;
+      continue;
+    }
+    // 檢查次次一 token 是否為單價 (數字)
+    const priceToken = tokens[i + 2]?.trim();
+    const unitPrice = parseFloat(priceToken);
+    if (isNaN(unitPrice) || unitPrice < 0) {
+      i += 2;
+      continue;
+    }
+
+    // 檢查是否有第 4 個 token 為商品小計金額 (部分非標準 POS 機)
+    const fourthToken = tokens[i + 3]?.trim();
+    const maybeTotal = parseFloat(fourthToken);
+    let amount = qty * unitPrice;
+    if (!isNaN(maybeTotal) && (maybeTotal === amount || maybeTotal === Math.round(amount))) {
+      amount = maybeTotal;
+      items.push({ name: rawName, quantity: qty, unitPrice, amount });
+      i += 4;
+    } else {
+      items.push({ name: rawName, quantity: qty, unitPrice, amount });
+      i += 3;
+    }
+  }
+  return items;
+};
+
+/**
+ * 解析電子發票左側 QR Code 尾端 (77 碼固定表頭之後) 攜帶之商品品項清單
+ * 財政部標準延伸表頭：:營業人自用區(10碼):二維條碼記載完整品目筆數:該張發票交易品目總筆數:中文編碼參數:品名1:數量1:單價1...
+ */
+export const parseTaiwanInvoiceLeftQRCodeItems = (qrText: string): InvoiceItem[] => {
+  if (!qrText || qrText.length <= 77) return [];
+  const tail = qrText.slice(77);
+  const rawTokens = tail.split(':').map(t => t.trim());
+  const tokens = rawTokens[0] === '' ? rawTokens.slice(1) : rawTokens;
+
+  // 檢查是否符合標準延伸表頭：[營業人自用區(10碼或純星號), 品目筆數, 總品目筆數, 中文編碼參數, 品名1...]
+  if (tokens.length >= 7 && (/^\*+$/.test(tokens[0]) || tokens[0].length === 10) && !isNaN(parseFloat(tokens[1]))) {
+    return parseInvoiceItemsFromTokens(tokens.slice(4));
+  }
+  return parseInvoiceItemsFromTokens(tokens);
+};
+
+/**
+ * 解析電子發票右側 QR Code 所攜帶之商品品項清單
+ * 規範格式：**品名:數量:單價:品名:數量:單價...
  */
 export const parseTaiwanInvoiceRightQRCode = (qrText: string): InvoiceItem[] => {
   if (!qrText || typeof qrText !== 'string') return [];
@@ -139,23 +202,9 @@ export const parseTaiwanInvoiceRightQRCode = (qrText: string): InvoiceItem[] => 
   } else {
     const idx = raw.indexOf('**');
     if (idx !== -1) raw = raw.slice(idx + 2);
-    else return [];
   }
-  if (!raw) return [];
-
-  const parts = raw.split(':');
-  const items: InvoiceItem[] = [];
-  // 每 4 個分段為一組品項：[品名, 數量, 單價, 金額]
-  for (let i = 0; i + 3 < parts.length; i += 4) {
-    const name = parts[i]?.trim();
-    const qty = parseFloat(parts[i + 1]) || 1;
-    const unitPrice = parseFloat(parts[i + 2]) || 0;
-    const amount = parseFloat(parts[i + 3]) || (qty * unitPrice);
-    if (name) {
-      items.push({ name, quantity: qty, unitPrice, amount });
-    }
-  }
-  return items;
+  const rawTokens = raw.split(':').map(t => t.trim());
+  return parseInvoiceItemsFromTokens(rawTokens);
 };
 
 /**
@@ -164,6 +213,7 @@ export const parseTaiwanInvoiceRightQRCode = (qrText: string): InvoiceItem[] => 
 export const formatInvoiceItemsToNote = (items: InvoiceItem[]): string => {
   if (!items || items.length === 0) return '';
   return items
+    .filter(it => it.name && !/^\*+$/.test(it.name.trim()))
     .map(it => `${it.name}${it.quantity > 1 ? ` x${it.quantity}` : ''} $${it.amount}`)
     .join('、');
 };
@@ -276,12 +326,20 @@ export const parseTaiwanInvoiceQRCode = (
       const cleanSellerTaxId = sellerTaxId === '00000000' ? undefined : sellerTaxId;
       const matchedSeller = lookupMerchantByTaxId(cleanSellerTaxId, customTaxIdMapping);
 
-      // 檢查 QR Code 尾端是否同時包含商品品項明細 (規範 :** 後續)
+      // 檢查 QR Code 尾端是否同時包含商品品項明細 (左側 QR Code 尾端延伸或右側 QR Code)
       let items: InvoiceItem[] | undefined = undefined;
       let itemsNote: string | undefined = undefined;
-      if (raw.includes(':**') || raw.includes('**')) {
+      if (raw.length > 77) {
+        items = parseTaiwanInvoiceLeftQRCodeItems(raw);
+        if (items.length > 0) {
+          itemsNote = formatInvoiceItemsToNote(items);
+        }
+      }
+      if ((!items || items.length === 0) && (raw.includes(':**') || raw.includes('**'))) {
         items = parseTaiwanInvoiceRightQRCode(raw);
-        itemsNote = formatInvoiceItemsToNote(items);
+        if (items.length > 0) {
+          itemsNote = formatInvoiceItemsToNote(items);
+        }
       }
 
       return {

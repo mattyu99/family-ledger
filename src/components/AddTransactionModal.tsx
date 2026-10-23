@@ -278,6 +278,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   // 統一發票資訊狀態
   const [invoiceNumber, setInvoiceNumber] = useState<string>('');
   const [invoiceRandomCode, setInvoiceRandomCode] = useState<string>('');
+  const [invoiceSellerTaxId, setInvoiceSellerTaxId] = useState<string>('');
   const [scannerModalVisible, setScannerModalVisible] = useState<boolean>(false);
 
   const applyParsedInvoice = React.useCallback((parsed: ParsedInvoiceData) => {
@@ -286,6 +287,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     }
     if (parsed.randomCode) {
       setInvoiceRandomCode(parsed.randomCode);
+    }
+    if (parsed.sellerTaxId) {
+      setInvoiceSellerTaxId(parsed.sellerTaxId);
     }
     if (parsed.totalAmount && parsed.totalAmount > 0) {
       setAmount(String(parsed.totalAmount));
@@ -567,13 +571,17 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     const currentCats = categories.filter(c => c.type === type);
     const targetCategory = currentCats.find(c => c.id === selectedCategoryId) || currentCats[0];
     const categoryPresets = getCategoryPresetMerchants(targetCategory?.name, type);
-    const pool = Array.from(new Set([...(recentMerchants || []), ...categoryPresets]));
+    const extraPresets: string[] = [];
+    if (note && /茶葉蛋|茶|蛋|咖啡|拿鐵|美式|便當|麵包|飯糰|熱狗|關東煮/i.test(note)) {
+      extraPresets.push('7-ELEVEN', '全家便利商店');
+    }
+    const pool = Array.from(new Set([...extraPresets, ...(recentMerchants || []), ...categoryPresets]));
     const query = (merchant || '').trim().toLowerCase();
     if (!query) {
       return pool.slice(0, 12);
     }
     return pool.filter(m => m.toLowerCase().includes(query)).slice(0, 10);
-  }, [categories, type, selectedCategoryId, recentMerchants, merchant]);
+  }, [categories, type, selectedCategoryId, recentMerchants, merchant, note]);
 
   // 表單重設函式：全面清空金額、分類、付款方式、卡片與備註，回到初始純淨狀態
   const resetForm = React.useCallback(() => {
@@ -585,6 +593,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     setMerchant('');
     setInvoiceNumber('');
     setInvoiceRandomCode('');
+    setInvoiceSellerTaxId('');
     setMemoReminderDate('');
     setMemoReminderCalendar('solar');
     setMemoReminderRepeat('once');
@@ -884,6 +893,11 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         linked_transaction_id: linkedMemoId || undefined,
         splitWithIds: type === 'expense' ? members.map(m => m.id) : undefined,
       });
+
+      // 自學習記憶：若發票含有賣方統編，記憶此店家名稱至本機資料庫
+      if (invoiceSellerTaxId && merchant.trim()) {
+        recordTaxIdMerchant(invoiceSellerTaxId, merchant.trim());
+      }
 
       if (linkedMemoId && createdTxId) {
         // 同步雙向綁定至生活待辦，並標記已由該成員辦妥與儲存辦妥說明

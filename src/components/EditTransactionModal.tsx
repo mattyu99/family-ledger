@@ -285,6 +285,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   // 統一發票資訊狀態
   const [invoiceNumber, setInvoiceNumber] = useState<string>(() => transaction?.invoice_number || '');
   const [invoiceRandomCode, setInvoiceRandomCode] = useState<string>(() => transaction?.invoice_random_code || '');
+  const [invoiceSellerTaxId, setInvoiceSellerTaxId] = useState<string>('');
   const [invoiceSectionY, setInvoiceSectionY] = useState<number>(0);
   const [scannerModalVisible, setScannerModalVisible] = useState<boolean>(false);
 
@@ -294,6 +295,9 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     }
     if (parsed.randomCode) {
       setInvoiceRandomCode(parsed.randomCode);
+    }
+    if (parsed.sellerTaxId) {
+      setInvoiceSellerTaxId(parsed.sellerTaxId);
     }
     if (parsed.totalAmount && parsed.totalAmount > 0) {
       setAmount(String(parsed.totalAmount));
@@ -598,13 +602,17 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     const currentCats = categories.filter(c => c.type === (type === 'transfer' ? 'expense' : type));
     const targetCategory = currentCats.find(c => c.id === selectedCategoryId) || currentCats[0];
     const categoryPresets = getCategoryPresetMerchants(targetCategory?.name, type);
-    const pool = Array.from(new Set([...(recentMerchants || []), ...categoryPresets]));
+    const extraPresets: string[] = [];
+    if (note && /茶葉蛋|茶|蛋|咖啡|拿鐵|美式|便當|麵包|飯糰|熱狗|關東煮/i.test(note)) {
+      extraPresets.push('7-ELEVEN', '全家便利商店');
+    }
+    const pool = Array.from(new Set([...extraPresets, ...(recentMerchants || []), ...categoryPresets]));
     const query = (merchant || '').trim().toLowerCase();
     if (!query) {
       return pool.slice(0, 12);
     }
     return pool.filter(m => m.toLowerCase().includes(query)).slice(0, 10);
-  }, [categories, type, selectedCategoryId, recentMerchants, merchant]);
+  }, [categories, type, selectedCategoryId, recentMerchants, merchant, note]);
 
   // 當 transaction 或 visible 改變時同步資料
   useEffect(() => {
@@ -1051,6 +1059,11 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         invoice_random_code: invoiceRandomCode.trim() || undefined,
         transacted_at: transactedAt || transaction.transacted_at,
       });
+
+      // 自學習記憶：若發票含有賣方統編，記憶此店家名稱至本機資料庫
+      if (invoiceSellerTaxId && merchant.trim()) {
+        recordTaxIdMerchant(invoiceSellerTaxId, merchant.trim());
+      }
 
       if (success) {
         onClose();
