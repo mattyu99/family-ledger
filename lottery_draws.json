@@ -1,0 +1,80 @@
+{
+  "2026-08": {
+    "periodKey": "2026-08",
+    "periodLabel": "115年 07-08月期",
+    "drawDate": "2026-09-25",
+    "superPrize": "89996565",
+    "specialPrize": "91098182",
+    "firstPrizes": [
+      "54348835",
+      "44991397",
+      "06595111"
+    ],
+    "additionalSixPrizes": []
+  },
+  "2026-06": {
+    "periodKey": "2026-06",
+    "periodLabel": "115年 05-06月期",
+    "drawDate": "2026-07-25",
+    "superPrize": "38548029",
+    "specialPrize": "10138845",
+    "firstPrizes": [
+      "24121106",
+      "28589937",
+      "83663333"
+    ],
+    "additionalSixPrizes": []
+  },
+  "2026-04": {
+    "periodKey": "2026-04",
+    "periodLabel": "115年 03-04月期",
+    "drawDate": "2026-05-25",
+    "superPrize": "19531471",
+    "specialPrize": "85941329",
+    "firstPrizes": [
+      "07225810",
+      "20231230",
+      "83518781"
+    ],
+    "additionalSixPrizes": []
+  },
+  "2026-02": {
+    "periodKey": "2026-02",
+    "periodLabel": "115年 01-02月期",
+    "drawDate": "2026-03-25",
+    "superPrize": "87510041",
+    "specialPrize": "32220522",
+    "firstPrizes": [
+      "21677046",
+      "44662410",
+      "31262513"
+    ],
+    "additionalSixPrizes": []
+  },
+  "2025-12": {
+    "periodKey": "2025-12",
+    "periodLabel": "114年 11-12月期",
+    "drawDate": "2026-01-25",
+    "superPrize": "97023797",
+    "specialPrize": "00507588",
+    "firstPrizes": [
+      "92377231",
+      "05232592",
+      "78125249"
+    ],
+    "additionalSixPrizes": []
+  },
+  "2025-10": {
+    "periodKey": "2025-10",
+    "periodLabel": "114年 09-10月期",
+    "drawDate": "2025-11-25",
+    "superPrize": "25834483",
+    "specialPrize": "46587380",
+    "firstPrizes": [
+      "41016094",
+      "98081574",
+      "07309261"
+    ],
+    "additionalSixPrizes": []
+  }
+}
