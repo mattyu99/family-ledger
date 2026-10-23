@@ -9,6 +9,7 @@ import {
   Platform,
   Dimensions,
   TextProps,
+  StatusBar,
 } from 'react-native';
 import {
   parseTaiwanInvoiceQRCode,
@@ -82,14 +83,22 @@ const FallbackScannerModal: React.FC<{ visible: boolean; onClose: () => void }> 
   if (!visible) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent={false}
+      onRequestClose={onClose}
+      statusBarTranslucent={true}
+    >
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       <View style={styles.container}>
         {/* 頂部操作列 */}
         <View style={styles.topBar}>
           <TouchableOpacity
             style={styles.closeBtn}
             onPress={onClose}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+            activeOpacity={0.7}
           >
             <Text style={styles.closeBtnText}>✕ 關閉</Text>
           </TouchableOpacity>
@@ -346,14 +355,22 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
   const CameraView = CameraViewComponent;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent={false}
+      onRequestClose={onClose}
+      statusBarTranslucent={true}
+    >
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       <View style={styles.container}>
         {/* 頂部操作列 */}
         <View style={styles.topBar}>
           <TouchableOpacity
             style={styles.closeBtn}
             onPress={onClose}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+            activeOpacity={0.7}
           >
             <Text style={styles.closeBtnText}>✕ 關閉</Text>
           </TouchableOpacity>
@@ -361,7 +378,8 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
           <TouchableOpacity
             style={[styles.torchBtn, enableTorch && styles.torchBtnActive]}
             onPress={() => setEnableTorch(prev => !prev)}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+            activeOpacity={0.7}
           >
             <Text style={styles.torchBtnText}>{enableTorch ? '🔦 燈光開' : '💡 補光'}</Text>
           </TouchableOpacity>
@@ -476,25 +494,35 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
             </View>
           )}
 
-          {isImagePickerAvailable && (
-            <View style={styles.bottomActions}>
+          <View style={styles.bottomActions}>
+            <View style={styles.bottomBtnRow}>
               <TouchableOpacity
-                style={styles.photoPickerBtn}
-                onPress={handlePickImage}
-                disabled={processingImage}
-                activeOpacity={0.7}
+                style={styles.bottomCloseBtn}
+                onPress={onClose}
+                activeOpacity={0.8}
               >
-                {processingImage ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <>
-                    <Text style={styles.photoPickerBtnIcon}>🖼️</Text>
-                    <Text style={styles.photoPickerBtnText}>從相簿選取截圖 (雲端發票)</Text>
-                  </>
-                )}
+                <Text style={styles.bottomCloseBtnText}>✕ 結束掃描</Text>
               </TouchableOpacity>
+
+              {isImagePickerAvailable && (
+                <TouchableOpacity
+                  style={styles.photoPickerBtn}
+                  onPress={handlePickImage}
+                  disabled={processingImage}
+                  activeOpacity={0.7}
+                >
+                  {processingImage ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <>
+                      <Text style={styles.photoPickerBtnIcon}>🖼️</Text>
+                      <Text style={styles.photoPickerBtnText}>從相簿選取截圖</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
-          )}
+          </View>
         </View>
       </View>
     </Modal>
@@ -550,19 +578,23 @@ export const InvoiceScannerModal: React.FC<InvoiceScannerModalProps> = ({
   );
 };
 
+const ANDROID_STATUS_BAR = StatusBar.currentHeight ?? 38;
+const TOP_BAR_PADDING_TOP = Platform.OS === 'ios' ? 52 : ANDROID_STATUS_BAR + 12;
+const TOP_BAR_HEIGHT = Platform.OS === 'ios' ? 104 : ANDROID_STATUS_BAR + 58;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000000',
   },
   topBar: {
-    height: Platform.OS === 'ios' ? 96 : 64,
-    paddingTop: Platform.OS === 'ios' ? 44 : 12,
+    height: TOP_BAR_HEIGHT,
+    paddingTop: TOP_BAR_PADDING_TOP,
     paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    backgroundColor: 'rgba(0, 0, 0, 0.88)',
     zIndex: 10,
   },
   topTitle: {
@@ -571,24 +603,35 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   closeBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    minHeight: 38,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
   },
   closeBtnText: {
     fontSize: 14,
     color: '#FFFFFF',
-    fontWeight: '600',
+    fontWeight: '700',
   },
   torchBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    minHeight: 38,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
   },
   torchBtnActive: {
     backgroundColor: '#F59E0B',
+    borderColor: '#F59E0B',
   },
   torchBtnText: {
     fontSize: 14,
@@ -710,11 +753,11 @@ const styles = StyleSheet.create({
     borderRightWidth: 4,
   },
   bottomBar: {
-    paddingVertical: 20,
-    paddingHorizontal: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.92)',
     alignItems: 'center',
-    paddingBottom: Platform.OS === 'ios' ? 36 : 20,
+    paddingBottom: Platform.OS === 'ios' ? 38 : 28,
   },
   guideHint: {
     fontSize: 16,
@@ -763,17 +806,39 @@ const styles = StyleSheet.create({
   },
   bottomActions: {
     width: '100%',
-    alignItems: 'center',
   },
-  photoPickerBtn: {
+  bottomBtnRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#3B82F6',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 12,
+    gap: 12,
     width: '100%',
+  },
+  bottomCloseBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomCloseBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14.5,
+    fontWeight: '700',
+  },
+  photoPickerBtn: {
+    flex: 1.5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2563EB',
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    borderRadius: 12,
     gap: 8,
   },
   photoPickerBtnIcon: {
