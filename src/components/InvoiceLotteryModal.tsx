@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -10,7 +10,12 @@ import {
   Dimensions,
 } from 'react-native';
 import { useLedger } from '../context/LedgerContext';
-import { OFFICIAL_LOTTERY_DRAWS, LotteryPeriodData } from '../lib/lottery';
+import {
+  LotteryPeriodData,
+  getOfficialLotteryDraws,
+  syncLotteryDrawsAsync,
+  checkInvoiceWinning,
+} from '../lib/lottery';
 import { getInvoicePeriodKey, formatInvoiceNumber } from '../lib/invoice';
 import { Transaction } from '../types/database';
 
@@ -35,6 +40,26 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
 }) => {
   const { transactions, claimInvoicePrize, getMemberById, currentUser } = useLedger();
 
+  // 本地快取與全自動聯網同步的官方中獎號碼庫
+  const [drawsMap, setDrawsMap] = useState<Record<string, LotteryPeriodData>>(() => getOfficialLotteryDraws());
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+
+  // 彈窗開啟時自動背景聯網向財政部/CDN同步最新期號
+  useEffect(() => {
+    if (visible) {
+      setDrawsMap({ ...getOfficialLotteryDraws() });
+      setIsSyncing(true);
+      syncLotteryDrawsAsync()
+        .then(latest => {
+          setDrawsMap({ ...latest });
+        })
+        .catch(() => {})
+        .finally(() => {
+          setIsSyncing(false);
+        });
+    }
+  }, [visible]);
+
   // 取得目前所有可選擇的期別（官方已知開獎期別 + 包含未開獎的本期）
   const availablePeriods = useMemo(() => {
     const now = new Date();
@@ -45,11 +70,11 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
     set.set(currentPeriod.periodKey, {
       periodKey: currentPeriod.periodKey,
       periodLabel: currentPeriod.periodLabel,
-      draw: OFFICIAL_LOTTERY_DRAWS[currentPeriod.periodKey],
+      draw: drawsMap[currentPeriod.periodKey],
     });
 
     // 2. 歷史官方已開獎期別
-    Object.values(OFFICIAL_LOTTERY_DRAWS).forEach(draw => {
+    Object.values(drawsMap).forEach(draw => {
       set.set(draw.periodKey, {
         periodKey: draw.periodKey,
         periodLabel: draw.periodLabel,
@@ -65,7 +90,7 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
           set.set(pk.periodKey, {
             periodKey: pk.periodKey,
             periodLabel: pk.periodLabel,
-            draw: OFFICIAL_LOTTERY_DRAWS[pk.periodKey],
+            draw: drawsMap[pk.periodKey],
           });
         }
       }
@@ -73,7 +98,7 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
 
     // 依期別字串降序排序（最新期別在最前面）
     return Array.from(set.values()).sort((a, b) => b.periodKey.localeCompare(a.periodKey));
-  }, [transactions]);
+  }, [transactions, drawsMap]);
 
   const [selectedPeriodKey, setSelectedPeriodKey] = useState<string>(() => {
     return initialPeriodKey || availablePeriods[0]?.periodKey || '2026-08';
@@ -92,29 +117,52 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
     });
   }, [transactions, selectedPeriodKey]);
 
+  // 即時計算各發票的中獎判定（整合最新同步之獎號）
+  const evaluatedTransactions = useMemo(() => {
+    return periodTransactions.map(tx => {
+      const check = checkInvoiceWinning(tx.invoice_number, selectedPeriodKey, drawsMap);
+      const isClaimed = tx.invoice_status === 'claimed';
+      const isWon = isClaimed ? false : (tx.invoice_status === 'won' || check.isWon);
+      const isMissed = isClaimed || isWon ? false : (tx.invoice_status === 'missed' || (check.isDrawn && !check.isWon));
+      const isPending = !isClaimed && !isWon && !isMissed;
+      const prizeAmount = tx.invoice_prize_amount || (check.isWon ? check.prizeAmount : 0);
+      const prizeName = tx.invoice_prize_name || (check.isWon ? check.prizeName : undefined);
+
+      return {
+        ...tx,
+        isWon,
+        isClaimed,
+        isMissed,
+        isPending,
+        computedPrizeAmount: prizeAmount,
+        computedPrizeName: prizeName,
+      };
+    });
+  }, [periodTransactions, selectedPeriodKey, drawsMap]);
+
   // 統計數據：總發票數、中獎數、總獎金
   const stats = useMemo(() => {
     let wonCount = 0;
     let totalPrize = 0;
     let claimedCount = 0;
 
-    periodTransactions.forEach(t => {
-      if (t.invoice_status === 'won' || t.invoice_status === 'claimed') {
+    evaluatedTransactions.forEach(t => {
+      if (t.isWon || t.isClaimed) {
         wonCount += 1;
-        totalPrize += (t.invoice_prize_amount || 0);
+        totalPrize += (t.computedPrizeAmount || t.invoice_prize_amount || 0);
       }
-      if (t.invoice_status === 'claimed') {
+      if (t.isClaimed) {
         claimedCount += 1;
       }
     });
 
     return {
-      totalCount: periodTransactions.length,
+      totalCount: evaluatedTransactions.length,
       wonCount,
       totalPrize,
       claimedCount,
     };
-  }, [periodTransactions]);
+  }, [evaluatedTransactions]);
 
   const drawData = selectedPeriodObj?.draw;
 
@@ -134,6 +182,12 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
                 )}
               </View>
               <Text style={styles.headerSub}>自動核對家庭消費發票 · 一鍵兌領獎金入帳</Text>
+              <View style={styles.syncRow}>
+                <View style={[styles.syncDot, isSyncing && styles.syncDotLoading]} />
+                <Text style={styles.syncStatusText}>
+                  {isSyncing ? '正在連線同步財政部最新開獎號碼...' : '官方開獎號碼全自動即時同步'}
+                </Text>
+              </View>
             </View>
             <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Text style={styles.closeBtnText}>✕</Text>
@@ -247,11 +301,11 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
 
             {/* 發票明細清單 */}
             <View style={styles.listSectionHeader}>
-              <Text style={styles.listSectionTitle}>📋 本期記錄之發票 ({periodTransactions.length})</Text>
+              <Text style={styles.listSectionTitle}>📋 本期記錄之發票 ({evaluatedTransactions.length})</Text>
               <Text style={styles.listSectionHint}>自動依照消費日期歸入該期別</Text>
             </View>
 
-            {periodTransactions.length === 0 ? (
+            {evaluatedTransactions.length === 0 ? (
               <View style={styles.emptyBox}>
                 <Text style={styles.emptyIcon}>🧾</Text>
                 <Text style={styles.emptyTitle}>此期別尚無發票記錄</Text>
@@ -260,12 +314,14 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
                 </Text>
               </View>
             ) : (
-              periodTransactions.map(tx => {
+              evaluatedTransactions.map(tx => {
                 const payer = getMemberById(tx.paid_by) || currentUser;
-                const isWon = tx.invoice_status === 'won';
-                const isClaimed = tx.invoice_status === 'claimed';
-                const isMissed = tx.invoice_status === 'missed';
-                const isPending = tx.invoice_status === 'pending' || !tx.invoice_status;
+                const isWon = tx.isWon;
+                const isClaimed = tx.isClaimed;
+                const isMissed = tx.isMissed;
+                const isPending = tx.isPending;
+                const prizeAmount = tx.computedPrizeAmount || tx.invoice_prize_amount || 0;
+                const prizeName = tx.computedPrizeName || tx.invoice_prize_name || '中獎';
 
                 return (
                   <View
@@ -283,14 +339,14 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
                         {isWon && (
                           <View style={styles.wonBadge}>
                             <Text style={styles.wonBadgeText}>
-                              🎉 中獎 ${tx.invoice_prize_amount?.toLocaleString()} ({tx.invoice_prize_name || '六獎'})
+                              🎉 中獎 ${prizeAmount.toLocaleString()} ({prizeName})
                             </Text>
                           </View>
                         )}
                         {isClaimed && (
                           <View style={styles.claimedBadge}>
                             <Text style={styles.claimedBadgeText}>
-                              ✅ 已兌領入帳 (${tx.invoice_prize_amount?.toLocaleString()})
+                              ✅ 已兌領入帳 (${prizeAmount.toLocaleString()})
                             </Text>
                           </View>
                         )}
@@ -390,6 +446,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748B',
     marginTop: 2,
+  },
+  syncRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 4,
+  },
+  syncDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#10B981',
+  },
+  syncDotLoading: {
+    backgroundColor: '#F59E0B',
+  },
+  syncStatusText: {
+    fontSize: 11,
+    color: '#059669',
+    fontWeight: '500',
   },
   closeBtn: {
     width: 32,

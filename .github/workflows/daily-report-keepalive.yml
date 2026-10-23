@@ -11,6 +11,8 @@ jobs:
   daily-report:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: write
 
     steps:
       - name: 📥 檢出程式碼
@@ -24,6 +26,19 @@ jobs:
 
       - name: 📦 安裝相依套件
         run: npm install --prefer-offline --no-audit
+
+      - name: 🧾 同步財政部發票最新中獎號碼
+        run: node scripts/sync-lottery.mjs || true
+
+      - name: 🔄 自動提交最新開獎號碼 (逢開獎日時)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet public/lottery_draws.json; then
+            git add public/lottery_draws.json
+            git commit -m "chore(lottery): 自動同步財政部最新統一發票開獎號碼 [skip ci]"
+            git push origin main || true
+          fi
 
       - name: 🚀 執行防休眠打卡與收支日報
         env:

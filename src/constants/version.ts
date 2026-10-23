@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.7';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.7 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 1;
+export const APP_BUILD_REVISION = 2;
 
 // 完整版本字串 (例如 "1.0.7.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -21,8 +21,10 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.7',
     date: '2026-10-23',
-    title: '相機雙 QR Code 智慧對焦掃描、統一發票自動對獎與獎金兌領、舊版安全容錯防禦',
+    title: '相機雙 QR Code 智慧對焦掃描、開獎號碼全自動聯網同步、發票防重複防呆與獎金兌領',
     highlights: [
+      '🌐 財政部開獎號碼全自動聯網同步：開獎日系統自動透過財政部官方 XML 與 CDN 端點抓取最新中獎號碼並快取至本機，打開 App 即刻自動比對全家人歷史發票，無需手動下載或重新更新。',
+      '🛡️ 發票號碼防重複即時偵測與防呆攔截：新增記帳、相機掃碼、相簿辨識與編輯時即時比對全帳本發票號碼，偵測到相同發票立即顯示顯眼警示橫幅並提示由誰於何時登記過，儲存時跳出防呆確認對話框，杜絕全家人重複記帳與重複對獎。',
       '🧾 統一發票雙月期別精確歸類校正：修復 ISO 8601 時間字串斜線替換導致 Date 解析為 Invalid Date 之問題，改採正規表達式直取年月日，徹底消除歷史月份發票誤歸類至當前未開獎期之異常。',
       '📷 實體發票相機即時雙碼掃描：新增發票相機掃描彈窗，支援鏡頭同時對準電子發票左右雙 QR Code，單畫面秒速自動辨識發票號碼、金額、消費日期、店家統編與購物明細。',
       '🛒 大賣場長明細雙條碼無縫合體：長商品清單發票自動連續捕捉左右碼溢位明細並智慧融合成單筆記錄，附帶 2 秒容錯自動完成機制，絕不卡住操作。',

@@ -9,7 +9,7 @@ import { DEFAULT_RECURRING_PRESETS, getCurrentPeriodKey, getBillPeriodLabel, get
 import { parseMemoNote, encodeMemoMerchantTag, decodeMemoMerchantTag, DEFAULT_MEMO_QUICK_TAGS, extractMemoTag, toggleChecklistItem } from '../lib/memo';
 import { CalendarSystem, MemoRepeatFrequency, getNextMemoReminderDate, formatMemoReminderBadge } from '../lib/lunar';
 import { formatInvoiceNumber, getInvoicePeriodKey, encodeInvoiceTag, decodeInvoiceTag, stripInvoiceTag } from '../lib/invoice';
-import { checkInvoiceWinning } from '../lib/lottery';
+import { checkInvoiceWinning, syncLotteryDrawsAsync } from '../lib/lottery';
 import { APP_FULL_VERSION } from '../constants/version';
 import { getDeviceId, getDeviceName, getDevicePlatform } from '../lib/device';
 
@@ -1354,6 +1354,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             if (Array.isArray(parsed)) setMemberDevices(parsed);
           } catch {}
         }
+
+        // 全自動背景連線同步財政部最新統一發票開獎號碼庫並即時重新對獎
+        syncLotteryDrawsAsync()
+          .then(() => {
+            setTransactions(prev => prev.map(hydrateTransactionWithInvoice));
+          })
+          .catch(() => {});
       } catch (err) {
         console.warn('載入本地記帳快取失敗:', err);
       }

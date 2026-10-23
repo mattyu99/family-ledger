@@ -333,10 +333,22 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
   const handleScanSuccess = (data: ParsedInvoiceData) => {
     applyParsedInvoice(data);
-    safeAlert(
-      '發票辨識成功',
-      `發票號碼：${data.invoiceNumber || '未包含號碼'}${data.merchantName ? `\n店家：${data.merchantName}` : ''}${data.totalAmount ? `\n金額：NT$ ${data.totalAmount.toLocaleString()}` : ''}${data.items && data.items.length > 0 ? `\n商品明細：共 ${data.items.length} 項 (已帶入備註)` : ''}`
-    );
+    const cleaned = data.invoiceNumber ? formatInvoiceNumber(data.invoiceNumber) : '';
+    const dup = cleaned ? transactions.find(t => t.invoice_number && formatInvoiceNumber(t.invoice_number) === cleaned) : null;
+
+    if (dup) {
+      const payer = getMemberById(dup.paid_by) || currentUser;
+      const dateStr = dup.transacted_at ? dup.transacted_at.split('T')[0] : '';
+      safeAlert(
+        '⚠️ 偵測到發票重複',
+        `發票號碼：${cleaned}\n⚠️ 注意：此張發票已由「${payer.display_name}」於 ${dateStr} 記錄過（${dup.merchant || '消費'} NT$ ${dup.amount.toLocaleString()}）！\n\n系統已為您填入，儲存前請確認是否重複記帳。`
+      );
+    } else {
+      safeAlert(
+        '發票辨識成功',
+        `發票號碼：${data.invoiceNumber || '未包含號碼'}${data.merchantName ? `\n店家：${data.merchantName}` : ''}${data.totalAmount ? `\n金額：NT$ ${data.totalAmount.toLocaleString()}` : ''}${data.items && data.items.length > 0 ? `\n商品明細：共 ${data.items.length} 項 (已帶入備註)` : ''}`
+      );
+    }
   };
 
   const handlePasteInvoice = async () => {
@@ -347,14 +359,36 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           const parsed = parseTaiwanInvoiceQRCode(text.trim(), taxIdMerchantMap);
           if (parsed && (parsed.invoiceNumber || parsed.items)) {
             applyParsedInvoice(parsed);
-            safeAlert(
-              '發票解析成功',
-              `已辨識並帶入發票資訊！\n號碼：${parsed.invoiceNumber || '未包含號碼'}${parsed.merchantName ? `\n店家：${parsed.merchantName}` : ''}${parsed.totalAmount ? `\n金額：NT$ ${parsed.totalAmount.toLocaleString()}` : ''}`
-            );
+            const cleaned = parsed.invoiceNumber ? formatInvoiceNumber(parsed.invoiceNumber) : '';
+            const dup = cleaned ? transactions.find(t => t.invoice_number && formatInvoiceNumber(t.invoice_number) === cleaned) : null;
+            if (dup) {
+              const payer = getMemberById(dup.paid_by) || currentUser;
+              const dateStr = dup.transacted_at ? dup.transacted_at.split('T')[0] : '';
+              safeAlert(
+                '⚠️ 偵測到發票重複',
+                `已辨識發票號碼：${cleaned}\n⚠️ 注意：此張發票已由「${payer.display_name}」於 ${dateStr} 記錄過（${dup.merchant || '消費'} NT$ ${dup.amount.toLocaleString()}）！\n\n請確認是否重複記帳。`
+              );
+            } else {
+              safeAlert(
+                '發票解析成功',
+                `已辨識並帶入發票資訊！\n號碼：${parsed.invoiceNumber || '未包含號碼'}${parsed.merchantName ? `\n店家：${parsed.merchantName}` : ''}${parsed.totalAmount ? `\n金額：NT$ ${parsed.totalAmount.toLocaleString()}` : ''}`
+              );
+            }
             return;
           }
           handleInvoiceInput(text.trim());
-          safeAlert('發票快速帶入', `已辨識發票號碼：${formatInvoiceNumber(text.slice(0, 10))}`);
+          const cleaned = formatInvoiceNumber(text.slice(0, 10));
+          const dup = cleaned ? transactions.find(t => t.invoice_number && formatInvoiceNumber(t.invoice_number) === cleaned) : null;
+          if (dup) {
+            const payer = getMemberById(dup.paid_by) || currentUser;
+            const dateStr = dup.transacted_at ? dup.transacted_at.split('T')[0] : '';
+            safeAlert(
+              '⚠️ 偵測到發票重複',
+              `已辨識發票號碼：${cleaned}\n⚠️ 注意：此張發票已由「${payer.display_name}」於 ${dateStr} 記錄過（${dup.merchant || '消費'} NT$ ${dup.amount.toLocaleString()}）！`
+            );
+          } else {
+            safeAlert('發票快速帶入', `已辨識發票號碼：${cleaned}`);
+          }
           return;
         }
       }
@@ -372,6 +406,16 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       winning,
     };
   }, [invoiceNumber, selectedDate]);
+
+  // 發票防重複記帳即時偵測（比對全帳本發票號碼）
+  const duplicateInvoiceTx = React.useMemo(() => {
+    if (!invoiceNumber || !isValidInvoiceNumber(invoiceNumber)) return null;
+    const cleaned = formatInvoiceNumber(invoiceNumber);
+    return transactions.find(t => {
+      if (!t.invoice_number) return false;
+      return formatInvoiceNumber(t.invoice_number) === cleaned;
+    });
+  }, [invoiceNumber, transactions]);
 
   // 取得有效啟用的付款方式清單（確保現金永遠存在不被全數隱藏）
   const activePaymentMethods = React.useMemo(() => {
@@ -871,60 +915,86 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       return;
     }
 
-    try {
-      const now = new Date();
-      const txDate = new Date(selectedDate);
-      // 保留當下時間的時間戳，以利時間排序
-      txDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
-      const transacted_at = txDate.toISOString();
+    const executeSaveTransaction = async () => {
+      try {
+        const now = new Date();
+        const txDate = new Date(selectedDate);
+        // 保留當下時間的時間戳，以利時間排序
+        txDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+        const transacted_at = txDate.toISOString();
 
-      const createdTxId = await addTransaction({
-        amount: finalAmount,
-        type,
-        category_id: targetCategory.id,
-        paid_by: targetPayer,
-        merchant: merchant.trim() || undefined,
-        payment_method: paymentMethod,
-        account_id: selectedAccountId || undefined,
-        note: finalNote,
-        invoice_number: invoiceNumber.trim() || undefined,
-        invoice_random_code: invoiceRandomCode.trim() || undefined,
-        transacted_at,
-        linked_transaction_id: linkedMemoId || undefined,
-        splitWithIds: type === 'expense' ? members.map(m => m.id) : undefined,
-      });
-
-      // 自學習記憶：若發票含有賣方統編，記憶此店家名稱至本機資料庫
-      if (invoiceSellerTaxId && merchant.trim()) {
-        recordTaxIdMerchant(invoiceSellerTaxId, merchant.trim());
-      }
-
-      if (linkedMemoId && createdTxId) {
-        // 同步雙向綁定至生活待辦，並標記已由該成員辦妥與儲存辦妥說明
-        await updateTransaction(linkedMemoId, {
-          linked_transaction_id: createdTxId,
-          is_settled: true,
-          completed_by: targetPayer,
-          ...(linkedCompletionNote ? { completion_note: linkedCompletionNote } : {}),
+        const createdTxId = await addTransaction({
+          amount: finalAmount,
+          type,
+          category_id: targetCategory.id,
+          paid_by: targetPayer,
+          merchant: merchant.trim() || undefined,
+          payment_method: paymentMethod,
+          account_id: selectedAccountId || undefined,
+          note: finalNote,
+          invoice_number: invoiceNumber.trim() || undefined,
+          invoice_random_code: invoiceRandomCode.trim() || undefined,
+          transacted_at,
+          linked_transaction_id: linkedMemoId || undefined,
+          splitWithIds: type === 'expense' ? members.map(m => m.id) : undefined,
         });
-      }
 
-      // 重設表單並關閉
-      setAmount('');
-      setMerchant('');
-      setNote('');
-      setInvoiceNumber('');
-      setInvoiceRandomCode('');
-      setShowDiscountPanel(false);
-      setDiscountAmount('');
-      setPaymentMethod('cash');
-      setSelectedAccountId('');
-      setSelectedDate(new Date());
-      onSuccess?.(createdTxId);
-      onClose();
-    } catch (err: any) {
-      safeAlert('儲存失敗', err.message || '儲存記帳時發生錯誤');
+        // 自學習記憶：若發票含有賣方統編，記憶此店家名稱至本機資料庫
+        if (invoiceSellerTaxId && merchant.trim()) {
+          recordTaxIdMerchant(invoiceSellerTaxId, merchant.trim());
+        }
+
+        if (linkedMemoId && createdTxId) {
+          // 同步雙向綁定至生活待辦，並標記已由該成員辦妥與儲存辦妥說明
+          await updateTransaction(linkedMemoId, {
+            linked_transaction_id: createdTxId,
+            is_settled: true,
+            completed_by: targetPayer,
+            ...(linkedCompletionNote ? { completion_note: linkedCompletionNote } : {}),
+          });
+        }
+
+        // 重設表單並關閉
+        setAmount('');
+        setMerchant('');
+        setNote('');
+        setInvoiceNumber('');
+        setInvoiceRandomCode('');
+        setShowDiscountPanel(false);
+        setDiscountAmount('');
+        setPaymentMethod('cash');
+        setSelectedAccountId('');
+        setSelectedDate(new Date());
+        onSuccess?.(createdTxId);
+        onClose();
+      } catch (err: any) {
+        safeAlert('儲存失敗', err.message || '儲存記帳時發生錯誤');
+      }
+    };
+
+    // 發票重複防呆確認彈窗
+    if (duplicateInvoiceTx) {
+      const payer = getMemberById(duplicateInvoiceTx.paid_by) || currentUser;
+      const dateStr = duplicateInvoiceTx.transacted_at ? duplicateInvoiceTx.transacted_at.split('T')[0] : '';
+      const promptTitle = '⚠️ 偵測到重複發票';
+      const promptMsg = `發票號碼「${formatInvoiceNumber(duplicateInvoiceTx.invoice_number || '')}」已於 ${dateStr} 由「${payer.display_name}」記錄過（${duplicateInvoiceTx.merchant || '消費'} NT$ ${duplicateInvoiceTx.amount.toLocaleString()}）。\n\n確定仍要重複新增這筆發票紀錄嗎？`;
+
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined') {
+          if (window.confirm(`${promptTitle}\n\n${promptMsg}`)) {
+            executeSaveTransaction();
+          }
+        }
+      } else {
+        Alert.alert(promptTitle, promptMsg, [
+          { text: '取消返回檢查', style: 'cancel' },
+          { text: '確定仍要新增', style: 'destructive', onPress: executeSaveTransaction },
+        ]);
+      }
+      return;
     }
+
+    executeSaveTransaction();
   };
 
   return (
@@ -2426,6 +2496,21 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       </Text>
                     </View>
                   )}
+
+                  {/* 發票防重複記帳即時警示橫幅 */}
+                  {duplicateInvoiceTx && (
+                    <View style={styles.duplicateWarningBox}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 }}>
+                        <Text style={styles.duplicateWarningIcon}>⚠️</Text>
+                        <Text style={styles.duplicateWarningTitle} maxFontSizeMultiplier={1.12}>
+                          偵測到此發票號碼已在帳本中記錄過！
+                        </Text>
+                      </View>
+                      <Text style={styles.duplicateWarningDesc} maxFontSizeMultiplier={1.08}>
+                        已由【{(getMemberById(duplicateInvoiceTx.paid_by) || currentUser).display_name}】於 {duplicateInvoiceTx.transacted_at ? duplicateInvoiceTx.transacted_at.split('T')[0] : '歷史記錄'} 登記（{duplicateInvoiceTx.merchant || '消費'} NT$ {duplicateInvoiceTx.amount.toLocaleString()}），請確認避免重複記帳。
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </>
             )}
@@ -3550,5 +3635,27 @@ const styles = StyleSheet.create({
   invoiceStatusTextWon: {
     color: '#B45309',
     fontWeight: '700',
+  },
+  duplicateWarningBox: {
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#FFFBEB',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+  },
+  duplicateWarningIcon: {
+    fontSize: 14,
+  },
+  duplicateWarningTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#B45309',
+  },
+  duplicateWarningDesc: {
+    fontSize: 11,
+    color: '#92400E',
+    lineHeight: 16,
   },
 });
