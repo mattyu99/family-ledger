@@ -127,6 +127,18 @@ const GUIDE_ITEMS: GuideItem[] = [
       '具備 4 位數安全 PIN 碼保護機制（預設 8888），防止誤刪重要家庭名冊或敏感帳本。',
     ],
   },
+  {
+    icon: '🧾',
+    title: '9. 發票雙碼掃描與極速對獎',
+    tag: '智慧對獎',
+    tagBg: '#FEF3C7',
+    tagColor: '#B45309',
+    steps: [
+      '記帳時點擊「📷 掃描發票」，將鏡頭同時對準電子發票左右雙 QR Code，秒速自動帶入號碼、金額、日期、店家與長商品明細。',
+      '無實體紙本雲端發票亦可點「🖼️ 相簿截圖」或「📋 貼上」條碼文字完成解析。',
+      '明細卡片即時比對中獎，篩選列提供「發票對獎中心」查看期別獎號與「一鍵兌領入帳」！',
+    ],
+  },
 ];
 
 export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, onClose }) => {
@@ -157,7 +169,7 @@ export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, o
             <View style={{ flex: 1 }}>
               <Text style={styles.title}>📖 產品介紹與操作指南</Text>
               <Text style={styles.subtitle}>
-                甜心記帳本 • 8 大日常操作速查手冊
+                甜心記帳本 • 9 大日常操作速查手冊
               </Text>
             </View>
             <TouchableOpacity
