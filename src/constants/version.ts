@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.6';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.6 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 19;
+export const APP_BUILD_REVISION = 20;
 
 // 完整版本字串 (例如 "1.0.6.16")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -23,6 +23,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
     date: '2026-10-20 ~ 2026-10-23',
     title: '相機掃碼記帳、發票自動對獎與獎金兌領、悠遊卡查帳整合、家庭門禁安全鎖',
     highlights: [
+      '🛡️ 舊版 APK 原生相機安全隔離與黑屏防禦：實作相機模組動態安全載入與 ErrorBoundary 容錯降級機制，舊版 APK 透過 OTA 更新時自動平滑相容，阻絕底層缺模組異常，維持全 App 穩定運作並引導更新。',
       '📷 實體發票鏡頭即時掃描與相簿截圖解析：新增相機掃描彈窗，支援鏡頭對準電子發票左側 QR Code 自動辨識號碼、金額與日期；同時支援從手機相簿選取截圖解析，完美解決雲端發票無紙本之記錄痛點。',
       '🏪 百大連鎖統編自動辨識店家與分類：內建全聯、好市多、家樂福、四大超商、中油等百大統編庫，掃碼自動帶入店家名稱與記帳分類；並具備巷口小店統編記憶學習機制。',
       '📋 右方 QR Code 購物清單明細解析：支援解析右側條碼攜帶之商品品項與單價明細，自動排版填入備註說明。',

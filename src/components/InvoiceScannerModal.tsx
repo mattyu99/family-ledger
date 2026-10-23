@@ -10,8 +10,6 @@ import {
   Dimensions,
   TextProps,
 } from 'react-native';
-import { CameraView, useCameraPermissions, scanFromURLAsync } from 'expo-camera';
-import * as ImagePicker from 'expo-image-picker';
 import {
   parseTaiwanInvoiceQRCode,
   mergeParsedInvoiceData,
@@ -19,7 +17,44 @@ import {
 } from '../lib/invoice';
 import { useLedger } from '../context/LedgerContext';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+// 安全動態載入原生相機與影像模組，避免舊版 APK 缺少二進位驅動時啟動黑屏
+let CameraViewComponent: any = null;
+let useCameraPermissionsHook: any = null;
+let scanFromURLAsyncFn: any = null;
+let isNativeCameraAvailable = false;
+
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const cameraPkg = require('expo-camera');
+  if (cameraPkg?.CameraView && cameraPkg?.useCameraPermissions) {
+    CameraViewComponent = cameraPkg.CameraView;
+    useCameraPermissionsHook = cameraPkg.useCameraPermissions;
+    scanFromURLAsyncFn = cameraPkg.scanFromURLAsync;
+    isNativeCameraAvailable = true;
+  }
+} catch {
+  isNativeCameraAvailable = false;
+}
+
+let ImagePickerModule: any = null;
+let isImagePickerAvailable = false;
+
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const pickerPkg = require('expo-image-picker');
+  if (pickerPkg?.launchImageLibraryAsync) {
+    ImagePickerModule = pickerPkg;
+    isImagePickerAvailable = true;
+  }
+} catch {
+  isImagePickerAvailable = false;
+}
+
+const useCameraPermissionsSafe: () => [any, () => Promise<any>] =
+  useCameraPermissionsHook ||
+  (() => [null, async () => ({ granted: false })]);
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DUAL_FRAME_TOTAL_WIDTH = Math.min(SCREEN_WIDTH * 0.88, 330);
 const DUAL_FRAME_GAP = 12;
 const SINGLE_BOX_SIZE = Math.floor((DUAL_FRAME_TOTAL_WIDTH - DUAL_FRAME_GAP) / 2);
@@ -39,13 +74,68 @@ interface InvoiceScannerModalProps {
   onScanSuccess: (data: ParsedInvoiceData) => void;
 }
 
-export const InvoiceScannerModal: React.FC<InvoiceScannerModalProps> = ({
+// 降級說明彈窗：當原生相機模組尚未存在於當前 APK 時展示，引導更新 APK 並提供替代操作
+const FallbackScannerModal: React.FC<{ visible: boolean; onClose: () => void }> = ({
+  visible,
+  onClose,
+}) => {
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
+      <View style={styles.container}>
+        {/* 頂部操作列 */}
+        <View style={styles.topBar}>
+          <TouchableOpacity
+            style={styles.closeBtn}
+            onPress={onClose}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Text style={styles.closeBtnText}>✕ 關閉</Text>
+          </TouchableOpacity>
+          <Text style={styles.topTitle}>📷 掃描發票</Text>
+          <View style={{ width: 60 }} />
+        </View>
+
+        <View style={styles.fallbackContainer}>
+          <View style={styles.fallbackCard}>
+            <Text style={styles.fallbackIcon}>📦</Text>
+            <Text style={styles.fallbackTitle}>需要安裝最新 App (APK)</Text>
+            <Text style={styles.fallbackSubtitle}>相機硬體驅動需透過安裝檔更新</Text>
+
+            <View style={styles.fallbackDivider} />
+
+            <Text style={styles.fallbackDesc}>
+              「發票雙 QR Code 智慧掃描」包含最新的相機硬體原生驅動。
+              {'\n\n'}
+              您目前手機安裝的 App 為較早版本，已透過雲端為您排程編譯最新版安裝檔 (APK)，安裝後即可啟用完整相機掃描！
+            </Text>
+
+            <View style={styles.fallbackTipBox}>
+              <Text style={styles.fallbackTipTitle}>💡 免等安裝，現在即可使用：</Text>
+              <Text style={styles.fallbackTipText}>
+                在記帳頁面點擊「📋 貼上」按鈕，直接貼上電子發票或載具之 77 碼條碼文字，系統將自動解析號碼、金額與明細！
+              </Text>
+            </View>
+
+            <TouchableOpacity style={styles.fallbackCloseActionBtn} onPress={onClose} activeOpacity={0.8}>
+              <Text style={styles.fallbackCloseActionBtnText}>我知道了，回記帳頁</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// 原生相機功能主體：僅在原生模組確定可用時掛載
+const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
   visible,
   onClose,
   onScanSuccess,
 }) => {
   const { taxIdMerchantMap } = useLedger();
-  const [permission, requestPermission] = useCameraPermissions();
+  const [permission, requestPermission] = useCameraPermissionsSafe();
   const [enableTorch, setEnableTorch] = useState<boolean>(false);
   const [scanned, setScanned] = useState<boolean>(false);
   const [processingImage, setProcessingImage] = useState<boolean>(false);
@@ -159,11 +249,16 @@ export const InvoiceScannerModal: React.FC<InvoiceScannerModalProps> = ({
 
   // 從手機相簿選取截圖進行辨識 (完美支援雲端發票無紙本情境，支援單截圖雙碼同時辨識)
   const handlePickImage = async () => {
+    if (!ImagePickerModule || !scanFromURLAsyncFn) {
+      setErrorMessage('當前版本尚未啟用圖片辨識，請使用相機掃描或「📋 貼上」按鈕');
+      return;
+    }
+
     try {
       setProcessingImage(true);
       setErrorMessage(null);
 
-      const pickerResult = await ImagePicker.launchImageLibraryAsync({
+      const pickerResult = await ImagePickerModule.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: false,
         quality: 1,
@@ -175,7 +270,7 @@ export const InvoiceScannerModal: React.FC<InvoiceScannerModalProps> = ({
       }
 
       const imageUri = pickerResult.assets[0].uri;
-      const barcodeResults = await scanFromURLAsync(imageUri, ['qr']);
+      const barcodeResults = await scanFromURLAsyncFn(imageUri, ['qr']);
 
       if (barcodeResults && barcodeResults.length > 0) {
         let leftParsed: ParsedInvoiceData | null = null;
@@ -217,7 +312,7 @@ export const InvoiceScannerModal: React.FC<InvoiceScannerModalProps> = ({
     }
   };
 
-  if (!visible) return null;
+  const CameraView = CameraViewComponent;
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
@@ -252,21 +347,25 @@ export const InvoiceScannerModal: React.FC<InvoiceScannerModalProps> = ({
             <TouchableOpacity style={styles.permissionBtn} onPress={requestPermission}>
               <Text style={styles.permissionBtnText}>開啟相機授權</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.permissionPhotoBtn} onPress={handlePickImage}>
-              <Text style={styles.permissionPhotoBtnText}>🖼️ 改從相簿選取截圖</Text>
-            </TouchableOpacity>
+            {isImagePickerAvailable && (
+              <TouchableOpacity style={styles.permissionPhotoBtn} onPress={handlePickImage}>
+                <Text style={styles.permissionPhotoBtnText}>🖼️ 改從相簿選取截圖</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
           <View style={styles.cameraWrapper}>
-            <CameraView
-              style={StyleSheet.absoluteFill}
-              facing="back"
-              enableTorch={enableTorch}
-              barcodeScannerSettings={{
-                barcodeTypes: ['qr'],
-              }}
-              onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
-            />
+            {CameraView && (
+              <CameraView
+                style={StyleSheet.absoluteFill}
+                facing="back"
+                enableTorch={enableTorch}
+                barcodeScannerSettings={{
+                  barcodeTypes: ['qr'],
+                }}
+                onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
+              />
+            )}
 
             {/* 雙條碼並排對焦輔助框 */}
             <View style={styles.overlay}>
@@ -346,26 +445,77 @@ export const InvoiceScannerModal: React.FC<InvoiceScannerModalProps> = ({
             </View>
           )}
 
-          <View style={styles.bottomActions}>
-            <TouchableOpacity
-              style={styles.photoPickerBtn}
-              onPress={handlePickImage}
-              disabled={processingImage}
-              activeOpacity={0.7}
-            >
-              {processingImage ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
-              ) : (
-                <>
-                  <Text style={styles.photoPickerBtnIcon}>🖼️</Text>
-                  <Text style={styles.photoPickerBtnText}>從相簿選取截圖 (雲端發票)</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
+          {isImagePickerAvailable && (
+            <View style={styles.bottomActions}>
+              <TouchableOpacity
+                style={styles.photoPickerBtn}
+                onPress={handlePickImage}
+                disabled={processingImage}
+                activeOpacity={0.7}
+              >
+                {processingImage ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <>
+                    <Text style={styles.photoPickerBtnIcon}>🖼️</Text>
+                    <Text style={styles.photoPickerBtnText}>從相簿選取截圖 (雲端發票)</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
     </Modal>
+  );
+};
+
+// 安全防禦 ErrorBoundary：若原生相機在執行階段拋出例外，自動降級顯示說明頁面，絕不黑屏
+interface SafeCameraBoundaryProps {
+  fallback: React.ReactNode;
+  children: React.ReactNode;
+}
+
+interface SafeCameraBoundaryState {
+  hasError: boolean;
+}
+
+class SafeCameraBoundary extends React.Component<SafeCameraBoundaryProps, SafeCameraBoundaryState> {
+  override state: SafeCameraBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): SafeCameraBoundaryState {
+    return { hasError: true };
+  }
+
+  override componentDidCatch(error: unknown) {
+    console.warn('[InvoiceScanner] 原生相機初始化失敗，切換至降級保護頁面:', error);
+  }
+
+  override render() {
+    if (this.state.hasError) {
+      return this.props.fallback;
+    }
+    return this.props.children;
+  }
+}
+
+// 對外導出的發票掃描彈窗組件
+export const InvoiceScannerModal: React.FC<InvoiceScannerModalProps> = ({
+  visible,
+  onClose,
+  onScanSuccess,
+}) => {
+  if (!visible) return null;
+
+  // 若原生相機模組不可用（舊版 APK 未編譯相機驅動），直接顯示降級說明彈窗
+  if (!isNativeCameraAvailable || !CameraViewComponent) {
+    return <FallbackScannerModal visible={visible} onClose={onClose} />;
+  }
+
+  return (
+    <SafeCameraBoundary fallback={<FallbackScannerModal visible={visible} onClose={onClose} />}>
+      <NativeCameraModalContent visible={visible} onClose={onClose} onScanSuccess={onScanSuccess} />
+    </SafeCameraBoundary>
   );
 };
 
@@ -653,5 +803,86 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  fallbackContainer: {
+    flex: 1,
+    backgroundColor: '#0F172A',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  fallbackCard: {
+    backgroundColor: '#1E293B',
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  fallbackIcon: {
+    fontSize: 44,
+    marginBottom: 12,
+  },
+  fallbackTitle: {
+    fontSize: 19,
+    fontWeight: '800',
+    color: '#F8FAFC',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  fallbackSubtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#38BDF8',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  fallbackDivider: {
+    height: 1,
+    backgroundColor: '#334155',
+    width: '100%',
+    marginBottom: 16,
+  },
+  fallbackDesc: {
+    fontSize: 13.5,
+    color: '#CBD5E1',
+    lineHeight: 21,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  fallbackTipBox: {
+    backgroundColor: '#0F172A',
+    borderRadius: 12,
+    padding: 12,
+    width: '100%',
+    borderLeftWidth: 3,
+    borderLeftColor: '#10B981',
+    marginBottom: 20,
+  },
+  fallbackTipTitle: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#34D399',
+    marginBottom: 4,
+  },
+  fallbackTipText: {
+    fontSize: 12,
+    color: '#94A3B8',
+    lineHeight: 18,
+  },
+  fallbackCloseActionBtn: {
+    backgroundColor: '#3B82F6',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    width: '100%',
+    alignItems: 'center',
+  },
+  fallbackCloseActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });
