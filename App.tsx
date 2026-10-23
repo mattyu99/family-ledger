@@ -81,6 +81,7 @@ import { isBillDueInMonth, isBillPaidForCurrentPeriod } from './src/lib/recurrin
 import { ChangelogModal } from './src/components/ChangelogModal';
 import { ProductGuideModal } from './src/components/ProductGuideModal';
 import { CloudLedgerManagerModal } from './src/components/CloudLedgerManagerModal';
+import { InvoiceLotteryModal } from './src/components/InvoiceLotteryModal';
 import { APP_FULL_VERSION } from './src/constants/version';
 import { HorizontalScrollView } from './src/components/HorizontalScrollView';
 import { Transaction, Profile, MemberDevice } from './src/types/database';
@@ -1164,6 +1165,31 @@ function MainApp() {
 
   // 記帳分類管理狀態
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+
+  // 統一發票對獎中心彈窗狀態
+  const [invoiceLotteryModalVisible, setInvoiceLotteryModalVisible] = useState(false);
+
+  // 統一發票統計（計算中獎筆數、中獎金額、待開獎筆數）
+  const invoiceLotteryStats = useMemo(() => {
+    let wonCount = 0;
+    let wonAmount = 0;
+    let pendingCount = 0;
+    let totalInvoices = 0;
+
+    transactions.forEach(t => {
+      if (t.invoice_number) {
+        totalInvoices++;
+        if (t.invoice_status === 'won') {
+          wonCount++;
+          wonAmount += (t.invoice_prize_amount || 0);
+        } else if (t.invoice_status === 'pending') {
+          pendingCount++;
+        }
+      }
+    });
+
+    return { wonCount, wonAmount, pendingCount, totalInvoices };
+  }, [transactions]);
 
   // 帳本更名狀態
   const [editLedgerModalVisible, setEditLedgerModalVisible] = useState(false);
@@ -4259,6 +4285,29 @@ function MainApp() {
                 <Text style={[styles.filterChipArrow, filterMemberId !== defaultMemberId && styles.filterChipArrowActive]}>▾</Text>
               </TouchableOpacity>
 
+              {/* 發票對獎入口按鈕 */}
+              <TouchableOpacity
+                activeOpacity={0.7}
+                style={[
+                  styles.filterChip,
+                  invoiceLotteryStats.wonCount > 0 && { borderColor: '#F59E0B', backgroundColor: '#FEF3C7' },
+                ]}
+                onPress={() => setInvoiceLotteryModalVisible(true)}
+              >
+                <Text style={styles.filterChipIcon}>{invoiceLotteryStats.wonCount > 0 ? '🎉' : '🧾'}</Text>
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    invoiceLotteryStats.wonCount > 0 && { color: '#B45309', fontWeight: '700' },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {invoiceLotteryStats.wonCount > 0
+                    ? `發票中獎 (${invoiceLotteryStats.wonCount})`
+                    : '發票對獎'}
+                </Text>
+              </TouchableOpacity>
+
               {/* 若在搜尋狀態下且非查全部月份，提供 1 鍵切換至全部月份 */}
               {!!searchQuery.trim() && filterMonth !== 'all' && (
                 <TouchableOpacity
@@ -6110,6 +6159,12 @@ function MainApp() {
       <CategoryManageModal
         visible={categoryModalVisible}
         onClose={() => setCategoryModalVisible(false)}
+      />
+
+      {/* 🧾 統一發票對獎中心彈窗 */}
+      <InvoiceLotteryModal
+        visible={invoiceLotteryModalVisible}
+        onClose={() => setInvoiceLotteryModalVisible(false)}
       />
 
       {/* 收支明細月份/成員篩選彈窗 */}

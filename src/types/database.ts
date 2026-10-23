@@ -123,6 +123,12 @@ export interface Transaction {
   completed_by?: string; // 完成此待辦事項的家庭成員 ID (Profile ID)
   completion_note?: string; // 辦妥此待辦事項的補充說明 / 回報備註
   linked_transaction_id?: string; // 連動之交易 ID (記事連動之支出 ID，或支出反向關聯之記事 ID)
+  invoice_number?: string; // 統一發票號碼 (例如 "AB-12345678")
+  invoice_period?: string; // 統一發票所屬開獎期別 (例如 "2026-10")
+  invoice_random_code?: string; // 電子發票隨機碼 (4碼)
+  invoice_status?: 'pending' | 'won' | 'missed' | 'claimed'; // 對獎狀態：待開獎 | 已中獎 | 未中獎 | 已領獎
+  invoice_prize_amount?: number; // 中獎金額 (如 200, 1000)
+  invoice_prize_name?: string; // 中獎獎項 (如 "六獎", "特別獎")
   image_url?: string;
   is_settled: boolean;
   created_at: string;

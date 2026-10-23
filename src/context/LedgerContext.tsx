@@ -8,6 +8,8 @@ import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS } from '../lib/payment';
 import { DEFAULT_RECURRING_PRESETS, getCurrentPeriodKey, getBillPeriodLabel, getInstallmentInfo, appendPeriodKey } from '../lib/recurring';
 import { parseMemoNote, encodeMemoMerchantTag, decodeMemoMerchantTag, DEFAULT_MEMO_QUICK_TAGS, extractMemoTag, toggleChecklistItem } from '../lib/memo';
 import { CalendarSystem, MemoRepeatFrequency, getNextMemoReminderDate, formatMemoReminderBadge } from '../lib/lunar';
+import { formatInvoiceNumber, getInvoicePeriodKey, encodeInvoiceTag, decodeInvoiceTag, stripInvoiceTag } from '../lib/invoice';
+import { checkInvoiceWinning } from '../lib/lottery';
 import { APP_FULL_VERSION } from '../constants/version';
 import { getDeviceId, getDeviceName, getDevicePlatform } from '../lib/device';
 
@@ -91,6 +93,8 @@ const INITIAL_TRANSACTIONS: Transaction[] = [
     merchant: '好市多',
     payment_method: 'credit_card',
     account_id: '50000000-0000-4000-8000-000000000001', // 富邦 Costco
+    invoice_number: 'AB-88888888',
+    invoice_random_code: '1688',
     transacted_at: new Date(Date.now() - 3600000 * 4).toISOString(),
     note: 'Costco 週末採買牛奶與生鮮',
     is_settled: false,
@@ -243,6 +247,12 @@ interface LedgerContextType {
     is_reconciled?: boolean;
     completion_note?: string;
     linked_transaction_id?: string;
+    invoice_number?: string;
+    invoice_random_code?: string;
+    invoice_period?: string;
+    invoice_status?: 'pending' | 'won' | 'missed' | 'claimed';
+    invoice_prize_amount?: number;
+    invoice_prize_name?: string;
     splitWithIds?: string[];
   }) => Promise<string>;
   updateTransaction: (
@@ -260,6 +270,12 @@ interface LedgerContextType {
       completed_by?: string;
       completion_note?: string;
       linked_transaction_id?: string;
+      invoice_number?: string;
+      invoice_random_code?: string;
+      invoice_period?: string;
+      invoice_status?: 'pending' | 'won' | 'missed' | 'claimed';
+      invoice_prize_amount?: number;
+      invoice_prize_name?: string;
       transacted_at?: string;
       payment_method?: PaymentMethod;
       account_id?: string;
@@ -267,6 +283,7 @@ interface LedgerContextType {
       is_settled?: boolean;
     }
   ) => Promise<boolean>;
+  claimInvoicePrize: (transactionId: string) => Promise<boolean>;
   toggleMemoSettled: (id: string, completedByUserId?: string) => Promise<boolean>;
   deleteTransaction: (id: string) => Promise<void>;
   transferAllowance: (data: {
@@ -453,6 +470,74 @@ interface LedgerContextType {
 }
 
 const LedgerContext = createContext<LedgerContextType | null>(null);
+
+/**
+ * 發票屬性解析與實時對獎裝飾函式：自動補齊發票號碼、期別與最新中獎狀態
+ */
+export const hydrateTransactionWithInvoice = (t: any): Transaction => {
+  if (!t) return t;
+
+  let invoiceNumber = t.invoice_number;
+  let periodKey = t.invoice_period;
+  let randomCode = t.invoice_random_code;
+  let invoiceStatus = t.invoice_status;
+  let prizeAmount = t.invoice_prize_amount;
+  let prizeName = t.invoice_prize_name;
+
+  // 1. 若缺少 invoice_number，嘗試從 note 中解碼
+  if (!invoiceNumber && t.note) {
+    const decoded = decodeInvoiceTag(t.note);
+    if (decoded?.invoiceNumber) {
+      invoiceNumber = decoded.invoiceNumber;
+      periodKey = periodKey || decoded.periodKey;
+      randomCode = randomCode || decoded.randomCode;
+      invoiceStatus = invoiceStatus || decoded.status;
+      prizeAmount = prizeAmount !== undefined ? prizeAmount : decoded.prizeAmount;
+      prizeName = prizeName || decoded.prizeName;
+    }
+  }
+
+  // 2. 若有發票號碼，確保期別計算與實時開獎比對
+  if (invoiceNumber) {
+    invoiceNumber = formatInvoiceNumber(invoiceNumber);
+
+    if (!periodKey && t.transacted_at) {
+      periodKey = getInvoicePeriodKey(t.transacted_at).periodKey;
+    }
+
+    // 若尚未領獎，自動比對官方開獎號碼庫
+    if (periodKey && invoiceStatus !== 'claimed') {
+      const check = checkInvoiceWinning(invoiceNumber, periodKey);
+      if (check.isDrawn) {
+        if (check.isWon) {
+          invoiceStatus = 'won';
+          prizeAmount = check.prizeAmount;
+          prizeName = check.prizeName;
+        } else {
+          invoiceStatus = 'missed';
+          prizeAmount = 0;
+          prizeName = undefined;
+        }
+      } else {
+        invoiceStatus = 'pending';
+        prizeAmount = 0;
+        prizeName = undefined;
+      }
+    }
+
+    return {
+      ...t,
+      invoice_number: invoiceNumber,
+      invoice_period: periodKey,
+      invoice_random_code: randomCode,
+      invoice_status: invoiceStatus,
+      invoice_prize_amount: prizeAmount,
+      invoice_prize_name: prizeName,
+    };
+  }
+
+  return t;
+};
 
 // 成員名冊去重函式：相同 display_name 或相同 Google 綁定信箱者視為同一位家庭成員（支援多台手機/電腦認領同一身分及 Google 帳號授權）
 export const deduplicateMembers = (memberList: Profile[]): Profile[] => {
@@ -716,7 +801,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [rawMembers, setRawMembers] = useState<Profile[]>([]);
   const [memberAliasMap, setMemberAliasMap] = useState<Record<string, Profile>>({});
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
-  const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
+  const [transactions, setTransactions] = useState<Transaction[]>(() => INITIAL_TRANSACTIONS.map(hydrateTransactionWithInvoice));
   const [paymentAccounts, setPaymentAccounts] = useState<PaymentAccount[]>(DEMO_PAYMENT_ACCOUNTS);
   const [paymentMethods, setPaymentMethods] = useState<CustomPaymentMethod[]>(DEFAULT_PAYMENT_METHODS);
   const [recurringRules, setRecurringRules] = useState<RecurringRule[]>([]);
@@ -1308,7 +1393,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           setTransactions((prev) => {
             if (prev.some((t) => t.id === newRow.id)) return prev;
             const canonicalPayer = getMemberById(newRow.paid_by);
-            const item: Transaction = {
+            const item: Transaction = hydrateTransactionWithInvoice({
               ...newRow,
               type: resolvedType,
               reminder_date: reminderDate || newRow.reminder_date,
@@ -1321,7 +1406,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               paid_by: canonicalPayer?.id || newRow.paid_by,
               payer_profile: canonicalPayer || newRow.payer_profile,
               category: getCategoryById(newRow.category_id, newRow.category),
-            };
+            });
             const updated = [item, ...prev];
             inMemoryLedgerTxCacheRef.current.set(ledgerId, updated);
             persistTransactionsCache(updated, ledgerId);
@@ -1421,7 +1506,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const canonicalPayer = getMemberById(updatedRow.paid_by);
             const updated = prev.map((t) =>
               t.id === updatedRow.id
-                ? {
+                ? hydrateTransactionWithInvoice({
                     ...t,
                     ...updatedRow,
                     type: resolvedType,
@@ -1434,7 +1519,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     amount: resolvedType === 'memo' ? 0 : Number(updatedRow.amount),
                     payer_profile: canonicalPayer || updatedRow.payer_profile || t.payer_profile,
                     category: getCategoryById(updatedRow.category_id, updatedRow.category || t.category),
-                  }
+                  })
                 : t
             );
             inMemoryLedgerTxCacheRef.current.set(ledgerId, updated);
@@ -2375,8 +2460,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const memCached = inMemoryLedgerTxCacheRef.current.get(targetLedger.id);
     if (memCached && memCached.length > 0) {
       hasLocalCache = true;
-      localCachedTransactions = memCached;
-      setTransactions(memCached);
+      const hydratedMem = memCached.map(hydrateTransactionWithInvoice);
+      localCachedTransactions = hydratedMem;
+      setTransactions(hydratedMem);
     } else {
       try {
         const savedTxStr = (await AsyncStorage.getItem(`${STORAGE_KEYS.TRANSACTIONS}_${targetLedger.id}`)) ||
@@ -2387,8 +2473,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const matching = parsed.filter((t: any) => t && t.ledger_id === targetLedger.id);
             if (matching.length > 0) {
               hasLocalCache = true;
-              localCachedTransactions = matching;
-              setTransactions(matching);
+              const hydratedMatching = matching.map(hydrateTransactionWithInvoice);
+              localCachedTransactions = hydratedMatching;
+              setTransactions(hydratedMatching);
             }
           }
         }
@@ -2831,7 +2918,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (memoTag) recordMemoTag(memoTag);
       }
 
-      return {
+      return hydrateTransactionWithInvoice({
         ...t,
         type: resolvedType,
         reminder_date: reminderDate || t.reminder_date,
@@ -2844,7 +2931,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         paid_by: correctedPaidBy,
         payer_profile: canonicalPayer || t.payer_profile,
         category: getCategoryById(t.category_id, t.category),
-      };
+      });
     };
 
     // (D) 載入交易明細：本地快取搶先秒開 + 高效並發漸進載入海量歷史明細
@@ -6248,6 +6335,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     is_reconciled?: boolean;
     completion_note?: string;
     linked_transaction_id?: string;
+    invoice_number?: string;
+    invoice_random_code?: string;
+    invoice_period?: string;
+    invoice_status?: 'pending' | 'won' | 'missed' | 'claimed';
+    invoice_prize_amount?: number;
+    invoice_prize_name?: string;
     splitWithIds?: string[];
   }): Promise<string> => {
     if (currentLedger.is_read_only) {
@@ -6280,6 +6373,49 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     } else if (cleanMerchant) {
       recordMerchant(cleanMerchant);
+    }
+
+    // 發票資訊處理與自動對獎
+    let formattedInvoiceNumber: string | undefined = undefined;
+    let invoicePeriod = data.invoice_period;
+    let invoiceRandomCode = data.invoice_random_code ? data.invoice_random_code.trim() : undefined;
+    let invoiceStatus = data.invoice_status || 'pending';
+    let invoicePrizeAmount = data.invoice_prize_amount || 0;
+    let invoicePrizeName = data.invoice_prize_name;
+
+    if (data.invoice_number && data.invoice_number.trim()) {
+      formattedInvoiceNumber = formatInvoiceNumber(data.invoice_number.trim());
+      if (!invoicePeriod) {
+        invoicePeriod = getInvoicePeriodKey(data.transacted_at || new Date().toISOString()).periodKey;
+      }
+      if (invoiceStatus !== 'claimed' && invoicePeriod) {
+        const check = checkInvoiceWinning(formattedInvoiceNumber, invoicePeriod);
+        if (check.isDrawn) {
+          if (check.isWon) {
+            invoiceStatus = 'won';
+            invoicePrizeAmount = check.prizeAmount;
+            invoicePrizeName = check.prizeName;
+          } else {
+            invoiceStatus = 'missed';
+            invoicePrizeAmount = 0;
+            invoicePrizeName = undefined;
+          }
+        }
+      }
+    }
+
+    let finalNote = data.note || '';
+    if (formattedInvoiceNumber) {
+      const cleanUserNote = stripInvoiceTag(finalNote);
+      const invoiceTag = encodeInvoiceTag({
+        invoiceNumber: formattedInvoiceNumber,
+        periodKey: invoicePeriod,
+        randomCode: invoiceRandomCode,
+        status: invoiceStatus,
+        prizeAmount: invoicePrizeAmount,
+        prizeName: invoicePrizeName,
+      });
+      finalNote = cleanUserNote ? `${cleanUserNote} ${invoiceTag}` : invoiceTag;
     }
 
     const { data: { session } } = await supabase.auth.getSession();
@@ -6335,13 +6471,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       completed_by: data.completed_by,
       completion_note: data.completion_note || undefined,
       linked_transaction_id: data.linked_transaction_id || undefined,
+      invoice_number: formattedInvoiceNumber,
+      invoice_period: invoicePeriod,
+      invoice_random_code: invoiceRandomCode,
+      invoice_status: formattedInvoiceNumber ? invoiceStatus : undefined,
+      invoice_prize_amount: formattedInvoiceNumber ? invoicePrizeAmount : undefined,
+      invoice_prize_name: formattedInvoiceNumber ? invoicePrizeName : undefined,
       paid_by: validPaidBy,
       merchant: cleanMerchant,
       payment_method: data.payment_method || 'cash',
       account_id: data.account_id || undefined,
       payment_account: resolvedAccount,
       is_reconciled: data.is_reconciled || false,
-      note: data.note || '',
+      note: finalNote,
       transacted_at: data.transacted_at || new Date().toISOString(),
       is_settled: false,
       created_at: new Date().toISOString(),
@@ -6910,6 +7052,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       completed_by?: string;
       completion_note?: string;
       linked_transaction_id?: string;
+      invoice_number?: string;
+      invoice_random_code?: string;
+      invoice_period?: string;
+      invoice_status?: 'pending' | 'won' | 'missed' | 'claimed';
+      invoice_prize_amount?: number;
+      invoice_prize_name?: string;
       transacted_at?: string;
       payment_method?: PaymentMethod;
       account_id?: string;
@@ -6965,6 +7113,61 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } else if (cleanMerchant) {
         recordMerchant(cleanMerchant);
       }
+
+      // 發票資訊處理與自動對獎
+      let formattedInvoiceNumber: string | undefined = undefined;
+      let invoicePeriod = data.invoice_period !== undefined ? data.invoice_period : targetTx?.invoice_period;
+      let invoiceRandomCode = data.invoice_random_code !== undefined ? (data.invoice_random_code?.trim() || undefined) : targetTx?.invoice_random_code;
+      let invoiceStatus = data.invoice_status !== undefined ? data.invoice_status : (targetTx?.invoice_status || 'pending');
+      let invoicePrizeAmount = data.invoice_prize_amount !== undefined ? data.invoice_prize_amount : (targetTx?.invoice_prize_amount || 0);
+      let invoicePrizeName = data.invoice_prize_name !== undefined ? data.invoice_prize_name : targetTx?.invoice_prize_name;
+
+      const hasExplicitInvoiceNum = data.invoice_number !== undefined;
+      const targetInvoiceNum = hasExplicitInvoiceNum ? data.invoice_number?.trim() : targetTx?.invoice_number;
+
+      if (targetInvoiceNum) {
+        formattedInvoiceNumber = formatInvoiceNumber(targetInvoiceNum);
+        const effectiveDate = data.transacted_at || targetTx?.transacted_at || new Date().toISOString();
+        if (!invoicePeriod) {
+          invoicePeriod = getInvoicePeriodKey(effectiveDate).periodKey;
+        }
+        if (invoiceStatus !== 'claimed' && invoicePeriod) {
+          const check = checkInvoiceWinning(formattedInvoiceNumber, invoicePeriod);
+          if (check.isDrawn) {
+            if (check.isWon) {
+              invoiceStatus = 'won';
+              invoicePrizeAmount = check.prizeAmount;
+              invoicePrizeName = check.prizeName;
+            } else {
+              invoiceStatus = 'missed';
+              invoicePrizeAmount = 0;
+              invoicePrizeName = undefined;
+            }
+          }
+        }
+      }
+
+      const rawNote = data.note !== undefined ? data.note : (targetTx?.note || '');
+      const cleanUserNote = stripInvoiceTag(rawNote);
+      const effectiveNote = formattedInvoiceNumber
+        ? (cleanUserNote
+            ? `${cleanUserNote} ${encodeInvoiceTag({
+                invoiceNumber: formattedInvoiceNumber,
+                periodKey: invoicePeriod,
+                randomCode: invoiceRandomCode,
+                status: invoiceStatus,
+                prizeAmount: invoicePrizeAmount,
+                prizeName: invoicePrizeName,
+              })}`
+            : encodeInvoiceTag({
+                invoiceNumber: formattedInvoiceNumber,
+                periodKey: invoicePeriod,
+                randomCode: invoiceRandomCode,
+                status: invoiceStatus,
+                prizeAmount: invoicePrizeAmount,
+                prizeName: invoicePrizeName,
+              }))
+        : cleanUserNote;
 
       // 儲值卡餘額連動校正
       const oldAmount = targetTx?.amount || 0;
@@ -7032,6 +7235,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           return {
             ...t,
             ...data,
+            note: effectiveNote,
+            invoice_number: formattedInvoiceNumber,
+            invoice_period: invoicePeriod,
+            invoice_random_code: invoiceRandomCode,
+            invoice_status: formattedInvoiceNumber ? invoiceStatus : undefined,
+            invoice_prize_amount: formattedInvoiceNumber ? invoicePrizeAmount : undefined,
+            invoice_prize_name: formattedInvoiceNumber ? invoicePrizeName : undefined,
             amount: isTargetMemo ? 0 : (data.amount !== undefined ? data.amount : t.amount),
             reminder_date: isTargetMemo ? effectiveReminder : (data.reminder_date !== undefined ? (data.reminder_date || undefined) : t.reminder_date),
             reminder_calendar: isTargetMemo ? effectiveCalendar : t.reminder_calendar,
@@ -7144,16 +7354,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         if (hasMerchantColumnRef.current) {
           if (data.merchant !== undefined || isTargetMemo) updatePayload.merchant = cleanMerchant || null;
-          if (data.note !== undefined) updatePayload.note = data.note;
+          updatePayload.note = effectiveNote;
         } else {
           // 若雲端無 merchant 欄位，包裝進 note
           const effectiveMerchant = (data.merchant !== undefined || isTargetMemo) ? cleanMerchant : targetTx?.merchant;
-          const effectiveNote = data.note !== undefined ? data.note : (targetTx?.note || '');
-          if (data.merchant !== undefined || data.note !== undefined || isTargetMemo) {
-            updatePayload.note = effectiveMerchant
-              ? `[${effectiveMerchant}] ${effectiveNote}`.trim()
-              : effectiveNote;
-          }
+          updatePayload.note = effectiveMerchant
+            ? `[${effectiveMerchant}] ${effectiveNote}`.trim()
+            : effectiveNote;
         }
 
         let { error } = await supabase
@@ -7177,7 +7384,6 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           delete updatePayload.completion_note;
           delete updatePayload.linked_transaction_id;
           const effectiveMerchant = data.merchant !== undefined ? cleanMerchant : targetTx?.merchant;
-          const effectiveNote = data.note !== undefined ? data.note : (targetTx?.note || '');
           updatePayload.note = effectiveMerchant
             ? `[${effectiveMerchant}] ${effectiveNote}`.trim()
             : effectiveNote;
@@ -7250,6 +7456,86 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return true;
     } catch (err) {
       console.warn('更新交易例外錯誤:', err);
+      return false;
+    }
+  };
+
+  // 統一發票中獎一鍵兌領入帳：更新該發票為 claimed，並自動新增一筆收入明細
+  const claimInvoicePrize = async (transactionId: string): Promise<boolean> => {
+    try {
+      const targetTx = transactions.find(t => t.id === transactionId);
+      if (!targetTx) {
+        safeAlert('找不到發票', '查無此筆交易明細，無法兌領。');
+        return false;
+      }
+
+      if (!targetTx.invoice_number) {
+        safeAlert('無發票資訊', '此筆明細並無發票號碼。');
+        return false;
+      }
+
+      if (targetTx.invoice_status === 'claimed') {
+        safeAlert('已兌領過', '此張發票先前已經兌領入帳囉！');
+        return false;
+      }
+
+      const prizeAmount = targetTx.invoice_prize_amount || 0;
+      if (prizeAmount <= 0) {
+        safeAlert('未中獎', '此張發票未中獎或獎金為 0 元，無法兌領。');
+        return false;
+      }
+
+      // 1. 將該發票明細標記為已兌領 (claimed)
+      const cleanUserNote = stripInvoiceTag(targetTx.note);
+      const updatedTag = encodeInvoiceTag({
+        invoiceNumber: targetTx.invoice_number,
+        periodKey: targetTx.invoice_period,
+        randomCode: targetTx.invoice_random_code,
+        status: 'claimed',
+        prizeAmount: prizeAmount,
+        prizeName: targetTx.invoice_prize_name,
+      });
+      const updatedNote = cleanUserNote ? `${cleanUserNote} ${updatedTag}` : updatedTag;
+
+      await updateTransaction(transactionId, {
+        note: updatedNote,
+        invoice_status: 'claimed',
+      });
+
+      // 2. 自動尋找收入分類 (優先尋找「零用錢」、「投資理財」或「薪資收入」，或任何 income 分類)
+      const incomeCategory =
+        categories.find(c => c.type === 'income' && (c.name.includes('獎') || c.name.includes('零用') || c.name.includes('理財') || c.name.includes('薪資'))) ||
+        categories.find(c => c.type === 'income') ||
+        DEFAULT_CATEGORIES[9]; // 零用錢
+
+      // 3. 自動新增一筆收入 (歸屬於發票持有/記帳者)
+      const prizeName = targetTx.invoice_prize_name || '中獎';
+      const payerId = targetTx.paid_by || targetTx.creator_id || effectiveCurrentUser?.id || DEMO_USER_DAD;
+
+      await addTransaction({
+        amount: prizeAmount,
+        type: 'income',
+        category_id: incomeCategory.id,
+        paid_by: payerId,
+        merchant: '統一發票中獎',
+        note: `🎉 發票兌領入帳：${targetTx.invoice_number} (${prizeName})`,
+        linked_transaction_id: targetTx.id,
+      });
+
+      triggerLiveToast({
+        id: `invoice-claimed-${Date.now()}`,
+        type: 'complete',
+        actorName: effectiveCurrentUser?.display_name || '發票中心',
+        avatar: '🎉',
+        title: '🎉 發票獎金兌領成功！',
+        message: `已將發票 ${targetTx.invoice_number} 獎金 NT$ ${prizeAmount.toLocaleString()} 入帳至家庭記帳本`,
+        createdAt: Date.now(),
+      });
+
+      return true;
+    } catch (err) {
+      console.warn('發票獎金兌領失敗:', err);
+      safeAlert('兌領失敗', '處理發票兌領入帳時發生錯誤，請稍後再試。');
       return false;
     }
   };
@@ -8598,6 +8884,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         },
         addTransaction,
         updateTransaction,
+        claimInvoicePrize,
         toggleMemoSettled,
         deleteTransaction,
         transferAllowance,

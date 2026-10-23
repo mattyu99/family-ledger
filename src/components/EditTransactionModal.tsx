@@ -65,6 +65,14 @@ import {
   getNextMemoReminderDate,
   formatMemoReminderBadge,
 } from '../lib/lunar';
+import {
+  parseTaiwanInvoiceQRCode,
+  formatInvoiceNumber,
+  getInvoicePeriodKey,
+  isValidInvoiceNumber,
+  stripInvoiceTag,
+} from '../lib/invoice';
+import { checkInvoiceWinning } from '../lib/lottery';
 import { DatePickerModal } from './DatePickerModal';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -261,6 +269,55 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const [discountLabelTouched, setDiscountLabelTouched] = useState<boolean>(false);
   const [discountCalcMode, setDiscountCalcMode] = useState<'subtract' | 'already_net'>('already_net');
   const activeInputScrollYRef = useRef<number | null>(null);
+
+  // 統一發票資訊狀態
+  const [invoiceNumber, setInvoiceNumber] = useState<string>(() => transaction?.invoice_number || '');
+  const [invoiceRandomCode, setInvoiceRandomCode] = useState<string>(() => transaction?.invoice_random_code || '');
+  const [invoiceSectionY, setInvoiceSectionY] = useState<number>(0);
+
+  const handleInvoiceInput = (text: string) => {
+    const parsed = parseTaiwanInvoiceQRCode(text);
+    if (parsed && parsed.isQRCode) {
+      setInvoiceNumber(parsed.invoiceNumber);
+      if (parsed.randomCode) setInvoiceRandomCode(parsed.randomCode);
+      if (parsed.totalAmount && (!amount || amount === '0' || amount === '')) {
+        setAmount(String(parsed.totalAmount));
+      }
+      if (parsed.invoiceDate) {
+        try {
+          const d = new Date(parsed.invoiceDate);
+          if (!isNaN(d.getTime())) setTransactedAt(d.toISOString());
+        } catch {}
+      }
+      return;
+    }
+    setInvoiceNumber(formatInvoiceNumber(text));
+  };
+
+  const handlePasteInvoice = async () => {
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim()) {
+          handleInvoiceInput(text.trim());
+          if (typeof window !== 'undefined') window.alert(`已辨識並帶入發票資訊！\n號碼：${formatInvoiceNumber(text.slice(0, 10))}`);
+          return;
+        }
+      }
+    } catch {}
+    if (typeof window !== 'undefined') window.alert('請直接於發票號碼輸入框貼上「AB-12345678」或電子發票 QR Code 77 碼文字，系統將自動解析號碼、金額與日期！');
+  };
+
+  const invoicePreview = React.useMemo(() => {
+    if (!invoiceNumber || !isValidInvoiceNumber(invoiceNumber)) return null;
+    const { periodKey, periodLabel } = getInvoicePeriodKey(transactedAt);
+    const winning = checkInvoiceWinning(invoiceNumber, periodKey);
+    return {
+      periodKey,
+      periodLabel,
+      winning,
+    };
+  }, [invoiceNumber, transactedAt]);
 
   // 監聽鍵盤高度 (Android, iOS 與 Mobile Web)
   useEffect(() => {
@@ -507,9 +564,11 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       setPaymentMethod(transaction.payment_method || 'cash');
       setSelectedAccountId(transaction.account_id || '');
       setMerchant(transaction.merchant || '');
+      setInvoiceNumber(transaction.invoice_number || '');
+      setInvoiceRandomCode(transaction.invoice_random_code || '');
       if (transaction.type === 'memo') {
         setAmount('');
-        setNote(transaction.note || '');
+        setNote(stripInvoiceTag(transaction.note || ''));
         setShowDiscountPanel(false);
         setDiscountAmount('');
       } else {
@@ -521,7 +580,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             ? '0'
             : ''
         );
-        setNote(parsedDisc.cleanNote);
+        setNote(stripInvoiceTag(parsedDisc.cleanNote));
         if (parsedDisc.hasDiscount) {
           setShowDiscountPanel(true);
           setDiscountAmount(String(parsedDisc.discountAmount));
@@ -932,6 +991,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         payment_method: paymentMethod,
         account_id: selectedAccountId || undefined,
         note: finalNote,
+        invoice_number: invoiceNumber.trim() || undefined,
+        invoice_random_code: invoiceRandomCode.trim() || undefined,
         transacted_at: transactedAt || transaction.transacted_at,
       });
 
@@ -2321,6 +2382,80 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 maxFontSizeMultiplier={1.15}
               />
             </View>
+
+            {/* 統一發票輸入與對獎預覽 */}
+            <View onLayout={(e) => setInvoiceSectionY(e.nativeEvent.layout.y)} style={styles.invoiceInputContainer}>
+              <View style={styles.sectionLabelRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>🧾 統一發票</Text>
+                  <Text style={styles.optionalBadgeText} maxFontSizeMultiplier={1.08}>(選填 · 自動對獎)</Text>
+                </View>
+                {canEdit && (
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    style={styles.invoicePasteBtn}
+                    onPress={handlePasteInvoice}
+                  >
+                    <Text style={styles.invoicePasteBtnText} maxFontSizeMultiplier={1.08}>📋 貼上/解析發票</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              <View style={styles.invoiceInputRow}>
+                <TextInput
+                  style={[
+                    styles.invoiceNumberInput,
+                    !canEdit && styles.readOnlyNoteInput,
+                    !!invoicePreview?.winning.isWon && styles.invoiceInputWon,
+                  ]}
+                  placeholder={canEdit ? "例如：AB-12345678 (貼上QR碼自動解析)" : "無發票紀錄"}
+                  placeholderTextColor="#9CA3AF"
+                  value={invoiceNumber}
+                  onChangeText={handleInvoiceInput}
+                  editable={canEdit}
+                  autoCapitalize="characters"
+                  maxLength={11}
+                  onFocus={() => scrollToInput(invoiceSectionY, 450)}
+                  returnKeyType="next"
+                  maxFontSizeMultiplier={1.15}
+                />
+                <TextInput
+                  style={[styles.invoiceRandomCodeInput, !canEdit && styles.readOnlyNoteInput]}
+                  placeholder="隨機碼"
+                  placeholderTextColor="#9CA3AF"
+                  value={invoiceRandomCode}
+                  onChangeText={setInvoiceRandomCode}
+                  editable={canEdit}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  onFocus={() => scrollToInput(invoiceSectionY, 450)}
+                  maxFontSizeMultiplier={1.15}
+                />
+              </View>
+
+              {/* 即時對獎與期別指示徽章 */}
+              {invoicePreview && (
+                <View style={[
+                  styles.invoiceStatusRow,
+                  invoicePreview.winning.isWon && styles.invoiceStatusRowWon,
+                  transaction?.invoice_status === 'claimed' && styles.invoiceStatusRowClaimed,
+                ]}>
+                  <Text style={[
+                    styles.invoiceStatusText,
+                    invoicePreview.winning.isWon && styles.invoiceStatusTextWon,
+                    transaction?.invoice_status === 'claimed' && styles.invoiceStatusTextClaimed,
+                  ]} maxFontSizeMultiplier={1.08}>
+                    {transaction?.invoice_status === 'claimed'
+                      ? `✅ 已兌領獎金 NT$ ${(transaction.invoice_prize_amount || invoicePreview.winning.prizeAmount).toLocaleString()}`
+                      : invoicePreview.winning.isDrawn
+                      ? invoicePreview.winning.isWon
+                        ? `🎉 中獎 NT$ ${invoicePreview.winning.prizeAmount.toLocaleString()} (${invoicePreview.winning.prizeName})`
+                        : `未中獎 (${invoicePreview.periodLabel})`
+                      : `🎯 歸屬 ${invoicePreview.periodLabel} (待開獎)`}
+                  </Text>
+                </View>
+              )}
+            </View>
           </>
         )}
 
@@ -3701,5 +3836,92 @@ const styles = StyleSheet.create({
   destinationMemberSub: {
     fontSize: 11,
     color: '#64748B',
+  },
+  invoiceInputContainer: {
+    marginTop: 14,
+  },
+  optionalBadgeText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    fontWeight: '500',
+  },
+  invoicePasteBtn: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  invoicePasteBtnText: {
+    fontSize: 11.5,
+    color: '#2563EB',
+    fontWeight: '600',
+  },
+  invoiceInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  invoiceNumberInput: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: '#1F2937',
+    fontWeight: '600',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  invoiceInputWon: {
+    borderColor: '#F59E0B',
+    backgroundColor: '#FEF3C7',
+  },
+  invoiceRandomCodeInput: {
+    width: 76,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: '#1F2937',
+    textAlign: 'center',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  invoiceStatusRow: {
+    marginTop: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    backgroundColor: '#F3F4F6',
+    alignSelf: 'flex-start',
+  },
+  invoiceStatusRowWon: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  invoiceStatusRowClaimed: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#10B981',
+  },
+  invoiceStatusText: {
+    fontSize: 12,
+    color: '#4B5563',
+    fontWeight: '600',
+  },
+  invoiceStatusTextWon: {
+    color: '#B45309',
+    fontWeight: '700',
+  },
+  invoiceStatusTextClaimed: {
+    color: '#047857',
+    fontWeight: '700',
   },
 });

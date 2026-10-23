@@ -6,6 +6,7 @@ import { getCategoryIcon } from '../lib/icons';
 import { formatPaymentLabel, parseExpenseDiscount, isTransferToMember } from '../lib/payment';
 import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
+import { stripInvoiceTag } from '../lib/invoice';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
   <RNText
@@ -304,9 +305,10 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
 
   const linkedMemo = transaction.linked_transaction_id ? transactions.find(t => t.id === transaction.linked_transaction_id && t.type === 'memo') : undefined;
   const parsedDiscount = isExpense ? parseExpenseDiscount(transaction.note) : null;
-  const displayNote = parsedDiscount?.hasDiscount
+  const rawNote = parsedDiscount?.hasDiscount
     ? parsedDiscount.cleanNote || `${parsedDiscount.discountLabel}折抵消費`
     : transaction.note || '無備註';
+  const displayNote = stripInvoiceTag(rawNote) || (rawNote && rawNote !== '無備註' ? '' : '無備註');
 
   return (
     <TouchableOpacity
@@ -398,6 +400,31 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
               <View style={styles.expenseLinkedMemoTag}>
                 <Text style={styles.expenseLinkedMemoTagText} numberOfLines={1} maxFontSizeMultiplier={1.08}>
                   📋 連動待辦
+                </Text>
+              </View>
+            )}
+            {!!transaction.invoice_number && (
+              <View
+                style={[
+                  styles.invoiceBadge,
+                  transaction.invoice_status === 'won' && styles.invoiceBadgeWon,
+                  transaction.invoice_status === 'claimed' && styles.invoiceBadgeClaimed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.invoiceBadgeText,
+                    transaction.invoice_status === 'won' && styles.invoiceBadgeTextWon,
+                    transaction.invoice_status === 'claimed' && styles.invoiceBadgeTextClaimed,
+                  ]}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={1.08}
+                >
+                  {transaction.invoice_status === 'won'
+                    ? `🎉 中獎 $${transaction.invoice_prize_amount?.toLocaleString()} (${transaction.invoice_prize_name || '中獎'})`
+                    : transaction.invoice_status === 'claimed'
+                    ? `✅ 已兌領 $${transaction.invoice_prize_amount?.toLocaleString()}`
+                    : `🧾 ${transaction.invoice_number}`}
                 </Text>
               </View>
             )}
@@ -967,5 +994,35 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     fontWeight: '700',
     color: '#059669',
+  },
+  invoiceBadge: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    marginRight: 4,
+  },
+  invoiceBadgeWon: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F59E0B',
+  },
+  invoiceBadgeClaimed: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#10B981',
+  },
+  invoiceBadgeText: {
+    fontSize: 11,
+    color: '#2563EB',
+    fontWeight: '600',
+  },
+  invoiceBadgeTextWon: {
+    color: '#B45309',
+    fontWeight: '700',
+  },
+  invoiceBadgeTextClaimed: {
+    color: '#047857',
+    fontWeight: '700',
   },
 });
