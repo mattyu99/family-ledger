@@ -31,12 +31,17 @@ interface InvoiceLotteryModalProps {
   visible: boolean;
   onClose: () => void;
   initialPeriodKey?: string;
+  onSelectTransaction?: (transaction: Transaction) => void;
 }
+
+// 記住使用者上次選看的發票雙月期別，在來回查看記帳明細時無縫維持當前期別
+let lastViewedPeriodKey: string | undefined = undefined;
 
 export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
   visible,
   onClose,
   initialPeriodKey,
+  onSelectTransaction,
 }) => {
   const { transactions, claimInvoicePrize, getMemberById, currentUser } = useLedger();
 
@@ -101,7 +106,7 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
   }, [transactions, drawsMap]);
 
   const [selectedPeriodKey, setSelectedPeriodKey] = useState<string>(() => {
-    return initialPeriodKey || availablePeriods[0]?.periodKey || '2026-08';
+    return initialPeriodKey || lastViewedPeriodKey || availablePeriods[0]?.periodKey || '2026-08';
   });
 
   const selectedPeriodObj = useMemo(() => {
@@ -204,7 +209,10 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
                   <TouchableOpacity
                     key={p.periodKey}
                     style={[styles.periodChip, isSelected && styles.periodChipActive]}
-                    onPress={() => setSelectedPeriodKey(p.periodKey)}
+                    onPress={() => {
+                      lastViewedPeriodKey = p.periodKey;
+                      setSelectedPeriodKey(p.periodKey);
+                    }}
                     activeOpacity={0.7}
                   >
                     <Text style={[styles.periodChipText, isSelected && styles.periodChipTextActive]}>
@@ -302,7 +310,7 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
             {/* 發票明細清單 */}
             <View style={styles.listSectionHeader}>
               <Text style={styles.listSectionTitle}>📋 本期記錄之發票 ({evaluatedTransactions.length})</Text>
-              <Text style={styles.listSectionHint}>自動依照消費日期歸入該期別</Text>
+              <Text style={styles.listSectionHint}>點擊任一發票可查看或編輯記帳明細 ›</Text>
             </View>
 
             {evaluatedTransactions.length === 0 ? (
@@ -324,15 +332,20 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
                 const prizeName = tx.computedPrizeName || tx.invoice_prize_name || '中獎';
 
                 return (
-                  <View
+                  <TouchableOpacity
                     key={tx.id}
                     style={[
                       styles.invoiceCard,
                       (isWon || isClaimed) && styles.invoiceCardWon,
                     ]}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      lastViewedPeriodKey = selectedPeriodKey;
+                      onSelectTransaction?.(tx);
+                    }}
                   >
                     <View style={styles.invoiceCardHeader}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
                         <Text style={styles.invoiceNumText}>
                           🧾 {formatInvoiceNumber(tx.invoice_number || '')}
                         </Text>
@@ -367,7 +380,7 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
                     </View>
 
                     <View style={styles.invoiceCardBody}>
-                      <View style={{ flex: 1 }}>
+                      <View style={{ flex: 1, paddingRight: 8 }}>
                         <Text style={styles.invoiceMerchantText} numberOfLines={1}>
                           {tx.merchant || tx.category?.name || '一般消費'}
                         </Text>
@@ -376,18 +389,24 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
                         </Text>
                       </View>
 
-                      {/* 若中獎且尚未領獎，顯示一鍵兌領入帳按鈕 */}
-                      {isWon && !isClaimed && (
-                        <TouchableOpacity
-                          style={styles.claimBtn}
-                          onPress={() => claimInvoicePrize(tx.id)}
-                          activeOpacity={0.8}
-                        >
-                          <Text style={styles.claimBtnText}>💰 兌領入帳</Text>
-                        </TouchableOpacity>
-                      )}
+                      {/* 右側：兌領入帳按鈕與查看箭頭 */}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {isWon && !isClaimed && (
+                          <TouchableOpacity
+                            style={styles.claimBtn}
+                            onPress={(e) => {
+                              e?.stopPropagation?.();
+                              claimInvoicePrize(tx.id);
+                            }}
+                            activeOpacity={0.8}
+                          >
+                            <Text style={styles.claimBtnText}>💰 兌領入帳</Text>
+                          </TouchableOpacity>
+                        )}
+                        <Text style={styles.cardArrow}>›</Text>
+                      </View>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 );
               })
             )}
@@ -810,5 +829,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  cardArrow: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#94A3B8',
+    marginLeft: 2,
   },
 });

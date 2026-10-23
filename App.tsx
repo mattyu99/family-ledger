@@ -268,6 +268,7 @@ function MainApp() {
   const [completionTempNote, setCompletionTempNote] = useState<string>('');
   const [completionTempCompleter, setCompletionTempCompleter] = useState<string>('');
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const returnToInvoiceLotteryRef = useRef<boolean>(false);
 
   // 待辦打勾彈出辦妥確認與連動記帳彈窗
   const handleOpenMemoCompletion = (tx: Transaction) => {
@@ -6112,7 +6113,13 @@ function MainApp() {
         key={editingTransaction?.id || 'edit-tx-modal'}
         visible={!!editingTransaction}
         transaction={editingTransaction}
-        onClose={() => setEditingTransaction(null)}
+        onClose={() => {
+          setEditingTransaction(null);
+          if (returnToInvoiceLotteryRef.current) {
+            returnToInvoiceLotteryRef.current = false;
+            setInvoiceLotteryModalVisible(true);
+          }
+        }}
         onLinkExpense={(memoTx) => {
           setEditingTransaction(null);
           setModalMode('expense');
@@ -6164,7 +6171,15 @@ function MainApp() {
       {/* 🧾 統一發票對獎中心彈窗 */}
       <InvoiceLotteryModal
         visible={invoiceLotteryModalVisible}
-        onClose={() => setInvoiceLotteryModalVisible(false)}
+        onClose={() => {
+          returnToInvoiceLotteryRef.current = false;
+          setInvoiceLotteryModalVisible(false);
+        }}
+        onSelectTransaction={(tx) => {
+          returnToInvoiceLotteryRef.current = true;
+          setInvoiceLotteryModalVisible(false);
+          setEditingTransaction(tx);
+        }}
       />
 
       {/* 收支明細月份/成員篩選彈窗 */}
