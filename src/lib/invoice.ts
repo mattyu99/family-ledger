@@ -24,6 +24,9 @@ export interface ParsedInvoiceData {
   defaultCategoryName?: string;// 建議之記帳分類 (例如 "生鮮超市", "餐飲伙食")
   items?: InvoiceItem[];       // 右方 QR Code 或商品品項明細
   itemsNote?: string;          // 品項明細排版文字 (例如 "全脂鮮奶 x1 $89、草莓土司 x1 $40")
+  totalItemsCount?: number;    // 該張發票實際品目總筆數 (十進位)
+  recordedItemsCount?: number; // 條碼記載品目筆數 (十進位)
+  isRightQRCode?: boolean;     // 是否為右側溢位明細條碼
   isQRCode: boolean;           // 是否從 QR Code 解析
 }
 
@@ -171,21 +174,33 @@ export const parseInvoiceItemsFromTokens = (tokens: string[]): InvoiceItem[] => 
   return items;
 };
 
+export interface LeftQRCodeTailParseResult {
+  items: InvoiceItem[];
+  recordedItemsCount?: number;
+  totalItemsCount?: number;
+}
+
 /**
- * 解析電子發票左側 QR Code 尾端 (77 碼固定表頭之後) 攜帶之商品品項清單
+ * 解析電子發票左側 QR Code 尾端 (77 碼固定表頭之後) 攜帶之商品品項清單與筆數資訊
  * 財政部標準延伸表頭：:營業人自用區(10碼):二維條碼記載完整品目筆數:該張發票交易品目總筆數:中文編碼參數:品名1:數量1:單價1...
  */
-export const parseTaiwanInvoiceLeftQRCodeItems = (qrText: string): InvoiceItem[] => {
-  if (!qrText || qrText.length <= 77) return [];
+export const parseTaiwanInvoiceLeftQRCodeItems = (qrText: string): LeftQRCodeTailParseResult => {
+  if (!qrText || qrText.length <= 77) return { items: [] };
   const tail = qrText.slice(77);
   const rawTokens = tail.split(':').map(t => t.trim());
   const tokens = rawTokens[0] === '' ? rawTokens.slice(1) : rawTokens;
 
+  let recordedItemsCount: number | undefined = undefined;
+  let totalItemsCount: number | undefined = undefined;
+
   // 檢查是否符合標準延伸表頭：[營業人自用區(10碼或純星號), 品目筆數, 總品目筆數, 中文編碼參數, 品名1...]
   if (tokens.length >= 7 && (/^\*+$/.test(tokens[0]) || tokens[0].length === 10) && !isNaN(parseFloat(tokens[1]))) {
-    return parseInvoiceItemsFromTokens(tokens.slice(4));
+    recordedItemsCount = parseInt(tokens[1], 10);
+    totalItemsCount = parseInt(tokens[2], 10);
+    const items = parseInvoiceItemsFromTokens(tokens.slice(4));
+    return { items, recordedItemsCount, totalItemsCount };
   }
-  return parseInvoiceItemsFromTokens(tokens);
+  return { items: parseInvoiceItemsFromTokens(tokens) };
 };
 
 /**
@@ -205,6 +220,28 @@ export const parseTaiwanInvoiceRightQRCode = (qrText: string): InvoiceItem[] => 
   }
   const rawTokens = raw.split(':').map(t => t.trim());
   return parseInvoiceItemsFromTokens(rawTokens);
+};
+
+/**
+ * 合併左側發票核心資料與右側溢位品項資料
+ */
+export const mergeParsedInvoiceData = (
+  left: ParsedInvoiceData,
+  right: ParsedInvoiceData
+): ParsedInvoiceData => {
+  const base = left.invoiceNumber ? left : right;
+  const other = left.invoiceNumber ? right : left;
+
+  const leftItems = base.items || [];
+  const rightItems = other.items || [];
+  const combinedItems: InvoiceItem[] = [...leftItems, ...rightItems];
+
+  const itemsNote = formatInvoiceItemsToNote(combinedItems);
+  return {
+    ...base,
+    items: combinedItems,
+    itemsNote,
+  };
 };
 
 /**
@@ -280,7 +317,7 @@ export const parseTaiwanInvoiceQRCode = (
   if (!qrText || typeof qrText !== 'string') return null;
   const raw = qrText.trim();
 
-  // 若使用者只掃描了右方 QR Code (開頭為 **)
+  // 若使用者掃描了右方 QR Code (開頭為 **)
   if (raw.startsWith('**')) {
     const items = parseTaiwanInvoiceRightQRCode(raw);
     const itemsNote = formatInvoiceItemsToNote(items);
@@ -294,6 +331,7 @@ export const parseTaiwanInvoiceQRCode = (
       totalAmount: sumAmount > 0 ? sumAmount : undefined,
       items,
       itemsNote,
+      isRightQRCode: true,
       isQRCode: true,
     };
   }
@@ -329,11 +367,17 @@ export const parseTaiwanInvoiceQRCode = (
       // 檢查 QR Code 尾端是否同時包含商品品項明細 (左側 QR Code 尾端延伸或右側 QR Code)
       let items: InvoiceItem[] | undefined = undefined;
       let itemsNote: string | undefined = undefined;
+      let recordedItemsCount: number | undefined = undefined;
+      let totalItemsCount: number | undefined = undefined;
+
       if (raw.length > 77) {
-        items = parseTaiwanInvoiceLeftQRCodeItems(raw);
-        if (items.length > 0) {
+        const leftTailRes = parseTaiwanInvoiceLeftQRCodeItems(raw);
+        if (leftTailRes.items.length > 0) {
+          items = leftTailRes.items;
           itemsNote = formatInvoiceItemsToNote(items);
         }
+        recordedItemsCount = leftTailRes.recordedItemsCount;
+        totalItemsCount = leftTailRes.totalItemsCount;
       }
       if ((!items || items.length === 0) && (raw.includes(':**') || raw.includes('**'))) {
         items = parseTaiwanInvoiceRightQRCode(raw);
@@ -357,6 +401,8 @@ export const parseTaiwanInvoiceQRCode = (
         defaultCategoryName: matchedSeller?.defaultCategoryName,
         items,
         itemsNote,
+        recordedItemsCount,
+        totalItemsCount,
         isQRCode: true,
       };
     } catch {

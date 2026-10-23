@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Modal,
   View,
@@ -12,7 +12,11 @@ import {
 } from 'react-native';
 import { CameraView, useCameraPermissions, scanFromURLAsync } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-import { parseTaiwanInvoiceQRCode, ParsedInvoiceData } from '../lib/invoice';
+import {
+  parseTaiwanInvoiceQRCode,
+  mergeParsedInvoiceData,
+  ParsedInvoiceData,
+} from '../lib/invoice';
 import { useLedger } from '../context/LedgerContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -44,6 +48,23 @@ export const InvoiceScannerModal: React.FC<InvoiceScannerModalProps> = ({
   const [processingImage, setProcessingImage] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // 雙碼連續辨識與合併狀態
+  const pendingLeftRef = useRef<ParsedInvoiceData | null>(null);
+  const pendingRightRef = useRef<ParsedInvoiceData | null>(null);
+  const autoFinishTimerRef = useRef<any>(null);
+  const [waitingForRightCode, setWaitingForRightCode] = useState<boolean>(false);
+  const [statusMessage, setStatusMessage] = useState<string>('請將鏡頭對準發票【QR Code】');
+
+  const finishWithResult = (finalData: ParsedInvoiceData) => {
+    if (autoFinishTimerRef.current) {
+      clearTimeout(autoFinishTimerRef.current);
+      autoFinishTimerRef.current = null;
+    }
+    setScanned(true);
+    onScanSuccess(finalData);
+    onClose();
+  };
+
   // 當彈窗開啟時重設掃描狀態
   useEffect(() => {
     if (visible) {
@@ -51,21 +72,80 @@ export const InvoiceScannerModal: React.FC<InvoiceScannerModalProps> = ({
       setErrorMessage(null);
       setProcessingImage(false);
       setEnableTorch(false);
+      pendingLeftRef.current = null;
+      pendingRightRef.current = null;
+      setWaitingForRightCode(false);
+      setStatusMessage('請將鏡頭對準發票【QR Code】');
+      if (autoFinishTimerRef.current) {
+        clearTimeout(autoFinishTimerRef.current);
+        autoFinishTimerRef.current = null;
+      }
+    } else {
+      if (autoFinishTimerRef.current) {
+        clearTimeout(autoFinishTimerRef.current);
+        autoFinishTimerRef.current = null;
+      }
     }
   }, [visible]);
 
-  // 即時掃描處理
+  // 即時掃描處理 (支援單畫面雙碼無縫融合)
   const handleBarcodeScanned = ({ data }: { data: string }) => {
     if (scanned || !data) return;
     const parsed = parseTaiwanInvoiceQRCode(data, taxIdMerchantMap);
-    if (parsed && (parsed.invoiceNumber || parsed.items)) {
-      setScanned(true);
-      onScanSuccess(parsed);
-      onClose();
+    if (!parsed) return;
+
+    // 情況 A：讀取到左側 QR Code (具發票號碼、金額與日期核心資訊)
+    if (parsed.invoiceNumber) {
+      if (pendingRightRef.current) {
+        // 先前同一畫面中已捕捉到右側溢位明細，雙碼瞬間合體！
+        const merged = mergeParsedInvoiceData(parsed, pendingRightRef.current);
+        finishWithResult(merged);
+        return;
+      }
+
+      // 檢查發票是否有右側溢位品項 (總筆數 > 條碼所載筆數)
+      const hasOverflow = Boolean(
+        parsed.totalItemsCount &&
+        parsed.recordedItemsCount &&
+        parsed.totalItemsCount > parsed.recordedItemsCount
+      );
+
+      if (hasOverflow) {
+        pendingLeftRef.current = parsed;
+        setWaitingForRightCode(true);
+        setStatusMessage(`✅ 已讀取左碼 (${parsed.invoiceNumber}) · 自動捕捉右碼明細中...`);
+
+        // 啟動 2 秒容錯倒數：若鏡頭未再抓到右側條碼，自動以現有品項與號碼金額完成帶入，絕不卡住使用者
+        if (!autoFinishTimerRef.current) {
+          autoFinishTimerRef.current = setTimeout(() => {
+            if (pendingLeftRef.current && !scanned) {
+              finishWithResult(pendingLeftRef.current);
+            }
+          }, 2000);
+        }
+      } else {
+        // 品項已全數包含於左碼 (超商/一般消費 1~5 樣)，直接完成秒進！
+        finishWithResult(parsed);
+      }
+      return;
+    }
+
+    // 情況 B：讀取到右側 QR Code (純溢位品項清單，無發票號碼)
+    if (parsed.isRightQRCode || (parsed.items && parsed.items.length > 0)) {
+      if (pendingLeftRef.current) {
+        // 左碼已在等待，右碼一出現立刻完成融合！
+        const merged = mergeParsedInvoiceData(pendingLeftRef.current, parsed);
+        finishWithResult(merged);
+        return;
+      }
+
+      // 先抓到右碼，暫存品項並提示鏡頭移向左側
+      pendingRightRef.current = parsed;
+      setStatusMessage(`✅ 已捕捉右側明細 (${parsed.items?.length || 0}項) · 請將鏡頭對準左側條碼`);
     }
   };
 
-  // 從手機相簿選取截圖進行辨識 (完美支援雲端發票無紙本情境)
+  // 從手機相簿選取截圖進行辨識 (完美支援雲端發票無紙本情境，支援單截圖雙碼同時辨識)
   const handlePickImage = async () => {
     try {
       setProcessingImage(true);
@@ -86,14 +166,33 @@ export const InvoiceScannerModal: React.FC<InvoiceScannerModalProps> = ({
       const barcodeResults = await scanFromURLAsync(imageUri, ['qr']);
 
       if (barcodeResults && barcodeResults.length > 0) {
+        let leftParsed: ParsedInvoiceData | null = null;
+        let rightParsed: ParsedInvoiceData | null = null;
+
         for (const b of barcodeResults) {
-          const parsed = parseTaiwanInvoiceQRCode(b.data, taxIdMerchantMap);
-          if (parsed && (parsed.invoiceNumber || parsed.items)) {
-            setScanned(true);
-            onScanSuccess(parsed);
-            onClose();
-            return;
+          const p = parseTaiwanInvoiceQRCode(b.data, taxIdMerchantMap);
+          if (p) {
+            if (p.invoiceNumber) {
+              leftParsed = p;
+            } else if (p.isRightQRCode || (p.items && p.items.length > 0)) {
+              rightParsed = p;
+            }
           }
+        }
+
+        // 若截圖中同時辨識出左碼與右碼，直接合體收齊！
+        if (leftParsed && rightParsed) {
+          const merged = mergeParsedInvoiceData(leftParsed, rightParsed);
+          finishWithResult(merged);
+          return;
+        }
+        if (leftParsed) {
+          finishWithResult(leftParsed);
+          return;
+        }
+        if (rightParsed) {
+          finishWithResult(rightParsed);
+          return;
         }
       }
 
@@ -178,12 +277,24 @@ export const InvoiceScannerModal: React.FC<InvoiceScannerModalProps> = ({
 
         {/* 底部功能與操作指引 */}
         <View style={styles.bottomBar}>
-          <Text style={styles.guideHint}>
-            請將鏡頭對準發票【左側 QR Code】
+          <Text style={[styles.guideHint, waitingForRightCode && styles.guideHintSuccess]}>
+            {statusMessage}
           </Text>
           <Text style={styles.guideSub}>
-            自動帶入號碼、金額、日期與店家 · 雙 QR Code 同時辨識商品明細
+            {waitingForRightCode
+              ? '偵測到大賣場長明細：鏡頭稍移至右碼即可一網打盡，亦可點擊立即完成'
+              : '自動帶入號碼、金額、日期與店家 · 支援單畫面雙碼無縫融合'}
           </Text>
+
+          {waitingForRightCode && pendingLeftRef.current && (
+            <TouchableOpacity
+              style={styles.skipRightBtn}
+              onPress={() => finishWithResult(pendingLeftRef.current!)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.skipRightBtnText}>⚡ 立即完成帶入 (略過右碼)</Text>
+            </TouchableOpacity>
+          )}
 
           {errorMessage && (
             <View style={styles.errorBanner}>
@@ -325,6 +436,24 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     textAlign: 'center',
     marginBottom: 4,
+  },
+  guideHintSuccess: {
+    color: '#34D399',
+    fontWeight: '800',
+  },
+  skipRightBtn: {
+    backgroundColor: '#059669',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignSelf: 'center',
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  skipRightBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
   guideSub: {
     fontSize: 12,
