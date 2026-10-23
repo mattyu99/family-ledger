@@ -20,7 +20,10 @@ import {
 import { useLedger } from '../context/LedgerContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const SCAN_FRAME_SIZE = Math.min(SCREEN_WIDTH * 0.72, 280);
+const DUAL_FRAME_TOTAL_WIDTH = Math.min(SCREEN_WIDTH * 0.88, 330);
+const DUAL_FRAME_GAP = 12;
+const SINGLE_BOX_SIZE = Math.floor((DUAL_FRAME_TOTAL_WIDTH - DUAL_FRAME_GAP) / 2);
+const DUAL_FRAME_HEIGHT = SINGLE_BOX_SIZE;
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
   <RNText
@@ -53,6 +56,10 @@ export const InvoiceScannerModal: React.FC<InvoiceScannerModalProps> = ({
   const pendingRightRef = useRef<ParsedInvoiceData | null>(null);
   const autoFinishTimerRef = useRef<any>(null);
   const [waitingForRightCode, setWaitingForRightCode] = useState<boolean>(false);
+  const [capturedStatus, setCapturedStatus] = useState<{ left: boolean; right: boolean }>({
+    left: false,
+    right: false,
+  });
   const [statusMessage, setStatusMessage] = useState<string>('請將鏡頭對準發票【QR Code】');
 
   const finishWithResult = (finalData: ParsedInvoiceData) => {
@@ -75,7 +82,8 @@ export const InvoiceScannerModal: React.FC<InvoiceScannerModalProps> = ({
       pendingLeftRef.current = null;
       pendingRightRef.current = null;
       setWaitingForRightCode(false);
-      setStatusMessage('請將鏡頭對準發票【QR Code】');
+      setCapturedStatus({ left: false, right: false });
+      setStatusMessage('請將發票雙條碼對準下方「左碼」與「右碼」');
       if (autoFinishTimerRef.current) {
         clearTimeout(autoFinishTimerRef.current);
         autoFinishTimerRef.current = null;
@@ -96,6 +104,8 @@ export const InvoiceScannerModal: React.FC<InvoiceScannerModalProps> = ({
 
     // 情況 A：讀取到左側 QR Code (具發票號碼、金額與日期核心資訊)
     if (parsed.invoiceNumber) {
+      setCapturedStatus(prev => ({ ...prev, left: true }));
+
       if (pendingRightRef.current) {
         // 先前同一畫面中已捕捉到右側溢位明細，雙碼瞬間合體！
         const merged = mergeParsedInvoiceData(parsed, pendingRightRef.current);
@@ -113,7 +123,7 @@ export const InvoiceScannerModal: React.FC<InvoiceScannerModalProps> = ({
       if (hasOverflow) {
         pendingLeftRef.current = parsed;
         setWaitingForRightCode(true);
-        setStatusMessage(`✅ 已讀取左碼 (${parsed.invoiceNumber}) · 自動捕捉右碼明細中...`);
+        setStatusMessage(`✅ 已讀取左碼 (${parsed.invoiceNumber}) · 請對準右碼收齊明細...`);
 
         // 啟動 2 秒容錯倒數：若鏡頭未再抓到右側條碼，自動以現有品項與號碼金額完成帶入，絕不卡住使用者
         if (!autoFinishTimerRef.current) {
@@ -132,6 +142,8 @@ export const InvoiceScannerModal: React.FC<InvoiceScannerModalProps> = ({
 
     // 情況 B：讀取到右側 QR Code (純溢位品項清單，無發票號碼)
     if (parsed.isRightQRCode || (parsed.items && parsed.items.length > 0)) {
+      setCapturedStatus(prev => ({ ...prev, right: true }));
+
       if (pendingLeftRef.current) {
         // 左碼已在等待，右碼一出現立刻完成融合！
         const merged = mergeParsedInvoiceData(pendingLeftRef.current, parsed);
@@ -141,7 +153,7 @@ export const InvoiceScannerModal: React.FC<InvoiceScannerModalProps> = ({
 
       // 先抓到右碼，暫存品項並提示鏡頭移向左側
       pendingRightRef.current = parsed;
-      setStatusMessage(`✅ 已捕捉右側明細 (${parsed.items?.length || 0}項) · 請將鏡頭對準左側條碼`);
+      setStatusMessage(`✅ 已捕捉右側明細 (${parsed.items?.length || 0}項) · 請對準左側條碼取得號碼與金額`);
     }
   };
 
@@ -256,20 +268,52 @@ export const InvoiceScannerModal: React.FC<InvoiceScannerModalProps> = ({
               onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
             />
 
-            {/* 掃描對焦輔助框 */}
+            {/* 雙條碼並排對焦輔助框 */}
             <View style={styles.overlay}>
-              <View style={styles.unfocusedContainer} />
-              <View style={styles.middleRow}>
-                <View style={styles.unfocusedContainer} />
-                <View style={styles.scanTargetBox}>
-                  {/* 四個綠色轉角指示線 */}
-                  <View style={[styles.corner, styles.cornerTL]} />
-                  <View style={[styles.corner, styles.cornerTR]} />
-                  <View style={[styles.corner, styles.cornerBL]} />
-                  <View style={[styles.corner, styles.cornerBR]} />
+              <View style={styles.unfocusedContainer}>
+                <View style={styles.frameHeaderHint}>
+                  <Text style={styles.frameHeaderHintText}>
+                    將發票雙條碼分別對準下方「左碼」與「右碼」
+                  </Text>
                 </View>
-                <View style={styles.unfocusedContainer} />
               </View>
+
+              <View style={styles.middleRow}>
+                <View style={styles.unfocusedSide} />
+
+                <View style={styles.dualFrameContainer}>
+                  {/* 左碼對焦框 (發票核心) */}
+                  <View style={[styles.singleTargetBox, capturedStatus.left && styles.singleTargetBoxSuccess]}>
+                    <View style={[styles.corner, styles.cornerTL, capturedStatus.left && styles.cornerSuccess]} />
+                    <View style={[styles.corner, styles.cornerTR, capturedStatus.left && styles.cornerSuccess]} />
+                    <View style={[styles.corner, styles.cornerBL, capturedStatus.left && styles.cornerSuccess]} />
+                    <View style={[styles.corner, styles.cornerBR, capturedStatus.left && styles.cornerSuccess]} />
+                    <View style={styles.targetBoxLabelContainer}>
+                      <Text style={[styles.targetBoxLabel, capturedStatus.left && styles.targetBoxLabelSuccess]}>
+                        {capturedStatus.left ? '✅ 左碼已就緒' : '左碼 (號碼金額)'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.dualFrameDivider} />
+
+                  {/* 右碼對焦框 (溢位明細) */}
+                  <View style={[styles.singleTargetBox, capturedStatus.right && styles.singleTargetBoxSuccess]}>
+                    <View style={[styles.corner, styles.cornerTL, capturedStatus.right && styles.cornerSuccess]} />
+                    <View style={[styles.corner, styles.cornerTR, capturedStatus.right && styles.cornerSuccess]} />
+                    <View style={[styles.corner, styles.cornerBL, capturedStatus.right && styles.cornerSuccess]} />
+                    <View style={[styles.corner, styles.cornerBR, capturedStatus.right && styles.cornerSuccess]} />
+                    <View style={styles.targetBoxLabelContainer}>
+                      <Text style={[styles.targetBoxLabel, capturedStatus.right && styles.targetBoxLabelSuccess]}>
+                        {capturedStatus.right ? '✅ 右碼已就緒' : '右碼 (商品明細)'}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.unfocusedSide} />
+              </View>
+
               <View style={styles.unfocusedContainer} />
             </View>
           </View>
@@ -385,19 +429,80 @@ const styles = StyleSheet.create({
   },
   middleRow: {
     flexDirection: 'row',
-    height: SCAN_FRAME_SIZE,
+    height: DUAL_FRAME_HEIGHT,
   },
-  scanTargetBox: {
-    width: SCAN_FRAME_SIZE,
-    height: SCAN_FRAME_SIZE,
+  unfocusedSide: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+  },
+  dualFrameContainer: {
+    width: DUAL_FRAME_TOTAL_WIDTH,
+    height: DUAL_FRAME_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'transparent',
+  },
+  singleTargetBox: {
+    width: SINGLE_BOX_SIZE,
+    height: DUAL_FRAME_HEIGHT,
     position: 'relative',
     backgroundColor: 'transparent',
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingBottom: 6,
+  },
+  singleTargetBoxSuccess: {
+    borderColor: '#10B981',
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+  },
+  dualFrameDivider: {
+    width: DUAL_FRAME_GAP,
+    height: DUAL_FRAME_HEIGHT,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+  },
+  targetBoxLabelContainer: {
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  targetBoxLabel: {
+    fontSize: 10.5,
+    color: '#E2E8F0',
+    fontWeight: '600',
+  },
+  targetBoxLabelSuccess: {
+    color: '#34D399',
+    fontWeight: '800',
+  },
+  frameHeaderHint: {
+    position: 'absolute',
+    bottom: 12,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  frameHeaderHintText: {
+    fontSize: 12,
+    color: '#F8FAFC',
+    fontWeight: '700',
   },
   corner: {
     position: 'absolute',
-    width: 24,
-    height: 24,
+    width: 20,
+    height: 20,
     borderColor: '#10B981',
+  },
+  cornerSuccess: {
+    borderColor: '#34D399',
   },
   cornerTL: {
     top: 0,
