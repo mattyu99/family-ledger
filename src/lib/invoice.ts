@@ -497,6 +497,47 @@ export const lookupMerchantByTaxId = (
 };
 
 /**
+ * 將全形英數字與全形符號轉為標準半形，提升易讀性 (例如：ＴＰ３７ -> TP37, ５００ｍｌ -> 500ml)
+ */
+export const toHalfWidth = (str: string): string => {
+  return str
+    .replace(/[\uFF01-\uFF5E]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/\u3000/g, ' ');
+};
+
+/**
+ * 智慧清理商品品名：
+ * 1. 轉為標準半形字元（解決超商常見全形英文與數字問題，如 ＴＰ３７ -> TP37）。
+ * 2. 去除超商 POS 機在品名前方加入的溫層/分類前置代碼（如「1白酒清炒鮮蛤義大」->「白酒清炒鮮蛤義大」）。
+ * 3. 去除常見序號前綴（如「1.」、「(1)」、「01」等）。
+ * 4. 嚴密保護真實品名（如「1號餐」、「2入裝」、「3杯雞」、「3M膠帶」、「77乳加」、「100%柳橙汁」等絕不誤刪）。
+ */
+export const cleanInvoiceItemName = (rawName: string): string => {
+  if (!rawName) return '';
+  let name = toHalfWidth(rawName.trim());
+
+  // 去除頭尾特殊裝飾符號（如 * #）
+  name = name.replace(/^[\*\#\s]+/, '').replace(/[\*\#\s]+$/, '');
+
+  // 1. 去除括號序號前綴，例如 (1)商品、[01]商品、【1】商品
+  name = name.replace(/^[（\(【\[]\d{1,2}[）\)】\]]\s*/, '');
+
+  // 2. 去除序號點或符號前綴，例如 1.商品、01.商品、1-商品、1、商品、1:商品
+  name = name.replace(/^\d{1,2}[\.\-、:\s]+(?=[\u4e00-\u9fa5])/, '');
+
+  // 3. 去除二位數以 0 開頭的序號代碼，例如 01商品 -> 商品
+  name = name.replace(/^0\d(?=[\u4e00-\u9fa5])/, '');
+
+  // 4. 超商鮮食/商品常見之單一前置分類碼（全家、7-11 常在微波或鮮食前置 1，如 1白酒清炒鮮蛤義大）
+  // 排除單位、量詞、號次、餐點等真實品名
+  const preservedUnits = '[號号入份組件個串顆袋盒罐碗杯條包支本張台臺雙瓶粒隻桶箱把束塊打度次色味]';
+  const prefixRegex = new RegExp(`^[0-9](?=[\\u4e00-\\u9fa5])(?!${preservedUnits})`);
+  name = name.replace(prefixRegex, '');
+
+  return name.trim();
+};
+
+/**
  * 從冒號分隔的 token 陣列中解析商品品項明細
  * 財政部規範每品項為 3 欄位：[品名, 數量, 單價]
  * 部分 POS 機或廠商延伸格式容錯支援 4 欄位：[品名, 數量, 單價, 總額]
@@ -508,6 +549,11 @@ export const parseInvoiceItemsFromTokens = (tokens: string[]): InvoiceItem[] => 
     const rawName = tokens[i]?.trim();
     // 忽略空字串、純星號 (營業人自用區標記 ********** 或填充碼) 或純單碼 0 標記
     if (!rawName || /^\*+$/.test(rawName) || rawName === '0') {
+      i++;
+      continue;
+    }
+    const cleanName = cleanInvoiceItemName(rawName);
+    if (!cleanName || /^\*+$/.test(cleanName) || cleanName === '0') {
       i++;
       continue;
     }
@@ -529,13 +575,13 @@ export const parseInvoiceItemsFromTokens = (tokens: string[]): InvoiceItem[] => 
     // 檢查是否有第 4 個 token 為商品小計金額 (部分非標準 POS 機)
     const fourthToken = tokens[i + 3]?.trim();
     const maybeTotal = parseFloat(fourthToken);
-    let amount = qty * unitPrice;
+    let amount = Math.round(qty * unitPrice);
     if (!isNaN(maybeTotal) && (maybeTotal === amount || maybeTotal === Math.round(amount))) {
       amount = maybeTotal;
-      items.push({ name: rawName, quantity: qty, unitPrice, amount });
+      items.push({ name: cleanName, quantity: qty, unitPrice, amount });
       i += 4;
     } else {
-      items.push({ name: rawName, quantity: qty, unitPrice, amount });
+      items.push({ name: cleanName, quantity: qty, unitPrice, amount });
       i += 3;
     }
   }
@@ -603,7 +649,7 @@ export const parseTaiwanInvoiceLeftQRCodeItems = (qrText: string): LeftQRCodeTai
  */
 export const parseTaiwanInvoiceRightQRCode = (qrText: string): InvoiceItem[] => {
   if (!qrText || typeof qrText !== 'string') return [];
-  let raw = qrText.trim();
+  let raw = qrText.replace(/^\uFEFF/, '').trim();
   if (raw.startsWith('**')) {
     raw = raw.slice(2);
   } else if (raw.includes(':**')) {
@@ -611,6 +657,9 @@ export const parseTaiwanInvoiceRightQRCode = (qrText: string): InvoiceItem[] => 
   } else {
     const idx = raw.indexOf('**');
     if (idx !== -1) raw = raw.slice(idx + 2);
+  }
+  if (raw.startsWith(':')) {
+    raw = raw.slice(1);
   }
   const rawTokens = raw.split(':').map(t => t.trim());
   return parseInvoiceItemsFromTokens(rawTokens);
@@ -626,8 +675,14 @@ export const mergeParsedInvoiceData = (
   const base = left.invoiceNumber ? left : right;
   const other = left.invoiceNumber ? right : left;
 
-  const leftItems = base.items || [];
-  const rightItems = other.items || [];
+  const leftItems = (base.items || []).map(it => ({
+    ...it,
+    name: cleanInvoiceItemName(it.name),
+  }));
+  const rightItems = (other.items || []).map(it => ({
+    ...it,
+    name: cleanInvoiceItemName(it.name),
+  }));
   const combinedItems: InvoiceItem[] = [...leftItems, ...rightItems];
 
   const itemsNote = formatInvoiceItemsToNote(combinedItems);
@@ -644,7 +699,11 @@ export const mergeParsedInvoiceData = (
 export const formatInvoiceItemsToNote = (items: InvoiceItem[]): string => {
   if (!items || items.length === 0) return '';
   return items
-    .filter(it => it.name && !/^\*+$/.test(it.name.trim()) && it.name.trim() !== '0')
+    .map(it => ({
+      ...it,
+      name: cleanInvoiceItemName(it.name),
+    }))
+    .filter(it => it.name && !/^\*+$/.test(it.name) && it.name !== '0')
     .map(it => `${it.name}${it.quantity > 1 ? ` x${it.quantity}` : ''} $${it.amount}`)
     .join('、');
 };
@@ -730,10 +789,14 @@ export const parseTaiwanInvoiceQRCode = (
   customTaxIdMapping?: Record<string, string>
 ): ParsedInvoiceData | null => {
   if (!qrText || typeof qrText !== 'string') return null;
-  const raw = qrText.trim();
+  const raw = qrText.replace(/^\uFEFF/, '').trim();
 
-  // 若使用者掃描了右方 QR Code (開頭為 **)
-  if (raw.startsWith('**')) {
+  // 若使用者掃描了右方 QR Code (開頭包含 **，且非左碼發票開頭)
+  const isRightCode =
+    !/^[A-Za-z]{2}\d{8}/.test(raw) &&
+    (raw.startsWith('**') || raw.startsWith(':**') || raw.includes('**'));
+
+  if (isRightCode) {
     const items = parseTaiwanInvoiceRightQRCode(raw);
     const itemsNote = formatInvoiceItemsToNote(items);
     const sumAmount = items.reduce((acc, it) => acc + (it.amount || 0), 0);
@@ -786,13 +849,29 @@ export const parseTaiwanInvoiceQRCode = (
       let totalItemsCount: number | undefined = undefined;
 
       if (raw.length > 77) {
-        const leftTailRes = parseTaiwanInvoiceLeftQRCodeItems(raw);
-        if (leftTailRes.items.length > 0) {
-          items = leftTailRes.items;
-          itemsNote = formatInvoiceItemsToNote(items);
+        if (raw.includes('**')) {
+          // 同一字串同時含有左右雙條碼 (相簿截圖或剪貼簿完整內容)
+          const splitIdx = raw.indexOf('**');
+          const leftPart = raw.slice(0, splitIdx);
+          const rightPart = raw.slice(splitIdx);
+          const leftTailRes = parseTaiwanInvoiceLeftQRCodeItems(leftPart);
+          const rightItems = parseTaiwanInvoiceRightQRCode(rightPart);
+          const combined = [...leftTailRes.items, ...rightItems];
+          if (combined.length > 0) {
+            items = combined;
+            itemsNote = formatInvoiceItemsToNote(items);
+          }
+          recordedItemsCount = leftTailRes.recordedItemsCount;
+          totalItemsCount = leftTailRes.totalItemsCount;
+        } else {
+          const leftTailRes = parseTaiwanInvoiceLeftQRCodeItems(raw);
+          if (leftTailRes.items.length > 0) {
+            items = leftTailRes.items;
+            itemsNote = formatInvoiceItemsToNote(items);
+          }
+          recordedItemsCount = leftTailRes.recordedItemsCount;
+          totalItemsCount = leftTailRes.totalItemsCount;
         }
-        recordedItemsCount = leftTailRes.recordedItemsCount;
-        totalItemsCount = leftTailRes.totalItemsCount;
       }
       if ((!items || items.length === 0) && (raw.includes(':**') || raw.includes('**'))) {
         items = parseTaiwanInvoiceRightQRCode(raw);

@@ -145,7 +145,9 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
   const pendingLeftRef = useRef<ParsedInvoiceData | null>(null);
   const pendingRightRef = useRef<ParsedInvoiceData | null>(null);
   const autoFinishTimerRef = useRef<any>(null);
+  const countdownIntervalRef = useRef<any>(null);
   const [waitingForRightCode, setWaitingForRightCode] = useState<boolean>(false);
+  const [countdown, setCountdown] = useState<number>(5);
   const [capturedStatus, setCapturedStatus] = useState<{ left: boolean; right: boolean }>({
     left: false,
     right: false,
@@ -156,6 +158,10 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
     if (autoFinishTimerRef.current) {
       clearTimeout(autoFinishTimerRef.current);
       autoFinishTimerRef.current = null;
+    }
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
     }
     setScanned(true);
     onScanSuccess(finalData);
@@ -172,16 +178,25 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
       pendingLeftRef.current = null;
       pendingRightRef.current = null;
       setWaitingForRightCode(false);
+      setCountdown(5);
       setCapturedStatus({ left: false, right: false });
       setStatusMessage('請將發票雙條碼對準下方「左碼」與「右碼」');
       if (autoFinishTimerRef.current) {
         clearTimeout(autoFinishTimerRef.current);
         autoFinishTimerRef.current = null;
       }
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
     } else {
       if (autoFinishTimerRef.current) {
         clearTimeout(autoFinishTimerRef.current);
         autoFinishTimerRef.current = null;
+      }
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
       }
     }
   }, [visible]);
@@ -213,15 +228,31 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
       if (hasOverflow) {
         pendingLeftRef.current = parsed;
         setWaitingForRightCode(true);
-        setStatusMessage(`✅ 已讀取左碼 (${parsed.invoiceNumber}) · 請對準右碼收齊明細...`);
 
-        // 啟動 2 秒容錯倒數：若鏡頭未再抓到右側條碼，自動以現有品項與號碼金額完成帶入，絕不卡住使用者
+        // 啟動 5 秒容錯倒數：顯示即時剩餘秒數，讓使用者有充裕時間微調鏡頭對準右碼收齊品項
         if (!autoFinishTimerRef.current) {
+          let seconds = 5;
+          setCountdown(seconds);
+          setStatusMessage(`✅ 已鎖定左碼 (${parsed.invoiceNumber}) · 請微調鏡頭對準右碼 (${seconds}s)...`);
+
+          countdownIntervalRef.current = setInterval(() => {
+            seconds -= 1;
+            if (seconds > 0) {
+              setCountdown(seconds);
+              setStatusMessage(`✅ 已鎖定左碼 (${parsed.invoiceNumber}) · 請微調鏡頭對準右碼 (${seconds}s)...`);
+            } else {
+              if (countdownIntervalRef.current) {
+                clearInterval(countdownIntervalRef.current);
+                countdownIntervalRef.current = null;
+              }
+            }
+          }, 1000);
+
           autoFinishTimerRef.current = setTimeout(() => {
             if (pendingLeftRef.current && !scanned) {
               finishWithResult(pendingLeftRef.current);
             }
-          }, 2000);
+          }, 5000);
         }
       } else {
         // 品項已全數包含於左碼 (超商/一般消費 1~5 樣)，直接完成秒進！
@@ -425,7 +456,7 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
           </Text>
           <Text style={styles.guideSub}>
             {waitingForRightCode
-              ? '偵測到大賣場長明細：鏡頭稍移至右碼即可一網打盡，亦可點擊立即完成'
+              ? '偵測到右側還有品項明細：鏡頭稍移至右碼即可一網打盡，亦可點擊下方立即帶入'
               : '自動帶入號碼、金額、日期與店家 · 支援單畫面雙碼無縫融合'}
           </Text>
 
@@ -435,7 +466,7 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
               onPress={() => finishWithResult(pendingLeftRef.current!)}
               activeOpacity={0.8}
             >
-              <Text style={styles.skipRightBtnText}>⚡ 立即完成帶入 (略過右碼)</Text>
+              <Text style={styles.skipRightBtnText}>⚡ 立即完成帶入 ({countdown}s 後自動帶入)</Text>
             </TouchableOpacity>
           )}
 
