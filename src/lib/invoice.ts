@@ -28,6 +28,7 @@ export interface ParsedInvoiceData {
   recordedItemsCount?: number; // 條碼記載品目筆數 (十進位)
   isRightQRCode?: boolean;     // 是否為右側溢位明細條碼
   isQRCode: boolean;           // 是否從 QR Code 解析
+  is1DBarcode?: boolean;       // 是否為傳統長條發票一維條碼 (Code 39/128/93等)
 }
 
 /**
@@ -904,18 +905,29 @@ export const parseTaiwanInvoiceQRCode = (
     }
   }
 
-  // 若非標準 QR Code 串，但使用者輸入或掃到單純的發票號碼 (如 "AB-12345678" 或 "AB12345678")
+  // 若非標準 QR Code 串，但使用者輸入或掃到單純的發票號碼、或傳統長條發票一維條碼
   const cleaned = raw.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-  if (/^[A-Z]{2}\d{8}$/.test(cleaned)) {
-    const today = new Date();
-    const { periodKey, periodLabel } = getInvoicePeriodKey(today);
+  const match1D = cleaned.match(/[A-Z]{2}\d{8}/);
+  if (match1D) {
+    const rawNum = match1D[0];
+    // 檢查條碼內是否含有民國年月代碼 (例如 11508 代表 115年8月)
+    const periodMatch = cleaned.match(/(1\d{2})(0[1-9]|1[0-2])/);
+    let invoiceDate = new Date().toISOString().split('T')[0];
+    if (periodMatch) {
+      const rocYear = parseInt(periodMatch[1], 10);
+      const month = periodMatch[2];
+      const year = rocYear + 1911;
+      invoiceDate = `${year}-${month}-01`;
+    }
+    const { periodKey, periodLabel } = getInvoicePeriodKey(invoiceDate);
     return {
-      invoiceNumber: formatInvoiceNumber(cleaned),
-      rawInvoiceNumber: cleaned,
-      invoiceDate: today.toISOString().split('T')[0],
+      invoiceNumber: formatInvoiceNumber(rawNum),
+      rawInvoiceNumber: rawNum,
+      invoiceDate,
       periodKey,
       periodLabel,
       isQRCode: false,
+      is1DBarcode: true,
     };
   }
 

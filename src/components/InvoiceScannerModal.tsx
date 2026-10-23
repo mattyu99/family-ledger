@@ -161,7 +161,7 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
     left: false,
     right: false,
   });
-  const [statusMessage, setStatusMessage] = useState<string>('請將鏡頭對準發票【QR Code】');
+  const [statusMessage, setStatusMessage] = useState<string>('請將鏡頭對準電子發票 QR Code 或長條發票條碼');
 
   const finishWithResult = (finalData: ParsedInvoiceData) => {
     if (autoFinishTimerRef.current) {
@@ -189,7 +189,7 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
       setWaitingForRightCode(false);
       setCountdown(5);
       setCapturedStatus({ left: false, right: false });
-      setStatusMessage('請將發票雙條碼對準下方「左碼」與「右碼」');
+      setStatusMessage('對準電子發票 QR Code 或長條發票一維條碼');
       if (autoFinishTimerRef.current) {
         clearTimeout(autoFinishTimerRef.current);
         autoFinishTimerRef.current = null;
@@ -210,14 +210,21 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
     }
   }, [visible]);
 
-  // 即時掃描處理 (支援單畫面雙碼無縫融合)
+  // 即時掃描處理 (支援單畫面雙碼無縫融合與傳統長條發票一維條碼)
   const handleBarcodeScanned = ({ data }: { data: string }) => {
     if (scanned || !data) return;
     const parsed = parseTaiwanInvoiceQRCode(data, taxIdMerchantMap);
     if (!parsed) return;
 
-    // 情況 A：讀取到左側 QR Code (具發票號碼、金額與日期核心資訊)
+    // 情況 A：讀取到發票核心資料 (電子發票左碼或傳統長條發票一維條碼)
     if (parsed.invoiceNumber) {
+      // 若為傳統長條發票一維條碼 (無右碼)，直接秒速完成帶入！
+      if (parsed.is1DBarcode) {
+        setCapturedStatus({ left: true, right: false });
+        finishWithResult(parsed);
+        return;
+      }
+
       setCapturedStatus(prev => ({ ...prev, left: true }));
 
       if (pendingRightRef.current) {
@@ -310,7 +317,13 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
       }
 
       const imageUri = pickerResult.assets[0].uri;
-      const barcodeResults = await scanFromURLAsyncFn(imageUri, ['qr']);
+      const barcodeResults = await scanFromURLAsyncFn(imageUri, [
+        'qr',
+        'code39',
+        'code128',
+        'code93',
+        'codabar',
+      ]);
 
       if (barcodeResults && barcodeResults.length > 0) {
         let leftParsed: ParsedInvoiceData | null = null;
@@ -319,6 +332,11 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
         for (const b of barcodeResults) {
           const p = parseTaiwanInvoiceQRCode(b.data, taxIdMerchantMap);
           if (p) {
+            // 若為傳統長條發票一維條碼，秒速完成帶入！
+            if (p.is1DBarcode) {
+              finishWithResult(p);
+              return;
+            }
             if (p.invoiceNumber) {
               leftParsed = p;
             } else if (p.isRightQRCode || (p.items && p.items.length > 0)) {
@@ -343,7 +361,7 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
         }
       }
 
-      setErrorMessage('在選取的圖片中未辨識到電子發票 QR Code，請確認發票條碼完整清晰');
+      setErrorMessage('在選取的圖片中未辨識到發票條碼，請確認發票條碼完整清晰');
     } catch (err: any) {
       console.warn('解析相簿圖片失敗:', err);
       setErrorMessage('解析圖片發生錯誤，請重試或直接使用鏡頭掃描');
@@ -410,18 +428,18 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
                 facing="back"
                 enableTorch={enableTorch}
                 barcodeScannerSettings={{
-                  barcodeTypes: ['qr'],
+                  barcodeTypes: ['qr', 'code39', 'code128', 'code93', 'codabar'],
                 }}
                 onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
               />
             )}
 
-            {/* 雙條碼並排對焦輔助框 */}
+            {/* 雙條碼與傳統發票對焦輔助框 */}
             <View style={styles.overlay}>
               <View style={styles.unfocusedContainer}>
                 <View style={styles.frameHeaderHint}>
                   <Text style={styles.frameHeaderHintText}>
-                    將發票雙條碼分別對準下方「左碼」與「右碼」
+                    對準發票 QR Code 或長條發票一維條碼
                   </Text>
                 </View>
               </View>
@@ -430,7 +448,7 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
                 <View style={styles.unfocusedSide} />
 
                 <View style={styles.dualFrameContainer}>
-                  {/* 左碼對焦框 (發票核心) */}
+                  {/* 左碼或長條條碼對焦框 */}
                   <View style={[styles.singleTargetBox, capturedStatus.left && styles.singleTargetBoxSuccess]}>
                     <View style={[styles.corner, styles.cornerTL, capturedStatus.left && styles.cornerSuccess]} />
                     <View style={[styles.corner, styles.cornerTR, capturedStatus.left && styles.cornerSuccess]} />
@@ -438,7 +456,7 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
                     <View style={[styles.corner, styles.cornerBR, capturedStatus.left && styles.cornerSuccess]} />
                     <View style={styles.targetBoxLabelContainer}>
                       <Text style={[styles.targetBoxLabel, capturedStatus.left && styles.targetBoxLabelSuccess]}>
-                        {capturedStatus.left ? '✅ 左碼已就緒' : '左碼 (號碼金額)'}
+                        {capturedStatus.left ? '✅ 條碼已就緒' : '左碼 / 長條發票條碼'}
                       </Text>
                     </View>
                   </View>
@@ -475,7 +493,7 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
           <Text style={styles.guideSub}>
             {waitingForRightCode
               ? '偵測到右側還有品項明細：鏡頭稍移至右碼即可一網打盡，亦可點擊下方立即帶入'
-              : '自動帶入號碼、金額、日期與店家 · 支援單畫面雙碼無縫融合'}
+              : '自動帶入號碼、金額與店家 · 支援電子發票與長條收銀機發票'}
           </Text>
 
           {waitingForRightCode && pendingLeftRef.current && (

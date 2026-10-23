@@ -424,6 +424,11 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         '⚠️ 偵測到發票重複',
         `發票號碼：${cleaned}\n⚠️ 注意：此張發票已由「${payer.display_name}」於 ${dateStr} 記錄過（${dup.merchant || '消費'} NT$ ${dup.amount.toLocaleString()}）！\n\n系統已為您填入，儲存前請確認是否重複記帳。`
       );
+    } else if (resolvedData.is1DBarcode) {
+      safeAlert(
+        '長條發票辨識成功',
+        `發票號碼：${resolvedData.invoiceNumber}\n對獎期別：${resolvedData.periodLabel || '當期'}\n\n已為您填入發票號碼與對獎期別！\n（傳統收銀機發票條碼無記載金額，請隨手補填消費金額即可完成記帳對獎）`
+      );
     } else {
       safeAlert(
         '發票辨識成功',
@@ -460,6 +465,11 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               safeAlert(
                 '⚠️ 偵測到發票重複',
                 `已辨識發票號碼：${cleaned}\n⚠️ 注意：此張發票已由「${payer.display_name}」於 ${dateStr} 記錄過（${dup.merchant || '消費'} NT$ ${dup.amount.toLocaleString()}）！\n\n請確認是否重複記帳。`
+              );
+            } else if (parsed.is1DBarcode) {
+              safeAlert(
+                '長條發票解析成功',
+                `已成功辨識發票號碼：${parsed.invoiceNumber}\n對獎期別：${parsed.periodLabel || '當期'}\n\n已填入發票號碼，請補填消費金額即可完成記帳！`
               );
             } else {
               safeAlert(
