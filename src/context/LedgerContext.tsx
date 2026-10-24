@@ -9254,13 +9254,47 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const updateBudget = React.useCallback(async (newBudgetData: Partial<LedgerBudget>) => {
     const ledgerId = currentLedger.id;
+
+    // 權限防護：家庭公帳總預算僅管理員可異動
+    const allowedEnabled = isOwner
+      ? (newBudgetData.is_enabled !== undefined ? newBudgetData.is_enabled : (currentBudget?.is_enabled ?? true))
+      : (currentBudget?.is_enabled ?? true);
+    const allowedMonthlyTotal = isOwner
+      ? (newBudgetData.monthly_total !== undefined ? newBudgetData.monthly_total : (currentBudget?.monthly_total ?? 40000))
+      : (currentBudget?.monthly_total ?? 40000);
+    const allowedThreshold = isOwner
+      ? (newBudgetData.alert_threshold !== undefined ? newBudgetData.alert_threshold : (currentBudget?.alert_threshold ?? 80))
+      : (currentBudget?.alert_threshold ?? 80);
+    const allowedCategoryBudgets = isOwner
+      ? (newBudgetData.category_budgets !== undefined ? newBudgetData.category_budgets : (currentBudget?.category_budgets ?? {}))
+      : (currentBudget?.category_budgets ?? {});
+
+    // 成員額度防護：僅能由本機成員自訂與修改自己的個人額度，其餘成員唯讀且維持原值
+    const mergedMemberBudgets: Record<string, number> = { ...(currentBudget?.member_budgets ?? {}) };
+    if (newBudgetData.member_budgets) {
+      members.forEach(m => {
+        const isMyMember =
+          m.id === currentUser?.id ||
+          (!!currentUser?.display_name && m.display_name?.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase());
+
+        if (isMyMember) {
+          const newAmt = newBudgetData.member_budgets?.[m.id];
+          if (newAmt !== undefined && newAmt > 0) {
+            mergedMemberBudgets[m.id] = newAmt;
+          } else {
+            delete mergedMemberBudgets[m.id];
+          }
+        }
+      });
+    }
+
     const merged: LedgerBudget = {
       ledger_id: ledgerId,
-      is_enabled: newBudgetData.is_enabled !== undefined ? newBudgetData.is_enabled : (currentBudget?.is_enabled ?? true),
-      monthly_total: newBudgetData.monthly_total !== undefined ? newBudgetData.monthly_total : (currentBudget?.monthly_total ?? 40000),
-      alert_threshold: newBudgetData.alert_threshold !== undefined ? newBudgetData.alert_threshold : (currentBudget?.alert_threshold ?? 80),
-      category_budgets: newBudgetData.category_budgets !== undefined ? newBudgetData.category_budgets : (currentBudget?.category_budgets ?? {}),
-      member_budgets: newBudgetData.member_budgets !== undefined ? newBudgetData.member_budgets : (currentBudget?.member_budgets ?? {}),
+      is_enabled: allowedEnabled,
+      monthly_total: allowedMonthlyTotal,
+      alert_threshold: allowedThreshold,
+      category_budgets: allowedCategoryBudgets,
+      member_budgets: mergedMemberBudgets,
       updated_at: new Date().toISOString(),
     };
 
@@ -9286,7 +9320,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // 若雲端尚未建表則維持本機運作
       }
     }
-  }, [currentLedger.id, currentBudget]);
+  }, [currentLedger.id, currentBudget, isOwner, members, currentUser]);
 
   const getBudgetProgress = React.useCallback((targetMonthYm?: string, targetMemberId?: string) => {
     const now = new Date();

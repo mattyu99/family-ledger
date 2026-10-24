@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.7';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.7 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 24;
+export const APP_BUILD_REVISION = 25;
 
 // 完整版本字串 (例如 "1.0.7.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.7',
+    date: '2026-10-24',
+    title: '預算控管與額度設定權限防護：家庭公帳僅管理員可改、成員個人額度自主掌控',
+    highlights: [
+      '🔒 家庭公帳預算管理員專屬修改：公帳月度總預算、警戒門檻、分類預算與啟用開關僅帳本管理員有權調整；一般成員提供唯讀瀏覽模式與提示徽章。',
+      '👤 成員個人額度自主設定與唯讀隔離：每位成員僅限於自己的本機裝置上設定與修改專屬個人開銷額度，其餘家庭成員之額度為唯讀檢視，落實個人自主與隱私權。',
+      '🛡️ 雙層安全性防護：於 UI 操作層與 Context 資料層同步執行權限校驗，防止越權寫入或覆蓋他人額度。',
+    ],
+  },
   {
     version: '1.0.7',
     date: '2026-10-24',

@@ -57,6 +57,8 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
     updateBudget,
     categories,
     members,
+    currentUser,
+    isOwner,
     isBudgetWidgetVisibleOnDevice,
     setBudgetWidgetVisibleOnDevice,
   } = useLedger();
@@ -137,27 +139,61 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
   const parsedTotal = parseFloat(monthlyTotal) || 0;
   const isCategoryOverTotal = parsedTotal > 0 && totalCategoryBudget > parsedTotal;
 
+  // 判斷是否為當前本機成員
+  const isLocalMember = (member: { id: string; display_name?: string }) => {
+    if (!currentUser) return false;
+    if (member.id === currentUser.id) return true;
+    if (
+      member.display_name &&
+      currentUser.display_name &&
+      member.display_name.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase()
+    ) {
+      return true;
+    }
+    return false;
+  };
+
   const handleSave = async () => {
-    const numericCatBudgets: Record<string, number> = {};
-    Object.entries(categoryBudgets).forEach(([catId, val]) => {
-      const num = parseFloat(val);
-      if (!isNaN(num) && num > 0) {
-        numericCatBudgets[catId] = num;
+    // 1. 公帳預算：僅管理員可異動
+    const numericCatBudgets: Record<string, number> = isOwner
+      ? {}
+      : { ...(currentBudget?.category_budgets ?? {}) };
+
+    if (isOwner) {
+      Object.entries(categoryBudgets).forEach(([catId, val]) => {
+        const num = parseFloat(val);
+        if (!isNaN(num) && num > 0) {
+          numericCatBudgets[catId] = num;
+        }
+      });
+    }
+
+    // 2. 成員個人額度：本機成員僅能自訂更新屬於自己的額度，其餘成員維持原值
+    const numericMemberBudgets: Record<string, number> = {
+      ...(currentBudget?.member_budgets ?? {}),
+    };
+
+    members.forEach(member => {
+      const isMe = isLocalMember(member);
+      if (isMe) {
+        const val = memberBudgets[member.id];
+        const num = parseFloat(val);
+        if (!isNaN(num) && num > 0) {
+          numericMemberBudgets[member.id] = num;
+        } else {
+          delete numericMemberBudgets[member.id];
+        }
       }
     });
 
-    const numericMemberBudgets: Record<string, number> = {};
-    Object.entries(memberBudgets).forEach(([mId, val]) => {
-      const num = parseFloat(val);
-      if (!isNaN(num) && num > 0) {
-        numericMemberBudgets[mId] = num;
-      }
-    });
+    const finalIsEnabled = isOwner ? isEnabled : (currentBudget?.is_enabled ?? true);
+    const finalMonthlyTotal = isOwner ? parsedTotal : (currentBudget?.monthly_total ?? 40000);
+    const finalAlertThreshold = isOwner ? alertThreshold : (currentBudget?.alert_threshold ?? 80);
 
     await updateBudget({
-      is_enabled: isEnabled,
-      monthly_total: parsedTotal,
-      alert_threshold: alertThreshold,
+      is_enabled: finalIsEnabled,
+      monthly_total: finalMonthlyTotal,
+      alert_threshold: finalAlertThreshold,
       category_budgets: numericCatBudgets,
       member_budgets: numericMemberBudgets,
     });
@@ -167,6 +203,7 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
   };
 
   const updateCategoryAmount = (catId: string, val: string) => {
+    if (!isOwner) return;
     setCategoryBudgets(prev => {
       const next = { ...prev };
       if (!val || val.trim() === '') {
@@ -179,6 +216,10 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
   };
 
   const updateMemberAmount = (memberId: string, val: string) => {
+    const targetMember = members.find(m => m.id === memberId);
+    if (!targetMember || !isLocalMember(targetMember)) {
+      return;
+    }
     setMemberBudgets(prev => {
       const next = { ...prev };
       if (!val || val.trim() === '') {
@@ -257,6 +298,18 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
             {/* TAB 1: 家庭公帳總預算 */}
             {activeTab === 'family' && (
               <>
+                {!isOwner && (
+                  <View style={styles.readOnlyBanner}>
+                    <Text style={styles.readOnlyBannerIcon}>🔒</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.readOnlyBannerTitle}>僅帳本管理員可修改家庭公帳總預算</Text>
+                      <Text style={styles.readOnlyBannerDesc}>
+                        您目前為日常成員檢視模式，可瀏覽公帳月預算與分類額度，如需調整請由帳本管理員設定。
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
                 {/* 啟用開關卡片 */}
                 <View style={styles.switchRow}>
                   <View style={{ flex: 1, marginRight: 10 }}>
@@ -267,7 +320,8 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
                   </View>
                   <Switch
                     value={isEnabled}
-                    onValueChange={setIsEnabled}
+                    onValueChange={isOwner ? setIsEnabled : undefined}
+                    disabled={!isOwner}
                     trackColor={{ false: '#CBD5E1', true: '#4F46E5' }}
                     thumbColor="#FFFFFF"
                   />
@@ -277,13 +331,21 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
                   <>
                     {/* 月度總預算設定 */}
                     <View style={styles.sectionCard}>
-                      <Text style={styles.sectionTitle}>💰 每月家庭公帳總預算 (TWD)</Text>
-                      <View style={styles.inputContainer}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <Text style={styles.sectionTitle}>💰 每月家庭公帳總預算 (TWD)</Text>
+                        {!isOwner && (
+                          <View style={styles.lockBadge}>
+                            <Text style={styles.lockBadgeText}>🔒 唯讀</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View style={[styles.inputContainer, !isOwner && styles.inputContainerDisabled]}>
                         <Text style={styles.currencyPrefix}>NT$</Text>
                         <TextInput
-                          style={styles.amountInput}
+                          style={[styles.amountInput, !isOwner && styles.amountInputDisabled]}
                           keyboardType="numeric"
                           value={monthlyTotal}
+                          editable={isOwner}
                           onChangeText={val => setMonthlyTotal(val.replace(/[^0-9]/g, ''))}
                           placeholder="例如：40000"
                           placeholderTextColor={colors.text.muted}
@@ -291,37 +353,51 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
                       </View>
 
                       {/* 快速金額選擇膠囊 */}
-                      <View style={styles.presetChipsRow}>
-                        {PRESET_AMOUNTS.map(amt => {
-                          const isSelected = parsedTotal === amt;
-                          return (
-                            <TouchableOpacity
-                              key={amt}
-                              style={[styles.presetChip, isSelected && styles.presetChipActive]}
-                              onPress={() => setMonthlyTotal(String(amt))}
-                              activeOpacity={0.7}
-                            >
-                              <Text style={[styles.presetChipText, isSelected && styles.presetChipTextActive]}>
-                                ${(amt / 1000).toFixed(0)}k
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
+                      {isOwner && (
+                        <View style={styles.presetChipsRow}>
+                          {PRESET_AMOUNTS.map(amt => {
+                            const isSelected = parsedTotal === amt;
+                            return (
+                              <TouchableOpacity
+                                key={amt}
+                                style={[styles.presetChip, isSelected && styles.presetChipActive]}
+                                onPress={() => setMonthlyTotal(String(amt))}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={[styles.presetChipText, isSelected && styles.presetChipTextActive]}>
+                                  ${(amt / 1000).toFixed(0)}k
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      )}
                     </View>
 
                     {/* 預警警戒門檻 */}
                     <View style={styles.sectionCard}>
-                      <Text style={styles.sectionTitle}>⚠️ 警戒提醒門檻 (達標比例亮起提醒)</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <Text style={styles.sectionTitle}>⚠️ 警戒提醒門檻 (達標比例亮起提醒)</Text>
+                        {!isOwner && (
+                          <View style={styles.lockBadge}>
+                            <Text style={styles.lockBadgeText}>🔒 唯讀</Text>
+                          </View>
+                        )}
+                      </View>
                       <View style={styles.thresholdRow}>
                         {PRESET_THRESHOLDS.map(pct => {
                           const isSelected = alertThreshold === pct;
                           return (
                             <TouchableOpacity
                               key={pct}
-                              style={[styles.thresholdChip, isSelected && styles.thresholdChipActive]}
-                              onPress={() => setAlertThreshold(pct)}
-                              activeOpacity={0.7}
+                              style={[
+                                styles.thresholdChip,
+                                isSelected && styles.thresholdChipActive,
+                                !isOwner && !isSelected && { opacity: 0.5 },
+                              ]}
+                              onPress={() => isOwner && setAlertThreshold(pct)}
+                              disabled={!isOwner}
+                              activeOpacity={isOwner ? 0.7 : 1}
                             >
                               <Text style={[styles.thresholdChipText, isSelected && styles.thresholdChipTextActive]}>
                                 達 {pct}% 警示
@@ -367,14 +443,15 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
                                   <Text style={styles.catIcon}>{getCategoryIcon(cat.icon)}</Text>
                                   <Text style={styles.catName} numberOfLines={1}>{cat.name}</Text>
                                 </View>
-                                <View style={styles.catInputWrap}>
+                                <View style={[styles.catInputWrap, !isOwner && styles.catInputWrapDisabled]}>
                                   <Text style={styles.catInputPrefix}>NT$</Text>
                                   <TextInput
-                                    style={styles.catInput}
+                                    style={[styles.catInput, !isOwner && styles.catInputDisabled]}
                                     keyboardType="numeric"
-                                    placeholder="不限"
+                                    placeholder={isOwner ? "不限" : "無"}
                                     placeholderTextColor={colors.text.muted}
                                     value={val}
+                                    editable={isOwner}
                                     onChangeText={text => updateCategoryAmount(cat.id, text)}
                                   />
                                 </View>
@@ -396,7 +473,7 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
                 <View style={styles.infoBanner}>
                   <Text style={styles.infoBannerIcon}>💡</Text>
                   <Text style={styles.infoBannerText}>
-                    為每位家庭成員自訂專屬每月開銷額度。當首頁上方成員選取該成員時，看板將自動切換為該成員的個人支出進度。若留空或未設定，則不單獨限制。
+                    每位家庭成員僅能設定與修改屬於自己的個人每月開銷額度，其餘成員額度為唯讀檢視。當首頁上方篩選選取該成員時，看板將自動連動為其個人支出進度。
                   </Text>
                 </View>
 
@@ -415,6 +492,7 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
                 {members.map(member => {
                   const val = memberBudgets[member.id] || '';
                   const numVal = parseFloat(val) || 0;
+                  const isMe = isLocalMember(member);
 
                   return (
                     <View key={member.id} style={styles.memberCard}>
@@ -422,7 +500,7 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
                         <View style={styles.memberInfoRow}>
                           <Text style={styles.memberAvatar}>{member.avatar_url || '👤'}</Text>
                           <View style={{ flex: 1 }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                               <Text style={styles.memberName}>{member.display_name}</Text>
                               {member.role === 'owner' && (
                                 <View style={styles.roleTag}>
@@ -434,58 +512,74 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
                                   <Text style={styles.roleTagText}>管理員</Text>
                                 </View>
                               )}
+                              {isMe ? (
+                                <View style={styles.memberMyTag}>
+                                  <Text style={styles.memberMyTagText}>👤 本機 (可設定)</Text>
+                                </View>
+                              ) : (
+                                <View style={styles.lockBadge}>
+                                  <Text style={styles.lockBadgeText}>🔒 唯讀</Text>
+                                </View>
+                              )}
                             </View>
                             <Text style={styles.memberStatusText}>
-                              {numVal > 0 ? `每月個人預算上限 NT$ ${numVal.toLocaleString()}` : '未單獨限制個人額度'}
+                              {numVal > 0
+                                ? `每月個人預算上限 NT$ ${numVal.toLocaleString()}`
+                                : isMe
+                                ? '未單獨限制個人額度'
+                                : '未設定個人額度 (僅本人可設定)'}
                             </Text>
                           </View>
                         </View>
 
-                        <View style={styles.memberInputWrap}>
+                        <View style={[styles.memberInputWrap, !isMe && styles.memberInputWrapDisabled]}>
                           <Text style={styles.memberInputPrefix}>NT$</Text>
                           <TextInput
-                            style={styles.memberInput}
+                            style={[styles.memberInput, !isMe && styles.memberInputDisabled]}
                             keyboardType="numeric"
-                            placeholder="自訂額度"
+                            placeholder={isMe ? "自訂額度" : "未設定"}
                             placeholderTextColor={colors.text.muted}
                             value={val}
+                            editable={isMe}
                             onChangeText={text => updateMemberAmount(member.id, text)}
                           />
                         </View>
                       </View>
 
-                      {/* 快速金額選擇膠囊 */}
-                      <View style={styles.memberPresetRow}>
-                        {MEMBER_PRESET_AMOUNTS.map(amt => {
-                          const isSelected = numVal === amt;
-                          return (
+                      {/* 快速金額選擇膠囊 (僅本機成員自身可操作) */}
+                      {isMe && (
+                        <View style={styles.memberPresetRow}>
+                          {MEMBER_PRESET_AMOUNTS.map(amt => {
+                            const isSelected = numVal === amt;
+                            return (
+                              <TouchableOpacity
+                                key={amt}
+                                style={[styles.memberPresetChip, isSelected && styles.memberPresetChipActive]}
+                                onPress={() => updateMemberAmount(member.id, String(amt))}
+                                activeOpacity={0.7}
+                              >
+                                <Text
+                                  style={[
+                                    styles.memberPresetChipText,
+                                    isSelected && styles.memberPresetChipTextActive,
+                                  ]}
+                                >
+                                  ${(amt / 1000).toFixed(0)}k
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                          {numVal > 0 && (
                             <TouchableOpacity
-                              key={amt}
-                              style={[styles.memberPresetChip, isSelected && styles.memberPresetChipActive]}
-                              onPress={() => updateMemberAmount(member.id, String(amt))}
+                              style={styles.memberClearChip}
+                              onPress={() => updateMemberAmount(member.id, '')}
                               activeOpacity={0.7}
                             >
-                              <Text
-                                style={[
-                                  styles.memberPresetChipText,
-                                  isSelected && styles.memberPresetChipTextActive,
-                                ]}
-                              >
-                                ${(amt / 1000).toFixed(0)}k
-                              </Text>
+                              <Text style={styles.memberClearChipText}>✕ 清除</Text>
                             </TouchableOpacity>
-                          );
-                        })}
-                        {numVal > 0 && (
-                          <TouchableOpacity
-                            style={styles.memberClearChip}
-                            onPress={() => updateMemberAmount(member.id, '')}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={styles.memberClearChipText}>✕ 清除</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
+                          )}
+                        </View>
+                      )}
                     </View>
                   );
                 })}
@@ -960,6 +1054,78 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     memberClearChipText: {
       fontSize: 10.5,
       color: '#DC2626',
+      fontWeight: '700',
+    },
+    readOnlyBanner: {
+      flexDirection: 'row',
+      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.12)' : '#FEF3C7',
+      borderRadius: 12,
+      padding: 10,
+      gap: 8,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(245, 158, 11, 0.25)' : '#FDE68A',
+      marginBottom: 12,
+    },
+    readOnlyBannerIcon: {
+      fontSize: 16,
+    },
+    readOnlyBannerTitle: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: isDark ? '#FBBF24' : '#B45309',
+    },
+    readOnlyBannerDesc: {
+      fontSize: 11,
+      color: isDark ? '#FDE68A' : '#92400E',
+      marginTop: 2,
+      lineHeight: 15,
+    },
+    lockBadge: {
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: 4,
+      borderWidth: 1,
+      borderColor: colors.border.default,
+    },
+    lockBadgeText: {
+      fontSize: 9.5,
+      color: colors.text.muted,
+      fontWeight: '600',
+    },
+    inputContainerDisabled: {
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.03)' : '#F3F4F6',
+      borderColor: colors.border.default,
+    },
+    amountInputDisabled: {
+      color: colors.text.secondary,
+    },
+    catInputWrapDisabled: {
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.03)' : '#F3F4F6',
+      borderColor: colors.border.default,
+    },
+    catInputDisabled: {
+      color: colors.text.secondary,
+    },
+    memberInputWrapDisabled: {
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.03)' : '#F3F4F6',
+      borderColor: colors.border.default,
+    },
+    memberInputDisabled: {
+      color: colors.text.secondary,
+    },
+    memberMyTag: {
+      backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF',
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: 4,
+      borderWidth: 1,
+      borderColor: isDark ? '#60A5FA' : '#93C5FD',
+    },
+    memberMyTagText: {
+      fontSize: 9.5,
+      color: isDark ? '#93C5FD' : '#2563EB',
       fontWeight: '700',
     },
     footer: {
