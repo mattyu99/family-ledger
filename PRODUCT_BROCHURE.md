@@ -211,7 +211,7 @@ flowchart TD
 
 ### 👨‍💻 產品團隊與協同創作
 * **產品設計與架構**：Matt Yu
-* **協同開發**：Crafted with ❤️ by Matt Yu & AI Pair Programmer
+* **協同開發**：Crafted with ❤️ by 甜心記帳本團隊 & AI Pair Programmer
 
 ---
 
