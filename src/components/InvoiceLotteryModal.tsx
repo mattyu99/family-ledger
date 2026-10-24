@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useTheme } from '../theme/ThemeContext';
+import { ThemeColors } from '../theme/colors';
 import {
   Modal,
   View,
@@ -43,6 +45,8 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
   initialPeriodKey,
   onSelectTransaction,
 }) => {
+  const { isDark, colors } = useTheme();
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const { transactions, claimInvoicePrize, getMemberById, currentUser } = useLedger();
 
   // 本地快取與全自動聯網同步的官方中獎號碼庫
@@ -417,14 +421,14 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.75)' : 'rgba(15, 23, 42, 0.65)',
     justifyContent: 'flex-end',
   },
   modalBox: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background.canvas,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     height: '90%',
@@ -437,33 +441,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 18,
     paddingBottom: 14,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.modal,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: isDark ? colors.border.default : '#F1F5F9',
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#0F172A',
+    color: colors.text.primary,
   },
   headerWonBadge: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#FDE68A',
+    borderColor: isDark ? 'rgba(245, 158, 11, 0.4)' : '#FDE68A',
   },
   headerWonBadgeText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#B45309',
+    color: isDark ? '#FBBF24' : '#B45309',
   },
   headerSub: {
     fontSize: 12,
-    color: '#64748B',
+    color: colors.text.muted,
     marginTop: 2,
   },
   syncRow: {
@@ -483,26 +487,26 @@ const styles = StyleSheet.create({
   },
   syncStatusText: {
     fontSize: 11,
-    color: '#059669',
+    color: isDark ? '#34D399' : '#059669',
     fontWeight: '500',
   },
   closeBtn: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     justifyContent: 'center',
     alignItems: 'center',
   },
   closeBtnText: {
     fontSize: 16,
-    color: '#64748B',
+    color: colors.text.muted,
     fontWeight: '600',
   },
   periodScrollContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.modal,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: isDark ? colors.border.default : '#F1F5F9',
     paddingVertical: 10,
   },
   periodRow: {
@@ -516,22 +520,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
     gap: 5,
   },
   periodChipActive: {
-    backgroundColor: '#EEF2FF',
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF',
     borderColor: '#6366F1',
   },
   periodChipText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#475569',
+    color: colors.text.secondary,
   },
   periodChipTextActive: {
-    color: '#4F46E5',
+    color: isDark ? '#818CF8' : '#4F46E5',
     fontWeight: '800',
   },
   periodDrawnDot: {
@@ -545,8 +549,8 @@ const styles = StyleSheet.create({
   },
   periodPendingTag: {
     fontSize: 10,
-    color: '#94A3B8',
-    backgroundColor: '#FFFFFF',
+    color: colors.text.muted,
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     paddingHorizontal: 4,
     paddingVertical: 1,
     borderRadius: 4,
@@ -558,19 +562,19 @@ const styles = StyleSheet.create({
   },
   statsBanner: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.card,
     borderRadius: 16,
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
     alignItems: 'center',
     justifyContent: 'space-around',
     marginBottom: 12,
   },
   statsBannerWon: {
-    backgroundColor: '#FFFBEB',
-    borderColor: '#FDE68A',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FFFBEB',
+    borderColor: isDark ? 'rgba(245, 158, 11, 0.35)' : '#FDE68A',
   },
   statsCol: {
     alignItems: 'center',
@@ -578,33 +582,33 @@ const styles = StyleSheet.create({
   },
   statsLabel: {
     fontSize: 11,
-    color: '#64748B',
+    color: colors.text.muted,
     marginBottom: 2,
   },
   statsValue: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#1E293B',
+    color: colors.text.primary,
   },
   wonValue: {
-    color: '#B45309',
+    color: isDark ? '#FBBF24' : '#B45309',
   },
   statsUnit: {
     fontSize: 11,
     fontWeight: '500',
-    color: '#64748B',
+    color: colors.text.muted,
   },
   statsDivider: {
     width: 1,
     height: 24,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: isDark ? colors.border.default : '#E2E8F0',
   },
   drawCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.card,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
     marginBottom: 14,
   },
   drawCardHeader: {
@@ -613,23 +617,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: isDark ? colors.border.default : '#F1F5F9',
     paddingBottom: 8,
   },
   drawCardTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#1E293B',
+    color: colors.text.primary,
   },
   drawDateText: {
     fontSize: 11,
-    color: '#94A3B8',
+    color: colors.text.muted,
   },
   prizeGrid: {
     gap: 8,
   },
   prizeItem: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderRadius: 10,
     padding: 8,
   },
@@ -654,15 +658,15 @@ const styles = StyleSheet.create({
   },
   ruleNoticeText: {
     fontSize: 11,
-    color: '#64748B',
+    color: colors.text.muted,
     lineHeight: 16,
   },
   pendingDrawCard: {
-    backgroundColor: '#F0F9FF',
+    backgroundColor: isDark ? 'rgba(2, 132, 199, 0.15)' : '#F0F9FF',
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#BAE6FD',
+    borderColor: isDark ? 'rgba(2, 132, 199, 0.35)' : '#BAE6FD',
     alignItems: 'center',
     marginBottom: 14,
   },
@@ -673,12 +677,12 @@ const styles = StyleSheet.create({
   pendingDrawTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#0369A1',
+    color: isDark ? '#38BDF8' : '#0369A1',
     marginBottom: 4,
   },
   pendingDrawSub: {
     fontSize: 12,
-    color: '#0284C7',
+    color: isDark ? '#7DD3FC' : '#0284C7',
     textAlign: 'center',
     lineHeight: 18,
   },
@@ -692,20 +696,20 @@ const styles = StyleSheet.create({
   listSectionTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#334155',
+    color: colors.text.secondary,
   },
   listSectionHint: {
     fontSize: 11,
-    color: '#94A3B8',
+    color: colors.text.muted,
   },
   emptyBox: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.card,
     borderRadius: 16,
     paddingVertical: 32,
     paddingHorizontal: 20,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   emptyIcon: {
     fontSize: 32,
@@ -714,26 +718,26 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#475569',
+    color: colors.text.secondary,
     marginBottom: 4,
   },
   emptySub: {
     fontSize: 12,
-    color: '#94A3B8',
+    color: colors.text.muted,
     textAlign: 'center',
     lineHeight: 18,
   },
   invoiceCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.card,
     borderRadius: 14,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
     marginBottom: 8,
   },
   invoiceCardWon: {
-    backgroundColor: '#FFFDF5',
-    borderColor: '#FDE68A',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.12)' : '#FFFDF5',
+    borderColor: isDark ? 'rgba(245, 158, 11, 0.4)' : '#FDE68A',
     borderWidth: 1.5,
   },
   invoiceCardHeader: {
@@ -741,18 +745,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#F8FAFC',
+    borderBottomColor: isDark ? colors.border.default : '#F8FAFC',
     paddingBottom: 6,
     marginBottom: 6,
   },
   invoiceNumText: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#0F172A',
+    color: colors.text.primary,
     letterSpacing: 0.5,
   },
   wonBadge: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
     paddingHorizontal: 6,
     paddingVertical: 1.5,
     borderRadius: 6,
@@ -760,10 +764,10 @@ const styles = StyleSheet.create({
   wonBadgeText: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#B45309',
+    color: isDark ? '#FBBF24' : '#B45309',
   },
   claimedBadge: {
-    backgroundColor: '#D1FAE5',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#D1FAE5',
     paddingHorizontal: 6,
     paddingVertical: 1.5,
     borderRadius: 6,
@@ -771,10 +775,10 @@ const styles = StyleSheet.create({
   claimedBadgeText: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#065F46',
+    color: isDark ? '#34D399' : '#065F46',
   },
   missedBadge: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     paddingHorizontal: 6,
     paddingVertical: 1.5,
     borderRadius: 6,
@@ -782,10 +786,10 @@ const styles = StyleSheet.create({
   missedBadgeText: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#94A3B8',
+    color: colors.text.muted,
   },
   pendingBadge: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: isDark ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF',
     paddingHorizontal: 6,
     paddingVertical: 1.5,
     borderRadius: 6,
@@ -793,11 +797,11 @@ const styles = StyleSheet.create({
   pendingBadgeText: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#2563EB',
+    color: isDark ? '#60A5FA' : '#2563EB',
   },
   invoiceDateText: {
     fontSize: 11,
-    color: '#94A3B8',
+    color: colors.text.muted,
   },
   invoiceCardBody: {
     flexDirection: 'row',
@@ -807,11 +811,11 @@ const styles = StyleSheet.create({
   invoiceMerchantText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#334155',
+    color: colors.text.primary,
   },
   invoiceMetaText: {
     fontSize: 11,
-    color: '#64748B',
+    color: colors.text.secondary,
     marginTop: 2,
   },
   claimBtn: {
@@ -833,7 +837,7 @@ const styles = StyleSheet.create({
   cardArrow: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#94A3B8',
+    color: colors.text.muted,
     marginLeft: 2,
   },
 });

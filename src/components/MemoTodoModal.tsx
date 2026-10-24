@@ -13,6 +13,8 @@ import {
 } from 'react-native';
 import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
+import { useTheme } from '../theme/ThemeContext';
+import { ThemeColors } from '../theme/colors';
 import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag, parseMemoChecklist } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { HorizontalScrollView } from './HorizontalScrollView';
@@ -44,6 +46,8 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
   onAddMemo,
   onCompleteMemo,
 }) => {
+  const { isDark, colors } = useTheme();
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const { transactions, getMemberById, toggleMemoSettled, toggleMemoChecklistItem } = useLedger();
   const [activeTab, setActiveTab] = useState<TodoTab>('all');
   const scrollRef = useRef<ScrollView>(null);
@@ -545,20 +549,22 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.75)' : 'rgba(0, 0, 0, 0.45)',
     justifyContent: 'flex-end',
   },
   modalCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.modal,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: Math.min(SCREEN_HEIGHT * 0.88, 760),
     paddingTop: 16,
     paddingBottom: Platform.OS === 'ios' ? 32 : 16,
     paddingHorizontal: 16,
+    borderTopWidth: isDark ? 1 : 0,
+    borderTopColor: isDark ? colors.border.default : 'transparent',
   },
   header: {
     flexDirection: 'row',
@@ -569,25 +575,25 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#1E293B',
+    color: colors.text.primary,
   },
   subtitle: {
     fontSize: 12,
-    color: '#64748B',
+    color: colors.text.muted,
     marginTop: 2,
   },
   closeBtn: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#64748B',
+    color: colors.text.muted,
   },
   metricsRow: {
     flexDirection: 'row',
@@ -596,22 +602,22 @@ const styles = StyleSheet.create({
   },
   metricCard: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderRadius: 12,
     paddingVertical: 9,
     paddingHorizontal: 8,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
     alignItems: 'center',
   },
   metricCardActive: {
     borderColor: '#D97706',
-    backgroundColor: '#FFFBEB',
+    backgroundColor: isDark ? 'rgba(217, 119, 6, 0.2)' : '#FFFBEB',
   },
   metricLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#64748B',
+    color: colors.text.muted,
     marginBottom: 2,
   },
   metricValue: {
@@ -629,21 +635,21 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 11,
     borderRadius: 18,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   tabChipActive: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7',
     borderColor: '#F59E0B',
   },
   tabChipText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#475569',
+    color: colors.text.secondary,
   },
   tabChipTextActive: {
-    color: '#92400E',
+    color: isDark ? '#FBBF24' : '#92400E',
     fontWeight: '700',
   },
   listArea: {
@@ -666,27 +672,27 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#334155',
+    color: colors.text.secondary,
     marginBottom: 4,
   },
   emptyDesc: {
     fontSize: 12,
-    color: '#94A3B8',
+    color: colors.text.muted,
     textAlign: 'center',
   },
   itemCard: {
-    backgroundColor: '#FFFBEB',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.12)' : '#FFFBEB',
     borderRadius: 12,
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#FDE68A',
+    borderColor: isDark ? 'rgba(245, 158, 11, 0.3)' : '#FDE68A',
     borderLeftWidth: 4,
     borderLeftColor: '#F59E0B',
   },
   itemCardCompleted: {
-    backgroundColor: '#F8FAFC',
-    borderColor: '#E2E8F0',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
     borderLeftColor: '#10B981',
     opacity: 0.88,
   },
@@ -708,7 +714,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1.8,
     borderColor: '#D97706',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -728,12 +734,12 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7',
     alignItems: 'center',
     justifyContent: 'center',
   },
   itemIconBadgeCompleted: {
-    backgroundColor: '#E2E8F0',
+    backgroundColor: isDark ? colors.background.card : '#E2E8F0',
   },
   itemIconText: {
     fontSize: 12,
@@ -741,11 +747,11 @@ const styles = StyleSheet.create({
   itemTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#92400E',
+    color: isDark ? '#FBBF24' : '#92400E',
     flex: 1,
   },
   itemTitleCompleted: {
-    color: '#64748B',
+    color: colors.text.muted,
     textDecorationLine: 'line-through',
   },
   dueBadge: {
@@ -759,9 +765,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   completedBadge: {
-    backgroundColor: '#ECFDF5',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5',
     borderWidth: 1,
-    borderColor: '#A7F3D0',
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.4)' : '#A7F3D0',
     borderRadius: 10,
     paddingHorizontal: 7,
     paddingVertical: 2,
@@ -769,35 +775,35 @@ const styles = StyleSheet.create({
   completedBadgeText: {
     fontSize: 10.5,
     fontWeight: '700',
-    color: '#059669',
+    color: isDark ? '#34D399' : '#059669',
   },
   itemDateText: {
     fontSize: 11.5,
-    color: '#B45309',
+    color: isDark ? '#FCD34D' : '#B45309',
     fontWeight: '600',
   },
   itemContent: {
     fontSize: 13.5,
-    color: '#1E293B',
+    color: colors.text.primary,
     lineHeight: 19,
     marginBottom: 6,
   },
   itemContentCompleted: {
-    color: '#94A3B8',
+    color: colors.text.muted,
     textDecorationLine: 'line-through',
   },
   linkText: {
-    color: '#2563EB',
+    color: isDark ? '#60A5FA' : '#2563EB',
     textDecorationLine: 'underline',
   },
   linkTextCompleted: {
-    color: '#94A3B8',
+    color: colors.text.muted,
     textDecorationLine: 'line-through',
   },
   itemReportBubble: {
-    backgroundColor: '#F0FDF4',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#F0FDF4',
     borderWidth: 1,
-    borderColor: '#BBF7D0',
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#BBF7D0',
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 5,
@@ -805,14 +811,14 @@ const styles = StyleSheet.create({
   },
   itemReportText: {
     fontSize: 11.5,
-    color: '#166534',
+    color: isDark ? '#34D399' : '#166534',
     lineHeight: 16,
   },
   itemLinkedExpenseBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#FEF2F2',
+    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEF2F2',
     borderWidth: 1,
-    borderColor: '#FECACA',
+    borderColor: isDark ? 'rgba(239, 68, 68, 0.35)' : '#FECACA',
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -821,7 +827,7 @@ const styles = StyleSheet.create({
   itemLinkedExpenseBadgeText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#DC2626',
+    color: isDark ? '#F87171' : '#DC2626',
   },
   itemFooterRow: {
     flexDirection: 'row',
@@ -829,23 +835,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 6,
     borderTopWidth: 1,
-    borderTopColor: '#FEF3C7',
+    borderTopColor: isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7',
   },
   itemAuthor: {
     fontSize: 10.5,
-    color: '#78350F',
+    color: isDark ? '#FCD34D' : '#78350F',
     fontWeight: '500',
   },
   itemAuthorCompleted: {
-    color: '#94A3B8',
+    color: colors.text.muted,
   },
   itemHint: {
     fontSize: 10.5,
-    color: '#D97706',
+    color: isDark ? '#FBBF24' : '#D97706',
     fontWeight: '600',
   },
   itemHintCompleted: {
-    color: '#64748B',
+    color: colors.text.muted,
   },
   footerRow: {
     flexDirection: 'row',
@@ -869,14 +875,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeFooterBtnText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#475569',
+    color: colors.text.secondary,
   },
   checklistProgressRow: {
     flexDirection: 'row',
@@ -889,7 +895,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: isDark ? colors.border.default : '#E2E8F0',
     overflow: 'hidden',
   },
   checklistProgressBarFill: {
@@ -910,13 +916,13 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     paddingHorizontal: 8,
     borderRadius: 8,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderWidth: 0.5,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   checklistItemRowCompleted: {
-    backgroundColor: '#F1F5F9',
-    borderColor: '#E2E8F0',
+    backgroundColor: isDark ? colors.background.canvas : '#F1F5F9',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
     opacity: 0.8,
   },
   checklistItemBox: {
@@ -924,8 +930,8 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: 4,
     borderWidth: 1.5,
-    borderColor: '#94A3B8',
-    backgroundColor: '#FFFFFF',
+    borderColor: colors.text.muted,
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 8,
@@ -942,21 +948,21 @@ const styles = StyleSheet.create({
   },
   checklistItemText: {
     fontSize: 13.5,
-    color: '#1E293B',
+    color: colors.text.primary,
     flex: 1,
     lineHeight: 18,
   },
   checklistItemTextCompleted: {
-    color: '#94A3B8',
+    color: colors.text.muted,
     textDecorationLine: 'line-through',
   },
   checklistAllDoneHint: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ECFDF5',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5',
     borderWidth: 1,
-    borderColor: '#A7F3D0',
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#A7F3D0',
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3.5,
@@ -966,7 +972,6 @@ const styles = StyleSheet.create({
   checklistAllDoneHintText: {
     fontSize: 11.5,
     fontWeight: '700',
-    color: '#059669',
+    color: isDark ? '#34D399' : '#059669',
   },
 });
-

@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import { useTheme } from '../theme/ThemeContext';
+import { ThemeColors } from '../theme/colors';
 import {
   View,
   Text as RNText,
@@ -65,6 +67,8 @@ export const TransactionFilterModal: React.FC<TransactionFilterModalProps> = ({
   transactions,
   getMemberById,
 }) => {
+  const { isDark, colors } = useTheme();
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   // 萃取可用年份（若外部有傳入則使用，否則動態從交易紀錄彙整）
   const yearsList = React.useMemo(() => {
     if (availableYears && availableYears.length > 0) {
@@ -349,17 +353,17 @@ export const TransactionFilterModal: React.FC<TransactionFilterModalProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: isDark ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.45)',
     justifyContent: 'flex-end',
   },
   backdrop: {
     ...StyleSheet.absoluteFill,
   },
   sheet: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.modal,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingTop: 16,
@@ -369,6 +373,8 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 600,
     alignSelf: 'center',
+    borderTopWidth: isDark ? 1 : 0,
+    borderTopColor: isDark ? colors.border.default : 'transparent',
   },
   header: {
     flexDirection: 'row',
@@ -377,27 +383,27 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: isDark ? colors.border.default : '#F1F5F9',
   },
   title: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#0F172A',
+    color: colors.text.primary,
   },
   subtitle: {
     fontSize: 12,
-    color: '#64748B',
+    color: colors.text.muted,
     marginTop: 2,
   },
   closeBtn: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
   },
   closeText: {
     fontSize: 14,
-    color: '#64748B',
+    color: colors.text.muted,
     fontWeight: '700',
   },
   scrollArea: {
@@ -414,12 +420,12 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 12,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderWidth: 1.5,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   optionItemActive: {
-    backgroundColor: '#EEF2FF',
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF',
     borderColor: '#6366F1',
   },
   optionLeft: {
@@ -432,14 +438,14 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   optionIconBoxActive: {
-    backgroundColor: '#E0E7FF',
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.3)' : '#E0E7FF',
     borderColor: '#818CF8',
   },
   optionIcon: {
@@ -448,15 +454,15 @@ const styles = StyleSheet.create({
   optionLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1E293B',
+    color: colors.text.primary,
   },
   optionLabelActive: {
-    color: '#4338CA',
+    color: isDark ? '#A5B4FC' : '#4338CA',
     fontWeight: '700',
   },
   optionSublabel: {
     fontSize: 11,
-    color: '#94A3B8',
+    color: colors.text.muted,
     marginTop: 1,
   },
   optionRight: {
@@ -466,18 +472,18 @@ const styles = StyleSheet.create({
   },
   countBadge: {
     fontSize: 12,
-    color: '#64748B',
-    backgroundColor: '#FFFFFF',
+    color: colors.text.muted,
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   checkIcon: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#4F46E5',
+    color: isDark ? '#818CF8' : '#4F46E5',
     marginLeft: 2,
   },
   groupHeaderContainer: {
@@ -488,7 +494,7 @@ const styles = StyleSheet.create({
   groupHeaderText: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#4F46E5',
+    color: isDark ? '#818CF8' : '#4F46E5',
     letterSpacing: 0.5,
   },
 });

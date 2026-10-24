@@ -16,6 +16,8 @@ import {
 } from 'react-native';
 import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
+import { useTheme } from '../theme/ThemeContext';
+import { ThemeColors } from '../theme/colors';
 import { parseMemoNote, decodeMemoMerchantTag } from '../lib/memo';
 import { formatMemoReminderBadge, getNextMemoReminderDate } from '../lib/lunar';
 import { HorizontalScrollView } from './HorizontalScrollView';
@@ -59,6 +61,8 @@ export const MemoCompletionModal: React.FC<MemoCompletionModalProps> = ({
   onCompleteOnly,
   onLinkExpense,
 }) => {
+  const { isDark, colors } = useTheme();
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const { members, currentUser, getMemberById } = useLedger();
 
   const [completerId, setCompleterId] = useState<string>('');
@@ -310,15 +314,15 @@ export const MemoCompletionModal: React.FC<MemoCompletionModalProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.75)' : 'rgba(0, 0, 0, 0.45)',
     justifyContent: 'flex-end',
     width: '100%',
   },
   sheet: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.modal,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: Math.min(SCREEN_HEIGHT * 0.9, 760),
@@ -328,6 +332,8 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingHorizontal: 16,
     paddingBottom: Platform.OS === 'ios' ? 24 : 12,
+    borderTopWidth: isDark ? 1 : 0,
+    borderTopColor: isDark ? colors.border.default : 'transparent',
   },
   headerRow: {
     flexDirection: 'row',
@@ -346,7 +352,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 17,
     fontWeight: '800',
-    color: '#0F172A',
+    color: colors.text.primary,
   },
   closeBtn: {
     padding: 6,
@@ -354,16 +360,16 @@ const styles = StyleSheet.create({
   },
   closeBtnText: {
     fontSize: 16,
-    color: '#94A3B8',
+    color: colors.text.muted,
     fontWeight: '700',
   },
   scrollContent: {
     paddingTop: 4,
   },
   memoPreviewCard: {
-    backgroundColor: '#FFFBEB',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FFFBEB',
     borderWidth: 1,
-    borderColor: '#FDE68A',
+    borderColor: isDark ? 'rgba(245, 158, 11, 0.35)' : '#FDE68A',
     borderRadius: 14,
     padding: 12,
     marginBottom: 14,
@@ -378,7 +384,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -389,24 +395,24 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontWeight: '700',
-    color: '#78350F',
+    color: isDark ? '#FBBF24' : '#78350F',
   },
   memoPreviewContent: {
     fontSize: 13,
-    color: '#92400E',
+    color: isDark ? '#FDE68A' : '#92400E',
     lineHeight: 18,
     marginTop: 2,
     marginBottom: 4,
   },
   memoPreviewCreator: {
     fontSize: 11,
-    color: '#B45309',
+    color: isDark ? '#FCD34D' : '#B45309',
     marginTop: 2,
   },
   sectionLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#334155',
+    color: colors.text.secondary,
     marginBottom: 6,
   },
   inputLabelRow: {
@@ -418,7 +424,7 @@ const styles = StyleSheet.create({
   },
   dismissKeyboardText: {
     fontSize: 12,
-    color: '#2563EB',
+    color: isDark ? '#60A5FA' : '#2563EB',
     fontWeight: '600',
   },
   memberChipsRow: {
@@ -432,13 +438,13 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 20,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
     gap: 4,
   },
   memberChipSelected: {
-    backgroundColor: '#ECFDF5',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5',
     borderColor: '#10B981',
   },
   memberChipAvatar: {
@@ -446,22 +452,22 @@ const styles = StyleSheet.create({
   },
   memberChipName: {
     fontSize: 12.5,
-    color: '#64748B',
+    color: colors.text.secondary,
     fontWeight: '600',
   },
   memberChipNameSelected: {
-    color: '#065F46',
+    color: isDark ? '#34D399' : '#065F46',
     fontWeight: '700',
   },
   noteInput: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.input : '#F8FAFC',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: isDark ? colors.border.default : '#CBD5E1',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 13.5,
-    color: '#0F172A',
+    color: colors.text.primary,
     minHeight: 64,
   },
   quickTagsRow: {
@@ -475,13 +481,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   quickTagChipText: {
     fontSize: 11,
-    color: '#475569',
+    color: colors.text.secondary,
     fontWeight: '500',
   },
   actionsContainer: {
@@ -522,9 +528,9 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   completeOnlyBtn: {
-    backgroundColor: '#F0FDF4',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#F0FDF4',
     borderWidth: 1.5,
-    borderColor: '#86EFAC',
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#86EFAC',
     borderRadius: 14,
     paddingVertical: 12,
     alignItems: 'center',
@@ -533,7 +539,7 @@ const styles = StyleSheet.create({
   completeOnlyBtnText: {
     fontSize: 13.5,
     fontWeight: '700',
-    color: '#15803D',
+    color: isDark ? '#34D399' : '#15803D',
   },
   btnDisabled: {
     opacity: 0.5,
@@ -544,8 +550,7 @@ const styles = StyleSheet.create({
   },
   cancelBtnText: {
     fontSize: 12.5,
-    color: '#94A3B8',
+    color: colors.text.muted,
     fontWeight: '600',
   },
 });
-

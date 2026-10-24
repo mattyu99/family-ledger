@@ -1,4 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useTheme } from '../theme/ThemeContext';
+import { ThemeColors } from '../theme/colors';
 import {
   View,
   Text as RNText,
@@ -63,6 +65,8 @@ interface CategoryManageModalProps {
 }
 
 export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({ visible, onClose }) => {
+  const { isDark, colors } = useTheme();
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const { categories, isOwner, addCategory, updateCategory, deleteCategory, transactions } = useLedger();
 
   const [activeType, setActiveType] = useState<CategoryType>('expense');
@@ -505,15 +509,15 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({ visibl
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.75)' : 'rgba(0, 0, 0, 0.45)',
     justifyContent: 'flex-end',
     width: '100%',
   },
   sheet: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.modal,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 16,
@@ -523,6 +527,8 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 600,
     alignSelf: 'center',
+    borderTopWidth: isDark ? 1 : 0,
+    borderTopColor: isDark ? colors.border.default : 'transparent',
   },
   header: {
     flexDirection: 'row',
@@ -534,22 +540,22 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text.primary,
   },
   subtitle: {
     fontSize: 11,
-    color: '#6B7280',
+    color: colors.text.muted,
     marginTop: 2,
   },
   closeBtn: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
   },
   closeText: {
     fontSize: 13,
-    color: '#4B5563',
+    color: colors.text.muted,
     fontWeight: '600',
   },
   scrollArea: {
@@ -564,7 +570,7 @@ const styles = StyleSheet.create({
   },
   typeSelector: {
     flexDirection: 'row',
-    backgroundColor: '#F3F4F6',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
     borderRadius: 10,
     padding: 3,
     marginBottom: 10,
@@ -585,15 +591,16 @@ const styles = StyleSheet.create({
   typeBtnText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#6B7280',
+    color: colors.text.muted,
   },
   typeBtnTextActive: {
     color: '#FFFFFF',
+    fontWeight: '700',
   },
   addCategoryBtn: {
-    backgroundColor: '#EEF2FF',
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF',
     borderWidth: 1,
-    borderColor: '#C7D2FE',
+    borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
     borderStyle: 'dashed',
     borderRadius: 10,
     paddingVertical: 9,
@@ -601,12 +608,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   addCategoryBtnText: {
-    color: '#4F46E5',
+    color: isDark ? '#818CF8' : '#4F46E5',
     fontSize: 13,
     fontWeight: '600',
   },
   memberNoticeBox: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
     borderRadius: 8,
     padding: 8,
     marginBottom: 10,
@@ -614,7 +621,7 @@ const styles = StyleSheet.create({
   },
   memberNoticeText: {
     fontSize: 11,
-    color: '#6B7280',
+    color: colors.text.muted,
   },
   categoryList: {
     gap: 6,
@@ -623,10 +630,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#F9FAFB',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F9FAFB',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
@@ -649,7 +656,7 @@ const styles = StyleSheet.create({
   categoryRowName: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#1F2937',
+    color: colors.text.primary,
     flex: 1,
   },
   categoryRowActions: {
@@ -661,24 +668,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: isDark ? colors.border.default : '#D1D5DB',
   },
   actionBtnEditText: {
     fontSize: 11,
-    color: '#4B5563',
+    color: colors.text.secondary,
     fontWeight: '500',
   },
   actionBtnDelete: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.18)' : '#FEE2E2',
   },
   actionBtnDeleteText: {
     fontSize: 11,
-    color: '#EF4444',
+    color: isDark ? '#F87171' : '#EF4444',
     fontWeight: 'bold',
   },
   formContainer: {
@@ -693,26 +700,26 @@ const styles = StyleSheet.create({
   },
   dismissKeyboardText: {
     fontSize: 12,
-    color: '#4F46E5',
+    color: isDark ? '#818CF8' : '#4F46E5',
     fontWeight: '600',
     marginLeft: 'auto',
   },
   inputLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#4B5563',
+    color: colors.text.secondary,
     marginBottom: 6,
     marginTop: 8,
   },
   textInput: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: isDark ? colors.background.input : '#F9FAFB',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
     fontSize: 13,
-    color: '#111827',
+    color: colors.text.primary,
   },
   iconGrid: {
     flexDirection: 'row',
@@ -723,7 +730,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 8,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
@@ -731,7 +738,7 @@ const styles = StyleSheet.create({
   },
   iconChipSelected: {
     borderColor: '#4F46E5',
-    backgroundColor: '#EEF2FF',
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF',
   },
   iconEmoji: {
     fontSize: 16,
@@ -747,10 +754,10 @@ const styles = StyleSheet.create({
     height: 26,
     borderRadius: 13,
     borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderColor: isDark ? colors.background.modal : '#FFFFFF',
   },
   colorDotSelected: {
-    borderColor: '#111827',
+    borderColor: colors.text.primary,
     transform: [{ scale: 1.15 }],
   },
   btnRow: {
@@ -762,12 +769,12 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 10,
     borderRadius: 10,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
     alignItems: 'center',
   },
   cancelBtnText: {
     fontSize: 13,
-    color: '#4B5563',
+    color: colors.text.secondary,
     fontWeight: '600',
   },
   saveBtn: {

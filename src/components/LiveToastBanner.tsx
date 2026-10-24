@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import {
   Animated,
   StyleSheet,
@@ -10,6 +10,8 @@ import {
   TextProps,
 } from 'react-native';
 import { LiveToastNotification } from '../context/LedgerContext';
+import { useTheme } from '../theme/ThemeContext';
+import { ThemeColors } from '../theme/colors';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
   <RNText
@@ -25,6 +27,9 @@ interface LiveToastBannerProps {
 }
 
 export const LiveToastBanner: React.FC<LiveToastBannerProps> = ({ toast, onDismiss }) => {
+  const { isDark, colors } = useTheme();
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+
   const translateY = useRef(new Animated.Value(-100)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -97,11 +102,11 @@ export const LiveToastBanner: React.FC<LiveToastBannerProps> = ({ toast, onDismi
   };
 
   const getAvatarBg = () => {
-    if (toast.type === 'complete') return '#D1FAE5';
-    if (toast.type === 'insert') return '#EEF2FF';
-    if (toast.type === 'update') return '#FEF3C7';
-    if (toast.type === 'delete') return '#FEE2E2';
-    return '#F1F5F9';
+    if (toast.type === 'complete') return isDark ? 'rgba(16, 185, 129, 0.2)' : '#D1FAE5';
+    if (toast.type === 'insert') return isDark ? 'rgba(79, 70, 229, 0.25)' : '#EEF2FF';
+    if (toast.type === 'update') return isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7';
+    if (toast.type === 'delete') return isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2';
+    return isDark ? 'rgba(255, 255, 255, 0.1)' : '#F1F5F9';
   };
 
   return (
@@ -148,7 +153,7 @@ export const LiveToastBanner: React.FC<LiveToastBannerProps> = ({ toast, onDismi
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   container: {
     position: 'absolute',
     top: Platform.OS === 'ios' ? 52 : Platform.OS === 'android' ? ((StatusBar.currentHeight || 28) + 12) : 18,
@@ -161,7 +166,7 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 500,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.modal,
     borderRadius: 18,
     paddingVertical: 10,
     paddingHorizontal: 12,
@@ -198,18 +203,18 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#0F172A',
+    color: colors.text.primary,
     flex: 1,
     marginRight: 6,
   },
   timeTag: {
     fontSize: 10,
-    color: '#94A3B8',
+    color: colors.text.muted,
     fontWeight: '600',
   },
   message: {
     fontSize: 12,
-    color: '#475569',
+    color: colors.text.secondary,
     fontWeight: '500',
     lineHeight: 16,
   },
@@ -217,14 +222,14 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 4,
   },
   closeBtnText: {
     fontSize: 11,
-    color: '#64748B',
+    color: colors.text.muted,
     fontWeight: '700',
   },
 });

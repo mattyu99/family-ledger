@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import { useTheme } from '../theme/ThemeContext';
+import { ThemeColors } from '../theme/colors';
 import {
   Modal,
   View,
@@ -143,6 +145,8 @@ const GUIDE_ITEMS: GuideItem[] = [
 ];
 
 export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, onClose }) => {
+  const { isDark, colors } = useTheme();
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const handleOpenBrochure = async () => {
     const url = 'https://mattyu99.github.io/family-ledger/product_brochure.html';
     if (Platform.OS === 'web') {
@@ -275,16 +279,16 @@ export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, o
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.75)' : 'rgba(15, 23, 42, 0.65)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 16,
   },
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.modal,
     borderRadius: 20,
     width: '100%',
     maxWidth: 500,
@@ -295,6 +299,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 20,
     elevation: 8,
+    borderWidth: isDark ? 1 : 0,
+    borderColor: isDark ? colors.border.default : 'transparent',
   },
   headerRow: {
     flexDirection: 'row',
@@ -302,16 +308,16 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     paddingBottom: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: isDark ? colors.border.default : '#F1F5F9',
   },
   title: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#1E293B',
+    color: colors.text.primary,
   },
   subtitle: {
     fontSize: 12,
-    color: '#64748B',
+    color: colors.text.muted,
     marginTop: 3,
     fontWeight: '500',
   },
@@ -319,14 +325,14 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 8,
   },
   closeBtnText: {
     fontSize: 14,
-    color: '#64748B',
+    color: colors.text.muted,
     fontWeight: '700',
   },
   scrollArea: {
@@ -334,9 +340,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   introBanner: {
-    backgroundColor: '#FFF1F2',
+    backgroundColor: isDark ? 'rgba(225, 29, 72, 0.15)' : '#FFF1F2',
     borderWidth: 1,
-    borderColor: '#FECDD3',
+    borderColor: isDark ? 'rgba(225, 29, 72, 0.35)' : '#FECDD3',
     borderRadius: 14,
     padding: 14,
     marginBottom: 14,
@@ -362,20 +368,20 @@ const styles = StyleSheet.create({
   },
   introSubText: {
     fontSize: 11,
-    color: '#BE123C',
+    color: isDark ? '#FB7185' : '#BE123C',
     fontWeight: '600',
   },
   introTitle: {
     fontSize: 13.5,
     fontWeight: '800',
-    color: '#881337',
+    color: isDark ? '#FDA4AF' : '#881337',
     marginTop: 4,
     marginBottom: 6,
     lineHeight: 19,
   },
   introDesc: {
     fontSize: 12,
-    color: '#9F1239',
+    color: isDark ? '#FECDD3' : '#9F1239',
     lineHeight: 18,
   },
   sectionHeaderRow: {
@@ -389,19 +395,19 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#1E293B',
+    color: colors.text.primary,
   },
   sectionDesc: {
     fontSize: 11,
-    color: '#64748B',
+    color: colors.text.muted,
   },
   guideCard: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderRadius: 12,
     padding: 12,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   guideHeader: {
     flexDirection: 'row',
@@ -422,7 +428,7 @@ const styles = StyleSheet.create({
   guideTitleText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#1E293B',
+    color: colors.text.primary,
     flex: 1,
   },
   guideTag: {
@@ -444,20 +450,20 @@ const styles = StyleSheet.create({
   },
   stepBullet: {
     fontSize: 12,
-    color: '#E11D48',
+    color: isDark ? '#FB7185' : '#E11D48',
     lineHeight: 17,
     fontWeight: '800',
   },
   stepText: {
     flex: 1,
     fontSize: 12,
-    color: '#475569',
+    color: colors.text.secondary,
     lineHeight: 17,
   },
   brochureCard: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: isDark ? 'rgba(37, 99, 235, 0.15)' : '#EFF6FF',
     borderWidth: 1.5,
-    borderColor: '#BFDBFE',
+    borderColor: isDark ? 'rgba(37, 99, 235, 0.35)' : '#BFDBFE',
     borderRadius: 14,
     padding: 12,
     marginTop: 4,
@@ -476,7 +482,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#DBEAFE',
+    backgroundColor: isDark ? 'rgba(37, 99, 235, 0.25)' : '#DBEAFE',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 10,
@@ -487,11 +493,11 @@ const styles = StyleSheet.create({
   brochureTitle: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#1E40AF',
+    color: isDark ? '#93C5FD' : '#1E40AF',
   },
   brochureSubtitle: {
     fontSize: 11,
-    color: '#3B82F6',
+    color: isDark ? '#60A5FA' : '#3B82F6',
     marginTop: 2,
     lineHeight: 15,
   },
@@ -513,16 +519,16 @@ const styles = StyleSheet.create({
   },
   brochureFooterBtn: {
     flex: 1,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: isDark ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF',
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: isDark ? 'rgba(37, 99, 235, 0.4)' : '#BFDBFE',
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   brochureFooterBtnText: {
-    color: '#2563EB',
+    color: isDark ? '#60A5FA' : '#2563EB',
     fontSize: 13.5,
     fontWeight: '700',
   },

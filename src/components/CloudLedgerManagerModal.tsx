@@ -11,6 +11,8 @@ import {
   Platform,
   Dimensions,
 } from 'react-native';
+import { useTheme } from '../theme/ThemeContext';
+import { ThemeColors } from '../theme/colors';
 import {
   fetchCloudLedgersSummary,
   CloudLedgerSummary,
@@ -34,6 +36,8 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
   onClose,
   onLedgerDeleted,
 }) => {
+  const { isDark, colors } = useTheme();
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const [loading, setLoading] = useState<boolean>(false);
   const [quotaExpanded, setQuotaExpanded] = useState<boolean>(true);
   const [ledgers, setLedgers] = useState<CloudLedgerSummary[]>([]);
@@ -298,14 +302,14 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.75)' : 'rgba(15, 23, 42, 0.65)',
     justifyContent: 'flex-end',
   },
   modalCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.modal,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: 16,
@@ -317,6 +321,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 16,
     elevation: 20,
+    borderTopWidth: isDark ? 1 : 0,
+    borderTopColor: isDark ? colors.border.default : 'transparent',
   },
   header: {
     flexDirection: 'row',
@@ -324,7 +330,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: isDark ? colors.border.default : '#F1F5F9',
   },
   headerBadge: {
     alignSelf: 'flex-start',
@@ -344,31 +350,31 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#0F172A',
+    color: colors.text.primary,
     marginBottom: 1,
   },
   subtitle: {
     fontSize: 11.5,
-    color: '#64748B',
+    color: colors.text.muted,
     lineHeight: 15,
   },
   closeBtn: {
     padding: 8,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     borderRadius: 999,
   },
   closeBtnText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#64748B',
+    color: colors.text.muted,
   },
   quotaCard: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderRadius: 14,
     padding: 10,
     marginTop: 8,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   quotaRow: {
     flexDirection: 'row',
@@ -378,11 +384,11 @@ const styles = StyleSheet.create({
   quotaTitle: {
     fontSize: 12.5,
     fontWeight: '700',
-    color: '#1E293B',
+    color: colors.text.primary,
   },
   quotaSub: {
     fontSize: 11,
-    color: '#64748B',
+    color: colors.text.muted,
     marginTop: 2,
   },
   quotaPercentText: {
@@ -402,21 +408,21 @@ const styles = StyleSheet.create({
     color: '#1D4ED8',
   },
   quotaToggleBtn: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.card : '#F1F5F9',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   quotaToggleBtnText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#475569',
+    color: colors.text.secondary,
   },
   quotaBarTrack: {
     height: 6,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: isDark ? colors.background.card : '#E2E8F0',
     borderRadius: 999,
     overflow: 'hidden',
     marginTop: 6,
@@ -432,25 +438,25 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#EEF2F6',
+    borderTopColor: isDark ? colors.border.default : '#EEF2F6',
   },
   statsPill: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     borderRadius: 10,
     paddingVertical: 6,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   statsPillNum: {
     fontSize: 15,
     fontWeight: '800',
-    color: '#0F172A',
+    color: colors.text.primary,
   },
   statsPillLabel: {
     fontSize: 10.5,
-    color: '#64748B',
+    color: colors.text.muted,
     fontWeight: '600',
     marginTop: 1,
   },
@@ -461,39 +467,39 @@ const styles = StyleSheet.create({
   },
   refreshBtn: {
     flex: 1,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     borderRadius: 10,
     paddingVertical: 9,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   refreshBtnText: {
     fontSize: 12.5,
     fontWeight: '700',
-    color: '#334155',
+    color: colors.text.secondary,
   },
   filterBar: {
     flexDirection: 'row',
     gap: 6,
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#F8FAFC',
+    borderBottomColor: isDark ? colors.border.default : '#F8FAFC',
   },
   filterChip: {
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
   },
   filterChipActive: {
-    backgroundColor: '#1E293B',
+    backgroundColor: isDark ? '#3B82F6' : '#1E293B',
   },
   filterChipText: {
     fontSize: 11.5,
     fontWeight: '600',
-    color: '#64748B',
+    color: colors.text.muted,
   },
   filterChipTextActive: {
     color: '#FFFFFF',
@@ -513,7 +519,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 13,
-    color: '#64748B',
+    color: colors.text.muted,
     marginTop: 12,
   },
   emptyBox: {
@@ -526,19 +532,19 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 13,
-    color: '#94A3B8',
+    color: colors.text.muted,
   },
   ledgerCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#FFFFFF',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
     padding: 12,
     marginBottom: 10,
   },
   ledgerCardCurrent: {
-    borderColor: '#86EFAC',
-    backgroundColor: '#F0FDF4',
+    borderColor: isDark ? '#22C55E' : '#86EFAC',
+    backgroundColor: isDark ? 'rgba(34, 197, 94, 0.15)' : '#F0FDF4',
   },
   ledgerHeader: {
     flexDirection: 'row',
@@ -548,11 +554,11 @@ const styles = StyleSheet.create({
   ledgerName: {
     fontSize: 14.5,
     fontWeight: '800',
-    color: '#0F172A',
+    color: colors.text.primary,
   },
   ledgerMeta: {
     fontSize: 11,
-    color: '#94A3B8',
+    color: colors.text.muted,
     marginTop: 4,
   },
   badgeCurrent: {
@@ -605,17 +611,17 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    borderTopColor: isDark ? colors.border.default : '#F1F5F9',
   },
   memberLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#64748B',
+    color: colors.text.secondary,
     marginBottom: 4,
   },
   memberEmpty: {
     fontSize: 11,
-    color: '#94A3B8',
+    color: colors.text.muted,
     fontStyle: 'italic',
   },
   memberChipsRow: {
@@ -624,20 +630,19 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   memberChip: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.card : '#F1F5F9',
     paddingHorizontal: 7,
     paddingVertical: 3,
     borderRadius: 6,
   },
   memberChipText: {
     fontSize: 11,
-    color: '#334155',
+    color: colors.text.secondary,
     fontWeight: '600',
   },
   txSummaryText: {
     fontSize: 10.5,
-    color: '#64748B',
+    color: colors.text.muted,
     marginTop: 6,
   },
 });
-

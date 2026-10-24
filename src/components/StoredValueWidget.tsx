@@ -16,6 +16,8 @@ import {
 } from 'react-native';
 import { PaymentAccount, PaymentMethod, CustomPaymentMethod } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
+import { useTheme } from '../theme/ThemeContext';
+import { ThemeColors } from '../theme/colors';
 import { sortAccountsByUser, DEFAULT_PAYMENT_METHODS } from '../lib/payment';
 import { HorizontalScrollView } from './HorizontalScrollView';
 
@@ -48,6 +50,8 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
   onOpenCreditCardReconcile,
   filterMemberId,
 }) => {
+  const { isDark, colors } = useTheme();
+  const styles = React.useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const { paymentAccounts, paymentMethods, topUpAccountBalance, adjustAccountBalance, getMemberById, isOwner, currentUser, members } = useLedger();
 
   const targetFilteredMember = React.useMemo(() => {
@@ -885,9 +889,9 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   container: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     borderRadius: 16,
     paddingVertical: 12,
     paddingHorizontal: 14,
@@ -898,7 +902,7 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: colors.border.default,
   },
   headerRow: {
     flexDirection: 'row',
@@ -917,32 +921,32 @@ const styles = StyleSheet.create({
   titleText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#1E293B',
+    color: colors.text.primary,
   },
   manageLinkText: {
     fontSize: 11.5,
-    color: '#64748B',
+    color: colors.text.muted,
     fontWeight: '600',
   },
   reconcileLinkText: {
     fontSize: 11.5,
-    color: '#0284C7',
+    color: isDark ? '#38BDF8' : '#0284C7',
     fontWeight: '700',
-    backgroundColor: '#E0F2FE',
+    backgroundColor: isDark ? 'rgba(56, 189, 248, 0.15)' : '#E0F2FE',
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 6,
   },
   creditReconcileLinkText: {
     fontSize: 11.5,
-    color: '#4F46E5',
+    color: isDark ? '#818CF8' : '#4F46E5',
     fontWeight: '700',
-    backgroundColor: '#EEF2FF',
+    backgroundColor: isDark ? 'rgba(79, 70, 229, 0.15)' : '#EEF2FF',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#E0E7FF',
+    borderColor: isDark ? 'rgba(79, 70, 229, 0.3)' : '#E0E7FF',
   },
   scrollContent: {
     flexDirection: 'row',
@@ -951,7 +955,7 @@ const styles = StyleSheet.create({
   },
   cardItem: {
     width: 215,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderRadius: 12,
     padding: 10,
     borderWidth: 1.5,
@@ -974,7 +978,7 @@ const styles = StyleSheet.create({
   cardName: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#0F172A',
+    color: colors.text.primary,
     flexShrink: 1,
   },
   ownerBadge: {
@@ -985,7 +989,7 @@ const styles = StyleSheet.create({
   },
   ownerText: {
     fontSize: 9.5,
-    color: '#475569',
+    color: colors.text.secondary,
     fontWeight: '500',
   },
   balanceRow: {
@@ -997,9 +1001,9 @@ const styles = StyleSheet.create({
   cardNumBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: colors.border.default,
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2.5,
@@ -1008,17 +1012,17 @@ const styles = StyleSheet.create({
   cardNumBadgeText: {
     fontSize: 9.5,
     fontWeight: '700',
-    color: '#475569',
+    color: colors.text.secondary,
   },
   balanceLabel: {
     fontSize: 10,
-    color: '#64748B',
+    color: colors.text.muted,
     marginBottom: 1,
   },
   balanceValue: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#0284C7',
+    color: isDark ? '#38BDF8' : '#0284C7',
   },
   balanceValueLow: {
     color: '#EF4444',
@@ -1040,9 +1044,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   reconcileBtn: {
-    backgroundColor: '#F0F9FF',
+    backgroundColor: isDark ? 'rgba(56, 189, 248, 0.15)' : '#F0F9FF',
     borderWidth: 1,
-    borderColor: '#BAE6FD',
+    borderColor: isDark ? 'rgba(56, 189, 248, 0.35)' : '#BAE6FD',
     paddingHorizontal: 6,
     paddingVertical: 5,
     borderRadius: 8,
@@ -1050,14 +1054,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   reconcileBtnText: {
-    color: '#0284C7',
+    color: isDark ? '#38BDF8' : '#0284C7',
     fontSize: 10.5,
     fontWeight: '700',
   },
   adjustBtn: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: colors.border.default,
     paddingHorizontal: 6,
     paddingVertical: 5,
     borderRadius: 8,
@@ -1065,13 +1069,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   adjustText: {
-    color: '#475569',
+    color: colors.text.secondary,
     fontSize: 10,
     fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: isDark ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
@@ -1084,7 +1088,7 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   modalContent: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.modal,
     borderRadius: 18,
     padding: 18,
     width: '100%',
@@ -1104,23 +1108,23 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#0F172A',
+    color: colors.text.primary,
   },
   modalCloseBtn: {
     padding: 4,
   },
   modalCloseText: {
     fontSize: 16,
-    color: '#94A3B8',
+    color: colors.text.muted,
   },
   modalCardName: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1E293B',
+    color: colors.text.primary,
   },
   modalCardSub: {
     fontSize: 12,
-    color: '#64748B',
+    color: colors.text.muted,
     marginBottom: 14,
   },
   inputLabelRow: {
@@ -1131,19 +1135,19 @@ const styles = StyleSheet.create({
   },
   dismissKeyboardText: {
     fontSize: 12,
-    color: '#0284C7',
+    color: isDark ? '#38BDF8' : '#0284C7',
     fontWeight: '600',
     marginLeft: 'auto',
   },
   toggleAllCardsLinkText: {
     fontSize: 11.5,
     fontWeight: '600',
-    color: '#0284C7',
+    color: isDark ? '#38BDF8' : '#0284C7',
   },
   inputLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#334155',
+    color: colors.text.secondary,
     marginBottom: 8,
   },
   presetAmountsRow: {
@@ -1155,38 +1159,38 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 7,
     borderRadius: 8,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: colors.border.default,
   },
   presetChipActive: {
-    backgroundColor: '#E0F2FE',
+    backgroundColor: isDark ? 'rgba(56, 189, 248, 0.15)' : '#E0F2FE',
     borderColor: '#0284C7',
   },
   presetChipText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#475569',
+    color: colors.text.secondary,
   },
   presetChipTextActive: {
-    color: '#0284C7',
+    color: isDark ? '#38BDF8' : '#0284C7',
     fontWeight: '700',
   },
   amountInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: '#E2E8F0',
+    borderColor: colors.border.default,
     borderRadius: 10,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.input : '#F8FAFC',
     paddingHorizontal: 12,
     marginBottom: 8,
   },
   currencySymbol: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#64748B',
+    color: colors.text.muted,
     marginRight: 6,
   },
   amountInput: {
@@ -1194,7 +1198,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     fontSize: 16,
     fontWeight: '700',
-    color: '#0F172A',
+    color: colors.text.primary,
   },
   sourceChipsRow: {
     flexDirection: 'row',
@@ -1206,21 +1210,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: colors.border.default,
   },
   sourceChipActive: {
-    backgroundColor: '#E0F2FE',
+    backgroundColor: isDark ? 'rgba(56, 189, 248, 0.15)' : '#E0F2FE',
     borderColor: '#0284C7',
   },
   sourceChipText: {
     fontSize: 11.5,
     fontWeight: '600',
-    color: '#475569',
+    color: colors.text.secondary,
   },
   sourceChipTextActive: {
-    color: '#0284C7',
+    color: isDark ? '#38BDF8' : '#0284C7',
     fontWeight: '700',
   },
   payerChipsRow: {
@@ -1236,12 +1240,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: colors.border.default,
   },
   payerChipActive: {
-    backgroundColor: '#EEF2FF',
+    backgroundColor: isDark ? 'rgba(79, 70, 229, 0.15)' : '#EEF2FF',
     borderColor: '#4F46E5',
   },
   payerChipAvatar: {
@@ -1250,10 +1254,10 @@ const styles = StyleSheet.create({
   payerChipName: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#475569',
+    color: colors.text.secondary,
   },
   payerChipNameActive: {
-    color: '#4F46E5',
+    color: isDark ? '#818CF8' : '#4F46E5',
     fontWeight: '700',
   },
   toggleRow: {
@@ -1269,29 +1273,29 @@ const styles = StyleSheet.create({
   toggleLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#334155',
+    color: colors.text.secondary,
   },
   subAccountSection: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: colors.border.default,
     padding: 10,
     marginBottom: 10,
   },
   subAccountLabel: {
     fontSize: 11.5,
     fontWeight: '700',
-    color: '#334155',
+    color: colors.text.secondary,
   },
   emptyAccountHint: {
     fontSize: 11,
-    color: '#94A3B8',
+    color: colors.text.muted,
     paddingVertical: 4,
   },
   modalHint: {
     fontSize: 11,
-    color: '#64748B',
+    color: colors.text.muted,
     lineHeight: 16,
     marginBottom: 16,
   },
@@ -1304,11 +1308,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: colors.border.default,
     alignItems: 'center',
   },
   modalCancelText: {
-    color: '#64748B',
+    color: colors.text.muted,
     fontSize: 13,
     fontWeight: '600',
   },

@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.7';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.7 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 16;
+export const APP_BUILD_REVISION = 17;
 
 // 完整版本字串 (例如 "1.0.7.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,19 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.7',
+    date: '2026-10-24',
+    title: '全系統管理彈窗、信用卡對帳、週期記帳與輔助視圖全面支援 Dark Mode',
+    highlights: [
+      '🌙 統一發票對獎中心全面支援 Dark Mode：中獎清冊、中獎期別選擇、對獎號碼比對、未開獎/已開獎標籤與發票明細卡片全面適配深色視覺層次。',
+      '💳 信用卡帳單與對帳中心深色適配：卡片切換列、帳單月份、核帳狀態、回饋折抵面板、支出明細清單與雲端帳單憑單預覽全面採用 Dark Mode 原生色彩。',
+      '🔄 週期性記帳與固定支出管理彈窗深色適配：待核對帳單、規則管理、新增週期規則、付款人/分類選擇與分期試算面板完美支援深色外觀。',
+      '🏷️ 分類管理、支付方式與卡片帳戶管理全面升級：深色模式下分類清單、圖示選單、預設開關、帳戶餘額卡片與明細操作介面清晰無眩光。',
+      '📝 生活待辦備忘清單、完成確認與交易進階篩選彈窗深色適配：備忘勾選清單、日期區間、成員篩選與搜尋條件彈窗提供優雅護眼的夜間視覺。',
+      '📱 儲值卡小工具、成員頭像選擇器、廣播通知橫幅、產品手冊與更新日誌全面適配深色主題。',
+    ],
+  },
   {
     version: '1.0.7',
     date: '2026-10-24',

@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import { useTheme } from '../theme/ThemeContext';
+import { ThemeColors } from '../theme/colors';
 import {
   Modal,
   View,
@@ -24,6 +26,8 @@ interface ChangelogModalProps {
 }
 
 export const ChangelogModal: React.FC<ChangelogModalProps> = ({ visible, onClose }) => {
+  const { isDark, colors } = useTheme();
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
     <Modal
       visible={visible}
@@ -107,58 +111,60 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ visible, onClose
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.75)' : 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 16,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    backgroundColor: colors.background.modal,
+    borderRadius: 24,
     width: '100%',
     maxWidth: 480,
     maxHeight: '85%',
-    padding: 20,
-    shadowColor: '#000000',
+    padding: 18,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.2,
     shadowRadius: 20,
     elevation: 8,
+    borderWidth: isDark ? 1 : 0,
+    borderColor: isDark ? colors.border.default : 'transparent',
   },
   headerRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-start',
-    paddingBottom: 14,
+    justifyContent: 'space-between',
+    paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: isDark ? colors.border.default : '#F1F5F9',
   },
   title: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#1E293B',
+    color: colors.text.primary,
   },
   subtitle: {
     fontSize: 12,
-    color: '#64748B',
-    marginTop: 3,
+    color: colors.text.muted,
+    marginTop: 2,
     fontWeight: '500',
   },
   closeBtn: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 8,
   },
   closeBtnText: {
     fontSize: 14,
-    color: '#64748B',
+    color: colors.text.muted,
     fontWeight: '700',
   },
   scrollArea: {
@@ -166,9 +172,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   currentBanner: {
-    backgroundColor: '#F0FDF4',
+    backgroundColor: isDark ? 'rgba(22, 163, 74, 0.15)' : '#F0FDF4',
     borderWidth: 1,
-    borderColor: '#BBF7D0',
+    borderColor: isDark ? 'rgba(22, 163, 74, 0.35)' : '#BBF7D0',
     borderRadius: 14,
     padding: 12,
     marginBottom: 14,
@@ -194,25 +200,25 @@ const styles = StyleSheet.create({
   },
   currentDateText: {
     fontSize: 11,
-    color: '#15803D',
+    color: isDark ? '#4ADE80' : '#15803D',
     fontWeight: '600',
   },
   currentBannerDesc: {
     fontSize: 11.5,
-    color: '#166534',
+    color: isDark ? '#86EFAC' : '#166534',
     lineHeight: 17,
   },
   historyCard: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderRadius: 14,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   historyCardLatest: {
-    backgroundColor: '#EEF2FF',
-    borderColor: '#C7D2FE',
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF',
+    borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
     borderWidth: 1.5,
   },
   cardHeader: {
@@ -224,7 +230,7 @@ const styles = StyleSheet.create({
   versionPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E2E8F0',
+    backgroundColor: isDark ? colors.background.card : '#E2E8F0',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
@@ -236,7 +242,7 @@ const styles = StyleSheet.create({
   versionPillText: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#475569',
+    color: colors.text.secondary,
   },
   versionPillTextLatest: {
     color: '#FFFFFF',
@@ -254,13 +260,13 @@ const styles = StyleSheet.create({
   },
   cardDate: {
     fontSize: 11,
-    color: '#94A3B8',
+    color: colors.text.muted,
     fontWeight: '600',
   },
   cardTitle: {
     fontSize: 13.5,
     fontWeight: '700',
-    color: '#1E293B',
+    color: colors.text.primary,
     marginBottom: 8,
     lineHeight: 19,
   },
@@ -274,14 +280,14 @@ const styles = StyleSheet.create({
   },
   bulletDot: {
     fontSize: 12,
-    color: '#6366F1',
+    color: isDark ? '#818CF8' : '#6366F1',
     lineHeight: 18,
     fontWeight: '800',
   },
   bulletText: {
     flex: 1,
     fontSize: 12,
-    color: '#475569',
+    color: colors.text.secondary,
     lineHeight: 18,
   },
   footerBtn: {
@@ -297,4 +303,3 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
-

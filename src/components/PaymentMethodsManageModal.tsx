@@ -1,4 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useTheme } from '../theme/ThemeContext';
+import { ThemeColors } from '../theme/colors';
 import {
   View,
   Text as RNText,
@@ -64,6 +66,8 @@ export const PaymentMethodsManageModal: React.FC<PaymentMethodsManageModalProps>
   visible,
   onClose,
 }) => {
+  const { isDark, colors } = useTheme();
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const {
     paymentMethods,
     isOwner,
@@ -601,20 +605,22 @@ export const PaymentMethodsManageModal: React.FC<PaymentMethodsManageModalProps>
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: isDark ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.45)',
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.modal,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: SCREEN_HEIGHT * 0.88,
     minHeight: SCREEN_HEIGHT * 0.62,
     paddingTop: 16,
     paddingHorizontal: 16,
+    borderTopWidth: isDark ? 1 : 0,
+    borderTopColor: isDark ? colors.border.default : 'transparent',
   },
   header: {
     flexDirection: 'row',
@@ -622,27 +628,27 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: isDark ? colors.border.default : '#F3F4F6',
   },
   title: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#111827',
+    color: colors.text.primary,
   },
   subtitle: {
     fontSize: 12,
-    color: '#6B7280',
+    color: colors.text.muted,
     marginTop: 2,
   },
   closeBtn: {
     padding: 6,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
     borderRadius: 20,
     marginLeft: 8,
   },
   closeText: {
     fontSize: 16,
-    color: '#6B7280',
+    color: colors.text.muted,
     fontWeight: '700',
     lineHeight: 16,
   },
@@ -679,20 +685,20 @@ const styles = StyleSheet.create({
   },
   restoreBtn: {
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#F9FAFB',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F9FAFB',
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 12,
   },
   restoreBtnText: {
-    color: '#6B7280',
+    color: colors.text.secondary,
     fontSize: 12,
     fontWeight: '600',
   },
   infoBanner: {
-    backgroundColor: '#F0FDF4',
-    borderColor: '#BBF7D0',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#F0FDF4',
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#BBF7D0',
     borderWidth: 1,
     borderRadius: 10,
     padding: 10,
@@ -700,22 +706,22 @@ const styles = StyleSheet.create({
   },
   infoBannerText: {
     fontSize: 12,
-    color: '#166534',
+    color: isDark ? '#34D399' : '#166534',
     lineHeight: 17,
   },
   methodItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.card,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
     borderRadius: 14,
     padding: 12,
     marginBottom: 10,
   },
   methodItemDisabled: {
-    backgroundColor: '#F9FAFB',
-    borderColor: '#F3F4F6',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F9FAFB',
+    borderColor: isDark ? colors.border.default : '#F3F4F6',
     opacity: 0.75,
   },
   methodIconBox: {
@@ -741,17 +747,17 @@ const styles = StyleSheet.create({
   methodItemName: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#1F2937',
+    color: colors.text.primary,
   },
   sysTag: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
     paddingHorizontal: 5,
     paddingVertical: 1,
     borderRadius: 4,
   },
   sysTagText: {
     fontSize: 10,
-    color: '#6B7280',
+    color: colors.text.muted,
     fontWeight: '600',
   },
   tagRow: {
@@ -760,8 +766,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   cardAttrTag: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#BFDBFE',
+    backgroundColor: isDark ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF',
+    borderColor: isDark ? 'rgba(37, 99, 235, 0.4)' : '#BFDBFE',
     borderWidth: 0.5,
     paddingHorizontal: 6,
     paddingVertical: 1.5,
@@ -769,12 +775,12 @@ const styles = StyleSheet.create({
   },
   cardAttrTagText: {
     fontSize: 10.5,
-    color: '#1D4ED8',
+    color: isDark ? '#60A5FA' : '#1D4ED8',
     fontWeight: '600',
   },
   directAttrTag: {
-    backgroundColor: '#F3F4F6',
-    borderColor: '#E5E7EB',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
     borderWidth: 0.5,
     paddingHorizontal: 6,
     paddingVertical: 1.5,
@@ -782,7 +788,7 @@ const styles = StyleSheet.create({
   },
   directAttrTagText: {
     fontSize: 10.5,
-    color: '#4B5563',
+    color: colors.text.secondary,
     fontWeight: '600',
   },
   methodActionCol: {
@@ -797,29 +803,29 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   toggleChipActive: {
-    backgroundColor: '#ECFDF5',
-    borderColor: '#A7F3D0',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5',
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.4)' : '#A7F3D0',
   },
   toggleChipInactive: {
-    backgroundColor: '#F3F4F6',
-    borderColor: '#E5E7EB',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
   },
   toggleChipText: {
     fontSize: 11,
     fontWeight: '700',
   },
   toggleChipTextActive: {
-    color: '#059669',
+    color: isDark ? '#34D399' : '#059669',
   },
   toggleChipTextInactive: {
-    color: '#9CA3AF',
+    color: colors.text.muted,
   },
   toggleChipLocked: {
-    backgroundColor: '#FEF3C7',
-    borderColor: '#FDE68A',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
+    borderColor: isDark ? 'rgba(245, 158, 11, 0.4)' : '#FDE68A',
   },
   toggleChipTextLocked: {
-    color: '#B45309',
+    color: isDark ? '#FBBF24' : '#B45309',
   },
   sortCol: {
     flexDirection: 'column',
@@ -831,12 +837,12 @@ const styles = StyleSheet.create({
   },
   sortArrow: {
     fontSize: 10,
-    color: '#6B7280',
+    color: colors.text.muted,
   },
   iconActionBtn: {
     padding: 6,
     borderRadius: 8,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F9FAFB',
   },
   formScroll: {
     flex: 1,
@@ -846,34 +852,34 @@ const styles = StyleSheet.create({
     paddingBottom: 30,
   },
   formCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.card,
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
   },
   formTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#111827',
+    color: colors.text.primary,
     marginBottom: 16,
   },
   inputLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#374151',
+    color: colors.text.secondary,
     marginBottom: 8,
     marginTop: 12,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: isDark ? colors.border.default : '#D1D5DB',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
-    color: '#111827',
-    backgroundColor: '#F9FAFB',
+    color: colors.text.primary,
+    backgroundColor: isDark ? colors.background.input : '#F9FAFB',
   },
   iconGrid: {
     flexDirection: 'row',
@@ -885,14 +891,14 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#F9FAFB',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F9FAFB',
     justifyContent: 'center',
     alignItems: 'center',
   },
   iconChipActive: {
     borderColor: '#3B82F6',
-    backgroundColor: '#EFF6FF',
+    backgroundColor: isDark ? 'rgba(59, 130, 246, 0.25)' : '#EFF6FF',
     transform: [{ scale: 1.08 }],
   },
   iconText: {
@@ -912,7 +918,7 @@ const styles = StyleSheet.create({
   },
   colorChipActive: {
     borderWidth: 3,
-    borderColor: '#FFFFFF',
+    borderColor: isDark ? colors.background.modal : '#FFFFFF',
     elevation: 4,
     shadowColor: '#000',
     shadowOpacity: 0.3,
@@ -929,13 +935,13 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#F9FAFB',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F9FAFB',
     gap: 10,
   },
   attrSettingCardActive: {
-    borderColor: '#BFDBFE',
-    backgroundColor: '#EFF6FF',
+    borderColor: isDark ? 'rgba(59, 130, 246, 0.5)' : '#BFDBFE',
+    backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF',
   },
   attrCheckIcon: {
     marginTop: 2,
@@ -943,11 +949,11 @@ const styles = StyleSheet.create({
   attrSettingTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#1F2937',
+    color: colors.text.primary,
   },
   attrSettingDesc: {
     fontSize: 11.5,
-    color: '#6B7280',
+    color: colors.text.muted,
     marginTop: 3,
     lineHeight: 16,
   },
@@ -961,12 +967,12 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 18,
     borderRadius: 10,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
   },
   cancelBtnText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#4B5563',
+    color: colors.text.secondary,
   },
   saveBtn: {
     paddingVertical: 10,

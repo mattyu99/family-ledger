@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useTheme } from '../theme/ThemeContext';
+import { ThemeColors } from '../theme/colors';
 
 export interface AvatarCategory {
   id: string;
@@ -77,6 +79,9 @@ export const AvatarPicker: React.FC<AvatarPickerProps> = ({
   onSelectAvatar,
   containerStyle,
 }) => {
+  const { isDark, colors } = useTheme();
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+
   const [activeTab, setActiveTab] = useState<string>(() => {
     const found = AVATAR_CATEGORIES.find(c => c.options.includes(selectedAvatar));
     return found ? found.id : 'family';
@@ -162,14 +167,14 @@ export const AvatarPicker: React.FC<AvatarPickerProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   container: {
     width: '100%',
     marginBottom: 16,
   },
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: '#F3F4F6',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
     borderRadius: 12,
     padding: 3,
     marginBottom: 12,
@@ -184,7 +189,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   tabBtnActive: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
@@ -194,10 +199,10 @@ const styles = StyleSheet.create({
   tabBtnText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#64748B',
+    color: colors.text.muted,
   },
   tabBtnTextActive: {
-    color: '#4F46E5',
+    color: isDark ? '#818CF8' : '#4F46E5',
     fontWeight: '700',
   },
   avatarGrid: {
@@ -210,15 +215,15 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: 'transparent',
   },
   avatarChipActive: {
-    backgroundColor: '#EEF2FF',
-    borderColor: '#4F46E5',
+    backgroundColor: isDark ? 'rgba(79, 70, 229, 0.25)' : '#EEF2FF',
+    borderColor: isDark ? '#818CF8' : '#4F46E5',
     transform: [{ scale: 1.06 }],
   },
   avatarEmoji: {
@@ -233,14 +238,14 @@ const styles = StyleSheet.create({
   },
   selectedLabel: {
     fontSize: 12,
-    color: '#6B7280',
+    color: colors.text.muted,
     fontWeight: '500',
   },
   selectedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EEF2FF',
-    borderColor: '#C7D2FE',
+    backgroundColor: isDark ? 'rgba(79, 70, 229, 0.2)' : '#EEF2FF',
+    borderColor: isDark ? 'rgba(79, 70, 229, 0.4)' : '#C7D2FE',
     borderWidth: 1,
     borderRadius: 14,
     paddingVertical: 3,
@@ -253,7 +258,7 @@ const styles = StyleSheet.create({
   selectedBadgeName: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#4F46E5',
+    color: isDark ? '#818CF8' : '#4F46E5',
   },
 });
 

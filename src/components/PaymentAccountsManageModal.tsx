@@ -17,6 +17,8 @@ import {
 } from 'react-native';
 import { PaymentAccount, AccountType } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
+import { useTheme } from '../theme/ThemeContext';
+import { ThemeColors } from '../theme/colors';
 import { sortAccountsByUser } from '../lib/payment';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
@@ -61,6 +63,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   initialTab,
   scope = 'my',
 }) => {
+  const { isDark, colors } = useTheme();
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const { paymentAccounts, addPaymentAccount, updatePaymentAccount, deletePaymentAccount, restoreDefaultAccounts, members, currentUser, isOwner } = useLedger();
 
   const showAlert = (title: string, message: string) => {
@@ -917,10 +921,10 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: isDark ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
     width: '100%',
     height: '100%',
@@ -933,7 +937,7 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   sheet: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.modal,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     height: Math.min(SCREEN_HEIGHT * 0.85, 650),
@@ -944,6 +948,8 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 600,
     alignSelf: 'center',
+    borderTopWidth: isDark ? 1 : 0,
+    borderTopColor: isDark ? colors.border.default : 'transparent',
   },
   header: {
     flexDirection: 'row',
@@ -951,16 +957,16 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: isDark ? colors.border.default : '#F1F5F9',
   },
   title: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#0F172A',
+    color: colors.text.primary,
   },
   subtitle: {
     fontSize: 11.5,
-    color: '#64748B',
+    color: colors.text.muted,
     marginTop: 2,
   },
   closeBtn: {
@@ -968,11 +974,11 @@ const styles = StyleSheet.create({
   },
   closeText: {
     fontSize: 18,
-    color: '#94A3B8',
+    color: colors.text.muted,
   },
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     borderRadius: 12,
     padding: 3,
     marginTop: 10,
@@ -985,7 +991,7 @@ const styles = StyleSheet.create({
     borderRadius: 9,
   },
   tabItemActive: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
@@ -995,10 +1001,10 @@ const styles = StyleSheet.create({
   tabItemText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#64748B',
+    color: colors.text.muted,
   },
   tabItemTextActive: {
-    color: '#1E293B',
+    color: colors.text.primary,
     fontWeight: '700',
   },
   listScroll: {
@@ -1014,16 +1020,16 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#1E293B',
+    color: colors.text.primary,
   },
   addMiniBtn: {
-    backgroundColor: '#EEF2FF',
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
   },
   addMiniText: {
-    color: '#4F46E5',
+    color: isDark ? '#818CF8' : '#4F46E5',
     fontSize: 11.5,
     fontWeight: '700',
   },
@@ -1032,27 +1038,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 28,
     paddingHorizontal: 16,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
     borderStyle: 'dashed',
     marginVertical: 8,
   },
   emptyNotice: {
     fontSize: 13,
-    color: '#94A3B8',
+    color: colors.text.muted,
     marginBottom: 8,
   },
   emptyAddBtn: {
-    backgroundColor: '#EEF2FF',
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF',
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 8,
     marginTop: 4,
   },
   emptyAddBtnText: {
-    color: '#4F46E5',
+    color: isDark ? '#818CF8' : '#4F46E5',
     fontSize: 12.5,
     fontWeight: '700',
   },
@@ -1060,13 +1066,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderRadius: 12,
     padding: 12,
     marginBottom: 8,
     borderLeftWidth: 4,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   cardInfoCol: {
     flex: 1,
@@ -1079,10 +1085,10 @@ const styles = StyleSheet.create({
   cardNameText: {
     fontSize: 13.5,
     fontWeight: '700',
-    color: '#0F172A',
+    color: colors.text.primary,
   },
   tagBadge: {
-    backgroundColor: '#E2E8F0',
+    backgroundColor: isDark ? colors.background.card : '#E2E8F0',
     paddingHorizontal: 5,
     paddingVertical: 1,
     borderRadius: 4,
@@ -1090,7 +1096,7 @@ const styles = StyleSheet.create({
   tagBadgeText: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#475569',
+    color: colors.text.secondary,
   },
   balanceTag: {
     fontSize: 11,
@@ -1099,7 +1105,7 @@ const styles = StyleSheet.create({
   },
   cardSubText: {
     fontSize: 11,
-    color: '#64748B',
+    color: colors.text.muted,
     marginTop: 2,
   },
   cardActionGroup: {
@@ -1109,25 +1115,25 @@ const styles = StyleSheet.create({
   editBtn: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: isDark ? colors.border.default : '#CBD5E1',
     borderRadius: 6,
   },
   editText: {
     fontSize: 11,
-    color: '#475569',
+    color: colors.text.secondary,
     fontWeight: '600',
   },
   delBtn: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.18)' : '#FEE2E2',
     borderRadius: 6,
   },
   delText: {
     fontSize: 11,
-    color: '#DC2626',
+    color: isDark ? '#F87171' : '#DC2626',
     fontWeight: '600',
   },
   formScroll: {
@@ -1145,18 +1151,18 @@ const styles = StyleSheet.create({
   },
   dismissKeyboardText: {
     fontSize: 12,
-    color: '#4F46E5',
+    color: isDark ? '#818CF8' : '#4F46E5',
     fontWeight: '600',
     marginLeft: 'auto',
   },
   formSectionTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#0F172A',
+    color: colors.text.primary,
   },
   typeToggle: {
     flexDirection: 'row',
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     borderRadius: 10,
     padding: 3,
     marginBottom: 12,
@@ -1168,7 +1174,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   typeBtnActive: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
@@ -1178,32 +1184,32 @@ const styles = StyleSheet.create({
   typeBtnText: {
     fontSize: 11.5,
     fontWeight: '600',
-    color: '#64748B',
+    color: colors.text.muted,
   },
   typeBtnTextActive: {
-    color: '#0F172A',
+    color: colors.text.primary,
     fontWeight: '700',
   },
   fieldLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#334155',
+    color: colors.text.secondary,
     marginBottom: 6,
     marginTop: 8,
   },
   textInput: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.input : '#F8FAFC',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: isDark ? colors.border.default : '#CBD5E1',
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
     fontSize: 13,
-    color: '#0F172A',
+    color: colors.text.primary,
   },
   fieldHint: {
     fontSize: 10.5,
-    color: '#64748B',
+    color: colors.text.muted,
     lineHeight: 15,
     marginTop: 4,
   },
@@ -1215,16 +1221,16 @@ const styles = StyleSheet.create({
   memberChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 5,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
     gap: 4,
   },
   memberChipActive: {
-    backgroundColor: '#EEF2FF',
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF',
     borderColor: '#4F46E5',
   },
   memberChipAvatar: {
@@ -1232,10 +1238,10 @@ const styles = StyleSheet.create({
   },
   memberChipName: {
     fontSize: 11.5,
-    color: '#475569',
+    color: colors.text.secondary,
   },
   memberChipNameActive: {
-    color: '#4F46E5',
+    color: isDark ? '#818CF8' : '#4F46E5',
     fontWeight: '700',
   },
   colorPaletteRow: {
@@ -1250,7 +1256,7 @@ const styles = StyleSheet.create({
   },
   colorCircleSelected: {
     borderWidth: 3,
-    borderColor: '#0F172A',
+    borderColor: colors.text.primary,
   },
   formActionRow: {
     flexDirection: 'row',
@@ -1262,11 +1268,12 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: isDark ? colors.border.default : '#CBD5E1',
+    backgroundColor: isDark ? colors.background.cardSubtle : 'transparent',
     alignItems: 'center',
   },
   cancelFormText: {
-    color: '#64748B',
+    color: colors.text.secondary,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -1289,31 +1296,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: isDark ? colors.border.default : '#CBD5E1',
     borderStyle: 'dashed',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     alignItems: 'center',
     justifyContent: 'center',
   },
   restoreDefaultsText: {
     fontSize: 13,
-    color: '#64748B',
+    color: colors.text.secondary,
     fontWeight: '600',
   },
   memberNoticeBox: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 14,
     marginBottom: 14,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   memberNoticeText: {
     fontSize: 12,
-    color: '#64748B',
+    color: colors.text.muted,
     fontWeight: '600',
   },
 });
-

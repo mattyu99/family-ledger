@@ -21,6 +21,8 @@ import {
 } from 'react-native';
 import { PaymentAccount, Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
+import { useTheme } from '../theme/ThemeContext';
+import { ThemeColors } from '../theme/colors';
 import {
   getCreditCardBillingCycles,
   getCalendarMonthCycles,
@@ -166,6 +168,8 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
   scope = 'my',
   targetMemberId,
 }) => {
+  const { isDark, colors } = useTheme();
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const {
     currentLedger,
     paymentAccounts,
@@ -1694,23 +1698,25 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
 
 export const CardReconciliationModal = CreditCardReconciliationModal;
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: isDark ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
   backdrop: {
     flex: 1,
   },
   sheet: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.modal,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     height: (Platform.OS === 'web' ? '92vh' : Math.round(SCREEN_HEIGHT * 0.92)) as any,
     maxHeight: Math.round(SCREEN_HEIGHT * 0.94),
     paddingTop: 16,
     paddingHorizontal: 16,
+    borderTopWidth: isDark ? 1 : 0,
+    borderTopColor: isDark ? colors.border.default : 'transparent',
   },
   header: {
     flexDirection: 'row',
@@ -1718,22 +1724,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: isDark ? colors.border.default : '#F1F5F9',
   },
   title: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#0F172A',
+    color: colors.text.primary,
   },
   subtitle: {
     fontSize: 11.5,
-    color: '#64748B',
+    color: colors.text.muted,
     marginTop: 2,
   },
   vaultToggleBtn: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: isDark ? 'rgba(37, 99, 235, 0.15)' : '#EFF6FF',
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: isDark ? 'rgba(37, 99, 235, 0.35)' : '#BFDBFE',
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -1746,7 +1752,7 @@ const styles = StyleSheet.create({
   vaultToggleBtnText: {
     fontSize: 11.5,
     fontWeight: '700',
-    color: '#1D4ED8',
+    color: isDark ? '#60A5FA' : '#1D4ED8',
   },
   vaultToggleBtnTextActive: {
     color: '#FFFFFF',
@@ -1756,11 +1762,11 @@ const styles = StyleSheet.create({
   },
   closeText: {
     fontSize: 18,
-    color: '#94A3B8',
+    color: colors.text.muted,
   },
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     borderRadius: 12,
     padding: 3,
     marginTop: 10,
@@ -1773,7 +1779,7 @@ const styles = StyleSheet.create({
     borderRadius: 9,
   },
   tabItemActive: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
@@ -1783,10 +1789,10 @@ const styles = StyleSheet.create({
   tabItemText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#64748B',
+    color: colors.text.muted,
   },
   tabItemTextActive: {
-    color: '#1E293B',
+    color: colors.text.primary,
     fontWeight: '700',
   },
   scrollArea: {
@@ -1796,7 +1802,7 @@ const styles = StyleSheet.create({
   sectionHeader: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#475569',
+    color: colors.text.secondary,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -1807,9 +1813,9 @@ const styles = StyleSheet.create({
   },
   cycleCountBadge: {
     fontSize: 10.5,
-    color: '#2563EB',
+    color: isDark ? '#60A5FA' : '#2563EB',
     fontWeight: '600',
-    backgroundColor: '#EFF6FF',
+    backgroundColor: isDark ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF',
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 6,
@@ -1823,12 +1829,12 @@ const styles = StyleSheet.create({
   cardSelectChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1.5,
-    borderColor: '#CBD5E1',
+    borderColor: isDark ? colors.border.default : '#CBD5E1',
     gap: 8,
   },
   cardSelectIcon: {
@@ -1837,11 +1843,11 @@ const styles = StyleSheet.create({
   cardSelectName: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#1E293B',
+    color: colors.text.primary,
   },
   cardSelectCycle: {
     fontSize: 11,
-    color: '#64748B',
+    color: colors.text.muted,
     marginTop: 1,
   },
   cycleSelectorScroll: {
@@ -1850,37 +1856,37 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
   },
   cycleChip: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     borderRadius: 10,
     paddingHorizontal: 11,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   cycleChipWithStmt: {
-    borderColor: '#93C5FD',
-    backgroundColor: '#F8FAFC',
+    borderColor: isDark ? 'rgba(59, 130, 246, 0.4)' : '#93C5FD',
+    backgroundColor: isDark ? colors.background.card : '#F8FAFC',
   },
   cycleChipActive: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF',
     borderColor: '#3B82F6',
   },
   cycleChipText: {
     fontSize: 11.5,
     fontWeight: '500',
-    color: '#475569',
+    color: colors.text.secondary,
   },
   cycleChipTextActive: {
-    color: '#1D4ED8',
+    color: isDark ? '#93C5FD' : '#1D4ED8',
     fontWeight: '700',
   },
   loadMoreCycleChip: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderWidth: 1.5,
-    borderColor: '#93C5FD',
+    borderColor: isDark ? 'rgba(59, 130, 246, 0.4)' : '#93C5FD',
     borderStyle: 'dashed',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1888,25 +1894,25 @@ const styles = StyleSheet.create({
   loadMoreCycleText: {
     fontSize: 11.5,
     fontWeight: '700',
-    color: '#2563EB',
+    color: isDark ? '#60A5FA' : '#2563EB',
   },
   collapseCycleChip: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: isDark ? colors.border.default : '#CBD5E1',
     justifyContent: 'center',
     alignItems: 'center',
   },
   collapseCycleText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#64748B',
+    color: colors.text.muted,
   },
   maxCycleChip: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -1915,15 +1921,15 @@ const styles = StyleSheet.create({
   },
   maxCycleText: {
     fontSize: 11,
-    color: '#94A3B8',
+    color: colors.text.muted,
   },
   summaryCard: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderRadius: 16,
     padding: 14,
     marginTop: 10,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   summaryTopRow: {
     flexDirection: 'row',
@@ -1934,17 +1940,17 @@ const styles = StyleSheet.create({
   summaryCycleName: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#0F172A',
+    color: colors.text.primary,
   },
   summaryDateRange: {
     fontSize: 11,
-    color: '#64748B',
+    color: colors.text.muted,
     marginTop: 2,
   },
   currentBalancePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E0F2FE',
+    backgroundColor: isDark ? 'rgba(2, 132, 199, 0.2)' : '#E0F2FE',
     alignSelf: 'flex-start',
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -1954,40 +1960,40 @@ const styles = StyleSheet.create({
   },
   currentBalanceLabel: {
     fontSize: 10.5,
-    color: '#0369A1',
+    color: isDark ? '#38BDF8' : '#0369A1',
     fontWeight: '600',
   },
   currentBalanceValue: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#0284C7',
+    color: isDark ? '#7DD3FC' : '#0284C7',
   },
   summaryAmountBox: {
     alignItems: 'flex-end',
   },
   summaryAmountLabel: {
     fontSize: 10.5,
-    color: '#64748B',
+    color: colors.text.muted,
   },
   summaryAmountValue: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#EF4444',
+    color: isDark ? '#F87171' : '#EF4444',
   },
   summaryRebateBreakdownText: {
     fontSize: 10.5,
     fontWeight: '700',
-    color: '#059669',
+    color: isDark ? '#34D399' : '#059669',
     marginTop: 2,
   },
   storedValueStatsBox: {
     alignItems: 'flex-end',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   storedValueStatRow: {
     flexDirection: 'row',
@@ -1996,21 +2002,21 @@ const styles = StyleSheet.create({
   },
   storedValueStatLabel: {
     fontSize: 10.5,
-    color: '#64748B',
+    color: colors.text.muted,
   },
   storedValueSpendValue: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#EF4444',
+    color: isDark ? '#F87171' : '#EF4444',
   },
   storedValueTopUpValue: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#10B981',
+    color: isDark ? '#34D399' : '#10B981',
   },
   storedValueStatSub: {
     fontSize: 9.5,
-    color: '#94A3B8',
+    color: colors.text.muted,
     marginTop: 1,
   },
   progressSection: {
@@ -2025,17 +2031,17 @@ const styles = StyleSheet.create({
   progressText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#334155',
+    color: colors.text.secondary,
   },
   allReconciledBadge: {
     fontSize: 10.5,
     fontWeight: '700',
-    color: '#059669',
+    color: isDark ? '#34D399' : '#059669',
   },
   progressBarTrack: {
     height: 7,
     borderRadius: 4,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: isDark ? colors.border.default : '#E2E8F0',
     overflow: 'hidden',
   },
   progressBarFill: {
@@ -2046,16 +2052,16 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
+    borderTopColor: isDark ? colors.border.default : '#E2E8F0',
     gap: 8,
   },
   attachedStmtBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#EFF6FF',
+    backgroundColor: isDark ? 'rgba(37, 99, 235, 0.15)' : '#EFF6FF',
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: isDark ? 'rgba(37, 99, 235, 0.35)' : '#BFDBFE',
     borderRadius: 12,
     paddingVertical: 8,
     paddingHorizontal: 10,
@@ -2069,11 +2075,11 @@ const styles = StyleSheet.create({
   attachedStmtTitle: {
     fontSize: 12.5,
     fontWeight: '700',
-    color: '#1E3A8A',
+    color: isDark ? '#93C5FD' : '#1E3A8A',
   },
   attachedStmtMeta: {
     fontSize: 10.5,
-    color: '#2563EB',
+    color: isDark ? '#60A5FA' : '#2563EB',
     marginTop: 1,
   },
   attachedStmtActions: {
@@ -2082,9 +2088,9 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   stmtMiniBtn: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#93C5FD',
+    borderColor: isDark ? 'rgba(59, 130, 246, 0.4)' : '#93C5FD',
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -2092,16 +2098,16 @@ const styles = StyleSheet.create({
   stmtMiniBtnPrimaryText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#1D4ED8',
+    color: isDark ? '#60A5FA' : '#1D4ED8',
   },
   stmtMiniBtnText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#475569',
+    color: colors.text.secondary,
   },
   stmtMiniBtnDanger: {
-    borderColor: '#FECACA',
-    backgroundColor: '#FEF2F2',
+    borderColor: isDark ? 'rgba(239, 68, 68, 0.35)' : '#FECACA',
+    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEF2F2',
   },
   stmtMiniBtnDangerText: {
     fontSize: 11,
@@ -2112,9 +2118,9 @@ const styles = StyleSheet.create({
   },
   creditActionBtnStmt: {
     flex: 1,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: isDark ? 'rgba(37, 99, 235, 0.15)' : '#EFF6FF',
     borderWidth: 1,
-    borderColor: '#93C5FD',
+    borderColor: isDark ? 'rgba(37, 99, 235, 0.35)' : '#93C5FD',
     borderRadius: 10,
     paddingVertical: 8,
     paddingHorizontal: 10,
@@ -2124,13 +2130,13 @@ const styles = StyleSheet.create({
   creditActionBtnStmtText: {
     fontSize: 11.5,
     fontWeight: '700',
-    color: '#1D4ED8',
+    color: isDark ? '#60A5FA' : '#1D4ED8',
   },
   creditActionBtnRebate: {
     flex: 1,
-    backgroundColor: '#ECFDF5',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5',
     borderWidth: 1,
-    borderColor: '#6EE7B7',
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#6EE7B7',
     borderRadius: 10,
     paddingVertical: 8,
     paddingHorizontal: 10,
@@ -2144,15 +2150,15 @@ const styles = StyleSheet.create({
   creditActionBtnRebateText: {
     fontSize: 11.5,
     fontWeight: '700',
-    color: '#047857',
+    color: isDark ? '#34D399' : '#047857',
   },
   creditActionBtnRebateTextActive: {
     color: '#FFFFFF',
   },
   rebateFormBox: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#A7F3D0',
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#A7F3D0',
     borderRadius: 12,
     padding: 12,
     marginTop: 2,
@@ -2160,7 +2166,7 @@ const styles = StyleSheet.create({
   rebateFormHeader: {
     fontSize: 11.5,
     fontWeight: '700',
-    color: '#065F46',
+    color: isDark ? '#34D399' : '#065F46',
     marginBottom: 8,
   },
   rebatePresetRow: {
@@ -2170,24 +2176,24 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   rebatePresetChip: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   rebatePresetChipActive: {
-    backgroundColor: '#ECFDF5',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5',
     borderColor: '#10B981',
   },
   rebatePresetChipText: {
     fontSize: 11,
-    color: '#475569',
+    color: colors.text.secondary,
     fontWeight: '600',
   },
   rebatePresetChipTextActive: {
-    color: '#047857',
+    color: isDark ? '#34D399' : '#047857',
     fontWeight: '700',
   },
   rebateInputRow: {
@@ -2198,22 +2204,22 @@ const styles = StyleSheet.create({
   rebateInputLabel: {
     fontSize: 10.5,
     fontWeight: '600',
-    color: '#64748B',
+    color: colors.text.muted,
     marginBottom: 4,
   },
   rebateTextInput: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.input : '#F8FAFC',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: isDark ? colors.border.default : '#CBD5E1',
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 7,
     fontSize: 13,
-    color: '#0F172A',
+    color: colors.text.primary,
   },
   rebateAmountInput: {
     fontWeight: '700',
-    color: '#059669',
+    color: isDark ? '#34D399' : '#059669',
   },
   rebateCategorySection: {
     marginBottom: 10,
@@ -2226,7 +2232,7 @@ const styles = StyleSheet.create({
   },
   rebateCategoryHint: {
     fontSize: 10,
-    color: '#059669',
+    color: isDark ? '#34D399' : '#059669',
     fontWeight: '600',
   },
   rebateCategoryList: {
@@ -2238,15 +2244,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderRadius: 8,
     paddingHorizontal: 9,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: isDark ? colors.border.default : '#CBD5E1',
   },
   rebateCategoryChipActive: {
-    backgroundColor: '#ECFDF5',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5',
     borderColor: '#059669',
   },
   rebateCategoryChipIcon: {
@@ -2254,16 +2260,16 @@ const styles = StyleSheet.create({
   },
   rebateCategoryChipText: {
     fontSize: 11,
-    color: '#475569',
+    color: colors.text.secondary,
     fontWeight: '600',
   },
   rebateCategoryChipTextActive: {
-    color: '#065F46',
+    color: isDark ? '#34D399' : '#065F46',
     fontWeight: '700',
   },
   rebateCategoryChipCheck: {
     fontSize: 10,
-    color: '#059669',
+    color: isDark ? '#34D399' : '#059669',
     fontWeight: '800',
     marginLeft: 2,
   },
@@ -2280,10 +2286,10 @@ const styles = StyleSheet.create({
   },
   easyCardToolsContainer: {
     marginTop: 10,
-    backgroundColor: '#F0F9FF',
+    backgroundColor: isDark ? 'rgba(2, 132, 199, 0.15)' : '#F0F9FF',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#BAE6FD',
+    borderColor: isDark ? 'rgba(2, 132, 199, 0.35)' : '#BAE6FD',
     padding: 10,
   },
   easyCardBar: {
@@ -2296,23 +2302,23 @@ const styles = StyleSheet.create({
   easyCardTitle: {
     fontSize: 12.5,
     fontWeight: '700',
-    color: '#0369A1',
+    color: isDark ? '#38BDF8' : '#0369A1',
   },
   easyCardNumberCode: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#0284C7',
+    color: isDark ? '#7DD3FC' : '#0284C7',
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     letterSpacing: 0.5,
   },
   easyCardNumberUnset: {
     fontSize: 11.5,
-    color: '#94A3B8',
+    color: colors.text.muted,
     fontStyle: 'italic',
   },
   easyCardMeta: {
     fontSize: 10.5,
-    color: '#64748B',
+    color: colors.text.muted,
     marginTop: 2,
   },
   easyCardActions: {
@@ -2322,7 +2328,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   easyCardCopyBtn: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     borderWidth: 1,
     borderColor: '#0284C7',
     paddingHorizontal: 10,
@@ -2332,7 +2338,7 @@ const styles = StyleSheet.create({
   easyCardCopyBtnText: {
     fontSize: 11.5,
     fontWeight: '700',
-    color: '#0284C7',
+    color: isDark ? '#38BDF8' : '#0284C7',
   },
   easyCardQueryBtn: {
     backgroundColor: '#0284C7',
@@ -2346,9 +2352,9 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   vaultBannerCard: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: isDark ? 'rgba(37, 99, 235, 0.15)' : '#EFF6FF',
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: isDark ? 'rgba(37, 99, 235, 0.35)' : '#BFDBFE',
     borderRadius: 14,
     padding: 12,
     marginTop: 6,
@@ -2363,17 +2369,17 @@ const styles = StyleSheet.create({
   vaultBannerTitle: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#1E3A8A',
+    color: isDark ? '#93C5FD' : '#1E3A8A',
   },
   vaultBannerSub: {
     fontSize: 11,
-    color: '#3B82F6',
+    color: isDark ? '#60A5FA' : '#3B82F6',
     marginTop: 2,
   },
   vaultRefreshBtn: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#93C5FD',
+    borderColor: isDark ? 'rgba(59, 130, 246, 0.4)' : '#93C5FD',
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -2381,7 +2387,7 @@ const styles = StyleSheet.create({
   vaultRefreshBtnText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#1D4ED8',
+    color: isDark ? '#60A5FA' : '#1D4ED8',
   },
   quotaRow: {
     marginBottom: 4,
@@ -2389,11 +2395,11 @@ const styles = StyleSheet.create({
   quotaLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#1E40AF',
+    color: isDark ? '#93C5FD' : '#1E40AF',
   },
   quotaBarTrack: {
     height: 6,
-    backgroundColor: '#DBEAFE',
+    backgroundColor: isDark ? colors.background.card : '#DBEAFE',
     borderRadius: 3,
     overflow: 'hidden',
   },
@@ -2408,30 +2414,30 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   vaultFilterChip: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     borderRadius: 10,
     paddingHorizontal: 11,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   vaultFilterChipActive: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: isDark ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF',
     borderColor: '#3B82F6',
   },
   vaultFilterChipText: {
     fontSize: 11.5,
     fontWeight: '600',
-    color: '#475569',
+    color: colors.text.secondary,
   },
   vaultFilterChipTextActive: {
-    color: '#1D4ED8',
+    color: isDark ? '#60A5FA' : '#1D4ED8',
     fontWeight: '700',
   },
   vaultItemCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.card,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
     borderRadius: 14,
     padding: 12,
     marginBottom: 10,
@@ -2444,13 +2450,13 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 12,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
   },
   vaultCycleBadge: {
-    backgroundColor: '#DBEAFE',
+    backgroundColor: isDark ? 'rgba(37, 99, 235, 0.25)' : '#DBEAFE',
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -2458,22 +2464,22 @@ const styles = StyleSheet.create({
   vaultCycleBadgeText: {
     fontSize: 10.5,
     fontWeight: '800',
-    color: '#1E40AF',
+    color: isDark ? '#93C5FD' : '#1E40AF',
   },
   vaultCardName: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#334155',
+    color: colors.text.secondary,
   },
   vaultFileName: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#0F172A',
+    color: colors.text.primary,
     marginTop: 3,
   },
   vaultFileMeta: {
     fontSize: 11,
-    color: '#64748B',
+    color: colors.text.muted,
     marginTop: 2,
   },
   vaultItemActions: {
@@ -2482,7 +2488,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    borderTopColor: isDark ? colors.border.default : '#F1F5F9',
   },
   vaultActionPrimary: {
     flex: 1,
@@ -2497,23 +2503,23 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   vaultActionSecondary: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: isDark ? colors.border.default : '#CBD5E1',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 7,
     alignItems: 'center',
   },
   vaultActionSecondaryText: {
-    color: '#334155',
+    color: colors.text.secondary,
     fontSize: 12,
     fontWeight: '700',
   },
   vaultActionDanger: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEF2F2',
     borderWidth: 1,
-    borderColor: '#FECACA',
+    borderColor: isDark ? 'rgba(239, 68, 68, 0.35)' : '#FECACA',
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 7,
@@ -2532,38 +2538,38 @@ const styles = StyleSheet.create({
   txListTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#1E293B',
+    color: colors.text.primary,
   },
   txListHint: {
     fontSize: 10.5,
-    color: '#64748B',
+    color: colors.text.muted,
   },
   emptyTxBox: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderRadius: 12,
     padding: 24,
     alignItems: 'center',
   },
   emptyTxText: {
     fontSize: 12,
-    color: '#94A3B8',
+    color: colors.text.muted,
     textAlign: 'center',
   },
   txRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.card,
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#F1F5F9',
+    borderColor: isDark ? colors.border.default : '#F1F5F9',
     gap: 10,
   },
   txRowReconciled: {
-    backgroundColor: '#F0FDF4',
-    borderColor: '#BBF7D0',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.12)' : '#F0FDF4',
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.3)' : '#BBF7D0',
   },
   catIconBox: {
     width: 36,
@@ -2592,7 +2598,7 @@ const styles = StyleSheet.create({
   },
   topUpBadgeText: {
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#15803D',
   },
   payMethodTag: {
@@ -2609,16 +2615,16 @@ const styles = StyleSheet.create({
   txMerchantName: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#0F172A',
+    color: colors.text.primary,
     flex: 1,
   },
   txAmountText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#EF4444',
+    color: isDark ? '#F87171' : '#EF4444',
   },
   txAmountTopUp: {
-    color: '#10B981',
+    color: isDark ? '#34D399' : '#10B981',
   },
   txSubRow: {
     flexDirection: 'row',
@@ -2628,32 +2634,32 @@ const styles = StyleSheet.create({
   },
   txDate: {
     fontSize: 11,
-    color: '#64748B',
+    color: colors.text.muted,
   },
   txNote: {
     fontSize: 11,
-    color: '#94A3B8',
+    color: colors.text.muted,
     flex: 1,
   },
   reconcileBtn: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     borderRadius: 8,
     paddingHorizontal: 9,
     paddingVertical: 5,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   reconcileBtnActive: {
-    backgroundColor: '#DCFCE7',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#DCFCE7',
     borderColor: '#86EFAC',
   },
   reconcileBtnText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#64748B',
+    color: colors.text.muted,
   },
   reconcileBtnTextActive: {
-    color: '#15803D',
+    color: isDark ? '#34D399' : '#15803D',
     fontWeight: '700',
   },
   emptyContainer: {
@@ -2667,12 +2673,12 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#334155',
+    color: colors.text.secondary,
     marginBottom: 6,
   },
   emptySubtext: {
     fontSize: 12,
-    color: '#64748B',
+    color: colors.text.muted,
     textAlign: 'center',
     lineHeight: 18,
   },
