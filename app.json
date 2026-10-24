@@ -61,7 +61,8 @@
         {
           "faceIDPermission": "允許使用 Face ID 驗證身分以保護家庭資產與存款隱私"
         }
-      ]
+      ],
+      "expo-quick-actions"
     ],
     "web": {
       "favicon": "./assets/favicon.png"

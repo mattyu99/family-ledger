@@ -11,12 +11,15 @@ import {
   TextProps,
   TextInputProps,
   TextInput as RNTextInput,
+  Linking,
 } from 'react-native';
 import * as Updates from 'expo-updates';
+import * as QuickActions from 'expo-quick-actions';
 
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { LedgerProvider, useLedger } from './src/context/LedgerContext';
-import { PrivacyProvider } from './src/context/PrivacyContext';
+import { PrivacyProvider, usePrivacy } from './src/context/PrivacyContext';
+import { setupQuickActions, parseQuickAction, parseQuickActionUrl, QuickActionKind } from './src/lib/quickActions';
 import { showAlert, showConfirm } from './src/lib/alert';
 import { parseMemoNote } from './src/lib/memo';
 import { isBillDueInMonth, isBillPaidForCurrentPeriod } from './src/lib/recurring';
@@ -202,6 +205,98 @@ const AppContent: React.FC = () => {
   const [modalLinkedCompletionNote, setModalLinkedCompletionNote] = useState<string | undefined>(undefined);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const returnToInvoiceLotteryRef = useRef<boolean>(false);
+
+  // 隱私鎖與桌面快捷動作 (Quick Actions)
+  const { isAppLocked } = usePrivacy();
+  const [modalAutoOpenScanner, setModalAutoOpenScanner] = useState<boolean>(false);
+  const pendingQuickActionRef = useRef<QuickActionKind | null>(null);
+
+  const executeQuickAction = useCallback((kind: QuickActionKind) => {
+    setEditingTransaction(null);
+    setMemoTodoModalVisible(false);
+    setInvoiceLotteryModalVisible(false);
+
+    if (kind === 'scan') {
+      setModalMode('expense');
+      setModalRecipientId(undefined);
+      setModalAutoOpenScanner(true);
+      setModalVisible(true);
+    } else if (kind === 'income') {
+      setModalMode('income');
+      setModalRecipientId(undefined);
+      setModalAutoOpenScanner(false);
+      setModalVisible(true);
+    } else if (kind === 'memo') {
+      setModalMode('memo');
+      setModalRecipientId(undefined);
+      setModalAutoOpenScanner(false);
+      setModalVisible(true);
+    } else {
+      setModalMode('expense');
+      setModalRecipientId(undefined);
+      setModalAutoOpenScanner(false);
+      setModalVisible(true);
+    }
+  }, []);
+
+  const dispatchQuickAction = useCallback((kind: QuickActionKind) => {
+    if (isAppLocked) {
+      pendingQuickActionRef.current = kind;
+    } else {
+      executeQuickAction(kind);
+    }
+  }, [isAppLocked, executeQuickAction]);
+
+  // 當 AppLock 解鎖完成時，若有排隊的 Quick Action 則立即執行
+  useEffect(() => {
+    if (!isAppLocked && pendingQuickActionRef.current) {
+      const queuedAction = pendingQuickActionRef.current;
+      pendingQuickActionRef.current = null;
+      const timer = setTimeout(() => {
+        executeQuickAction(queuedAction);
+      }, 350);
+      return () => clearTimeout(timer);
+    }
+  }, [isAppLocked, executeQuickAction]);
+
+  // 註冊與監聽桌面快捷動作 (Quick Actions / 3D Touch) 與 Deep Link
+  useEffect(() => {
+    setupQuickActions();
+
+    const initialAction = QuickActions.initial;
+    if (initialAction) {
+      const kind = parseQuickAction(initialAction);
+      if (kind) {
+        dispatchQuickAction(kind);
+      }
+    }
+
+    const sub = QuickActions.addListener((action) => {
+      const kind = parseQuickAction(action);
+      if (kind) {
+        dispatchQuickAction(kind);
+      }
+    });
+
+    const handleUrlEvent = (event: { url: string }) => {
+      const kind = parseQuickActionUrl(event.url);
+      if (kind) {
+        dispatchQuickAction(kind);
+      }
+    };
+    const linkSub = Linking.addEventListener('url', handleUrlEvent);
+    Linking.getInitialURL().then((url) => {
+      const kind = parseQuickActionUrl(url);
+      if (kind) {
+        dispatchQuickAction(kind);
+      }
+    }).catch(() => {});
+
+    return () => {
+      sub.remove();
+      linkSub.remove();
+    };
+  }, [dispatchQuickAction]);
 
   // 生活記事待辦狀態
   const [memoTodoModalVisible, setMemoTodoModalVisible] = useState(false);
@@ -772,8 +867,10 @@ const AppContent: React.FC = () => {
             onOpenModal={(mode, recipientId) => {
               setModalMode(mode);
               setModalRecipientId(recipientId);
+              setModalAutoOpenScanner(false);
               setModalVisible(true);
             }}
+            onTriggerQuickAction={dispatchQuickAction}
             onOpenAddMemberModal={() => setAddMemberModalVisible(true)}
             onOpenEditMemberModal={handleStartEditMember}
             onOpenClaimAdminModal={() => setClaimAdminModalVisible(true)}
@@ -886,6 +983,7 @@ const AppContent: React.FC = () => {
         defaultNote={modalDefaultNote}
         linkedMemoId={modalLinkedMemoId}
         linkedCompletionNote={modalLinkedCompletionNote}
+        autoOpenScanner={modalAutoOpenScanner}
         onSuccess={() => {
           setCompletingMemo(null);
           setCompletionTempNote('');
@@ -898,6 +996,7 @@ const AppContent: React.FC = () => {
           setModalDefaultNote(undefined);
           setModalLinkedMemoId(undefined);
           setModalLinkedCompletionNote(undefined);
+          setModalAutoOpenScanner(false);
         }}
       />
 

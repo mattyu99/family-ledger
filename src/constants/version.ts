@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.7';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.7 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 31;
+export const APP_BUILD_REVISION = 32;
 
 // 完整版本字串 (例如 "1.0.7.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,18 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.7',
+    date: '2026-10-24',
+    title: '手機桌面 Quick Actions 快捷動作與 Deep Linking',
+    highlights: [
+      '⚡ 桌面長按快捷直達 (Quick Actions)：支援 iOS 與 Android 手機桌面長按 App 圖示，彈出「記一筆支出」、「記一筆收入」、「掃描發票 / 收據」、「隨手記記事」4 大捷徑選單，一鍵秒開表單。',
+      '📸 相機掃描直通：選擇「掃描發票 / 收據」快捷動作自動直達發票掃描器，相機即刻開啟並自動辨識填寫明細。',
+      '🔐 隱私防護鎖安全佇列：若已啟用 Face ID / 指紋 App 防護鎖，長按捷徑進入時先完成生物辨識驗證，通過後自動流暢執行所選快捷動作，兼顧隱私與效率。',
+      '🔗 Deep Link 外部協議支援：支援 familyledger://quick-action?mode=scan|expense|income|memo 自訂 URL Scheme，可串接 iOS 捷徑、Siri 或背面輕點快速記帳。',
+      '⚙️ 家庭設定快捷控制台：新增手機桌面 Quick Actions 專屬卡片，支援功能預覽與即時試按測試。',
+    ],
+  },
   {
     version: '1.0.7',
     date: '2026-10-24',

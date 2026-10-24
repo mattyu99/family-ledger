@@ -32,9 +32,15 @@ import {
   calculateCardScheduleDates,
   calculateCardOutstandingAmount,
 } from '../lib/billingNotifications';
+import {
+  isQuickActionSupported,
+  QuickActionKind,
+  QUICK_ACTIONS_CONFIG,
+} from '../lib/quickActions';
 
 interface FamilySettingsScreenProps {
   onOpenModal: (mode: 'expense' | 'income' | 'transfer' | 'allowance' | 'memo', recipientId?: string) => void;
+  onTriggerQuickAction?: (kind: QuickActionKind) => void;
   onOpenAddMemberModal: () => void;
   onOpenEditMemberModal: (member: Profile) => void;
   onOpenClaimAdminModal: () => void;
@@ -55,6 +61,7 @@ interface FamilySettingsScreenProps {
 
 export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
   onOpenModal,
+  onTriggerQuickAction,
   onOpenAddMemberModal,
   onOpenEditMemberModal,
   onOpenClaimAdminModal,
@@ -134,10 +141,12 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
   const [isSchedulingNotice, setIsSchedulingNotice] = useState(false);
   const [memoNoticeEnabled, setMemoNoticeEnabled] = useState(false);
   const [isSchedulingMemoNotice, setIsSchedulingMemoNotice] = useState(false);
+  const [isQuickActionSupportedState, setIsQuickActionSupportedState] = useState(false);
 
   useEffect(() => {
     getBillingNotificationsEnabled().then(setBillingNoticeEnabled);
     getMemoNotificationsEnabled().then(setMemoNoticeEnabled);
+    isQuickActionSupported().then(setIsQuickActionSupportedState);
   }, []);
 
   const creditCards = useMemo(() => {
@@ -883,6 +892,61 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
 
         <Text style={[styles.backupPrivacyNote, { color: colors.text.muted, marginTop: 8 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
           💡 隱私機制：生物特徵資料全程保存在手機本機 Secure Enclave 晶片中，App 雲端絕不存取任何指紋或臉部特徵。
+        </Text>
+      </View>
+
+      {/* ⚡ 手機桌面 Quick Actions 快捷功能卡片 */}
+      <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
+        <View style={styles.sectionHeaderRow}>
+          <View style={styles.sectionHeaderLeft}>
+            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              ⚡ 手機桌面 Quick Actions 快捷動作
+            </Text>
+            <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              長按手機桌面「甜心記帳本」App 圖示即可喚出捷徑，一鍵直達記帳
+            </Text>
+          </View>
+          <View style={[styles.roleBadge, isQuickActionSupportedState ? styles.roleBadgeOwner : styles.roleBadgeMember]}>
+            <Text style={[styles.roleBadgeText, isQuickActionSupportedState ? styles.roleBadgeTextOwner : styles.roleBadgeTextMember]}>
+              {isQuickActionSupportedState ? '🟢 桌面支援' : '⚪ 快捷就緒'}
+            </Text>
+          </View>
+        </View>
+
+        {/* 快捷動作說明列表 */}
+        <View style={[styles.cardScheduleContainer, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
+          {QUICK_ACTIONS_CONFIG.map((item, index) => (
+            <View
+              key={item.id}
+              style={[
+                styles.cardScheduleRow,
+                index === QUICK_ACTIONS_CONFIG.length - 1 && { borderBottomWidth: 0 },
+                { borderBottomColor: colors.border.default, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }
+              ]}
+            >
+              <View style={{ flex: 1, marginRight: 12 }}>
+                <Text style={[styles.cardScheduleName, { color: colors.text.primary }]}>
+                  {item.kind === 'expense' ? '📝' : item.kind === 'income' ? '💰' : item.kind === 'scan' ? '📸' : '📌'} {item.title}
+                </Text>
+                <Text style={[styles.cardScheduleMeta, { color: colors.text.secondary }]}>
+                  {item.subtitle}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.testNoticeBtn, { backgroundColor: colors.background.modal, borderColor: colors.border.default, paddingHorizontal: 12, paddingVertical: 6 }]}
+                onPress={() => onTriggerQuickAction ? onTriggerQuickAction(item.kind) : onOpenModal(item.kind === 'memo' ? 'memo' : 'expense')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.testNoticeBtnText, { color: colors.text.primary, fontSize: 12 }]}>
+                  ▶ 試按
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+
+        <Text style={[styles.backupPrivacyNote, { color: colors.text.muted, marginTop: 8 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          💡 使用秘訣：在 iPhone 或 Android 手機桌面上，用手指長按 App 圖示即可彈出捷徑選單；若有開啟「身分解鎖防護」，會先以 Face ID / 指紋完成驗證後自動直達表單！
         </Text>
       </View>
 

@@ -147,3 +147,4 @@ export const setAppLockEnabled = async (enabled: boolean): Promise<void> => {
     console.warn('[Biometrics] 儲存 App 鎖定偏好失敗:', err);
   }
 };
+

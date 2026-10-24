@@ -151,6 +151,7 @@ interface AddTransactionModalProps {
   defaultNote?: string;
   linkedMemoId?: string;
   linkedCompletionNote?: string;
+  autoOpenScanner?: boolean;
 }
 
 export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
@@ -163,6 +164,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   defaultNote,
   linkedMemoId,
   linkedCompletionNote,
+  autoOpenScanner = false,
 }) => {
   const { isDark, colors } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
@@ -845,12 +847,15 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     }
   }, [initialMode, defaultNote, defaultPayerId, defaultRecipientId, currentUser, members, categories, getMemberById, paymentAccounts]);
 
-  // 當彈窗開啟時，全面執行 resetForm 確保畫面乾淨無前次殘留
+  // 當彈窗開啟時，全面執行 resetForm 確保畫面乾淨無前次殘留；若指定 autoOpenScanner 則自動喚起發票相機
   React.useEffect(() => {
     if (visible) {
       resetForm();
+      if (autoOpenScanner) {
+        setScannerModalVisible(true);
+      }
     }
-  }, [visible, resetForm]);
+  }, [visible, resetForm, autoOpenScanner]);
 
   // 關閉彈窗時同步清空重設表單狀態
   const handleClose = React.useCallback(() => {
