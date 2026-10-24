@@ -84,6 +84,9 @@ import { ChangelogModal } from './src/components/ChangelogModal';
 import { ProductGuideModal } from './src/components/ProductGuideModal';
 import { CloudLedgerManagerModal } from './src/components/CloudLedgerManagerModal';
 import { InvoiceLotteryModal } from './src/components/InvoiceLotteryModal';
+import { BudgetManageModal } from './src/components/BudgetManageModal';
+import { BudgetHeroWidget } from './src/components/BudgetHeroWidget';
+import { TrendChartsWidget } from './src/components/TrendChartsWidget';
 import { APP_FULL_VERSION } from './src/constants/version';
 import { HorizontalScrollView } from './src/components/HorizontalScrollView';
 import { Transaction, Profile, MemberDevice } from './src/types/database';
@@ -175,6 +178,7 @@ function MainApp() {
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const {
     currentLedger,
+    currentBudget,
     ledgers,
     transactions,
     updateTransaction,
@@ -707,6 +711,7 @@ function MainApp() {
 
   // 統計分頁任意月份選擇彈窗可見性
   const [monthPickerVisible, setMonthPickerVisible] = useState(false);
+  const [budgetManageModalVisible, setBudgetManageModalVisible] = useState(false);
 
   // 統計分頁之收支分類排行榜切換 ('expense' | 'income')
   const [analyticsCategoryType, setAnalyticsCategoryType] = useState<'expense' | 'income'>('expense');
@@ -4044,6 +4049,12 @@ function MainApp() {
               )}
             </View>
 
+            {/* 🎯 家庭每月預算進度看板 (階段 A) */}
+            <BudgetHeroWidget
+              onOpenManageModal={() => setBudgetManageModalVisible(true)}
+              targetMonthYm={filterMonth === 'all' ? undefined : filterMonth}
+            />
+
             {/* 🗓️ 待繳週期帳單提醒膠囊 (方式 1: 100% 跟隨選定成員切換視角連動) */}
             {currentFilterPendingBills.length > 0 && (
               <TouchableOpacity
@@ -4835,6 +4846,12 @@ function MainApp() {
               </View>
             </View>
 
+            {/* 📈 近 6 個月走勢圖與 MoM 同期比較看板 (階段 A) */}
+            <TrendChartsWidget
+              selectedMonthYm={analyticsMonth === 'all' || /^\d{4}$/.test(analyticsMonth) ? currentMonthYm : analyticsMonth}
+              onSelectMonth={(ym) => setAnalyticsMonth(ym)}
+            />
+
             {/* 各成員付款支出比例 */}
             <View style={styles.cardSection}>
               <View style={styles.sectionHeaderRow}>
@@ -5031,6 +5048,13 @@ function MainApp() {
                           <Text allowFontScaling={false} maxFontSizeMultiplier={1.08} style={styles.catCountText}>
                             ({item.count}筆)
                           </Text>
+                          {currentBudget?.is_enabled && currentBudget?.category_budgets?.[item.id] && analyticsCategoryType === 'expense' && (
+                            <View style={{ backgroundColor: item.amount > currentBudget.category_budgets[item.id] ? (isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2') : (isDark ? 'rgba(79, 70, 229, 0.2)' : '#EEF2FF'), paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, marginLeft: 4 }}>
+                              <Text style={{ fontSize: 9.5, fontWeight: '700', color: item.amount > currentBudget.category_budgets[item.id] ? '#EF4444' : (isDark ? '#818CF8' : '#4F46E5') }}>
+                                {item.amount > currentBudget.category_budgets[item.id] ? `⚠️ 超支 $${(item.amount - currentBudget.category_budgets[item.id]).toLocaleString()}` : `上限 $${currentBudget.category_budgets[item.id].toLocaleString()}`}
+                              </Text>
+                            </View>
+                          )}
                         </View>
                         <Text
                           allowFontScaling={false}
@@ -6801,6 +6825,12 @@ function MainApp() {
         onLedgerDeleted={() => {
           refreshLedger();
         }}
+      />
+
+      {/* 🎯 家庭每月預算與分類預算設定彈窗 (階段 A) */}
+      <BudgetManageModal
+        visible={budgetManageModalVisible}
+        onClose={() => setBudgetManageModalVisible(false)}
       />
     </SafeAreaView>
   );

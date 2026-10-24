@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Platform, Alert, AppState, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Transaction, Category, Ledger, Profile, TransactionType, CategoryType, PaymentMethod, PaymentAccount, AccountType, CustomPaymentMethod, RecurringRule, MemberDevice } from '../types/database';
+import { Transaction, Category, Ledger, Profile, TransactionType, CategoryType, PaymentMethod, PaymentAccount, AccountType, CustomPaymentMethod, RecurringRule, MemberDevice, LedgerBudget } from '../types/database';
 import { supabase, isConfigured } from '../lib/supabase';
 import { generateUUID } from '../lib/uuid';
 import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS } from '../lib/payment';
@@ -469,7 +469,41 @@ interface LedgerContextType {
   signInWithGoogle: () => Promise<{ success: boolean; message?: string }>;
   signOutGoogle: () => Promise<void>;
   isGoogleAuthenticated: boolean;
-  googleUserEmail: string | null;
+    googleUserEmail: string | null;
+  currentBudget: LedgerBudget | null;
+  updateBudget: (newBudget: Partial<LedgerBudget>) => Promise<void>;
+  getBudgetProgress: (targetMonthYm?: string) => {
+    isEnabled: boolean;
+    totalBudget: number;
+    spentAmount: number;
+    remainingAmount: number;
+    spentRatio: number;
+    isWarning: boolean;
+    isOverBudget: boolean;
+    daysRemaining: number;
+    dailyAvailable: number;
+  };
+  getMoMComparison: (targetMonthYm?: string) => {
+    currentYm: string;
+    prevYm: string;
+    currentExpense: number;
+    prevExpense: number;
+    expenseDiff: number;
+    expenseDiffRate: number;
+    currentIncome: number;
+    prevIncome: number;
+    incomeDiff: number;
+    incomeDiffRate: number;
+    topIncreasedCategory?: { name: string; icon: string; diff: number };
+    topDecreasedCategory?: { name: string; icon: string; diff: number };
+  };
+  getSixMonthTrend: () => Array<{
+    ym: string;
+    label: string;
+    income: number;
+    expense: number;
+    balance: number;
+  }>;
 }
 
 const LedgerContext = createContext<LedgerContextType | null>(null);
@@ -765,6 +799,7 @@ const STORAGE_KEYS = {
   ACCOUNTS_INITIALIZED: '@family_ledger_accounts_initialized',
   PAYMENT_METHODS: '@family_ledger_payment_methods',
   RECURRING_RULES: '@family_ledger_recurring_rules',
+  BUDGET: '@family_ledger_budget',
   LAST_VISITED_PREFIX: '@family_ledger_last_visited_',
   DEVICE_ID: '@family_ledger_device_id',
   MEMBER_DEVICES: '@family_ledger_member_devices',
@@ -8945,6 +8980,262 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return { success: true };
   };
 
+  
+  // 🎯 預算控管與跨月走勢核心狀態 (階段 A)
+  const [currentBudget, setCurrentBudget] = useState<LedgerBudget | null>(null);
+
+  const loadBudget = React.useCallback(async (ledgerId: string) => {
+    if (!ledgerId) return;
+    try {
+      const key = `${STORAGE_KEYS.BUDGET}_${ledgerId}`;
+      const cached = await AsyncStorage.getItem(key);
+      if (cached) {
+        try {
+          setCurrentBudget(JSON.parse(cached));
+        } catch {
+          // ignore parse error
+        }
+      } else {
+        setCurrentBudget({
+          ledger_id: ledgerId,
+          is_enabled: false,
+          monthly_total: 40000,
+          alert_threshold: 80,
+          category_budgets: {},
+        });
+      }
+
+      // 嘗試同步雲端 (若 Supabase 有 ledger_budgets 表)
+      if (isConfigured && supabase) {
+        try {
+          const { data, error } = await supabase
+            .from('ledger_budgets')
+            .select('*')
+            .eq('ledger_id', ledgerId)
+            .maybeSingle();
+          if (!error && data) {
+            const cloudBudget: LedgerBudget = {
+              id: data.id,
+              ledger_id: data.ledger_id,
+              is_enabled: data.is_enabled ?? true,
+              monthly_total: Number(data.monthly_total) || 40000,
+              alert_threshold: Number(data.alert_threshold) || 80,
+              category_budgets: data.category_budgets || {},
+              updated_at: data.updated_at,
+            };
+            setCurrentBudget(cloudBudget);
+            await AsyncStorage.setItem(key, JSON.stringify(cloudBudget));
+          }
+        } catch {
+          // 資料表可能尚未建立，自動降級維持本機運作
+        }
+      }
+    } catch (err) {
+      console.warn('載入預算快取失敗:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (currentLedger?.id) {
+      loadBudget(currentLedger.id);
+    }
+  }, [currentLedger?.id, loadBudget]);
+
+  const updateBudget = React.useCallback(async (newBudgetData: Partial<LedgerBudget>) => {
+    const ledgerId = currentLedger.id;
+    const merged: LedgerBudget = {
+      ledger_id: ledgerId,
+      is_enabled: newBudgetData.is_enabled !== undefined ? newBudgetData.is_enabled : (currentBudget?.is_enabled ?? true),
+      monthly_total: newBudgetData.monthly_total !== undefined ? newBudgetData.monthly_total : (currentBudget?.monthly_total ?? 40000),
+      alert_threshold: newBudgetData.alert_threshold !== undefined ? newBudgetData.alert_threshold : (currentBudget?.alert_threshold ?? 80),
+      category_budgets: newBudgetData.category_budgets !== undefined ? newBudgetData.category_budgets : (currentBudget?.category_budgets ?? {}),
+      updated_at: new Date().toISOString(),
+    };
+
+    setCurrentBudget(merged);
+    try {
+      await AsyncStorage.setItem(`${STORAGE_KEYS.BUDGET}_${ledgerId}`, JSON.stringify(merged));
+    } catch (err) {
+      console.warn('儲存本機預算失敗:', err);
+    }
+
+    if (isConfigured && supabase) {
+      try {
+        await supabase.from('ledger_budgets').upsert({
+          ledger_id: ledgerId,
+          is_enabled: merged.is_enabled,
+          monthly_total: merged.monthly_total,
+          alert_threshold: merged.alert_threshold,
+          category_budgets: merged.category_budgets,
+          updated_at: merged.updated_at,
+        }, { onConflict: 'ledger_id' });
+      } catch {
+        // 若雲端尚未建表則維持本機運作
+      }
+    }
+  }, [currentLedger.id, currentBudget]);
+
+  const getBudgetProgress = React.useCallback((targetMonthYm?: string) => {
+    const now = new Date();
+    const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const ym = targetMonthYm || currentYm;
+    const isEnabled = currentBudget?.is_enabled ?? false;
+    const totalBudget = currentBudget?.monthly_total || 0;
+    const alertThreshold = currentBudget?.alert_threshold || 80;
+
+    const monthTransactions = transactions.filter(t => {
+      if (t.type !== 'expense') return false;
+      const tYm = t.transacted_at ? t.transacted_at.slice(0, 7) : '';
+      return tYm === ym;
+    });
+
+    const spentAmount = monthTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+    const remainingAmount = Math.max(0, totalBudget - spentAmount);
+    const spentRatio = totalBudget > 0 ? (spentAmount / totalBudget) * 100 : 0;
+    const isOverBudget = isEnabled && totalBudget > 0 && spentAmount > totalBudget;
+    const isWarning = isEnabled && totalBudget > 0 && spentRatio >= alertThreshold && !isOverBudget;
+
+    const [yearStr, monthStr] = ym.split('-');
+    const y = parseInt(yearStr, 10) || now.getFullYear();
+    const m = parseInt(monthStr, 10) || (now.getMonth() + 1);
+    const totalDaysInMonth = new Date(y, m, 0).getDate();
+    const isCurrentMonth = ym === currentYm;
+    const currentDay = isCurrentMonth ? now.getDate() : 1;
+    const daysRemaining = Math.max(1, totalDaysInMonth - currentDay + 1);
+    const dailyAvailable = remainingAmount > 0 ? Math.round(remainingAmount / daysRemaining) : 0;
+
+    return {
+      isEnabled,
+      totalBudget,
+      spentAmount,
+      remainingAmount,
+      spentRatio: Math.round(spentRatio * 10) / 10,
+      isWarning,
+      isOverBudget,
+      daysRemaining,
+      dailyAvailable,
+    };
+  }, [currentBudget, transactions]);
+
+  const getMoMComparison = React.useCallback((targetMonthYm?: string) => {
+    const now = new Date();
+    const currentYm = targetMonthYm || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    const [currY, currM] = currentYm.split('-').map(Number);
+    const prevDate = new Date(currY, currM - 2, 1);
+    const prevYm = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+
+    let currentExpense = 0;
+    let currentIncome = 0;
+    const currentCatExpense: Record<string, number> = {};
+
+    let prevExpense = 0;
+    let prevIncome = 0;
+    const prevCatExpense: Record<string, number> = {};
+
+    transactions.forEach(t => {
+      const tYm = t.transacted_at ? t.transacted_at.slice(0, 7) : '';
+      const amt = Number(t.amount) || 0;
+      if (tYm === currentYm) {
+        if (t.type === 'expense') {
+          currentExpense += amt;
+          currentCatExpense[t.category_id] = (currentCatExpense[t.category_id] || 0) + amt;
+        } else if (t.type === 'income') {
+          currentIncome += amt;
+        }
+      } else if (tYm === prevYm) {
+        if (t.type === 'expense') {
+          prevExpense += amt;
+          prevCatExpense[t.category_id] = (prevCatExpense[t.category_id] || 0) + amt;
+        } else if (t.type === 'income') {
+          prevIncome += amt;
+        }
+      }
+    });
+
+    const expenseDiff = currentExpense - prevExpense;
+    const expenseDiffRate = prevExpense > 0 ? Math.round(((expenseDiff) / prevExpense) * 1000) / 10 : 0;
+
+    const incomeDiff = currentIncome - prevIncome;
+    const incomeDiffRate = prevIncome > 0 ? Math.round(((incomeDiff) / prevIncome) * 1000) / 10 : 0;
+
+    const allCatIds = Array.from(new Set([...Object.keys(currentCatExpense), ...Object.keys(prevCatExpense)]));
+    let topIncreaseCat: { name: string; icon: string; diff: number } | undefined;
+    let topDecreaseCat: { name: string; icon: string; diff: number } | undefined;
+
+    let maxIncDiff = 0;
+    let maxDecDiff = 0;
+
+    allCatIds.forEach(catId => {
+      const cAmt = currentCatExpense[catId] || 0;
+      const pAmt = prevCatExpense[catId] || 0;
+      const diff = cAmt - pAmt;
+      const cat = getCategoryById(catId);
+      if (diff > maxIncDiff && diff > 0) {
+        maxIncDiff = diff;
+        topIncreaseCat = { name: cat.name, icon: cat.icon, diff };
+      }
+      if (diff < maxDecDiff && diff < 0) {
+        maxDecDiff = diff;
+        topDecreaseCat = { name: cat.name, icon: cat.icon, diff: Math.abs(diff) };
+      }
+    });
+
+    return {
+      currentYm,
+      prevYm,
+      currentExpense,
+      prevExpense,
+      expenseDiff,
+      expenseDiffRate,
+      currentIncome,
+      prevIncome,
+      incomeDiff,
+      incomeDiffRate,
+      topIncreasedCategory: topIncreaseCat,
+      topDecreasedCategory: topDecreaseCat,
+    };
+  }, [transactions, getCategoryById]);
+
+  const getSixMonthTrend = React.useCallback(() => {
+    const now = new Date();
+    const months: Array<{ ym: string; label: string; income: number; expense: number; balance: number }> = [];
+
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = `${d.getMonth() + 1}月`;
+      months.push({ ym, label, income: 0, expense: 0, balance: 0 });
+    }
+
+    const monthMap = new Map<string, { income: number; expense: number }>();
+    months.forEach(m => monthMap.set(m.ym, { income: 0, expense: 0 }));
+
+    transactions.forEach(t => {
+      const tYm = t.transacted_at ? t.transacted_at.slice(0, 7) : '';
+      const entry = monthMap.get(tYm);
+      if (entry) {
+        const amt = Number(t.amount) || 0;
+        if (t.type === 'expense') {
+          entry.expense += amt;
+        } else if (t.type === 'income') {
+          entry.income += amt;
+        }
+      }
+    });
+
+    return months.map(m => {
+      const entry = monthMap.get(m.ym) || { income: 0, expense: 0 };
+      return {
+        ym: m.ym,
+        label: m.label,
+        income: entry.income,
+        expense: entry.expense,
+        balance: entry.income - entry.expense,
+      };
+    });
+  }, [transactions]);
+
   return (
     <LedgerContext.Provider
       value={{
@@ -9085,6 +9376,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         signOutGoogle,
         isGoogleAuthenticated,
         googleUserEmail,
+        currentBudget,
+        updateBudget,
+        getBudgetProgress,
+        getMoMComparison,
+        getSixMonthTrend,
       }}
     >
       {children}

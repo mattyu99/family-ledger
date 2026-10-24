@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.7';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.7 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 18;
+export const APP_BUILD_REVISION = 19;
 
 // 完整版本字串 (例如 "1.0.7.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,19 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.7',
+    date: '2026-10-24',
+    title: '月度家庭總預算與分類預算控管、超支警戒進度條、近 6 個月收支走勢圖與 MoM 同期比較',
+    highlights: [
+      '🎯 全新月度家庭總預算控管系統：支援隨時開啟/關閉預算控管，設定家庭每月支出總額與快速選擇常用預算規模（$30k~$80k）。',
+      '📊 首頁即時預算消耗進度膠囊：收支總覽下方即時呈現已花費金額、剩餘額度、超支狀態與動態彩色進度條（正常綠色、警戒橘色、超支紅色）。',
+      '📅 日均可用額度動態試算：依據本月剩餘天數即時計算今日平均可用開銷金額，超支時主動提示暫緩非必要支出。',
+      '🏷️ 各支出分類預算上限設定：可為各細項分類（飲食、交通、育兒教育...）獨立設定每月支出上限，並於統計排行榜即時標註達成度與超支警告。',
+      '📈 統計分頁近 6 個月收支走勢圖：純 React Native 原生響應式長條圖，半年內總收入與總支出雙柱起伏對比，點擊任意月份柱秒速切換。',
+      '⚖️ 相較上月同期 (MoM) 增減洞察看板：即時比較總支出與總收入較上月增減（$ 與 %），並自動分析標示出支出增加最多與省錢最多之關鍵分類。',
+    ],
+  },
   {
     version: '1.0.7',
     date: '2026-10-24',

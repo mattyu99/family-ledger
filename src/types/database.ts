@@ -189,3 +189,13 @@ export interface MemberDevice {
   last_active_at: string;
   created_at: string;
 }
+
+export interface LedgerBudget {
+  id?: string;
+  ledger_id: string;
+  is_enabled: boolean; // 是否啟用預算控管
+  monthly_total: number; // 月度總預算 (例如 45000)
+  alert_threshold: number; // 預警門檻百分比 (例如 80)
+  category_budgets: Record<string, number>; // 各分類上限，Key 為 category_id，Value 為預算金額
+  updated_at?: string;
+}
