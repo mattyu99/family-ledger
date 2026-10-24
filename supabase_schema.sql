@@ -1008,4 +1008,58 @@ ALTER TABLE public.payment_methods REPLICA IDENTITY FULL;
 -- 補齊 payment_accounts 悠遊卡完整卡號支援 (card_number)
 ALTER TABLE public.payment_accounts ADD COLUMN IF NOT EXISTS card_number TEXT;
 
+-- ==============================================================================
+-- 13. 家庭公帳月度總預算與成員個人額度表 (Ledger Budgets)
+-- 包含家庭公帳總預算、警戒門檻、分類預算與成員個人專屬月額度 (JSONB)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.ledger_budgets (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    ledger_id UUID NOT NULL REFERENCES public.ledgers(id) ON DELETE CASCADE,
+    is_enabled BOOLEAN DEFAULT TRUE NOT NULL,
+    monthly_total NUMERIC(12, 2) DEFAULT 40000 NOT NULL,
+    alert_threshold INT DEFAULT 80 NOT NULL,
+    category_budgets JSONB DEFAULT '{}'::jsonb NOT NULL,
+    member_budgets JSONB DEFAULT '{}'::jsonb NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    CONSTRAINT ledger_budgets_ledger_id_key UNIQUE (ledger_id)
+);
+
+-- 啟用 RLS
+ALTER TABLE public.ledger_budgets ENABLE ROW LEVEL SECURITY;
+
+-- 政策：所屬帳本成員皆可讀取預算設定
+DROP POLICY IF EXISTS "成員可讀取所屬帳本的預算設定" ON public.ledger_budgets;
+CREATE POLICY "成員可讀取所屬帳本的預算設定" ON public.ledger_budgets
+    FOR SELECT USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+
+-- 政策：所屬帳本成員皆可新增預算設定
+DROP POLICY IF EXISTS "成員可新增所屬帳本的預算設定" ON public.ledger_budgets;
+CREATE POLICY "成員可新增所屬帳本的預算設定" ON public.ledger_budgets
+    FOR INSERT WITH CHECK (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+
+-- 政策：所屬帳本成員皆可更新預算設定
+DROP POLICY IF EXISTS "成員可更新所屬帳本的預算設定" ON public.ledger_budgets;
+CREATE POLICY "成員可更新所屬帳本的預算設定" ON public.ledger_budgets
+    FOR UPDATE USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+
+-- 政策：所屬帳本成員皆可刪除預算設定
+DROP POLICY IF EXISTS "成員可刪除所屬帳本的預算設定" ON public.ledger_budgets;
+CREATE POLICY "成員可刪除所屬帳本的預算設定" ON public.ledger_budgets
+    FOR DELETE USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+
+-- 確保 Supabase Realtime 完整推播所有欄位
+ALTER TABLE public.ledger_budgets REPLICA IDENTITY FULL;
+
+-- 安全加入 Realtime 即時推播 (已存在則自動略過)
+DO $$
+BEGIN
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.ledger_budgets;
+  EXCEPTION
+    WHEN duplicate_object THEN NULL;
+    WHEN others THEN NULL;
+  END;
+END $$;
+
+
 
