@@ -196,8 +196,8 @@ flowchart TD
 ## 🚀 快速開始與版本資訊
 
 ### 📌 目前最新發布版本
-* **主版本號**：`v1.0.7`
-* **完整建置版本號**：`v1.0.7.0` (Build 0)
+* **主版本號**：`v1.0.8`
+* **完整建置版本號**：`v1.0.8.0` (Build 0)
 * **網頁體驗版網址**：[https://mattyu99.github.io/family-ledger/](https://mattyu99.github.io/family-ledger/)
 
 ### 📱 取得與安裝
@@ -210,8 +210,8 @@ flowchart TD
 ---
 
 ### 👨‍💻 產品團隊與協同創作
-* **產品設計與架構**：甜心記帳本團隊 (Sweetheart Family Ledger Team)
-* **協同開發**：Crafted with ❤️ by 甜心記帳本團隊 & AI Pair Programmer
+* **產品設計與架構**：Matt Yu
+* **協同開發**：Crafted with ❤️ by Matt Yu & AI Pair Programmer
 
 ---
 
