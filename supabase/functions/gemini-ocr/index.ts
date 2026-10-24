@@ -5,6 +5,19 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function decodeKey(raw: string): string {
+  if (!raw) return "";
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("QVEu") || (trimmed.length > 50 && !trimmed.startsWith("AQ."))) {
+    try {
+      return atob(trimmed);
+    } catch {
+      return trimmed;
+    }
+  }
+  return trimmed;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -19,8 +32,9 @@ serve(async (req) => {
       });
     }
 
-    // 🔒 自雲端環境變數讀取 Google Gemini API Key（徹底不對 App 客戶端暴露）
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("EXPO_PUBLIC_GEMINI_API_KEY");
+    // 🔒 自雲端環境變數讀取 Google Gemini API Key（徹底不對 App 客戶端暴露，支援明文與 Base64）
+    const rawKey = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("EXPO_PUBLIC_GEMINI_API_KEY") || "";
+    const GEMINI_API_KEY = decodeKey(rawKey);
     if (!GEMINI_API_KEY) {
       return new Response(JSON.stringify({ error: "Server GEMINI_API_KEY secret not configured" }), {
         status: 500,
@@ -121,3 +135,4 @@ serve(async (req) => {
     });
   }
 });
+
