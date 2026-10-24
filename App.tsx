@@ -261,22 +261,33 @@ const AppContent: React.FC = () => {
 
   // 註冊與監聽桌面快捷動作 (Quick Actions / 3D Touch) 與 Deep Link
   useEffect(() => {
-    setupQuickActions();
+    try {
+      setupQuickActions();
 
-    const initialAction = QuickActions.initial;
-    if (initialAction) {
-      const kind = parseQuickAction(initialAction);
-      if (kind) {
-        dispatchQuickAction(kind);
+      const initialAction = QuickActions?.initial;
+      if (initialAction) {
+        const kind = parseQuickAction(initialAction);
+        if (kind) {
+          dispatchQuickAction(kind);
+        }
       }
+    } catch (err) {
+      console.warn('[QuickActions] 初始化讀取失敗:', err);
     }
 
-    const sub = QuickActions.addListener((action) => {
-      const kind = parseQuickAction(action);
-      if (kind) {
-        dispatchQuickAction(kind);
+    let sub: any = null;
+    try {
+      if (typeof QuickActions?.addListener === 'function') {
+        sub = QuickActions.addListener((action) => {
+          const kind = parseQuickAction(action);
+          if (kind) {
+            dispatchQuickAction(kind);
+          }
+        });
       }
-    });
+    } catch (err) {
+      console.warn('[QuickActions] 監聽事件註冊失敗:', err);
+    }
 
     const handleUrlEvent = (event: { url: string }) => {
       const kind = parseQuickActionUrl(event.url);
@@ -284,17 +295,22 @@ const AppContent: React.FC = () => {
         dispatchQuickAction(kind);
       }
     };
-    const linkSub = Linking.addEventListener('url', handleUrlEvent);
-    Linking.getInitialURL().then((url) => {
-      const kind = parseQuickActionUrl(url);
-      if (kind) {
-        dispatchQuickAction(kind);
-      }
-    }).catch(() => {});
+    let linkSub: any = null;
+    try {
+      linkSub = Linking.addEventListener('url', handleUrlEvent);
+      Linking.getInitialURL().then((url) => {
+        const kind = parseQuickActionUrl(url);
+        if (kind) {
+          dispatchQuickAction(kind);
+        }
+      }).catch(() => {});
+    } catch (err) {
+      console.warn('[DeepLink] 監聽註冊失敗:', err);
+    }
 
     return () => {
-      sub.remove();
-      linkSub.remove();
+      sub?.remove?.();
+      linkSub?.remove?.();
     };
   }, [dispatchQuickAction]);
 
@@ -1269,15 +1285,63 @@ const AppContent: React.FC = () => {
   );
 };
 
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class RootErrorBoundary extends React.Component<{ children: React.ReactNode }, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { hasError: false, error: null };
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, info: any) {
+    console.error('[RootErrorBoundary] 補捉到未處理之錯誤:', error, info);
+  }
+
+  handleRestart = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#0F172A', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: '#1E293B', borderRadius: 16, padding: 24, width: '100%', maxWidth: 400, alignItems: 'center', borderWidth: 1, borderColor: '#334155' }}>
+            <RNText style={{ fontSize: 36, marginBottom: 12 }}>🛡️</RNText>
+            <RNText style={{ fontSize: 18, fontWeight: '700', color: '#F8FAFC', marginBottom: 8, textAlign: 'center' }}>
+              甜心記帳本 安全啟動防護
+            </RNText>
+            <RNText style={{ fontSize: 13, color: '#94A3B8', marginBottom: 20, textAlign: 'center', lineHeight: 20 }}>
+              應用程式偵測到載入異常，已自動啟動防護機制，點擊下方按鈕即可重新進入。
+            </RNText>
+            <TouchableOpacity
+              onPress={this.handleRestart}
+              style={{ backgroundColor: '#6366F1', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 10, width: '100%', alignItems: 'center' }}
+            >
+              <RNText style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '600' }}>點擊重新載入</RNText>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   return (
-    <ThemeProvider>
-      <LedgerProvider>
-        <PrivacyProvider>
-          <AppContent />
-        </PrivacyProvider>
-      </LedgerProvider>
-    </ThemeProvider>
+    <RootErrorBoundary>
+      <ThemeProvider>
+        <LedgerProvider>
+          <PrivacyProvider>
+            <AppContent />
+          </PrivacyProvider>
+        </LedgerProvider>
+      </ThemeProvider>
+    </RootErrorBoundary>
   );
 }
 

@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.7';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.7 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 32;
+export const APP_BUILD_REVISION = 33;
 
 // 完整版本字串 (例如 "1.0.7.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.7',
+    date: '2026-10-24',
+    title: '防禦型原生模組相容架構與啟動黑屏徹底修復',
+    highlights: [
+      '🛡️ 原生模組防禦型載入機制：針對尚未重新安裝新版 APK 的舊版用戶端，將 Face ID / 生物辨識與桌面快捷模組改為安全可選載入（requireOptionalNativeModule），徹底杜絕 OTA 更新後因缺少原生二進位代碼導致的啟動拋錯與黑屏現象。',
+      '⚡ 舊版 APK 優雅降級：在未編譯生物辨識原生模組之環境下自動啟用安全 PIN 碼與本機偏好防護，功能 100% 穩定可用，待日後編譯新 APK 時自動無縫啟用 Face ID。',
+      '🚨 全域根層安全邊界 (Root Error Boundary)：於應用程式頂層掛載保護層，即便發生不可預期之執行緒例外亦能自動隔離並呈現一鍵恢復介面，堅決杜絕任何黑屏。',
+    ],
+  },
   {
     version: '1.0.7',
     date: '2026-10-24',

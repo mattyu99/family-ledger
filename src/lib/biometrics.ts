@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
-import * as LocalAuthentication from 'expo-local-authentication';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { requireOptionalNativeModule } from 'expo-modules-core';
 
 const PRIVACY_MASK_STORAGE_KEY = '@family_ledger_biometrics_privacy_mask_enabled';
 const APP_LOCK_STORAGE_KEY = '@family_ledger_biometrics_app_lock_enabled';
@@ -8,8 +8,28 @@ const APP_LOCK_STORAGE_KEY = '@family_ledger_biometrics_app_lock_enabled';
 export interface BiometricsCapability {
   isSupported: boolean;
   isEnrolled: boolean;
-  biometryType: string; // 'Face ID' | 'Touch ID' | '指紋辨識' | '人臉辨識' | '生物辨識'
+  biometryType: string; // 'Face ID' | 'Touch ID' | '指紋辨識' | '人臉辨識' | '生物辨識' | '安全 PIN 碼'
 }
+
+/**
+ * 安全取得 ExpoLocalAuthentication 原生模組
+ * 若使用者手機當前安裝的 APK 未編譯此模組，安全返回 null，絕不拋出 Uncaught Exception 造成 OTA 黑屏
+ */
+const getNativeLocalAuth = (): any | null => {
+  if (Platform.OS === 'web') return null;
+  try {
+    return requireOptionalNativeModule('ExpoLocalAuthentication');
+  } catch (err) {
+    console.warn('[Biometrics] 原生模組載入失敗 (當前 APK 未編譯此模組):', err);
+    return null;
+  }
+};
+
+const AuthenticationType = {
+  FINGERPRINT: 1,
+  FACIAL_RECOGNITION: 2,
+  IRIS: 3,
+};
 
 /**
  * 檢查目前裝置之生物辨識硬體支援與錄入狀態
@@ -19,27 +39,38 @@ export const checkBiometricsCapability = async (): Promise<BiometricsCapability>
     return {
       isSupported: false,
       isEnrolled: false,
-      biometryType: '管理員安全碼',
+      biometryType: '安全 PIN 碼',
+    };
+  }
+
+  const nativeAuth = getNativeLocalAuth();
+  if (!nativeAuth) {
+    return {
+      isSupported: false,
+      isEnrolled: false,
+      biometryType: '安全 PIN 碼',
     };
   }
 
   try {
-    const hasHardware = await LocalAuthentication.hasHardwareAsync();
-    const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-    const supportedTypes = await LocalAuthentication.supportedAuthenticationTypesAsync();
+    const hasHardware = typeof nativeAuth.hasHardwareAsync === 'function' ? await nativeAuth.hasHardwareAsync() : false;
+    const isEnrolled = typeof nativeAuth.isEnrolledAsync === 'function' ? await nativeAuth.isEnrolledAsync() : false;
+    const supportedTypes: number[] = typeof nativeAuth.supportedAuthenticationTypesAsync === 'function'
+      ? await nativeAuth.supportedAuthenticationTypesAsync()
+      : [];
 
     let biometryType = '生物辨識';
-    if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+    if (supportedTypes.includes(AuthenticationType.FACIAL_RECOGNITION)) {
       biometryType = Platform.OS === 'ios' ? 'Face ID' : '人臉辨識';
-    } else if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+    } else if (supportedTypes.includes(AuthenticationType.FINGERPRINT)) {
       biometryType = Platform.OS === 'ios' ? 'Touch ID' : '指紋辨識';
-    } else if (supportedTypes.includes(LocalAuthentication.AuthenticationType.IRIS)) {
+    } else if (supportedTypes.includes(AuthenticationType.IRIS)) {
       biometryType = '虹膜辨識';
     }
 
     return {
-      isSupported: hasHardware,
-      isEnrolled,
+      isSupported: Boolean(hasHardware),
+      isEnrolled: Boolean(isEnrolled),
       biometryType,
     };
   } catch (err) {
@@ -47,7 +78,7 @@ export const checkBiometricsCapability = async (): Promise<BiometricsCapability>
     return {
       isSupported: false,
       isEnrolled: false,
-      biometryType: '生物辨識',
+      biometryType: '安全 PIN 碼',
     };
   }
 };
@@ -60,27 +91,19 @@ export const authenticateWithBiometrics = async (
   fallbackLabel = '使用手機密碼驗證'
 ): Promise<{ success: boolean; error?: string }> => {
   if (Platform.OS === 'web') {
-    // 網頁環境不具備 Native 生物辨識 API，預設通過
     return { success: true };
   }
 
-  try {
-    const capability = await checkBiometricsCapability();
-    if (!capability.isSupported || !capability.isEnrolled) {
-      // 若裝置無生物辨識或未錄入指紋/臉部，嘗試使用系統鎖屏密碼
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage,
-        fallbackLabel,
-        disableDeviceFallback: false,
-        cancelLabel: '取消',
-      });
-      return {
-        success: result.success,
-        error: result.success ? undefined : result.error,
-      };
-    }
+  const nativeAuth = getNativeLocalAuth();
+  if (!nativeAuth || typeof nativeAuth.authenticateAsync !== 'function') {
+    return {
+      success: false,
+      error: '當前 APK 尚未編譯生物辨識原生模組，請使用 PIN 碼',
+    };
+  }
 
-    const result = await LocalAuthentication.authenticateAsync({
+  try {
+    const result = await nativeAuth.authenticateAsync({
       promptMessage,
       fallbackLabel,
       disableDeviceFallback: false,
@@ -88,8 +111,8 @@ export const authenticateWithBiometrics = async (
     });
 
     return {
-      success: result.success,
-      error: result.success ? undefined : result.error,
+      success: Boolean(result?.success),
+      error: result?.success ? undefined : result?.error,
     };
   } catch (err: any) {
     console.warn('[Biometrics] 驗證過程發生例外:', err);
@@ -147,4 +170,3 @@ export const setAppLockEnabled = async (enabled: boolean): Promise<void> => {
     console.warn('[Biometrics] 儲存 App 鎖定偏好失敗:', err);
   }
 };
-

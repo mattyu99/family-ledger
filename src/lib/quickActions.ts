@@ -68,8 +68,9 @@ export async function setupQuickActions(): Promise<boolean> {
   }
 
   try {
+    if (typeof QuickActions?.isSupported !== 'function') return false;
     const supported = await QuickActions.isSupported();
-    if (supported) {
+    if (supported && typeof QuickActions?.setItems === 'function') {
       await QuickActions.setItems(QUICK_ACTION_ITEMS);
       return true;
     }
@@ -85,6 +86,7 @@ export async function setupQuickActions(): Promise<boolean> {
 export async function isQuickActionSupported(): Promise<boolean> {
   if (Platform.OS === 'web') return false;
   try {
+    if (typeof QuickActions?.isSupported !== 'function') return false;
     return await QuickActions.isSupported();
   } catch {
     return false;
@@ -121,3 +123,4 @@ export function parseQuickActionUrl(url?: string | null): QuickActionKind | null
   } catch {}
   return null;
 }
+
