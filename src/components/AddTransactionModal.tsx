@@ -14,6 +14,7 @@ import {
   TextInputProps,
   Keyboard,
   Alert,
+  Image,
 } from 'react-native';
 import { HorizontalScrollView } from './HorizontalScrollView';
 
@@ -86,6 +87,19 @@ import {
 import { checkInvoiceWinning } from '../lib/lottery';
 import { DatePickerModal } from './DatePickerModal';
 import { InvoiceScannerModal } from './InvoiceScannerModal';
+import { ImageViewerModal } from './ImageViewerModal';
+import { uploadReceiptPhoto } from '../lib/receiptStorage';
+
+let ImagePickerModule: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const pickerPkg = require('expo-image-picker');
+  if (pickerPkg?.launchImageLibraryAsync) {
+    ImagePickerModule = pickerPkg;
+  }
+} catch {
+  ImagePickerModule = null;
+}
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -131,7 +145,7 @@ interface AddTransactionModalProps {
   visible: boolean;
   onClose: () => void;
   onSuccess?: (createdTxId?: string) => void;
-  initialMode?: 'expense' | 'income' | 'allowance' | 'memo';
+  initialMode?: 'expense' | 'income' | 'transfer' | 'allowance' | 'memo';
   defaultRecipientId?: string;
   defaultPayerId?: string;
   defaultNote?: string;
@@ -153,6 +167,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const { isDark, colors } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const {
+    currentLedger,
     categories,
     members,
     currentUser,
@@ -160,6 +175,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     addTransaction,
     updateTransaction,
     transferAllowance,
+    executeTransfer,
     getMemberById,
     getCategoryById,
     recentMerchants,
@@ -206,7 +222,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     }
   }, [removeRecentMemoTag]);
 
-  const [mode, setMode] = useState<'expense' | 'income' | 'allowance' | 'memo'>(initialMode);
+  const [mode, setMode] = useState<'expense' | 'income' | 'transfer' | 'allowance' | 'memo'>(initialMode);
   const [type, setType] = useState<TransactionType>('expense');
   const [amount, setAmount] = useState<string>('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
@@ -215,6 +231,16 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const [merchant, setMerchant] = useState<string>('');
   const [note, setNote] = useState<string>('');
+
+  // ⇄ 轉帳模式專屬狀態 (階段 B)
+  const [transferFromAccountId, setTransferFromAccountId] = useState<string>('');
+  const [transferToAccountId, setTransferToAccountId] = useState<string>('');
+  const [transferFee, setTransferFee] = useState<string>('0');
+
+  // 📎 收據/保固照片附件狀態 (階段 B)
+  const [receiptPhotoUri, setReceiptPhotoUri] = useState<string>('');
+  const [viewingPhotoModal, setViewingPhotoModal] = useState<boolean>(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
 
   const handleSelectTemplate = React.useCallback((template: MemoChecklistTemplate) => {
     if (!note || !note.trim()) {
@@ -756,11 +782,21 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     setDiscountLabelTouched(false);
     setDiscountCalcMode('subtract');
     setAllowanceMode('transfer');
+    setTransferFee('0');
+    setReceiptPhotoUri('');
+    setViewingPhotoModal(false);
+
+    const fromCandidate = paymentAccounts.find(a => a.type === 'bank' || a.type === 'cash') || paymentAccounts[0];
+    const toCandidate = paymentAccounts.find(a => a.id !== fromCandidate?.id) || paymentAccounts[1];
+    setTransferFromAccountId(fromCandidate?.id || '');
+    setTransferToAccountId(toCandidate?.id || '');
 
     const targetMode = initialMode || 'expense';
     setMode(targetMode);
     if (targetMode === 'expense' || targetMode === 'income' || targetMode === 'memo') {
       setType(targetMode);
+    } else if (targetMode === 'transfer') {
+      setType('transfer');
     }
 
     if (defaultNote) {
@@ -807,7 +843,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     } else {
       setSelectedCategoryId('');
     }
-  }, [initialMode, defaultNote, defaultPayerId, defaultRecipientId, currentUser, members, categories, getMemberById]);
+  }, [initialMode, defaultNote, defaultPayerId, defaultRecipientId, currentUser, members, categories, getMemberById, paymentAccounts]);
 
   // 當彈窗開啟時，全面執行 resetForm 確保畫面乾淨無前次殘留
   React.useEffect(() => {
@@ -831,6 +867,84 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   // 快捷備註選擇
   const handleQuickNote = (tag: string) => {
     setNote(tag);
+  };
+
+  // 相機拍攝收據/保固照片 (階段 B)
+  const handlePickReceiptFromCamera = async () => {
+    if (!ImagePickerModule?.launchCameraAsync) {
+      safeAlert('不支援相機', '目前環境暫不支援原生相機拍攝');
+      return;
+    }
+    try {
+      const result = await ImagePickerModule.launchCameraAsync({
+        quality: 0.8,
+        allowsEditing: true,
+      });
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        setReceiptPhotoUri(result.assets[0].uri);
+      }
+    } catch (e: any) {
+      safeAlert('相機錯誤', e?.message || '無法開啟相機');
+    }
+  };
+
+  // 相簿挑選收據/保固照片 (階段 B)
+  const handlePickReceiptFromLibrary = async () => {
+    if (!ImagePickerModule?.launchImageLibraryAsync) {
+      safeAlert('不支援相簿', '目前環境暫不支援開啟相簿');
+      return;
+    }
+    try {
+      const result = await ImagePickerModule.launchImageLibraryAsync({
+        quality: 0.8,
+        allowsEditing: true,
+      });
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        setReceiptPhotoUri(result.assets[0].uri);
+      }
+    } catch (e: any) {
+      safeAlert('相簿錯誤', e?.message || '無法讀取相簿');
+    }
+  };
+
+  // 送出內部轉帳 / 提款 / 繳卡費 (階段 B)
+  const handleTransferSubmit = async () => {
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      safeAlert('請輸入金額', '請輸入大於 0 的轉帳金額');
+      return;
+    }
+    if (!transferFromAccountId || !transferToAccountId) {
+      safeAlert('請選擇帳戶', '請選擇轉出帳戶與轉入目標');
+      return;
+    }
+    if (transferFromAccountId === transferToAccountId) {
+      safeAlert('帳戶相同', '轉出帳戶與轉入目標不能是同一個帳戶');
+      return;
+    }
+
+    const feeNum = parseFloat(transferFee) || 0;
+    const now = new Date();
+    const txDate = new Date(selectedDate);
+    txDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+
+    const res = await executeTransfer({
+      fromAccountId: transferFromAccountId,
+      toAccountId: transferToAccountId,
+      amount: numAmount,
+      fee: feeNum,
+      payerId: paidBy || currentUser.id,
+      transactedAt: txDate.toISOString(),
+      note: note.trim() || undefined,
+    });
+
+    if (!res.success) {
+      safeAlert('轉帳失敗', res.error || '執行轉帳時發生錯誤');
+      return;
+    }
+
+    safeAlert('🎉 轉帳成功！', '已完成資金調撥與各帳戶餘額更新！此筆內部資金流動不計入公帳總支出。');
+    onClose();
   };
 
   // 送出撥零用錢 (一鍵雙向記帳)
@@ -962,6 +1076,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       : parsedInputAmount;
 
   const handleSubmit = async () => {
+    if (mode === 'transfer') {
+      return handleTransferSubmit();
+    }
     if (mode === 'allowance') {
       return handleAllowanceSubmit();
     }
@@ -1031,6 +1148,26 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         txDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
         const transacted_at = txDate.toISOString();
 
+        // 若有收據照片附件，上傳至雲端 Storage
+        let finalImageUrl: string | undefined = undefined;
+        if (receiptPhotoUri) {
+          if (receiptPhotoUri.startsWith('http://') || receiptPhotoUri.startsWith('https://')) {
+            finalImageUrl = receiptPhotoUri;
+          } else {
+            try {
+              setIsUploadingPhoto(true);
+              finalImageUrl = await uploadReceiptPhoto({
+                ledgerId: currentLedger.id,
+                uri: receiptPhotoUri,
+              });
+            } catch {
+              finalImageUrl = receiptPhotoUri;
+            } finally {
+              setIsUploadingPhoto(false);
+            }
+          }
+        }
+
         const createdTxId = await addTransaction({
           amount: finalAmount,
           type,
@@ -1042,6 +1179,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           note: finalNote,
           invoice_number: invoiceNumber.trim() || undefined,
           invoice_random_code: invoiceRandomCode.trim() || undefined,
+          image_url: finalImageUrl,
           transacted_at,
           linked_transaction_id: linkedMemoId || undefined,
           splitWithIds: type === 'expense' ? members.map(m => m.id) : undefined,
@@ -1115,7 +1253,15 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           {/* 頂部把手與標題 */}
           <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={1.15}>
-              {mode === 'allowance' ? '🎁 撥發零用錢 (雙向記帳)' : mode === 'income' ? '新增一筆收入' : mode === 'memo' ? '📝 新增生活記事與備忘' : '新增一筆支出'}
+              {mode === 'transfer'
+                ? '⇄ 帳戶資金互轉 / 提款 / 繳卡費'
+                : mode === 'allowance'
+                ? '🎁 撥發零用錢 (雙向記帳)'
+                : mode === 'income'
+                ? '新增一筆收入'
+                : mode === 'memo'
+                ? '📝 新增生活記事與備忘'
+                : '新增一筆支出'}
             </Text>
             <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
               <Text style={styles.closeText} maxFontSizeMultiplier={1.15}>✕</Text>
@@ -1142,7 +1288,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               </View>
             )}
 
-            {/* 支出 / 收入 / 撥零用錢 / 記事 切換鈕 */}
+            {/* 支出 / 收入 / 轉帳 / 撥零用錢 / 記事 切換鈕 */}
             <View style={styles.typeSelector}>
               <TouchableOpacity
                 style={[styles.typeBtn, mode === 'expense' && styles.typeBtnActiveExpense]}
@@ -1175,6 +1321,21 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   maxFontSizeMultiplier={1.15}
                 >
                   收入
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.typeBtn, mode === 'transfer' && styles.typeBtnActiveTransfer]}
+                onPress={() => {
+                  setMode('transfer');
+                  setType('transfer');
+                }}
+              >
+                <Text
+                  style={[styles.typeBtnText, mode === 'transfer' && styles.typeBtnTextActiveTransfer]}
+                  maxFontSizeMultiplier={1.15}
+                >
+                  ⇄ 轉帳
                 </Text>
               </TouchableOpacity>
 
@@ -2143,6 +2304,208 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   />
                 </View>
               </>
+            ) : mode === 'transfer' ? (
+              <>
+                {/* 轉出帳戶 (扣款來源) */}
+                <View style={styles.sectionLabelRow}>
+                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>轉出帳戶 (扣款來源)</Text>
+                </View>
+                <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
+                  {paymentAccounts.filter(a => a.type === 'bank' || a.type === 'cash' || a.type === 'stored_value').map(account => {
+                    const isSelected = transferFromAccountId === account.id;
+                    const icon = account.type === 'bank' ? '🏦' : account.type === 'cash' ? '💵' : (account.icon || '🚌');
+                    return (
+                      <TouchableOpacity
+                        key={account.id}
+                        style={[
+                          styles.cardChip,
+                          isSelected && { borderColor: '#0284C7', backgroundColor: isDark ? 'rgba(2, 132, 199, 0.25)' : '#F0F9FF' },
+                        ]}
+                        onPress={() => {
+                          setTransferFromAccountId(account.id);
+                          if (transferToAccountId === account.id) {
+                            const other = paymentAccounts.find(a => a.id !== account.id);
+                            if (other) setTransferToAccountId(other.id);
+                          }
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.cardChipIcon}>{icon}</Text>
+                        <View>
+                          <Text
+                            style={[styles.cardChipName, isSelected && { color: '#0284C7', fontWeight: '700' }]}
+                            maxFontSizeMultiplier={1.15}
+                          >
+                            {account.name}
+                          </Text>
+                          <Text style={styles.cardChipSub} maxFontSizeMultiplier={1.15}>
+                            餘額: NT$ {Number(account.balance || 0).toLocaleString()}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </HorizontalScrollView>
+
+                {/* 轉入目標 */}
+                <View style={[styles.sectionLabelRow, { marginTop: 12 }]}>
+                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>轉入目標 (資金去向 / 繳卡費)</Text>
+                </View>
+                <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
+                  {paymentAccounts.filter(a => a.id !== transferFromAccountId).map(account => {
+                    const isSelected = transferToAccountId === account.id;
+                    const isCard = account.type === 'credit_card';
+                    const icon = account.type === 'bank' ? '🏦' : account.type === 'cash' ? '💵' : isCard ? '💳' : (account.icon || '🚌');
+                    return (
+                      <TouchableOpacity
+                        key={account.id}
+                        style={[
+                          styles.cardChip,
+                          isSelected && { borderColor: '#10B981', backgroundColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#ECFDF5' },
+                        ]}
+                        onPress={() => setTransferToAccountId(account.id)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.cardChipIcon}>{icon}</Text>
+                        <View>
+                          <Text
+                            style={[styles.cardChipName, isSelected && { color: '#059669', fontWeight: '700' }]}
+                            maxFontSizeMultiplier={1.15}
+                          >
+                            {account.name}{isCard ? ' (繳卡費)' : ''}
+                          </Text>
+                          <Text style={styles.cardChipSub} maxFontSizeMultiplier={1.15}>
+                            {isCard ? '折抵未核銷卡債' : `餘額: NT$ ${Number(account.balance || 0).toLocaleString()}`}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </HorizontalScrollView>
+
+                {/* 跨行手續費 (選填) */}
+                <View style={[styles.sectionLabelRow, { marginTop: 12 }]}>
+                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>跨行手續費 (選填 · 自動獨立記為雜支)</Text>
+                </View>
+                <View style={styles.feeChipsRow}>
+                  {[
+                    { label: '免手續費 ($0)', fee: '0' },
+                    { label: '跨行轉帳 ($15)', fee: '15' },
+                    { label: '跨行提款 ($5)', fee: '5' },
+                    { label: '郵局跨行 ($10)', fee: '10' },
+                  ].map(opt => {
+                    const isFeeActive = transferFee === opt.fee;
+                    return (
+                      <TouchableOpacity
+                        key={opt.fee}
+                        style={[styles.feeChip, isFeeActive && styles.feeChipActive]}
+                        onPress={() => setTransferFee(opt.fee)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.feeChipText, isFeeActive && styles.feeChipTextActive]} maxFontSizeMultiplier={1.08}>
+                          {opt.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* 轉帳日期 */}
+                <View style={[styles.sectionLabelRow, { marginTop: 8 }]}>
+                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>轉帳日期</Text>
+                </View>
+                <View style={styles.dateRow}>
+                  <TouchableOpacity
+                    style={[styles.dateChip, isToday && styles.dateChipActive]}
+                    onPress={() => setSelectedDate(today)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dateChipText, isToday && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                      今天 ({today.getMonth() + 1}/{today.getDate()})
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.dateChip, isYesterday && styles.dateChipActive]}
+                    onPress={() => setSelectedDate(yesterday)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dateChipText, isYesterday && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                      昨天 ({yesterday.getMonth() + 1}/{yesterday.getDate()})
+                    </Text>
+                  </TouchableOpacity>
+                  {isCustomDate && (
+                    <TouchableOpacity
+                      style={[styles.dateChip, styles.dateChipActive, styles.dateChipCustom]}
+                      onPress={() => setDatePickerVisible(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.dateChipText, styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                        🗓️ {selectedDate.getMonth() + 1}/{selectedDate.getDate()} (自訂)
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={[styles.dateMoreBtn, isCustomDate && styles.dateMoreBtnSelected]}
+                    onPress={() => setDatePickerVisible(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dateMoreBtnText, isCustomDate && styles.dateMoreBtnTextSelected]} maxFontSizeMultiplier={1.15}>
+                      {isCustomDate ? '✏️ 改選' : '🗓️ 更多...'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* 經手成員 */}
+                <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>經手成員</Text>
+                <View style={styles.payerRow}>
+                  {members.map(member => {
+                    const isSelected = paidBy === member.id;
+                    const isMe = member.id === currentUser.id || (!!currentUser.display_name && currentUser.display_name === member.display_name);
+                    return (
+                      <TouchableOpacity
+                        key={member.id}
+                        style={[styles.payerChip, isSelected && styles.payerChipActive]}
+                        onPress={() => setPaidBy(member.id)}
+                      >
+                        <Text style={styles.payerAvatar}>{member.avatar_url}</Text>
+                        <Text
+                          style={[styles.payerName, isSelected && styles.payerNameActive]}
+                          maxFontSizeMultiplier={1.15}
+                        >
+                          {member.display_name}{isMe ? ' (我)' : ''}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* 轉帳備註 / 事由 */}
+                <View style={styles.sectionLabelRow}>
+                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>轉帳事由與備註 (選填)</Text>
+                </View>
+                <View style={styles.quickNoteRow}>
+                  {['提款放皮夾', '繳納信用卡費', '銀行定存互轉', '儲值悠遊卡/一卡通', '生活備用金'].map(tag => (
+                    <TouchableOpacity
+                      key={tag}
+                      style={styles.quickNoteChip}
+                      onPress={() => setNote(tag)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.quickNoteChipText} maxFontSizeMultiplier={1.08}>{tag}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <TextInput
+                  style={styles.noteInput}
+                  placeholder="例如：ATM 提款放皮夾、線上繳富邦卡費..."
+                  placeholderTextColor="#9CA3AF"
+                  value={note}
+                  onChangeText={setNote}
+                  returnKeyType="done"
+                  onSubmitEditing={Keyboard.dismiss}
+                  maxFontSizeMultiplier={1.15}
+                />
+              </>
             ) : (
               <>
                 {/* 分類選擇 */}
@@ -2625,17 +2988,86 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           </>
         )}
 
-        {/* 儲存 / 一鍵撥款 / 儲存記事按鈕 */}
+        {/* 📷 消費收據 / 保固憑證附件 (階段 B) */}
+        <View style={styles.receiptSection}>
+          <View style={styles.sectionLabelRow}>
+            <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>📷 消費收據 / 保固憑證 (選填)</Text>
+            {isUploadingPhoto && (
+              <Text style={styles.receiptUploadingText} maxFontSizeMultiplier={1.08}>⏳ 雲端上傳中...</Text>
+            )}
+          </View>
+          {receiptPhotoUri ? (
+            <View style={styles.receiptPreviewContainer}>
+              <TouchableOpacity
+                onPress={() => setViewingPhotoModal(true)}
+                activeOpacity={0.8}
+                style={styles.receiptThumbnailTouchable}
+              >
+                <Image source={{ uri: receiptPhotoUri }} style={styles.receiptThumbnailImage} />
+                <View style={styles.receiptEnlargeOverlay}>
+                  <Text style={styles.receiptEnlargeText}>🔍 點擊放大檢視</Text>
+                </View>
+              </TouchableOpacity>
+              <View style={styles.receiptActionsCol}>
+                <TouchableOpacity
+                  style={styles.receiptActionBtn}
+                  onPress={handlePickReceiptFromCamera}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.receiptActionBtnText}>📸 重新拍攝</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.receiptActionBtn}
+                  onPress={handlePickReceiptFromLibrary}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.receiptActionBtnText}>🖼️ 相簿替換</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.receiptActionBtn, styles.receiptDeleteBtn]}
+                  onPress={() => setReceiptPhotoUri('')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.receiptDeleteBtnText}>🗑️ 移除照片</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.receiptUploadBtnRow}>
+              <TouchableOpacity
+                style={styles.receiptPickBtn}
+                onPress={handlePickReceiptFromCamera}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.receiptPickBtnIcon}>📸</Text>
+                <Text style={styles.receiptPickBtnText} maxFontSizeMultiplier={1.08}>拍照附收據</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.receiptPickBtn}
+                onPress={handlePickReceiptFromLibrary}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.receiptPickBtnIcon}>🖼️</Text>
+                <Text style={styles.receiptPickBtnText} maxFontSizeMultiplier={1.08}>從相簿選擇</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* 儲存 / 一鍵撥款 / 轉帳 / 儲存記事按鈕 */}
         <TouchableOpacity
           style={[
             styles.submitBtn,
+            mode === 'transfer' && styles.submitBtnTransfer,
             mode === 'allowance' && styles.submitBtnAllowance,
             mode === 'memo' && styles.submitBtnMemo,
           ]}
           onPress={handleSubmit}
         >
           <Text style={styles.submitBtnText} maxFontSizeMultiplier={1.15}>
-            {mode === 'allowance'
+            {mode === 'transfer'
+              ? '⇄ 確認轉帳 / 調撥 / 繳款'
+              : mode === 'allowance'
               ? '🎁 一鍵撥款 (自動建立雙向收支)'
               : mode === 'memo'
               ? '📌 儲存生活記事'
@@ -2683,6 +3115,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     visible={scannerModalVisible}
     onClose={() => setScannerModalVisible(false)}
     onScanSuccess={handleScanSuccess}
+  />
+
+  <ImageViewerModal
+    visible={viewingPhotoModal}
+    onClose={() => setViewingPhotoModal(false)}
+    imageUrl={receiptPhotoUri}
+    title="消費收據 / 保固憑證"
+    onDelete={() => setReceiptPhotoUri('')}
   />
 </Modal>
   );
@@ -2758,6 +3198,9 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   typeBtnActiveIncome: {
     backgroundColor: '#10B981',
   },
+  typeBtnActiveTransfer: {
+    backgroundColor: '#0284C7',
+  },
   typeBtnActiveAllowance: {
     backgroundColor: '#8B5CF6',
   },
@@ -2771,6 +3214,10 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   },
   typeBtnTextActive: {
     color: '#FFFFFF',
+  },
+  typeBtnTextActiveTransfer: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   typeBtnTextActiveAllowance: {
     color: '#FFFFFF',
@@ -3767,5 +4214,138 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 11,
     color: isDark ? '#FDE68A' : '#92400E',
     lineHeight: 16,
+  },
+  submitBtnTransfer: {
+    backgroundColor: '#0284C7',
+    shadowColor: '#0284C7',
+  },
+  feeChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  feeChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
+    borderWidth: 1,
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
+  },
+  feeChipActive: {
+    backgroundColor: isDark ? 'rgba(2, 132, 199, 0.25)' : '#E0F2FE',
+    borderColor: '#0284C7',
+  },
+  feeChipText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: isDark ? colors.text.secondary : '#4B5563',
+  },
+  feeChipTextActive: {
+    color: isDark ? '#7DD3FC' : '#0284C7',
+    fontWeight: '700',
+  },
+  receiptSection: {
+    marginTop: 12,
+    marginBottom: 14,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
+    borderWidth: 1,
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
+  },
+  receiptUploadingText: {
+    fontSize: 11,
+    color: '#0284C7',
+    fontWeight: '600',
+    marginLeft: 'auto',
+  },
+  receiptPreviewContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  receiptThumbnailTouchable: {
+    position: 'relative',
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: isDark ? colors.border.default : '#CBD5E1',
+  },
+  receiptThumbnailImage: {
+    width: 90,
+    height: 90,
+    borderRadius: 9,
+    backgroundColor: '#E2E8F0',
+  },
+  receiptEnlargeOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingVertical: 2,
+    alignItems: 'center',
+  },
+  receiptEnlargeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '600',
+  },
+  receiptActionsCol: {
+    flex: 1,
+    gap: 6,
+  },
+  receiptActionBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: isDark ? colors.border.default : '#CBD5E1',
+    alignItems: 'center',
+  },
+  receiptActionBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: isDark ? colors.text.primary : '#334155',
+  },
+  receiptDeleteBtn: {
+    borderColor: isDark ? 'rgba(239, 68, 68, 0.4)' : '#FCA5A5',
+    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEF2F2',
+  },
+  receiptDeleteBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#DC2626',
+  },
+  receiptUploadBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 6,
+  },
+  receiptPickBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: isDark ? colors.border.default : '#CBD5E1',
+    gap: 6,
+  },
+  receiptPickBtnIcon: {
+    fontSize: 16,
+  },
+  receiptPickBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: isDark ? colors.text.secondary : '#475569',
   },
 });

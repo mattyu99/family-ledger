@@ -254,6 +254,7 @@ interface LedgerContextType {
     invoice_status?: 'pending' | 'won' | 'missed' | 'claimed';
     invoice_prize_amount?: number;
     invoice_prize_name?: string;
+    image_url?: string;
     splitWithIds?: string[];
   }) => Promise<string>;
   updateTransaction: (
@@ -277,6 +278,7 @@ interface LedgerContextType {
       invoice_status?: 'pending' | 'won' | 'missed' | 'claimed';
       invoice_prize_amount?: number;
       invoice_prize_name?: string;
+      image_url?: string;
       transacted_at?: string;
       payment_method?: PaymentMethod;
       account_id?: string;
@@ -509,6 +511,30 @@ interface LedgerContextType {
     expense: number;
     balance: number;
   }>;
+  executeTransfer: (params: {
+    fromAccountId: string;
+    toAccountId: string;
+    amount: number;
+    fee?: number;
+    payerId?: string;
+    transactedAt?: string;
+    note?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
+  getNetWorthSummary: () => {
+    totalAssets: number;
+    totalLiabilities: number;
+    netWorth: number;
+    bankTotal: number;
+    cashTotal: number;
+    storedValueTotal: number;
+    creditCardTotal: number;
+    accounts: {
+      banks: PaymentAccount[];
+      cash: PaymentAccount[];
+      storedValues: PaymentAccount[];
+      creditCards: Array<PaymentAccount & { outstandingDebt: number }>;
+    };
+  };
 }
 
 const LedgerContext = createContext<LedgerContextType | null>(null);
@@ -6452,6 +6478,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     invoice_status?: 'pending' | 'won' | 'missed' | 'claimed';
     invoice_prize_amount?: number;
     invoice_prize_name?: string;
+    image_url?: string;
     splitWithIds?: string[];
   }): Promise<string> => {
     if (currentLedger.is_read_only) {
@@ -6594,6 +6621,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       account_id: data.account_id || undefined,
       payment_account: resolvedAccount,
       is_reconciled: data.is_reconciled || false,
+      image_url: data.image_url,
       note: finalNote,
       transacted_at: data.transacted_at || new Date().toISOString(),
       is_settled: false,
@@ -6678,6 +6706,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (newTx.linked_transaction_id && isValidUUID(newTx.linked_transaction_id)) {
           insertPayload.linked_transaction_id = newTx.linked_transaction_id;
         }
+        if (newTx.image_url) {
+          insertPayload.image_url = newTx.image_url;
+        }
 
         let { error: txError } = await supabase.from('transactions').insert(insertPayload);
 
@@ -6698,6 +6729,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           delete insertPayload.is_reconciled;
           delete insertPayload.completion_note;
           delete insertPayload.linked_transaction_id;
+          delete insertPayload.image_url;
           insertPayload.note = newTx.merchant
             ? `[${newTx.merchant}] ${newTx.note || ''}`.trim()
             : newTx.note;
@@ -7171,6 +7203,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       invoice_status?: 'pending' | 'won' | 'missed' | 'claimed';
       invoice_prize_amount?: number;
       invoice_prize_name?: string;
+      image_url?: string;
       transacted_at?: string;
       payment_method?: PaymentMethod;
       account_id?: string;
@@ -7467,6 +7500,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (data.is_settled !== undefined) updatePayload.is_settled = data.is_settled;
         if (data.completion_note !== undefined) updatePayload.completion_note = data.completion_note || null;
         if (data.linked_transaction_id !== undefined) updatePayload.linked_transaction_id = data.linked_transaction_id || null;
+        if (data.image_url !== undefined) updatePayload.image_url = data.image_url || null;
         updatePayload.updated_at = new Date().toISOString();
 
         if (hasMerchantColumnRef.current) {
@@ -7502,6 +7536,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           delete updatePayload.is_reconciled;
           delete updatePayload.completion_note;
           delete updatePayload.linked_transaction_id;
+          delete updatePayload.image_url;
           const effectiveMerchant = data.merchant !== undefined ? cleanMerchant : targetTx?.merchant;
           updatePayload.note = effectiveMerchant
             ? `[${effectiveMerchant}] ${effectiveNote}`.trim()
@@ -9292,6 +9327,178 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   }, [transactions]);
 
+  // 💎 家庭總淨值與資產看板計算 (階段 B)
+  const getNetWorthSummary = React.useCallback(() => {
+    const banks = paymentAccounts.filter(a => a.type === 'bank');
+    const cash = paymentAccounts.filter(a => a.type === 'cash');
+    const storedValues = paymentAccounts.filter(a => a.type === 'stored_value');
+    const creditCardsList = paymentAccounts.filter(a => a.type === 'credit_card');
+
+    const bankTotal = banks.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+    const cashTotal = cash.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+    const storedValueTotal = storedValues.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+
+    // 計算各信用卡待繳欠款 (本期待繳支出 - 繳卡費轉帳)
+    let creditCardTotal = 0;
+    const creditCardsWithDebt = creditCardsList.map(card => {
+      // 找出該卡片未核銷/待繳支出
+      const cardExpenses = transactions
+        .filter(t => t.type === 'expense' && (t.account_id === card.id || (t.payment_method === 'credit_card' && !t.account_id && t.paid_by === card.user_id)) && !t.is_reconciled)
+        .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+      // 找出繳納至該卡片的轉帳
+      const cardPayments = transactions
+        .filter(t => t.type === 'transfer' && t.linked_transaction_id === card.id)
+        .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+      const baseBal = card.balance < 0 ? Math.abs(card.balance) : 0;
+      const outstandingDebt = Math.max(0, cardExpenses + baseBal - cardPayments);
+      creditCardTotal += outstandingDebt;
+
+      return {
+        ...card,
+        outstandingDebt,
+      };
+    });
+
+    const totalAssets = Number((bankTotal + cashTotal + storedValueTotal).toFixed(2));
+    const totalLiabilities = Number(creditCardTotal.toFixed(2));
+    const netWorth = Number((totalAssets - totalLiabilities).toFixed(2));
+
+    return {
+      totalAssets,
+      totalLiabilities,
+      netWorth,
+      bankTotal,
+      cashTotal,
+      storedValueTotal,
+      creditCardTotal,
+      accounts: {
+        banks,
+        cash,
+        storedValues,
+        creditCards: creditCardsWithDebt,
+      },
+    };
+  }, [paymentAccounts, transactions]);
+
+  // ⇄ 帳戶互轉、提款與繳卡費核心方法 (階段 B)
+  const executeTransfer = React.useCallback(async (params: {
+    fromAccountId: string;
+    toAccountId: string;
+    amount: number;
+    fee?: number;
+    payerId?: string;
+    transactedAt?: string;
+    note?: string;
+  }): Promise<{ success: boolean; error?: string }> => {
+    const { fromAccountId, toAccountId, amount, fee = 0, payerId, transactedAt, note } = params;
+
+    if (!fromAccountId || !toAccountId) {
+      return { success: false, error: '請選擇轉出與轉入帳戶' };
+    }
+    if (fromAccountId === toAccountId) {
+      return { success: false, error: '轉出與轉入帳戶不能相同' };
+    }
+    if (isNaN(amount) || amount <= 0) {
+      return { success: false, error: '請輸入大於 0 的有效轉帳金額' };
+    }
+
+    const fromAcc = paymentAccounts.find(a => a.id === fromAccountId);
+    const toAcc = paymentAccounts.find(a => a.id === toAccountId);
+
+    if (!fromAcc || !toAcc) {
+      return { success: false, error: '找不到指定的轉出或轉入帳戶' };
+    }
+
+    const now = new Date();
+    const txTime = transactedAt || now.toISOString();
+    const effectivePayer = payerId || fromAcc.user_id || currentUser.id;
+
+    try {
+      // 1. 計算餘額變更
+      const fromNewBal = Number((fromAcc.balance - amount - (fee > 0 ? fee : 0)).toFixed(2));
+      let toNewBal = toAcc.balance;
+
+      if (toAcc.type === 'credit_card') {
+        toNewBal = Number((toAcc.balance + amount).toFixed(2));
+      } else {
+        toNewBal = Number((toAcc.balance + amount).toFixed(2));
+      }
+
+      const updatedAccounts = paymentAccounts.map(a => {
+        if (a.id === fromAccountId) return { ...a, balance: fromNewBal };
+        if (a.id === toAccountId) return { ...a, balance: toNewBal };
+        return a;
+      });
+
+      setPaymentAccounts(updatedAccounts);
+      await savePaymentAccountsToStorage(updatedAccounts);
+
+      // 雲端同步更新餘額
+      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+        if (!fromAccountId.startsWith('50000000')) {
+          supabase.from('payment_accounts').update({ balance: fromNewBal }).eq('id', fromAccountId).then();
+        }
+        if (!toAccountId.startsWith('50000000')) {
+          supabase.from('payment_accounts').update({ balance: toNewBal }).eq('id', toAccountId).then();
+        }
+      }
+
+      // 2. 寫入內部轉帳交易紀錄 (Transfer Transaction)
+      const isCardPayment = toAcc.type === 'credit_card';
+      const isTopUp = toAcc.type === 'stored_value';
+      const defaultMerchant = isCardPayment
+        ? `繳納【${toAcc.name}】卡費`
+        : isTopUp
+        ? `存入【${toAcc.name}】`
+        : `轉入【${toAcc.name}】`;
+
+      const defaultNote = note
+        ? note
+        : isCardPayment
+        ? `從【${fromAcc.name}】轉帳繳清卡費`
+        : `從【${fromAcc.name}】轉帳至【${toAcc.name}】`;
+
+      const transferCat = categories.find(c => c.name.includes('轉帳') || c.name.includes('金融') || c.name.includes('交通') || c.name.includes('其他'))
+        || categories[0];
+
+      await addTransaction({
+        amount,
+        type: 'transfer',
+        category_id: transferCat?.id || categories[0]?.id,
+        paid_by: effectivePayer,
+        account_id: fromAccountId,
+        linked_transaction_id: toAccountId,
+        merchant: defaultMerchant,
+        note: defaultNote,
+        transacted_at: txTime,
+      });
+
+      // 3. 若有手續費，獨立記錄一筆手續費支出
+      if (fee > 0) {
+        const feeCat = categories.find(c => c.name.includes('手續') || c.name.includes('金融') || c.name.includes('其他'))
+          || categories[0];
+
+        await addTransaction({
+          amount: fee,
+          type: 'expense',
+          category_id: feeCat?.id || categories[0]?.id,
+          paid_by: effectivePayer,
+          account_id: fromAccountId,
+          merchant: '銀行跨行手續費',
+          note: `【${fromAcc.name}】跨行轉帳至【${toAcc.name}】手續費`,
+          transacted_at: txTime,
+        });
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.warn('執行帳戶轉帳失敗:', err);
+      return { success: false, error: err?.message || '執行轉帳時發生錯誤' };
+    }
+  }, [paymentAccounts, categories, currentUser.id, currentLedger.id, isConfigured, addTransaction]);
+
   return (
     <LedgerContext.Provider
       value={{
@@ -9439,6 +9646,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         getBudgetProgress,
         getMoMComparison,
         getSixMonthTrend,
+        executeTransfer,
+        getNetWorthSummary,
       }}
     >
       {children}

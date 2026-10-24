@@ -87,6 +87,8 @@ import { InvoiceLotteryModal } from './src/components/InvoiceLotteryModal';
 import { BudgetManageModal } from './src/components/BudgetManageModal';
 import { BudgetHeroWidget } from './src/components/BudgetHeroWidget';
 import { TrendChartsWidget } from './src/components/TrendChartsWidget';
+import { NetWorthWidget } from './src/components/NetWorthWidget';
+import { ImageViewerModal } from './src/components/ImageViewerModal';
 import { APP_FULL_VERSION } from './src/constants/version';
 import { HorizontalScrollView } from './src/components/HorizontalScrollView';
 import { Transaction, Profile, MemberDevice } from './src/types/database';
@@ -266,7 +268,9 @@ function MainApp() {
 
   const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'bills' | 'family'>('transactions');
   const [modalVisible, setModalVisible] = useState(false);
-  const [modalMode, setModalMode] = useState<'expense' | 'income' | 'allowance' | 'memo'>('expense');
+  const [modalMode, setModalMode] = useState<'expense' | 'income' | 'transfer' | 'allowance' | 'memo'>('expense');
+  const [globalImageViewerUrl, setGlobalImageViewerUrl] = useState<string>('');
+  const [globalImageViewerTitle, setGlobalImageViewerTitle] = useState<string>('憑證照片');
   const [modalRecipientId, setModalRecipientId] = useState<string | undefined>(undefined);
   const [modalLinkedMemoId, setModalLinkedMemoId] = useState<string | undefined>(undefined);
   const [modalDefaultPayerId, setModalDefaultPayerId] = useState<string | undefined>(undefined);
@@ -4060,6 +4064,15 @@ function MainApp() {
               filterMemberId={filterMemberId}
             />
 
+            {/* 💎 家庭總資產與淨值總覽看板 (階段 B) */}
+            <NetWorthWidget
+              onOpenTransferModal={() => {
+                setModalMode('transfer');
+                setModalVisible(true);
+              }}
+              onOpenAccountsManageModal={() => setAccountsManageModalVisible(true)}
+            />
+
             {/* 🗓️ 待繳週期帳單提醒膠囊 (方式 1: 100% 跟隨選定成員切換視角連動) */}
             {currentFilterPendingBills.length > 0 && (
               <TouchableOpacity
@@ -4556,6 +4569,10 @@ function MainApp() {
                     viewingMemberId={filterMemberId}
                     onPress={tx => setEditingTransaction(tx)}
                     onCompleteMemo={handleOpenMemoCompletion}
+                    onViewImage={(url, title) => {
+                      setGlobalImageViewerUrl(url);
+                      setGlobalImageViewerTitle(title || '消費收據 / 保固憑證');
+                    }}
                   />
                 ))}
 
@@ -6859,6 +6876,14 @@ function MainApp() {
         visible={budgetManageModalVisible}
         initialTab={budgetManageModalTab}
         onClose={() => setBudgetManageModalVisible(false)}
+      />
+
+      {/* 📷 全域收據與保固憑證全螢幕檢視彈窗 (階段 B) */}
+      <ImageViewerModal
+        visible={!!globalImageViewerUrl}
+        onClose={() => setGlobalImageViewerUrl('')}
+        imageUrl={globalImageViewerUrl}
+        title={globalImageViewerTitle}
       />
     </SafeAreaView>
   );

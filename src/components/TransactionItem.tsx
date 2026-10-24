@@ -22,6 +22,7 @@ interface TransactionItemProps {
   viewingMemberId?: string;
   onPress?: (transaction: Transaction) => void;
   onCompleteMemo?: (transaction: Transaction) => void;
+  onViewImage?: (imageUrl: string, title?: string) => void;
 }
 
 export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
@@ -29,6 +30,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
   viewingMemberId,
   onPress,
   onCompleteMemo,
+  onViewImage,
 }) => {
   const { getMemberById, getCategoryById, getAccountById, paymentMethods, toggleMemoSettled, toggleMemoChecklistItem, transactions, members, currentUser } = useLedger();
   const { isDark, colors } = useTheme();
@@ -513,6 +515,32 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                     : `🧾 ${transaction.invoice_number}`}
                 </Text>
               </View>
+            )}
+            {!!transaction.image_url && (
+              <TouchableOpacity
+                style={[
+                  styles.imageReceiptBadge,
+                  isDark && { backgroundColor: 'rgba(59, 130, 246, 0.18)', borderColor: 'rgba(59, 130, 246, 0.4)' },
+                ]}
+                onPress={() => {
+                  if (onViewImage && transaction.image_url) {
+                    onViewImage(
+                      transaction.image_url,
+                      `${transaction.merchant || category?.name || '消費'} 憑證照片`
+                    );
+                  } else if (onPress) {
+                    onPress(transaction);
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[styles.imageReceiptBadgeText, isDark && { color: '#93C5FD' }]}
+                  maxFontSizeMultiplier={1.08}
+                >
+                  📷 憑證
+                </Text>
+              </TouchableOpacity>
             )}
           </View>
           <Text
@@ -1095,6 +1123,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#BFDBFE',
     marginRight: 4,
+  },
+  imageReceiptBadge: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderWidth: 1,
+    borderColor: '#93C5FD',
+    marginRight: 4,
+  },
+  imageReceiptBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#2563EB',
   },
   invoiceBadgeWon: {
     backgroundColor: '#FEF3C7',

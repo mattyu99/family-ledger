@@ -14,8 +14,14 @@ import {
   TextProps,
   TextInputProps,
   Keyboard,
+  Image,
 } from 'react-native';
 import { HorizontalScrollView } from './HorizontalScrollView';
+
+let ImagePickerModule: any = null;
+try {
+  ImagePickerModule = require('expo-image-picker');
+} catch {}
 
 const safeAlert = (title: string, message: string) => {
   if (Platform.OS === 'web') {
@@ -88,6 +94,8 @@ import {
 import { checkInvoiceWinning } from '../lib/lottery';
 import { DatePickerModal } from './DatePickerModal';
 import { InvoiceScannerModal } from './InvoiceScannerModal';
+import { ImageViewerModal } from './ImageViewerModal';
+import { uploadReceiptPhoto } from '../lib/receiptStorage';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -295,6 +303,49 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const [invoiceSectionY, setInvoiceSectionY] = useState<number>(0);
   const [scannerModalVisible, setScannerModalVisible] = useState<boolean>(false);
   const lastScannedItemsNoteRef = useRef<string>('');
+
+  // 📷 收據 / 保固憑證照片 (階段 B)
+  const [receiptPhotoUri, setReceiptPhotoUri] = useState<string>(() => transaction?.image_url || '');
+  const [viewingPhotoModal, setViewingPhotoModal] = useState<boolean>(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
+
+  // 相機拍攝收據/保固照片 (階段 B)
+  const handlePickReceiptFromCamera = async () => {
+    if (!ImagePickerModule?.launchCameraAsync) {
+      safeAlert('不支援相機', '目前環境暫不支援原生相機拍攝');
+      return;
+    }
+    try {
+      const result = await ImagePickerModule.launchCameraAsync({
+        quality: 0.8,
+        allowsEditing: true,
+      });
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        setReceiptPhotoUri(result.assets[0].uri);
+      }
+    } catch (e: any) {
+      safeAlert('相機錯誤', e?.message || '無法開啟相機');
+    }
+  };
+
+  // 相簿挑選收據/保固照片 (階段 B)
+  const handlePickReceiptFromLibrary = async () => {
+    if (!ImagePickerModule?.launchImageLibraryAsync) {
+      safeAlert('不支援相簿', '目前環境暫不支援開啟相簿');
+      return;
+    }
+    try {
+      const result = await ImagePickerModule.launchImageLibraryAsync({
+        quality: 0.8,
+        allowsEditing: true,
+      });
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        setReceiptPhotoUri(result.assets[0].uri);
+      }
+    } catch (e: any) {
+      safeAlert('相簿錯誤', e?.message || '無法讀取相簿');
+    }
+  };
 
   const applyParsedInvoice = React.useCallback((parsed: ParsedInvoiceData) => {
     if (parsed.invoiceNumber) {
@@ -817,6 +868,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       setIsSettled(!!transaction.is_settled);
       setCompletionNote(transaction.completion_note || '');
       setLinkedTxId(transaction.linked_transaction_id || '');
+      setReceiptPhotoUri(transaction.image_url || '');
+      setViewingPhotoModal(false);
       setReminderDatePickerVisible(false);
       setTransactedAt(transaction.transacted_at || new Date().toISOString());
       setDatePickerVisible(false);
@@ -1198,6 +1251,27 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
     const executeUpdateTransaction = async () => {
       try {
+        let finalImageUrl: string | undefined = transaction.image_url;
+        if (receiptPhotoUri !== transaction.image_url) {
+          if (!receiptPhotoUri) {
+            finalImageUrl = undefined;
+          } else if (receiptPhotoUri.startsWith('http://') || receiptPhotoUri.startsWith('https://')) {
+            finalImageUrl = receiptPhotoUri;
+          } else {
+            try {
+              setIsUploadingPhoto(true);
+              finalImageUrl = await uploadReceiptPhoto({
+                ledgerId: currentLedger.id,
+                uri: receiptPhotoUri,
+              });
+            } catch {
+              finalImageUrl = receiptPhotoUri;
+            } finally {
+              setIsUploadingPhoto(false);
+            }
+          }
+        }
+
         const success = await updateTransaction(transaction.id, {
           amount: finalAmount,
           type,
@@ -1209,6 +1283,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           note: finalNote,
           invoice_number: invoiceNumber.trim() || undefined,
           invoice_random_code: invoiceRandomCode.trim() || undefined,
+          image_url: finalImageUrl,
           transacted_at: transactedAt || transaction.transacted_at,
         });
 
@@ -2729,6 +2804,84 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           </>
         )}
 
+        {/* 📷 消費收據 / 保固憑證附件 (階段 B) */}
+        <View style={styles.receiptSection}>
+          <View style={styles.sectionLabelRow}>
+            <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>📷 消費收據 / 保固憑證 (選填)</Text>
+            {isUploadingPhoto && (
+              <Text style={styles.receiptUploadingText} maxFontSizeMultiplier={1.08}>⏳ 雲端上傳中...</Text>
+            )}
+          </View>
+          {receiptPhotoUri ? (
+            <View style={styles.receiptPreviewContainer}>
+              <TouchableOpacity
+                onPress={() => setViewingPhotoModal(true)}
+                activeOpacity={0.8}
+                style={styles.receiptThumbnailTouchable}
+              >
+                <Image source={{ uri: receiptPhotoUri }} style={styles.receiptThumbnailImage} />
+                <View style={styles.receiptEnlargeOverlay}>
+                  <Text style={styles.receiptEnlargeText}>🔍 點擊放大檢視</Text>
+                </View>
+              </TouchableOpacity>
+              {canEdit ? (
+                <View style={styles.receiptActionsCol}>
+                  <TouchableOpacity
+                    style={styles.receiptActionBtn}
+                    onPress={handlePickReceiptFromCamera}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.receiptActionBtnText}>📸 重新拍攝</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.receiptActionBtn}
+                    onPress={handlePickReceiptFromLibrary}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.receiptActionBtnText}>🖼️ 相簿替換</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.receiptActionBtn, styles.receiptDeleteBtn]}
+                    onPress={() => setReceiptPhotoUri('')}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.receiptDeleteBtnText}>🗑️ 移除照片</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.receiptActionsCol}>
+                  <Text style={{ fontSize: 12, color: colors.text.muted }}>
+                    點擊左方縮圖可放大查看收據照片憑證
+                  </Text>
+                </View>
+              )}
+            </View>
+          ) : canEdit ? (
+            <View style={styles.receiptUploadBtnRow}>
+              <TouchableOpacity
+                style={styles.receiptPickBtn}
+                onPress={handlePickReceiptFromCamera}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.receiptPickBtnIcon}>📸</Text>
+                <Text style={styles.receiptPickBtnText} maxFontSizeMultiplier={1.08}>拍照附收據</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.receiptPickBtn}
+                onPress={handlePickReceiptFromLibrary}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.receiptPickBtnIcon}>🖼️</Text>
+                <Text style={styles.receiptPickBtnText} maxFontSizeMultiplier={1.08}>從相簿選擇</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <Text style={{ fontSize: 12, color: colors.text.muted, marginTop: 4 }}>
+              （此筆明細無附加收據照片憑證）
+            </Text>
+          )}
+        </View>
+
         {/* 操作按鈕群 */}
         {canEdit ? (
           <View style={styles.btnRow}>
@@ -2801,6 +2954,14 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     visible={scannerModalVisible}
     onClose={() => setScannerModalVisible(false)}
     onScanSuccess={handleScanSuccess}
+  />
+
+  <ImageViewerModal
+    visible={viewingPhotoModal}
+    onClose={() => setViewingPhotoModal(false)}
+    imageUrl={receiptPhotoUri}
+    title="消費收據 / 保固憑證"
+    onDelete={canEdit ? () => setReceiptPhotoUri('') : undefined}
   />
 </Modal>
   );
@@ -4250,5 +4411,107 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 11,
     color: isDark ? '#FCD34D' : '#92400E',
     lineHeight: 16,
+  },
+  receiptSection: {
+    marginTop: 12,
+    marginBottom: 14,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
+    borderWidth: 1,
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
+  },
+  receiptUploadingText: {
+    fontSize: 11,
+    color: '#0284C7',
+    fontWeight: '600',
+    marginLeft: 'auto',
+  },
+  receiptPreviewContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  receiptThumbnailTouchable: {
+    position: 'relative',
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: isDark ? colors.border.default : '#CBD5E1',
+  },
+  receiptThumbnailImage: {
+    width: 90,
+    height: 90,
+    borderRadius: 9,
+    backgroundColor: '#E2E8F0',
+  },
+  receiptEnlargeOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingVertical: 2,
+    alignItems: 'center',
+  },
+  receiptEnlargeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '600',
+  },
+  receiptActionsCol: {
+    flex: 1,
+    gap: 6,
+  },
+  receiptActionBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: isDark ? colors.border.default : '#CBD5E1',
+    alignItems: 'center',
+  },
+  receiptActionBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: isDark ? colors.text.primary : '#334155',
+  },
+  receiptDeleteBtn: {
+    borderColor: isDark ? 'rgba(239, 68, 68, 0.4)' : '#FCA5A5',
+    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEF2F2',
+  },
+  receiptDeleteBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#DC2626',
+  },
+  receiptUploadBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 6,
+  },
+  receiptPickBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: isDark ? colors.border.default : '#CBD5E1',
+    gap: 6,
+  },
+  receiptPickBtnIcon: {
+    fontSize: 16,
+  },
+  receiptPickBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: isDark ? colors.text.secondary : '#475569',
   },
 });

@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.7';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.7 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 20;
+export const APP_BUILD_REVISION = 21;
 
 // 完整版本字串 (例如 "1.0.7.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,18 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.7',
+    date: '2026-10-24',
+    title: '帳戶互轉/提款/繳卡費閉環、家庭總資產與淨值總覽看板、消費收據與保固照片雲端保險箱',
+    highlights: [
+      '⇄ 銀行/現金/信用卡/儲值卡「帳戶資金互轉」：支援帳戶內部調撥、ATM 提款放皮夾、線上繳納信用卡費與儲值卡加值，即時扣減/增加雙方帳戶餘額，內部調撥絕不計入公帳總支出。',
+      '🏷️ 跨行轉帳與提款手續費自動獨立記帳：互轉可選填跨行手續費（$0、$15、$5...），系統自動將手續費獨立記錄為一筆雜支支出，帳目分明不漏算。',
+      '💎 家庭總資產與實質淨值總覽看板 (NetWorthWidget)：即時動態統計全家銀行活存、現金皮包、悠遊卡儲值金（總資產），並自動計算未核銷信用卡欠款（總負債），一秒掌握家庭實質淨值。',
+      '💵 現金皮包全面納入帳戶管理：支援多成員獨立皮包或全家公帳現金錢包，在帳戶管理彈窗中可隨時調整現金餘額與查閱。',
+      '📷 消費收據與保固照片雲端保險箱：記帳與編輯明細支援拍照拍攝或相簿選取收據、保固卡與發票明細照片，安全上傳至雲端 Storage 保險箱，並在明細列表中呈現「📷 憑證」標籤，點擊一秒全螢幕高清放大檢視。',
+    ],
+  },
   {
     version: '1.0.7',
     date: '2026-10-24',
