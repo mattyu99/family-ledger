@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.7';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.7 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 21;
+export const APP_BUILD_REVISION = 22;
 
 // 完整版本字串 (例如 "1.0.7.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.7',
+    date: '2026-10-24',
+    title: '巨石架構模組化重構與解耦：App 瘦身至輕量調度中樞、獨立 Screens 與彈窗組件化',
+    highlights: [
+      '🏗️ 巨石檔案全面解耦模組化：成功將膨脹至逾萬行的 App.tsx 重構為輕量級頁籤導航與全域彈窗調度中樞，核心代碼行數大幅縮減逾 90%。',
+      '📱 獨立分頁架構（src/screens/）：完整拆分 TransactionsScreen（明細）、AnalyticsScreen（統計）、BillsScreen（帳單資產）與 FamilySettingsScreen（家庭設定），各頁面獨立維護內部狀態與局部渲染。',
+      '🧩 獨立彈窗模組庫（src/components/modals/）：抽離並標準化 12 個核心彈窗（含帳本管理、成員稱謂、PIN 碼、電子鎖綁定與備份還原），大幅提升代碼可維護性與可讀性。',
+      '⚡ 零破壞性升級與極致相容：100% 保持現有視覺風格、深淺色切換動態主題與所有家庭公帳記帳運作邏輯，型別檢查 0 錯誤。',
+    ],
+  },
   {
     version: '1.0.7',
     date: '2026-10-24',
