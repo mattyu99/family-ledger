@@ -97,7 +97,82 @@ function getTaiwanTimeRanges() {
     formattedDate: `${yyyy}/${mm}/${dd} (${dayStr})${reportDateTag} · ${hh}:${min} 發送`,
     yearMonthStr: `${month + 1}月`,
     isDelayedOvernight,
+    targetTwDate,
   };
+}
+
+/**
+ * 檢查帳本內的信用卡是否適逢出帳日隔天或繳款到期前 3 天
+ */
+async function checkCreditCardAlerts(supabase, ledgerId, targetTwDate) {
+  try {
+    const { data: cards, error } = await supabase
+      .from('payment_accounts')
+      .select('id, name, billing_cycle_date, user_id')
+      .eq('ledger_id', ledgerId)
+      .eq('type', 'credit_card');
+
+    if (error || !cards || cards.length === 0) return [];
+
+    const alerts = [];
+    const nowYear = targetTwDate.getFullYear();
+    const nowMonth = targetTwDate.getMonth();
+    const nowDay = targetTwDate.getDate();
+    const todayStart = new Date(nowYear, nowMonth, nowDay, 0, 0, 0, 0);
+
+    for (const card of cards) {
+      const cycleDate = Math.max(1, Math.min(31, card.billing_cycle_date || 15));
+
+      // 1. 出帳日隔天判定 (結帳日次日)
+      const statementDate = new Date(nowYear, nowMonth, cycleDate + 1, 0, 0, 0, 0);
+      const isStatementDay =
+        statementDate.getFullYear() === nowYear &&
+        statementDate.getMonth() === nowMonth &&
+        statementDate.getDate() === nowDay;
+
+      // 2. 繳款到期日判定 (結帳日後 20 天)
+      const dueDate = new Date(nowYear, nowMonth, cycleDate + 20, 23, 59, 59, 999);
+      const diffMs = dueDate.getTime() - todayStart.getTime();
+      const daysRemaining = Math.ceil(diffMs / (24 * 3600 * 1000));
+      const isDueSoon = daysRemaining >= 1 && daysRemaining <= 3;
+
+      if (isStatementDay || isDueSoon) {
+        // 查詢該卡待繳/未核銷金額
+        const { data: cardTx } = await supabase
+          .from('transactions')
+          .select('amount')
+          .eq('ledger_id', ledgerId)
+          .eq('account_id', card.id)
+          .eq('type', 'expense')
+          .neq('is_reconciled', true);
+
+        const pendingTotal = (cardTx || []).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+        const amountStr = pendingTotal > 0 ? `NT$ ${pendingTotal.toLocaleString()}` : '請見銀行帳單';
+        const dueDayStr = `${dueDate.getMonth() + 1}月${dueDate.getDate()}號`;
+
+        if (isStatementDay) {
+          alerts.push({
+            type: 'statement',
+            cardName: card.name,
+            title: `💳 ${card.name} 本期帳單已出帳`,
+            body: `帳單已於今日出帳，待繳約 ${amountStr}，請記得於 ${dueDayStr} 前完成繳納！`,
+          });
+        } else if (isDueSoon) {
+          alerts.push({
+            type: 'due_soon',
+            cardName: card.name,
+            title: `⏰ ${card.name} 繳款期限倒數 ${daysRemaining} 天`,
+            body: `帳單將於 ${dueDayStr} 到期，待繳約 ${amountStr}，請及早安排扣款或轉帳！`,
+          });
+        }
+      }
+    }
+
+    return alerts;
+  } catch (err) {
+    console.warn('⚠️ 查詢信用卡帳單提醒時發生例外:', err.message);
+    return [];
+  }
 }
 
 /**
@@ -115,9 +190,58 @@ function buildFlexMessage({
   detailedItems,
   monthExpense,
   monthBalance,
+  billingAlerts = [],
 }) {
   const isZero = todayCount === 0;
   const bodyContents = [];
+
+  // 0. 信用卡結帳／繳款到期警戒卡片
+  if (billingAlerts && billingAlerts.length > 0) {
+    const alertItems = [];
+    billingAlerts.forEach(a => {
+      alertItems.push({
+        type: 'text',
+        text: a.title,
+        size: 'sm',
+        weight: 'bold',
+        color: '#991B1B',
+      });
+      alertItems.push({
+        type: 'text',
+        text: a.body,
+        size: 'xs',
+        color: '#B91C1C',
+        wrap: true,
+        margin: 'xs',
+      });
+    });
+
+    bodyContents.push({
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: '#FEF2F2',
+      cornerRadius: '12px',
+      paddingAll: '12px',
+      borderWidth: '1px',
+      borderColor: '#FECACA',
+      contents: [
+        {
+          type: 'text',
+          text: '💳 信用卡帳單與繳款警戒提醒',
+          weight: 'bold',
+          size: 'xs',
+          color: '#DC2626',
+          margin: 'none',
+        },
+        {
+          type: 'separator',
+          color: '#FCA5A5',
+          margin: 'xs',
+        },
+        ...alertItems,
+      ],
+    });
+  }
 
   // 1. KPI 總額區塊
   if (isZero) {
@@ -422,6 +546,7 @@ function buildTextMessage({
   detailedItems,
   monthExpense,
   monthBalance,
+  billingAlerts = [],
 }) {
   const lines = [
     `💖 甜心記帳本 · 收支日報`,
@@ -429,6 +554,15 @@ function buildTextMessage({
     `📅 ${formattedDate}`,
     `───────────────`,
   ];
+
+  if (billingAlerts && billingAlerts.length > 0) {
+    lines.push('💳 信用卡帳單與繳款警戒提醒：');
+    billingAlerts.forEach(a => {
+      lines.push(`• ${a.title}`);
+      lines.push(`  ${a.body}`);
+    });
+    lines.push('───────────────');
+  }
 
   if (todayCount === 0) {
     lines.push(`🎉 今日全家零支出！`);
@@ -714,6 +848,12 @@ async function main() {
 
     const todayBalance = todayIncome - todayExpense;
 
+    // (D) 巡檢信用卡出帳日與繳款期限警戒
+    const billingAlerts = await checkCreditCardAlerts(supabase, ledger.id, targetTwDate);
+    if (billingAlerts.length > 0) {
+      console.log(`💳 偵測到 ${billingAlerts.length} 則信用卡帳單出帳或繳款警戒提醒！`);
+    }
+
     const reportData = {
       ledgerName: ledger.name,
       formattedDate,
@@ -726,6 +866,7 @@ async function main() {
       detailedItems,
       monthExpense,
       monthBalance,
+      billingAlerts,
     };
 
     const flexPayload = buildFlexMessage(reportData);

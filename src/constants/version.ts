@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.7';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.7 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 28;
+export const APP_BUILD_REVISION = 29;
 
 // 完整版本字串 (例如 "1.0.7.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.7',
+    date: '2026-10-24',
+    title: 'Gemini 雲端安全封存與信用卡帳單智慧推播雙軌系統',
+    highlights: [
+      '🔒 Gemini 雲端安全封存：建立 Supabase Edge Function (gemini-ocr)，將 Google Gemini API 金鑰完全封存於雲端後台，App 客戶端零暴露；具備高精度發票解析與前端 Direct API 雙向無縫備援機制。',
+      '💳 信用卡帳單出帳與繳款提醒 (雙軌聯防)：支援出帳日隔天 09:30 與繳款到期前 3 天 09:30 本機智慧推播 (expo-notifications)，並連動每日 LINE 收支日報醒目標籤提醒，精準掌握待繳金額防忘繳。',
+      '⚙️ 家庭設定推播控制台：家庭設定頁面新增信用卡帳單提醒開關、即將出帳與繳款時程預覽，並支援一鍵發送測試推播通知。',
+    ],
+  },
   {
     version: '1.0.7',
     date: '2026-10-24',

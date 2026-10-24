@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,16 @@ import { showAlert, showConfirm, copyToClipboard } from '../lib/alert';
 import { formatLastBackupText } from '../lib/backup';
 import { APP_FULL_VERSION as APP_VERSION } from '../constants/version';
 import { Profile, MemberDevice } from '../types';
+import {
+  isNotificationSupported,
+  getBillingNotificationsEnabled,
+  setBillingNotificationsEnabled,
+  requestNotificationPermission,
+  scheduleBillingReminderNotifications,
+  sendTestBillingNotification,
+  calculateCardScheduleDates,
+  calculateCardOutstandingAmount,
+} from '../lib/billingNotifications';
 
 interface FamilySettingsScreenProps {
   onOpenModal: (mode: 'expense' | 'income' | 'transfer' | 'allowance' | 'memo', recipientId?: string) => void;
@@ -92,6 +102,65 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
   } = useLedger();
 
   const [showPinClear, setShowPinClear] = useState(false);
+  const [billingNoticeEnabled, setBillingNoticeEnabled] = useState(false);
+  const [isSchedulingNotice, setIsSchedulingNotice] = useState(false);
+
+  useEffect(() => {
+    getBillingNotificationsEnabled().then(setBillingNoticeEnabled);
+  }, []);
+
+  const creditCards = useMemo(() => {
+    return (paymentAccounts || []).filter(acc => acc.type === 'credit_card');
+  }, [paymentAccounts]);
+
+  const handleToggleBillingNotice = async () => {
+    const nextState = !billingNoticeEnabled;
+    if (nextState) {
+      if (!isNotificationSupported()) {
+        showAlert('平台提示', 'Web 網頁環境暫不支援原生本機推播，建議在手機 App 上使用；信用卡出帳提醒亦會透過每日 LINE 報表自動發送！');
+        return;
+      }
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        showAlert(
+          '請允許通知權限',
+          '甜心記帳本需要通知權限，才能在信用卡出帳日隔天與繳款到期前 3 天發送提醒通知。請至手機「設定」中開啟通知！'
+        );
+        return;
+      }
+    }
+    setBillingNoticeEnabled(nextState);
+    await setBillingNotificationsEnabled(nextState);
+    if (nextState) {
+      setIsSchedulingNotice(true);
+      const count = await scheduleBillingReminderNotifications(paymentAccounts, transactions);
+      setIsSchedulingNotice(false);
+      showAlert(
+        '🔔 信用卡提醒已開啟',
+        `已成功為您排程 ${count} 則信用卡結帳與繳款到期提醒！\n\n・出帳日隔天 09:30：帳單出帳提醒\n・繳款到期前 3 天 09:30：待繳金額與防違約金提醒`
+      );
+    } else {
+      await scheduleBillingReminderNotifications(paymentAccounts, transactions);
+      showAlert('信用卡提醒已關閉', '已取消所有信用卡本機排程提醒。');
+    }
+  };
+
+  const handleSendTestBillingNotice = async () => {
+    if (!isNotificationSupported()) {
+      showAlert('平台提示', 'Web 網頁端不支援發送系統本機通知，請在 iOS / Android 手機 App 測試。');
+      return;
+    }
+    const sampleCard = creditCards[0];
+    const cardName = sampleCard ? sampleCard.name : '玉山信用卡';
+    const amount = sampleCard ? calculateCardOutstandingAmount(sampleCard.id, transactions) || 12800 : 12800;
+
+    const success = await sendTestBillingNotification(cardName, amount);
+    if (success) {
+      showAlert('測試通知已發送', `已發送「${cardName}」帳單出帳測試通知！\n請留意手機螢幕頂部或通知中心橫幅。`);
+    } else {
+      showAlert('發送失敗', '請確認手機系統已允許「甜心記帳本」發送通知。');
+    }
+  };
 
   // 定期備份計算與過期檢測
   const daysSinceLastBackup = useMemo(() => {
@@ -483,6 +552,89 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             <Text style={styles.manageCategoryBtnText}>⚙️ 設定預算</Text>
           </TouchableOpacity>
         </View>
+      </View>
+
+      {/* 💳 信用卡帳單與智慧推播提醒卡片 */}
+      <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
+        <View style={styles.sectionHeaderRow}>
+          <View style={styles.sectionHeaderLeft}>
+            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              💳 信用卡帳單與繳款提醒
+            </Text>
+            <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              結帳日隔天與繳款到期前 3 天自動推送通知，掌握刷卡待繳金額防忘繳
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.backupToggleBtn, billingNoticeEnabled ? styles.backupToggleBtnActive : styles.backupToggleBtnInactive]}
+            onPress={handleToggleBillingNotice}
+            activeOpacity={0.8}
+            disabled={isSchedulingNotice}
+          >
+            <Text style={[styles.backupToggleText, billingNoticeEnabled ? styles.backupToggleTextActive : styles.backupToggleTextInactive]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              {billingNoticeEnabled ? '已開啟提醒' : '已關閉提醒'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* 信用卡時程清單預覽 */}
+        <View style={[styles.cardScheduleContainer, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
+          {creditCards.length === 0 ? (
+            <View style={styles.noCardBox}>
+              <Text style={[styles.noCardText, { color: colors.text.muted }]}>
+                💳 目前尚未建立信用卡帳戶，可至「錢包與帳戶」新增信用卡並設定結帳日
+              </Text>
+            </View>
+          ) : (
+            creditCards.map((card) => {
+              const dates = calculateCardScheduleDates(card);
+              const outstanding = calculateCardOutstandingAmount(card.id, transactions);
+              const cardholder = card.user_id ? getMemberById(card.user_id) : null;
+              return (
+                <View key={card.id} style={[styles.cardScheduleRow, { borderBottomColor: colors.border.default }]}>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={styles.cardScheduleIcon}>{card.icon || '💳'}</Text>
+                      <Text style={[styles.cardScheduleName, { color: colors.text.primary }]} numberOfLines={1}>
+                        {card.name}
+                      </Text>
+                      {cardholder && (
+                        <View style={[styles.cardholderBadge, { backgroundColor: colors.border.default }]}>
+                          <Text style={[styles.cardholderBadgeText, { color: colors.text.secondary }]}>
+                            {cardholder.display_name}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={[styles.cardScheduleMeta, { color: colors.text.secondary }]}>
+                      結帳日：每月 {card.billing_cycle_date || 15} 號 · 待繳約 NT$ {outstanding.toLocaleString()}
+                    </Text>
+                    <Text style={[styles.cardScheduleDates, { color: colors.text.muted }]}>
+                      下次出帳：{dates.billStatementDate.getMonth() + 1}/{dates.billStatementDate.getDate()} 09:30 · 繳費提醒：{dates.reminderDueDate.getMonth() + 1}/{dates.reminderDueDate.getDate()} 09:30
+                    </Text>
+                  </View>
+                </View>
+              );
+            })
+          )}
+        </View>
+
+        {/* 測試按鈕與雙軌說明 */}
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 12, alignItems: 'center' }}>
+          <TouchableOpacity
+            style={[styles.testNoticeBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
+            onPress={handleSendTestBillingNotice}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.testNoticeBtnText, { color: colors.text.primary }]}>
+              🔔 發送測試推播通知
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={[styles.backupPrivacyNote, { color: colors.text.muted, marginTop: 8 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          💡 雙軌守護：除了手機本機推播之外，每日 LINE 收支日報若適逢出帳日或繳款到期前 3 天，亦會同步在群組發送醒目標籤提醒！
+        </Text>
       </View>
 
       {/* 資料備份與掌控 */}
@@ -1740,6 +1892,62 @@ const styles = StyleSheet.create({
   },
   sudoCardBtnTextUnlock: {
     color: '#FFFFFF',
+  },
+  cardScheduleContainer: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    marginTop: 8,
+  },
+  noCardBox: {
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  noCardText: {
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  cardScheduleRow: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  cardScheduleIcon: {
+    fontSize: 16,
+  },
+  cardScheduleName: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  cardholderBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  cardholderBadgeText: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  cardScheduleMeta: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  cardScheduleDates: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  testNoticeBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  testNoticeBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
 });
 

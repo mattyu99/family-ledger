@@ -47,6 +47,13 @@
         {
           "photosPermission": "允許選取發票截圖進行辨識"
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#F43F5E"
+        }
       ]
     ],
     "web": {

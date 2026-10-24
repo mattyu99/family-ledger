@@ -25,15 +25,16 @@ const decodeKey = (raw: string): string => {
   return trimmed;
 };
 
-// 優先自環境變數讀取 Google Gemini API 金鑰
+// 優先自環境變數讀取 Google Gemini API 金鑰（可選：若未設定則走雲端邊緣函式代理）
 const RAW_GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
 const GEMINI_API_KEY = decodeKey(RAW_GEMINI_KEY);
 
 /**
- * 檢查目前是否已設定 Google AI 辨識金鑰
+ * 檢查目前是否具備 Google AI 發票辨識能力
+ * 只要已連接 Supabase 雲端 (可透過 Edge Function 代理) 或 本機已設定 API Key 即為可用
  */
 export const isGeminiAIAvailable = (): boolean => {
-  return Boolean(GEMINI_API_KEY && GEMINI_API_KEY.trim().length > 10);
+  return isConfigured || Boolean(GEMINI_API_KEY && GEMINI_API_KEY.trim().length > 10);
 };
 
 export interface GeminiInvoiceResult {
@@ -42,11 +43,67 @@ export interface GeminiInvoiceResult {
   totalAmount?: number | string | null;
   merchantName?: string | null;
   itemsSummary?: string | null;
+  source?: string;
 }
 
 /**
- * 透過 Google Gemini 視覺模型 (Gemini 3.5 Flash-Lite / Flash)
+ * 將 Gemini 辨識出的結構化 JSON 物件轉換為標準發票資料型別 (ParsedInvoiceData)
+ */
+export const transformGeminiResultToInvoice = (
+  parsedAI: GeminiInvoiceResult
+): ParsedInvoiceData | null => {
+  if (!parsedAI) return null;
+
+  const rawNum = (parsedAI.invoiceNumber || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  const totalAmountNum =
+    parsedAI.totalAmount !== null && parsedAI.totalAmount !== undefined
+      ? parseInt(String(parsedAI.totalAmount).replace(/[^0-9]/g, ''), 10)
+      : undefined;
+
+  // 若未辨識出任何關鍵資訊 (號碼與金額皆為空)，視為無效結果
+  if (!rawNum && (totalAmountNum === undefined || isNaN(totalAmountNum))) {
+    return null;
+  }
+
+  // 日期處理與雙月期別歸類
+  let invoiceDate = new Date().toISOString().split('T')[0];
+  if (parsedAI.invoiceDate && /^\d{4}-\d{2}-\d{2}$/.test(parsedAI.invoiceDate)) {
+    invoiceDate = parsedAI.invoiceDate;
+  }
+  const { periodKey, periodLabel } = getInvoicePeriodKey(invoiceDate);
+
+  // 店家名稱清理與分類推導
+  let merchantName: string | undefined = undefined;
+  let defaultCategoryName: string | undefined = undefined;
+  if (parsedAI.merchantName) {
+    merchantName = cleanBusinessName(parsedAI.merchantName);
+    defaultCategoryName = inferCategoryFromIndustry(undefined, merchantName);
+  }
+
+  const result: ParsedInvoiceData = {
+    invoiceNumber: rawNum.length === 10 ? formatInvoiceNumber(rawNum) : rawNum,
+    rawInvoiceNumber: rawNum,
+    invoiceDate,
+    periodKey,
+    periodLabel,
+    totalAmount: isNaN(totalAmountNum ?? NaN) ? undefined : totalAmountNum,
+    merchantName,
+    defaultCategoryName,
+    itemsNote: parsedAI.itemsSummary || undefined,
+    isQRCode: false,
+    is1DBarcode: false,
+  };
+
+  return result;
+};
+
+/**
+ * 透過 Google Gemini 視覺模型
  * 進行傳統長條發票、收據與手開發票之高精度光學文字與結構化欄位辨識
+ * 
+ * 優先順序：
+ * 1. Supabase Edge Function 雲端代理 (金鑰完全封存在後端，前端零暴露)
+ * 2. 本機直接呼叫 Google Gemini API (邊緣函式未部署或離線時之備援機制)
  */
 export const recognizeInvoiceWithGemini = async (
   base64Data: string,
@@ -54,7 +111,7 @@ export const recognizeInvoiceWithGemini = async (
   timeoutMs = 12000
 ): Promise<ParsedInvoiceData | null> => {
   if (!isGeminiAIAvailable()) {
-    console.warn('[GeminiInvoice] 未設定 EXPO_PUBLIC_GEMINI_API_KEY，略過 AI 辨識');
+    console.warn('[GeminiInvoice] 尚未連接 Supabase 且未設定 Gemini API Key，略過 AI 辨識');
     return null;
   }
 
@@ -68,12 +125,25 @@ export const recognizeInvoiceWithGemini = async (
       const { data: edgeData, error: edgeError } = await supabase.functions.invoke('gemini-ocr', {
         body: { base64Data: cleanBase64, mimeType },
       });
-      if (!edgeError && edgeData && (edgeData.invoiceNumber || edgeData.totalAmount)) {
-        return edgeData;
+
+      if (!edgeError && edgeData) {
+        const transformed = transformGeminiResultToInvoice(edgeData);
+        if (transformed) {
+          console.log('[GeminiInvoice] 成功透過 Supabase Edge Function 代理辨識發票 (雲端安全封存)');
+          return transformed;
+        }
+      } else if (edgeError) {
+        console.warn('[GeminiInvoice] Edge Function 呼叫回應:', edgeError.message);
       }
-    } catch {
-      // 代理通道不可用或未部署時，平滑降級至直連辨識
+    } catch (edgeCatchErr) {
+      console.warn('[GeminiInvoice] Edge Function 通道未連通，啟動備援連線:', edgeCatchErr);
     }
+  }
+
+  // 2. 若後端代理無法使用，且前端具備金鑰，自動降級至前端直接請求 Gemini API
+  if (!GEMINI_API_KEY || GEMINI_API_KEY.trim().length < 10) {
+    console.warn('[GeminiInvoice] 後端代理不可用且前端無備用 API Key');
+    return null;
   }
 
   const prompt = `你是一個專業的台灣統一發票與收據光學辨識專家。請從這張發票圖片中精確提取以下資訊，並只以乾淨的 JSON 格式回傳：
@@ -88,8 +158,8 @@ export const recognizeInvoiceWithGemini = async (
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  // 優先使用輕量極速的 gemini-3.5-flash-lite，遇例外則自動回退至 gemini-3.5-flash
-  const candidateModels = ['gemini-3.5-flash-lite', 'gemini-3.5-flash'];
+  // 優先使用 gemini-2.5-flash，遇例外則自動回退至 gemini-1.5-flash
+  const candidateModels = ['gemini-2.5-flash', 'gemini-1.5-flash'];
 
   for (const model of candidateModels) {
     try {
@@ -143,47 +213,10 @@ export const recognizeInvoiceWithGemini = async (
 
       clearTimeout(timer);
 
-      // 若未辨識出任何關鍵資訊 (號碼與金額皆為空)，視為無效結果
-      const rawNum = (parsedAI.invoiceNumber || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-      const totalAmountNum =
-        parsedAI.totalAmount !== null && parsedAI.totalAmount !== undefined
-          ? parseInt(String(parsedAI.totalAmount).replace(/[^0-9]/g, ''), 10)
-          : undefined;
-
-      if (!rawNum && (totalAmountNum === undefined || isNaN(totalAmountNum))) {
-        return null;
+      const transformed = transformGeminiResultToInvoice(parsedAI);
+      if (transformed) {
+        return transformed;
       }
-
-      // 日期處理與雙月期別歸類
-      let invoiceDate = new Date().toISOString().split('T')[0];
-      if (parsedAI.invoiceDate && /^\d{4}-\d{2}-\d{2}$/.test(parsedAI.invoiceDate)) {
-        invoiceDate = parsedAI.invoiceDate;
-      }
-      const { periodKey, periodLabel } = getInvoicePeriodKey(invoiceDate);
-
-      // 店家名稱清理與分類推導
-      let merchantName: string | undefined = undefined;
-      let defaultCategoryName: string | undefined = undefined;
-      if (parsedAI.merchantName) {
-        merchantName = cleanBusinessName(parsedAI.merchantName);
-        defaultCategoryName = inferCategoryFromIndustry(undefined, merchantName);
-      }
-
-      const result: ParsedInvoiceData = {
-        invoiceNumber: rawNum.length === 10 ? formatInvoiceNumber(rawNum) : rawNum,
-        rawInvoiceNumber: rawNum,
-        invoiceDate,
-        periodKey,
-        periodLabel,
-        totalAmount: isNaN(totalAmountNum ?? NaN) ? undefined : totalAmountNum,
-        merchantName,
-        defaultCategoryName,
-        itemsNote: parsedAI.itemsSummary || undefined,
-        isQRCode: false,
-        is1DBarcode: false,
-      };
-
-      return result;
     } catch (err: any) {
       if (err.name === 'AbortError') {
         console.warn(`[GeminiInvoice] 模型 ${model} 請求逾時`);
