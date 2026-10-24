@@ -80,6 +80,38 @@
     - **實時開獎比對與明細中獎徽章**：內建最新官方開獎號碼庫，明細卡片即時亮起「🎉 中獎 NT$ 200 (六獎)」或「待開獎」徽章，中獎一目了然。
     - **發票對獎中心與一鍵兌領入帳**：明細篩選列提供專屬「發票對獎中心」入口（有中獎時亮金色提醒），支援查看各期官方獎號，並提供「一鍵兌領入帳」自動產生收入平帳並歸屬原記帳人。
     - **原生相機模組安全隔離與容錯防禦**：實作相機模組動態安全載入與 ErrorBoundary 容錯降級機制，舊版 APK 透過 OTA 更新時自動平滑相容，維持全 App 穩定運作並引導更新。
+16. **🎯 雙視角預算控管與即時 WebSocket 雲端同步（家庭公帳 ＋ 個人額度）**：
+    - **公帳月度總預算與警戒門檻**：支援設定家庭月度公帳預算、80% 警戒超支門檻與分類預算，以動態彩色進度條與百分比即時警示。
+    - **權限防護隔離**：公帳預算僅帳本管理員有權新增與修改，一般成員提供唯讀瀏覽模式與提示徽章。
+    - **成員個人開銷額度自主掌控**：每位成員可於自己手機上設定專屬個人開銷額度，管理員亦可協助輔助配置，各成員額度互不干涉、兼顧自主與隱私。
+    - **WebSocket 跨裝置秒級推播**：`ledger_budgets` 資料表全面納入 Supabase Realtime WebSocket 監聽，一人調整額度，全家裝置秒級無感連動更新。
+17. **💎 四大資產、信用卡待繳負債與財務淨值看板（個人淨值 vs. 家庭淨值）**：
+    - **四大資產型態全要素整合**：統整銀行帳戶、現金皮夾、儲值票證（悠遊卡/一卡通）與信用卡待繳負債，動態算出即時財務淨值。
+    - **智慧連動成員篩選**：預設精確呈現本機成員個人的資產、信用卡待繳與「個人財務淨值」；切換至「全部成員」才統整全家所有帳戶展示「家庭財務淨值」。
+    - **折疊式預覽明細清單**：點擊一鍵展開完整帳戶清單，支援快速對齊各大資產類別餘額與待繳金額。
+18. **🔐 Face ID / 指紋辨識生物辨識財務隱私防護鎖 ＋ 淨值星號遮罩**：
+    - **原生生物辨識整合**：深度整合 `expo-local-authentication`，支援 iOS Face ID / Touch ID 與 Android 指紋辨識 / 人臉解鎖。
+    - **資產淨值隱私小眼睛**：首頁資產淨值看板與帳戶金額預設啟用星號遮罩 (`NT$ ••••••`)；點擊眼睛圖示透過 Face ID / 指紋輕觸驗證，即刻解除遮罩淡入真實金額。
+    - **App 啟動與喚醒安全鎖**：可自訂啟用全域 App 防護鎖，冷啟動或自背景返回 App 時強制驗證生物辨識或輸入 4 碼 PIN 碼解鎖，徹底守護家庭帳本私密性。
+19. **📌 生活記事與待辦到期智慧推播雙軌系統（本機通知 ＋ LINE 日報連動）**：
+    - **本機智慧推播提醒**：支援已設定提醒日期之生活記事（如採買清單、學校聯絡、拜拜祭祀、重要備忘）於當天上午 09:00 本機推送通知（`expo-notifications`）。
+    - **辦妥即時註銷排程**：記事在 App 內被勾選辦妥完成時，自動即時取消本機通知排程，精準不打擾。
+    - **每日 LINE 收支日報雙向連動**：每日 21:30 LINE 收支日報新增「📌 生活記事與待辦備忘提醒」專屬卡片，彙整今日待辦、逾期待辦與未來 3 天預告，全家群組溫馨提醒。
+20. **💳 信用卡帳單出帳與繳款雙軌智慧提醒（精準提示待繳金額）**：
+    - **出帳日與繳款日前智慧提醒**：支援出帳日隔天 09:30 與繳款到期前 3 天 09:30 本機智慧推播提醒，精準提示待繳金額防忘繳。
+    - **每日 LINE 收支日報連動**：帳單出帳或接近繳款日之卡片，於 LINE 收支日報自動亮起醒目標籤與待繳金額提醒。
+21. **🔒 Google Gemini OCR 雲端金鑰安全封存 ＋ 雙向無縫備援**：
+    - **雲端安全封存（Zero-Exposure）**：建立 Supabase Edge Function (`gemini-ocr`)，將 Google Gemini API 金鑰完全封存於雲端後台，App 客戶端零暴露。
+    - **AI 智慧結構化發票與收據解析**：支援非標準電子發票、傳統長條收據與手寫明細拍照，透過 Gemini 多模態 AI 智慧抽取消費日期、金額、店家與品項明細。
+    - **前端 Direct API 雙向無縫備援**：當 Edge Function 離線或未部署時，系統自動無感切換至本機 Direct API 備援，維持 100% 可用性。
+22. **⚡ 手機桌面 Quick Actions 快捷直達 ＋ Deep Linking 自訂協議**：
+    - **桌面長按捷徑直達（Quick Actions）**：支援手機桌面長按 App 圖示，直接彈出「記一筆支出」、「記一筆收入」、「掃描發票 / 收據」、「隨手記記事」4 大捷徑選單，一秒直達對應表單。
+    - **相機掃描直通**：選擇「掃描發票 / 收據」捷徑自動直達發票掃描器，相機即刻開啟並自動對焦辨識。
+    - **自訂 URL Scheme 外部連動**：支援 `familyledger://quick-action?mode=scan|expense|income|memo` 自訂協定，可串接 iOS 捷徑、Siri 語音或外部呼叫。
+    - **隱私鎖安全佇列**：若已啟用生物辨識防護鎖，長按捷徑進入時先通過生物辨識驗證，通過後自動流暢執行所選動作，兼顧隱私與效率。
+23. **🛡️ 防禦型原生模組相容架構 ＋ 全域根層安全邊界 (Root Error Boundary)**：
+    - **原生模組安全載入機制**：全面改用動態探測載入（`requireOptionalNativeModule`），在尚未重新編譯 APK 之舊用戶端自動平滑降級為 PIN 碼模式，徹底杜絕 OTA 黑屏現象。
+    - **全域根層安全邊界**：於應用程式最外層掛載 `<RootErrorBoundary>`，攔截任何未預期例外執行緒，呈現友善提示與一鍵恢復按鈕，維持全 App 堅如磐石的穩定度。
 
 ---
 
@@ -163,53 +195,78 @@
 
 ```text
 family-ledger/
-├── App.tsx                     # 主畫面 (4大導航分頁：明細、統計、帳單支付、家庭設定)
-├── app.json                    # Expo 與 Android 原生配置 (套件名稱、圖示、版本 v1.0.8)
+├── App.tsx                     # 根元件 (全域 RootErrorBoundary、隱私鎖 AppLockOverlay、4大導航分頁)
+├── app.json                    # Expo 與 Android 原生配置 (套件名稱、圖示、原生外掛、版本 v1.0.8)
 ├── eas.json                    # Expo EAS Build 雲端打包與 EAS Update 頻道設定
 ├── package.json                # 專案相依性與 npm 快速建置腳本 (v1.0.8)
-├── supabase_schema.sql         # Supabase PostgreSQL 完整腳本 (表格、RLS 安全策略、RPC)
+├── supabase_schema.sql         # Supabase PostgreSQL 完整資料表結構、RLS 安全策略、RPC 儲存程序
+├── supabase/
+│   └── functions/
+│       └── gemini-ocr/         # Supabase Edge Function (Gemini API 金鑰雲端安全封存與發票辨識)
 ├── src/
-│   ├── types/database.ts       # TypeScript 資料庫型別定義 (TransactionType 支援 memo)
+│   ├── types/
+│   │   ├── database.ts         # TypeScript 資料庫與核心實體型別定義 (TransactionType 支援 memo)
+│   │   └── index.ts            # 通用介面與篩選器型別定義
+│   ├── constants/
+│   │   ├── ledgerDefaults.ts   # 預設分類圖示、示範資料、系統預設設定常數
+│   │   └── version.ts          # 應用程式版本常數與 v1.0.x 完整更新歷程 (Changelog)
+│   ├── context/
+│   │   ├── LedgerContext.tsx   # 全域帳本狀態中樞 (整合 5 大領域 Hooks，保持 100% 向下相容)
+│   │   └── PrivacyContext.tsx  # 財務隱私遮罩 (小眼睛) 與生物辨識防護鎖狀態管理
+│   ├── hooks/
+│   │   ├── useDeviceAuth.ts    # 設備身分識別、Google 帳號綁定鎖、連線設備感知管理 Hook
+│   │   ├── useLedgerBackup.ts  # 6 大全要素備份匯出、JSON 解析、安全合併與覆蓋還原 Hook
+│   │   ├── useLedgerBudget.ts  # 公帳總預算、警戒門檻、個人開銷額度與 WebSocket 即時同步 Hook
+│   │   ├── usePaymentAccounts.ts # 銀行帳戶、悠遊卡、信用卡待繳負債與財務淨值試算 Hook
+│   │   └── useRecurringRules.ts# 週期扣款、固定帳單排程、信用卡分期進度追蹤 Hook
 │   ├── lib/
-│   │   ├── supabase.ts         # Supabase 連線客戶端與配置檢查
-│   │   ├── uuid.ts             # 跨平台 UUID 生成工具
-│   │   ├── icons.ts            # 分類圖示對照輔助函式
-│   │   ├── memo.ts             # 記事標籤解析、超連結與日期輔助函式
+│   │   ├── supabase.ts         # Supabase 連線客戶端與連線狀態檢查
+│   │   ├── biometrics.ts       # 原生生物辨識 (Face ID / 指紋) 安全探測與優雅降級
+│   │   ├── quickActions.ts     # 手機桌面長按 Quick Actions 捷徑選單與 Deep Linking 處理
+│   │   ├── billingNotifications.ts # 信用卡出帳日與繳款日前智慧本機推播
+│   │   ├── geminiInvoice.ts    # Gemini 多模態發票收據結構化辨識與 Edge Function 整合
+│   │   ├── memo.ts             # 記事標籤解析、超連結跳轉與記事到期智慧推播
 │   │   ├── payment.ts          # 支付工具、帳單週期、分期試算與自然月對帳演算法
 │   │   ├── invoice.ts          # 統一發票 QR Code 解析、77 碼條碼格式驗證與品項抽取
-│   │   └── lottery.ts          # 官方中獎號碼庫、期別計算與全自動比對兌獎規則
-│   ├── constants/
-│   │   └── version.ts          # 應用程式版本常數與更新歷程 (Changelog)
-│   ├── context/
-│   │   └── LedgerContext.tsx   # 全域帳本狀態 (CRUD、6大要素備份還原、角色權限、卡片與週期規則)
-│   └── components/
-│       ├── TransactionItem.tsx # 單筆消費/收入/生活備忘手帳卡片 (防爆字設計)
-│       ├── AddTransactionModal.tsx  # 新增記帳與生活記事彈窗 (支出/收入/零用錢/記事)
-│       ├── EditTransactionModal.tsx # 編輯既有記帳與生活記事彈窗 (支援提醒日期與刪除)
-│       ├── InvoiceScannerModal.tsx  # 發票雙 QR Code 鏡頭對焦掃描與相簿截圖解析彈窗
-│       ├── InvoiceLotteryCenterModal.tsx # 發票對獎中心與一鍵兌領入帳彈窗
-│       ├── MemoTodoModal.tsx        # 生活備忘與待辦總覽彈窗 (5大分頁、倒數天數、打勾辦妥)
-│       ├── MemoCompletionModal.tsx  # 待辦辦妥確認彈窗 (辦妥人挑選、補充說明、連動支出與取消退回防護)
-│       ├── DatePickerModal.tsx # 補記歷史日期與提醒日期挑選器 (快速標籤 + 歷年月曆)
-│       ├── MonthPickerModal.tsx# 歷年月份任意挑選彈窗 (年份切換 + 12個月網格)
-│       ├── RecurringBillsManageModal.tsx # 週期扣款與分期付款管理彈窗 (待繳核對 + 分期追蹤)
-│       ├── PaymentAccountsManageModal.tsx # 家庭支付卡片與帳戶管理彈窗 (信用卡/悠遊卡)
-│       ├── PaymentMethodsManageModal.tsx  # 常用付款方式自訂管理彈窗
-│       ├── CategoryManageModal.tsx        # 記帳分類管理彈窗 (支出/收入自訂圖示色票)
-│       ├── CreditCardReconciliationModal.tsx # 雙分頁智慧對帳看板 (信用卡帳單 vs 悠遊卡自然月)
-│       ├── StoredValueWidget.tsx # 悠遊卡/儲值卡即時餘額與快捷加值小工具
-│       ├── TransactionFilterModal.tsx # 明細多維度篩選器彈窗
-│       ├── ChangelogModal.tsx  # 系統版本更新日誌彈窗
-│       ├── LiveToastBanner.tsx # 跨裝置即時動態感知泡泡通知 (動畫彈窗)
-│       ├── CloudLedgerManagerModal.tsx # 雲端多帳本切換與管理彈窗
-│       ├── AvatarPicker.tsx    # 分類趣味頭像挑選器 (家庭成員、萌寵、寶可夢)
-│       └── HorizontalScrollView.tsx # 跨平台橫向滾動容器封裝
+│   │   ├── lottery.ts          # 官方中獎號碼庫、期別計算與全自動比對兌獎規則
+│   │   ├── offlineQueue.ts     # 離線優先 (Local-First) 離線寫入佇列與背景自動重試同步
+│   │   ├── cloudLedgerService.ts# 雲端多帳本清單、切換、建立與用量監控
+│   │   ├── ledgerUtils.ts      # 帳本金額試算、出資歸屬純函式工具庫
+│   │   ├── device.ts           # 跨平台裝置型號與本機 UUID 提取工具
+│   │   ├── lunar.ts            # 農曆與台灣節慶祭祀運算
+│   │   ├── icons.ts            # 分類圖示對照輔助函式
+│   │   ├── alert.ts            # 跨平台相容對話框 (Web / Native)
+│   │   └── uuid.ts             # 跨平台 UUID 生成工具
+│   ├── screens/
+│   │   ├── TransactionsScreen.tsx # 📝 明細頁籤：收支流水帳、即時搜尋、店家膠囊快篩、待辦提示
+│   │   ├── AnalyticsScreen.tsx    # 📊 統計頁籤：四大 KPI、分類收支排行、走勢圖表、成員出資佔比
+│   │   ├── BillsScreen.tsx        # 💳 帳單支付頁籤：週期帳單、卡片對帳、常用付款方式、記帳分類
+│   │   └── FamilySettingsScreen.tsx# ⚙️ 家庭設定頁籤：成員名冊、邀請碼、隱私防護鎖、全要素備份
+│   ├── components/
+│   │   ├── BudgetHeroWidget.tsx   # 首頁雙視角預算儀表板 (公帳總預算 / 個人額度進度條)
+│   │   ├── BudgetManageModal.tsx  # 預算控管彈窗 (月度預算、警戒門檻、個人額度配置)
+│   │   ├── NetWorthWidget.tsx     # 首頁財務淨值看板 (四大資產型態、小眼睛星號遮罩)
+│   │   ├── AppLockOverlay.tsx     # App 啟動與喚醒全域安全鎖遮罩 (生物辨識 / PIN 碼解鎖)
+│   │   ├── TrendChartsWidget.tsx  # 財務收支走勢圖與分類佔比圓餅圖
+│   │   ├── InvoiceScannerModal.tsx# 發票雙 QR Code 鏡頭對焦掃描與相簿截圖解析彈窗
+│   │   ├── InvoiceLotteryModal.tsx# 官方發票對獎中心與一鍵兌領入帳彈窗
+│   │   ├── MemoTodoModal.tsx      # 生活備忘與待辦總覽彈窗 (5大分頁、倒數天數、打勾辦妥)
+│   │   ├── MemoCompletionModal.tsx# 待辦辦妥確認彈窗 (辦妥人、補充留言、連動支出與防退回)
+│   │   ├── CreditCardReconciliationModal.tsx # 雙分頁智慧對帳看板 (信用卡帳單 vs 悠遊卡自然月)
+│   │   ├── StoredValueWidget.tsx  # 悠遊卡/儲值卡即時餘額與通用動態加值小工具
+│   │   ├── LiveToastBanner.tsx    # 跨裝置即時動態感知泡泡通知 (動畫浮動卡片)
+│   │   ├── ProductGuideModal.tsx  # 產品介紹與常用操作指南彈窗
+│   │   ├── ChangelogModal.tsx     # 系統版本更新日誌彈窗 (v1.0.x 精簡摘要)
+│   │   └── modals/                # 解耦之專屬功能彈窗群組 (成員管理、PIN碼、備份匯出、換帳本等)
+│   └── theme/
+│       ├── ThemeContext.tsx       # 全域深色/淺色主題管理 Context
+│       └── colors.ts              # 甜心粉暖色系調色盤與主題色彩變數
 ├── .github/
 │   └── workflows/
 │       └── daily-report-keepalive.yml # GitHub Actions 每日定時防休眠與 LINE 日報排程
 ├── scripts/
 │   └── daily-report.mjs          # 每日收支計算、Supabase 保活與 LINE Flex 卡片生成腳本
-└── assets/                     # 甜心記帳本 3D 黏土風圖示、自適應啟動圖與 Favicon
+└── assets/                       # 甜心記帳本 3D 黏土風圖示、自適應啟動圖與 Favicon
 ```
 
 ---
