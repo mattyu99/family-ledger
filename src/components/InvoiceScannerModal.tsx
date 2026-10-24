@@ -16,6 +16,7 @@ import {
   mergeParsedInvoiceData,
   ParsedInvoiceData,
 } from '../lib/invoice';
+import { recognizeInvoiceWithGemini, isGeminiAIAvailable } from '../lib/geminiInvoice';
 import { useLedger } from '../context/LedgerContext';
 
 // 安全動態載入原生相機與影像模組，避免舊版 APK 缺少二進位驅動時啟動黑屏
@@ -149,6 +150,8 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
   const [scanned, setScanned] = useState<boolean>(false);
   const [processingImage, setProcessingImage] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const cameraRef = useRef<any>(null);
 
   // 雙碼連續辨識與合併狀態
   const pendingLeftRef = useRef<ParsedInvoiceData | null>(null);
@@ -294,9 +297,68 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
     }
   };
 
-  // 從手機相簿選取截圖進行辨識 (完美支援雲端發票無紙本情境，支援單截圖雙碼同時辨識)
+  // 透過 Google Gemini 視覺 AI 辨識紙本/傳統無條碼發票
+  const handleCaptureAIPhoto = async () => {
+    if (processingImage) return;
+    setProcessingImage(true);
+    setErrorMessage(null);
+    setStatusMessage('🤖 正在透過 Google AI 智慧辨識紙本發票...');
+
+    try {
+      let base64Data: string | undefined = undefined;
+
+      // 1. 優先使用原生 CameraView 快照 (速度最快，無需跳轉)
+      if (cameraRef.current && typeof cameraRef.current.takePictureAsync === 'function') {
+        try {
+          const photo = await cameraRef.current.takePictureAsync({
+            quality: 0.85,
+            base64: true,
+            skipProcessing: false,
+          });
+          base64Data = photo?.base64;
+        } catch (camErr) {
+          console.warn('[CameraView] 快照失敗，嘗試回退相機模組:', camErr);
+        }
+      }
+
+      // 2. 若快照未能取得 base64，回退調用 ImagePicker 之原生相機拍攝
+      if (!base64Data && ImagePickerModule && typeof ImagePickerModule.launchCameraAsync === 'function') {
+        const result = await ImagePickerModule.launchCameraAsync({
+          quality: 0.85,
+          base64: true,
+          allowsEditing: false,
+        });
+        if (!result.canceled && result.assets?.[0]?.base64) {
+          base64Data = result.assets[0].base64;
+        }
+      }
+
+      if (!base64Data) {
+        setErrorMessage('未能成功取得照片影像，請重試或改由相簿選取');
+        setStatusMessage('對準電子發票 QR Code 或長條發票一維條碼');
+        return;
+      }
+
+      const aiParsed = await recognizeInvoiceWithGemini(base64Data, 'image/jpeg');
+      if (aiParsed) {
+        finishWithResult(aiParsed);
+        return;
+      } else {
+        setErrorMessage('AI 未能從照片中辨識出有效發票資訊，請對焦平整重新拍攝');
+        setStatusMessage('對準電子發票 QR Code 或長條發票一維條碼');
+      }
+    } catch (err: any) {
+      console.warn('AI 拍照辨識例外:', err);
+      setErrorMessage('AI 辨識發生錯誤，請稍候重試');
+      setStatusMessage('對準電子發票 QR Code 或長條發票一維條碼');
+    } finally {
+      setProcessingImage(false);
+    }
+  };
+
+  // 從手機相簿選取截圖進行辨識 (完美支援雲端發票無紙本情境，支援單截圖雙碼同時辨識，無條碼自動切換 Google AI 辨識)
   const handlePickImage = async () => {
-    if (!ImagePickerModule || !scanFromURLAsyncFn) {
+    if (!ImagePickerModule) {
       setErrorMessage('當前版本尚未啟用圖片辨識，請使用相機掃描或「📋 貼上」按鈕');
       return;
     }
@@ -304,67 +366,92 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
     try {
       setProcessingImage(true);
       setErrorMessage(null);
+      setStatusMessage('🖼️ 正在分析圖片發票內容...');
 
       const pickerResult = await ImagePickerModule.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: false,
-        quality: 1,
+        quality: 0.85,
+        base64: true,
       });
 
       if (pickerResult.canceled || !pickerResult.assets || pickerResult.assets.length === 0) {
         setProcessingImage(false);
+        setStatusMessage('對準電子發票 QR Code 或長條發票一維條碼');
         return;
       }
 
-      const imageUri = pickerResult.assets[0].uri;
-      const barcodeResults = await scanFromURLAsyncFn(imageUri, [
-        'qr',
-        'code39',
-        'code128',
-        'code93',
-        'codabar',
-      ]);
+      const asset = pickerResult.assets[0];
+      const imageUri = asset.uri;
+      const base64Data = asset.base64;
 
-      if (barcodeResults && barcodeResults.length > 0) {
-        let leftParsed: ParsedInvoiceData | null = null;
-        let rightParsed: ParsedInvoiceData | null = null;
+      // 1. 優先嘗試條碼解碼 (電子發票 QR Code 或傳統長條發票條碼)
+      if (scanFromURLAsyncFn) {
+        try {
+          const barcodeResults = await scanFromURLAsyncFn(imageUri, [
+            'qr',
+            'code39',
+            'code128',
+            'code93',
+            'codabar',
+          ]);
 
-        for (const b of barcodeResults) {
-          const p = parseTaiwanInvoiceQRCode(b.data, taxIdMerchantMap);
-          if (p) {
-            // 若為傳統長條發票一維條碼，秒速完成帶入！
-            if (p.is1DBarcode) {
-              finishWithResult(p);
+          if (barcodeResults && barcodeResults.length > 0) {
+            let leftParsed: ParsedInvoiceData | null = null;
+            let rightParsed: ParsedInvoiceData | null = null;
+
+            for (const b of barcodeResults) {
+              const p = parseTaiwanInvoiceQRCode(b.data, taxIdMerchantMap);
+              if (p) {
+                // 若為傳統長條發票一維條碼，秒速完成帶入！
+                if (p.is1DBarcode) {
+                  finishWithResult(p);
+                  return;
+                }
+                if (p.invoiceNumber) {
+                  leftParsed = p;
+                } else if (p.isRightQRCode || (p.items && p.items.length > 0)) {
+                  rightParsed = p;
+                }
+              }
+            }
+
+            // 若截圖中同時辨識出左碼與右碼，直接合體收齊！
+            if (leftParsed && rightParsed) {
+              const merged = mergeParsedInvoiceData(leftParsed, rightParsed);
+              finishWithResult(merged);
               return;
             }
-            if (p.invoiceNumber) {
-              leftParsed = p;
-            } else if (p.isRightQRCode || (p.items && p.items.length > 0)) {
-              rightParsed = p;
+            if (leftParsed) {
+              finishWithResult(leftParsed);
+              return;
+            }
+            if (rightParsed) {
+              finishWithResult(rightParsed);
+              return;
             }
           }
+        } catch (scanErr) {
+          console.warn('[BarcodeScan] 條碼解析失敗，準備回退 AI 辨識:', scanErr);
         }
+      }
 
-        // 若截圖中同時辨識出左碼與右碼，直接合體收齊！
-        if (leftParsed && rightParsed) {
-          const merged = mergeParsedInvoiceData(leftParsed, rightParsed);
-          finishWithResult(merged);
-          return;
-        }
-        if (leftParsed) {
-          finishWithResult(leftParsed);
-          return;
-        }
-        if (rightParsed) {
-          finishWithResult(rightParsed);
+      // 2. 若未能辨識出條碼且已啟用 Google AI 辨識，自動調用 Gemini 進行視覺光學辨識
+      if (isGeminiAIAvailable() && base64Data) {
+        setStatusMessage('🤖 未偵測到條碼，正在透過 Google AI 智慧辨識紙本發票...');
+        const aiParsed = await recognizeInvoiceWithGemini(base64Data, 'image/jpeg');
+        if (aiParsed) {
+          finishWithResult(aiParsed);
           return;
         }
       }
 
-      setErrorMessage('在選取的圖片中未辨識到發票條碼，請確認發票條碼完整清晰');
+      setErrorMessage('在選取的圖片中未辨識到發票條碼或文字，請確認發票清晰平整');
+      setStatusMessage('對準電子發票 QR Code 或長條發票一維條碼');
     } catch (err: any) {
       console.warn('解析相簿圖片失敗:', err);
       setErrorMessage('解析圖片發生錯誤，請重試或直接使用鏡頭掃描');
+      setStatusMessage('對準電子發票 QR Code 或長條發票一維條碼');
     } finally {
       setProcessingImage(false);
     }
@@ -424,6 +511,7 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
           <View style={styles.cameraWrapper}>
             {CameraView && (
               <CameraView
+                ref={cameraRef}
                 style={StyleSheet.absoluteFill}
                 facing="back"
                 enableTorch={enableTorch}
@@ -439,7 +527,7 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
               <View style={styles.unfocusedContainer}>
                 <View style={styles.frameHeaderHint}>
                   <Text style={styles.frameHeaderHintText}>
-                    對準發票 QR Code 或長條發票一維條碼
+                    對準發票條碼 · 無條碼請點下方「📸 拍照 AI 辨識」
                   </Text>
                 </View>
               </View>
@@ -513,6 +601,30 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
           )}
 
           <View style={styles.bottomActions}>
+            {isGeminiAIAvailable() && (
+              <TouchableOpacity
+                style={styles.aiSnapBtn}
+                onPress={handleCaptureAIPhoto}
+                disabled={processingImage}
+                activeOpacity={0.8}
+              >
+                {processingImage ? (
+                  <View style={styles.aiSnapLoadingRow}>
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                    <Text style={styles.aiSnapBtnText}>AI 智慧辨識中...</Text>
+                  </View>
+                ) : (
+                  <View style={styles.aiSnapInnerRow}>
+                    <Text style={styles.aiSnapBtnIcon}>📸</Text>
+                    <Text style={styles.aiSnapBtnText}>拍照 AI 辨識</Text>
+                    <View style={styles.aiBadge}>
+                      <Text style={styles.aiBadgeText}>無條碼/紙本發票</Text>
+                    </View>
+                  </View>
+                )}
+              </TouchableOpacity>
+            )}
+
             <View style={styles.bottomBtnRow}>
               <TouchableOpacity
                 style={styles.bottomCloseBtn}
@@ -824,6 +936,56 @@ const styles = StyleSheet.create({
   },
   bottomActions: {
     width: '100%',
+  },
+  aiSnapBtn: {
+    backgroundColor: '#059669',
+    borderRadius: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#059669',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#34D399',
+  },
+  aiSnapInnerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  aiSnapLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  aiSnapBtnIcon: {
+    fontSize: 18,
+  },
+  aiSnapBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  aiBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginLeft: 4,
+  },
+  aiBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
   },
   bottomBtnRow: {
     flexDirection: 'row',
