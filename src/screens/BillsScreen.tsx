@@ -675,3 +675,4 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontWeight: '600',
     },
   });
+

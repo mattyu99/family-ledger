@@ -86,6 +86,9 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     lastBackupAt,
     updateAutoBackupConfig,
     hasOtherUnread,
+    pendingOfflineCount,
+    isProcessingQueue,
+    processOfflineQueue,
   } = useLedger();
 
   const [showPinClear, setShowPinClear] = useState(false);
@@ -643,6 +646,32 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             💡 手機系統隱私機制限制 App 靜默寫入個人雲端；開啟提醒後，系統會在到期時以橫幅通知您一鍵存檔至 Google Drive 或 iCloud。
           </Text>
         </View>
+
+        {/* 📴 離線待補同步隊列看板 */}
+        {pendingOfflineCount > 0 && (
+          <View style={[styles.offlineOutboxCard, { backgroundColor: isDark ? '#450A0A33' : '#FEF2F2', borderColor: isDark ? '#991B1B' : '#FCA5A5' }]}>
+            <View style={styles.offlineOutboxLeft}>
+              <Text style={styles.offlineOutboxIcon}>📴</Text>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={[styles.offlineOutboxTitle, { color: isDark ? '#FCA5A5' : '#B91C1C' }]}>
+                  離線記帳待補傳隊列 ({pendingOfflineCount} 筆)
+                </Text>
+                <Text style={[styles.offlineOutboxDesc, { color: colors.text.secondary }]}>
+                  您在無網路環境下記錄或編輯的帳目已安全暫存於本機。當網路通暢時，點擊右側按鈕即可立即上傳至雲端！
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={[styles.offlineSyncBtn, isProcessingQueue && { opacity: 0.6 }]}
+              onPress={processOfflineQueue}
+              disabled={isProcessingQueue}
+            >
+              <Text style={styles.offlineSyncBtnText}>
+                {isProcessingQueue ? '⏳ 上傳中...' : '☁️ 立即補傳'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <View style={styles.backupBtnRow}>
           <TouchableOpacity
@@ -1422,6 +1451,44 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     marginTop: 4,
   },
+  offlineOutboxCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  offlineOutboxLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 8,
+  },
+  offlineOutboxIcon: {
+    fontSize: 22,
+  },
+  offlineOutboxTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  offlineOutboxDesc: {
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  offlineSyncBtn: {
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  offlineSyncBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   backupBtnRow: {
     flexDirection: 'row',
     gap: 10,
@@ -1675,3 +1742,4 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 });
+

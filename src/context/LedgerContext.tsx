@@ -12,6 +12,14 @@ import { formatInvoiceNumber, getInvoicePeriodKey, encodeInvoiceTag, decodeInvoi
 import { checkInvoiceWinning, syncLotteryDrawsAsync } from '../lib/lottery';
 import { APP_FULL_VERSION } from '../constants/version';
 import { getDeviceId, getDeviceName, getDevicePlatform } from '../lib/device';
+import {
+  OfflineMutation,
+  getOfflineQueue,
+  enqueueOfflineMutation,
+  dequeueOfflineMutation,
+  updateMutationFailure,
+  subscribeOfflineQueue,
+} from '../lib/offlineQueue';
 
 const safeAlert = (title: string, message: string) => {
   if (Platform.OS === 'web') {
@@ -535,6 +543,10 @@ interface LedgerContextType {
       creditCards: Array<PaymentAccount & { outstandingDebt: number }>;
     };
   };
+  offlineQueue: OfflineMutation[];
+  pendingOfflineCount: number;
+  isProcessingQueue: boolean;
+  processOfflineQueue: () => Promise<{ success: boolean; syncedCount: number; failedCount: number }>;
 }
 
 const LedgerContext = createContext<LedgerContextType | null>(null);
@@ -882,6 +894,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [currentUser, setCurrentUser] = useState<Profile>(DEFAULT_MEMBERS[0]);
   const [isCloudSynced, setIsCloudSynced] = useState<boolean>(false);
   const [historySyncProgress, setHistorySyncProgress] = useState<{ loaded: number; total: number } | null>(null);
+  const [offlineQueue, setOfflineQueue] = useState<OfflineMutation[]>([]);
+  const [isProcessingQueue, setIsProcessingQueue] = useState<boolean>(false);
+
+  useEffect(() => {
+    const unsub = subscribeOfflineQueue((q) => {
+      setOfflineQueue(q);
+    });
+    return unsub;
+  }, []);
+
+  const pendingOfflineCount = offlineQueue.length;
   const activeLoadingLedgerIdRef = useRef<string | null>(null);
   const inMemoryLedgerTxCacheRef = useRef<Map<string, Transaction[]>>(new Map());
 
@@ -4208,10 +4231,82 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       };
     }, []);
 
+  // 處理並批次上傳離線佇列中的待補變更 (支援 Optimistic Outbox 補同步)
+  const processOfflineQueue = async (): Promise<{ success: boolean; syncedCount: number; failedCount: number }> => {
+    if (isProcessingQueue) return { success: false, syncedCount: 0, failedCount: 0 };
+    const queue = await getOfflineQueue();
+    const ledgerQueue = queue.filter(item => !item.ledgerId || item.ledgerId === currentLedger?.id);
+    if (ledgerQueue.length === 0) {
+      return { success: true, syncedCount: 0, failedCount: 0 };
+    }
+    if (!isConfigured || currentLedger.id === DEMO_LEDGER_ID) {
+      return { success: false, syncedCount: 0, failedCount: ledgerQueue.length };
+    }
+
+    setIsProcessingQueue(true);
+    let synced = 0;
+    let failed = 0;
+
+    for (const item of ledgerQueue) {
+      try {
+        if (item.type === 'insert_transaction') {
+          const payload = item.payload?.insertPayload || item.payload?.tx;
+          if (payload) {
+            const { error } = await supabase.from('transactions').upsert(payload);
+            if (error) throw error;
+          }
+          await dequeueOfflineMutation(item.id);
+          synced++;
+        } else if (item.type === 'update_transaction') {
+          const { id, data } = item.payload;
+          if (id && data) {
+            const { error } = await supabase.from('transactions').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id);
+            if (error) throw error;
+          }
+          await dequeueOfflineMutation(item.id);
+          synced++;
+        } else if (item.type === 'delete_transaction') {
+          const { id } = item.payload;
+          if (id) {
+            try {
+              await supabase.from('transaction_splits').delete().eq('transaction_id', id);
+            } catch {}
+            const { error } = await supabase.from('transactions').delete().eq('id', id);
+            if (error) throw error;
+          }
+          await dequeueOfflineMutation(item.id);
+          synced++;
+        }
+      } catch (err: any) {
+        failed++;
+        console.warn(`[OfflineOutbox] 補同步失敗 [${item.id}]:`, err?.message || err);
+        await updateMutationFailure(item.id, err?.message);
+      }
+    }
+
+    setIsProcessingQueue(false);
+
+    if (synced > 0) {
+      setIsCloudSynced(true);
+      triggerLiveToast({
+        id: `offline-sync-${Date.now()}`,
+        type: 'insert',
+        actorName: '雲端同步中樞',
+        avatar: '☁️',
+        title: '🎉 離線記帳已全數同步至雲端公帳！',
+        message: `成功自動補傳 ${synced} 筆離線記帳與異動紀錄。`,
+        createdAt: Date.now(),
+      });
+    }
+
+    return { success: failed === 0, syncedCount: synced, failedCount: failed };
+  };
+
   // 手動 / 前景重新整理當前帳本完整資料
   const refreshLedger = async () => {
     if (isConfigured && currentLedger && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
+        await processOfflineQueue();
         const { data: { session } } = await supabase.auth.getSession();
         const authUserId = session?.user?.id;
         if (authUserId) {
@@ -6748,6 +6843,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         if (txError) {
           console.warn('雲端寫入交易失敗 (保留本地待補同步):', txError.message);
+          enqueueOfflineMutation({
+            type: 'insert_transaction',
+            ledgerId: currentLedger.id,
+            payload: { tx: newTx, insertPayload },
+          }).catch(() => {});
         } else {
           // 雲端確認成功寫入，解除待同步標記並更新快取
           delete (newTx as any)._isPendingSync;
@@ -6769,8 +6869,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         }
       } catch (err) {
-        console.warn('雲端新增交易連線延遲，已保存於本機稍後重試:', err);
+        console.warn('雲端新增交易連線延遲，已保存於本機離線隊列稍後重試:', err);
+        enqueueOfflineMutation({
+          type: 'insert_transaction',
+          ledgerId: currentLedger.id,
+          payload: { tx: newTx },
+        }).catch(() => {});
       }
+    } else if (currentLedger.id !== DEMO_LEDGER_ID) {
+      // 處於離線狀態或未配置即時發布時，排入本機離線隊列
+      enqueueOfflineMutation({
+        type: 'insert_transaction',
+        ledgerId: currentLedger.id,
+        payload: { tx: newTx },
+      }).catch(() => {});
     }
     return txId;
   };
@@ -7174,10 +7286,28 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           await supabase.from('deleted_transactions').insert({ id, ledger_id: currentLedger.id });
         } catch {}
         const { error } = await supabase.from('transactions').delete().eq('id', id);
-        if (error) console.warn('雲端刪除交易失敗:', error.message);
+        if (error) {
+          console.warn('雲端刪除交易失敗，排入離線隊列稍後重試:', error.message);
+          enqueueOfflineMutation({
+            type: 'delete_transaction',
+            ledgerId: currentLedger.id,
+            payload: { id },
+          }).catch(() => {});
+        }
       } catch (err) {
-        console.warn('雲端刪除交易連線失敗:', err);
+        console.warn('雲端刪除交易連線失敗，排入離線隊列稍後重試:', err);
+        enqueueOfflineMutation({
+          type: 'delete_transaction',
+          ledgerId: currentLedger.id,
+          payload: { id },
+        }).catch(() => {});
       }
+    } else if (currentLedger.id !== DEMO_LEDGER_ID) {
+      enqueueOfflineMutation({
+        type: 'delete_transaction',
+        ledgerId: currentLedger.id,
+        payload: { id },
+      }).catch(() => {});
     }
   };
 
@@ -7546,8 +7676,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
 
         if (error) {
-          console.warn('雲端更新交易失敗:', error);
-          return false;
+          console.warn('雲端更新交易失敗，已排入離線隊列稍後補傳:', error);
+          enqueueOfflineMutation({
+            type: 'update_transaction',
+            ledgerId: currentLedger.id,
+            payload: { id, data: updatePayload },
+          }).catch(() => {});
+          return true;
         }
 
         // 若有自動接力產生的下一期記事，一併同步寫入雲端
@@ -7607,10 +7742,23 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } catch (err) {}
       }
 
+      if (!isCloudSynced && currentLedger.id !== DEMO_LEDGER_ID) {
+        enqueueOfflineMutation({
+          type: 'update_transaction',
+          ledgerId: currentLedger.id,
+          payload: { id, data },
+        }).catch(() => {});
+      }
+
       return true;
     } catch (err) {
-      console.warn('更新交易例外錯誤:', err);
-      return false;
+      console.warn('更新交易例外錯誤，排入離線隊列稍後重試:', err);
+      enqueueOfflineMutation({
+        type: 'update_transaction',
+        ledgerId: currentLedger.id,
+        payload: { id, data },
+      }).catch(() => {});
+      return true;
     }
   };
 
@@ -9648,6 +9796,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         getSixMonthTrend,
         executeTransfer,
         getNetWorthSummary,
+        offlineQueue,
+        pendingOfflineCount,
+        isProcessingQueue,
+        processOfflineQueue,
       }}
     >
       {children}

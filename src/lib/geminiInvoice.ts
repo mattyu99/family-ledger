@@ -5,6 +5,7 @@ import {
   cleanBusinessName,
   inferCategoryFromIndustry,
 } from './invoice';
+import { supabase, isConfigured } from './supabase';
 
 const decodeKey = (raw: string): string => {
   if (!raw) return '';
@@ -60,6 +61,20 @@ export const recognizeInvoiceWithGemini = async (
   // 清理 base64 字串中可能帶有的 data:image/...;base64, 前綴
   const cleanBase64 = base64Data.replace(/^data:image\/[a-zA-Z]+;base64,/, '').trim();
   if (!cleanBase64) return null;
+
+  // 1. 若 Supabase 已配置，優先嘗試透過後端 Edge Function 代理辨識 (完全隱藏 Gemini API 金鑰)
+  if (isConfigured) {
+    try {
+      const { data: edgeData, error: edgeError } = await supabase.functions.invoke('gemini-ocr', {
+        body: { base64Data: cleanBase64, mimeType },
+      });
+      if (!edgeError && edgeData && (edgeData.invoiceNumber || edgeData.totalAmount)) {
+        return edgeData;
+      }
+    } catch {
+      // 代理通道不可用或未部署時，平滑降級至直連辨識
+    }
+  }
 
   const prompt = `你是一個專業的台灣統一發票與收據光學辨識專家。請從這張發票圖片中精確提取以下資訊，並只以乾淨的 JSON 格式回傳：
 {

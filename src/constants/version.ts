@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.7';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.7 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 22;
+export const APP_BUILD_REVISION = 23;
 
 // 完整版本字串 (例如 "1.0.7.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.7',
+    date: '2026-10-24',
+    title: '離線寫入佇列 (Offline Outbox Queue)、背景自動同步與 AI 辨識雲端代理架構',
+    highlights: [
+      '📴 離線寫入佇列（Offline Outbox Queue）：在地下室、飛機上或無網路環境下記帳、編輯、刪除與辦妥待辦，本地零延遲秒反應並安全持久化於本機儲存。',
+      '🔄 連線自動背景批次補傳：網路恢復或手動重新整理時，背景工作線程自動依序批次補傳佇列中的變更，全數補傳完成後發出溫馨泡泡通知。',
+      '📱 頂部導航即時連線感知：新增「離線 (X筆待補傳)」狀態膠囊，點擊一鍵手動觸發連線測試與批次上傳。',
+      '🛡️ Gemini AI 雲端代理架構升級：支援後端 Supabase Edge Function 優先辨識通道，完全隱藏 API 金鑰，並兼具前端平滑降級備援機制。',
+    ],
+  },
   {
     version: '1.0.7',
     date: '2026-10-24',

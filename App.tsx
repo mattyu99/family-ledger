@@ -132,6 +132,9 @@ const AppContent: React.FC = () => {
     pendingInviteCode,
     confirmPendingInvite,
     cancelPendingInvite,
+    pendingOfflineCount,
+    isProcessingQueue,
+    processOfflineQueue,
   } = useLedger();
 
   // 分頁狀態
@@ -604,18 +607,60 @@ const AppContent: React.FC = () => {
           <TouchableOpacity
             style={[
               styles.syncBadge,
-              isCloudSynced ? styles.syncOnline : styles.syncLocal,
+              pendingOfflineCount > 0
+                ? styles.syncOfflinePending
+                : isCloudSynced
+                ? styles.syncOnline
+                : styles.syncLocal,
               isDark && {
-                backgroundColor: isCloudSynced ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                borderColor: isCloudSynced ? 'rgba(16, 185, 129, 0.35)' : 'rgba(245, 158, 11, 0.35)',
+                backgroundColor:
+                  pendingOfflineCount > 0
+                    ? 'rgba(239, 68, 68, 0.15)'
+                    : isCloudSynced
+                    ? 'rgba(16, 185, 129, 0.15)'
+                    : 'rgba(245, 158, 11, 0.15)',
+                borderColor:
+                  pendingOfflineCount > 0
+                    ? 'rgba(239, 68, 68, 0.35)'
+                    : isCloudSynced
+                    ? 'rgba(16, 185, 129, 0.35)'
+                    : 'rgba(245, 158, 11, 0.35)',
               },
             ]}
-            onPress={handleRefresh}
+            onPress={async () => {
+              if (pendingOfflineCount > 0) {
+                await processOfflineQueue();
+              }
+              handleRefresh();
+            }}
             activeOpacity={0.7}
           >
-            <Text style={styles.syncDot}>{historySyncProgress || isRefreshing ? '🔄' : (isCloudSynced ? '🟢' : '🟡')}</Text>
-            <Text style={[styles.syncText, isDark && { color: colors.text.secondary }]} maxFontSizeMultiplier={1.2}>
-              {historySyncProgress ? '歷史同步中...' : isRefreshing ? '同步更新中...' : (isCloudSynced ? '雲端即時同步' : '本地離線快取')}
+            <Text style={styles.syncDot}>
+              {historySyncProgress || isRefreshing || isProcessingQueue
+                ? '🔄'
+                : pendingOfflineCount > 0
+                ? '📴'
+                : isCloudSynced
+                ? '🟢'
+                : '🟡'}
+            </Text>
+            <Text
+              style={[
+                styles.syncText,
+                pendingOfflineCount > 0 && { color: isDark ? '#FCA5A5' : '#B91C1C' },
+                isDark && pendingOfflineCount === 0 && { color: colors.text.secondary },
+              ]}
+              maxFontSizeMultiplier={1.2}
+            >
+              {historySyncProgress
+                ? '歷史同步中...'
+                : isRefreshing || isProcessingQueue
+                ? '同步補傳中...'
+                : pendingOfflineCount > 0
+                ? `離線 (${pendingOfflineCount}筆待補傳)`
+                : isCloudSynced
+                ? '雲端即時同步'
+                : '本地離線快取'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -1402,6 +1447,10 @@ const styles = StyleSheet.create({
   syncLocal: {
     backgroundColor: '#FFFBEB',
     borderColor: '#FDE68A',
+  },
+  syncOfflinePending: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
   },
   syncDot: {
     fontSize: 11,

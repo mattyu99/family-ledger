@@ -23,3 +23,4 @@ export const formatLastBackupText = (isoString: string | null): string => {
 
   return `${yyyy}/${mm}/${dd} ${hh}:${min} (${relative})`;
 };
+
