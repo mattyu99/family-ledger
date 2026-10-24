@@ -11,6 +11,7 @@ import {
 import * as Updates from 'expo-updates';
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
+import { usePrivacy } from '../context/PrivacyContext';
 import { MemberAvatar } from '../components/MemberAvatar';
 import { showAlert, showConfirm, copyToClipboard } from '../lib/alert';
 import { formatLastBackupText } from '../lib/backup';
@@ -105,6 +106,28 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     isProcessingQueue,
     processOfflineQueue,
   } = useLedger();
+
+  const {
+    capability,
+    privacyMaskEnabled,
+    updatePrivacyMaskEnabled,
+    appLockEnabled,
+    updateAppLockEnabled,
+    authenticate,
+  } = usePrivacy();
+
+  const handleTestBiometrics = async () => {
+    if (!capability.isSupported) {
+      showAlert('硬體提示', `目前裝置未偵測到 ${capability.biometryType} 錄入或硬體支援，在 Web 環境中將以安全 PIN 碼保護。`);
+      return;
+    }
+    const success = await authenticate(`測試驗證您的 ${capability.biometryType}`);
+    if (success) {
+      showAlert('驗證成功', `🎉 太棒了！您的 ${capability.biometryType} 辨識成功，隱私防護運作正常！`);
+    } else {
+      showAlert('驗證未通過', '生物辨識未通過或使用者已取消驗證。');
+    }
+  };
 
   const [showPinClear, setShowPinClear] = useState(false);
   const [billingNoticeEnabled, setBillingNoticeEnabled] = useState(false);
@@ -785,6 +808,81 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
 
         <Text style={[styles.backupPrivacyNote, { color: colors.text.muted, marginTop: 8 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
           💡 貼心聯防：除了手機本機推播之外，每日收支日報中也會同步整理今日待辦與未來 3 天預告，讓家人互相溫馨提醒！
+        </Text>
+      </View>
+
+      {/* 🔐 生物辨識與財務隱私鎖卡片 */}
+      <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
+        <View style={styles.sectionHeaderRow}>
+          <View style={styles.sectionHeaderLeft}>
+            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              🔐 生物辨識與財務隱私鎖
+            </Text>
+            <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              以 {capability.biometryType} 或安全碼保護資產負債與真實淨值，防旁人窺視
+            </Text>
+          </View>
+          <View style={[styles.roleBadge, capability.isSupported ? styles.roleBadgeOwner : styles.roleBadgeMember]}>
+            <Text style={[styles.roleBadgeText, capability.isSupported ? styles.roleBadgeTextOwner : styles.roleBadgeTextMember]}>
+              {capability.isSupported ? `🟢 支援 ${capability.biometryType}` : '⚪ 密碼備援'}
+            </Text>
+          </View>
+        </View>
+
+        {/* 開關選項列表 */}
+        <View style={[styles.cardScheduleContainer, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
+          {/* 設定項目 1：淨值看板預設遮罩 */}
+          <View style={[styles.cardScheduleRow, { borderBottomColor: colors.border.default, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+            <View style={{ flex: 1, marginRight: 12 }}>
+              <Text style={[styles.cardScheduleName, { color: colors.text.primary }]}>
+                👁️ 資產淨值與餘額預設遮罩
+              </Text>
+              <Text style={[styles.cardScheduleMeta, { color: colors.text.secondary }]}>
+                看板金額預設顯示為星號，需點擊眼睛透過 {capability.biometryType} 驗證後方可查看
+              </Text>
+            </View>
+            <Switch
+              value={privacyMaskEnabled}
+              onValueChange={updatePrivacyMaskEnabled}
+              trackColor={{ false: colors.border.default, true: colors.brand.primary }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+
+          {/* 設定項目 2：啟動 App 時要求生物驗證 */}
+          <View style={[styles.cardScheduleRow, { borderBottomWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+            <View style={{ flex: 1, marginRight: 12 }}>
+              <Text style={[styles.cardScheduleName, { color: colors.text.primary }]}>
+                🛡️ 啟動 App 時要求身分解鎖
+              </Text>
+              <Text style={[styles.cardScheduleMeta, { color: colors.text.secondary }]}>
+                冷啟動或離開背景超過 15 秒重新返回時，強制驗證 {capability.biometryType} 或 PIN 碼解鎖
+              </Text>
+            </View>
+            <Switch
+              value={appLockEnabled}
+              onValueChange={updateAppLockEnabled}
+              trackColor={{ false: colors.border.default, true: colors.brand.primary }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+        </View>
+
+        {/* 測試按鈕 */}
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 12, alignItems: 'center' }}>
+          <TouchableOpacity
+            style={[styles.testNoticeBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
+            onPress={handleTestBiometrics}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.testNoticeBtnText, { color: colors.text.primary }]}>
+              🔐 測試驗證 {capability.biometryType}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={[styles.backupPrivacyNote, { color: colors.text.muted, marginTop: 8 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          💡 隱私機制：生物特徵資料全程保存在手機本機 Secure Enclave 晶片中，App 雲端絕不存取任何指紋或臉部特徵。
         </Text>
       </View>
 

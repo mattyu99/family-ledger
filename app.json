@@ -19,7 +19,8 @@
       "bundleIdentifier": "com.mattyu.familyledger",
       "infoPlist": {
         "NSCameraUsageDescription": "允許使用相機掃描台灣電子發票 QR Code",
-        "NSPhotoLibraryUsageDescription": "允許選取發票截圖進行辨識"
+        "NSPhotoLibraryUsageDescription": "允許選取發票截圖進行辨識",
+        "NSFaceIDUsageDescription": "允許使用 Face ID 驗證身分以保護家庭資產與存款隱私"
       }
     },
     "android": {
@@ -53,6 +54,12 @@
         {
           "icon": "./assets/icon.png",
           "color": "#F43F5E"
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "允許使用 Face ID 驗證身分以保護家庭資產與存款隱私"
         }
       ]
     ],

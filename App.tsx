@@ -16,6 +16,7 @@ import * as Updates from 'expo-updates';
 
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { LedgerProvider, useLedger } from './src/context/LedgerContext';
+import { PrivacyProvider } from './src/context/PrivacyContext';
 import { showAlert, showConfirm } from './src/lib/alert';
 import { parseMemoNote } from './src/lib/memo';
 import { isBillDueInMonth, isBillPaidForCurrentPeriod } from './src/lib/recurring';
@@ -66,6 +67,7 @@ import { ChangelogModal } from './src/components/ChangelogModal';
 import { CloudLedgerManagerModal } from './src/components/CloudLedgerManagerModal';
 import { ImageViewerModal } from './src/components/ImageViewerModal';
 import { LiveToastBanner } from './src/components/LiveToastBanner';
+import { AppLockOverlay } from './src/components/AppLockOverlay';
 
 // 全域文字防禦包裝
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
@@ -1161,6 +1163,9 @@ const AppContent: React.FC = () => {
           setClaimAdminModalVisible(true);
         }}
       />
+
+      {/* 🔐 全域生物辨識 / PIN 碼安全防護鎖 */}
+      <AppLockOverlay />
     </SafeAreaView>
   );
 };
@@ -1169,7 +1174,9 @@ export default function App() {
   return (
     <ThemeProvider>
       <LedgerProvider>
-        <AppContent />
+        <PrivacyProvider>
+          <AppContent />
+        </PrivacyProvider>
       </LedgerProvider>
     </ThemeProvider>
   );

@@ -7,6 +7,7 @@ import {
   TextProps,
 } from 'react-native';
 import { useLedger } from '../context/LedgerContext';
+import { usePrivacy } from '../context/PrivacyContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 
@@ -30,10 +31,19 @@ export const NetWorthWidget: React.FC<NetWorthWidgetProps> = ({
   filterMemberId,
 }) => {
   const { getNetWorthSummary, members, currentUser } = useLedger();
+  const { isPrivacyMaskActive, togglePrivacyMask } = usePrivacy();
   const { isDark, colors } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
 
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
+
+  // 隱私遮罩輔助函式
+  const maskAmount = (num: number, prefix: string = 'NT$ '): string => {
+    if (isPrivacyMaskActive) {
+      return `${prefix}••••••`;
+    }
+    return `${prefix}${num.toLocaleString()}`;
+  };
 
   const isAll = !filterMemberId || filterMemberId === 'all';
   const targetMember = useMemo(() => {
@@ -78,12 +88,22 @@ export const NetWorthWidget: React.FC<NetWorthWidgetProps> = ({
           <View style={styles.titleWrap}>
             <Text style={styles.titleIcon}>💎</Text>
             <Text style={styles.titleText}>{titleText}</Text>
+            <TouchableOpacity
+              style={styles.eyeBtn}
+              onPress={togglePrivacyMask}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.eyeBtnText}>
+                {isPrivacyMaskActive ? '🔒 遮蔽' : '👁️ 顯示'}
+              </Text>
+            </TouchableOpacity>
             <View style={styles.expandTag}>
               <Text style={styles.expandTagText}>{isExpanded ? '收起 ▲' : '詳情 ▼'}</Text>
             </View>
           </View>
           <Text style={styles.netWorthAmount}>
-            NT$ {summary.netWorth.toLocaleString()}
+            {maskAmount(summary.netWorth)}
           </Text>
         </View>
 
@@ -91,14 +111,16 @@ export const NetWorthWidget: React.FC<NetWorthWidgetProps> = ({
           <View style={styles.metricBadgeAsset}>
             <Text style={styles.metricLabelAsset}>總資產</Text>
             <Text style={styles.metricValAsset}>
-              +${summary.totalAssets.toLocaleString()}
+              {isPrivacyMaskActive ? '+$••••' : `+$${summary.totalAssets.toLocaleString()}`}
             </Text>
           </View>
 
           <View style={styles.metricBadgeLiability}>
             <Text style={styles.metricLabelLiability}>待繳負債</Text>
             <Text style={styles.metricValLiability}>
-              {summary.totalLiabilities > 0
+              {isPrivacyMaskActive
+                ? '-$••••'
+                : summary.totalLiabilities > 0
                 ? `-$${summary.totalLiabilities.toLocaleString()}`
                 : '$0'}
             </Text>
@@ -117,7 +139,7 @@ export const NetWorthWidget: React.FC<NetWorthWidgetProps> = ({
                 <Text style={styles.gridCardTitle}>銀行存款</Text>
               </View>
               <Text style={styles.gridCardAmount}>
-                NT$ {summary.bankTotal.toLocaleString()}
+                {maskAmount(summary.bankTotal)}
               </Text>
               <Text style={styles.gridCardSub}>
                 {summary.accounts.banks.length} 個銀行帳戶
@@ -131,7 +153,7 @@ export const NetWorthWidget: React.FC<NetWorthWidgetProps> = ({
                 <Text style={styles.gridCardTitle}>現金皮夾</Text>
               </View>
               <Text style={styles.gridCardAmount}>
-                NT$ {summary.cashTotal.toLocaleString()}
+                {maskAmount(summary.cashTotal)}
               </Text>
               <Text style={styles.gridCardSub}>
                 {summary.accounts.cash.length} 個現金皮包
@@ -147,7 +169,7 @@ export const NetWorthWidget: React.FC<NetWorthWidgetProps> = ({
                 <Text style={styles.gridCardTitle}>儲值卡</Text>
               </View>
               <Text style={styles.gridCardAmount}>
-                NT$ {summary.storedValueTotal.toLocaleString()}
+                {maskAmount(summary.storedValueTotal)}
               </Text>
               <Text style={styles.gridCardSub}>
                 {summary.accounts.storedValues.length} 張卡片
@@ -166,7 +188,9 @@ export const NetWorthWidget: React.FC<NetWorthWidgetProps> = ({
                   summary.creditCardTotal > 0 && styles.gridCardAmountLiability,
                 ]}
               >
-                {summary.creditCardTotal > 0
+                {isPrivacyMaskActive
+                  ? '-NT$ ••••'
+                  : summary.creditCardTotal > 0
                   ? `-NT$ ${summary.creditCardTotal.toLocaleString()}`
                   : 'NT$ 0'}
               </Text>
@@ -187,7 +211,7 @@ export const NetWorthWidget: React.FC<NetWorthWidgetProps> = ({
                     <Text style={styles.miniAccName} numberOfLines={1}>{b.name}</Text>
                   </View>
                   <Text style={styles.miniAccBalance}>
-                    NT$ {(b.balance || 0).toLocaleString()}
+                    {maskAmount(b.balance || 0)}
                   </Text>
                 </View>
               ))}
@@ -200,7 +224,7 @@ export const NetWorthWidget: React.FC<NetWorthWidgetProps> = ({
                     <Text style={styles.miniAccName} numberOfLines={1}>{c.name}</Text>
                   </View>
                   <Text style={styles.miniAccBalance}>
-                    NT$ {(c.balance || 0).toLocaleString()}
+                    {maskAmount(c.balance || 0)}
                   </Text>
                 </View>
               ))}
@@ -213,7 +237,7 @@ export const NetWorthWidget: React.FC<NetWorthWidgetProps> = ({
                     <Text style={styles.miniAccName} numberOfLines={1}>{sv.name}</Text>
                   </View>
                   <Text style={styles.miniAccBalance}>
-                    NT$ {(sv.balance || 0).toLocaleString()}
+                    {maskAmount(sv.balance || 0)}
                   </Text>
                 </View>
               ))}
@@ -231,7 +255,9 @@ export const NetWorthWidget: React.FC<NetWorthWidgetProps> = ({
                       cc.outstandingDebt > 0 && { color: '#EF4444' },
                     ]}
                   >
-                    {cc.outstandingDebt > 0
+                    {isPrivacyMaskActive
+                      ? '-NT$ ••••'
+                      : cc.outstandingDebt > 0
                       ? `-NT$ ${cc.outstandingDebt.toLocaleString()}`
                       : '已結清 $0'}
                   </Text>
@@ -309,6 +335,19 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontSize: 12.5,
       fontWeight: '700',
       color: colors.text.muted,
+    },
+    eyeBtn: {
+      backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#F1F5F9',
+      paddingHorizontal: 7,
+      paddingVertical: 1.5,
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: colors.border.default,
+    },
+    eyeBtnText: {
+      fontSize: 10,
+      fontWeight: '600',
+      color: colors.text.secondary,
     },
     expandTag: {
       backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9',

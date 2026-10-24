@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.7';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.7 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 30;
+export const APP_BUILD_REVISION = 31;
 
 // 完整版本字串 (例如 "1.0.7.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.7',
+    date: '2026-10-24',
+    title: 'Face ID 與指紋辨識生物辨識財務隱私防護鎖',
+    highlights: [
+      '🔐 生物辨識身分保護：深度整合 expo-local-authentication，支援 iOS Face ID / Touch ID 與 Android 指紋辨識 / 人臉解鎖，在 Web 與非支援環境無縫提供管理員安全 PIN 碼備援。',
+      '👁️ 資產淨值隱私小眼睛：首頁資產淨值看板與帳戶金額預設啟用星號遮罩 (NT$ ••••••)；點擊眼睛圖示透過 Face ID / 指紋輕觸驗證，即刻解除遮罩淡入真實金額。',
+      '🛡️ App 啟動與喚醒安全鎖：可自訂啟用全域 App 鎖定防護，冷啟動或自背景返回 App 時強制驗證生物辨識或輸入 4 碼 PIN 碼解鎖，徹底守護家庭帳本私密性。',
+      '⚙️ 家庭設定隱私控制台：新增隱私鎖專屬設定區塊，支援即時驗證測試、預設遮罩偏好與啟動安全鎖自由配置。',
+    ],
+  },
   {
     version: '1.0.7',
     date: '2026-10-24',
