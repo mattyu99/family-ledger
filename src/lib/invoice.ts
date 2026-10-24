@@ -507,13 +507,69 @@ export const toHalfWidth = (str: string): string => {
 };
 
 /**
+ * 智慧還原加油站/舊式 POS 機 Big5 (CP950) 編碼亂碼
+ * 常見於中油、台塑、各加盟加油站（如 ¤EαµL¹] -> 95無鉛汽油）
+ */
+export const decodeFuelMojibake = (name: string, unitPrice?: number): string => {
+  if (!name) return '';
+  // 檢查是否含有常見 Big5 mojibake 特徵字元
+  // ¤E -> 九 (A4 45)
+  // µL -> 無 (B5 4C)
+  // ¹] -> 鉛 (B9 5D)
+  // ±õ -> 柴 (B1 F5)
+  // ªo -> 油 (AA 6F)
+  if (/¤E|µL|¹\]|±õ|ªo|[¤µ¹]/.test(name)) {
+    // 優先以單價辨識
+    if (unitPrice !== undefined && unitPrice > 0) {
+      if (unitPrice >= 27.5 && unitPrice <= 30.5) return '95無鉛汽油';
+      if (unitPrice >= 25.0 && unitPrice < 27.5) return '92無鉛汽油';
+      if (unitPrice > 30.5 && unitPrice <= 35.0) return '98無鉛汽油';
+      if (unitPrice >= 23.0 && unitPrice < 25.0) return '超級柴油';
+    }
+    // 特徵字比對
+    if (/¤E[αa]|\b95\b/.test(name) || /¤E.*µL/.test(name)) return '95無鉛汽油';
+    if (/¤EG|\b92\b/.test(name)) return '92無鉛汽油';
+    if (/¤EK|\b98\b/.test(name)) return '98無鉛汽油';
+    if (/±õ|柴油/.test(name)) return '超級柴油';
+    return '95無鉛汽油';
+  }
+  return name;
+};
+
+/**
+ * 自動修補因發票二維條碼字元上限截斷的未閉合括號 (例如 愛斯飛特糖衣錠組(180 -> 愛斯飛特糖衣錠組(180))
+ */
+export const closeUnmatchedParentheses = (str: string): string => {
+  if (!str) return '';
+  let res = str;
+  const openHalf = (res.match(/\(/g) || []).length;
+  const closeHalf = (res.match(/\)/g) || []).length;
+  if (openHalf > closeHalf) {
+    res += ')'.repeat(openHalf - closeHalf);
+  }
+  const openFull = (res.match(/（/g) || []).length;
+  const closeFull = (res.match(/）/g) || []).length;
+  if (openFull > closeFull) {
+    res += '）'.repeat(openFull - closeFull);
+  }
+  const openSquare = (res.match(/\[/g) || []).length;
+  const closeSquare = (res.match(/\]/g) || []).length;
+  if (openSquare > closeSquare) {
+    res += ']'.repeat(openSquare - closeSquare);
+  }
+  return res;
+};
+
+/**
  * 智慧清理商品品名：
  * 1. 轉為標準半形字元（解決超商常見全形英文與數字問題，如 ＴＰ３７ -> TP37）。
  * 2. 去除超商 POS 機在品名前方加入的溫層/分類前置代碼（如「1白酒清炒鮮蛤義大」->「白酒清炒鮮蛤義大」）。
  * 3. 去除常見序號前綴（如「1.」、「(1)」、「01」等）。
  * 4. 嚴密保護真實品名（如「1號餐」、「2入裝」、「3杯雞」、「3M膠帶」、「77乳加」、「100%柳橙汁」等絕不誤刪）。
+ * 5. 智慧還原加油站 Big5 亂碼燃料名稱（如 ¤EαµL¹] -> 95無鉛汽油）。
+ * 6. 自動修補未閉合括號（如 愛斯飛特糖衣錠組(180 -> 愛斯飛特糖衣錠組(180)）。
  */
-export const cleanInvoiceItemName = (rawName: string): string => {
+export const cleanInvoiceItemName = (rawName: string, unitPrice?: number): string => {
   if (!rawName) return '';
   let name = toHalfWidth(rawName.trim());
 
@@ -535,7 +591,30 @@ export const cleanInvoiceItemName = (rawName: string): string => {
   const prefixRegex = new RegExp(`^[0-9](?=[\\u4e00-\\u9fa5])(?!${preservedUnits})`);
   name = name.replace(prefixRegex, '');
 
-  return name.trim();
+  // 5. 智慧還原 Big5 Mojibake 或加油站燃料名稱
+  name = decodeFuelMojibake(name, unitPrice);
+
+  // 6. 自動閉合截斷括號
+  name = closeUnmatchedParentheses(name);
+
+  const trimmed = name.trim();
+  // 若清理後為純數字或星號，視為無效品名返回空字串
+  if (/^\*+$/.test(trimmed) || /^\d+(\.\d+)?$/.test(trimmed)) {
+    return '';
+  }
+
+  return trimmed;
+};
+
+/**
+ * 通用切割發票尾端 token 序列，相容純冒號分隔、相黏之左右雙碼 (**)、換行分隔與前置星號
+ */
+export const splitInvoiceTailTokens = (tail: string): string[] => {
+  if (!tail) return [];
+  let s = tail.replace(/[\r\n\t]+/g, ':');
+  s = s.replace(/^[:*]+/, '').replace(/[:*]+$/, '');
+  s = s.replace(/[:*]*\*\*+[:*]*/g, ':');
+  return s.split(':').map(t => t.trim()).filter(Boolean);
 };
 
 /**
@@ -548,28 +627,29 @@ export const parseInvoiceItemsFromTokens = (tokens: string[]): InvoiceItem[] => 
   let i = 0;
   while (i < tokens.length) {
     const rawName = tokens[i]?.trim();
-    // 忽略空字串、純星號 (營業人自用區標記 ********** 或填充碼) 或純單碼 0 標記
-    if (!rawName || /^\*+$/.test(rawName) || rawName === '0') {
+    // 嚴格忽略空字串、純星號、純數值 (徹底排除表頭筆數與編碼被誤判為品名)
+    if (!rawName || /^\*+$/.test(rawName) || /^\d+(\.\d+)?$/.test(rawName)) {
       i++;
       continue;
     }
-    const cleanName = cleanInvoiceItemName(rawName);
-    if (!cleanName || /^\*+$/.test(cleanName) || cleanName === '0') {
-      i++;
-      continue;
-    }
-    // 檢查次一 token 是否為數量 (有效數字)
+    // 檢查次一 token 是否為數量 (有效正數)
     const nextToken = tokens[i + 1]?.trim();
     const qty = parseFloat(nextToken);
     if (isNaN(qty) || qty <= 0) {
       i++;
       continue;
     }
-    // 檢查次次一 token 是否為單價 (數字)
+    // 檢查次次一 token 是否為單價 (非負數)
     const priceToken = tokens[i + 2]?.trim();
     const unitPrice = parseFloat(priceToken);
     if (isNaN(unitPrice) || unitPrice < 0) {
       i += 2;
+      continue;
+    }
+
+    const cleanName = cleanInvoiceItemName(rawName, unitPrice);
+    if (!cleanName || /^\*+$/.test(cleanName) || /^\d+(\.\d+)?$/.test(cleanName)) {
+      i++;
       continue;
     }
 
@@ -602,46 +682,78 @@ export interface LeftQRCodeTailParseResult {
 export const parseTaiwanInvoiceLeftQRCodeItems = (qrText: string): LeftQRCodeTailParseResult => {
   if (!qrText || qrText.length <= 77) return { items: [] };
   const tail = qrText.slice(77);
-  const rawTokens = tail.split(':').map(t => t.trim());
-  const tokens = rawTokens[0] === '' ? rawTokens.slice(1) : rawTokens;
+  const tokens = splitInvoiceTailTokens(tail);
 
   let recordedItemsCount: number | undefined = undefined;
   let totalItemsCount: number | undefined = undefined;
+  let itemTokens: string[] = [];
 
-  // 檢查是否符合財政部標準延伸表頭：
-  // 欄位 0：營業人自用區 (長度 0~10 碼，常見值如 "**********"、"0"、空字串或自訂代碼)
-  // 欄位 1：二維條碼記載完整品目筆數 (整數 >= 0)
-  // 欄位 2：該張發票交易品目總筆數 (整數 >= 0)
-  // 欄位 3：中文編碼參數 (整數，如 1=Big5, 2=UTF-8, 0=Base64)
-  // 欄位 4~：商品品項明細 (品名:數量:單價...)
-  const isStandardHeader =
+  // 1. 標準 4 欄式表頭：[自用區(<=10碼), 記載筆數, 總筆數, 編碼(0|1|2)]
+  if (
     tokens.length >= 4 &&
     tokens[0].length <= 10 &&
     /^\d+$/.test(tokens[1]) &&
     /^\d+$/.test(tokens[2]) &&
-    /^\d+$/.test(tokens[3]);
-
-  if (isStandardHeader) {
-    recordedItemsCount = parseInt(tokens[1], 10);
-    totalItemsCount = parseInt(tokens[2], 10);
-    const items = parseInvoiceItemsFromTokens(tokens.slice(4));
-    return { items, recordedItemsCount, totalItemsCount };
-  }
-
-  // 寬鬆容錯：相容其他廠商延伸表頭（前欄長度 <= 10 且第 1, 2 欄為有效整數）
-  if (
-    tokens.length >= 4 &&
-    tokens[0].length <= 10 &&
-    !isNaN(parseInt(tokens[1], 10)) &&
-    !isNaN(parseInt(tokens[2], 10))
+    /^[012]$/.test(tokens[3])
   ) {
     recordedItemsCount = parseInt(tokens[1], 10);
     totalItemsCount = parseInt(tokens[2], 10);
-    const items = parseInvoiceItemsFromTokens(tokens.slice(4));
-    return { items, recordedItemsCount, totalItemsCount };
+    itemTokens = tokens.slice(4);
+  }
+  // 2. 常見 3 欄式表頭（大量 POS 機省略自用區）：[記載筆數, 總筆數, 編碼(0|1|2)]
+  else if (
+    tokens.length >= 3 &&
+    /^\d+$/.test(tokens[0]) &&
+    /^\d+$/.test(tokens[1]) &&
+    /^[012]$/.test(tokens[2])
+  ) {
+    recordedItemsCount = parseInt(tokens[0], 10);
+    totalItemsCount = parseInt(tokens[1], 10);
+    itemTokens = tokens.slice(3);
+  }
+  // 3. 極簡 2 欄式表頭（無品項或僅有筆數）：[記載筆數, 總筆數]
+  else if (
+    tokens.length === 2 &&
+    /^\d+$/.test(tokens[0]) &&
+    /^\d+$/.test(tokens[1])
+  ) {
+    recordedItemsCount = parseInt(tokens[0], 10);
+    totalItemsCount = parseInt(tokens[1], 10);
+    itemTokens = [];
+  }
+  // 4. 動態尋找第一個真實品項起始索引
+  else {
+    let firstItemIdx = -1;
+    for (let i = 0; i < tokens.length; i++) {
+      const candidate = tokens[i];
+      if (candidate && !/^\*+$/.test(candidate) && !/^\d+(\.\d+)?$/.test(candidate)) {
+        const q = parseFloat(tokens[i + 1]);
+        const p = parseFloat(tokens[i + 2]);
+        if (!isNaN(q) && q > 0 && !isNaN(p) && p >= 0) {
+          firstItemIdx = i;
+          break;
+        }
+      }
+    }
+    if (firstItemIdx !== -1) {
+      const header = tokens.slice(0, firstItemIdx);
+      if (header.length >= 2 && /^\d+$/.test(header[0]) && /^\d+$/.test(header[1])) {
+        recordedItemsCount = parseInt(header[0], 10);
+        totalItemsCount = parseInt(header[1], 10);
+      }
+      itemTokens = tokens.slice(firstItemIdx);
+    } else {
+      // 找不到任何符合品項規格的 token（如停車場 :1:1:2）
+      if (tokens.length >= 2 && /^\d+$/.test(tokens[0]) && /^\d+$/.test(tokens[1])) {
+        recordedItemsCount = parseInt(tokens[0], 10);
+        totalItemsCount = parseInt(tokens[1], 10);
+      }
+      itemTokens = [];
+    }
   }
 
-  return { items: parseInvoiceItemsFromTokens(tokens) };
+  const items = parseInvoiceItemsFromTokens(itemTokens);
+  return { items, recordedItemsCount, totalItemsCount };
 };
 
 /**
@@ -650,20 +762,8 @@ export const parseTaiwanInvoiceLeftQRCodeItems = (qrText: string): LeftQRCodeTai
  */
 export const parseTaiwanInvoiceRightQRCode = (qrText: string): InvoiceItem[] => {
   if (!qrText || typeof qrText !== 'string') return [];
-  let raw = qrText.replace(/^\uFEFF/, '').trim();
-  if (raw.startsWith('**')) {
-    raw = raw.slice(2);
-  } else if (raw.includes(':**')) {
-    raw = raw.split(':**')[1];
-  } else {
-    const idx = raw.indexOf('**');
-    if (idx !== -1) raw = raw.slice(idx + 2);
-  }
-  if (raw.startsWith(':')) {
-    raw = raw.slice(1);
-  }
-  const rawTokens = raw.split(':').map(t => t.trim());
-  return parseInvoiceItemsFromTokens(rawTokens);
+  const tokens = splitInvoiceTailTokens(qrText);
+  return parseInvoiceItemsFromTokens(tokens);
 };
 
 /**
@@ -678,11 +778,11 @@ export const mergeParsedInvoiceData = (
 
   const leftItems = (base.items || []).map(it => ({
     ...it,
-    name: cleanInvoiceItemName(it.name),
+    name: cleanInvoiceItemName(it.name, it.unitPrice),
   }));
   const rightItems = (other.items || []).map(it => ({
     ...it,
-    name: cleanInvoiceItemName(it.name),
+    name: cleanInvoiceItemName(it.name, it.unitPrice),
   }));
   const combinedItems: InvoiceItem[] = [...leftItems, ...rightItems];
 
@@ -702,9 +802,9 @@ export const formatInvoiceItemsToNote = (items: InvoiceItem[]): string => {
   return items
     .map(it => ({
       ...it,
-      name: cleanInvoiceItemName(it.name),
+      name: cleanInvoiceItemName(it.name, it.unitPrice),
     }))
-    .filter(it => it.name && !/^\*+$/.test(it.name) && it.name !== '0')
+    .filter(it => it.name && !/^\*+$/.test(it.name) && !/^\d+(\.\d+)?$/.test(it.name))
     .map(it => `${it.name}${it.quantity > 1 ? ` x${it.quantity}` : ''} $${it.amount}`)
     .join('、');
 };
@@ -850,35 +950,13 @@ export const parseTaiwanInvoiceQRCode = (
       let totalItemsCount: number | undefined = undefined;
 
       if (raw.length > 77) {
-        if (raw.includes('**')) {
-          // 同一字串同時含有左右雙條碼 (相簿截圖或剪貼簿完整內容)
-          const splitIdx = raw.indexOf('**');
-          const leftPart = raw.slice(0, splitIdx);
-          const rightPart = raw.slice(splitIdx);
-          const leftTailRes = parseTaiwanInvoiceLeftQRCodeItems(leftPart);
-          const rightItems = parseTaiwanInvoiceRightQRCode(rightPart);
-          const combined = [...leftTailRes.items, ...rightItems];
-          if (combined.length > 0) {
-            items = combined;
-            itemsNote = formatInvoiceItemsToNote(items);
-          }
-          recordedItemsCount = leftTailRes.recordedItemsCount;
-          totalItemsCount = leftTailRes.totalItemsCount;
-        } else {
-          const leftTailRes = parseTaiwanInvoiceLeftQRCodeItems(raw);
-          if (leftTailRes.items.length > 0) {
-            items = leftTailRes.items;
-            itemsNote = formatInvoiceItemsToNote(items);
-          }
-          recordedItemsCount = leftTailRes.recordedItemsCount;
-          totalItemsCount = leftTailRes.totalItemsCount;
-        }
-      }
-      if ((!items || items.length === 0) && (raw.includes(':**') || raw.includes('**'))) {
-        items = parseTaiwanInvoiceRightQRCode(raw);
-        if (items.length > 0) {
+        const leftTailRes = parseTaiwanInvoiceLeftQRCodeItems(raw);
+        if (leftTailRes.items.length > 0) {
+          items = leftTailRes.items;
           itemsNote = formatInvoiceItemsToNote(items);
         }
+        recordedItemsCount = leftTailRes.recordedItemsCount;
+        totalItemsCount = leftTailRes.totalItemsCount;
       }
 
       return {
