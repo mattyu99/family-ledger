@@ -21,203 +21,57 @@ import {
   subscribeOfflineQueue,
 } from '../lib/offlineQueue';
 
-const safeAlert = (title: string, message: string) => {
-  if (Platform.OS === 'web') {
-    if (typeof window !== 'undefined') window.alert(`${title}\n\n${message}`);
-  } else {
-    Alert.alert(title, message);
-  }
-};
 
-// UUID 格式校驗函式（本地內建，避免打包快取未更新）
-const isValidUUID = (str?: string | null): boolean => {
-  if (!str || typeof str !== 'string') return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
-};
+// 常數與預設示範資料已模組化抽離至 src/constants/ledgerDefaults.ts
+import {
+  DEMO_LEDGER_ID,
+  DEMO_USER_DAD,
+  DEMO_USER_MOM,
+  DEMO_USER_KID,
+  DEFAULT_CATEGORIES,
+  DEFAULT_MEMBERS,
+  DEFAULT_LEDGER,
+  DEMO_RECURRING_RULES,
+  INITIAL_TRANSACTIONS,
+  STORAGE_KEYS,
+  DEFAULT_POPULAR_MERCHANTS,
+  KNOWN_CATEGORY_UUIDS,
+  isValidUUID,
+} from '../constants/ledgerDefaults';
 
-// UUID 格式的示範常數，確保離線與 PostgreSQL UUID 格式 100% 相容
-const DEMO_LEDGER_ID = '10000000-0000-4000-8000-000000000001';
-const DEMO_USER_DAD = '20000000-0000-4000-8000-000000000001';
-const DEMO_USER_MOM = '20000000-0000-4000-8000-000000000002';
-const DEMO_USER_KID = '20000000-0000-4000-8000-000000000003';
+// 無狀態純工具函式已模組化抽離至 src/lib/ledgerUtils.ts
+import {
+  safeAlert,
+  hydrateTransactionWithInvoice,
+  deduplicateMembers,
+  buildMemberAliasMap,
+  mergePaymentMethods,
+  isAccountBoundToUser,
+} from '../lib/ledgerUtils';
 
-export const DEFAULT_CATEGORIES: Category[] = [
-  { id: '30000000-0000-4000-8000-000000000001', name: '餐飲伙食', icon: '🍲', color: '#EF4444', type: 'expense', sort_order: 1 },
-  { id: '30000000-0000-4000-8000-000000000002', name: '生鮮超市', icon: '🛒', color: '#F59E0B', type: 'expense', sort_order: 2 },
-  { id: '30000000-0000-4000-8000-000000000003', name: '居家水電', icon: '💡', color: '#3B82F6', type: 'expense', sort_order: 3 },
-  { id: '30000000-0000-4000-8000-000000000004', name: '交通出行', icon: '🚗', color: '#10B981', type: 'expense', sort_order: 4 },
-  { id: '30000000-0000-4000-8000-000000000005', name: '休閒娛樂', icon: '🎬', color: '#8B5CF6', type: 'expense', sort_order: 5 },
-  { id: '30000000-0000-4000-8000-000000000006', name: '醫療保健', icon: '💊', color: '#EC4899', type: 'expense', sort_order: 6 },
-  { id: '30000000-0000-4000-8000-000000000007', name: '育兒教育', icon: '👶', color: '#06B6D4', type: 'expense', sort_order: 7 },
-  { id: '30000000-0000-4000-8000-000000000008', name: '薪資收入', icon: '💰', color: '#059669', type: 'income', sort_order: 8 },
-  { id: '30000000-0000-4000-8000-000000000009', name: '投資理財', icon: '📈', color: '#2563EB', type: 'income', sort_order: 9 },
-  { id: '30000000-0000-4000-8000-000000000010', name: '零用錢', icon: '💵', color: '#10B981', type: 'income', sort_order: 10 },
-  { id: '30000000-0000-4000-8000-000000000011', name: '獎金回饋', icon: '🎁', color: '#F59E0B', type: 'income', sort_order: 11 },
-];
+// 領域狀態 Hooks
+import { useLedgerBudget } from '../hooks/useLedgerBudget';
+import { usePaymentAccounts } from '../hooks/usePaymentAccounts';
+import { useRecurringRules } from '../hooks/useRecurringRules';
+import { useDeviceAuth } from '../hooks/useDeviceAuth';
+import { useLedgerBackup } from '../hooks/useLedgerBackup';
 
-export const DEFAULT_MEMBERS: Profile[] = [
-  { id: DEMO_USER_DAD, email: 'dad@family.local', display_name: '爸爸 (我)', avatar_url: '👨', role: 'owner' },
-  { id: DEMO_USER_MOM, email: 'mom@family.local', display_name: '媽媽', avatar_url: '👩', role: 'member' },
-  { id: DEMO_USER_KID, email: 'kid@family.local', display_name: '小寶', avatar_url: '👦', role: 'member' },
-];
+// 保持 100% 向後相容導出，確保全 App 任何既有 import 完全不壞
+export {
+  DEFAULT_CATEGORIES,
+  DEFAULT_MEMBERS,
+  DEFAULT_LEDGER,
+  DEMO_RECURRING_RULES,
+  DEFAULT_POPULAR_MERCHANTS,
+  KNOWN_CATEGORY_UUIDS,
+} from '../constants/ledgerDefaults';
 
-export const DEFAULT_LEDGER: Ledger = {
-  id: DEMO_LEDGER_ID,
-  name: '幸福小窩家庭公帳',
-  description: '全家人日常採買與生活開銷',
-  currency: 'TWD',
-  created_by: DEMO_USER_DAD,
-  created_at: new Date().toISOString(),
-};
-
-export const DEMO_RECURRING_RULES: RecurringRule[] = DEFAULT_RECURRING_PRESETS.map((preset, index) => ({
-  id: `60000000-0000-4000-8000-00000000000${index + 1}`,
-  ledger_id: DEMO_LEDGER_ID,
-  name: preset.name,
-  amount_type: preset.amount_type,
-  default_amount: preset.default_amount,
-  category_id: DEFAULT_CATEGORIES[2].id, // 居家水電
-  merchant: preset.merchant,
-  paid_by: DEMO_USER_DAD,
-  payment_method: preset.payment_method,
-  account_id: preset.payment_method === 'credit_card' ? '50000000-0000-4000-8000-000000000001' : undefined,
-  frequency: preset.frequency,
-  due_day: preset.due_day,
-  bimonthly_start_month: (preset as any).bimonthly_start_month,
-  is_active: true,
-  last_recorded_period: undefined,
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
-}));
-
-const INITIAL_TRANSACTIONS: Transaction[] = [
-  {
-    id: '40000000-0000-4000-8000-000000000001',
-    ledger_id: DEMO_LEDGER_ID,
-    creator_id: DEMO_USER_DAD,
-    category_id: DEFAULT_CATEGORIES[1].id,
-    amount: 1450,
-    type: 'expense',
-    paid_by: DEMO_USER_DAD,
-    merchant: '好市多',
-    payment_method: 'credit_card',
-    account_id: '50000000-0000-4000-8000-000000000001', // 富邦 Costco
-    invoice_number: 'AB-88888888',
-    invoice_random_code: '1688',
-    transacted_at: new Date(Date.now() - 3600000 * 4).toISOString(),
-    note: 'Costco 週末採買牛奶與生鮮',
-    is_settled: false,
-    is_reconciled: false,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: '40000000-0000-4000-8000-000000000002',
-    ledger_id: DEMO_LEDGER_ID,
-    creator_id: DEMO_USER_MOM,
-    category_id: DEFAULT_CATEGORIES[0].id,
-    amount: 680,
-    type: 'expense',
-    paid_by: DEMO_USER_MOM,
-    merchant: '日式料理',
-    payment_method: 'line_pay',
-    account_id: '50000000-0000-4000-8000-000000000002', // 國泰 CUBE 卡
-    transacted_at: new Date(Date.now() - 3600000 * 20).toISOString(),
-    note: '全家日式定食晚餐',
-    is_settled: false,
-    is_reconciled: false,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: '40000000-0000-4000-8000-000000000005',
-    ledger_id: DEMO_LEDGER_ID,
-    creator_id: DEMO_USER_DAD,
-    category_id: DEFAULT_CATEGORIES[3].id,
-    amount: 35,
-    type: 'expense',
-    paid_by: DEMO_USER_DAD,
-    merchant: '台北捷運',
-    payment_method: 'stored_value',
-    account_id: '50000000-0000-4000-8000-000000000003', // 爸爸悠遊卡
-    transacted_at: new Date(Date.now() - 3600000 * 30).toISOString(),
-    note: '上班捷運通勤',
-    is_settled: false,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: '40000000-0000-4000-8000-000000000003',
-    ledger_id: DEMO_LEDGER_ID,
-    creator_id: DEMO_USER_DAD,
-    category_id: DEFAULT_CATEGORIES[2].id,
-    amount: 2340,
-    type: 'expense',
-    paid_by: DEMO_USER_DAD,
-    merchant: '台灣電力公司',
-    payment_method: 'transfer',
-    transacted_at: new Date(Date.now() - 3600000 * 48).toISOString(),
-    note: '台電夏季電費代繳',
-    is_settled: false,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: '40000000-0000-4000-8000-000000000004',
-    ledger_id: DEMO_LEDGER_ID,
-    creator_id: DEMO_USER_DAD,
-    category_id: DEFAULT_CATEGORIES[7].id,
-    amount: 65000,
-    type: 'income',
-    paid_by: DEMO_USER_DAD,
-    payment_method: 'transfer',
-    transacted_at: new Date(Date.now() - 3600000 * 72).toISOString(),
-    note: '本月薪資入帳',
-    is_settled: true,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: '40000000-0000-4000-8000-000000000006',
-    ledger_id: DEMO_LEDGER_ID,
-    creator_id: DEMO_USER_DAD,
-    category_id: DEFAULT_CATEGORIES[6].id,
-    amount: 1000,
-    type: 'expense',
-    paid_by: DEMO_USER_DAD,
-    merchant: '小寶',
-    payment_method: 'cash',
-    transacted_at: new Date(Date.now() - 3600000 * 96).toISOString(),
-    note: '給 小寶 零用錢',
-    is_settled: true,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: '40000000-0000-4000-8000-000000000007',
-    ledger_id: DEMO_LEDGER_ID,
-    creator_id: DEMO_USER_DAD,
-    category_id: DEFAULT_CATEGORIES[9].id,
-    amount: 1000,
-    type: 'income',
-    paid_by: DEMO_USER_KID,
-    merchant: '爸爸',
-    payment_method: 'cash',
-    transacted_at: new Date(Date.now() - 3600000 * 96 + 1000).toISOString(),
-    note: '爸爸 給的零用錢',
-    is_settled: true,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: '40000000-0000-4000-8000-000000000008',
-    ledger_id: DEMO_LEDGER_ID,
-    creator_id: DEMO_USER_KID,
-    category_id: DEFAULT_CATEGORIES[0].id,
-    amount: 120,
-    type: 'expense',
-    paid_by: DEMO_USER_KID,
-    merchant: '7-11',
-    payment_method: 'cash',
-    transacted_at: new Date(Date.now() - 3600000 * 12).toISOString(),
-    note: '放學點心麵包與牛奶',
-    is_settled: true,
-    created_at: new Date().toISOString(),
-  },
-];
+export {
+  hydrateTransactionWithInvoice,
+  deduplicateMembers,
+  buildMemberAliasMap,
+  mergePaymentMethods,
+} from '../lib/ledgerUtils';
 
 export interface LiveToastNotification {
   id: string;
@@ -551,335 +405,6 @@ interface LedgerContextType {
 
 const LedgerContext = createContext<LedgerContextType | null>(null);
 
-/**
- * 發票屬性解析與實時對獎裝飾函式：自動補齊發票號碼、期別與最新中獎狀態
- */
-export const hydrateTransactionWithInvoice = (t: any): Transaction => {
-  if (!t) return t;
-
-  let invoiceNumber = t.invoice_number;
-  let periodKey = t.invoice_period;
-  let randomCode = t.invoice_random_code;
-  let invoiceStatus = t.invoice_status;
-  let prizeAmount = t.invoice_prize_amount;
-  let prizeName = t.invoice_prize_name;
-
-  // 1. 若缺少 invoice_number，嘗試從 note 中解碼
-  if (!invoiceNumber && t.note) {
-    const decoded = decodeInvoiceTag(t.note);
-    if (decoded?.invoiceNumber) {
-      invoiceNumber = decoded.invoiceNumber;
-      periodKey = periodKey || decoded.periodKey;
-      randomCode = randomCode || decoded.randomCode;
-      invoiceStatus = invoiceStatus || decoded.status;
-      prizeAmount = prizeAmount !== undefined ? prizeAmount : decoded.prizeAmount;
-      prizeName = prizeName || decoded.prizeName;
-    }
-  }
-
-  // 2. 若有發票號碼，確保期別計算與實時開獎比對
-  if (invoiceNumber) {
-    invoiceNumber = formatInvoiceNumber(invoiceNumber);
-
-    // 發票開獎期別嚴格由消費發生日期 (transacted_at) 唯一決定，
-    // 自動即時校正先前因日期格式解析瑕疵而誤存於 note 標籤中的歷史期別
-    if (t.transacted_at) {
-      periodKey = getInvoicePeriodKey(t.transacted_at).periodKey;
-    } else if (!periodKey) {
-      periodKey = getInvoicePeriodKey(new Date()).periodKey;
-    }
-
-    // 若尚未領獎，自動比對官方開獎號碼庫
-    if (periodKey && invoiceStatus !== 'claimed') {
-      const check = checkInvoiceWinning(invoiceNumber, periodKey);
-      if (check.isDrawn) {
-        if (check.isWon) {
-          invoiceStatus = 'won';
-          prizeAmount = check.prizeAmount;
-          prizeName = check.prizeName;
-        } else {
-          invoiceStatus = 'missed';
-          prizeAmount = 0;
-          prizeName = undefined;
-        }
-      } else {
-        invoiceStatus = 'pending';
-        prizeAmount = 0;
-        prizeName = undefined;
-      }
-    }
-
-    return {
-      ...t,
-      invoice_number: invoiceNumber,
-      invoice_period: periodKey,
-      invoice_random_code: randomCode,
-      invoice_status: invoiceStatus,
-      invoice_prize_amount: prizeAmount,
-      invoice_prize_name: prizeName,
-    };
-  }
-
-  return t;
-};
-
-// 成員名冊去重函式：相同 display_name 或相同 Google 綁定信箱者視為同一位家庭成員（支援多台手機/電腦認領同一身分及 Google 帳號授權）
-export const deduplicateMembers = (memberList: Profile[]): Profile[] => {
-  const result: Profile[] = [];
-  const seenNames = new Set<string>();
-  const seenEmails = new Set<string>();
-
-  // 排除殘留之訪客寶可夢與歷史幽靈成員，確保名冊永遠純淨
-  const cleanList = memberList.filter(m =>
-    m.id !== '9b017d89-b21f-4638-b076-5a7629e2dda5' &&
-    m.id !== 'e6a2d1ec-3b2a-495f-b24e-71c2647d9a86' &&
-    (m.display_name || '').trim() !== '寶可夢'
-  );
-
-  // 步驟一：先將已綁定 Google 且加鎖之重要受保護成員放前，確保保留自訂家庭稱謂（如「智爸」優先於「Matt Yu」）
-  const sortedList = [...cleanList].sort((a, b) => {
-    // 1. 已加鎖保護者優先
-    if (a.is_locked && !b.is_locked) return -1;
-    if (!a.is_locked && b.is_locked) return 1;
-    // 2. 具有自訂稱謂（非 Google 預設姓名、頭像不是圖片網址）者優先
-    const aIsUrl = Boolean(a.avatar_url && (a.avatar_url.startsWith('http://') || a.avatar_url.startsWith('https://')));
-    const bIsUrl = Boolean(b.avatar_url && (b.avatar_url.startsWith('http://') || b.avatar_url.startsWith('https://')));
-    if (!aIsUrl && bIsUrl) return -1;
-    if (aIsUrl && !bIsUrl) return 1;
-    // 3. owner / admin 優先
-    if ((a.role === 'owner' || a.role === 'admin') && b.role === 'member') return -1;
-    if (a.role === 'member' && (b.role === 'owner' || b.role === 'admin')) return 1;
-    return 0;
-  });
-
-  for (const m of sortedList) {
-    const nameKey = (m.display_name || '').trim().toLowerCase();
-    const emailKey = (m.auth_email || m.email || '').trim().toLowerCase();
-
-    // 檢查是否已有名稱相同，或已綁定信箱相同且其中一方為 Google 影子帳號的既有成員
-    let existing: Profile | undefined = undefined;
-
-    if (nameKey && seenNames.has(nameKey)) {
-      existing = result.find(em => (em.display_name || '').trim().toLowerCase() === nameKey);
-    } else if (emailKey && seenEmails.has(emailKey)) {
-      // 僅在其中一個是 Google 授權所產生的影子帳號（大頭貼為 HTTP 圖片網址，或稱謂為未加鎖的 Google 帳號姓名）時，才與既有自訂家庭稱謂合併！
-      // 若兩者皆為獨立的自訂稱謂（例如「智爸」與「倉鼠」），絕對不能互相合併覆蓋！
-      existing = result.find(em => {
-        const emEmail = (em.auth_email || em.email || '').trim().toLowerCase();
-        if (emEmail !== emailKey) return false;
-        const mIsUrl = Boolean(m.avatar_url && (m.avatar_url.startsWith('http://') || m.avatar_url.startsWith('https://')));
-        const emIsUrl = Boolean(em.avatar_url && (em.avatar_url.startsWith('http://') || em.avatar_url.startsWith('https://')));
-        const isSameName = (em.display_name || '').trim().toLowerCase() === nameKey;
-        return isSameName || mIsUrl || emIsUrl;
-      });
-    }
-
-    if (!existing) {
-      if (nameKey) seenNames.add(nameKey);
-      if (emailKey) seenEmails.add(emailKey);
-      result.push({ ...m });
-    } else {
-      // 合併屬性：保留較高的權限與已綁定資訊
-      if (m.role === 'owner') existing.role = 'owner';
-      else if (m.role === 'admin' && existing.role !== 'owner') existing.role = 'admin';
-      if (m.auth_email && !existing.auth_email) existing.auth_email = m.auth_email;
-      if (m.auth_provider && !existing.auth_provider) existing.auth_provider = m.auth_provider;
-      if (m.is_locked) existing.is_locked = true;
-      if (m.claim_code && !existing.claim_code) existing.claim_code = m.claim_code;
-      if (m.claim_code_expires_at && !existing.claim_code_expires_at) existing.claim_code_expires_at = m.claim_code_expires_at;
-      // 保留正常 Emoji 大頭貼（若 existing 的是 URL 而 m 是 Emoji，換回 Emoji）
-      if (existing.avatar_url && (existing.avatar_url.startsWith('http://') || existing.avatar_url.startsWith('https://')) && m.avatar_url && !m.avatar_url.startsWith('http')) {
-        existing.avatar_url = m.avatar_url;
-      }
-    }
-  }
-  return result;
-};
-
-// 建立成員別名映射表：將多台裝置同名 UUID、示範資料常數 UUID 等均映射至去重後之主要 Profile
-export const buildMemberAliasMap = (
-  deduped: Profile[],
-  loaded: Profile[],
-  extraProfiles?: Profile[]
-): Record<string, Profile> => {
-  const map: Record<string, Profile> = {};
-
-  // 1. 主要成員自身映射
-  for (const m of deduped) {
-    map[m.id] = m;
-  }
-
-  // 2. 雲端所有關聯成員（包含不同裝置登入但同一暱稱者、以及 Google OAuth 幽靈帳號）
-  for (const raw of loaded) {
-    const rawName = (raw.display_name || '').trim().toLowerCase();
-    const rawEmail = (raw.auth_email || raw.email || '').trim().toLowerCase();
-
-    // 優先以名稱比對
-    let canonical = deduped.find(
-      m => (m.display_name || '').trim().toLowerCase() === rawName
-    );
-    // 次之以已綁定之 Google 信箱比對 (僅比對 Matt Yu 圖片影子成員，不跨稱謂亂對齊)
-    if (!canonical && rawEmail) {
-      canonical = deduped.find(
-        m => {
-          const mEmail = (m.auth_email || m.email || '').trim().toLowerCase();
-          if (mEmail !== rawEmail) return false;
-          const rawIsUrl = Boolean(raw.avatar_url && (raw.avatar_url.startsWith('http://') || raw.avatar_url.startsWith('https://')));
-          const mIsUrl = Boolean(m.avatar_url && (m.avatar_url.startsWith('http://') || m.avatar_url.startsWith('https://')));
-          return (m.display_name || '').trim().toLowerCase() === rawName || rawIsUrl || mIsUrl;
-        }
-      );
-    }
-    map[raw.id] = canonical || raw;
-  }
-
-  // 3. 額外查詢之付款人 Profile
-  if (extraProfiles) {
-    for (const p of extraProfiles) {
-      const pName = (p.display_name || '').trim().toLowerCase();
-      const pEmail = (p.auth_email || p.email || '').trim().toLowerCase();
-      let canonical = deduped.find(
-        m => (m.display_name || '').trim().toLowerCase() === pName
-      );
-      if (!canonical && pEmail) {
-        canonical = deduped.find(
-          m => {
-            const mEmail = (m.auth_email || m.email || '').trim().toLowerCase();
-            if (mEmail !== pEmail) return false;
-            const pIsUrl = Boolean(p.avatar_url && (p.avatar_url.startsWith('http://') || p.avatar_url.startsWith('https://')));
-            const mIsUrl = Boolean(m.avatar_url && (m.avatar_url.startsWith('http://') || m.avatar_url.startsWith('https://')));
-            return (m.display_name || '').trim().toLowerCase() === pName || pIsUrl || mIsUrl;
-          }
-        );
-      }
-      map[p.id] = canonical || p;
-    }
-  }
-
-  // 4. 歷史與示範帳目常數回退
-  if (deduped.length > 0) {
-    const dad = deduped.find(m => m.display_name.includes('爸') || m.role === 'owner') || deduped[0];
-    const mom = deduped.find(m => m.display_name.includes('媽')) || deduped[1] || dad;
-    const kid = deduped.find(m => m.display_name.includes('寶') || m.display_name.includes('孩')) || deduped[2] || dad;
-    map[DEMO_USER_DAD] = dad;
-    map[DEMO_USER_MOM] = mom;
-    map[DEMO_USER_KID] = kid;
-  }
-
-  return map;
-};
-
-// 合併常用付款方式：定義（雲端與系統預設）共享，啟用開關（is_enabled）與排序（sort_order）由各裝置本機獨立維持
-export const mergePaymentMethods = (
-  definitions: CustomPaymentMethod[],
-  localPreferences?: CustomPaymentMethod[] | null
-): CustomPaymentMethod[] => {
-  if (!localPreferences || localPreferences.length === 0) {
-    return definitions.map((m, idx) => ({
-      ...m,
-      is_enabled: m.id === 'cash' ? true : (m.is_enabled ?? true),
-      sort_order: idx + 1,
-    }));
-  }
-
-  // 本機偏好設定映射表 (以 id 與 name 雙重相容)
-  const localMap = new Map<string, { is_enabled: boolean; sort_order: number }>();
-  localPreferences.forEach((m, idx) => {
-    const isEnabled = m.id === 'cash' ? true : m.is_enabled !== false;
-    const sortOrder = m.sort_order ?? (idx + 1);
-    localMap.set(m.id, { is_enabled: isEnabled, sort_order: sortOrder });
-    if (m.name) {
-      localMap.set(m.name, { is_enabled: isEnabled, sort_order: sortOrder });
-    }
-  });
-
-  const merged: CustomPaymentMethod[] = [];
-  definitions.forEach((def, idx) => {
-    const localPref = localMap.get(def.id) || localMap.get(def.name);
-    if (localPref) {
-      // 繼承雲端/預設的名稱、圖示、色彩與綁卡設定，但保留本地使用者的個人開關與排序
-      merged.push({
-        ...def,
-        is_enabled: def.id === 'cash' ? true : localPref.is_enabled,
-        sort_order: localPref.sort_order,
-      });
-    } else {
-      // 雲端新增項目（本機尚未看過，如管理員新增的 Google Pay）：預設開啟，排在最後
-      merged.push({
-        ...def,
-        is_enabled: true,
-        sort_order: 900 + idx,
-      });
-    }
-  });
-
-  // 依據本機排序偏好由小到大排序
-  merged.sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999));
-
-  // 重整為連續 1-indexed 順序
-  return merged.map((m, idx) => ({ ...m, sort_order: idx + 1 }));
-};
-
-const STORAGE_KEYS = {
-  TRANSACTIONS: '@family_ledger_transactions',
-  CURRENT_USER: '@family_ledger_current_user',
-  MEMBERS: '@family_ledger_members',
-  CATEGORIES: '@family_ledger_categories',
-  DEVICE_BOUND: '@family_ledger_device_bound',
-  LEDGER: '@family_ledger_current',
-  HAS_JOINED: '@family_ledger_has_joined',
-  INVITE_CODE: '@family_ledger_invite_code',
-  USER_ROLE: '@family_ledger_user_role',
-  ADMIN_PIN: '@family_ledger_admin_pin',
-  ALIAS_MAP: '@family_ledger_alias_map',
-  DELETED_TX_IDS: '@family_ledger_deleted_tx_ids',
-  LAST_BACKUP_AT: '@family_ledger_last_backup_at',
-  AUTO_BACKUP_CONFIG: '@family_ledger_auto_backup_config',
-  RECENT_MERCHANTS: '@family_ledger_recent_merchants',
-  RECENT_MEMO_TAGS: '@family_ledger_recent_memo_tags',
-  PAYMENT_ACCOUNTS: '@family_ledger_payment_accounts',
-  DELETED_ACCOUNT_IDS: '@family_ledger_deleted_account_ids',
-  ACCOUNTS_INITIALIZED: '@family_ledger_accounts_initialized',
-  PAYMENT_METHODS: '@family_ledger_payment_methods',
-  RECURRING_RULES: '@family_ledger_recurring_rules',
-  BUDGET: '@family_ledger_budget',
-  LAST_VISITED_PREFIX: '@family_ledger_last_visited_',
-  DEVICE_ID: '@family_ledger_device_id',
-  MEMBER_DEVICES: '@family_ledger_member_devices',
-  LEDGER_READ_ONLY: '@family_ledger_read_only',
-  LEDGER_ALLOW_NEW_MEMBERS: '@family_ledger_allow_new_members',
-  LEDGERS: '@family_ledger_list',
-  TAX_ID_MERCHANTS: '@family_ledger_tax_id_merchants',
-};
-
-// 預設常用店家快捷建議清單（涵蓋台灣家庭最普遍的日常採買店家）
-export const DEFAULT_POPULAR_MERCHANTS = [
-  '全聯',
-  '好市多',
-  '7-11',
-  '全家',
-  '家樂福',
-  '中油',
-  '蝦皮',
-  '大潤發',
-  '美而美',
-  '50嵐',
-];
-
-// 已知雲端資料庫分類 UUID 映射表（確保本機離線或 cold start 時舊交易分類 100% 完整解析）
-export const KNOWN_CATEGORY_UUIDS: Record<string, Partial<Category>> = {
-  'ed4b17ce-c9db-4986-88d3-fa5f2f391e2c': { name: '餐飲伙食', icon: '🍲', color: '#EF4444', type: 'expense' },
-  '463e7f0e-0998-40bc-8cc2-ca93db086e62': { name: '生鮮超市', icon: '🛒', color: '#F59E0B', type: 'expense' },
-  '605b2f24-9b67-4890-8515-bc3e28622674': { name: '居家水電', icon: '💡', color: '#3B82F6', type: 'expense' },
-  'd5eb5014-9b29-436f-ac6e-06e4faf8dcdd': { name: '交通出行', icon: '🚗', color: '#10B981', type: 'expense' },
-  'bd4d2fc6-6df9-49b5-9071-9574d0a19e32': { name: '休閒娛樂', icon: '🎬', color: '#8B5CF6', type: 'expense' },
-  '8cb7fefd-c8a1-4b2d-a464-8d78c4d6e423': { name: '醫療保健', icon: '💊', color: '#EC4899', type: 'expense' },
-  '3b4258cb-f8c3-4eb0-958a-009a86d68a86': { name: '育兒教育', icon: '👶', color: '#06B6D4', type: 'expense' },
-  '52678d37-fed9-4596-90dd-4f606bc62c0b': { name: '薪資收入', icon: '💰', color: '#059669', type: 'income' },
-  'c5648d3b-dfcb-4aa0-b230-a9074bfa58f5': { name: '投資理財', icon: '📈', color: '#2563EB', type: 'income' },
-  '30000000-0000-4000-8000-000000000010': { name: '零用錢', icon: '💵', color: '#10B981', type: 'income' },
-};
-
 export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentLedger, setCurrentLedger] = useState<Ledger>(DEFAULT_LEDGER);
   const [ledgers, setLedgers] = useState<Ledger[]>([DEFAULT_LEDGER]);
@@ -888,9 +413,6 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [memberAliasMap, setMemberAliasMap] = useState<Record<string, Profile>>({});
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [transactions, setTransactions] = useState<Transaction[]>(() => INITIAL_TRANSACTIONS.map(hydrateTransactionWithInvoice));
-  const [paymentAccounts, setPaymentAccounts] = useState<PaymentAccount[]>(DEMO_PAYMENT_ACCOUNTS);
-  const [paymentMethods, setPaymentMethods] = useState<CustomPaymentMethod[]>(DEFAULT_PAYMENT_METHODS);
-  const [recurringRules, setRecurringRules] = useState<RecurringRule[]>([]);
   const [currentUser, setCurrentUser] = useState<Profile>(DEFAULT_MEMBERS[0]);
   const [isCloudSynced, setIsCloudSynced] = useState<boolean>(false);
   const [historySyncProgress, setHistorySyncProgress] = useState<{ loaded: number; total: number } | null>(null);
@@ -919,16 +441,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.warn('本機快取寫入容量防禦保護:', err);
     }
   };
-  const [isDeviceBound, setIsDeviceBound] = useState<boolean>(false);
+
   const [hasJoinedLedger, setHasJoinedLedger] = useState<boolean>(true);
   const [inviteCode, setInviteCode] = useState<string>('FAM-8823');
-  const [adminPin, setAdminPin] = useState<string>('8888');
-  const [userRole, setUserRole] = useState<'owner' | 'admin' | 'member'>('member');
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
-  const [memberDevices, setMemberDevices] = useState<MemberDevice[]>([]);
-  const [currentDeviceId, setCurrentDeviceId] = useState<string>('');
-  const [isGoogleAuthenticated, setIsGoogleAuthenticated] = useState<boolean>(false);
-  const [googleUserEmail, setGoogleUserEmail] = useState<string | null>(null);
 
   // 即時 App 內通知泡泡 (In-App Toast Notification)
   const [liveToast, setLiveToast] = useState<LiveToastNotification | null>(null);
@@ -960,30 +476,6 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return Object.entries(unreadLedgerMap).some(([lid, cnt]) => lid !== currentLedger.id && cnt > 0);
   }, [unreadLedgerMap, currentLedger.id]);
 
-  // 定期備份設定與上次備份記錄
-  const [lastBackupAt, setLastBackupAt] = useState<string | null>(null);
-  const [autoBackupEnabled, setAutoBackupEnabled] = useState<boolean>(true);
-  const [autoBackupInterval, setAutoBackupInterval] = useState<7 | 14 | 30>(7);
-
-  const recordBackupComplete = async () => {
-    const nowIso = new Date().toISOString();
-    setLastBackupAt(nowIso);
-    try {
-      await AsyncStorage.setItem(STORAGE_KEYS.LAST_BACKUP_AT, nowIso);
-    } catch {}
-  };
-
-  const updateAutoBackupConfig = async (enabled: boolean, intervalDays: 7 | 14 | 30) => {
-    setAutoBackupEnabled(enabled);
-    setAutoBackupInterval(intervalDays);
-    try {
-      await AsyncStorage.setItem(
-        STORAGE_KEYS.AUTO_BACKUP_CONFIG,
-        JSON.stringify({ enabled, intervalDays })
-      );
-    } catch {}
-  };
-
   // 智慧店家 / 對象自學習名單與雲端欄位探測
   const [recentMerchants, setRecentMerchants] = useState<string[]>(DEFAULT_POPULAR_MERCHANTS);
   const [recentMemoTags, setRecentMemoTags] = useState<string[]>(DEFAULT_MEMO_QUICK_TAGS);
@@ -993,7 +485,6 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const recentToastTimestampsRef = useRef<Map<string, number>>(new Map());
   const recentUpdatersRef = useRef<Map<string, { updaterId: string; updaterName: string; updaterAvatar: string; timestamp: number }>>(new Map());
 
-  // 輔助函式：避免 Realtime 多重通道（廣播 + 資料庫變更）在 4 秒內重複彈出相同通知泡泡
   const shouldShowToast = React.useCallback((id: string, actionType: string): boolean => {
     const key = `${id}:${actionType}`;
     const now = Date.now();
@@ -1008,7 +499,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const recordMerchant = React.useCallback(async (m: string) => {
     const clean = (m || '').trim();
     if (!clean) return;
-    setRecentMerchants((prev) => {
+    setRecentMerchants(prev => {
       const filtered = prev.filter(item => item.toLowerCase() !== clean.toLowerCase());
       const updated = [clean, ...filtered].slice(0, 50);
       AsyncStorage.setItem(STORAGE_KEYS.RECENT_MERCHANTS, JSON.stringify(updated)).catch(() => {});
@@ -1016,15 +507,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   }, []);
 
-  // 統一編號與自訂店家記憶對照
   const [taxIdMerchantMap, setTaxIdMerchantMap] = useState<Record<string, string>>({});
 
   const recordTaxIdMerchant = React.useCallback(async (taxId: string, merchantName: string) => {
     const cleanId = (taxId || '').trim();
     const cleanName = (merchantName || '').trim();
     if (!cleanId || !cleanName) return;
+
     setTaxIdMerchantMap(prev => {
-      if (prev[cleanId] === cleanName) return prev;
       const updated = { ...prev, [cleanId]: cleanName };
       AsyncStorage.setItem(STORAGE_KEYS.TAX_ID_MERCHANTS, JSON.stringify(updated)).catch(() => {});
       return updated;
@@ -1033,8 +523,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const recordMemoTag = React.useCallback(async (tag: string) => {
     const clean = (tag || '').trim();
-    if (!clean || clean.length < 2 || clean.length > 20 || clean.startsWith('http')) return;
-    setRecentMemoTags((prev) => {
+    if (!clean) return;
+    setRecentMemoTags(prev => {
       const filtered = prev.filter(item => item.toLowerCase() !== clean.toLowerCase());
       const updated = [clean, ...filtered].slice(0, 30);
       AsyncStorage.setItem(STORAGE_KEYS.RECENT_MEMO_TAGS, JSON.stringify(updated)).catch(() => {});
@@ -1044,148 +534,264 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const removeRecentMemoTag = React.useCallback(async (tag: string) => {
     const clean = (tag || '').trim();
-    if (!clean) return;
-    setRecentMemoTags((prev) => {
+    setRecentMemoTags(prev => {
       const updated = prev.filter(item => item.toLowerCase() !== clean.toLowerCase());
       AsyncStorage.setItem(STORAGE_KEYS.RECENT_MEMO_TAGS, JSON.stringify(updated)).catch(() => {});
       return updated;
     });
   }, []);
 
-  // 透過 ID 取得標準成員資料（自動穿透多裝置 UUID、別名表、歷史示範常數）
   const getMemberById = React.useCallback(
     (id?: string): Profile | undefined => {
       if (!id) return undefined;
-      // 1. 直查去重後主要成員名單
       const direct = members.find(m => m.id === id);
       if (direct) return direct;
-
-      // 2. 查別名映射表
-      if (memberAliasMap[id]) return memberAliasMap[id];
-
-      // 3. 示範常數映射
-      if (id === DEMO_USER_DAD) {
-        return members.find(m => m.display_name.includes('爸') || m.role === 'owner') || members[0];
-      }
-      if (id === DEMO_USER_MOM) {
-        return members.find(m => m.display_name.includes('媽')) || members[1] || members[0];
-      }
-      if (id === DEMO_USER_KID) {
-        return members.find(m => m.display_name.includes('寶') || m.display_name.includes('孩')) || members[2] || members[0];
-      }
-
-      // 4. 查未去重之 rawMembers
+      if (memberAliasMap && memberAliasMap[id]) return memberAliasMap[id];
+      if (id === DEMO_USER_DAD) return members.find(m => m.display_name.includes('爸') || m.role === 'owner') || members[0];
+      if (id === DEMO_USER_MOM) return members.find(m => m.display_name.includes('媽')) || members[1] || members[0];
+      if (id === DEMO_USER_KID) return members.find(m => m.display_name.includes('寶') || m.display_name.includes('孩')) || members[2] || members[0];
       const raw = rawMembers.find(m => m.id === id);
       if (raw) {
         const canonical = members.find(
           m => (m.display_name || '').trim().toLowerCase() === (raw.display_name || '').trim().toLowerCase()
         );
-        return canonical || raw;
+        if (canonical) return canonical;
       }
-
       return undefined;
     },
     [members, memberAliasMap, rawMembers]
   );
 
-  // 透過 ID 或交易附加資訊精確取得分類（支援本機離線快取、歷史示範常數、雲端 UUID）
   const getCategoryById = React.useCallback(
-    (categoryId?: string, txCategory?: Category): Category => {
-      if (categoryId) {
-        // 1. 直查當前 categories state
-        const fromState = categories.find(c => c.id === categoryId);
-        if (fromState) return fromState;
-
-        // 2. 查預設 DEFAULT_CATEGORIES
-        const fromDefault = DEFAULT_CATEGORIES.find(c => c.id === categoryId);
-        if (fromDefault) return fromDefault;
-
-        // 3. 查已知雲端 UUID 字典表 (確保離線狀態下舊帳目永不遺失)
-        const fromKnown = KNOWN_CATEGORY_UUIDS[categoryId];
-        if (fromKnown) {
-          return {
-            id: categoryId,
-            name: fromKnown.name || '其他',
-            icon: fromKnown.icon || '📝',
-            color: fromKnown.color || '#6B7280',
-            type: fromKnown.type || 'expense',
-            sort_order: 99,
-          };
-        }
+    (categoryId?: string, fallbackCategory?: Category): Category => {
+      if (!categoryId) return fallbackCategory || categories[0] || DEFAULT_CATEGORIES[0];
+      const fromState = categories.find(c => c.id === categoryId);
+      if (fromState) return fromState;
+      if (fallbackCategory) return fallbackCategory;
+      const fromDefault = DEFAULT_CATEGORIES.find(c => c.id === categoryId);
+      if (fromDefault) return fromDefault;
+      const fromKnown = KNOWN_CATEGORY_UUIDS[categoryId];
+      if (fromKnown) {
+        return {
+          id: categoryId,
+          name: fromKnown.name || '生活雜支',
+          icon: fromKnown.icon || '📦',
+          color: fromKnown.color || '#6B7280',
+          type: (fromKnown.type as any) || 'expense',
+          sort_order: 999,
+        };
       }
-
-      // 4. 查交易自身快取的 category 物件
-      if (txCategory && txCategory.name) {
-        return txCategory;
-      }
-
       return {
-        id: categoryId || 'unknown',
-        name: '其他',
-        icon: '📝',
+        id: categoryId,
+        name: '生活雜支',
+        icon: '📦',
         color: '#6B7280',
         type: 'expense',
-        sort_order: 99,
+        sort_order: 999,
       };
     },
     [categories]
   );
 
-  // 角色預覽模式（供管理員測試一般成員視角使用）
-  const [previewMember, setPreviewMember] = useState<Profile | null>(null);
-
-  const startMemberPreview = (member: Profile) => {
-    setPreviewMember(member);
-  };
-
-  const startCurrentMemberPreview = () => {
-    setPreviewMember({ ...currentUser, role: 'member' });
-  };
-
-  const exitMemberPreview = () => {
-    setPreviewMember(null);
-  };
-
-  // 管理員日常成員模式 / 提權管理模式切換 (Default-to-Member Mode)
-  // 本機開機/重新整理預設為日常成員模式 (isAdminMode = false)，
-  // 畫面完全如一般成員般乾淨防呆；需要時至家庭設定輸入 PIN 碼提權啟用管理員模式 (isAdminMode = true)。
-  const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
-
-  const enableAdminMode = (inputPin: string): { success: boolean; message?: string } => {
-    const clean = (inputPin || '').trim();
-    const expected = (((currentLedger as any)?.admin_pin || adminPin || '8888') as string).trim();
-    if (!clean || clean !== expected) {
-      return { success: false, message: '管理員安全 PIN 碼錯誤，請重新輸入！' };
-    }
-    setIsAdminMode(true);
-    return { success: true };
-  };
-
-  const disableAdminMode = () => {
-    setIsAdminMode(false);
-  };
-
-  // 帳本管理員包含建立者 (owner) 與共同管理員 (admin)
-  const isOwner = userRole === 'owner' || userRole === 'admin';
-
-  // 有效身分與權限：
-  // 1. 若啟動 previewMember（角色體驗），則完全以該模擬成員角色為準
-  // 2. 若真實身分為管理員 (isOwner)，但在預設日常成員模式 (!isAdminMode)，則前端 isOwner 為 false (無管理特權)
-  // 3. 只有真實身分為管理員且啟用管理員模式 (isOwner && isAdminMode) 時，effectiveIsOwner 為 true
-  const effectiveCurrentUser = previewMember || currentUser;
-  const isPreviewMode = !!previewMember;
-  const effectiveUserRole: 'owner' | 'admin' | 'member' = previewMember
-    ? (previewMember.role === 'owner' || previewMember.role === 'admin'
-        ? (previewMember.role as 'owner' | 'admin')
-        : 'member')
-    : (isOwner && isAdminMode ? userRole : 'member');
-  const effectiveIsOwner = isPreviewMode
-    ? (previewMember.role === 'owner' || previewMember.role === 'admin')
-    : (isOwner && isAdminMode);
   const channelRef = useRef<any>(null);
   const loadBudgetRef = useRef<((id: string) => Promise<void>) | null>(null);
+  const initLedgerRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const refreshLedgerRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const triggerLiveToastRef = useRef<(toast: any) => void>(() => {});
+  const addTransactionRef = useRef<(data: any) => Promise<string>>(() => Promise.resolve(''));
+  const saveTransactionsToStorageRef = useRef<(txs: Transaction[]) => Promise<void>>(async () => {});
 
-  // 1. 初始化本地快取（Local-First: 先離線秒開，再非同步接雲端）
+  // 1. 裝置、認證、成員身分與管理員 PIN 碼模組
+  const {
+    memberDevices,
+    setMemberDevices,
+    currentDeviceId,
+    setCurrentDeviceId,
+    isDeviceBound,
+    setIsDeviceBound,
+    userRole,
+    setUserRole,
+    adminPin,
+    setAdminPin,
+    isAdminMode,
+    setIsAdminMode,
+    enableAdminMode,
+    disableAdminMode,
+    previewMember,
+    setPreviewMember,
+    isPreviewMode,
+    effectiveCurrentUser,
+    isOwner,
+    effectiveIsOwner,
+    isCurrentUserLocked,
+    isGoogleAuthenticated,
+    setIsGoogleAuthenticated,
+    googleUserEmail,
+    setGoogleUserEmail,
+    startMemberPreview,
+    startCurrentMemberPreview,
+    exitMemberPreview,
+    updateAdminPin,
+    fetchMemberDevices,
+    registerDevice,
+    removeDevice,
+    linkGoogleAccount,
+    unlinkGoogleAccount,
+    claimGoogleIdentity,
+    signInWithGoogle,
+    signOutGoogle,
+    switchCurrentUser,
+    bindDeviceToMember,
+    unbindDevice,
+    updateMemberRole,
+    claimAdminRoleWithPin,
+  } = useDeviceAuth({
+    currentLedger,
+    setCurrentLedger,
+    currentUser,
+    setCurrentUser,
+    members,
+    setMembers,
+    setLedgers,
+    isConfigured,
+    supabase,
+    triggerLiveToast: (t) => triggerLiveToastRef.current(t),
+    initLedger: async () => initLedgerRef.current(),
+    refreshLedger: async () => refreshLedgerRef.current(),
+  });
+
+  // 2. 四大支付帳戶、自訂付款方式、轉帳與淨值看板模組
+  const {
+    paymentAccounts,
+    setPaymentAccounts,
+    paymentMethods,
+    setPaymentMethods,
+    addPaymentAccount,
+    updatePaymentAccount,
+    deletePaymentAccount,
+    restoreDefaultAccounts,
+    savePaymentAccountsToStorage,
+    addPaymentMethod,
+    updatePaymentMethod,
+    deletePaymentMethod,
+    togglePaymentMethodEnabled,
+    reorderPaymentMethods,
+    restoreDefaultPaymentMethods,
+    getPaymentMethodById,
+    savePaymentMethodsToStorage,
+    topUpAccountBalance,
+    adjustAccountBalance,
+    toggleReconcileTransaction,
+    getAccountById,
+    getNetWorthSummary,
+    executeTransfer,
+  } = usePaymentAccounts({
+    currentLedger,
+    currentUser,
+    effectiveCurrentUser,
+    effectiveIsOwner,
+    members,
+    categories,
+    transactions,
+    setTransactions,
+    saveTransactionsToStorage: async (txs) => saveTransactionsToStorageRef.current(txs),
+    addTransaction: async (data) => addTransactionRef.current(data),
+    isConfigured,
+    supabase,
+  });
+
+  // 3. 固定收支與週期扣款規則模組
+  const {
+    recurringRules,
+    setRecurringRules,
+    saveRecurringRulesToStorage,
+    addRecurringRule,
+    updateRecurringRule,
+    deleteRecurringRule,
+    recordRecurringBill,
+    skipRecurringBill,
+    restoreDefaultRecurringRules,
+  } = useRecurringRules({
+    currentLedger,
+    currentUser,
+    categories,
+    paymentAccounts,
+    addTransaction: async (data) => addTransactionRef.current(data),
+    isConfigured,
+    supabase,
+  });
+
+  // 4. 預算控管、超支警戒與 6 個月趨勢模組
+  const {
+    currentBudget,
+    setCurrentBudget,
+    isBudgetWidgetVisibleOnDevice,
+    loadBudget,
+    setBudgetWidgetVisibleOnDevice,
+    updateBudget,
+    getBudgetProgress,
+    getMoMComparison,
+    getSixMonthTrend,
+  } = useLedgerBudget({
+    ledgerId: currentLedger.id,
+    members,
+    currentUser,
+    isOwner: effectiveIsOwner,
+    transactions,
+    getCategoryById,
+    getMemberById,
+    isConfigured,
+    supabase,
+  });
+  loadBudgetRef.current = loadBudget;
+
+  // 5. 備份排程、JSON/CSV 匯出與整本還原模組
+  const {
+    lastBackupAt,
+    setLastBackupAt,
+    autoBackupEnabled,
+    setAutoBackupEnabled,
+    autoBackupInterval,
+    setAutoBackupInterval,
+    recordBackupComplete,
+    updateAutoBackupConfig,
+    exportToCSV,
+    exportToJSON,
+    restoreFromJSON,
+  } = useLedgerBackup({
+    currentLedger,
+    setCurrentLedger,
+    setLedgers,
+    members,
+    setMembers,
+    setMemberAliasMap,
+    categories,
+    setCategories,
+    paymentAccounts,
+    setPaymentAccounts,
+    savePaymentAccountsToStorage,
+    transactions,
+    setTransactions,
+    saveTransactionsToStorage: async (txs) => saveTransactionsToStorageRef.current(txs),
+    recurringRules,
+    setRecurringRules,
+    saveRecurringRulesToStorage,
+    paymentMethods,
+    setPaymentMethods,
+    savePaymentMethodsToStorage,
+    inviteCode,
+    effectiveIsOwner,
+    isConfigured,
+    supabase,
+    getCategoryById,
+    getMemberById,
+    currentUser,
+    memberAliasMap,
+    deletedTxIdsRef,
+    hasMerchantColumnRef,
+    hasPaymentColumnsRef,
+  });
+
   useEffect(() => {
     const loadLocalCache = async () => {
       try {
@@ -2224,360 +1830,6 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // 讀取指定帳本的成員連線裝置清單
-  const fetchMemberDevices = async (targetLedgerId?: string, targetMemberId?: string) => {
-    const lId = targetLedgerId || currentLedger.id;
-    if (!lId || lId === DEMO_LEDGER_ID) return;
-
-    const devId = await getDeviceId();
-    setCurrentDeviceId(devId);
-    const devName = getDeviceName();
-    const platform = getDevicePlatform();
-    const mId = targetMemberId || effectiveCurrentUser?.id || currentUser.id;
-
-    const myDev: MemberDevice = {
-      id: devId,
-      ledger_id: lId,
-      member_id: mId,
-      device_id: devId,
-      device_name: devName,
-      platform,
-      app_version: APP_FULL_VERSION,
-      last_active_at: new Date().toISOString(),
-      created_at: new Date().toISOString(),
-    };
-
-    if (isConfigured && lId !== DEMO_LEDGER_ID) {
-      try {
-        const { data, error } = await supabase
-          .from('member_devices')
-          .select('*')
-          .eq('ledger_id', lId)
-          .order('last_active_at', { ascending: false });
-
-        if (!error && Array.isArray(data)) {
-          // 確保本機裝置必定在清單中（若雲端推播延遲或新裝置剛加入）
-          const hasMe = data.some(d => d.device_id === devId);
-          const combined = hasMe ? data : [myDev, ...data];
-          setMemberDevices(combined as MemberDevice[]);
-          await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${lId}`, JSON.stringify(combined));
-          return;
-        }
-      } catch (e) {
-        console.warn('讀取雲端成員裝置清單失敗（若尚未執行 migration 屬正常現象）:', e);
-      }
-    }
-
-    // 若為示範帳本或雲端讀取失敗，自本地快取恢復，並確保本機設備在內
-    try {
-      const cachedStr = await AsyncStorage.getItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${lId}`);
-      let cachedList: MemberDevice[] = [];
-      if (cachedStr) {
-        try { cachedList = JSON.parse(cachedStr); } catch {}
-      }
-      const hasMe = cachedList.some(d => d.device_id === devId);
-      const combined = hasMe ? cachedList : [myDev, ...cachedList];
-      setMemberDevices(combined);
-    } catch {}
-  };
-
-  // 登記本機裝置連線與心跳時間
-  const registerDevice = async (targetMemberId?: string, targetLedgerId?: string) => {
-    try {
-      const devId = await getDeviceId();
-      setCurrentDeviceId(devId);
-      const devName = getDeviceName();
-      const platform = getDevicePlatform();
-      const lId = targetLedgerId || currentLedger.id;
-      const mId = targetMemberId || effectiveCurrentUser?.id || currentUser.id;
-
-      if (!lId || lId === DEMO_LEDGER_ID) return;
-
-      const nowIso = new Date().toISOString();
-      const myDev: MemberDevice = {
-        id: devId,
-        ledger_id: lId,
-        member_id: mId,
-        device_id: devId,
-        device_name: devName,
-        platform,
-        app_version: APP_FULL_VERSION,
-        last_active_at: nowIso,
-        created_at: nowIso,
-      };
-
-      // 1. 立即更新本機狀態保底（確保無延遲呈現本機設備）
-      setMemberDevices(prev => {
-        const remaining = prev.filter(d => !(d.device_id === devId && d.ledger_id === lId));
-        const next = [myDev, ...remaining];
-        AsyncStorage.setItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${lId}`, JSON.stringify(next)).catch(() => {});
-        return next;
-      });
-
-      // 2. 雲端同步
-      if (isConfigured && lId !== DEMO_LEDGER_ID) {
-        try {
-          const { error } = await supabase.from('member_devices').upsert({
-            ledger_id: lId,
-            member_id: mId,
-            device_id: devId,
-            device_name: devName,
-            platform,
-            app_version: APP_FULL_VERSION,
-            last_active_at: nowIso,
-          }, { onConflict: 'ledger_id,device_id' });
-
-          if (!error) {
-            const { data: cloudData } = await supabase
-              .from('member_devices')
-              .select('*')
-              .eq('ledger_id', lId)
-              .order('last_active_at', { ascending: false });
-
-            if (cloudData && Array.isArray(cloudData)) {
-              const hasMe = cloudData.some(d => d.device_id === devId);
-              const combined = hasMe ? cloudData : [myDev, ...cloudData];
-              setMemberDevices(combined as MemberDevice[]);
-              await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${lId}`, JSON.stringify(combined));
-            }
-          } else {
-            console.warn('雲端登記裝置心跳回應 (若尚未執行 migration 屬正常現象):', error.message);
-          }
-        } catch (e) {
-          console.warn('登記裝置心跳失敗（若尚未執行 migration 屬正常現象）:', e);
-        }
-      }
-    } catch (err) {
-      console.warn('本機登記裝置發生異常:', err);
-    }
-  };
-
-  // 解除指定裝置的綁定
-  const removeDevice = async (targetDeviceId: string): Promise<boolean> => {
-    try {
-      const lId = currentLedger.id;
-      if (isConfigured && lId !== DEMO_LEDGER_ID) {
-        try {
-          await supabase
-            .from('member_devices')
-            .delete()
-            .eq('ledger_id', lId)
-            .eq('device_id', targetDeviceId);
-        } catch (e) {
-          console.warn('雲端刪除成員裝置失敗:', e);
-        }
-      }
-      setMemberDevices(prev => {
-        const next = prev.filter(d => d.device_id !== targetDeviceId);
-        AsyncStorage.setItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${lId}`, JSON.stringify(next)).catch(() => {});
-        return next;
-      });
-      return true;
-    } catch (e) {
-      console.warn('移除裝置失敗:', e);
-      return false;
-    }
-  };
-
-  // ==============================================================================
-  // Google 帳號綁定與身分電子鎖 (Phase 2)
-  // ==============================================================================
-  const isCurrentUserLocked = Boolean(currentUser?.is_locked);
-
-  const linkGoogleAccount = async (
-    targetProfileId?: string,
-    actionType: 'bind_google' | 'claim' = 'bind_google'
-  ): Promise<{ success: boolean; message?: string }> => {
-    try {
-      if (!isConfigured) {
-        return { success: false, message: '目前為示範或離線模式，無法進行 Google 帳號綁定。' };
-      }
-
-      const targetId = targetProfileId || currentUser.id;
-      const targetMember = members.find(m => m.id === targetId) || currentUser;
-
-      if (Platform.OS === 'web') {
-        if (typeof window !== 'undefined' && window.location) {
-          const redirectUrl = `${window.location.origin}${window.location.pathname}?action=${actionType}&profile_id=${targetId}&ledger_id=${currentLedger.id}&display_name=${encodeURIComponent(targetMember.display_name)}`;
-          const { error } = await supabase.auth.signInWithOAuth({
-            provider: 'google',
-            options: {
-              redirectTo: redirectUrl,
-            },
-          });
-          if (error) {
-            return { success: false, message: error.message };
-          }
-          return { success: true };
-        }
-      } else {
-        // 行動端（Android / iOS）：開啟系統瀏覽器完成 Google 授權
-        const redirectUrl = `https://mattyu99.github.io/family-ledger/auth-callback.html?action=${actionType}&profile_id=${targetId}&ledger_id=${currentLedger.id}&display_name=${encodeURIComponent(targetMember.display_name)}`;
-        const { data, error } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo: redirectUrl,
-            skipBrowserRedirect: true,
-          },
-        });
-        if (error) {
-          return { success: false, message: error.message };
-        }
-        if (data?.url) {
-          await Linking.openURL(data.url);
-          return { success: true, message: '已開啟瀏覽器進行 Google 授權，請在授權完成後返回 APP' };
-        }
-      }
-      return { success: false, message: '未能取得 Google 授權轉跳網址' };
-    } catch (err: any) {
-      console.warn('發起 Google 帳號授權失敗:', err);
-      return { success: false, message: err?.message || '授權失敗' };
-    }
-  };
-
-  const unlinkGoogleAccount = async (targetProfileId?: string): Promise<{ success: boolean; message?: string }> => {
-    try {
-      const targetId = targetProfileId || currentUser.id;
-      const targetMember = members.find(m => m.id === targetId) || currentUser;
-
-      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-        try {
-          await supabase.from('profiles').update({
-            auth_email: null,
-            auth_provider: null,
-            is_locked: false,
-            claim_code: null,
-            claim_code_expires_at: null,
-            updated_at: new Date().toISOString(),
-          }).eq('id', targetId);
-        } catch (e) {
-          console.warn('雲端解除綁定更新失敗:', e);
-        }
-      }
-
-      const updatedUser: Profile = {
-        ...currentUser,
-        auth_email: undefined,
-        auth_provider: null,
-        is_locked: false,
-      };
-
-      if (currentUser.id === targetId) {
-        setCurrentUser(updatedUser);
-        await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedUser));
-        if (currentLedger?.id) {
-          await AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${currentLedger.id}`, JSON.stringify(updatedUser));
-        }
-      }
-
-      setMembers(prev => prev.map(m => m.id === targetId ? {
-        ...m,
-        auth_email: undefined,
-        auth_provider: null,
-        is_locked: false,
-      } : m));
-
-      triggerLiveToast({
-        id: `auth-${Date.now()}`,
-        type: 'info',
-        actorName: '帳號安全',
-        avatar: '🛡️',
-        title: '已解除 Google 綁定',
-        message: `稱謂【${targetMember.display_name}】已恢復為訪客模式`,
-        createdAt: Date.now(),
-      });
-
-      return { success: true };
-    } catch (err: any) {
-      console.warn('解除 Google 綁定失敗:', err);
-      return { success: false, message: err?.message || '解除失敗' };
-    }
-  };
-
-  const claimGoogleIdentity = async (codeOrEmail: string): Promise<{ success: boolean; message?: string; profile?: Profile }> => {
-    const clean = (codeOrEmail || '').trim();
-    if (!clean) return { success: false, message: '請輸入有效的 Google Email 或 6 位數認領驗證碼' };
-
-    try {
-      if (!isConfigured) {
-        return { success: false, message: '雲端資料庫未連線，無法認領身分' };
-      }
-
-      // 查詢受鎖定保護之成員
-      let query = supabase.from('profiles').select('*').eq('is_locked', true);
-      if (clean.includes('@')) {
-        query = query.eq('auth_email', clean.toLowerCase());
-      } else {
-        query = query.eq('claim_code', clean);
-      }
-
-      const { data: matchedProfiles, error } = await query;
-      if (error || !matchedProfiles || matchedProfiles.length === 0) {
-        return { success: false, message: '找不到符合且受保護的 Google 身分稱謂，請確認輸入是否正確' };
-      }
-
-      const matched = matchedProfiles[0] as Profile;
-
-      // 驗證碼時效性檢驗
-      if (!clean.includes('@') && (matched as any).claim_code_expires_at) {
-        const expiresAt = new Date((matched as any).claim_code_expires_at).getTime();
-        if (Date.now() > expiresAt) {
-          return { success: false, message: '驗證碼已過期（超過 10 分鐘），請重新驗證 Google 登入以獲取新驗證碼' };
-        }
-      }
-
-      // 登錄當前裝置到該成員
-      await registerDevice(matched.id, currentLedger.id);
-
-      // 清除已使用之驗證碼
-      if (!clean.includes('@')) {
-        await supabase.from('profiles').update({
-          claim_code: null,
-          claim_code_expires_at: null,
-          updated_at: new Date().toISOString(),
-        }).eq('id', matched.id);
-      }
-
-      // 更新本機身分
-      setCurrentUser(matched);
-      await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(matched));
-      if (currentLedger?.id) {
-        await AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${currentLedger.id}`, JSON.stringify(matched));
-      }
-
-      if (matched.auth_email) {
-        setIsGoogleAuthenticated(true);
-        setGoogleUserEmail(matched.auth_email);
-        await AsyncStorage.setItem('@family_ledger_google_email', matched.auth_email);
-      }
-
-      // 若該成員具備管理員權限，同步提升本地身分角色
-      if (matched.role === 'owner' || matched.role === 'admin' || currentLedger.created_by === matched.id) {
-        const targetRole = matched.role === 'owner' || matched.role === 'admin' ? matched.role : 'owner';
-        setUserRole(targetRole);
-        await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, targetRole);
-      }
-
-      await initLedger();
-      await refreshLedger();
-
-      triggerLiveToast({
-        id: `auth-claim-${Date.now()}`,
-        type: 'complete',
-        actorName: matched.display_name,
-        avatar: matched.avatar_url || '🔑',
-        title: '🎉 身分認領成功！',
-        message: `已成功恢復為【${matched.display_name}】(${matched.auth_email || '受保護'})`,
-        createdAt: Date.now(),
-      });
-
-      return { success: true, profile: matched };
-    } catch (err: any) {
-      console.warn('身分認領過程發生異常:', err);
-      return { success: false, message: err?.message || '認領身分失敗' };
-    }
-  };
-
-  // 輔助函式：載入指定帳本的完整資料 (分類、成員、交易、即時推播)
   const loadLedgerData = async (targetLedger: Ledger, authUserId: string) => {
     setCurrentLedger(targetLedger);
     activeLoadingLedgerIdRef.current = targetLedger.id;
@@ -4342,74 +3594,6 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // Google 帳號一鍵登入與同步 (Phase 3)
-  const signInWithGoogle = async (): Promise<{ success: boolean; message?: string }> => {
-    try {
-      if (!isConfigured) {
-        return { success: false, message: '目前為示範或離線模式，無法進行 Google 登入。' };
-      }
-      if (Platform.OS === 'web') {
-        if (typeof window !== 'undefined' && window.location) {
-          const redirectUrl = `${window.location.origin}${window.location.pathname}?action=login`;
-          const { error } = await supabase.auth.signInWithOAuth({
-            provider: 'google',
-            options: {
-              redirectTo: redirectUrl,
-            },
-          });
-          if (error) {
-            return { success: false, message: error.message };
-          }
-          return { success: true };
-        }
-      } else {
-        const syncCode = Math.floor(100000 + Math.random() * 900000).toString();
-        await AsyncStorage.setItem('@family_ledger_pending_sync_code', syncCode);
-        const redirectUrl = `https://mattyu99.github.io/family-ledger/auth-callback.html?action=login&sync_code=${syncCode}`;
-        const { data, error } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo: redirectUrl,
-            skipBrowserRedirect: true,
-          },
-        });
-        if (error) {
-          return { success: false, message: error.message };
-        }
-        if (data?.url) {
-          await Linking.openURL(data.url);
-          return { success: true, message: '已開啟系統瀏覽器進行 Google 授權，完成後返回 App 即可自動同步' };
-        }
-      }
-      return { success: false, message: '未能取得 Google 授權轉跳網址' };
-    } catch (err: any) {
-      console.warn('發起 Google 登入失敗:', err);
-      return { success: false, message: err?.message || '登入失敗' };
-    }
-  };
-
-  const signOutGoogle = async () => {
-    try {
-      await supabase.auth.signOut();
-      setIsGoogleAuthenticated(false);
-      setGoogleUserEmail(null);
-      const { data: anonData } = await supabase.auth.signInAnonymously();
-      if (anonData?.session) {
-        await initLedger();
-      }
-      triggerLiveToast({
-        id: `auth-signout-${Date.now()}`,
-        type: 'info',
-        actorName: '帳號安全',
-        avatar: '👋',
-        title: '已登出 Google 帳號',
-        message: '已安全登出並重設為本機訪客身分',
-        createdAt: Date.now(),
-      });
-    } catch (err) {
-      console.warn('Google 登出失敗:', err);
-    }
-  };
-
   // 3. 當 App 從背景回到前景時，自動檢查並重新載入最新雲端資料，並自動完成待處理的 Google 授權同步
   useEffect(() => {
     const subscription = AppState.addEventListener('change', async (nextAppState) => {
@@ -5512,36 +4696,6 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // 自訂管理員安全 PIN 碼 (Owner 專屬)
-  const updateAdminPin = async (newPin: string): Promise<boolean> => {
-    const clean = newPin.trim();
-    if (clean.length < 4 || clean.length > 8) {
-      alert('PIN 碼長度需在 4 至 8 碼之間');
-      return false;
-    }
-    setAdminPin(clean);
-    await AsyncStorage.setItem(STORAGE_KEYS.ADMIN_PIN, clean);
-    await AsyncStorage.setItem(`${STORAGE_KEYS.ADMIN_PIN}_${currentLedger.id}`, clean);
-
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        const { data: rpcRes, error: rpcErr } = await supabase.rpc('update_admin_pin', {
-          target_ledger_id: currentLedger.id,
-          new_pin: clean,
-        });
-        if (rpcErr || (rpcRes && !rpcRes.success)) {
-          await supabase
-            .from('ledgers')
-            .update({ admin_pin: clean })
-            .eq('id', currentLedger.id);
-        }
-      } catch (e) {
-        console.warn('雲端更新 admin_pin 失敗:', e);
-      }
-    }
-    return true;
-  };
-
-  // 取得完整邀請分享網址
   const getInviteLink = (): string => {
     let base = 'https://mattyu99.github.io/family-ledger/';
     if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
@@ -5746,832 +4900,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  // 儲存付款帳戶至本地快取
-  const savePaymentAccountsToStorage = async (accounts: PaymentAccount[]) => {
-    try {
-      await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify(accounts));
-      if (currentLedger?.id) {
-        await AsyncStorage.setItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${currentLedger.id}`, JSON.stringify(accounts));
-      }
-    } catch (e) {
-      console.warn('儲存付款帳戶快取失敗:', e);
-    }
-  };
 
-  // 判斷某個成員 ID 是否歸屬於當前使用者本人 (支援 ID 直接比對、名稱別名比對與名冊連動)
-  const isAccountBoundToCurrentUser = (userId?: string | null) => {
-    if (!userId || !effectiveCurrentUser) return false;
-    if (userId === effectiveCurrentUser.id) return true;
-    const member = members.find(m => m.id === userId);
-    if (member) {
-      if (member.id === effectiveCurrentUser.id) return true;
-      if (
-        member.display_name &&
-        effectiveCurrentUser.display_name &&
-        member.display_name.trim().toLowerCase() === effectiveCurrentUser.display_name.trim().toLowerCase()
-      ) {
-        return true;
-      }
-    }
-    return false;
-  };
+  saveTransactionsToStorageRef.current = saveTransactionsToStorage;
+  initLedgerRef.current = initLedger;
+  refreshLedgerRef.current = refreshLedger;
+  triggerLiveToastRef.current = triggerLiveToast;
 
-  // 新增付款帳戶 / 信用卡 / 儲值卡
-  const addPaymentAccount = async (accountData: Omit<PaymentAccount, 'id' | 'ledger_id' | 'created_at'>): Promise<PaymentAccount> => {
-    // 卡片與帳戶權限體系：
-    // - 帳本管理員 (effectiveIsOwner) 可為全家新增任何卡片與帳戶
-    // - 一般家庭成員可在「我的」視角下自主新增屬於自己的卡片或帳戶
-    const isTargetingSelf = !accountData.user_id || isAccountBoundToCurrentUser(accountData.user_id);
-    if (!effectiveIsOwner && !isTargetingSelf) {
-      safeAlert('權限不足', '只有帳本管理員才能新增全家或其他成員的支付卡片與帳戶');
-      throw new Error('只有帳本管理員才能新增全家或其他成員的支付卡片與帳戶');
-    }
-
-    const newAcc: PaymentAccount = {
-      ...accountData,
-      id: generateUUID(),
-      ledger_id: currentLedger.id,
-      created_at: new Date().toISOString(),
-      balance: accountData.balance ?? 0,
-    };
-    const updated = [...paymentAccounts, newAcc];
-    setPaymentAccounts(updated);
-    await savePaymentAccountsToStorage(updated);
-
-    if (currentLedger?.id) {
-      AsyncStorage.setItem(`${STORAGE_KEYS.ACCOUNTS_INITIALIZED}_${currentLedger.id}`, 'true').catch(() => {});
-    }
-
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        const { error: insErr } = await supabase.from('payment_accounts').insert(newAcc);
-        if (insErr && (insErr.code === '42703' || insErr.message?.includes('card_number'))) {
-          // 資料庫若尚未執行 card_number 欄位遷移，降級移除該欄位後寫入
-          const { card_number: _, ...fallbackAcc } = newAcc;
-          await supabase.from('payment_accounts').insert(fallbackAcc);
-        }
-      } catch (e) {
-        console.warn('雲端新增付款帳戶連線失敗 (已保留本地):', e);
-      }
-    }
-    return newAcc;
-  };
-
-  // 修改付款帳戶
-  const updatePaymentAccount = async (id: string, data: Partial<PaymentAccount>): Promise<boolean> => {
-    const existing = paymentAccounts.find(a => a.id === id);
-    // 卡片與帳戶權限體系：
-    // - 帳本管理員可修改全家任何卡片與帳戶
-    // - 一般家庭成員僅能修改屬於自己的卡片與帳戶，且不可轉移給其他成員
-    const isOwnerOfCard = existing && isAccountBoundToCurrentUser(existing.user_id);
-    const isChangingToOther = data.user_id !== undefined && data.user_id !== null && !isAccountBoundToCurrentUser(data.user_id);
-
-    if (!effectiveIsOwner && (!isOwnerOfCard || isChangingToOther)) {
-      safeAlert('權限不足', '只有帳本管理員才能修改全家或其他成員的支付卡片與帳戶');
-      return false;
-    }
-
-    const updated = paymentAccounts.map(a => a.id === id ? { ...a, ...data } : a);
-    setPaymentAccounts(updated);
-    await savePaymentAccountsToStorage(updated);
-
-    if (currentLedger?.id) {
-      AsyncStorage.setItem(`${STORAGE_KEYS.ACCOUNTS_INITIALIZED}_${currentLedger.id}`, 'true').catch(() => {});
-    }
-
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        const { error: updErr } = await supabase.from('payment_accounts').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id);
-        if (updErr && (updErr.code === '42703' || updErr.message?.includes('card_number'))) {
-          // 資料庫若尚未執行 card_number 欄位遷移，降級移除該欄位後寫入
-          const { card_number: _, ...fallbackData } = data;
-          await supabase.from('payment_accounts').update({ ...fallbackData, updated_at: new Date().toISOString() }).eq('id', id);
-        }
-      } catch (e) {
-        console.warn('雲端更新付款帳戶失敗:', e);
-      }
-    }
-    return true;
-  };
-
-  // 刪除付款帳戶
-  const deletePaymentAccount = async (id: string): Promise<boolean> => {
-    const deletedAcc = paymentAccounts.find(a => a.id === id);
-    // 卡片與帳戶權限體系：
-    // - 帳本管理員可刪除全家任何卡片與帳戶
-    // - 一般家庭成員僅能刪除屬於自己的卡片與帳戶
-    const isOwnerOfCard = deletedAcc && isAccountBoundToCurrentUser(deletedAcc.user_id);
-
-    if (!effectiveIsOwner && !isOwnerOfCard) {
-      safeAlert('權限不足', '只有帳本管理員才能刪除全家或其他成員的支付卡片與帳戶');
-      return false;
-    }
-
-    const updated = paymentAccounts.filter(a => a.id !== id);
-    setPaymentAccounts(updated);
-    await savePaymentAccountsToStorage(updated);
-
-    // 紀錄已被使用者主動刪除的卡片 ID / 卡片名稱，防止刷新時被自動補齊機制重新復活
-    if (currentLedger?.id) {
-      try {
-        const deletedKey = `${STORAGE_KEYS.DELETED_ACCOUNT_IDS}_${currentLedger.id}`;
-        const savedDeletedStr = await AsyncStorage.getItem(deletedKey);
-        const deletedList: string[] = savedDeletedStr ? JSON.parse(savedDeletedStr) : [];
-        if (!deletedList.includes(id)) deletedList.push(id);
-        if (deletedAcc && deletedAcc.name && !deletedList.includes(deletedAcc.name)) {
-          deletedList.push(deletedAcc.name);
-        }
-        await AsyncStorage.setItem(deletedKey, JSON.stringify(deletedList));
-        await AsyncStorage.setItem(`${STORAGE_KEYS.ACCOUNTS_INITIALIZED}_${currentLedger.id}`, 'true');
-      } catch (err) {
-        console.warn('紀錄刪除卡片失敗:', err);
-      }
-    }
-
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        await supabase.from('payment_accounts').delete().eq('id', id);
-      } catch (e) {
-        console.warn('雲端刪除付款帳戶失敗:', e);
-      }
-    }
-    return true;
-  };
-
-  // 一鍵補齊 / 恢復預設示範卡片組合
-  const restoreDefaultAccounts = async () => {
-    if (!effectiveIsOwner) {
-      safeAlert('權限不足', '只有帳本管理員才能恢復預設支付卡片');
-      return;
-    }
-    if (!currentLedger?.id) return;
-    try {
-      const deletedKey = `${STORAGE_KEYS.DELETED_ACCOUNT_IDS}_${currentLedger.id}`;
-      await AsyncStorage.removeItem(deletedKey);
-
-      const defaultOwnerId = currentUser?.id || members[0]?.id;
-      const secondOwner = members.find(m => m.id !== defaultOwnerId);
-      const secondOwnerId = secondOwner?.id || defaultOwnerId;
-
-      const defaultPresets: Omit<PaymentAccount, 'id' | 'ledger_id' | 'created_at'>[] = [
-        {
-          name: '富邦 Costco 聯名卡',
-          type: 'credit_card',
-          user_id: defaultOwnerId,
-          last_four_digits: '8829',
-          billing_cycle_date: 15,
-          balance: 0,
-          color: '#1E40AF',
-          icon: '💳',
-          sort_order: 1,
-        },
-        {
-          name: '國泰 CUBE 卡',
-          type: 'credit_card',
-          user_id: secondOwnerId,
-          last_four_digits: '1234',
-          billing_cycle_date: 27,
-          balance: 0,
-          color: '#047857',
-          icon: '💳',
-          sort_order: 2,
-        },
-        {
-          name: '爸爸悠遊卡',
-          type: 'stored_value',
-          user_id: defaultOwnerId,
-          last_four_digits: '',
-          balance: 350,
-          color: '#0284C7',
-          icon: '🚌',
-          sort_order: 3,
-        },
-        {
-          name: '媽媽悠遊卡',
-          type: 'stored_value',
-          user_id: secondOwnerId,
-          last_four_digits: '',
-          balance: 500,
-          color: '#EC4899',
-          icon: '🚌',
-          sort_order: 4,
-        },
-      ];
-
-      const toInsert: PaymentAccount[] = [];
-      for (const preset of defaultPresets) {
-        const alreadyExists = paymentAccounts.some(
-          a => a.name.trim() === preset.name.trim() ||
-               (preset.last_four_digits && a.last_four_digits === preset.last_four_digits)
-        );
-        if (!alreadyExists) {
-          toInsert.push({
-            ...preset,
-            id: generateUUID(),
-            ledger_id: currentLedger.id,
-            created_at: new Date().toISOString(),
-          });
-        }
-      }
-
-      if (toInsert.length > 0) {
-        const updated = [...paymentAccounts, ...toInsert];
-        setPaymentAccounts(updated);
-        await savePaymentAccountsToStorage(updated);
-        if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-          try {
-            await supabase.from('payment_accounts').insert(toInsert);
-          } catch (e) {
-            console.warn('恢復預設卡片至雲端失敗:', e);
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('恢復預設卡片失敗:', err);
-    }
-  };
-
-  const savePaymentMethodsToStorage = async (methods: CustomPaymentMethod[]) => {
-    try {
-      await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_METHODS, JSON.stringify(methods));
-      if (currentLedger?.id) {
-        await AsyncStorage.setItem(`${STORAGE_KEYS.PAYMENT_METHODS}_${currentLedger.id}`, JSON.stringify(methods));
-      }
-    } catch (e) {
-      console.warn('儲存付款方式快取失敗:', e);
-    }
-  };
-
-  // 新增自訂付款方式 (僅管理員有權限，雲端同步定義)
-  const addPaymentMethod = async (
-    data: Omit<CustomPaymentMethod, 'id' | 'sort_order'>
-  ): Promise<CustomPaymentMethod> => {
-    if (!effectiveIsOwner) {
-      safeAlert('權限不足', '只有帳本管理員才能新增付款方式');
-      throw new Error('只有帳本管理員才能新增付款方式');
-    }
-    const newId = generateUUID();
-    const maxOrder = paymentMethods.reduce((max, m) => Math.max(max, m.sort_order || 0), 0);
-    const newMethod: CustomPaymentMethod = {
-      ...data,
-      id: newId,
-      ledger_id: currentLedger.id,
-      sort_order: maxOrder + 1,
-      is_enabled: data.is_enabled ?? true,
-      is_system: false,
-      created_at: new Date().toISOString(),
-    };
-
-    const updated = [...paymentMethods, newMethod];
-    setPaymentMethods(updated);
-    await savePaymentMethodsToStorage(updated);
-
-    // 雲端同步新增定義
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        await supabase.from('payment_methods').insert({
-          id: newId,
-          ledger_id: currentLedger.id,
-          name: newMethod.name,
-          icon: newMethod.icon,
-          color: newMethod.color,
-          type: newMethod.type || (newMethod.supports_credit_card ? 'e_wallet' : 'other'),
-          supports_credit_card: !!newMethod.supports_credit_card,
-          is_system: false,
-          sort_order: newMethod.sort_order,
-        });
-      } catch (cloudErr) {
-        console.warn('雲端新增付款方式失敗 (已保留本地):', cloudErr);
-      }
-    }
-
-    return newMethod;
-  };
-
-  // 編輯付款方式 (僅管理員有權限，雲端同步定義)
-  const updatePaymentMethod = async (
-    id: string,
-    data: Partial<CustomPaymentMethod>
-  ): Promise<boolean> => {
-    if (!effectiveIsOwner) {
-      safeAlert('權限不足', '只有帳本管理員才能修改付款方式');
-      return false;
-    }
-    const updated = paymentMethods.map(m => {
-      if (m.id === id) {
-        return {
-          ...m,
-          ...data,
-          // 現金永遠保持啟用
-          is_enabled: id === 'cash' ? true : (data.is_enabled ?? m.is_enabled),
-        };
-      }
-      return m;
-    });
-    setPaymentMethods(updated);
-    await savePaymentMethodsToStorage(updated);
-
-    // 雲端同步更新定義
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        const updatePayload: any = { updated_at: new Date().toISOString() };
-        if (data.name !== undefined) updatePayload.name = data.name;
-        if (data.icon !== undefined) updatePayload.icon = data.icon;
-        if (data.color !== undefined) updatePayload.color = data.color;
-        if (data.type !== undefined) updatePayload.type = data.type;
-        if (data.supports_credit_card !== undefined) updatePayload.supports_credit_card = data.supports_credit_card;
-
-        await supabase
-          .from('payment_methods')
-          .update(updatePayload)
-          .match({ ledger_id: currentLedger.id, id });
-      } catch (cloudErr) {
-        console.warn('雲端更新付款方式失敗:', cloudErr);
-      }
-    }
-
-    return true;
-  };
-
-  // 刪除付款方式 (系統預設項目不可刪除，但可停用；僅管理員有權限)
-  const deletePaymentMethod = async (id: string): Promise<boolean> => {
-    if (!effectiveIsOwner) {
-      safeAlert('權限不足', '只有帳本管理員才能刪除付款方式');
-      return false;
-    }
-    const target = paymentMethods.find(m => m.id === id);
-    if (target?.is_system) {
-      safeAlert('無法刪除', '系統預設的付款方式不可刪除，但您可以將其開關切換為「停用/隱藏」！');
-      return false;
-    }
-    const updated = paymentMethods.filter(m => m.id !== id);
-    setPaymentMethods(updated);
-    await savePaymentMethodsToStorage(updated);
-
-    // 雲端同步刪除定義
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        await supabase
-          .from('payment_methods')
-          .delete()
-          .match({ ledger_id: currentLedger.id, id });
-      } catch (cloudErr) {
-        console.warn('雲端刪除付款方式失敗:', cloudErr);
-      }
-    }
-
-    return true;
-  };
-
-  // 切換啟用/停用（開放全體成員自由設定，僅儲存於本機裝置，不干擾他人）
-  const togglePaymentMethodEnabled = async (id: string): Promise<boolean> => {
-    if (id === 'cash') {
-      safeAlert('不可隱藏', '💵 現金為系統最基本的付款方式，必須保留至少一種付款方式，無法隱藏。');
-      return false;
-    }
-    const updated = paymentMethods.map(m => (m.id === id ? { ...m, is_enabled: !m.is_enabled } : m));
-    setPaymentMethods(updated);
-    await savePaymentMethodsToStorage(updated);
-    return true;
-  };
-
-  // 調整排序（開放全體成員自由設定本機前後順序）
-  const reorderPaymentMethods = async (methods: CustomPaymentMethod[]): Promise<void> => {
-    const reordered = methods.map((m, idx) => ({ ...m, sort_order: idx + 1 }));
-    setPaymentMethods(reordered);
-    await savePaymentMethodsToStorage(reordered);
-  };
-
-  // 恢復預設付款方式清單
-  const restoreDefaultPaymentMethods = async (): Promise<void> => {
-    if (!effectiveIsOwner) {
-      safeAlert('權限不足', '只有帳本管理員才能恢復預設付款方式清單');
-      return;
-    }
-    setPaymentMethods(DEFAULT_PAYMENT_METHODS);
-    await savePaymentMethodsToStorage(DEFAULT_PAYMENT_METHODS);
-  };
-
-  // 取得付款方式資訊輔助函式
-  const getPaymentMethodById = (id?: string): CustomPaymentMethod | undefined => {
-    if (!id) return undefined;
-    return paymentMethods.find(m => m.id === id) || DEFAULT_PAYMENT_METHODS.find(m => m.id === id);
-  };
-
-  const saveRecurringRulesToStorage = async (rules: RecurringRule[], targetLedgerId?: string) => {
-    try {
-      const ledgerId = targetLedgerId || currentLedger?.id;
-      if (ledgerId) {
-        const scopedRules = rules.map(r => ({ ...r, ledger_id: ledgerId }));
-        await AsyncStorage.setItem(`${STORAGE_KEYS.RECURRING_RULES}_${ledgerId}`, JSON.stringify(scopedRules));
-      }
-    } catch (e) {
-      console.warn('儲存週期扣款規則快取失敗:', e);
-    }
-  };
-
-  // 新增自訂週期扣款規則
-  const addRecurringRule = async (
-    ruleData: Omit<RecurringRule, 'id' | 'ledger_id' | 'created_at' | 'updated_at'>
-  ): Promise<RecurringRule> => {
-    const newRule: RecurringRule = {
-      ...ruleData,
-      id: generateUUID(),
-      ledger_id: currentLedger.id,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    const currentScoped = recurringRules.filter(r => r.ledger_id === currentLedger.id);
-    const updated = [newRule, ...currentScoped];
-    setRecurringRules(updated);
-    await saveRecurringRulesToStorage(updated, currentLedger.id);
-
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        await supabase.from('recurring_rules').insert(newRule);
-      } catch (err) {
-        console.warn('雲端新增週期規則失敗 (本地可用):', err);
-      }
-    }
-    return newRule;
-  };
-
-  // 更新週期扣款規則
-  const updateRecurringRule = async (
-    id: string,
-    data: Partial<Omit<RecurringRule, 'id' | 'ledger_id'>>
-  ): Promise<boolean> => {
-    const updated = recurringRules.map(r => {
-      if (r.id === id) {
-        return {
-          ...r,
-          ...data,
-          ledger_id: currentLedger.id,
-          updated_at: new Date().toISOString(),
-        };
-      }
-      return r;
-    });
-    setRecurringRules(updated);
-    await saveRecurringRulesToStorage(updated, currentLedger.id);
-
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        await supabase.from('recurring_rules').update({
-          ...data,
-          updated_at: new Date().toISOString(),
-        }).eq('id', id);
-      } catch (err) {
-        console.warn('雲端更新週期規則失敗 (本地可用):', err);
-      }
-    }
-    return true;
-  };
-
-  // 刪除週期扣款規則
-  const deleteRecurringRule = async (id: string): Promise<boolean> => {
-    const updated = recurringRules.filter(r => r.id !== id);
-    setRecurringRules(updated);
-    await saveRecurringRulesToStorage(updated, currentLedger.id);
-
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        await supabase.from('recurring_rules').delete().eq('id', id);
-      } catch (err) {
-        console.warn('雲端刪除週期規則失敗 (本地可用):', err);
-      }
-    }
-    return true;
-  };
-
-  // 確認記帳（將待繳項目寫入記帳交易並標記本期已記帳）
-  const recordRecurringBill = async (
-    ruleId: string,
-    customAmount?: number,
-    transactedAt?: string,
-    note?: string,
-    targetPeriodDate?: Date
-  ): Promise<boolean> => {
-    const rule = recurringRules.find(r => r.id === ruleId);
-    if (!rule) return false;
-
-    const finalAmount = customAmount !== undefined && customAmount > 0 ? customAmount : rule.default_amount;
-    if (!finalAmount || finalAmount <= 0) {
-      safeAlert('金額錯誤', '請填寫大於 0 的正確金額');
-      return false;
-    }
-
-    const txDate = transactedAt || new Date().toISOString();
-    // 以所屬帳單期別或指定日期作為週期計算基準（例如補繳上期水電時，期別歸屬為上月，入帳日為今天）
-    const periodRefDate = targetPeriodDate || new Date(txDate);
-    const periodLabel = getBillPeriodLabel(rule, periodRefDate);
-    const autoNote = note !== undefined && note.trim() !== ''
-      ? note.trim()
-      : `[${rule.name}] ${periodLabel}`;
-
-    await addTransaction({
-      amount: finalAmount,
-      type: 'expense',
-      category_id: rule.category_id,
-      paid_by: rule.paid_by || currentUser.id,
-      merchant: rule.merchant || rule.name,
-      payment_method: rule.payment_method,
-      account_id: rule.account_id,
-      transacted_at: txDate,
-      note: autoNote,
-    });
-
-    const periodKey = getCurrentPeriodKey(rule, periodRefDate);
-    let nextCurrentInstallment = rule.current_installment;
-    let nextIsActive = rule.is_active;
-    let isFullyCompleted = false;
-
-    if (rule.is_installment && rule.total_installments && rule.total_installments > 0) {
-      const instInfo = getInstallmentInfo(rule, periodRefDate);
-      const currentNumber = instInfo ? instInfo.currentInstallmentNumber : (rule.current_installment || 1);
-      nextCurrentInstallment = currentNumber + 1;
-      if (nextCurrentInstallment > rule.total_installments) {
-        nextIsActive = false; // 已全數繳納完畢，自動除役完結！
-        isFullyCompleted = true;
-      }
-    }
-
-    const nextPeriodStr = appendPeriodKey(rule.last_recorded_period, periodKey);
-
-    const updated = recurringRules.map(r => {
-      if (r.id === ruleId) {
-        return {
-          ...r,
-          last_recorded_period: nextPeriodStr,
-          current_installment: nextCurrentInstallment,
-          is_active: nextIsActive,
-          updated_at: new Date().toISOString(),
-        };
-      }
-      return r;
-    });
-    setRecurringRules(updated);
-    await saveRecurringRulesToStorage(updated, currentLedger.id);
-
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        await supabase.from('recurring_rules').update({
-          last_recorded_period: nextPeriodStr,
-          current_installment: nextCurrentInstallment,
-          is_active: nextIsActive,
-          updated_at: new Date().toISOString(),
-        }).eq('id', ruleId);
-      } catch {}
-    }
-
-    if (isFullyCompleted) {
-      safeAlert(
-        '🎉 分期付款已全額繳清！',
-        `恭喜！「${rule.name}」共 ${rule.total_installments} 期已全數入帳結清，系統已自動將此規則完結除役，感謝您的細心記帳！`
-      );
-    }
-
-    return true;
-  };
-
-  // 略過本期帳單
-  const skipRecurringBill = async (ruleId: string, periodKey?: string): Promise<boolean> => {
-    const rule = recurringRules.find(r => r.id === ruleId);
-    if (!rule) return false;
-
-    const targetPeriod = periodKey || getCurrentPeriodKey(rule, new Date());
-    let nextCurrentInstallment = rule.current_installment;
-    let nextIsActive = rule.is_active;
-
-    if (rule.is_installment && rule.total_installments && rule.total_installments > 0) {
-      const instInfo = getInstallmentInfo(rule, new Date());
-      const currentNumber = instInfo ? instInfo.currentInstallmentNumber : (rule.current_installment || 1);
-      nextCurrentInstallment = currentNumber + 1;
-      if (nextCurrentInstallment > rule.total_installments) {
-        nextIsActive = false;
-      }
-    }
-
-    const nextPeriodStr = appendPeriodKey(rule.last_recorded_period, targetPeriod);
-
-    const updated = recurringRules.map(r => {
-      if (r.id === ruleId) {
-        return {
-          ...r,
-          last_recorded_period: nextPeriodStr,
-          current_installment: nextCurrentInstallment,
-          is_active: nextIsActive,
-          updated_at: new Date().toISOString(),
-        };
-      }
-      return r;
-    });
-    setRecurringRules(updated);
-    await saveRecurringRulesToStorage(updated, currentLedger.id);
-
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        await supabase.from('recurring_rules').update({
-          last_recorded_period: nextPeriodStr,
-          current_installment: nextCurrentInstallment,
-          is_active: nextIsActive,
-          updated_at: new Date().toISOString(),
-        }).eq('id', ruleId);
-      } catch {}
-    }
-    return true;
-  };
-
-  // 恢復/導入常用預設週期規則
-  const restoreDefaultRecurringRules = async (): Promise<void> => {
-    const utilityCategory = categories.find(c => c.name.includes('水電') || c.name.includes('居家')) || categories[0];
-    const defaultCard = paymentAccounts.find(a => a.type === 'credit_card');
-    const defaultRules: RecurringRule[] = DEFAULT_RECURRING_PRESETS.map((preset, index) => ({
-      id: generateUUID(),
-      ledger_id: currentLedger.id,
-      name: preset.name,
-      amount_type: preset.amount_type,
-      default_amount: preset.default_amount,
-      category_id: utilityCategory?.id || '',
-      merchant: preset.merchant,
-      paid_by: currentUser.id,
-      payment_method: preset.payment_method,
-      account_id: preset.payment_method === 'credit_card' ? defaultCard?.id : undefined,
-      frequency: preset.frequency,
-      due_day: preset.due_day,
-      bimonthly_start_month: (preset as any).bimonthly_start_month,
-      is_active: true,
-      last_recorded_period: undefined,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }));
-    setRecurringRules(defaultRules);
-    await saveRecurringRulesToStorage(defaultRules, currentLedger.id);
-
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        await supabase.from('recurring_rules').insert(defaultRules);
-      } catch {}
-    }
-  };
-
-  // 快速加值悠遊卡/儲值卡（更新卡片餘額並可自動記錄一筆出資扣款明細）
-  const topUpAccountBalance = async (
-    id: string,
-    topUpAmount: number,
-    options?: {
-      sourceType?: PaymentMethod | 'cash' | 'credit_card' | 'transfer' | string;
-      sourceAccountId?: string;
-      payerId?: string;
-      recordExpense?: boolean;
-      note?: string;
-    } | string
-  ): Promise<boolean> => {
-    try {
-      const targetAcc = paymentAccounts.find(a => a.id === id);
-      if (!targetAcc) return false;
-
-      const opts = typeof options === 'string' ? { note: options } : (options || {});
-      const recordExpense = opts.recordExpense !== false;
-      const sourceType = (opts.sourceType || 'cash') as PaymentMethod;
-      const sourceAccountId = opts.sourceAccountId;
-
-      const newBalance = Number((targetAcc.balance + topUpAmount).toFixed(2));
-      let updatedAccounts = paymentAccounts.map(a => a.id === id ? { ...a, balance: newBalance } : a);
-
-      // 若來源帳戶也是儲值卡 (stored_value) 且非目標卡，自動扣減來源儲值卡之餘額
-      if (sourceAccountId && sourceAccountId !== id) {
-        const sourceAcc = paymentAccounts.find(a => a.id === sourceAccountId);
-        if (sourceAcc && sourceAcc.type === 'stored_value') {
-          const srcNewBal = Number((sourceAcc.balance - topUpAmount).toFixed(2));
-          updatedAccounts = updatedAccounts.map(a => a.id === sourceAccountId ? { ...a, balance: srcNewBal } : a);
-          if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID && !sourceAccountId.startsWith('50000000')) {
-            supabase.from('payment_accounts').update({ balance: srcNewBal }).eq('id', sourceAccountId).then();
-          }
-        }
-      }
-
-      setPaymentAccounts(updatedAccounts);
-      await savePaymentAccountsToStorage(updatedAccounts);
-
-      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID && !id.startsWith('50000000')) {
-        supabase.from('payment_accounts').update({ balance: newBalance }).eq('id', id).then();
-      }
-
-      if (recordExpense) {
-        // 自動記錄一筆扣款出資交易
-        const trafficCat = categories.find(c => c.name.includes('交通') || c.name.includes('儲值'))
-          || categories[0]
-          || DEFAULT_CATEGORIES[0];
-
-        // 嚴格確保 validPaidBy 存在於當前家庭成員名冊，避免觸發 Supabase 外鍵報錯
-        const candidatePayerId = opts.payerId || targetAcc.user_id || currentUser.id;
-        const matchedPayer = members.find(m => m.id === candidatePayerId)
-          || members.find(m => m.id === currentUser.id)
-          || members[0];
-        const validPaidBy = matchedPayer?.id || currentUser.id;
-
-        const isEasyCard = targetAcc.name.includes('悠遊') || targetAcc.name.includes('市民');
-        const defaultMerchant = isEasyCard ? '悠遊卡加值' : `${targetAcc.name}加值`;
-
-        await addTransaction({
-          amount: topUpAmount,
-          type: 'transfer',
-          category_id: trafficCat ? trafficCat.id : categories[0]?.id,
-          paid_by: validPaidBy,
-          merchant: defaultMerchant,
-          payment_method: sourceType,
-          account_id: sourceAccountId, // 扣款信用卡 ID / 銀行帳戶 ID / 來源儲值卡 ID；若未指定則為 undefined
-          linked_transaction_id: targetAcc.id,
-          note: opts.note !== undefined ? opts.note : `存入【${targetAcc.name}】`,
-          transacted_at: new Date().toISOString(),
-        });
-      }
-
-      return true;
-    } catch (e) {
-      console.warn('加值失敗:', e);
-      return false;
-    }
-  };
-
-  // 直接校正儲值卡餘額 (管理員或持卡人本人可操作)
-  const adjustAccountBalance = async (id: string, newBalance: number): Promise<boolean> => {
-    const targetAcc = paymentAccounts.find(a => a.id === id);
-    const isOwnerOfCard = targetAcc && isAccountBoundToCurrentUser(targetAcc.user_id);
-
-    if (!effectiveIsOwner && !isOwnerOfCard) {
-      safeAlert('權限不足', '只有帳本管理員或持卡人本人才能校正卡片餘額');
-      return false;
-    }
-    try {
-      const updatedAccounts = paymentAccounts.map(a => a.id === id ? { ...a, balance: Number(newBalance.toFixed(2)) } : a);
-      setPaymentAccounts(updatedAccounts);
-      await savePaymentAccountsToStorage(updatedAccounts);
-
-      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID && !id.startsWith('50000000')) {
-        supabase.from('payment_accounts').update({ balance: Number(newBalance.toFixed(2)) }).eq('id', id).then();
-      }
-      return true;
-    } catch (e) {
-      console.warn('校正餘額失敗:', e);
-      return false;
-    }
-  };
-
-  // 切換特定交易的信用卡對帳核銷狀態 (is_reconciled)
-  const toggleReconcileTransaction = async (transactionId: string): Promise<boolean> => {
-    try {
-      let nextReconciled = false;
-      const updated = transactions.map(t => {
-        if (t.id === transactionId) {
-          nextReconciled = !t.is_reconciled;
-          return { ...t, is_reconciled: nextReconciled };
-        }
-        return t;
-      });
-      setTransactions(updated);
-      await saveTransactionsToStorage(updated);
-
-      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-        try {
-          await supabase.from('transactions').update({ is_reconciled: nextReconciled }).eq('id', transactionId);
-        } catch {}
-      }
-      return true;
-    } catch (e) {
-      console.warn('切換對帳狀態失敗:', e);
-      return false;
-    }
-  };
-
-  // 透過 ID 取得卡片帳戶資料
-  const getAccountById = React.useCallback(
-    (id?: string): PaymentAccount | undefined => {
-      if (!id) return undefined;
-      const found = paymentAccounts.find(a => a.id === id);
-      if (found) return found;
-
-      // 容錯支援：若舊資料紀錄為示範 ID，智慧對應至當前同名或同末碼的實際卡片
-      if (id === '50000000-0000-4000-8000-000000000001') {
-        return paymentAccounts.find(a => a.name.includes('富邦') || a.last_four_digits === '8829');
-      }
-      if (id === '50000000-0000-4000-8000-000000000002') {
-        return paymentAccounts.find(a => a.name.includes('國泰') || a.last_four_digits === '1234');
-      }
-      if (id === '50000000-0000-4000-8000-000000000003') {
-        return paymentAccounts.find(a => a.name.includes('爸爸') && a.type === 'stored_value') || paymentAccounts.find(a => a.type === 'stored_value');
-      }
-      if (id === '50000000-0000-4000-8000-000000000004') {
-        return paymentAccounts.find(a => a.name.includes('媽媽') && a.type === 'stored_value');
-      }
-
-      return undefined;
-    },
-    [paymentAccounts]
-  );
-
-  // 新增交易（兼顧樂觀更新與雲端同步）
   const addTransaction = async (data: {
     id?: string;
     amount: number;
@@ -7914,700 +6248,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [transactions, updateTransaction]);
 
   // 匯出為 CSV 格式 (自帶 UTF-8 BOM，防止 Windows Excel 雙擊開啟出現繁體中文亂碼)
-  const exportToCSV = (): string => {
-    const BOM = '\uFEFF';
-    const headers = ['日期', '類型', '分類', '金額', '付款人', '店家/對象', '備註'];
-    const rows = transactions.map(t => {
-      const cat = getCategoryById(t.category_id, t.category)?.name || '未分類';
-      const payer = getMemberById(t.paid_by)?.display_name || t.payer_profile?.display_name || '家庭成員';
-      const typeStr = t.type === 'expense' ? '支出' : '收入';
-      const dateStr = t.transacted_at ? new Date(t.transacted_at).toLocaleDateString('zh-TW') : '';
-      return `"${dateStr}","${typeStr}","${cat}",${t.amount},"${payer}","${(t.merchant || '').replace(/"/g, '""')}","${(t.note || '').replace(/"/g, '""')}"`;
-    });
-    return BOM + [headers.join(','), ...rows].join('\n');
-  };
 
-  // 匯出為完整 JSON 結構備份檔 (包含帳本資訊、家庭成員、自訂分類、支付卡片帳戶、所有記帳明細)
-  const exportToJSON = (): string => {
-    const backupData = {
-      app: '甜心記帳本',
-      version: APP_FULL_VERSION,
-      exported_at: new Date().toISOString(),
-      ledger: {
-        id: currentLedger.id,
-        name: currentLedger.name,
-        invite_code: inviteCode,
-        is_read_only: currentLedger.is_read_only,
-      },
-      members: members.map(m => ({
-        id: m.id,
-        display_name: m.display_name,
-        avatar_url: m.avatar_url,
-        role: m.role,
-      })),
-      categories: categories.map(c => ({
-        id: c.id,
-        name: c.name,
-        icon: c.icon,
-        color: c.color,
-        type: c.type,
-        sort_order: c.sort_order,
-      })),
-      payment_accounts: paymentAccounts.map(a => ({
-        id: a.id,
-        name: a.name,
-        type: a.type,
-        user_id: a.user_id,
-        last_four_digits: a.last_four_digits,
-        billing_cycle_date: a.billing_cycle_date,
-        balance: a.balance,
-        color: a.color,
-        icon: a.icon,
-        sort_order: a.sort_order,
-      })),
-      transactions: transactions.map(t => ({
-        id: t.id,
-        amount: t.amount,
-        type: t.type,
-        reminder_date: t.reminder_date,
-        completed_by: t.completed_by,
-        category_id: t.category_id,
-        paid_by: t.paid_by,
-        transacted_at: t.transacted_at,
-        merchant: t.merchant,
-        note: t.note,
-        payment_method: t.payment_method,
-        account_id: t.account_id,
-        is_reconciled: t.is_reconciled,
-        is_settled: t.is_settled,
-      })),
-      recurring_rules: recurringRules
-        .filter(r => !r.ledger_id || r.ledger_id === currentLedger.id)
-        .map(r => ({
-        id: r.id,
-        name: r.name,
-        amount_type: r.amount_type,
-        default_amount: r.default_amount,
-        category_id: r.category_id,
-        merchant: r.merchant,
-        paid_by: r.paid_by,
-        payment_method: r.payment_method,
-        account_id: r.account_id,
-        frequency: r.frequency,
-        due_day: r.due_day,
-        bimonthly_start_month: r.bimonthly_start_month,
-        is_active: r.is_active,
-        last_recorded_period: r.last_recorded_period,
-        is_installment: r.is_installment,
-        total_installments: r.total_installments,
-        current_installment: r.current_installment,
-        installment_start_period: r.installment_start_period,
-        note: r.note,
-      })),
-      payment_methods: paymentMethods.map(m => ({
-        id: m.id,
-        name: m.name,
-        icon: m.icon,
-        color: m.color,
-        type: m.type,
-        supports_credit_card: m.supports_credit_card,
-        is_enabled: m.is_enabled,
-        is_system: m.is_system,
-        sort_order: m.sort_order,
-      })),
-    };
-    return JSON.stringify(backupData, null, 2);
-  };
+  addTransactionRef.current = addTransaction;
 
-  // 從完整 JSON 結構備份檔還原資料
-  const restoreFromJSON = async (
-    jsonStr: string,
-    options?: { mode?: 'merge' | 'overwrite' }
-  ): Promise<{ success: boolean; message: string; restoredCount?: number }> => {
-    if (!effectiveIsOwner) {
-      return { success: false, message: '權限不足：只有帳本管理員才能回復帳本資料' };
-    }
-    const mode = options?.mode || 'merge';
-    try {
-      if (!jsonStr || typeof jsonStr !== 'string' || !jsonStr.trim()) {
-        return { success: false, message: '請提供有效的 JSON 備份內容' };
-      }
-
-      let backup: any;
-      try {
-        backup = JSON.parse(jsonStr.trim());
-      } catch {
-        return { success: false, message: 'JSON 格式解析錯誤，請確認文字內容完整' };
-      }
-
-      if (!backup || typeof backup !== 'object') {
-        return { success: false, message: '備份檔內容格式不正確' };
-      }
-
-      if (!Array.isArray(backup.transactions)) {
-        return { success: false, message: '備份檔中缺少交易明細資料 (transactions)' };
-      }
-
-      const isRealCloud = isConfigured && currentLedger?.id && currentLedger.id !== DEMO_LEDGER_ID;
-
-      // 若備份檔標記此帳本為唯讀封存 (is_read_only)，自動同步啟用唯讀保護
-      if (backup.ledger?.is_read_only) {
-        await AsyncStorage.setItem(`${STORAGE_KEYS.LEDGER_READ_ONLY}_${currentLedger.id}`, 'true');
-        setCurrentLedger(prev => ({ ...prev, is_read_only: true }));
-        setLedgers(prev => prev.map(l => l.id === currentLedger.id ? { ...l, is_read_only: true } : l));
-        if (isRealCloud) {
-          try {
-            await supabase.from('ledgers').update({ is_read_only: true }).eq('id', currentLedger.id);
-          } catch {}
-        }
-      }
-
-      // 1. 還原/合併 家庭成員 (Members)
-      let nextMembers = [...members];
-      const memberIdMap: Record<string, string> = {};
-
-      // 預設將現有成員自身的 ID 映射給自己
-      nextMembers.forEach(m => {
-        if (m.id) {
-          memberIdMap[m.id] = m.id;
-        }
-      });
-
-      if (Array.isArray(backup.members) && backup.members.length > 0) {
-        const validBackupMembers = backup.members.filter(
-          (m: any) => m && (m.display_name || m.name)
-        );
-
-        if (mode === 'overwrite') {
-          // 覆蓋模式：以備份成員名冊為骨幹，但嚴格保留當前裝置操作者 currentUser
-          const newMemberList: Profile[] = [];
-          if (currentUser?.id) {
-            newMemberList.push({ ...currentUser });
-            memberIdMap[currentUser.id] = currentUser.id;
-          }
-
-          for (const bm of validBackupMembers) {
-            const rawName = (bm.display_name || bm.name || '').trim();
-            const nameKey = rawName.toLowerCase();
-            const backupId = bm.id;
-
-            // 檢查是否與已加入清單（如 currentUser）重名或同 ID
-            const existing = newMemberList.find(
-              m => (backupId && m.id === backupId) ||
-                   (m.display_name || '').trim().toLowerCase() === nameKey
-            );
-
-            if (existing) {
-              if (backupId) {
-                memberIdMap[backupId] = existing.id;
-              }
-              if (bm.avatar_url && !existing.avatar_url) {
-                existing.avatar_url = bm.avatar_url;
-              }
-            } else {
-              const isDemoConst = backupId?.startsWith('20000000');
-              const targetId = (backupId && isValidUUID(backupId) && (!isRealCloud || !isDemoConst))
-                ? backupId
-                : generateUUID();
-
-              const restoredProf: Profile = {
-                id: targetId,
-                display_name: rawName,
-                avatar_url: bm.avatar_url || '😊',
-                role: bm.role || 'member',
-                email: bm.email || `${rawName.toLowerCase()}@family.local`,
-              };
-              newMemberList.push(restoredProf);
-              if (backupId) {
-                memberIdMap[backupId] = targetId;
-              }
-            }
-          }
-          nextMembers = deduplicateMembers(newMemberList);
-        } else {
-          // 合併模式 (merge)：保留現有名冊，去重補入備份檔中不存在的新成員
-          for (const bm of validBackupMembers) {
-            const rawName = (bm.display_name || bm.name || '').trim();
-            const nameKey = rawName.toLowerCase();
-            const backupId = bm.id;
-
-            const existing = nextMembers.find(
-              m => (backupId && m.id === backupId) ||
-                   (m.display_name || '').trim().toLowerCase() === nameKey
-            );
-
-            if (existing) {
-              if (backupId) {
-                memberIdMap[backupId] = existing.id;
-              }
-            } else {
-              const isDemoConst = backupId?.startsWith('20000000');
-              const targetId = (backupId && isValidUUID(backupId) && (!isRealCloud || !isDemoConst))
-                ? backupId
-                : generateUUID();
-
-              const newProf: Profile = {
-                id: targetId,
-                display_name: rawName,
-                avatar_url: bm.avatar_url || '😊',
-                role: bm.role || 'member',
-                email: bm.email || `${rawName.toLowerCase()}@family.local`,
-              };
-              nextMembers.push(newProf);
-              if (backupId) {
-                memberIdMap[backupId] = targetId;
-              }
-            }
-          }
-          nextMembers = deduplicateMembers(nextMembers);
-        }
-
-        setMembers(nextMembers);
-        await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(nextMembers));
-        if (currentLedger?.id) {
-          await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${currentLedger.id}`, JSON.stringify(nextMembers));
-        }
-
-        // 若為已連線之 Supabase 雲端帳本，同步建立 profiles 與 ledger_members
-        if (isRealCloud) {
-          try {
-            for (const m of nextMembers) {
-              await supabase.from('profiles').upsert({
-                id: m.id,
-                display_name: m.display_name,
-                avatar_url: m.avatar_url || '😊',
-                email: m.email || `${(m.display_name || 'member').toLowerCase()}@family.local`,
-              });
-              await supabase.from('ledger_members').upsert({
-                ledger_id: currentLedger.id,
-                user_id: m.id,
-                role: m.role || 'member',
-              });
-            }
-          } catch (e) {
-            console.warn('雲端還原同步成員名冊失敗:', e);
-          }
-        }
-
-        // 重新構建成員別名映射表
-        const updatedAliasMap = buildMemberAliasMap(nextMembers, nextMembers);
-        setMemberAliasMap(updatedAliasMap);
-        await AsyncStorage.setItem(STORAGE_KEYS.ALIAS_MAP, JSON.stringify(updatedAliasMap));
-      }
-
-      // 2. 還原/合併 自訂分類
-      let nextCategories = [...categories];
-      const categoryIdMap: Record<string, string> = {};
-
-      nextCategories.forEach(c => {
-        if (c.id) categoryIdMap[c.id] = c.id;
-      });
-
-      if (Array.isArray(backup.categories) && backup.categories.length > 0) {
-        if (mode === 'overwrite') {
-          const validBackupCats = backup.categories.filter((c: any) => c && c.name && c.id);
-          if (validBackupCats.length > 0) {
-            nextCategories = validBackupCats.map((bc: any) => {
-              if (bc.id) categoryIdMap[bc.id] = bc.id;
-              return {
-                id: bc.id,
-                name: bc.name,
-                icon: bc.icon || '📝',
-                color: bc.color || '#6B7280',
-                type: bc.type || 'expense',
-                sort_order: bc.sort_order || 1,
-              };
-            });
-          }
-        } else {
-          backup.categories.forEach((bc: any) => {
-            if (!bc || !bc.name) return;
-            const existing = nextCategories.find(c => c.id === bc.id || c.name === bc.name);
-            if (existing) {
-              if (bc.id) categoryIdMap[bc.id] = existing.id;
-            } else {
-              const isDemoConst = bc.id?.startsWith('30000000');
-              const targetId = (bc.id && isValidUUID(bc.id) && (!isRealCloud || !isDemoConst))
-                ? bc.id
-                : generateUUID();
-              const newCat = {
-                id: targetId,
-                name: bc.name,
-                icon: bc.icon || '📝',
-                color: bc.color || '#6B7280',
-                type: bc.type || 'expense',
-                sort_order: bc.sort_order || nextCategories.length + 1,
-              };
-              nextCategories.push(newCat);
-              if (bc.id) categoryIdMap[bc.id] = targetId;
-            }
-          });
-        }
-        setCategories(nextCategories);
-        await AsyncStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(nextCategories));
-        if (currentLedger?.id) {
-          await AsyncStorage.setItem(`${STORAGE_KEYS.CATEGORIES}_${currentLedger.id}`, JSON.stringify(nextCategories));
-        }
-      }
-
-      // 3. 還原/合併 支付卡片與帳戶
-      let nextAccounts = [...paymentAccounts];
-      const accountIdMap: Record<string, string> = {};
-
-      nextAccounts.forEach(a => {
-        if (a.id) accountIdMap[a.id] = a.id;
-      });
-
-      if (Array.isArray(backup.payment_accounts) && backup.payment_accounts.length > 0) {
-        const processAccount = (ba: any) => {
-          let mappedUserId = ba.user_id;
-          if (ba.user_id) {
-            if (memberIdMap[ba.user_id]) {
-              mappedUserId = memberIdMap[ba.user_id];
-            } else if (!nextMembers.some(m => m.id === ba.user_id)) {
-              const matchedMember = nextMembers.find(m => m.display_name && ba.name?.includes(m.display_name));
-              mappedUserId = matchedMember ? matchedMember.id : undefined;
-            }
-          }
-
-          const isDemoConst = ba.id?.startsWith('50000000');
-          const targetId = (ba.id && isValidUUID(ba.id) && (!isRealCloud || !isDemoConst))
-            ? ba.id
-            : generateUUID();
-
-          if (ba.id) {
-            accountIdMap[ba.id] = targetId;
-          }
-
-          return {
-            ...ba,
-            id: targetId,
-            user_id: mappedUserId,
-            ledger_id: currentLedger.id,
-          };
-        };
-
-        if (mode === 'overwrite') {
-          nextAccounts = backup.payment_accounts
-            .filter((a: any) => a && a.name)
-            .map(processAccount);
-        } else {
-          backup.payment_accounts.forEach((ba: any) => {
-            if (!ba || !ba.name) return;
-            const existing = nextAccounts.find(
-              a => a.id === ba.id || (a.name === ba.name && a.last_four_digits === ba.last_four_digits)
-            );
-            if (existing) {
-              if (ba.id) accountIdMap[ba.id] = existing.id;
-            } else {
-              nextAccounts.push(processAccount(ba));
-            }
-          });
-        }
-        setPaymentAccounts(nextAccounts);
-        await savePaymentAccountsToStorage(nextAccounts);
-
-        // 同步卡片至 Supabase 雲端 (若為已連線雲端帳本)
-        if (isRealCloud) {
-          try {
-            const accountsToSync = nextAccounts.map(acc => ({
-              id: acc.id,
-              ledger_id: currentLedger.id,
-              name: acc.name,
-              type: acc.type,
-              user_id: acc.user_id && nextMembers.some(m => m.id === acc.user_id) ? acc.user_id : null,
-              last_four_digits: acc.last_four_digits || '',
-              billing_cycle_date: acc.billing_cycle_date || 1,
-              balance: acc.balance || 0,
-              color: acc.color || '#3B82F6',
-              icon: acc.icon || '💳',
-              sort_order: acc.sort_order || 1,
-            }));
-            await supabase.from('payment_accounts').upsert(accountsToSync);
-          } catch (e) {
-            console.warn('雲端還原同步卡片帳戶失敗:', e);
-          }
-        }
-      }
-
-      // 3.5 還原/合併 週期扣款規則 (Recurring Rules)
-      let nextRecurringRules = [...recurringRules];
-      if (Array.isArray(backup.recurring_rules) && backup.recurring_rules.length > 0) {
-        const processRule = (br: any): RecurringRule => {
-          let mappedPaidBy = br.paid_by;
-          if (br.paid_by && memberIdMap[br.paid_by]) {
-            mappedPaidBy = memberIdMap[br.paid_by];
-          } else if (currentUser?.id) {
-            mappedPaidBy = currentUser.id;
-          }
-
-          let mappedCategoryId = br.category_id;
-          if (br.category_id && categoryIdMap[br.category_id]) {
-            mappedCategoryId = categoryIdMap[br.category_id];
-          }
-
-          let mappedAccountId = br.account_id;
-          if (br.account_id && accountIdMap[br.account_id]) {
-            mappedAccountId = accountIdMap[br.account_id];
-          }
-
-          return {
-            ...br,
-            id: br.id || generateUUID(),
-            ledger_id: currentLedger.id,
-            paid_by: mappedPaidBy,
-            category_id: mappedCategoryId || nextCategories[0]?.id || '',
-            account_id: mappedAccountId,
-            is_installment: br.is_installment,
-            total_installments: br.total_installments,
-            current_installment: br.current_installment,
-            installment_start_period: br.installment_start_period,
-            updated_at: new Date().toISOString(),
-          };
-        };
-
-        if (mode === 'overwrite') {
-          nextRecurringRules = backup.recurring_rules
-            .filter((r: any) => r && r.name)
-            .map(processRule);
-        } else {
-          backup.recurring_rules.forEach((br: any) => {
-            if (!br || !br.name) return;
-            const existing = nextRecurringRules.find(r => r.id === br.id || r.name === br.name);
-            if (!existing) {
-              nextRecurringRules.push(processRule(br));
-            }
-          });
-        }
-        setRecurringRules(nextRecurringRules);
-        await saveRecurringRulesToStorage(nextRecurringRules, currentLedger.id);
-      }
-
-      // 3.6 還原/合併 自訂付款方式 (Payment Methods)
-      let nextPaymentMethods = [...paymentMethods];
-      if (Array.isArray(backup.payment_methods) && backup.payment_methods.length > 0) {
-        if (mode === 'overwrite') {
-          nextPaymentMethods = backup.payment_methods.map((bm: any) => ({
-            id: bm.id,
-            ledger_id: currentLedger.id,
-            name: bm.name,
-            icon: bm.icon || '💳',
-            color: bm.color || '#6366F1',
-            type: bm.type || 'other',
-            supports_credit_card: !!bm.supports_credit_card,
-            is_enabled: bm.is_enabled !== false,
-            is_system: !!bm.is_system,
-            sort_order: bm.sort_order || 1,
-            created_at: new Date().toISOString(),
-          }));
-        } else {
-          backup.payment_methods.forEach((bm: any) => {
-            if (!bm || !bm.name) return;
-            const existingIndex = nextPaymentMethods.findIndex(m => m.id === bm.id || m.name === bm.name);
-            if (existingIndex >= 0) {
-              nextPaymentMethods[existingIndex] = {
-                ...nextPaymentMethods[existingIndex],
-                is_enabled: bm.is_enabled !== false,
-                sort_order: bm.sort_order ?? nextPaymentMethods[existingIndex].sort_order,
-              };
-            } else {
-              nextPaymentMethods.push({
-                id: bm.id || generateUUID(),
-                ledger_id: currentLedger.id,
-                name: bm.name,
-                icon: bm.icon || '💳',
-                color: bm.color || '#6366F1',
-                type: bm.type || 'other',
-                supports_credit_card: !!bm.supports_credit_card,
-                is_enabled: bm.is_enabled !== false,
-                is_system: !!bm.is_system,
-                sort_order: bm.sort_order || nextPaymentMethods.length + 1,
-                created_at: new Date().toISOString(),
-              });
-            }
-          });
-        }
-        setPaymentMethods(nextPaymentMethods);
-        await savePaymentMethodsToStorage(nextPaymentMethods);
-      }
-
-      // 4. 還原/合併 交易明細
-      const backupTxs = Array.isArray(backup.transactions) ? backup.transactions : [];
-      const targetLedgerId = currentLedger.id;
-      const fallbackPayerId = currentUser?.id || nextMembers[0]?.id || 'unknown';
-
-      // 關鍵防禦：徹底清空本機與雲端墓碑名冊，防止任何還原紀錄被既有刪除快取阻擋
-      deletedTxIdsRef.current.clear();
-      try {
-        await AsyncStorage.removeItem(STORAGE_KEYS.DELETED_TX_IDS);
-        await AsyncStorage.removeItem(`${STORAGE_KEYS.DELETED_TX_IDS}_${targetLedgerId}`);
-        if (isRealCloud) {
-          await supabase.from('deleted_transactions').delete().eq('ledger_id', targetLedgerId);
-        }
-      } catch {}
-
-      if (mode === 'overwrite' && isRealCloud) {
-        try {
-          await supabase.from('transactions').delete().eq('ledger_id', targetLedgerId);
-        } catch (e) {
-          console.warn('覆蓋模式清空舊交易失敗:', e);
-        }
-      }
-
-      // 建立現有明細特徵指紋集合（以防 merge 模式重複補入）
-      const existingFingerprints = new Set(
-        transactions.map(t => `${t.type}_${Number(t.amount)}_${t.transacted_at}_${t.merchant || ''}_${t.note || ''}`)
-      );
-
-      const sanitizedTxs: Transaction[] = [];
-
-      for (const t of backupTxs) {
-        if (!t || isNaN(Number(t.amount))) continue;
-
-        const fingerprint = `${t.type}_${Number(t.amount)}_${t.transacted_at}_${t.merchant || ''}_${t.note || ''}`;
-        if (mode === 'merge' && existingFingerprints.has(fingerprint)) {
-          // 合併模式下，若已存在完全相同的明細，跳過避免重複
-          continue;
-        }
-
-        // 分類對齊
-        const targetCatId = t.category_id && categoryIdMap[t.category_id] ? categoryIdMap[t.category_id] : t.category_id;
-        const matchedCategory = nextCategories.find(c => c.id === targetCatId) || nextCategories[0];
-
-        // 付款人對齊
-        let resolvedPaidBy = fallbackPayerId;
-        if (t.paid_by) {
-          if (memberIdMap[t.paid_by]) {
-            resolvedPaidBy = memberIdMap[t.paid_by];
-          } else if (nextMembers.some(m => m.id === t.paid_by)) {
-            resolvedPaidBy = t.paid_by;
-          } else if (memberAliasMap[t.paid_by]) {
-            resolvedPaidBy = memberAliasMap[t.paid_by].id;
-          }
-        }
-
-        // 建立者對齊
-        let resolvedCreatorId = currentUser?.id;
-        if (t.creator_id) {
-          if (memberIdMap[t.creator_id]) {
-            resolvedCreatorId = memberIdMap[t.creator_id];
-          } else if (nextMembers.some(m => m.id === t.creator_id)) {
-            resolvedCreatorId = t.creator_id;
-          }
-        }
-
-        // 扣款卡片對齊
-        let resolvedAccountId = t.account_id;
-        if (resolvedAccountId && accountIdMap[resolvedAccountId]) {
-          resolvedAccountId = accountIdMap[resolvedAccountId];
-        }
-
-        // 核心免疫關鍵：一律生成全新獨立 UUID！
-        // 徹底根除任何客戶端或資料庫中舊 ID 的「歷史刪除標記」，確保 100% 不會被自動刪除
-        const freshTxId = generateUUID();
-
-        const isBackupMemo = t.type === 'memo' || (t.type === 'transfer' && Number(t.amount) === 0) || t.merchant?.startsWith('remind:') || t.merchant === 'memo';
-        const restoredType: TransactionType = isBackupMemo ? 'memo' : (t.type === 'income' ? 'income' : (t.type === 'transfer' ? 'transfer' : 'expense'));
-        const restoredReminder = t.reminder_date || (t.merchant?.startsWith('remind:') ? t.merchant.replace('remind:', '') : undefined);
-
-        sanitizedTxs.push({
-          id: freshTxId,
-          ledger_id: targetLedgerId,
-          creator_id: resolvedCreatorId,
-          category_id: matchedCategory?.id || targetCatId,
-          amount: isBackupMemo ? 0 : Number(t.amount),
-          type: restoredType,
-          reminder_date: restoredReminder,
-          completed_by: t.completed_by || undefined,
-          paid_by: resolvedPaidBy,
-          transacted_at: t.transacted_at || new Date().toISOString(),
-          merchant: t.merchant || undefined,
-          note: t.note || '',
-          payment_method: t.payment_method || 'cash',
-          account_id: resolvedAccountId || undefined,
-          is_reconciled: Boolean(t.is_reconciled),
-          category: matchedCategory,
-          is_settled: t.is_settled ?? false,
-          created_at: t.created_at || new Date().toISOString(),
-        });
-      }
-
-      let finalTxs: Transaction[];
-      if (mode === 'overwrite') {
-        finalTxs = sanitizedTxs;
-      } else {
-        finalTxs = [...transactions, ...sanitizedTxs];
-      }
-
-      finalTxs.sort((a, b) => new Date(b.transacted_at).getTime() - new Date(a.transacted_at).getTime());
-
-      setTransactions(finalTxs);
-      await saveTransactionsToStorage(finalTxs);
-
-      // 同步還原交易至 Supabase 雲端 (若為已連線雲端帳本)
-      if (isRealCloud && sanitizedTxs.length > 0) {
-        try {
-          const txsToUpsert = sanitizedTxs.map(t => {
-            const p: any = {
-              id: t.id,
-              ledger_id: t.ledger_id,
-              creator_id: t.creator_id || currentUser?.id,
-              category_id: t.category_id,
-              amount: t.amount,
-              type: t.type,
-              paid_by: t.paid_by,
-              transacted_at: t.transacted_at,
-              is_settled: t.is_settled || false,
-              note: t.note || '',
-            };
-            if (hasMerchantColumnRef.current) {
-              p.merchant = t.merchant || null;
-            }
-            if (hasPaymentColumnsRef.current) {
-              if (t.payment_method) p.payment_method = t.payment_method;
-              if (t.account_id && !t.account_id.startsWith('50000000')) p.account_id = t.account_id;
-              if (t.is_reconciled !== undefined) p.is_reconciled = t.is_reconciled;
-            }
-            return p;
-          });
-
-          for (let i = 0; i < txsToUpsert.length; i += 500) {
-            await supabase.from('transactions').upsert(txsToUpsert.slice(i, i + 500));
-          }
-        } catch (cloudErr) {
-          console.warn('雲端還原同步交易失敗:', cloudErr);
-        }
-      }
-
-      const parts: string[] = [`${sanitizedTxs.length} 筆明細`];
-      if (Array.isArray(backup.members) && backup.members.length > 0) {
-        parts.push(`${nextMembers.length} 位成員`);
-      }
-      if (Array.isArray(backup.payment_accounts) && backup.payment_accounts.length > 0) {
-        parts.push(`${nextAccounts.length} 張卡片`);
-      }
-      if (Array.isArray(backup.categories) && backup.categories.length > 0) {
-        parts.push(`${nextCategories.length} 個分類`);
-      }
-      if (Array.isArray(backup.recurring_rules) && backup.recurring_rules.length > 0) {
-        parts.push(`${nextRecurringRules.length} 個週期規則`);
-      }
-      if (Array.isArray(backup.payment_methods) && backup.payment_methods.length > 0) {
-        parts.push(`${nextPaymentMethods.length} 個付款方式`);
-      }
-
-      return {
-        success: true,
-        message: `成功還原！${mode === 'overwrite' ? '已覆蓋還原' : '已合併補入'} ${parts.join('、')}。`,
-        restoredCount: sanitizedTxs.length,
-      };
-    } catch (err: any) {
-      console.error('restoreFromJSON 錯誤:', err);
-      return { success: false, message: `還原失敗: ${err?.message || '未知錯誤'}` };
-    }
-  };
-
-  // 計算結算與統計資訊
   const settlementInfo = React.useMemo(() => {
     let totalExpense = 0;
     let totalIncome = 0;
@@ -8979,751 +6622,6 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // 一鍵切換本機成員身分（包含管理員 PIN 碼權限防護）
-  const switchCurrentUser = async (member: Profile, inputPin?: string): Promise<{ success: boolean; message?: string }> => {
-    try {
-      const isMemberCreator = currentLedger.created_by === member.id;
-      const targetIsAdmin = isMemberCreator || member.role === 'owner' || member.role === 'admin';
-      const currentIsAdmin = userRole === 'owner' || userRole === 'admin';
-
-      // Google 電子鎖安全防護：
-      // 若目標成員已受 Google 帳號鎖定，且當前裝置未綁定該 Google 帳號，禁止直接切換冒充
-      if (member.is_locked && (!currentUser.auth_email || currentUser.auth_email.toLowerCase() !== (member.auth_email || '').toLowerCase())) {
-        return {
-          success: false,
-          message: `「${member.display_name}」身分已受 Google 帳號（${member.auth_email || '受保護'}）鎖定。請於設定頁使用「以 Google 帳號認領身分」以完成切換。`
-        };
-      }
-
-      // 安全防護機制：
-      // 若當前裝置為一般成員身分（非管理員），且欲切換至具備管理員權限的成員，強制驗證 4 位數管理員 PIN 碼！
-      if (!currentIsAdmin && targetIsAdmin) {
-        const clean = (inputPin || '').trim();
-        const expected = ((currentLedger as any)?.admin_pin || adminPin || '8888').trim();
-        if (!clean || clean !== expected) {
-          return { success: false, message: '管理員安全 PIN 碼錯誤，無法切換至管理員身分！' };
-        }
-      }
-
-      const resolvedRole: 'owner' | 'admin' | 'member' =
-        isMemberCreator ? 'owner' : (member.role === 'owner' || member.role === 'admin' ? member.role : 'member');
-      const updatedUser: Profile = { ...member, role: resolvedRole };
-
-      setCurrentUser(updatedUser);
-      setUserRole(resolvedRole);
-      setIsDeviceBound(true);
-
-      // 立即持久化本地身分與角色
-      await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedUser));
-      if (currentLedger?.id) {
-        await AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${currentLedger.id}`, JSON.stringify(updatedUser));
-      }
-      await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, resolvedRole);
-      await AsyncStorage.setItem(STORAGE_KEYS.DEVICE_BOUND, 'true');
-
-      // 同步更新 ledgers 列表中的當前使用者快取
-      setLedgers(prev => prev.map(l => l.id === currentLedger.id ? {
-        ...l,
-        userRole: resolvedRole,
-        userDisplayName: member.display_name,
-        userAvatar: member.avatar_url,
-      } : l));
-
-      return { success: true };
-    } catch (err: any) {
-      console.error('switchCurrentUser 異常:', err);
-      return { success: false, message: err?.message || '切換身分失敗' };
-    }
-  };
-
-  // 將當前裝置綁定至指定家庭成員（長輩防呆專用）
-  const bindDeviceToMember = async (member: Profile) => {
-    await switchCurrentUser(member);
-  };
-
-  // 解除裝置身分綁定
-  const unbindDevice = async () => {
-    setIsDeviceBound(false);
-    await AsyncStorage.removeItem(STORAGE_KEYS.DEVICE_BOUND);
-  };
-
-  // 變更成員角色權限 (僅在管理員模式下可操作)
-  const updateMemberRole = async (memberId: string, newRole: 'owner' | 'member'): Promise<boolean> => {
-    if (!effectiveIsOwner) {
-      alert('只有在管理員模式下才能變更成員角色權限');
-      return false;
-    }
-
-    if (currentLedger.created_by === memberId && newRole === 'member') {
-      alert('此帳本的原始建立者不能被降為一般成員');
-      return false;
-    }
-
-    // 防呆保護：若欲降級的成員是目前唯一的管理員，強制禁止，避免整本帳本出現 0 管理員
-    if (newRole === 'member') {
-      const remainingAdmins = members.filter(
-        m => m.id !== memberId && (m.role === 'owner' || m.role === 'admin' || currentLedger.created_by === m.id)
-      );
-      if (remainingAdmins.length === 0) {
-        alert('家庭公帳至少需保留一位管理員。若要卸任，請先將另一位家人（如伴侶）設為管理員！');
-        return false;
-      }
-    }
-
-    // 1. 本地更新
-    const updated = members.map(m => m.id === memberId ? { ...m, role: newRole } : m);
-    setMembers(updated);
-    await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updated));
-    await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${currentLedger.id}`, JSON.stringify(updated));
-
-    const { data: { session } } = await supabase.auth.getSession();
-    const myAuthId = session?.user?.id;
-    if (myAuthId === memberId) {
-      setUserRole(newRole);
-      await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, newRole);
-    }
-
-    // 2. 雲端同步
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        let rpcSuccess = false;
-        try {
-          const { data: rpcRes } = await supabase.rpc('set_member_role', {
-            target_ledger_id: currentLedger.id,
-            target_user_id: memberId,
-            new_role: newRole,
-          });
-          if (rpcRes && rpcRes.success) {
-            rpcSuccess = true;
-          }
-        } catch {
-          // fallback to direct table update
-        }
-
-        if (!rpcSuccess) {
-          const { error } = await supabase
-            .from('ledger_members')
-            .update({ role: newRole })
-            .eq('ledger_id', currentLedger.id)
-            .eq('user_id', memberId);
-
-          if (error) {
-            console.warn('雲端更新成員角色失敗:', error);
-            alert('變更成員權限失敗: ' + error.message);
-            return false;
-          }
-        }
-      } catch (err: any) {
-        console.warn('雲端更新成員角色異常:', err);
-        return false;
-      }
-    }
-
-    return true;
-  };
-
-  // 透過管理員安全 PIN 碼恢復或取回管理員權限 (救援機制)
-  const claimAdminRoleWithPin = async (inputPin: string): Promise<{ success: boolean; message?: string }> => {
-    const clean = inputPin.trim();
-    const expected = (currentLedger as any)?.admin_pin || adminPin || '8888';
-    if (!clean || clean !== expected.trim()) {
-      return { success: false, message: '管理員安全 PIN 碼錯誤，無法取得管理員權限！' };
-    }
-
-    const { data: { session } } = await supabase.auth.getSession();
-    const authUserId = session?.user?.id || currentUser.id;
-
-    setPreviewMember(null);
-    setUserRole('owner');
-    await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, 'owner');
-
-    const updatedMembers = members.map(m => (m.id === currentUser.id ? { ...m, role: 'owner' as const } : m));
-    setMembers(updatedMembers);
-    await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updatedMembers));
-    await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${currentLedger.id}`, JSON.stringify(updatedMembers));
-
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        await supabase.from('ledger_members').upsert({
-          ledger_id: currentLedger.id,
-          user_id: authUserId,
-          role: 'owner',
-        }, { onConflict: 'ledger_id,user_id' });
-
-        if (currentUser.id && currentUser.id !== authUserId) {
-          await supabase.from('ledger_members').upsert({
-            ledger_id: currentLedger.id,
-            user_id: currentUser.id,
-            role: 'owner',
-          }, { onConflict: 'ledger_id,user_id' });
-        }
-
-        // 僅在帳本目前無建立者或本使用者即為創立者時，才設定 created_by；否則只升級 owner 角色，避免誤改帳本原創者
-        if (!currentLedger.created_by || currentLedger.created_by === authUserId) {
-          await supabase.from('ledgers').update({ created_by: authUserId }).eq('id', currentLedger.id);
-          setCurrentLedger(prev => ({ ...prev, created_by: authUserId }));
-        }
-
-        // 跨裝置同步：若名冊中有其他同名紀錄 (例如同成員的手機 APP 或其他瀏覽器裝置)，一併升級為 owner
-        const myName = (currentUser.display_name || '').trim().toLowerCase();
-        if (myName) {
-          const { data: allMembersInLedger } = await supabase
-            .from('ledger_members')
-            .select('user_id, profiles(display_name)')
-            .eq('ledger_id', currentLedger.id);
-
-          if (allMembersInLedger) {
-            for (const m of allMembersInLedger) {
-              const mName = ((m.profiles as any)?.display_name || '').trim().toLowerCase();
-              if (mName === myName && m.user_id !== authUserId) {
-                await supabase
-                  .from('ledger_members')
-                  .update({ role: 'owner' })
-                  .eq('ledger_id', currentLedger.id)
-                  .eq('user_id', m.user_id);
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('雲端更新角色失敗:', e);
-      }
-    }
-    return { success: true };
-  };
-
-  
-  // 🎯 預算控管與跨月走勢核心狀態 (階段 A - 支援家庭/個人視角與本機獨立開關)
-  const [currentBudget, setCurrentBudget] = useState<LedgerBudget | null>(null);
-  const [isBudgetWidgetVisibleOnDevice, setIsBudgetWidgetVisibleOnDeviceState] = useState<boolean>(true);
-
-  const loadBudget = React.useCallback(async (ledgerId: string) => {
-    if (!ledgerId) return;
-    try {
-      // 1. 載入本機顯隱偏好
-      try {
-        const visKey = `@family_ledger_budget_visible_${ledgerId}`;
-        const savedVis = await AsyncStorage.getItem(visKey);
-        if (savedVis !== null) {
-          setIsBudgetWidgetVisibleOnDeviceState(savedVis === 'true');
-        } else {
-          setIsBudgetWidgetVisibleOnDeviceState(true);
-        }
-      } catch {}
-
-      // 2. 載入預算資料
-      const key = `${STORAGE_KEYS.BUDGET}_${ledgerId}`;
-      const cached = await AsyncStorage.getItem(key);
-      if (cached) {
-        try {
-          setCurrentBudget(JSON.parse(cached));
-        } catch {
-          // ignore parse error
-        }
-      } else {
-        setCurrentBudget({
-          ledger_id: ledgerId,
-          is_enabled: false,
-          monthly_total: 40000,
-          alert_threshold: 80,
-          category_budgets: {},
-          member_budgets: {},
-        });
-      }
-
-      // 嘗試同步雲端 (若 Supabase 有 ledger_budgets 表)
-      if (isConfigured && supabase) {
-        try {
-          const { data, error } = await supabase
-            .from('ledger_budgets')
-            .select('*')
-            .eq('ledger_id', ledgerId)
-            .maybeSingle();
-          if (!error && data) {
-            const cloudBudget: LedgerBudget = {
-              id: data.id,
-              ledger_id: data.ledger_id,
-              is_enabled: data.is_enabled ?? true,
-              monthly_total: Number(data.monthly_total) || 40000,
-              alert_threshold: Number(data.alert_threshold) || 80,
-              category_budgets: data.category_budgets || {},
-              member_budgets: data.member_budgets || {},
-              updated_at: data.updated_at,
-            };
-            setCurrentBudget(cloudBudget);
-            await AsyncStorage.setItem(key, JSON.stringify(cloudBudget));
-          }
-        } catch {
-          // 資料表可能尚未建立，自動降級維持本機運作
-        }
-      }
-    } catch (err) {
-      console.warn('載入預算快取失敗:', err);
-    }
-  }, []);
-  loadBudgetRef.current = loadBudget;
-
-  useEffect(() => {
-    if (currentLedger?.id) {
-      loadBudget(currentLedger.id);
-    }
-  }, [currentLedger?.id, loadBudget]);
-
-  const setBudgetWidgetVisibleOnDevice = React.useCallback(async (visible: boolean) => {
-    setIsBudgetWidgetVisibleOnDeviceState(visible);
-    try {
-      const visKey = `@family_ledger_budget_visible_${currentLedger.id}`;
-      await AsyncStorage.setItem(visKey, visible ? 'true' : 'false');
-    } catch {}
-  }, [currentLedger.id]);
-
-  const updateBudget = React.useCallback(async (newBudgetData: Partial<LedgerBudget>) => {
-    const ledgerId = currentLedger.id;
-
-    // 權限防護：家庭公帳總預算僅管理員可異動
-    const allowedEnabled = isOwner
-      ? (newBudgetData.is_enabled !== undefined ? newBudgetData.is_enabled : (currentBudget?.is_enabled ?? true))
-      : (currentBudget?.is_enabled ?? true);
-    const allowedMonthlyTotal = isOwner
-      ? (newBudgetData.monthly_total !== undefined ? newBudgetData.monthly_total : (currentBudget?.monthly_total ?? 40000))
-      : (currentBudget?.monthly_total ?? 40000);
-    const allowedThreshold = isOwner
-      ? (newBudgetData.alert_threshold !== undefined ? newBudgetData.alert_threshold : (currentBudget?.alert_threshold ?? 80))
-      : (currentBudget?.alert_threshold ?? 80);
-    const allowedCategoryBudgets = isOwner
-      ? (newBudgetData.category_budgets !== undefined ? newBudgetData.category_budgets : (currentBudget?.category_budgets ?? {}))
-      : (currentBudget?.category_budgets ?? {});
-
-    // 成員額度防護：本機成員可自訂修改自己的個人額度，帳本管理員亦可協助配置調整所有成員額度
-    const mergedMemberBudgets: Record<string, number> = { ...(currentBudget?.member_budgets ?? {}) };
-    if (newBudgetData.member_budgets) {
-      members.forEach(m => {
-        const isMyMember =
-          m.id === currentUser?.id ||
-          (!!currentUser?.display_name && m.display_name?.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase());
-
-        const canManageThisMember = isOwner || isMyMember;
-
-        if (canManageThisMember) {
-          const newAmt = newBudgetData.member_budgets?.[m.id];
-          if (newAmt !== undefined && newAmt > 0) {
-            mergedMemberBudgets[m.id] = newAmt;
-          } else {
-            delete mergedMemberBudgets[m.id];
-          }
-        }
-      });
-    }
-
-    const merged: LedgerBudget = {
-      ledger_id: ledgerId,
-      is_enabled: allowedEnabled,
-      monthly_total: allowedMonthlyTotal,
-      alert_threshold: allowedThreshold,
-      category_budgets: allowedCategoryBudgets,
-      member_budgets: mergedMemberBudgets,
-      updated_at: new Date().toISOString(),
-    };
-
-    setCurrentBudget(merged);
-    try {
-      await AsyncStorage.setItem(`${STORAGE_KEYS.BUDGET}_${ledgerId}`, JSON.stringify(merged));
-    } catch (err) {
-      console.warn('儲存本機預算失敗:', err);
-    }
-
-    if (isConfigured && supabase) {
-      try {
-        await supabase.from('ledger_budgets').upsert({
-          ledger_id: ledgerId,
-          is_enabled: merged.is_enabled,
-          monthly_total: merged.monthly_total,
-          alert_threshold: merged.alert_threshold,
-          category_budgets: merged.category_budgets,
-          member_budgets: merged.member_budgets,
-          updated_at: merged.updated_at,
-        }, { onConflict: 'ledger_id' });
-      } catch {
-        // 若雲端尚未建表則維持本機運作
-      }
-    }
-  }, [currentLedger.id, currentBudget, isOwner, members, currentUser]);
-
-  const getBudgetProgress = React.useCallback((targetMonthYm?: string, targetMemberId?: string) => {
-    const now = new Date();
-    const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const ym = targetMonthYm || currentYm;
-    const isEnabled = currentBudget?.is_enabled ?? false;
-    const alertThreshold = currentBudget?.alert_threshold || 80;
-
-    const isMemberPerspective = Boolean(targetMemberId && targetMemberId !== 'all');
-    let targetMemberName: string | undefined = undefined;
-    let totalBudget = 0;
-    let hasMemberBudgetConfigured = false;
-
-    if (isMemberPerspective && targetMemberId) {
-      const m = members.find(mem => mem.id === targetMemberId) || getMemberById(targetMemberId);
-      targetMemberName = m?.display_name || '成員';
-      const memBudget = currentBudget?.member_budgets?.[targetMemberId];
-      if (memBudget !== undefined && memBudget > 0) {
-        totalBudget = memBudget;
-        hasMemberBudgetConfigured = true;
-      } else {
-        totalBudget = 0;
-        hasMemberBudgetConfigured = false;
-      }
-    } else {
-      totalBudget = currentBudget?.monthly_total || 0;
-    }
-
-    const monthTransactions = transactions.filter(t => {
-      if (t.type !== 'expense') return false;
-      const tYm = t.transacted_at ? t.transacted_at.slice(0, 7) : '';
-      if (tYm !== ym) return false;
-      if (isMemberPerspective && targetMemberId) {
-        return t.paid_by === targetMemberId;
-      }
-      return true;
-    });
-
-    const spentAmount = monthTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-    const remainingAmount = Math.max(0, totalBudget - spentAmount);
-    const spentRatio = totalBudget > 0 ? (spentAmount / totalBudget) * 100 : 0;
-    const isOverBudget = isEnabled && totalBudget > 0 && spentAmount > totalBudget;
-    const isWarning = isEnabled && totalBudget > 0 && spentRatio >= alertThreshold && !isOverBudget;
-
-    const [yearStr, monthStr] = ym.split('-');
-    const y = parseInt(yearStr, 10) || now.getFullYear();
-    const m = parseInt(monthStr, 10) || (now.getMonth() + 1);
-    const totalDaysInMonth = new Date(y, m, 0).getDate();
-    const isCurrentMonth = ym === currentYm;
-    const currentDay = isCurrentMonth ? now.getDate() : 1;
-    const daysRemaining = Math.max(1, totalDaysInMonth - currentDay + 1);
-    const dailyAvailable = remainingAmount > 0 ? Math.round(remainingAmount / daysRemaining) : 0;
-
-    return {
-      isEnabled,
-      isMemberPerspective,
-      targetMemberName,
-      hasMemberBudgetConfigured,
-      totalBudget,
-      spentAmount,
-      remainingAmount,
-      spentRatio: Math.round(spentRatio * 10) / 10,
-      isWarning,
-      isOverBudget,
-      daysRemaining,
-      dailyAvailable,
-    };
-  }, [currentBudget, transactions, members, getMemberById]);
-
-  const getMoMComparison = React.useCallback((targetMonthYm?: string) => {
-    const now = new Date();
-    const currentYm = targetMonthYm || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-
-    const [currY, currM] = currentYm.split('-').map(Number);
-    const prevDate = new Date(currY, currM - 2, 1);
-    const prevYm = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
-
-    let currentExpense = 0;
-    let currentIncome = 0;
-    const currentCatExpense: Record<string, number> = {};
-
-    let prevExpense = 0;
-    let prevIncome = 0;
-    const prevCatExpense: Record<string, number> = {};
-
-    transactions.forEach(t => {
-      const tYm = t.transacted_at ? t.transacted_at.slice(0, 7) : '';
-      const amt = Number(t.amount) || 0;
-      if (tYm === currentYm) {
-        if (t.type === 'expense') {
-          currentExpense += amt;
-          currentCatExpense[t.category_id] = (currentCatExpense[t.category_id] || 0) + amt;
-        } else if (t.type === 'income') {
-          currentIncome += amt;
-        }
-      } else if (tYm === prevYm) {
-        if (t.type === 'expense') {
-          prevExpense += amt;
-          prevCatExpense[t.category_id] = (prevCatExpense[t.category_id] || 0) + amt;
-        } else if (t.type === 'income') {
-          prevIncome += amt;
-        }
-      }
-    });
-
-    const expenseDiff = currentExpense - prevExpense;
-    const expenseDiffRate = prevExpense > 0 ? Math.round(((expenseDiff) / prevExpense) * 1000) / 10 : 0;
-
-    const incomeDiff = currentIncome - prevIncome;
-    const incomeDiffRate = prevIncome > 0 ? Math.round(((incomeDiff) / prevIncome) * 1000) / 10 : 0;
-
-    const allCatIds = Array.from(new Set([...Object.keys(currentCatExpense), ...Object.keys(prevCatExpense)]));
-    let topIncreaseCat: { name: string; icon: string; diff: number } | undefined;
-    let topDecreaseCat: { name: string; icon: string; diff: number } | undefined;
-
-    let maxIncDiff = 0;
-    let maxDecDiff = 0;
-
-    allCatIds.forEach(catId => {
-      const cAmt = currentCatExpense[catId] || 0;
-      const pAmt = prevCatExpense[catId] || 0;
-      const diff = cAmt - pAmt;
-      const cat = getCategoryById(catId);
-      if (diff > maxIncDiff && diff > 0) {
-        maxIncDiff = diff;
-        topIncreaseCat = { name: cat.name, icon: cat.icon, diff };
-      }
-      if (diff < maxDecDiff && diff < 0) {
-        maxDecDiff = diff;
-        topDecreaseCat = { name: cat.name, icon: cat.icon, diff: Math.abs(diff) };
-      }
-    });
-
-    return {
-      currentYm,
-      prevYm,
-      currentExpense,
-      prevExpense,
-      expenseDiff,
-      expenseDiffRate,
-      currentIncome,
-      prevIncome,
-      incomeDiff,
-      incomeDiffRate,
-      topIncreasedCategory: topIncreaseCat,
-      topDecreasedCategory: topDecreaseCat,
-    };
-  }, [transactions, getCategoryById]);
-
-  const getSixMonthTrend = React.useCallback(() => {
-    const now = new Date();
-    const months: Array<{ ym: string; label: string; income: number; expense: number; balance: number }> = [];
-
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const label = `${d.getMonth() + 1}月`;
-      months.push({ ym, label, income: 0, expense: 0, balance: 0 });
-    }
-
-    const monthMap = new Map<string, { income: number; expense: number }>();
-    months.forEach(m => monthMap.set(m.ym, { income: 0, expense: 0 }));
-
-    transactions.forEach(t => {
-      const tYm = t.transacted_at ? t.transacted_at.slice(0, 7) : '';
-      const entry = monthMap.get(tYm);
-      if (entry) {
-        const amt = Number(t.amount) || 0;
-        if (t.type === 'expense') {
-          entry.expense += amt;
-        } else if (t.type === 'income') {
-          entry.income += amt;
-        }
-      }
-    });
-
-    return months.map(m => {
-      const entry = monthMap.get(m.ym) || { income: 0, expense: 0 };
-      return {
-        ym: m.ym,
-        label: m.label,
-        income: entry.income,
-        expense: entry.expense,
-        balance: entry.income - entry.expense,
-      };
-    });
-  }, [transactions]);
-
-  // 💎 家庭與個人財務淨值與資產看板計算
-  const getNetWorthSummary = React.useCallback(
-    (targetMemberId?: string) => {
-      const targetMember =
-        !targetMemberId || targetMemberId === 'all'
-          ? undefined
-          : members.find(m => m.id === targetMemberId) || (currentUser?.id === targetMemberId ? currentUser : undefined);
-
-      const isAccountBelonging = (acc: PaymentAccount) =>
-        isAccountBelongingToMember(acc, targetMemberId, targetMember, currentUser, members);
-
-      const banks = paymentAccounts.filter(a => a.type === 'bank' && isAccountBelonging(a));
-      const cash = paymentAccounts.filter(a => a.type === 'cash' && isAccountBelonging(a));
-      const storedValues = paymentAccounts.filter(a => a.type === 'stored_value' && isAccountBelonging(a));
-      const creditCardsList = paymentAccounts.filter(a => a.type === 'credit_card' && isAccountBelonging(a));
-
-      const bankTotal = banks.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
-      const cashTotal = cash.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
-      const storedValueTotal = storedValues.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
-
-      // 計算各信用卡待繳欠款 (本期待繳支出 - 繳卡費轉帳)
-      let creditCardTotal = 0;
-      const creditCardsWithDebt = creditCardsList.map(card => {
-        // 找出該卡片未核銷/待繳支出
-        const cardExpenses = transactions
-          .filter(
-            t =>
-              t.type === 'expense' &&
-              (t.account_id === card.id ||
-                (t.payment_method === 'credit_card' && !t.account_id && t.paid_by === card.user_id)) &&
-              !t.is_reconciled
-          )
-          .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-
-        // 找出繳納至該卡片的轉帳
-        const cardPayments = transactions
-          .filter(t => t.type === 'transfer' && t.linked_transaction_id === card.id)
-          .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-
-        const baseBal = card.balance < 0 ? Math.abs(card.balance) : 0;
-        const outstandingDebt = Math.max(0, cardExpenses + baseBal - cardPayments);
-        creditCardTotal += outstandingDebt;
-
-        return {
-          ...card,
-          outstandingDebt,
-        };
-      });
-
-      const totalAssets = Number((bankTotal + cashTotal + storedValueTotal).toFixed(2));
-      const totalLiabilities = Number(creditCardTotal.toFixed(2));
-      const netWorth = Number((totalAssets - totalLiabilities).toFixed(2));
-
-      return {
-        totalAssets,
-        totalLiabilities,
-        netWorth,
-        bankTotal,
-        cashTotal,
-        storedValueTotal,
-        creditCardTotal,
-        accounts: {
-          banks,
-          cash,
-          storedValues,
-          creditCards: creditCardsWithDebt,
-        },
-      };
-    },
-    [paymentAccounts, transactions, members, currentUser]
-  );
-
-  // ⇄ 帳戶互轉、提款與繳卡費核心方法 (階段 B)
-  const executeTransfer = React.useCallback(async (params: {
-    fromAccountId: string;
-    toAccountId: string;
-    amount: number;
-    fee?: number;
-    payerId?: string;
-    transactedAt?: string;
-    note?: string;
-  }): Promise<{ success: boolean; error?: string }> => {
-    const { fromAccountId, toAccountId, amount, fee = 0, payerId, transactedAt, note } = params;
-
-    if (!fromAccountId || !toAccountId) {
-      return { success: false, error: '請選擇轉出與轉入帳戶' };
-    }
-    if (fromAccountId === toAccountId) {
-      return { success: false, error: '轉出與轉入帳戶不能相同' };
-    }
-    if (isNaN(amount) || amount <= 0) {
-      return { success: false, error: '請輸入大於 0 的有效轉帳金額' };
-    }
-
-    const fromAcc = paymentAccounts.find(a => a.id === fromAccountId);
-    const toAcc = paymentAccounts.find(a => a.id === toAccountId);
-
-    if (!fromAcc || !toAcc) {
-      return { success: false, error: '找不到指定的轉出或轉入帳戶' };
-    }
-
-    const now = new Date();
-    const txTime = transactedAt || now.toISOString();
-    const effectivePayer = payerId || fromAcc.user_id || currentUser.id;
-
-    try {
-      // 1. 計算餘額變更
-      const fromNewBal = Number((fromAcc.balance - amount - (fee > 0 ? fee : 0)).toFixed(2));
-      let toNewBal = toAcc.balance;
-
-      if (toAcc.type === 'credit_card') {
-        toNewBal = Number((toAcc.balance + amount).toFixed(2));
-      } else {
-        toNewBal = Number((toAcc.balance + amount).toFixed(2));
-      }
-
-      const updatedAccounts = paymentAccounts.map(a => {
-        if (a.id === fromAccountId) return { ...a, balance: fromNewBal };
-        if (a.id === toAccountId) return { ...a, balance: toNewBal };
-        return a;
-      });
-
-      setPaymentAccounts(updatedAccounts);
-      await savePaymentAccountsToStorage(updatedAccounts);
-
-      // 雲端同步更新餘額
-      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-        if (!fromAccountId.startsWith('50000000')) {
-          supabase.from('payment_accounts').update({ balance: fromNewBal }).eq('id', fromAccountId).then();
-        }
-        if (!toAccountId.startsWith('50000000')) {
-          supabase.from('payment_accounts').update({ balance: toNewBal }).eq('id', toAccountId).then();
-        }
-      }
-
-      // 2. 寫入內部轉帳交易紀錄 (Transfer Transaction)
-      const isCardPayment = toAcc.type === 'credit_card';
-      const isTopUp = toAcc.type === 'stored_value';
-      const defaultMerchant = isCardPayment
-        ? `繳納【${toAcc.name}】卡費`
-        : isTopUp
-        ? `存入【${toAcc.name}】`
-        : `轉入【${toAcc.name}】`;
-
-      const defaultNote = note
-        ? note
-        : isCardPayment
-        ? `從【${fromAcc.name}】轉帳繳清卡費`
-        : `從【${fromAcc.name}】轉帳至【${toAcc.name}】`;
-
-      const transferCat = categories.find(c => c.name.includes('轉帳') || c.name.includes('金融') || c.name.includes('交通') || c.name.includes('其他'))
-        || categories[0];
-
-      await addTransaction({
-        amount,
-        type: 'transfer',
-        category_id: transferCat?.id || categories[0]?.id,
-        paid_by: effectivePayer,
-        account_id: fromAccountId,
-        linked_transaction_id: toAccountId,
-        merchant: defaultMerchant,
-        note: defaultNote,
-        transacted_at: txTime,
-      });
-
-      // 3. 若有手續費，獨立記錄一筆手續費支出
-      if (fee > 0) {
-        const feeCat = categories.find(c => c.name.includes('手續') || c.name.includes('金融') || c.name.includes('其他'))
-          || categories[0];
-
-        await addTransaction({
-          amount: fee,
-          type: 'expense',
-          category_id: feeCat?.id || categories[0]?.id,
-          paid_by: effectivePayer,
-          account_id: fromAccountId,
-          merchant: '銀行跨行手續費',
-          note: `【${fromAcc.name}】跨行轉帳至【${toAcc.name}】手續費`,
-          transacted_at: txTime,
-        });
-      }
-
-      return { success: true };
-    } catch (err: any) {
-      console.warn('執行帳戶轉帳失敗:', err);
-      return { success: false, error: err?.message || '執行轉帳時發生錯誤' };
-    }
-  }, [paymentAccounts, categories, currentUser.id, currentLedger.id, isConfigured, addTransaction]);
-
   return (
     <LedgerContext.Provider
       value={{
