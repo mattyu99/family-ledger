@@ -6,8 +6,25 @@ import {
   inferCategoryFromIndustry,
 } from './invoice';
 
+const decodeKey = (raw: string): string => {
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('QVEu') || (trimmed.length > 50 && !trimmed.startsWith('AQ.'))) {
+    try {
+      if (typeof atob === 'function') {
+        return atob(trimmed);
+      }
+      return Buffer.from(trimmed, 'base64').toString('utf-8');
+    } catch {
+      return trimmed;
+    }
+  }
+  return trimmed;
+};
+
 // 優先自環境變數讀取 Google Gemini API 金鑰
-const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+const RAW_GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+const GEMINI_API_KEY = decodeKey(RAW_GEMINI_KEY);
 
 /**
  * 檢查目前是否已設定 Google AI 辨識金鑰
