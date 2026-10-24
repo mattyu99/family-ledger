@@ -428,3 +428,4 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       flex: 1,
     },
   });
+

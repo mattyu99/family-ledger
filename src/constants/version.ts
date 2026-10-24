@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.7';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.7 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 19;
+export const APP_BUILD_REVISION = 20;
 
 // 完整版本字串 (例如 "1.0.7.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,18 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.7',
+    date: '2026-10-24',
+    title: '預算控管雙重視角（家庭公帳 vs 成員個人額度）自動連動與本機獨立顯隱設定',
+    highlights: [
+      '🏠 家庭與個人預算雙重視角自動連動：首頁頂部選「全部」呈現全家公帳總額度與開銷；切換至任一成員即刻自動呈現該成員專屬個人預算與花費。',
+      '👤 成員專屬每月支出上限設定：支援在預算彈窗中為每位家人量身訂做個人每月預算上限，未設定之成員亦能透過專屬卡片一鍵快速配置。',
+      '📱 本機首頁獨立顯隱偏好：支援在彈窗內隨時開啟或關閉「在此手機首頁顯示預算卡片」，關閉僅隱藏自己畫面，完全不影響其他家人檢視與雲端預算同步。',
+      '⚙️ 預算管理彈窗雙分頁升級：清晰劃分「家庭公帳總預算」與「成員個人額度」雙分頁，並整合分類上限與本機偏好開關。',
+      '🎯 帳本管理專區常設入口：於家庭管理分頁增設「預算控管與成員額度」專屬入口，即使本機首頁隱藏卡片亦可隨時進入配置。',
+    ],
+  },
   {
     version: '1.0.7',
     date: '2026-10-24',

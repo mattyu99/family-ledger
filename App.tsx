@@ -712,6 +712,7 @@ function MainApp() {
   // 統計分頁任意月份選擇彈窗可見性
   const [monthPickerVisible, setMonthPickerVisible] = useState(false);
   const [budgetManageModalVisible, setBudgetManageModalVisible] = useState(false);
+  const [budgetManageModalTab, setBudgetManageModalTab] = useState<'family' | 'members'>('family');
 
   // 統計分頁之收支分類排行榜切換 ('expense' | 'income')
   const [analyticsCategoryType, setAnalyticsCategoryType] = useState<'expense' | 'income'>('expense');
@@ -4049,10 +4050,14 @@ function MainApp() {
               )}
             </View>
 
-            {/* 🎯 家庭每月預算進度看板 (階段 A) */}
+            {/* 🎯 家庭/個人每月預算進度看板 (階段 A) */}
             <BudgetHeroWidget
-              onOpenManageModal={() => setBudgetManageModalVisible(true)}
+              onOpenManageModal={(tab) => {
+                setBudgetManageModalTab(tab || 'family');
+                setBudgetManageModalVisible(true);
+              }}
               targetMonthYm={filterMonth === 'all' ? undefined : filterMonth}
+              filterMemberId={filterMemberId}
             />
 
             {/* 🗓️ 待繳週期帳單提醒膠囊 (方式 1: 100% 跟隨選定成員切換視角連動) */}
@@ -5787,6 +5792,28 @@ function MainApp() {
               </TouchableOpacity>
             </View>
 
+            {/* 🎯 預算控管與成員額度設定 (支援家庭與個人雙重視角及本機顯隱) */}
+            <View style={styles.cardSection}>
+              <View style={styles.sectionHeaderRow}>
+                <View style={styles.sectionHeaderLeft}>
+                  <Text style={styles.cardSectionTitle}>🎯 預算控管與成員額度</Text>
+                  <Text style={styles.sectionHeaderDesc}>
+                    設定每月家庭公帳預算、成員個人專屬上限，或自訂此裝置顯隱偏好
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.manageCategoryBtn}
+                  onPress={() => {
+                    setBudgetManageModalTab('family');
+                    setBudgetManageModalVisible(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.manageCategoryBtnText}>⚙️ 設定預算</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
             {/* 資料備份與掌控 */}
             <View style={styles.cardSection}>
               <View style={styles.sectionHeaderRow}>
@@ -6830,6 +6857,7 @@ function MainApp() {
       {/* 🎯 家庭每月預算與分類預算設定彈窗 (階段 A) */}
       <BudgetManageModal
         visible={budgetManageModalVisible}
+        initialTab={budgetManageModalTab}
         onClose={() => setBudgetManageModalVisible(false)}
       />
     </SafeAreaView>

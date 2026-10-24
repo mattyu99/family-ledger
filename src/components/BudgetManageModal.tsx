@@ -39,22 +39,43 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const PRESET_AMOUNTS = [30000, 40000, 50000, 60000, 80000];
 const PRESET_THRESHOLDS = [70, 80, 90];
+const MEMBER_PRESET_AMOUNTS = [5000, 10000, 15000, 20000];
 
 export interface BudgetManageModalProps {
   visible: boolean;
   onClose: () => void;
+  initialTab?: 'family' | 'members';
 }
 
-export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({ visible, onClose }) => {
-  const { currentBudget, updateBudget, categories } = useLedger();
+export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
+  visible,
+  onClose,
+  initialTab = 'family',
+}) => {
+  const {
+    currentBudget,
+    updateBudget,
+    categories,
+    members,
+    isBudgetWidgetVisibleOnDevice,
+    setBudgetWidgetVisibleOnDevice,
+  } = useLedger();
+
   const { isDark, colors } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
 
+  const [activeTab, setActiveTab] = useState<'family' | 'members'>('family');
+  const [deviceVisible, setDeviceVisible] = useState<boolean>(true);
+
+  // 家庭預算狀態
   const [isEnabled, setIsEnabled] = useState<boolean>(true);
   const [monthlyTotal, setMonthlyTotal] = useState<string>('40000');
   const [alertThreshold, setAlertThreshold] = useState<number>(80);
   const [categoryBudgets, setCategoryBudgets] = useState<Record<string, string>>({});
   const [showCategorySettings, setShowCategorySettings] = useState<boolean>(false);
+
+  // 成員個人預算狀態
+  const [memberBudgets, setMemberBudgets] = useState<Record<string, string>>({});
 
   // 僅列出支出分類供設定分類預算
   const expenseCategories = useMemo(
@@ -64,33 +85,54 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({ visible, o
 
   useEffect(() => {
     if (visible) {
+      setActiveTab(initialTab);
+      setDeviceVisible(isBudgetWidgetVisibleOnDevice);
+
       if (currentBudget) {
         setIsEnabled(currentBudget.is_enabled ?? true);
         setMonthlyTotal(currentBudget.monthly_total ? String(currentBudget.monthly_total) : '40000');
         setAlertThreshold(currentBudget.alert_threshold ?? 80);
-        const mapped: Record<string, string> = {};
+
+        const mappedCats: Record<string, string> = {};
         if (currentBudget.category_budgets) {
           Object.entries(currentBudget.category_budgets).forEach(([catId, amt]) => {
-            if (amt) mapped[catId] = String(amt);
+            if (amt) mappedCats[catId] = String(amt);
           });
         }
-        setCategoryBudgets(mapped);
+        setCategoryBudgets(mappedCats);
+
+        const mappedMems: Record<string, string> = {};
+        if (currentBudget.member_budgets) {
+          Object.entries(currentBudget.member_budgets).forEach(([mId, amt]) => {
+            if (amt !== undefined && amt > 0) mappedMems[mId] = String(amt);
+          });
+        }
+        setMemberBudgets(mappedMems);
       } else {
         setIsEnabled(true);
         setMonthlyTotal('40000');
         setAlertThreshold(80);
         setCategoryBudgets({});
+        setMemberBudgets({});
       }
     }
-  }, [visible, currentBudget]);
+  }, [visible, currentBudget, initialTab, isBudgetWidgetVisibleOnDevice]);
 
-  // 計算所有已設定之分類預算合計
+  // 計算分類預算合計
   const totalCategoryBudget = useMemo(() => {
     return Object.values(categoryBudgets).reduce((acc, str) => {
       const n = parseFloat(str);
       return acc + (isNaN(n) ? 0 : n);
     }, 0);
   }, [categoryBudgets]);
+
+  // 計算成員個別預算合計
+  const totalMemberBudget = useMemo(() => {
+    return Object.values(memberBudgets).reduce((acc, str) => {
+      const n = parseFloat(str);
+      return acc + (isNaN(n) ? 0 : n);
+    }, 0);
+  }, [memberBudgets]);
 
   const parsedTotal = parseFloat(monthlyTotal) || 0;
   const isCategoryOverTotal = parsedTotal > 0 && totalCategoryBudget > parsedTotal;
@@ -104,12 +146,23 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({ visible, o
       }
     });
 
+    const numericMemberBudgets: Record<string, number> = {};
+    Object.entries(memberBudgets).forEach(([mId, val]) => {
+      const num = parseFloat(val);
+      if (!isNaN(num) && num > 0) {
+        numericMemberBudgets[mId] = num;
+      }
+    });
+
     await updateBudget({
       is_enabled: isEnabled,
       monthly_total: parsedTotal,
       alert_threshold: alertThreshold,
       category_budgets: numericCatBudgets,
+      member_budgets: numericMemberBudgets,
     });
+
+    await setBudgetWidgetVisibleOnDevice(deviceVisible);
     onClose();
   };
 
@@ -125,6 +178,20 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({ visible, o
     });
   };
 
+  const updateMemberAmount = (memberId: string, val: string) => {
+    setMemberBudgets(prev => {
+      const next = { ...prev };
+      if (!val || val.trim() === '') {
+        delete next[memberId];
+      } else {
+        next[memberId] = val.replace(/[^0-9]/g, '');
+      }
+      return next;
+    });
+  };
+
+  const configuredMemberCount = Object.keys(memberBudgets).filter(k => Boolean(memberBudgets[k])).length;
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
@@ -136,143 +203,293 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({ visible, o
           {/* Header */}
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.title}>🎯 家庭預算與超支預警設定</Text>
-              <Text style={styles.subtitle}>掌握每月支出上限，即時掌握剩餘可用額度</Text>
+              <Text style={styles.title}>🎯 預算控管與額度設定</Text>
+              <Text style={styles.subtitle}>支援家庭公帳與成員個人雙重視角，自主掌控開銷</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <Text style={styles.closeText}>✕</Text>
             </TouchableOpacity>
           </View>
 
+          {/* 分頁切換鈕 */}
+          <View style={styles.tabsRow}>
+            <TouchableOpacity
+              style={[styles.tabBtn, activeTab === 'family' && styles.tabBtnActive]}
+              onPress={() => setActiveTab('family')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.tabBtnText, activeTab === 'family' && styles.tabBtnTextActive]}>
+                🏠 家庭公帳總預算
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.tabBtn, activeTab === 'members' && styles.tabBtnActive]}
+              onPress={() => setActiveTab('members')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.tabBtnText, activeTab === 'members' && styles.tabBtnTextActive]}>
+                👤 成員個人額度{configuredMemberCount > 0 ? ` (${configuredMemberCount})` : ''}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-            {/* 啟用開關卡片 */}
-            <View style={styles.switchRow}>
+            {/* 📱 本機顯隱偏好（想看的人看，不想看的人關） */}
+            <View style={styles.devicePrefCard}>
               <View style={{ flex: 1, marginRight: 10 }}>
-                <Text style={styles.switchLabel}>開啟本月預算控管</Text>
-                <Text style={styles.switchDesc}>
-                  啟用後將於首頁展示預算進度條、日均可用額度與超支警告
+                <View style={styles.devicePrefTitleRow}>
+                  <Text style={styles.devicePrefIcon}>📱</Text>
+                  <Text style={styles.devicePrefTitle}>在此手機首頁顯示預算卡片</Text>
+                </View>
+                <Text style={styles.devicePrefDesc}>
+                  僅影響您個人此裝置的畫面呈現。關閉後不影響其他家人檢視與預算數據同步。
                 </Text>
               </View>
               <Switch
-                value={isEnabled}
-                onValueChange={setIsEnabled}
-                trackColor={{ false: '#CBD5E1', true: '#4F46E5' }}
+                value={deviceVisible}
+                onValueChange={setDeviceVisible}
+                trackColor={{ false: '#CBD5E1', true: '#10B981' }}
                 thumbColor="#FFFFFF"
               />
             </View>
 
-            {isEnabled && (
+            {/* TAB 1: 家庭公帳總預算 */}
+            {activeTab === 'family' && (
               <>
-                {/* 月度總預算設定 */}
-                <View style={styles.sectionCard}>
-                  <Text style={styles.sectionTitle}>💰 每月家庭總預算 (TWD)</Text>
-                  <View style={styles.inputContainer}>
-                    <Text style={styles.currencyPrefix}>NT$</Text>
-                    <TextInput
-                      style={styles.amountInput}
-                      keyboardType="numeric"
-                      value={monthlyTotal}
-                      onChangeText={val => setMonthlyTotal(val.replace(/[^0-9]/g, ''))}
-                      placeholder="例如：40000"
-                      placeholderTextColor={colors.text.muted}
-                    />
+                {/* 啟用開關卡片 */}
+                <View style={styles.switchRow}>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={styles.switchLabel}>開啟公帳預算控管</Text>
+                    <Text style={styles.switchDesc}>
+                      啟用後將為全家計算本月支出進度、日均可用額度與超支警戒
+                    </Text>
                   </View>
+                  <Switch
+                    value={isEnabled}
+                    onValueChange={setIsEnabled}
+                    trackColor={{ false: '#CBD5E1', true: '#4F46E5' }}
+                    thumbColor="#FFFFFF"
+                  />
+                </View>
 
-                  {/* 快速金額選擇膠囊 */}
-                  <View style={styles.presetChipsRow}>
-                    {PRESET_AMOUNTS.map(amt => {
-                      const isSelected = parsedTotal === amt;
-                      return (
-                        <TouchableOpacity
-                          key={amt}
-                          style={[styles.presetChip, isSelected && styles.presetChipActive]}
-                          onPress={() => setMonthlyTotal(String(amt))}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={[styles.presetChipText, isSelected && styles.presetChipTextActive]}>
-                            ${(amt / 1000).toFixed(0)}k
+                {isEnabled && (
+                  <>
+                    {/* 月度總預算設定 */}
+                    <View style={styles.sectionCard}>
+                      <Text style={styles.sectionTitle}>💰 每月家庭公帳總預算 (TWD)</Text>
+                      <View style={styles.inputContainer}>
+                        <Text style={styles.currencyPrefix}>NT$</Text>
+                        <TextInput
+                          style={styles.amountInput}
+                          keyboardType="numeric"
+                          value={monthlyTotal}
+                          onChangeText={val => setMonthlyTotal(val.replace(/[^0-9]/g, ''))}
+                          placeholder="例如：40000"
+                          placeholderTextColor={colors.text.muted}
+                        />
+                      </View>
+
+                      {/* 快速金額選擇膠囊 */}
+                      <View style={styles.presetChipsRow}>
+                        {PRESET_AMOUNTS.map(amt => {
+                          const isSelected = parsedTotal === amt;
+                          return (
+                            <TouchableOpacity
+                              key={amt}
+                              style={[styles.presetChip, isSelected && styles.presetChipActive]}
+                              onPress={() => setMonthlyTotal(String(amt))}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={[styles.presetChipText, isSelected && styles.presetChipTextActive]}>
+                                ${(amt / 1000).toFixed(0)}k
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+
+                    {/* 預警警戒門檻 */}
+                    <View style={styles.sectionCard}>
+                      <Text style={styles.sectionTitle}>⚠️ 警戒提醒門檻 (達標比例亮起提醒)</Text>
+                      <View style={styles.thresholdRow}>
+                        {PRESET_THRESHOLDS.map(pct => {
+                          const isSelected = alertThreshold === pct;
+                          return (
+                            <TouchableOpacity
+                              key={pct}
+                              style={[styles.thresholdChip, isSelected && styles.thresholdChipActive]}
+                              onPress={() => setAlertThreshold(pct)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={[styles.thresholdChipText, isSelected && styles.thresholdChipTextActive]}>
+                                達 {pct}% 警示
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+
+                    {/* 個別支出分類預算展開區 */}
+                    <View style={styles.sectionCard}>
+                      <TouchableOpacity
+                        style={styles.categoryToggleHeader}
+                        onPress={() => setShowCategorySettings(prev => !prev)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.sectionTitle}>🏷️ 各分類預算上限 (選填)</Text>
+                          <Text style={styles.sectionDesc}>
+                            已設定 {Object.keys(categoryBudgets).length} 項分類
+                            {totalCategoryBudget > 0 ? ` · 合計 NT$ ${totalCategoryBudget.toLocaleString()}` : ''}
                           </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
+                        </View>
+                        <Text style={styles.expandIconText}>{showCategorySettings ? '▲ 收起' : '▼ 展開'}</Text>
+                      </TouchableOpacity>
 
-                {/* 預警警戒門檻 */}
-                <View style={styles.sectionCard}>
-                  <Text style={styles.sectionTitle}>⚠️ 警戒提醒門檻 (達到比例亮起提醒)</Text>
-                  <View style={styles.thresholdRow}>
-                    {PRESET_THRESHOLDS.map(pct => {
-                      const isSelected = alertThreshold === pct;
-                      return (
-                        <TouchableOpacity
-                          key={pct}
-                          style={[styles.thresholdChip, isSelected && styles.thresholdChipActive]}
-                          onPress={() => setAlertThreshold(pct)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={[styles.thresholdChipText, isSelected && styles.thresholdChipTextActive]}>
-                            達 {pct}% 警示
+                      {isCategoryOverTotal && (
+                        <View style={styles.warningBox}>
+                          <Text style={styles.warningText}>
+                            ⚠️ 分類預算合計 (NT$ {totalCategoryBudget.toLocaleString()}) 已超過總預算 (NT$ {parsedTotal.toLocaleString()})
                           </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
+                        </View>
+                      )}
 
-                {/* 個別支出分類預算展開區 */}
-                <View style={styles.sectionCard}>
-                  <TouchableOpacity
-                    style={styles.categoryToggleHeader}
-                    onPress={() => setShowCategorySettings(prev => !prev)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.sectionTitle}>🏷️ 各分類預算上限 (選填)</Text>
-                      <Text style={styles.sectionDesc}>
-                        已設定 {Object.keys(categoryBudgets).length} 項分類
-                        {totalCategoryBudget > 0 ? ` · 合計 NT$ ${totalCategoryBudget.toLocaleString()}` : ''}
-                      </Text>
+                      {showCategorySettings && (
+                        <View style={styles.categoryList}>
+                          {expenseCategories.map(cat => {
+                            const val = categoryBudgets[cat.id] || '';
+                            return (
+                              <View key={cat.id} style={styles.categoryRow}>
+                                <View style={styles.catLeft}>
+                                  <Text style={styles.catIcon}>{getCategoryIcon(cat.icon)}</Text>
+                                  <Text style={styles.catName} numberOfLines={1}>{cat.name}</Text>
+                                </View>
+                                <View style={styles.catInputWrap}>
+                                  <Text style={styles.catInputPrefix}>NT$</Text>
+                                  <TextInput
+                                    style={styles.catInput}
+                                    keyboardType="numeric"
+                                    placeholder="不限"
+                                    placeholderTextColor={colors.text.muted}
+                                    value={val}
+                                    onChangeText={text => updateCategoryAmount(cat.id, text)}
+                                  />
+                                </View>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      )}
                     </View>
-                    <Text style={styles.expandIconText}>{showCategorySettings ? '▲ 收起' : '▼ 展開'}</Text>
-                  </TouchableOpacity>
-
-                  {isCategoryOverTotal && (
-                    <View style={styles.warningBox}>
-                      <Text style={styles.warningText}>
-                        ⚠️ 分類預算合計 (NT$ {totalCategoryBudget.toLocaleString()}) 已超過總預算 (NT$ {parsedTotal.toLocaleString()})
-                      </Text>
-                    </View>
-                  )}
-
-                  {showCategorySettings && (
-                    <View style={styles.categoryList}>
-                      {expenseCategories.map(cat => {
-                        const val = categoryBudgets[cat.id] || '';
-                        return (
-                          <View key={cat.id} style={styles.categoryRow}>
-                            <View style={styles.catLeft}>
-                              <Text style={styles.catIcon}>{getCategoryIcon(cat.icon)}</Text>
-                              <Text style={styles.catName} numberOfLines={1}>{cat.name}</Text>
-                            </View>
-                            <View style={styles.catInputWrap}>
-                              <Text style={styles.catInputPrefix}>NT$</Text>
-                              <TextInput
-                                style={styles.catInput}
-                                keyboardType="numeric"
-                                placeholder="不限"
-                                placeholderTextColor={colors.text.muted}
-                                value={val}
-                                onChangeText={text => updateCategoryAmount(cat.id, text)}
-                              />
-                            </View>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  )}
-                </View>
+                  </>
+                )}
               </>
+            )}
+
+            {/* TAB 2: 成員個人額度 */}
+            {activeTab === 'members' && (
+              <View style={styles.membersContainer}>
+                {/* 說明提示卡片 */}
+                <View style={styles.infoBanner}>
+                  <Text style={styles.infoBannerIcon}>💡</Text>
+                  <Text style={styles.infoBannerText}>
+                    為每位家庭成員自訂專屬每月開銷額度。當首頁上方成員選取該成員時，看板將自動切換為該成員的個人支出進度。若留空或未設定，則不單獨限制。
+                  </Text>
+                </View>
+
+                {totalMemberBudget > 0 && (
+                  <View style={styles.summaryBar}>
+                    <Text style={styles.summaryBarLabel}>
+                      已配置成員額度合計：
+                    </Text>
+                    <Text style={styles.summaryBarValue}>
+                      NT$ {totalMemberBudget.toLocaleString()}
+                    </Text>
+                  </View>
+                )}
+
+                {/* 各成員列表 */}
+                {members.map(member => {
+                  const val = memberBudgets[member.id] || '';
+                  const numVal = parseFloat(val) || 0;
+
+                  return (
+                    <View key={member.id} style={styles.memberCard}>
+                      <View style={styles.memberCardHeader}>
+                        <View style={styles.memberInfoRow}>
+                          <Text style={styles.memberAvatar}>{member.avatar_url || '👤'}</Text>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={styles.memberName}>{member.display_name}</Text>
+                              {member.role === 'owner' && (
+                                <View style={styles.roleTag}>
+                                  <Text style={styles.roleTagText}>創建者</Text>
+                                </View>
+                              )}
+                              {member.role === 'admin' && (
+                                <View style={styles.roleTag}>
+                                  <Text style={styles.roleTagText}>管理員</Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text style={styles.memberStatusText}>
+                              {numVal > 0 ? `每月個人預算上限 NT$ ${numVal.toLocaleString()}` : '未單獨限制個人額度'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.memberInputWrap}>
+                          <Text style={styles.memberInputPrefix}>NT$</Text>
+                          <TextInput
+                            style={styles.memberInput}
+                            keyboardType="numeric"
+                            placeholder="自訂額度"
+                            placeholderTextColor={colors.text.muted}
+                            value={val}
+                            onChangeText={text => updateMemberAmount(member.id, text)}
+                          />
+                        </View>
+                      </View>
+
+                      {/* 快速金額選擇膠囊 */}
+                      <View style={styles.memberPresetRow}>
+                        {MEMBER_PRESET_AMOUNTS.map(amt => {
+                          const isSelected = numVal === amt;
+                          return (
+                            <TouchableOpacity
+                              key={amt}
+                              style={[styles.memberPresetChip, isSelected && styles.memberPresetChipActive]}
+                              onPress={() => updateMemberAmount(member.id, String(amt))}
+                              activeOpacity={0.7}
+                            >
+                              <Text
+                                style={[
+                                  styles.memberPresetChipText,
+                                  isSelected && styles.memberPresetChipTextActive,
+                                ]}
+                              >
+                                ${(amt / 1000).toFixed(0)}k
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                        {numVal > 0 && (
+                          <TouchableOpacity
+                            style={styles.memberClearChip}
+                            onPress={() => updateMemberAmount(member.id, '')}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.memberClearChipText}>✕ 清除</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
             )}
 
             <View style={{ height: 24 }} />
@@ -339,9 +556,68 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       color: colors.text.muted,
       fontWeight: '600',
     },
+    tabsRow: {
+      flexDirection: 'row',
+      paddingHorizontal: 20,
+      paddingTop: 12,
+      paddingBottom: 8,
+      gap: 10,
+    },
+    tabBtn: {
+      flex: 1,
+      paddingVertical: 9,
+      borderRadius: 10,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.border.default,
+    },
+    tabBtnActive: {
+      backgroundColor: isDark ? 'rgba(79, 70, 229, 0.25)' : '#EEF2FF',
+      borderColor: isDark ? '#818CF8' : '#4F46E5',
+    },
+    tabBtnText: {
+      fontSize: 12.5,
+      fontWeight: '600',
+      color: colors.text.secondary,
+    },
+    tabBtnTextActive: {
+      color: isDark ? '#818CF8' : '#4F46E5',
+      fontWeight: '700',
+    },
     scrollContent: {
       paddingHorizontal: 20,
-      paddingTop: 14,
+      paddingTop: 6,
+    },
+    devicePrefCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: isDark ? 'rgba(16, 185, 129, 0.08)' : '#F0FDF4',
+      borderRadius: 14,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#BBF7D0',
+      marginBottom: 12,
+    },
+    devicePrefTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    devicePrefIcon: {
+      fontSize: 14,
+    },
+    devicePrefTitle: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: isDark ? '#34D399' : '#059669',
+    },
+    devicePrefDesc: {
+      fontSize: 11,
+      color: colors.text.muted,
+      marginTop: 2,
+      lineHeight: 15,
     },
     switchRow: {
       flexDirection: 'row',
@@ -531,6 +807,160 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontWeight: '700',
       color: colors.text.primary,
       textAlign: 'right',
+    },
+    membersContainer: {
+      gap: 10,
+    },
+    infoBanner: {
+      flexDirection: 'row',
+      backgroundColor: isDark ? 'rgba(79, 70, 229, 0.12)' : '#EEF2FF',
+      borderRadius: 12,
+      padding: 10,
+      gap: 8,
+      alignItems: 'flex-start',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(79, 70, 229, 0.25)' : '#C7D2FE',
+    },
+    infoBannerIcon: {
+      fontSize: 14,
+      marginTop: 1,
+    },
+    infoBannerText: {
+      fontSize: 11.5,
+      color: isDark ? '#A5B4FC' : '#4F46E5',
+      lineHeight: 16,
+      flex: 1,
+    },
+    summaryBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border.default,
+    },
+    summaryBarLabel: {
+      fontSize: 12,
+      color: colors.text.muted,
+      fontWeight: '600',
+    },
+    summaryBarValue: {
+      fontSize: 13,
+      fontWeight: '800',
+      color: colors.text.primary,
+    },
+    memberCard: {
+      backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
+      borderRadius: 14,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: colors.border.default,
+    },
+    memberCardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
+    memberInfoRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      flex: 1,
+    },
+    memberAvatar: {
+      fontSize: 22,
+    },
+    memberName: {
+      fontSize: 13.5,
+      fontWeight: '700',
+      color: colors.text.primary,
+    },
+    roleTag: {
+      backgroundColor: isDark ? 'rgba(79, 70, 229, 0.2)' : '#EEF2FF',
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: 4,
+    },
+    roleTagText: {
+      fontSize: 9.5,
+      color: isDark ? '#A5B4FC' : '#4F46E5',
+      fontWeight: '700',
+    },
+    memberStatusText: {
+      fontSize: 10.5,
+      color: colors.text.muted,
+      marginTop: 2,
+    },
+    memberInputWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: isDark ? colors.background.input : '#FFFFFF',
+      borderRadius: 10,
+      borderWidth: 1.5,
+      borderColor: colors.border.default,
+      paddingHorizontal: 8,
+      width: 125,
+    },
+    memberInputPrefix: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.text.muted,
+      marginRight: 4,
+    },
+    memberInput: {
+      flex: 1,
+      paddingVertical: 6,
+      fontSize: 14,
+      fontWeight: '800',
+      color: colors.text.primary,
+      textAlign: 'right',
+    },
+    memberPresetRow: {
+      flexDirection: 'row',
+      gap: 6,
+      marginTop: 8,
+      paddingTop: 8,
+      borderTopWidth: 1,
+      borderTopColor: colors.border.default,
+    },
+    memberPresetChip: {
+      flex: 1,
+      paddingVertical: 5,
+      borderRadius: 6,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF',
+      borderWidth: 1,
+      borderColor: colors.border.default,
+      alignItems: 'center',
+    },
+    memberPresetChipActive: {
+      backgroundColor: isDark ? 'rgba(79, 70, 229, 0.25)' : '#EEF2FF',
+      borderColor: isDark ? '#818CF8' : '#4F46E5',
+    },
+    memberPresetChipText: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: colors.text.secondary,
+    },
+    memberPresetChipTextActive: {
+      color: isDark ? '#818CF8' : '#4F46E5',
+      fontWeight: '700',
+    },
+    memberClearChip: {
+      paddingHorizontal: 8,
+      paddingVertical: 5,
+      borderRadius: 6,
+      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.12)' : '#FEE2E2',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    memberClearChipText: {
+      fontSize: 10.5,
+      color: '#DC2626',
+      fontWeight: '700',
     },
     footer: {
       flexDirection: 'row',

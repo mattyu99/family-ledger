@@ -471,9 +471,14 @@ interface LedgerContextType {
   isGoogleAuthenticated: boolean;
     googleUserEmail: string | null;
   currentBudget: LedgerBudget | null;
+  isBudgetWidgetVisibleOnDevice: boolean;
+  setBudgetWidgetVisibleOnDevice: (visible: boolean) => Promise<void>;
   updateBudget: (newBudget: Partial<LedgerBudget>) => Promise<void>;
-  getBudgetProgress: (targetMonthYm?: string) => {
+  getBudgetProgress: (targetMonthYm?: string, targetMemberId?: string) => {
     isEnabled: boolean;
+    isMemberPerspective: boolean;
+    targetMemberName?: string;
+    hasMemberBudgetConfigured?: boolean;
     totalBudget: number;
     spentAmount: number;
     remainingAmount: number;
@@ -8981,12 +8986,25 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   
-  // 🎯 預算控管與跨月走勢核心狀態 (階段 A)
+  // 🎯 預算控管與跨月走勢核心狀態 (階段 A - 支援家庭/個人視角與本機獨立開關)
   const [currentBudget, setCurrentBudget] = useState<LedgerBudget | null>(null);
+  const [isBudgetWidgetVisibleOnDevice, setIsBudgetWidgetVisibleOnDeviceState] = useState<boolean>(true);
 
   const loadBudget = React.useCallback(async (ledgerId: string) => {
     if (!ledgerId) return;
     try {
+      // 1. 載入本機顯隱偏好
+      try {
+        const visKey = `@family_ledger_budget_visible_${ledgerId}`;
+        const savedVis = await AsyncStorage.getItem(visKey);
+        if (savedVis !== null) {
+          setIsBudgetWidgetVisibleOnDeviceState(savedVis === 'true');
+        } else {
+          setIsBudgetWidgetVisibleOnDeviceState(true);
+        }
+      } catch {}
+
+      // 2. 載入預算資料
       const key = `${STORAGE_KEYS.BUDGET}_${ledgerId}`;
       const cached = await AsyncStorage.getItem(key);
       if (cached) {
@@ -9002,6 +9020,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           monthly_total: 40000,
           alert_threshold: 80,
           category_budgets: {},
+          member_budgets: {},
         });
       }
 
@@ -9021,6 +9040,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               monthly_total: Number(data.monthly_total) || 40000,
               alert_threshold: Number(data.alert_threshold) || 80,
               category_budgets: data.category_budgets || {},
+              member_budgets: data.member_budgets || {},
               updated_at: data.updated_at,
             };
             setCurrentBudget(cloudBudget);
@@ -9041,6 +9061,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [currentLedger?.id, loadBudget]);
 
+  const setBudgetWidgetVisibleOnDevice = React.useCallback(async (visible: boolean) => {
+    setIsBudgetWidgetVisibleOnDeviceState(visible);
+    try {
+      const visKey = `@family_ledger_budget_visible_${currentLedger.id}`;
+      await AsyncStorage.setItem(visKey, visible ? 'true' : 'false');
+    } catch {}
+  }, [currentLedger.id]);
+
   const updateBudget = React.useCallback(async (newBudgetData: Partial<LedgerBudget>) => {
     const ledgerId = currentLedger.id;
     const merged: LedgerBudget = {
@@ -9049,6 +9077,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       monthly_total: newBudgetData.monthly_total !== undefined ? newBudgetData.monthly_total : (currentBudget?.monthly_total ?? 40000),
       alert_threshold: newBudgetData.alert_threshold !== undefined ? newBudgetData.alert_threshold : (currentBudget?.alert_threshold ?? 80),
       category_budgets: newBudgetData.category_budgets !== undefined ? newBudgetData.category_budgets : (currentBudget?.category_budgets ?? {}),
+      member_budgets: newBudgetData.member_budgets !== undefined ? newBudgetData.member_budgets : (currentBudget?.member_budgets ?? {}),
       updated_at: new Date().toISOString(),
     };
 
@@ -9067,6 +9096,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           monthly_total: merged.monthly_total,
           alert_threshold: merged.alert_threshold,
           category_budgets: merged.category_budgets,
+          member_budgets: merged.member_budgets,
           updated_at: merged.updated_at,
         }, { onConflict: 'ledger_id' });
       } catch {
@@ -9075,18 +9105,41 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [currentLedger.id, currentBudget]);
 
-  const getBudgetProgress = React.useCallback((targetMonthYm?: string) => {
+  const getBudgetProgress = React.useCallback((targetMonthYm?: string, targetMemberId?: string) => {
     const now = new Date();
     const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const ym = targetMonthYm || currentYm;
     const isEnabled = currentBudget?.is_enabled ?? false;
-    const totalBudget = currentBudget?.monthly_total || 0;
     const alertThreshold = currentBudget?.alert_threshold || 80;
+
+    const isMemberPerspective = Boolean(targetMemberId && targetMemberId !== 'all');
+    let targetMemberName: string | undefined = undefined;
+    let totalBudget = 0;
+    let hasMemberBudgetConfigured = false;
+
+    if (isMemberPerspective && targetMemberId) {
+      const m = members.find(mem => mem.id === targetMemberId) || getMemberById(targetMemberId);
+      targetMemberName = m?.display_name || '成員';
+      const memBudget = currentBudget?.member_budgets?.[targetMemberId];
+      if (memBudget !== undefined && memBudget > 0) {
+        totalBudget = memBudget;
+        hasMemberBudgetConfigured = true;
+      } else {
+        totalBudget = 0;
+        hasMemberBudgetConfigured = false;
+      }
+    } else {
+      totalBudget = currentBudget?.monthly_total || 0;
+    }
 
     const monthTransactions = transactions.filter(t => {
       if (t.type !== 'expense') return false;
       const tYm = t.transacted_at ? t.transacted_at.slice(0, 7) : '';
-      return tYm === ym;
+      if (tYm !== ym) return false;
+      if (isMemberPerspective && targetMemberId) {
+        return t.paid_by === targetMemberId;
+      }
+      return true;
     });
 
     const spentAmount = monthTransactions.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
@@ -9106,6 +9159,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     return {
       isEnabled,
+      isMemberPerspective,
+      targetMemberName,
+      hasMemberBudgetConfigured,
       totalBudget,
       spentAmount,
       remainingAmount,
@@ -9115,7 +9171,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       daysRemaining,
       dailyAvailable,
     };
-  }, [currentBudget, transactions]);
+  }, [currentBudget, transactions, members, getMemberById]);
 
   const getMoMComparison = React.useCallback((targetMonthYm?: string) => {
     const now = new Date();
@@ -9377,6 +9433,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         isGoogleAuthenticated,
         googleUserEmail,
         currentBudget,
+        isBudgetWidgetVisibleOnDevice,
+        setBudgetWidgetVisibleOnDevice,
         updateBudget,
         getBudgetProgress,
         getMoMComparison,

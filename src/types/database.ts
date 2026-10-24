@@ -197,5 +197,6 @@ export interface LedgerBudget {
   monthly_total: number; // 月度總預算 (例如 45000)
   alert_threshold: number; // 預警門檻百分比 (例如 80)
   category_budgets: Record<string, number>; // 各分類上限，Key 為 category_id，Value 為預算金額
+  member_budgets?: Record<string, number>; // 成員個人獨立預算，Key 為 member_id，Value 為個人每月額度
   updated_at?: string;
 }

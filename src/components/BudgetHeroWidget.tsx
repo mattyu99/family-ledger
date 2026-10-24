@@ -19,25 +19,33 @@ const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultip
 );
 
 export interface BudgetHeroWidgetProps {
-  onOpenManageModal: () => void;
+  onOpenManageModal: (initialTab?: 'family' | 'members') => void;
   targetMonthYm?: string;
+  filterMemberId?: string;
 }
 
 export const BudgetHeroWidget: React.FC<BudgetHeroWidgetProps> = ({
   onOpenManageModal,
   targetMonthYm,
+  filterMemberId,
 }) => {
-  const { getBudgetProgress } = useLedger();
+  const { getBudgetProgress, isBudgetWidgetVisibleOnDevice } = useLedger();
   const { isDark, colors } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
 
-  const progress = getBudgetProgress(targetMonthYm);
+  // 若使用者在此裝置選擇隱藏預算卡片，則不渲染（想看的人看，不想看的人關閉）
+  if (!isBudgetWidgetVisibleOnDevice) {
+    return null;
+  }
 
+  const progress = getBudgetProgress(targetMonthYm, filterMemberId);
+
+  // 1. 若全帳本尚未啟用預算控管
   if (!progress.isEnabled) {
     return (
       <TouchableOpacity
         style={styles.unconfiguredBanner}
-        onPress={onOpenManageModal}
+        onPress={() => onOpenManageModal('family')}
         activeOpacity={0.8}
       >
         <View style={styles.unconfiguredLeft}>
@@ -54,11 +62,45 @@ export const BudgetHeroWidget: React.FC<BudgetHeroWidgetProps> = ({
     );
   }
 
+  // 2. 個人視角，但尚未為該成員設定個別專屬額度
+  if (progress.isMemberPerspective && !progress.hasMemberBudgetConfigured) {
+    return (
+      <TouchableOpacity
+        style={styles.unconfiguredBanner}
+        onPress={() => onOpenManageModal('members')}
+        activeOpacity={0.8}
+      >
+        <View style={styles.unconfiguredLeft}>
+          <Text style={styles.unconfiguredIcon}>👤</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.unconfiguredTitle}>
+              {progress.targetMemberName} 的專屬預算
+            </Text>
+            <Text style={styles.unconfiguredSubtitle}>
+              本月已支出 NT$ {progress.spentAmount.toLocaleString()} · 點擊設定每月個人額度
+            </Text>
+          </View>
+        </View>
+        <View style={styles.setupPill}>
+          <Text style={styles.setupPillText}>設定額度 ❯</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
+  // 3. 正常顯示進度卡片（支援家庭總預算 or 成員個人預算）
   const barColor = progress.isOverBudget
     ? '#EF4444'
     : progress.isWarning
     ? '#F59E0B'
     : '#10B981';
+
+  const cardTitle = progress.isMemberPerspective
+    ? `👤 ${progress.targetMemberName} 的個人預算`
+    : '🏠 家庭公帳總預算';
+
+  const spentLabel = progress.isMemberPerspective ? '個人已支' : '全家已支';
+  const budgetLabel = progress.isMemberPerspective ? '個人額度' : '總預算';
 
   return (
     <TouchableOpacity
@@ -67,14 +109,14 @@ export const BudgetHeroWidget: React.FC<BudgetHeroWidgetProps> = ({
         progress.isOverBudget && styles.containerOverBudget,
         progress.isWarning && styles.containerWarning,
       ]}
-      onPress={onOpenManageModal}
+      onPress={() => onOpenManageModal(progress.isMemberPerspective ? 'members' : 'family')}
       activeOpacity={0.88}
     >
       {/* 頂部標題列 */}
       <View style={styles.headerRow}>
         <View style={styles.titleWrap}>
-          <Text style={styles.titleIcon}>🎯</Text>
-          <Text style={styles.titleText}>每月預算進度</Text>
+          <Text style={styles.titleIcon}>{progress.isMemberPerspective ? '👤' : '🎯'}</Text>
+          <Text style={styles.titleText}>{cardTitle}</Text>
           <View
             style={[
               styles.statusBadge,
@@ -98,7 +140,10 @@ export const BudgetHeroWidget: React.FC<BudgetHeroWidgetProps> = ({
           </View>
         </View>
 
-        <TouchableOpacity onPress={onOpenManageModal} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <TouchableOpacity
+          onPress={() => onOpenManageModal(progress.isMemberPerspective ? 'members' : 'family')}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
           <Text style={styles.settingsLinkText}>⚙️ 調整</Text>
         </TouchableOpacity>
       </View>
@@ -106,7 +151,7 @@ export const BudgetHeroWidget: React.FC<BudgetHeroWidgetProps> = ({
       {/* 總額與花費大數字對照 */}
       <View style={styles.amountsRow}>
         <View style={styles.amountCol}>
-          <Text style={styles.amountLabel}>已支出</Text>
+          <Text style={styles.amountLabel}>{spentLabel}</Text>
           <Text style={[styles.amountVal, { color: barColor }]}>
             NT$ {progress.spentAmount.toLocaleString()}
           </Text>
@@ -133,7 +178,7 @@ export const BudgetHeroWidget: React.FC<BudgetHeroWidgetProps> = ({
         <View style={styles.amountDivider} />
 
         <View style={styles.amountCol}>
-          <Text style={styles.amountLabel}>總預算</Text>
+          <Text style={styles.amountLabel}>{budgetLabel}</Text>
           <Text style={[styles.amountVal, { color: colors.text.primary }]}>
             NT$ {progress.totalBudget.toLocaleString()}
           </Text>
@@ -155,9 +200,9 @@ export const BudgetHeroWidget: React.FC<BudgetHeroWidgetProps> = ({
 
       {/* 底部日均額度與提示 */}
       <View style={styles.footerRow}>
-        <Text style={styles.footerInfoText}>
+        <Text style={styles.footerInfoText} numberOfLines={1}>
           {progress.isOverBudget ? (
-            '🚨 本月開銷已超出設定總額，建議暫緩非必要支出'
+            '🚨 本月開銷已超出設定額度，建議節制非必要支出'
           ) : (
             `📅 尚餘 ${progress.daysRemaining} 天 · 平均每日可用 NT$ ${progress.dailyAvailable.toLocaleString()}`
           )}
