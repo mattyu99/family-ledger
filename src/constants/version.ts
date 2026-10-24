@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.7';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.7 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 25;
+export const APP_BUILD_REVISION = 26;
 
 // 完整版本字串 (例如 "1.0.7.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,15 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.7',
+    date: '2026-10-24',
+    title: '預算控管即時 WebSocket 雲端雙向同步：公帳與個人額度跨裝置即時推播',
+    highlights: [
+      '⚡ 預算資料即時雲端雙向同步：將 `ledger_budgets` 資料表全面納入 Supabase Realtime WebSocket 監聽通道，無論是公帳總預算還是成員自訂額度異動，全家全體裝置秒級連動更新。',
+      '🔄 前景與手動重新整理連動：在帳本手動下拉重整中加入預算即時拉取，確保離線恢復後第一時間取得雲端最新預算配置。',
+    ],
+  },
   {
     version: '1.0.7',
     date: '2026-10-24',

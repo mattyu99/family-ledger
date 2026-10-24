@@ -1183,6 +1183,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     ? (previewMember.role === 'owner' || previewMember.role === 'admin')
     : (isOwner && isAdminMode);
   const channelRef = useRef<any>(null);
+  const loadBudgetRef = useRef<((id: string) => Promise<void>) | null>(null);
 
   // 1. 初始化本地快取（Local-First: 先離線秒開，再非同步接雲端）
   useEffect(() => {
@@ -2191,6 +2192,25 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
           } catch (err) {
             console.warn('Realtime 刷新成員裝置失敗:', err);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'ledger_budgets',
+          filter: `ledger_id=eq.${ledgerId}`,
+        },
+        async () => {
+          // 當公帳總預算或成員個人額度變更時，即時推播刷新全體家庭裝置
+          try {
+            if (loadBudgetRef.current) {
+              await loadBudgetRef.current(ledgerId);
+            }
+          } catch (err) {
+            console.warn('Realtime 刷新預算失敗:', err);
           }
         }
       )
@@ -4311,6 +4331,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const authUserId = session?.user?.id;
         if (authUserId) {
           await loadLedgerData(currentLedger, authUserId);
+        }
+        if (loadBudgetRef.current && currentLedger?.id) {
+          await loadBudgetRef.current(currentLedger.id);
         }
       } catch (err) {
         console.warn('重新整理帳本資料失敗:', err);
@@ -9237,6 +9260,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.warn('載入預算快取失敗:', err);
     }
   }, []);
+  loadBudgetRef.current = loadBudget;
 
   useEffect(() => {
     if (currentLedger?.id) {
