@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text as RNText, StyleSheet, TouchableOpacity, TextProps, Linking } from 'react-native';
 import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
+import { useTheme } from '../theme/ThemeContext';
 import { getCategoryIcon } from '../lib/icons';
 import { formatPaymentLabel, parseExpenseDiscount, isTransferToMember } from '../lib/payment';
 import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist } from '../lib/memo';
@@ -30,6 +31,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
   onCompleteMemo,
 }) => {
   const { getMemberById, getCategoryById, getAccountById, paymentMethods, toggleMemoSettled, toggleMemoChecklistItem, transactions, members, currentUser } = useLedger();
+  const { isDark, colors } = useTheme();
 
   const category = getCategoryById(transaction.category_id, transaction.category);
   const payer = getMemberById(transaction.paid_by) || transaction.payer_profile;
@@ -109,14 +111,26 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
     return (
       <TouchableOpacity
         activeOpacity={0.7}
-        style={[styles.memoCard, isCompleted && styles.memoCardCompleted]}
+        style={[
+          styles.memoCard,
+          isCompleted && styles.memoCardCompleted,
+          isDark && {
+            backgroundColor: isCompleted ? colors.background.card : '#272218',
+            borderColor: isCompleted ? colors.border.default : '#78350F',
+            borderLeftColor: isCompleted ? colors.status.income : '#F59E0B',
+          },
+        ]}
         onPress={() => onPress?.(transaction)}
       >
         <View style={styles.memoHeaderRow}>
           <View style={styles.memoHeaderLeft}>
             {/* 一鍵待辦完成 / 取消核取按鈕 */}
             <TouchableOpacity
-              style={[styles.memoCheckbox, isCompleted && styles.memoCheckboxChecked]}
+              style={[
+                styles.memoCheckbox,
+                isDark && { backgroundColor: colors.background.input, borderColor: '#B45309' },
+                isCompleted && styles.memoCheckboxChecked,
+              ]}
               onPress={(e) => {
                 e.stopPropagation?.();
                 if (isCompleted) {
@@ -135,11 +149,15 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
               </Text>
             </TouchableOpacity>
 
-            <View style={[styles.memoIconBadge, isCompleted && styles.memoIconBadgeCompleted]}>
+            <View style={[styles.memoIconBadge, isCompleted && styles.memoIconBadgeCompleted, isDark && { backgroundColor: isCompleted ? colors.background.cardSubtle : 'rgba(245, 158, 11, 0.2)' }]}>
               <Text style={styles.memoIconText}>{memoData.icon}</Text>
             </View>
             <Text
-              style={[styles.memoTitleText, isCompleted && styles.memoTitleTextCompleted]}
+              style={[
+                styles.memoTitleText,
+                isCompleted && styles.memoTitleTextCompleted,
+                isDark && { color: colors.text.primary },
+              ]}
               allowFontScaling={false}
               maxFontSizeMultiplier={1.08}
             >
@@ -161,7 +179,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
               )
             )}
           </View>
-          <Text style={[styles.memoDateText, isCompleted && styles.memoDateTextCompleted]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          <Text style={[styles.memoDateText, isCompleted && styles.memoDateTextCompleted, isDark && { color: colors.text.muted }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
             {formattedDate}
           </Text>
         </View>
@@ -170,7 +188,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
           <View style={{ marginBottom: 8 }}>
             {/* 檢核進度條 */}
             <View style={styles.checklistProgressRow}>
-              <View style={styles.checklistProgressBarBg}>
+              <View style={[styles.checklistProgressBarBg, isDark && { backgroundColor: colors.background.cardSubtle }]}>
                 <View
                   style={[
                     styles.checklistProgressBarFill,
@@ -184,7 +202,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
               <Text
                 style={[
                   styles.checklistProgressText,
-                  { color: checklistProgressPercent === 100 ? '#059669' : '#2563EB' },
+                  { color: checklistProgressPercent === 100 ? (isDark ? '#34D399' : '#059669') : (isDark ? '#60A5FA' : '#2563EB') },
                 ]}
                 allowFontScaling={false}
                 maxFontSizeMultiplier={1.08}
@@ -196,7 +214,12 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
             {/* 前綴說明文字 (若有) */}
             {!!checklistData.prefixText && (
               <Text
-                style={[styles.memoContentText, isCompleted && styles.memoContentTextCompleted, { marginBottom: 6 }]}
+                style={[
+                  styles.memoContentText,
+                  isCompleted && styles.memoContentTextCompleted,
+                  isDark && { color: isCompleted ? colors.text.muted : colors.text.primary },
+                  { marginBottom: 6 },
+                ]}
                 allowFontScaling={false}
                 maxFontSizeMultiplier={1.1}
               >
@@ -211,18 +234,38 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                 return (
                   <TouchableOpacity
                     key={item.index}
-                    style={[styles.checklistItemRow, itemDone && styles.checklistItemRowCompleted]}
+                    style={[
+                      styles.checklistItemRow,
+                      itemDone && styles.checklistItemRowCompleted,
+                      isDark && {
+                        backgroundColor: itemDone ? colors.background.cardSubtle : 'rgba(255, 255, 255, 0.04)',
+                        borderColor: isDark ? colors.border.default : '#FDE68A',
+                      },
+                    ]}
                     activeOpacity={0.7}
                     onPress={(e) => {
                       e.stopPropagation?.();
                       toggleMemoChecklistItem(transaction.id, item.index);
                     }}
                   >
-                    <View style={[styles.checklistItemBox, itemDone && styles.checklistItemBoxChecked]}>
+                    <View
+                      style={[
+                        styles.checklistItemBox,
+                        isDark && {
+                          backgroundColor: colors.background.input,
+                          borderColor: '#B45309',
+                        },
+                        itemDone && styles.checklistItemBoxChecked,
+                      ]}
+                    >
                       {itemDone && <Text style={styles.checklistItemCheckIcon}>✓</Text>}
                     </View>
                     <Text
-                      style={[styles.checklistItemText, itemDone && styles.checklistItemTextCompleted]}
+                      style={[
+                        styles.checklistItemText,
+                        itemDone && styles.checklistItemTextCompleted,
+                        isDark && { color: itemDone ? colors.text.muted : colors.text.primary },
+                      ]}
                       allowFontScaling={false}
                       maxFontSizeMultiplier={1.1}
                     >
@@ -236,7 +279,12 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
             {/* 後綴備註文字 (若有) */}
             {!!checklistData.suffixText && (
               <Text
-                style={[styles.memoContentText, isCompleted && styles.memoContentTextCompleted, { marginTop: 6 }]}
+                style={[
+                  styles.memoContentText,
+                  isCompleted && styles.memoContentTextCompleted,
+                  isDark && { color: isCompleted ? colors.text.muted : colors.text.primary },
+                  { marginTop: 6 },
+                ]}
                 allowFontScaling={false}
                 maxFontSizeMultiplier={1.1}
               >
@@ -246,8 +294,8 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
 
             {/* 全部打勾完成時的引導提示 */}
             {checklistProgressPercent === 100 && !isCompleted && (
-              <View style={styles.checklistAllDoneHint}>
-                <Text style={styles.checklistAllDoneHintText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              <View style={[styles.checklistAllDoneHint, isDark && { backgroundColor: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.3)' }]}>
+                <Text style={[styles.checklistAllDoneHintText, isDark && { color: '#6EE7B7' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                   🎉 項目已全數核對！點擊左側「✓」即可將整單歸檔為已辦妥
                 </Text>
               </View>
@@ -255,7 +303,11 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
           </View>
         ) : (
           <Text
-            style={[styles.memoContentText, isCompleted && styles.memoContentTextCompleted]}
+            style={[
+              styles.memoContentText,
+              isCompleted && styles.memoContentTextCompleted,
+              isDark && { color: isCompleted ? colors.text.muted : colors.text.primary },
+            ]}
             allowFontScaling={false}
             maxFontSizeMultiplier={1.1}
           >
@@ -264,8 +316,8 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
         )}
 
         {isCompleted && !!transaction.completion_note && (
-          <View style={styles.memoReportBubble}>
-            <Text style={styles.memoReportText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          <View style={[styles.memoReportBubble, isDark && { backgroundColor: 'rgba(59, 130, 246, 0.15)', borderColor: 'rgba(59, 130, 246, 0.3)' }]}>
+            <Text style={[styles.memoReportText, isDark && { color: '#93C5FD' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
               💬 {completer?.display_name ? `${completer.display_name} 回報` : '辦妥回報'}：{transaction.completion_note}
             </Text>
           </View>
@@ -287,7 +339,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
         )}
 
         <View style={styles.memoFooterRow}>
-          <Text style={[styles.memoAuthorText, isCompleted && styles.memoAuthorTextCompleted]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          <Text style={[styles.memoAuthorText, isCompleted && styles.memoAuthorTextCompleted, isDark && { color: colors.text.muted }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
             {payer?.avatar_url || '👤'} {payer?.display_name || '成員'} 記錄
             {isCompleted && (
               completer
@@ -295,7 +347,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                 : ' · 已辦妥 ✓'
             )}
           </Text>
-          <Text style={[styles.memoActionHint, isCompleted && styles.memoActionHintCompleted]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          <Text style={[styles.memoActionHint, isCompleted && styles.memoActionHintCompleted, isDark && { color: isCompleted ? colors.text.muted : '#FBBF24' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
             {isCompleted ? '查看詳情 ›' : '點擊查看 / 編輯 ›'}
           </Text>
         </View>
@@ -313,7 +365,15 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
   return (
     <TouchableOpacity
       activeOpacity={0.7}
-      style={styles.card}
+      style={[
+        styles.card,
+        isDark && {
+          backgroundColor: colors.background.card,
+          borderColor: colors.border.default,
+          borderWidth: 1,
+          shadowOpacity: 0.15,
+        },
+      ]}
       onPress={() => onPress?.(transaction)}
     >
       {/* 類別圖示 */}
@@ -322,12 +382,12 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
           styles.iconBox,
           {
             backgroundColor: isTransferIn && !isSelfTransfer
-              ? '#ECFDF5'
+              ? (isDark ? 'rgba(16, 185, 129, 0.18)' : '#ECFDF5')
               : isTransfer
-              ? '#EEF2FF'
+              ? (isDark ? 'rgba(99, 102, 241, 0.18)' : '#EEF2FF')
               : category
-              ? `${category.color}20`
-              : '#F3F4F6',
+              ? `${category.color}25`
+              : (isDark ? colors.background.cardSubtle : '#F3F4F6'),
           },
         ]}
       >
@@ -347,7 +407,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
         <View style={styles.topRow}>
           <View style={styles.categoryTitleGroup}>
             <Text
-              style={styles.categoryName}
+              style={[styles.categoryName, isDark && { color: colors.text.primary }]}
               numberOfLines={1}
               ellipsizeMode="tail"
               maxFontSizeMultiplier={1.2}
@@ -361,6 +421,22 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                   isTransferIn && !isSelfTransfer && styles.transferInBadge,
                   isTransferOut && styles.transferOutBadge,
                   isSelfTransfer && styles.transferSelfBadge,
+                  isDark && {
+                    backgroundColor: 'rgba(99, 102, 241, 0.18)',
+                    borderColor: 'rgba(99, 102, 241, 0.4)',
+                  },
+                  isDark && isTransferIn && !isSelfTransfer && {
+                    backgroundColor: 'rgba(16, 185, 129, 0.18)',
+                    borderColor: 'rgba(16, 185, 129, 0.4)',
+                  },
+                  isDark && isTransferOut && {
+                    backgroundColor: 'rgba(139, 92, 246, 0.18)',
+                    borderColor: 'rgba(139, 92, 246, 0.4)',
+                  },
+                  isDark && isSelfTransfer && {
+                    backgroundColor: 'rgba(14, 165, 233, 0.18)',
+                    borderColor: 'rgba(14, 165, 233, 0.4)',
+                  },
                 ]}
               >
                 <Text
@@ -369,6 +445,10 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                     isTransferIn && !isSelfTransfer && styles.transferInBadgeText,
                     isTransferOut && styles.transferOutBadgeText,
                     isSelfTransfer && styles.transferSelfBadgeText,
+                    isDark && { color: '#A5B4FC' },
+                    isDark && isTransferIn && !isSelfTransfer && { color: '#6EE7B7' },
+                    isDark && isTransferOut && { color: '#C4B5FD' },
+                    isDark && isSelfTransfer && { color: '#7DD3FC' },
                   ]}
                   maxFontSizeMultiplier={1.08}
                 >
@@ -383,22 +463,22 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
               </View>
             )}
             {!!transaction.merchant && (
-              <View style={styles.merchantBadge}>
-                <Text style={styles.merchantBadgeText} numberOfLines={1} maxFontSizeMultiplier={1.08}>
+              <View style={[styles.merchantBadge, isDark && { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
+                <Text style={[styles.merchantBadgeText, isDark && { color: colors.text.secondary }]} numberOfLines={1} maxFontSizeMultiplier={1.08}>
                   {transaction.merchant}
                 </Text>
               </View>
             )}
             {!!parsedDiscount?.hasDiscount && (
-              <View style={styles.expenseDiscountBadge}>
-                <Text style={styles.expenseDiscountBadgeText} numberOfLines={1} maxFontSizeMultiplier={1.08}>
+              <View style={[styles.expenseDiscountBadge, isDark && { backgroundColor: 'rgba(239, 68, 68, 0.18)', borderColor: 'rgba(239, 68, 68, 0.4)' }]}>
+                <Text style={[styles.expenseDiscountBadgeText, isDark && { color: '#FCA5A5' }]} numberOfLines={1} maxFontSizeMultiplier={1.08}>
                   {parsedDiscount.badgeText}
                 </Text>
               </View>
             )}
             {!!linkedMemo && (
-              <View style={styles.expenseLinkedMemoTag}>
-                <Text style={styles.expenseLinkedMemoTagText} numberOfLines={1} maxFontSizeMultiplier={1.08}>
+              <View style={[styles.expenseLinkedMemoTag, isDark && { backgroundColor: 'rgba(245, 158, 11, 0.18)', borderColor: 'rgba(245, 158, 11, 0.4)' }]}>
+                <Text style={[styles.expenseLinkedMemoTagText, isDark && { color: '#FCD34D' }]} numberOfLines={1} maxFontSizeMultiplier={1.08}>
                   📋 連動待辦
                 </Text>
               </View>
@@ -409,6 +489,9 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                   styles.invoiceBadge,
                   transaction.invoice_status === 'won' && styles.invoiceBadgeWon,
                   transaction.invoice_status === 'claimed' && styles.invoiceBadgeClaimed,
+                  isDark && { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default },
+                  isDark && transaction.invoice_status === 'won' && { backgroundColor: 'rgba(236, 72, 153, 0.2)', borderColor: 'rgba(236, 72, 153, 0.5)' },
+                  isDark && transaction.invoice_status === 'claimed' && { backgroundColor: 'rgba(16, 185, 129, 0.2)', borderColor: 'rgba(16, 185, 129, 0.5)' },
                 ]}
               >
                 <Text
@@ -416,6 +499,9 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                     styles.invoiceBadgeText,
                     transaction.invoice_status === 'won' && styles.invoiceBadgeTextWon,
                     transaction.invoice_status === 'claimed' && styles.invoiceBadgeTextClaimed,
+                    isDark && { color: colors.text.secondary },
+                    isDark && transaction.invoice_status === 'won' && { color: '#F472B6' },
+                    isDark && transaction.invoice_status === 'claimed' && { color: '#34D399' },
                   ]}
                   numberOfLines={1}
                   maxFontSizeMultiplier={1.08}
@@ -433,14 +519,14 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
             style={[
               styles.amountText,
               isExpense
-                ? styles.expenseColor
+                ? [styles.expenseColor, isDark && { color: colors.status.expense }]
                 : isTransferIn && !isSelfTransfer
-                ? styles.incomeColor
+                ? [styles.incomeColor, isDark && { color: colors.status.income }]
                 : isTransferOut
-                ? styles.transferColor
+                ? [styles.transferColor, isDark && { color: '#A5B4FC' }]
                 : isTransfer
-                ? styles.transferColor
-                : styles.incomeColor,
+                ? [styles.transferColor, isDark && { color: '#A5B4FC' }]
+                : [styles.incomeColor, isDark && { color: colors.status.income }],
             ]}
             maxFontSizeMultiplier={1.2}
           >
@@ -458,7 +544,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
 
         <View style={styles.bottomRow}>
           <Text
-            style={styles.noteText}
+            style={[styles.noteText, isDark && { color: colors.text.secondary }]}
             numberOfLines={1}
             ellipsizeMode="tail"
             maxFontSizeMultiplier={1.2}
@@ -467,7 +553,13 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
           </Text>
           <View style={styles.metaRow}>
             <Text
-              style={styles.payerTag}
+              style={[
+                styles.payerTag,
+                isDark && {
+                  backgroundColor: colors.background.cardSubtle,
+                  color: colors.text.secondary,
+                },
+              ]}
               numberOfLines={1}
               maxFontSizeMultiplier={1.2}
             >
@@ -494,12 +586,12 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
               </View>
             )}
             {transaction.is_reconciled && (
-              <View style={styles.reconciledBadge}>
-                <Text style={styles.reconciledBadgeText} maxFontSizeMultiplier={1.08}>✓ 已核對</Text>
+              <View style={[styles.reconciledBadge, isDark && { backgroundColor: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.35)' }]}>
+                <Text style={[styles.reconciledBadgeText, isDark && { color: '#34D399' }]} maxFontSizeMultiplier={1.08}>✓ 已核對</Text>
               </View>
             )}
             <Text
-              style={styles.dateText}
+              style={[styles.dateText, isDark && { color: colors.text.muted }]}
               maxFontSizeMultiplier={1.2}
             >
               {formattedDate}
@@ -509,7 +601,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
       </View>
 
       {/* 點擊編輯指示箭頭 */}
-      <Text style={styles.cardArrow} maxFontSizeMultiplier={1.1}>›</Text>
+      <Text style={[styles.cardArrow, isDark && { color: colors.border.strong }]} maxFontSizeMultiplier={1.1}>›</Text>
     </TouchableOpacity>
   );
 });

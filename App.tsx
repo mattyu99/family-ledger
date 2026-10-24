@@ -60,6 +60,7 @@ const renderMemberAvatar = (avatar: string | undefined, textStyle?: any, size: n
 };
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { LedgerProvider, useLedger } from './src/context/LedgerContext';
 import { TransactionItem } from './src/components/TransactionItem';
 import { AddTransactionModal } from './src/components/AddTransactionModal';
@@ -169,6 +170,7 @@ const copyToClipboard = async (text: string, successMsg: string) => {
 };
 
 function MainApp() {
+  const { themeMode, isDark, colors, toggleTheme } = useTheme();
   const {
     currentLedger,
     ledgers,
@@ -3562,38 +3564,61 @@ function MainApp() {
     </Modal>
   );
 
-  // 若尚未加入任何家庭帳本，顯示模式 A 冷啟動歡迎雙入口
+  // 若尚未加入任何家庭帳本，顯示冷啟動歡迎雙入口
   if (!hasJoinedLedger) {
     return (
-      <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background.canvas }]}>
+        <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={colors.background.canvas} />
         <ScrollView contentContainerStyle={styles.welcomeScroll} showsVerticalScrollIndicator={false}>
-          <View style={styles.welcomeHero}>
-            <Text style={styles.welcomeEmoji}>👨‍👩‍👧‍👦</Text>
-            <Text style={styles.welcomeTitle}>家庭共享記帳本</Text>
-            <Text style={styles.welcomeSubtitle}>全家人一起記帳・即時雲端同步・收支結餘自動算</Text>
+          {/* 右上角深淺色外觀切換開關 */}
+          <View style={{ alignItems: 'flex-end', marginBottom: 8, width: '100%' }}>
+            <TouchableOpacity
+              style={[
+                styles.themeToggleBtn,
+                {
+                  backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
+                  borderColor: colors.border.default,
+                },
+              ]}
+              onPress={toggleTheme}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.themeToggleBtnIcon}>
+                {themeMode === 'light' ? '☀️' : themeMode === 'dark' ? '🌙' : '🌓'}
+              </Text>
+              <Text style={[styles.themeToggleBtnText, { color: colors.text.secondary }]}>
+                {themeMode === 'light' ? '淺色' : themeMode === 'dark' ? '深色' : '系統'}
+              </Text>
+            </TouchableOpacity>
           </View>
 
-          <View style={styles.featureBox}>
+          <View style={styles.welcomeHero}>
+            <Text style={styles.welcomeEmoji}>👨‍👩‍👧‍👦</Text>
+            <Text style={[styles.welcomeTitle, isDark && { color: colors.text.primary }]}>家庭共享記帳本</Text>
+            <Text style={[styles.welcomeSubtitle, isDark && { color: colors.text.secondary }]}>全家人一起記帳・即時雲端同步・收支結餘自動算</Text>
+          </View>
+
+          <View style={[styles.featureBox, isDark && { backgroundColor: colors.background.card, borderColor: colors.border.default }]}>
             <View style={styles.featureItem}>
               <Text style={styles.featureIcon}>⚡</Text>
               <View style={styles.featureTextCol}>
-                <Text style={styles.featureItemTitle}>即時雲端同步</Text>
-                <Text style={styles.featureItemDesc}>各自用自己的手機，一人記帳全家秒更新</Text>
+                <Text style={[styles.featureItemTitle, isDark && { color: colors.text.primary }]}>即時雲端同步</Text>
+                <Text style={[styles.featureItemDesc, isDark && { color: colors.text.secondary }]}>各自用自己的手機，一人記帳全家秒更新</Text>
               </View>
             </View>
             <View style={styles.featureItem}>
               <Text style={styles.featureIcon}>📊</Text>
               <View style={styles.featureTextCol}>
-                <Text style={styles.featureItemTitle}>家庭收支一目了然</Text>
-                <Text style={styles.featureItemDesc}>自動統計成員付款、結餘清楚，公帳不混淆</Text>
+                <Text style={[styles.featureItemTitle, isDark && { color: colors.text.primary }]}>家庭收支一目了然</Text>
+                <Text style={[styles.featureItemDesc, isDark && { color: colors.text.secondary }]}>自動統計成員付款、結餘清楚，公帳不混淆</Text>
               </View>
             </View>
             <View style={styles.featureItem}>
               <Text style={styles.featureIcon}>🔒</Text>
               <View style={styles.featureTextCol}>
-                <Text style={styles.featureItemTitle}>專屬邀請碼安全守護</Text>
-                <Text style={styles.featureItemDesc}>只有持有家庭邀請碼的家人能進入，保護隱私</Text>
+                <Text style={[styles.featureItemTitle, isDark && { color: colors.text.primary }]}>專屬邀請碼安全守護</Text>
+                <Text style={[styles.featureItemDesc, isDark && { color: colors.text.secondary }]}>只有持有家庭邀請碼的家人能進入，保護隱私</Text>
               </View>
             </View>
           </View>
@@ -3679,20 +3704,20 @@ function MainApp() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" translucent={true} />
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background.canvas }]}>
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={colors.background.card} translucent={true} />
 
       {/* App 內即時溫馨動態泡泡 */}
       <LiveToastBanner toast={liveToast} onDismiss={dismissLiveToast} />
 
       {/* 頂部導航列 */}
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, { backgroundColor: colors.background.card, borderBottomColor: colors.border.default }]}>
         <View style={{ flex: 1, marginRight: 8 }}>
           <View style={styles.topBarSubtitleRow}>
-            <Text style={styles.ledgerSubtitle} maxFontSizeMultiplier={1.2}>家庭共享記帳本</Text>
+            <Text style={[styles.ledgerSubtitle, { color: colors.text.muted }]} maxFontSizeMultiplier={1.2}>家庭共享記帳本</Text>
             {isAdminMode && (
               <TouchableOpacity
-                style={styles.ownerTopBadge}
+                style={[styles.ownerTopBadge, isDark && { backgroundColor: 'rgba(236, 72, 153, 0.2)', borderColor: 'rgba(236, 72, 153, 0.4)' }]}
                 onPress={handleSwitchToDailyMemberMode}
                 activeOpacity={0.7}
               >
@@ -3715,19 +3740,19 @@ function MainApp() {
                 }}
                 activeOpacity={0.7}
               >
-                <Text style={styles.ledgerTitle} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.2}>
+                <Text style={[styles.ledgerTitle, { color: colors.text.primary }]} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.2}>
                   {currentLedger.name}
                 </Text>
                 <Text style={styles.ledgerEditPencil}>✏️</Text>
               </TouchableOpacity>
             ) : (
-              <Text style={styles.ledgerTitle} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.2}>
+              <Text style={[styles.ledgerTitle, { color: colors.text.primary }]} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.2}>
                 {currentLedger.name}
               </Text>
             )}
 
             {Boolean(currentLedger.is_read_only) && (
-              <View style={styles.topBarReadOnlyBadge}>
+              <View style={[styles.topBarReadOnlyBadge, isDark && { backgroundColor: colors.background.cardSubtle }]}>
                 <Text style={styles.topBarReadOnlyBadgeText}>🔒 唯讀</Text>
               </View>
             )}
@@ -3737,29 +3762,60 @@ function MainApp() {
               <TouchableOpacity
                 style={[
                   styles.switchLedgerTopBadge,
+                  isDark && { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default },
                   hasOtherUnread && styles.switchLedgerTopBadgeUnread,
                 ]}
                 onPress={() => setSwitchLedgerModalVisible(true)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.switchLedgerTopBadgeText}>切換 ▾</Text>
+                <Text style={[styles.switchLedgerTopBadgeText, isDark && { color: colors.text.secondary }]}>切換 ▾</Text>
                 {hasOtherUnread && <View style={styles.topBadgeRedDot} />}
               </TouchableOpacity>
             )}
           </View>
         </View>
 
-        {/* 雲端狀態徽章 (點擊可立即手動重新同步) */}
-        <TouchableOpacity
-          style={[styles.syncBadge, isCloudSynced ? styles.syncOnline : styles.syncLocal]}
-          onPress={handleRefresh}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.syncDot}>{historySyncProgress || isRefreshing ? '🔄' : (isCloudSynced ? '🟢' : '🟡')}</Text>
-          <Text style={styles.syncText} maxFontSizeMultiplier={1.2}>
-            {historySyncProgress ? '歷史同步中...' : isRefreshing ? '同步更新中...' : (isCloudSynced ? '雲端即時同步' : '本地離線快取')}
-          </Text>
-        </TouchableOpacity>
+        {/* 右側操作按鈕群組：深淺色風格切換 + 雲端同步狀態 */}
+        <View style={styles.topBarRightActions}>
+          <TouchableOpacity
+            style={[
+              styles.themeToggleBtn,
+              {
+                backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
+                borderColor: colors.border.default,
+              },
+            ]}
+            onPress={toggleTheme}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="切換外觀風格"
+          >
+            <Text style={styles.themeToggleBtnIcon}>
+              {themeMode === 'light' ? '☀️' : themeMode === 'dark' ? '🌙' : '🌓'}
+            </Text>
+            <Text style={[styles.themeToggleBtnText, { color: colors.text.secondary }]}>
+              {themeMode === 'light' ? '淺色' : themeMode === 'dark' ? '深色' : '系統'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.syncBadge,
+              isCloudSynced ? styles.syncOnline : styles.syncLocal,
+              isDark && {
+                backgroundColor: isCloudSynced ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                borderColor: isCloudSynced ? 'rgba(16, 185, 129, 0.35)' : 'rgba(245, 158, 11, 0.35)',
+              },
+            ]}
+            onPress={handleRefresh}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.syncDot}>{historySyncProgress || isRefreshing ? '🔄' : (isCloudSynced ? '🟢' : '🟡')}</Text>
+            <Text style={[styles.syncText, isDark && { color: colors.text.secondary }]} maxFontSizeMultiplier={1.2}>
+              {historySyncProgress ? '歷史同步中...' : isRefreshing ? '同步更新中...' : (isCloudSynced ? '雲端即時同步' : '本地離線快取')}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* 角色預覽模式橫幅 (置於導航列下方，避免與系統狀態列重疊) */}
@@ -3877,7 +3933,17 @@ function MainApp() {
             )}
 
             {/* 本月收支摘要卡片 */}
-            <View style={styles.summaryCard}>
+            <View
+              style={[
+                styles.summaryCard,
+                isDark && {
+                  backgroundColor: '#1E293B',
+                  borderColor: '#334155',
+                  borderWidth: 1,
+                  shadowOpacity: 0.1,
+                },
+              ]}
+            >
               <View style={styles.summaryHeader}>
                 <View style={{ flex: 1, marginRight: 8 }}>
                   <Text style={styles.summaryTitle} maxFontSizeMultiplier={1.2}>{summaryCardTitle}</Text>
@@ -4106,7 +4172,7 @@ function MainApp() {
 
             {/* 交易列表標題 */}
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>
+              <Text style={[styles.sectionTitle, isDark && { color: colors.text.primary }]}>
                 {transactionTypeFilter === 'memo' ? '📝 生活備忘記事' : transactionTypeFilter === 'financial' ? '💳 日常收支明細' : '近期收支明細'} {historySyncProgress ? `(同步中 ${Math.max(historySyncProgress.loaded, transactions.length).toLocaleString()} / ${historySyncProgress.total.toLocaleString()})` : (filteredTransactions.length < transactions.length ? `(${filteredTransactions.length.toLocaleString()} / 總 ${transactions.length.toLocaleString()})` : `(總 ${transactions.length.toLocaleString()})`)}
               </Text>
               {keyboardOffset > 0 ? (
@@ -4114,16 +4180,20 @@ function MainApp() {
                   <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
                 </TouchableOpacity>
               ) : (
-                <Text style={styles.sectionSubtitle}>點擊明細可直接修改或刪除 ✍️</Text>
+                <Text style={[styles.sectionSubtitle, isDark && { color: '#818CF8' }]}>點擊明細可直接修改或刪除 ✍️</Text>
               )}
             </View>
 
             {/* 📝 ✕ 💳 明細類型快捷切換列：全部紀錄 / 💳 僅看收支 / 📝 僅看記事 */}
-            <View style={styles.typeFilterContainer}>
+            <View style={[styles.typeFilterContainer, isDark && { backgroundColor: colors.background.cardSubtle }]}>
               <TouchableOpacity
                 style={[
                   styles.typeFilterTab,
                   transactionTypeFilter === 'all' && styles.typeFilterTabActiveAll,
+                  isDark && transactionTypeFilter === 'all' && {
+                    backgroundColor: colors.background.card,
+                    borderColor: colors.border.strong,
+                  },
                 ]}
                 onPress={() => setTransactionTypeFilter('all')}
                 activeOpacity={0.7}
@@ -4132,6 +4202,8 @@ function MainApp() {
                   style={[
                     styles.typeFilterTabText,
                     transactionTypeFilter === 'all' && styles.typeFilterTabTextActiveAll,
+                    isDark && { color: colors.text.secondary },
+                    isDark && transactionTypeFilter === 'all' && { color: '#A5B4FC' },
                   ]}
                   maxFontSizeMultiplier={1.08}
                 >
@@ -4143,6 +4215,10 @@ function MainApp() {
                 style={[
                   styles.typeFilterTab,
                   transactionTypeFilter === 'financial' && styles.typeFilterTabActiveFinancial,
+                  isDark && transactionTypeFilter === 'financial' && {
+                    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                    borderColor: 'rgba(59, 130, 246, 0.45)',
+                  },
                 ]}
                 onPress={() => setTransactionTypeFilter('financial')}
                 activeOpacity={0.7}
@@ -4151,6 +4227,8 @@ function MainApp() {
                   style={[
                     styles.typeFilterTabText,
                     transactionTypeFilter === 'financial' && styles.typeFilterTabTextActiveFinancial,
+                    isDark && { color: colors.text.secondary },
+                    isDark && transactionTypeFilter === 'financial' && { color: '#93C5FD' },
                   ]}
                   maxFontSizeMultiplier={1.08}
                 >
@@ -4162,6 +4240,10 @@ function MainApp() {
                 style={[
                   styles.typeFilterTab,
                   transactionTypeFilter === 'memo' && styles.typeFilterTabActiveMemo,
+                  isDark && transactionTypeFilter === 'memo' && {
+                    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                    borderColor: 'rgba(245, 158, 11, 0.45)',
+                  },
                 ]}
                 onPress={() => setTransactionTypeFilter('memo')}
                 activeOpacity={0.7}
@@ -4170,6 +4252,8 @@ function MainApp() {
                   style={[
                     styles.typeFilterTabText,
                     transactionTypeFilter === 'memo' && styles.typeFilterTabTextActiveMemo,
+                    isDark && { color: colors.text.secondary },
+                    isDark && transactionTypeFilter === 'memo' && { color: '#FCD34D' },
                   ]}
                   maxFontSizeMultiplier={1.08}
                 >
@@ -4180,12 +4264,12 @@ function MainApp() {
 
             {/* 🔍 店家 / 關鍵字即時搜尋列 */}
             <View style={styles.searchBarContainer}>
-              <View style={styles.searchBarInner}>
+              <View style={[styles.searchBarInner, isDark && { backgroundColor: colors.background.input, borderColor: colors.border.default }]}>
                 <Text style={styles.searchBarIcon}>🔍</Text>
                 <TextInput
-                  style={styles.searchBarInput}
+                  style={[styles.searchBarInput, isDark && { color: colors.text.primary }]}
                   placeholder="搜尋店家或備註 (例如：好市多、全聯、加油...)"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={isDark ? colors.text.muted : '#9CA3AF'}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                   returnKeyType="search"
@@ -4220,12 +4304,28 @@ function MainApp() {
                   return (
                     <TouchableOpacity
                       key={mName}
-                      style={[styles.merchantFilterChip, isSelected && styles.merchantFilterChipActive]}
+                      style={[
+                        styles.merchantFilterChip,
+                        isSelected && styles.merchantFilterChipActive,
+                        isDark && {
+                          backgroundColor: colors.background.card,
+                          borderColor: colors.border.default,
+                        },
+                        isDark && isSelected && {
+                          backgroundColor: 'rgba(99, 102, 241, 0.25)',
+                          borderColor: '#818CF8',
+                        },
+                      ]}
                       onPress={() => setSearchQuery(isSelected ? '' : mName)}
                       activeOpacity={0.7}
                     >
                       <Text
-                        style={[styles.merchantFilterChipText, isSelected && styles.merchantFilterChipTextActive]}
+                        style={[
+                          styles.merchantFilterChipText,
+                          isSelected && styles.merchantFilterChipTextActive,
+                          isDark && { color: colors.text.secondary },
+                          isDark && isSelected && { color: '#C7D2FE' },
+                        ]}
                         maxFontSizeMultiplier={1.08}
                       >
                         {isSelected ? `✓ ${mName}` : mName}
@@ -4241,14 +4341,30 @@ function MainApp() {
               {/* 月份與年份篩選按鈕 */}
               <TouchableOpacity
                 activeOpacity={0.7}
-                style={[styles.filterChip, filterMonth !== currentMonthYm && styles.filterChipActive]}
+                style={[
+                  styles.filterChip,
+                  filterMonth !== currentMonthYm && styles.filterChipActive,
+                  isDark && {
+                    backgroundColor: colors.background.card,
+                    borderColor: colors.border.default,
+                  },
+                  isDark && filterMonth !== currentMonthYm && {
+                    backgroundColor: 'rgba(99, 102, 241, 0.25)',
+                    borderColor: '#818CF8',
+                  },
+                ]}
                 onPress={() => setFilterModalType('month')}
               >
                 <Text style={styles.filterChipIcon}>
                   {/^\d{4}$/.test(filterMonth) ? '🗓️' : filterMonth === 'all' ? '🌐' : '📅'}
                 </Text>
                 <Text
-                  style={[styles.filterChipText, filterMonth !== currentMonthYm && styles.filterChipTextActive]}
+                  style={[
+                    styles.filterChipText,
+                    filterMonth !== currentMonthYm && styles.filterChipTextActive,
+                    isDark && { color: colors.text.secondary },
+                    isDark && filterMonth !== currentMonthYm && { color: '#C7D2FE' },
+                  ]}
                   numberOfLines={1}
                 >
                   {filterMonth === 'all'
@@ -4259,13 +4375,24 @@ function MainApp() {
                     ? `本月 (${parseInt(currentMonthYm.split('-')[1], 10)}月)`
                     : (selectedMonthObj?.label || filterMonth)}
                 </Text>
-                <Text style={[styles.filterChipArrow, filterMonth !== currentMonthYm && styles.filterChipArrowActive]}>▾</Text>
+                <Text style={[styles.filterChipArrow, filterMonth !== currentMonthYm && styles.filterChipArrowActive, isDark && { color: colors.text.muted }, isDark && filterMonth !== currentMonthYm && { color: '#818CF8' }]}>▾</Text>
               </TouchableOpacity>
 
               {/* 成員篩選按鈕 */}
               <TouchableOpacity
                 activeOpacity={0.7}
-                style={[styles.filterChip, filterMemberId !== defaultMemberId && styles.filterChipActive]}
+                style={[
+                  styles.filterChip,
+                  filterMemberId !== defaultMemberId && styles.filterChipActive,
+                  isDark && {
+                    backgroundColor: colors.background.card,
+                    borderColor: colors.border.default,
+                  },
+                  isDark && filterMemberId !== defaultMemberId && {
+                    backgroundColor: 'rgba(99, 102, 241, 0.25)',
+                    borderColor: '#818CF8',
+                  },
+                ]}
                 onPress={() => setFilterModalType('member')}
               >
                 <Text style={styles.filterChipIcon}>
@@ -4274,7 +4401,12 @@ function MainApp() {
                     : (selectedMember?.avatar_url || currentUser?.avatar_url || '👤')}
                 </Text>
                 <Text
-                  style={[styles.filterChipText, filterMemberId !== defaultMemberId && styles.filterChipTextActive]}
+                  style={[
+                    styles.filterChipText,
+                    filterMemberId !== defaultMemberId && styles.filterChipTextActive,
+                    isDark && { color: colors.text.secondary },
+                    isDark && filterMemberId !== defaultMemberId && { color: '#C7D2FE' },
+                  ]}
                   numberOfLines={1}
                 >
                   {filterMemberId === 'all'
@@ -4283,7 +4415,7 @@ function MainApp() {
                     ? `${currentUser?.display_name || '我'} (本機)`
                     : (selectedMember?.display_name || '指定成員')}
                 </Text>
-                <Text style={[styles.filterChipArrow, filterMemberId !== defaultMemberId && styles.filterChipArrowActive]}>▾</Text>
+                <Text style={[styles.filterChipArrow, filterMemberId !== defaultMemberId && styles.filterChipArrowActive, isDark && { color: colors.text.muted }, isDark && filterMemberId !== defaultMemberId && { color: '#818CF8' }]}>▾</Text>
               </TouchableOpacity>
 
               {/* 發票對獎入口按鈕 */}
@@ -4291,7 +4423,14 @@ function MainApp() {
                 activeOpacity={0.7}
                 style={[
                   styles.filterChip,
-                  invoiceLotteryStats.wonCount > 0 && { borderColor: '#F59E0B', backgroundColor: '#FEF3C7' },
+                  isDark && {
+                    backgroundColor: colors.background.card,
+                    borderColor: colors.border.default,
+                  },
+                  invoiceLotteryStats.wonCount > 0 && {
+                    borderColor: '#F59E0B',
+                    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
+                  },
                 ]}
                 onPress={() => setInvoiceLotteryModalVisible(true)}
               >
@@ -4299,7 +4438,8 @@ function MainApp() {
                 <Text
                   style={[
                     styles.filterChipText,
-                    invoiceLotteryStats.wonCount > 0 && { color: '#B45309', fontWeight: '700' },
+                    isDark && { color: colors.text.secondary },
+                    invoiceLotteryStats.wonCount > 0 && { color: isDark ? '#FBBF24' : '#B45309', fontWeight: '700' },
                   ]}
                   numberOfLines={1}
                 >
@@ -4313,11 +4453,17 @@ function MainApp() {
               {!!searchQuery.trim() && filterMonth !== 'all' && (
                 <TouchableOpacity
                   activeOpacity={0.7}
-                  style={[styles.filterChip, { borderColor: '#818CF8', backgroundColor: '#EEF2FF' }]}
+                  style={[
+                    styles.filterChip,
+                    {
+                      borderColor: isDark ? '#6366F1' : '#818CF8',
+                      backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF',
+                    },
+                  ]}
                   onPress={() => setFilterMonth('all')}
                 >
                   <Text style={styles.filterChipIcon}>🌐</Text>
-                  <Text style={[styles.filterChipText, { color: '#4F46E5', fontWeight: '700' }]}>改查全部月份</Text>
+                  <Text style={[styles.filterChipText, { color: isDark ? '#A5B4FC' : '#4F46E5', fontWeight: '700' }]}>改查全部月份</Text>
                 </TouchableOpacity>
               )}
 
@@ -4325,10 +4471,16 @@ function MainApp() {
               {isFiltered && (
                 <TouchableOpacity
                   activeOpacity={0.7}
-                  style={styles.filterResetChip}
+                  style={[
+                    styles.filterResetChip,
+                    isDark && {
+                      backgroundColor: 'rgba(99, 102, 241, 0.2)',
+                      borderColor: 'rgba(99, 102, 241, 0.4)',
+                    },
+                  ]}
                   onPress={resetFilters}
                 >
-                  <Text style={styles.filterResetText}>清除篩選 ↺</Text>
+                  <Text style={[styles.filterResetText, isDark && { color: '#A5B4FC' }]}>清除篩選 ↺</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -4337,15 +4489,15 @@ function MainApp() {
             {transactions.length === 0 ? (
               <View style={styles.emptyBox}>
                 <Text style={styles.emptyIcon}>🧾</Text>
-                <Text style={styles.emptyText}>目前還沒有記帳紀錄</Text>
-                <Text style={styles.emptySubtext}>點擊右下角「+」開始記錄家庭第一筆花費</Text>
+                <Text style={[styles.emptyText, isDark && { color: colors.text.secondary }]}>目前還沒有記帳紀錄</Text>
+                <Text style={[styles.emptySubtext, isDark && { color: colors.text.muted }]}>點擊右下角「+」開始記錄家庭第一筆花費</Text>
               </View>
             ) : filteredTransactions.length === 0 ? (
               <View style={styles.emptyBox}>
                 <Text style={styles.emptyIcon}>
                   {transactionTypeFilter === 'memo' ? '📝' : transactionTypeFilter === 'financial' ? '💳' : '🔍'}
                 </Text>
-                <Text style={styles.emptyText}>
+                <Text style={[styles.emptyText, isDark && { color: colors.text.secondary }]}>
                   {transactionTypeFilter === 'memo' && !searchQuery.trim()
                     ? '目前沒有生活備忘或待辦記事'
                     : transactionTypeFilter === 'financial' && !searchQuery.trim()
@@ -4354,7 +4506,7 @@ function MainApp() {
                     ? `查無「${searchQuery.trim()}」的相關紀錄`
                     : '沒有符合篩選條件的明細'}
                 </Text>
-                <Text style={styles.emptySubtext}>
+                <Text style={[styles.emptySubtext, isDark && { color: colors.text.muted }]}>
                   {transactionTypeFilter === 'memo' && !searchQuery.trim()
                     ? '點擊右下角「+」並切換至「記事」隨手記錄家庭大小事'
                     : transactionTypeFilter === 'financial' && !searchQuery.trim()
@@ -6047,40 +6199,40 @@ function MainApp() {
       )}
 
       {/* 底部功能頁籤 */}
-      <View style={styles.bottomNav}>
+      <View style={[styles.bottomNav, isDark && { backgroundColor: colors.background.card, borderTopColor: colors.border.default }]}>
         <TouchableOpacity
-          style={[styles.navItem, activeTab === 'transactions' && styles.navItemActive]}
+          style={[styles.navItem, activeTab === 'transactions' && styles.navItemActive, isDark && activeTab === 'transactions' && { borderColor: '#818CF8' }]}
           onPress={() => setActiveTab('transactions')}
         >
           <Text style={styles.navIcon}>📝</Text>
-          <Text style={[styles.navText, activeTab === 'transactions' && styles.navTextActive]}>明細</Text>
+          <Text style={[styles.navText, activeTab === 'transactions' && styles.navTextActive, isDark && { color: colors.text.muted }, isDark && activeTab === 'transactions' && { color: '#A5B4FC' }]}>明細</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.navItem, activeTab === 'analytics' && styles.navItemActive]}
+          style={[styles.navItem, activeTab === 'analytics' && styles.navItemActive, isDark && activeTab === 'analytics' && { borderColor: '#818CF8' }]}
           onPress={() => setActiveTab('analytics')}
         >
           <Text style={styles.navIcon}>📊</Text>
-          <Text style={[styles.navText, activeTab === 'analytics' && styles.navTextActive]}>統計</Text>
+          <Text style={[styles.navText, activeTab === 'analytics' && styles.navTextActive, isDark && { color: colors.text.muted }, isDark && activeTab === 'analytics' && { color: '#A5B4FC' }]}>統計</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.navItem, activeTab === 'bills' && styles.navItemActive]}
+          style={[styles.navItem, activeTab === 'bills' && styles.navItemActive, isDark && activeTab === 'bills' && { borderColor: '#818CF8' }]}
           onPress={() => setActiveTab('bills')}
         >
           <View style={{ position: 'relative' }}>
             <Text style={styles.navIcon}>💳</Text>
             {pendingRecurringBillsCount > 0 && <View style={styles.navBadgeDot} />}
           </View>
-          <Text style={[styles.navText, activeTab === 'bills' && styles.navTextActive]}>帳單支付</Text>
+          <Text style={[styles.navText, activeTab === 'bills' && styles.navTextActive, isDark && { color: colors.text.muted }, isDark && activeTab === 'bills' && { color: '#A5B4FC' }]}>帳單支付</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.navItem, activeTab === 'family' && styles.navItemActive]}
+          style={[styles.navItem, activeTab === 'family' && styles.navItemActive, isDark && activeTab === 'family' && { borderColor: '#818CF8' }]}
           onPress={() => setActiveTab('family')}
         >
           <Text style={styles.navIcon}>⚙️</Text>
-          <Text style={[styles.navText, activeTab === 'family' && styles.navTextActive]}>家庭設定</Text>
+          <Text style={[styles.navText, activeTab === 'family' && styles.navTextActive, isDark && { color: colors.text.muted }, isDark && activeTab === 'family' && { color: '#A5B4FC' }]}>家庭設定</Text>
         </TouchableOpacity>
       </View>
 
@@ -6652,13 +6804,22 @@ function MainApp() {
   );
 }
 
+function AppRootContainer() {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.rootWrapper, { backgroundColor: colors.background.root }]}>
+      <MainApp />
+    </View>
+  );
+}
+
 export default function App() {
   return (
-    <LedgerProvider>
-      <View style={styles.rootWrapper}>
-        <MainApp />
-      </View>
-    </LedgerProvider>
+    <ThemeProvider>
+      <LedgerProvider>
+        <AppRootContainer />
+      </LedgerProvider>
+    </ThemeProvider>
   );
 }
 
@@ -6722,6 +6883,28 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#475569',
+  },
+  topBarRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  themeToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 4,
+  },
+  themeToggleBtnIcon: {
+    fontSize: 12,
+  },
+  themeToggleBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   syncBadge: {
     flexDirection: 'row',

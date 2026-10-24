@@ -14,7 +14,9 @@ const decodeKey = (raw: string): string => {
       if (typeof atob === 'function') {
         return atob(trimmed);
       }
-      return Buffer.from(trimmed, 'base64').toString('utf-8');
+      if (typeof (globalThis as any).Buffer !== 'undefined') {
+        return (globalThis as any).Buffer.from(trimmed, 'base64').toString('utf-8');
+      }
     } catch {
       return trimmed;
     }
