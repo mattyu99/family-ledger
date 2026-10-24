@@ -661,8 +661,9 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         filterMemberId={filterMemberId}
       />
 
-      {/* 💎 家庭總資產與淨值總覽看板 */}
+      {/* 💎 財務淨值總覽看板 (連動成員篩選範圍) */}
       <NetWorthWidget
+        filterMemberId={filterMemberId}
         onOpenTransferModal={() => onOpenModal('transfer')}
         onOpenAccountsManageModal={onOpenAccountsManageModal}
       />

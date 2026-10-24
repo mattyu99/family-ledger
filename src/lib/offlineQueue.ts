@@ -153,3 +153,4 @@ export async function updateMutationFailure(mutationId: string, errorMsg?: strin
 export async function clearOfflineQueue(): Promise<void> {
   await saveOfflineQueue([]);
 }
+

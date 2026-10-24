@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Transaction, Category, Ledger, Profile, TransactionType, CategoryType, PaymentMethod, PaymentAccount, AccountType, CustomPaymentMethod, RecurringRule, MemberDevice, LedgerBudget } from '../types/database';
 import { supabase, isConfigured } from '../lib/supabase';
 import { generateUUID } from '../lib/uuid';
-import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS } from '../lib/payment';
+import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS, isAccountBelongingToMember } from '../lib/payment';
 import { DEFAULT_RECURRING_PRESETS, getCurrentPeriodKey, getBillPeriodLabel, getInstallmentInfo, appendPeriodKey } from '../lib/recurring';
 import { parseMemoNote, encodeMemoMerchantTag, decodeMemoMerchantTag, DEFAULT_MEMO_QUICK_TAGS, extractMemoTag, toggleChecklistItem } from '../lib/memo';
 import { CalendarSystem, MemoRepeatFrequency, getNextMemoReminderDate, formatMemoReminderBadge } from '../lib/lunar';
@@ -528,7 +528,7 @@ interface LedgerContextType {
     transactedAt?: string;
     note?: string;
   }) => Promise<{ success: boolean; error?: string }>;
-  getNetWorthSummary: () => {
+  getNetWorthSummary: (targetMemberId?: string) => {
     totalAssets: number;
     totalLiabilities: number;
     netWorth: number;
@@ -9475,60 +9475,77 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   }, [transactions]);
 
-  // 💎 家庭總淨值與資產看板計算 (階段 B)
-  const getNetWorthSummary = React.useCallback(() => {
-    const banks = paymentAccounts.filter(a => a.type === 'bank');
-    const cash = paymentAccounts.filter(a => a.type === 'cash');
-    const storedValues = paymentAccounts.filter(a => a.type === 'stored_value');
-    const creditCardsList = paymentAccounts.filter(a => a.type === 'credit_card');
+  // 💎 家庭與個人財務淨值與資產看板計算
+  const getNetWorthSummary = React.useCallback(
+    (targetMemberId?: string) => {
+      const targetMember =
+        !targetMemberId || targetMemberId === 'all'
+          ? undefined
+          : members.find(m => m.id === targetMemberId) || (currentUser?.id === targetMemberId ? currentUser : undefined);
 
-    const bankTotal = banks.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
-    const cashTotal = cash.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
-    const storedValueTotal = storedValues.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+      const isAccountBelonging = (acc: PaymentAccount) =>
+        isAccountBelongingToMember(acc, targetMemberId, targetMember, currentUser, members);
 
-    // 計算各信用卡待繳欠款 (本期待繳支出 - 繳卡費轉帳)
-    let creditCardTotal = 0;
-    const creditCardsWithDebt = creditCardsList.map(card => {
-      // 找出該卡片未核銷/待繳支出
-      const cardExpenses = transactions
-        .filter(t => t.type === 'expense' && (t.account_id === card.id || (t.payment_method === 'credit_card' && !t.account_id && t.paid_by === card.user_id)) && !t.is_reconciled)
-        .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+      const banks = paymentAccounts.filter(a => a.type === 'bank' && isAccountBelonging(a));
+      const cash = paymentAccounts.filter(a => a.type === 'cash' && isAccountBelonging(a));
+      const storedValues = paymentAccounts.filter(a => a.type === 'stored_value' && isAccountBelonging(a));
+      const creditCardsList = paymentAccounts.filter(a => a.type === 'credit_card' && isAccountBelonging(a));
 
-      // 找出繳納至該卡片的轉帳
-      const cardPayments = transactions
-        .filter(t => t.type === 'transfer' && t.linked_transaction_id === card.id)
-        .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+      const bankTotal = banks.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+      const cashTotal = cash.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+      const storedValueTotal = storedValues.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
 
-      const baseBal = card.balance < 0 ? Math.abs(card.balance) : 0;
-      const outstandingDebt = Math.max(0, cardExpenses + baseBal - cardPayments);
-      creditCardTotal += outstandingDebt;
+      // 計算各信用卡待繳欠款 (本期待繳支出 - 繳卡費轉帳)
+      let creditCardTotal = 0;
+      const creditCardsWithDebt = creditCardsList.map(card => {
+        // 找出該卡片未核銷/待繳支出
+        const cardExpenses = transactions
+          .filter(
+            t =>
+              t.type === 'expense' &&
+              (t.account_id === card.id ||
+                (t.payment_method === 'credit_card' && !t.account_id && t.paid_by === card.user_id)) &&
+              !t.is_reconciled
+          )
+          .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+        // 找出繳納至該卡片的轉帳
+        const cardPayments = transactions
+          .filter(t => t.type === 'transfer' && t.linked_transaction_id === card.id)
+          .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+        const baseBal = card.balance < 0 ? Math.abs(card.balance) : 0;
+        const outstandingDebt = Math.max(0, cardExpenses + baseBal - cardPayments);
+        creditCardTotal += outstandingDebt;
+
+        return {
+          ...card,
+          outstandingDebt,
+        };
+      });
+
+      const totalAssets = Number((bankTotal + cashTotal + storedValueTotal).toFixed(2));
+      const totalLiabilities = Number(creditCardTotal.toFixed(2));
+      const netWorth = Number((totalAssets - totalLiabilities).toFixed(2));
 
       return {
-        ...card,
-        outstandingDebt,
+        totalAssets,
+        totalLiabilities,
+        netWorth,
+        bankTotal,
+        cashTotal,
+        storedValueTotal,
+        creditCardTotal,
+        accounts: {
+          banks,
+          cash,
+          storedValues,
+          creditCards: creditCardsWithDebt,
+        },
       };
-    });
-
-    const totalAssets = Number((bankTotal + cashTotal + storedValueTotal).toFixed(2));
-    const totalLiabilities = Number(creditCardTotal.toFixed(2));
-    const netWorth = Number((totalAssets - totalLiabilities).toFixed(2));
-
-    return {
-      totalAssets,
-      totalLiabilities,
-      netWorth,
-      bankTotal,
-      cashTotal,
-      storedValueTotal,
-      creditCardTotal,
-      accounts: {
-        banks,
-        cash,
-        storedValues,
-        creditCards: creditCardsWithDebt,
-      },
-    };
-  }, [paymentAccounts, transactions]);
+    },
+    [paymentAccounts, transactions, members, currentUser]
+  );
 
   // ⇄ 帳戶互轉、提款與繳卡費核心方法 (階段 B)
   const executeTransfer = React.useCallback(async (params: {

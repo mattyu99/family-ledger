@@ -21,24 +21,50 @@ const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultip
 export interface NetWorthWidgetProps {
   onOpenTransferModal: () => void;
   onOpenAccountsManageModal: () => void;
+  filterMemberId?: string;
 }
 
 export const NetWorthWidget: React.FC<NetWorthWidgetProps> = ({
   onOpenTransferModal,
   onOpenAccountsManageModal,
+  filterMemberId,
 }) => {
-  const { getNetWorthSummary, members } = useLedger();
+  const { getNetWorthSummary, members, currentUser } = useLedger();
   const { isDark, colors } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
 
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
 
-  const summary = getNetWorthSummary();
+  const isAll = !filterMemberId || filterMemberId === 'all';
+  const targetMember = useMemo(() => {
+    if (isAll) return undefined;
+    return (
+      members.find(m => m.id === filterMemberId) ||
+      (currentUser?.id === filterMemberId ? currentUser : undefined)
+    );
+  }, [isAll, members, currentUser, filterMemberId]);
+
+  const isMe = useMemo(() => {
+    if (isAll) return false;
+    return (
+      filterMemberId === currentUser?.id ||
+      (!!currentUser?.display_name &&
+        targetMember?.display_name?.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase())
+    );
+  }, [isAll, filterMemberId, currentUser, targetMember]);
+
+  const summary = getNetWorthSummary(filterMemberId);
   const hasAccounts =
     summary.accounts.banks.length > 0 ||
     summary.accounts.cash.length > 0 ||
     summary.accounts.storedValues.length > 0 ||
     summary.accounts.creditCards.length > 0;
+
+  const titleText = isAll
+    ? '家庭財務淨值'
+    : isMe
+    ? '個人財務淨值'
+    : `個人財務淨值 (${targetMember?.display_name || '指定成員'})`;
 
   return (
     <View style={styles.container}>
@@ -51,7 +77,7 @@ export const NetWorthWidget: React.FC<NetWorthWidgetProps> = ({
         <View style={styles.heroLeft}>
           <View style={styles.titleWrap}>
             <Text style={styles.titleIcon}>💎</Text>
-            <Text style={styles.titleText}>家庭財務淨值</Text>
+            <Text style={styles.titleText}>{titleText}</Text>
             <View style={styles.expandTag}>
               <Text style={styles.expandTagText}>{isExpanded ? '收起 ▲' : '詳情 ▼'}</Text>
             </View>
@@ -151,7 +177,7 @@ export const NetWorthWidget: React.FC<NetWorthWidgetProps> = ({
           </View>
 
           {/* 各帳戶清單迷你預覽 */}
-          {hasAccounts && (
+          {hasAccounts ? (
             <View style={styles.accountListMini}>
               {/* 銀行帳戶 */}
               {summary.accounts.banks.map(b => (
@@ -179,6 +205,19 @@ export const NetWorthWidget: React.FC<NetWorthWidgetProps> = ({
                 </View>
               ))}
 
+              {/* 儲值卡 */}
+              {summary.accounts.storedValues.map(sv => (
+                <View key={sv.id} style={styles.miniAccountRow}>
+                  <View style={styles.miniAccLeft}>
+                    <Text style={styles.miniAccIcon}>🚌</Text>
+                    <Text style={styles.miniAccName} numberOfLines={1}>{sv.name}</Text>
+                  </View>
+                  <Text style={styles.miniAccBalance}>
+                    NT$ {(sv.balance || 0).toLocaleString()}
+                  </Text>
+                </View>
+              ))}
+
               {/* 信用卡待繳 */}
               {summary.accounts.creditCards.map(cc => (
                 <View key={cc.id} style={styles.miniAccountRow}>
@@ -198,6 +237,14 @@ export const NetWorthWidget: React.FC<NetWorthWidgetProps> = ({
                   </Text>
                 </View>
               ))}
+            </View>
+          ) : (
+            <View style={styles.emptyAccountBox}>
+              <Text style={styles.emptyAccountText}>
+                {isAll
+                  ? '目前尚未建立任何支付卡片或帳戶'
+                  : `目前尚未為「${targetMember?.display_name || '此成員'}」設定專屬帳戶或卡片`}
+              </Text>
             </View>
           )}
 
@@ -377,6 +424,22 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       borderTopWidth: 1,
       borderTopColor: colors.border.default,
       gap: 6,
+    },
+    emptyAccountBox: {
+      marginTop: 10,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.03)' : '#F9FAFB',
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border.default,
+    },
+    emptyAccountText: {
+      fontSize: 12,
+      color: colors.text.muted,
+      textAlign: 'center',
     },
     miniAccountRow: {
       flexDirection: 'row',
