@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.7';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.7 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 17;
+export const APP_BUILD_REVISION = 18;
 
 // 完整版本字串 (例如 "1.0.7.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,18 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.7',
+    date: '2026-10-24',
+    title: '主應用全域視圖、統計圖表、報表備份與內嵌設定視窗深層 Dark Mode 適配',
+    highlights: [
+      '🌙 主應用全域視圖與導航欄全面支援 Dark Mode：首頁頂部導航列、底部四格導航欄、浮動新增按鈕、收支搜尋與篩選列達成完整夜間深層適配。',
+      '📊 統計圖表與成員貢獻比例深色適配：時間維度切換膠囊、總收支概覽網格、成員付款比例彩色長條圖、支出/收入分類排行榜全面升級主題感知架構。',
+      '💳 帳單與固定支出首頁視圖深色適配：Hero 總覽大卡片、月份與成員篩選分頁、固定帳單快速繳納按鈕與待繳提示標籤。',
+      '⚙️ 內嵌管理設定彈窗全面升級：成員設定、Google 電子鎖綁定防護、帳本建立/切換/加入、自訂邀請碼、管理員權限認領與安全 PIN 碼彈窗全面適配深色外觀。',
+      '💾 歷史資料備份與匯出中心深色適配：CSV / JSON 格式切換按鈕、文字預覽區塊、備份記錄清單與還原模式選擇器夜間視覺舒適護眼。',
+    ],
+  },
   {
     version: '1.0.7',
     date: '2026-10-24',
