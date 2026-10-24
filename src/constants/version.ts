@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.7';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.7 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 26;
+export const APP_BUILD_REVISION = 27;
 
 // 完整版本字串 (例如 "1.0.7.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,15 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.7',
+    date: '2026-10-24',
+    title: '預算控管成員額度管理員與本機成員雙軌配置支援',
+    highlights: [
+      '👑 管理員個人額度配置授權：在成員個人額度設定中，除本機成員可自由修改自身開銷額度外，帳本管理員亦具備為全家各成員配置調整額度之特權，呈現「管理員 (可配置)」專屬徽章。',
+      '🔒 非管理員權限嚴格唯讀隔離：一般非管理員成員僅限調整自身額度，檢視其餘成員額度維持唯讀鎖定狀態，兼顧家庭管理彈性與個人隱私保護。',
+    ],
+  },
   {
     version: '1.0.7',
     date: '2026-10-24',

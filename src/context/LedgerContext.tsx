@@ -9293,7 +9293,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ? (newBudgetData.category_budgets !== undefined ? newBudgetData.category_budgets : (currentBudget?.category_budgets ?? {}))
       : (currentBudget?.category_budgets ?? {});
 
-    // 成員額度防護：僅能由本機成員自訂與修改自己的個人額度，其餘成員唯讀且維持原值
+    // 成員額度防護：本機成員可自訂修改自己的個人額度，帳本管理員亦可協助配置調整所有成員額度
     const mergedMemberBudgets: Record<string, number> = { ...(currentBudget?.member_budgets ?? {}) };
     if (newBudgetData.member_budgets) {
       members.forEach(m => {
@@ -9301,7 +9301,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           m.id === currentUser?.id ||
           (!!currentUser?.display_name && m.display_name?.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase());
 
-        if (isMyMember) {
+        const canManageThisMember = isOwner || isMyMember;
+
+        if (canManageThisMember) {
           const newAmt = newBudgetData.member_budgets?.[m.id];
           if (newAmt !== undefined && newAmt > 0) {
             mergedMemberBudgets[m.id] = newAmt;

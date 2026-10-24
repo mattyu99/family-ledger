@@ -168,14 +168,14 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
       });
     }
 
-    // 2. 成員個人額度：本機成員僅能自訂更新屬於自己的額度，其餘成員維持原值
+    // 2. 成員個人額度：本機成員可自訂自身額度，帳本管理員亦可協助配置調整所有成員額度
     const numericMemberBudgets: Record<string, number> = {
       ...(currentBudget?.member_budgets ?? {}),
     };
 
     members.forEach(member => {
-      const isMe = isLocalMember(member);
-      if (isMe) {
+      const canEdit = isOwner || isLocalMember(member);
+      if (canEdit) {
         const val = memberBudgets[member.id];
         const num = parseFloat(val);
         if (!isNaN(num) && num > 0) {
@@ -217,7 +217,9 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
 
   const updateMemberAmount = (memberId: string, val: string) => {
     const targetMember = members.find(m => m.id === memberId);
-    if (!targetMember || !isLocalMember(targetMember)) {
+    if (!targetMember) return;
+    const canEdit = isOwner || isLocalMember(targetMember);
+    if (!canEdit) {
       return;
     }
     setMemberBudgets(prev => {
@@ -473,7 +475,7 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
                 <View style={styles.infoBanner}>
                   <Text style={styles.infoBannerIcon}>💡</Text>
                   <Text style={styles.infoBannerText}>
-                    每位家庭成員僅能設定與修改屬於自己的個人每月開銷額度，其餘成員額度為唯讀檢視。當首頁上方篩選選取該成員時，看板將自動連動為其個人支出進度。
+                    每位成員可自訂屬於自己的每月個人開銷上限，帳本管理員亦可協助配置調整。非管理員檢視其餘成員額度為唯讀。當首頁上方篩選選取該成員時，看板將自動連動為其個人支出進度。
                   </Text>
                 </View>
 
@@ -493,6 +495,7 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
                   const val = memberBudgets[member.id] || '';
                   const numVal = parseFloat(val) || 0;
                   const isMe = isLocalMember(member);
+                  const canEdit = isOwner || isMe;
 
                   return (
                     <View key={member.id} style={styles.memberCard}>
@@ -516,6 +519,10 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
                                 <View style={styles.memberMyTag}>
                                   <Text style={styles.memberMyTagText}>👤 本機 (可設定)</Text>
                                 </View>
+                              ) : isOwner ? (
+                                <View style={styles.memberAdminTag}>
+                                  <Text style={styles.memberAdminTagText}>👑 管理員 (可配置)</Text>
+                                </View>
                               ) : (
                                 <View style={styles.lockBadge}>
                                   <Text style={styles.lockBadgeText}>🔒 唯讀</Text>
@@ -525,29 +532,29 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
                             <Text style={styles.memberStatusText}>
                               {numVal > 0
                                 ? `每月個人預算上限 NT$ ${numVal.toLocaleString()}`
-                                : isMe
+                                : canEdit
                                 ? '未單獨限制個人額度'
-                                : '未設定個人額度 (僅本人可設定)'}
+                                : '未設定個人額度 (唯讀)'}
                             </Text>
                           </View>
                         </View>
 
-                        <View style={[styles.memberInputWrap, !isMe && styles.memberInputWrapDisabled]}>
+                        <View style={[styles.memberInputWrap, !canEdit && styles.memberInputWrapDisabled]}>
                           <Text style={styles.memberInputPrefix}>NT$</Text>
                           <TextInput
-                            style={[styles.memberInput, !isMe && styles.memberInputDisabled]}
+                            style={[styles.memberInput, !canEdit && styles.memberInputDisabled]}
                             keyboardType="numeric"
-                            placeholder={isMe ? "自訂額度" : "未設定"}
+                            placeholder={canEdit ? "自訂額度" : "未設定"}
                             placeholderTextColor={colors.text.muted}
                             value={val}
-                            editable={isMe}
+                            editable={canEdit}
                             onChangeText={text => updateMemberAmount(member.id, text)}
                           />
                         </View>
                       </View>
 
-                      {/* 快速金額選擇膠囊 (僅本機成員自身可操作) */}
-                      {isMe && (
+                      {/* 快速金額選擇膠囊 (本機成員自身或管理員可操作) */}
+                      {canEdit && (
                         <View style={styles.memberPresetRow}>
                           {MEMBER_PRESET_AMOUNTS.map(amt => {
                             const isSelected = numVal === amt;
@@ -1126,6 +1133,19 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     memberMyTagText: {
       fontSize: 9.5,
       color: isDark ? '#93C5FD' : '#2563EB',
+      fontWeight: '700',
+    },
+    memberAdminTag: {
+      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: 4,
+      borderWidth: 1,
+      borderColor: isDark ? '#FBBF24' : '#F59E0B',
+    },
+    memberAdminTagText: {
+      fontSize: 9.5,
+      color: isDark ? '#FBBF24' : '#B45309',
       fontWeight: '700',
     },
     footer: {
