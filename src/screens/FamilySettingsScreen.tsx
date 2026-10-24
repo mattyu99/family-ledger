@@ -16,13 +16,18 @@ import { showAlert, showConfirm, copyToClipboard } from '../lib/alert';
 import { formatLastBackupText } from '../lib/backup';
 import { APP_FULL_VERSION as APP_VERSION } from '../constants/version';
 import { Profile, MemberDevice } from '../types';
+import { parseMemoNote } from '../lib/memo';
 import {
   isNotificationSupported,
   getBillingNotificationsEnabled,
   setBillingNotificationsEnabled,
+  getMemoNotificationsEnabled,
+  setMemoNotificationsEnabled,
   requestNotificationPermission,
   scheduleBillingReminderNotifications,
+  scheduleMemoReminderNotifications,
   sendTestBillingNotification,
+  sendTestMemoNotification,
   calculateCardScheduleDates,
   calculateCardOutstandingAmount,
 } from '../lib/billingNotifications';
@@ -104,14 +109,23 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
   const [showPinClear, setShowPinClear] = useState(false);
   const [billingNoticeEnabled, setBillingNoticeEnabled] = useState(false);
   const [isSchedulingNotice, setIsSchedulingNotice] = useState(false);
+  const [memoNoticeEnabled, setMemoNoticeEnabled] = useState(false);
+  const [isSchedulingMemoNotice, setIsSchedulingMemoNotice] = useState(false);
 
   useEffect(() => {
     getBillingNotificationsEnabled().then(setBillingNoticeEnabled);
+    getMemoNotificationsEnabled().then(setMemoNoticeEnabled);
   }, []);
 
   const creditCards = useMemo(() => {
     return (paymentAccounts || []).filter(acc => acc.type === 'credit_card');
   }, [paymentAccounts]);
+
+  const pendingMemos = useMemo(() => {
+    return (transactions || [])
+      .filter(t => t.type === 'memo' && !t.is_settled && !!t.reminder_date)
+      .sort((a, b) => (a.reminder_date || '').localeCompare(b.reminder_date || ''));
+  }, [transactions]);
 
   const handleToggleBillingNotice = async () => {
     const nextState = !billingNoticeEnabled;
@@ -157,6 +171,56 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     const success = await sendTestBillingNotification(cardName, amount);
     if (success) {
       showAlert('測試通知已發送', `已發送「${cardName}」帳單出帳測試通知！\n請留意手機螢幕頂部或通知中心橫幅。`);
+    } else {
+      showAlert('發送失敗', '請確認手機系統已允許「甜心記帳本」發送通知。');
+    }
+  };
+
+  const handleToggleMemoNotice = async () => {
+    const nextState = !memoNoticeEnabled;
+    if (nextState) {
+      if (!isNotificationSupported()) {
+        showAlert('平台提示', 'Web 網頁環境暫不支援原生本機推播，建議在手機 App 上使用；生活記事待辦亦會透過每日 LINE 報表自動發送！');
+        return;
+      }
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        showAlert(
+          '請允許通知權限',
+          '甜心記帳本需要通知權限，才能在生活記事提醒日當天上午 09:00 發送待辦提醒。請至手機「設定」中開啟通知！'
+        );
+        return;
+      }
+    }
+    setMemoNoticeEnabled(nextState);
+    await setMemoNotificationsEnabled(nextState);
+    if (nextState) {
+      setIsSchedulingMemoNotice(true);
+      const count = await scheduleMemoReminderNotifications(transactions, members);
+      setIsSchedulingMemoNotice(false);
+      showAlert(
+        '📌 記事提醒已開啟',
+        `已成功為您排程 ${count} 則生活記事到期提醒！\n\n・提醒日當天 09:00：待辦清單提醒\n・重要拜拜/紀念日：前一晚 20:00 預警通知`
+      );
+    } else {
+      await scheduleMemoReminderNotifications(transactions, members);
+      showAlert('記事提醒已關閉', '已取消所有生活記事本機排程提醒。');
+    }
+  };
+
+  const handleSendTestMemoNotice = async () => {
+    if (!isNotificationSupported()) {
+      showAlert('平台提示', 'Web 網頁端不支援發送系統本機通知，請在 iOS / Android 手機 App 測試。');
+      return;
+    }
+    const sampleMemo = pendingMemos[0];
+    const parsed = sampleMemo ? parseMemoNote(sampleMemo.note) : null;
+    const title = parsed?.title || '採買清單';
+    const content = parsed?.cleanContent || '記得下班順路購買鮮奶與雞蛋！';
+
+    const success = await sendTestMemoNotification(title, content);
+    if (success) {
+      showAlert('測試通知已發送', `已發送生活記事「${title}」測試通知！\n請留意手機螢幕頂部或通知中心橫幅。`);
     } else {
       showAlert('發送失敗', '請確認手機系統已允許「甜心記帳本」發送通知。');
     }
@@ -634,6 +698,93 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
 
         <Text style={[styles.backupPrivacyNote, { color: colors.text.muted, marginTop: 8 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
           💡 雙軌守護：除了手機本機推播之外，每日 LINE 收支日報若適逢出帳日或繳款到期前 3 天，亦會同步在群組發送醒目標籤提醒！
+        </Text>
+      </View>
+
+      {/* 📌 生活記事與待辦推播提醒卡片 */}
+      <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
+        <View style={styles.sectionHeaderRow}>
+          <View style={styles.sectionHeaderLeft}>
+            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              📌 生活記事與待辦提醒
+            </Text>
+            <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              設定提醒日期的待辦備忘於當天 09:00 推播通知，重大拜拜/紀念日前一晚預先警示
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.backupToggleBtn, memoNoticeEnabled ? styles.backupToggleBtnActive : styles.backupToggleBtnInactive]}
+            onPress={handleToggleMemoNotice}
+            activeOpacity={0.8}
+            disabled={isSchedulingMemoNotice}
+          >
+            <Text style={[styles.backupToggleText, memoNoticeEnabled ? styles.backupToggleTextActive : styles.backupToggleTextInactive]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              {memoNoticeEnabled ? '已開啟提醒' : '已關閉提醒'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* 待辦記事清單預覽 */}
+        <View style={[styles.cardScheduleContainer, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
+          {pendingMemos.length === 0 ? (
+            <View style={styles.noCardBox}>
+              <Text style={[styles.noCardText, { color: colors.text.muted }]}>
+                📝 目前無待提醒之生活記事，可在記帳選單中點擊「生活記事」新增並設定提醒日期
+              </Text>
+            </View>
+          ) : (
+            pendingMemos.slice(0, 4).map((memo) => {
+              const parsed = parseMemoNote(memo.note);
+              const assignee = memo.paid_by ? getMemberById(memo.paid_by) : null;
+              return (
+                <View key={memo.id} style={[styles.cardScheduleRow, { borderBottomColor: colors.border.default }]}>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={styles.cardScheduleIcon}>{parsed.icon || '📌'}</Text>
+                      <Text style={[styles.cardScheduleName, { color: colors.text.primary }]} numberOfLines={1}>
+                        {parsed.title}
+                      </Text>
+                      {assignee && (
+                        <View style={[styles.cardholderBadge, { backgroundColor: colors.border.default }]}>
+                          <Text style={[styles.cardholderBadgeText, { color: colors.text.secondary }]}>
+                            {assignee.display_name}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={[styles.cardScheduleMeta, { color: colors.text.secondary }]} numberOfLines={1}>
+                      {parsed.cleanContent || memo.note}
+                    </Text>
+                    <Text style={[styles.cardScheduleDates, { color: colors.text.muted }]}>
+                      🔔 預計提醒：{memo.reminder_date} 上午 09:00
+                    </Text>
+                  </View>
+                </View>
+              );
+            })
+          )}
+          {pendingMemos.length > 4 && (
+            <Text style={[styles.noCardText, { color: colors.text.muted, marginVertical: 6 }]}>
+              ...另有 {pendingMemos.length - 4} 則待辦記事排程中
+            </Text>
+          )}
+        </View>
+
+        {/* 測試按鈕與雙軌說明 */}
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 12, alignItems: 'center' }}>
+          <TouchableOpacity
+            style={[styles.testNoticeBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
+            onPress={handleSendTestMemoNotice}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.testNoticeBtnText, { color: colors.text.primary }]}>
+              🔔 發送記事測試推播通知
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={[styles.backupPrivacyNote, { color: colors.text.muted, marginTop: 8 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          💡 貼心聯防：除了手機本機推播之外，每日收支日報中也會同步整理今日待辦與未來 3 天預告，讓家人互相溫馨提醒！
         </Text>
       </View>
 

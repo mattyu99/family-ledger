@@ -12,6 +12,7 @@ import { formatInvoiceNumber, getInvoicePeriodKey, encodeInvoiceTag, decodeInvoi
 import { checkInvoiceWinning, syncLotteryDrawsAsync } from '../lib/lottery';
 import { APP_FULL_VERSION } from '../constants/version';
 import { getDeviceId, getDeviceName, getDevicePlatform } from '../lib/device';
+import { scheduleMemoReminderNotifications } from '../lib/billingNotifications';
 import {
   OfflineMutation,
   getOfflineQueue,
@@ -6232,10 +6233,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
 
-    return updateTransaction(id, {
+    const updateSuccess = await updateTransaction(id, {
       is_settled: nextSettled,
       completed_by: effectiveCompleter,
     });
+
+    if (updateSuccess) {
+      scheduleMemoReminderNotifications(
+        transactions.map(t => (t.id === id ? { ...t, is_settled: nextSettled } : t)),
+        members
+      ).catch(() => {});
+    }
+
+    return updateSuccess;
   };
 
   // 切換生活記事內特定子檢核清單項目的勾選狀態 [ ] <-> [x]

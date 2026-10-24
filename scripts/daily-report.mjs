@@ -176,6 +176,77 @@ async function checkCreditCardAlerts(supabase, ledgerId, targetTwDate) {
 }
 
 /**
+ * 檢查帳本內未完成的生活記事與待辦提醒（今日到期、逾期待辦與未來 3 天預告）
+ */
+async function checkMemoAlerts(supabase, ledgerId, targetTwDate, profileMap) {
+  try {
+    const { data: memos, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('ledger_id', ledgerId)
+      .eq('type', 'memo')
+      .neq('is_settled', true);
+
+    if (error || !memos || memos.length === 0) {
+      return { todayMemos: [], upcomingMemos: [], overdueMemos: [] };
+    }
+
+    const nowYear = targetTwDate.getFullYear();
+    const nowMonth = String(targetTwDate.getMonth() + 1).padStart(2, '0');
+    const nowDay = String(targetTwDate.getDate()).padStart(2, '0');
+    const todayYmd = `${nowYear}-${nowMonth}-${nowDay}`;
+    const todayTime = new Date(nowYear, targetTwDate.getMonth(), targetTwDate.getDate()).getTime();
+
+    const todayMemos = [];
+    const upcomingMemos = [];
+    const overdueMemos = [];
+
+    for (const m of memos) {
+      if (!m.reminder_date) continue;
+      const rYmd = m.reminder_date;
+
+      // 提取責任人
+      const assignee = profileMap?.get(m.paid_by) || profileMap?.get(m.creator_id);
+      const assigneeName = assignee ? assignee.display_name : '';
+
+      // 解析標題與乾淨內文
+      const rawText = (m.note || '').trim();
+      const match = rawText.match(/[\[［【]([^\[\]［］【】\n]{1,16})[\]］】]/);
+      const title = match ? match[1].trim() : '生活待辦';
+      const cleanContent = match ? rawText.replace(match[0], '').trim() : rawText;
+
+      const item = {
+        id: m.id,
+        title,
+        content: cleanContent || '(無備註)',
+        reminderDate: rYmd,
+        assigneeName,
+      };
+
+      if (rYmd === todayYmd) {
+        todayMemos.push(item);
+      } else if (rYmd < todayYmd) {
+        overdueMemos.push(item);
+      } else {
+        const parts = rYmd.split('-');
+        if (parts.length === 3) {
+          const mDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)).getTime();
+          const diffDays = Math.round((mDate - todayTime) / (24 * 3600 * 1000));
+          if (diffDays >= 1 && diffDays <= 3) {
+            upcomingMemos.push({ ...item, diffDays });
+          }
+        }
+      }
+    }
+
+    return { todayMemos, upcomingMemos, overdueMemos };
+  } catch (err) {
+    console.warn('⚠️ 查詢生活記事提醒時發生例外:', err.message);
+    return { todayMemos: [], upcomingMemos: [], overdueMemos: [] };
+  }
+}
+
+/**
  * 建立 LINE Flex Message (超精美原生圖文卡片，徹底根絕折行破版)
  */
 function buildFlexMessage({
@@ -191,6 +262,7 @@ function buildFlexMessage({
   monthExpense,
   monthBalance,
   billingAlerts = [],
+  memoAlerts = null,
 }) {
   const isZero = todayCount === 0;
   const bodyContents = [];
@@ -239,6 +311,76 @@ function buildFlexMessage({
           margin: 'xs',
         },
         ...alertItems,
+      ],
+    });
+  }
+
+  // 0.5 生活記事與待辦備忘提醒卡片
+  if (memoAlerts && (memoAlerts.todayMemos.length > 0 || memoAlerts.overdueMemos.length > 0 || memoAlerts.upcomingMemos.length > 0)) {
+    const memoRows = [];
+
+    // 今日待辦
+    memoAlerts.todayMemos.forEach(m => {
+      memoRows.push({
+        type: 'text',
+        text: `📌 今日待辦：【${m.title}】${m.content}${m.assigneeName ? ` (${m.assigneeName})` : ''}`,
+        size: 'xs',
+        color: '#1E293B',
+        weight: 'bold',
+        wrap: true,
+        margin: 'xs',
+      });
+    });
+
+    // 逾期待辦
+    memoAlerts.overdueMemos.slice(0, 3).forEach(m => {
+      memoRows.push({
+        type: 'text',
+        text: `⚠️ 逾期待辦：【${m.title}】${m.content}${m.assigneeName ? ` (${m.assigneeName})` : ''}`,
+        size: 'xs',
+        color: '#B91C1C',
+        wrap: true,
+        margin: 'xs',
+      });
+    });
+
+    // 近期預告 (明天或後天)
+    memoAlerts.upcomingMemos.slice(0, 3).forEach(m => {
+      const daysText = m.diffDays === 1 ? '明天' : m.diffDays === 2 ? '後天' : `${m.diffDays}天後`;
+      memoRows.push({
+        type: 'text',
+        text: `📅 ${daysText}預告：【${m.title}】${m.content}${m.assigneeName ? ` (${m.assigneeName})` : ''}`,
+        size: 'xs',
+        color: '#475569',
+        wrap: true,
+        margin: 'xs',
+      });
+    });
+
+    bodyContents.push({
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: '#F8FAFC',
+      cornerRadius: '12px',
+      paddingAll: '12px',
+      borderWidth: '1px',
+      borderColor: '#E2E8F0',
+      margin: 'sm',
+      contents: [
+        {
+          type: 'text',
+          text: '📌 生活記事與待辦備忘提醒',
+          weight: 'bold',
+          size: 'xs',
+          color: '#334155',
+          margin: 'none',
+        },
+        {
+          type: 'separator',
+          color: '#CBD5E1',
+          margin: 'xs',
+        },
+        ...memoRows,
       ],
     });
   }
@@ -547,6 +689,7 @@ function buildTextMessage({
   monthExpense,
   monthBalance,
   billingAlerts = [],
+  memoAlerts = null,
 }) {
   const lines = [
     `💖 甜心記帳本 · 收支日報`,
@@ -560,6 +703,21 @@ function buildTextMessage({
     billingAlerts.forEach(a => {
       lines.push(`• ${a.title}`);
       lines.push(`  ${a.body}`);
+    });
+    lines.push('───────────────');
+  }
+
+  if (memoAlerts && (memoAlerts.todayMemos.length > 0 || memoAlerts.overdueMemos.length > 0 || memoAlerts.upcomingMemos.length > 0)) {
+    lines.push('📌 生活記事與待辦備忘提醒：');
+    memoAlerts.todayMemos.forEach(m => {
+      lines.push(`• 今日待辦：【${m.title}】${m.content}${m.assigneeName ? ` (${m.assigneeName})` : ''}`);
+    });
+    memoAlerts.overdueMemos.slice(0, 3).forEach(m => {
+      lines.push(`• 逾期待辦：【${m.title}】${m.content}${m.assigneeName ? ` (${m.assigneeName})` : ''}`);
+    });
+    memoAlerts.upcomingMemos.slice(0, 3).forEach(m => {
+      const daysText = m.diffDays === 1 ? '明天' : m.diffDays === 2 ? '後天' : `${m.diffDays}天後`;
+      lines.push(`• ${daysText}預告：【${m.title}】${m.content}${m.assigneeName ? ` (${m.assigneeName})` : ''}`);
     });
     lines.push('───────────────');
   }
@@ -854,6 +1012,13 @@ async function main() {
       console.log(`💳 偵測到 ${billingAlerts.length} 則信用卡帳單出帳或繳款警戒提醒！`);
     }
 
+    // (E) 巡檢生活記事待辦提醒 (今日到期、逾期與未來 3 天重要預告)
+    const memoAlerts = await checkMemoAlerts(supabase, ledger.id, targetTwDate, profileMap);
+    const memoCount = memoAlerts.todayMemos.length + memoAlerts.overdueMemos.length + memoAlerts.upcomingMemos.length;
+    if (memoCount > 0) {
+      console.log(`📌 偵測到 ${memoCount} 則生活記事待辦提醒 (今日: ${memoAlerts.todayMemos.length}, 逾期: ${memoAlerts.overdueMemos.length}, 預告: ${memoAlerts.upcomingMemos.length})！`);
+    }
+
     const reportData = {
       ledgerName: ledger.name,
       formattedDate,
@@ -867,6 +1032,7 @@ async function main() {
       monthExpense,
       monthBalance,
       billingAlerts,
+      memoAlerts,
     };
 
     const flexPayload = buildFlexMessage(reportData);

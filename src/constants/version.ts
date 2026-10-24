@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.7';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.7 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 29;
+export const APP_BUILD_REVISION = 30;
 
 // 完整版本字串 (例如 "1.0.7.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -18,6 +18,17 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.7',
+    date: '2026-10-24',
+    title: '生活記事與待辦到期智慧推播雙軌系統',
+    highlights: [
+      '📌 生活記事本機智慧推播：支援已設定提醒日期之生活記事（如採買清單、學校親子、拜拜祭祀、重要備忘）於當天上午 09:00 本機推送提醒，重要拜拜與紀念日前一晚 20:00 預警。',
+      '⚡ 記事辦妥即時排程同步：當記事在 App 內被勾選辦妥完成時，自動即時取消本機通知排程，精準不打擾。',
+      '💬 每日 LINE 收支日報雙向連動：收支日報新增「📌 生活記事與待辦備忘提醒」卡片，每日彙整今日待辦、逾期待辦與未來 3 天預告，全家群組溫馨提醒。',
+      '⚙️ 家庭設定專屬控制台：新增生活記事推播開關、待辦預覽與一鍵發送記事測試推播通知。',
+    ],
+  },
   {
     version: '1.0.7',
     date: '2026-10-24',
