@@ -1,4 +1,6 @@
 import React, { useState, useMemo } from 'react';
+import { useTheme } from '../theme/ThemeContext';
+import { ThemeColors } from '../theme/colors';
 import {
   View,
   Text as RNText,
@@ -48,6 +50,8 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
   title = '📅 選擇日期',
   subtitle = '支援國曆農曆雙曆對照與農曆直接指定換算',
 }) => {
+  const { isDark, colors } = useTheme();
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const effectiveInitialMode = initialMode || initialCalendarMode || 'solar';
   const initialDate = selectedDate || new Date();
   const [calendarMode, setCalendarMode] = useState<CalendarSystem>(effectiveInitialMode);
@@ -543,10 +547,10 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.75)' : 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 14,
@@ -557,7 +561,7 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 410,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.modal,
     borderRadius: 24,
     padding: 16,
     shadowColor: '#000',
@@ -565,6 +569,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 16,
     elevation: 10,
+    borderWidth: isDark ? 1 : 0,
+    borderColor: isDark ? colors.border.default : 'transparent',
   },
   headerRow: {
     flexDirection: 'row',
@@ -575,11 +581,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '800',
-    color: '#1E293B',
+    color: colors.text.primary,
   },
   subtitle: {
     fontSize: 11,
-    color: '#64748B',
+    color: colors.text.muted,
     marginTop: 2,
     fontWeight: '500',
   },
@@ -587,18 +593,18 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeText: {
     fontSize: 13,
-    color: '#64748B',
+    color: colors.text.muted,
     fontWeight: '700',
   },
   modeSwitchRow: {
     flexDirection: 'row',
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     borderRadius: 12,
     padding: 3,
     marginBottom: 10,
@@ -612,7 +618,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   modeSwitchBtnActiveSolar: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
@@ -620,21 +626,21 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   modeSwitchBtnActiveLunar: {
-    backgroundColor: '#FFF7ED',
+    backgroundColor: isDark ? 'rgba(234, 88, 12, 0.15)' : '#FFF7ED',
     borderWidth: 1,
     borderColor: '#FB923C',
   },
   modeSwitchText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#64748B',
+    color: colors.text.muted,
   },
   modeSwitchTextActiveSolar: {
-    color: '#4F46E5',
+    color: isDark ? '#818CF8' : '#4F46E5',
     fontWeight: '800',
   },
   modeSwitchTextActiveLunar: {
-    color: '#C2410C',
+    color: isDark ? '#FB923C' : '#C2410C',
     fontWeight: '800',
   },
   quickRow: {
@@ -647,23 +653,23 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     paddingHorizontal: 4,
     borderRadius: 10,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
     alignItems: 'center',
     justifyContent: 'center',
   },
   quickChipActive: {
-    backgroundColor: '#EEF2FF',
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF',
     borderColor: '#4F46E5',
   },
   quickChipText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#64748B',
+    color: colors.text.secondary,
   },
   quickChipTextActive: {
-    color: '#4F46E5',
+    color: isDark ? '#818CF8' : '#4F46E5',
     fontWeight: '700',
   },
   monthNavRow: {
@@ -672,7 +678,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 6,
     paddingHorizontal: 6,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderRadius: 12,
     marginBottom: 8,
     gap: 4,
@@ -681,30 +687,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
     height: 30,
     borderRadius: 8,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   navYearText: {
     fontSize: 10,
-    color: '#64748B',
+    color: colors.text.secondary,
     fontWeight: '700',
   },
   navArrowBtn: {
     width: 30,
     height: 30,
     borderRadius: 8,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   navArrowText: {
     fontSize: 12,
-    color: '#475569',
+    color: colors.text.primary,
     fontWeight: '700',
   },
   navMonthLabelBox: {
@@ -714,18 +720,18 @@ const styles = StyleSheet.create({
   navMonthLabel: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#1E293B',
+    color: colors.text.primary,
   },
   navLunarSubLabel: {
     fontSize: 10,
-    color: '#9A3412',
+    color: isDark ? '#FB923C' : '#9A3412',
     fontWeight: '600',
     marginTop: 1,
   },
   weekdayRow: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: isDark ? colors.border.default : '#F1F5F9',
     paddingBottom: 5,
     marginBottom: 4,
   },
@@ -737,7 +743,7 @@ const styles = StyleSheet.create({
   weekdayText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#64748B',
+    color: colors.text.secondary,
   },
   weekdayTextWeekend: {
     color: '#EF4444',
@@ -760,14 +766,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#4F46E5',
   },
   dayCellToday: {
-    backgroundColor: '#EEF2FF',
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF',
     borderWidth: 1,
-    borderColor: '#C7D2FE',
+    borderColor: isDark ? 'rgba(99, 102, 241, 0.4)' : '#C7D2FE',
   },
   dayText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#1E293B',
+    color: colors.text.primary,
     lineHeight: 16,
   },
   dayTextSelected: {
@@ -775,21 +781,21 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   dayTextToday: {
-    color: '#4F46E5',
+    color: isDark ? '#818CF8' : '#4F46E5',
     fontWeight: '800',
   },
   otherMonthDayText: {
-    color: '#CBD5E1',
+    color: isDark ? '#475569' : '#CBD5E1',
     fontWeight: '500',
   },
   lunarCellText: {
     fontSize: 9,
-    color: '#64748B',
+    color: colors.text.muted,
     fontWeight: '500',
     marginTop: 1,
   },
   otherMonthLunarText: {
-    color: '#E2E8F0',
+    color: isDark ? '#334155' : '#E2E8F0',
   },
   lunarCellTextHighlight: {
     color: '#EA580C',
@@ -810,21 +816,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 7,
     paddingHorizontal: 8,
-    backgroundColor: '#FFF7ED',
+    backgroundColor: isDark ? 'rgba(234, 88, 12, 0.15)' : '#FFF7ED',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#FED7AA',
+    borderColor: isDark ? 'rgba(234, 88, 12, 0.35)' : '#FED7AA',
     marginBottom: 10,
   },
   lunarYearTitle: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#9A3412',
+    color: isDark ? '#FDBA74' : '#9A3412',
   },
   lunarSectionLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#475569',
+    color: colors.text.secondary,
     marginBottom: 6,
   },
   lunarMonthsGrid: {
@@ -837,9 +843,9 @@ const styles = StyleSheet.create({
     width: '23%',
     paddingVertical: 7,
     borderRadius: 10,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -850,7 +856,7 @@ const styles = StyleSheet.create({
   lunarMonthChipText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#334155',
+    color: colors.text.secondary,
   },
   lunarMonthChipTextActive: {
     color: '#FFFFFF',
@@ -872,9 +878,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
     paddingVertical: 3,
     borderRadius: 8,
-    backgroundColor: '#FFF7ED',
+    backgroundColor: isDark ? 'rgba(234, 88, 12, 0.15)' : '#FFF7ED',
     borderWidth: 1,
-    borderColor: '#FDBA74',
+    borderColor: isDark ? 'rgba(234, 88, 12, 0.35)' : '#FDBA74',
   },
   lunarQuickMiniBtnActive: {
     backgroundColor: '#EA580C',
@@ -883,7 +889,7 @@ const styles = StyleSheet.create({
   lunarQuickMiniText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#C2410C',
+    color: isDark ? '#FDBA74' : '#C2410C',
   },
   lunarQuickMiniTextActive: {
     color: '#FFFFFF',
@@ -898,15 +904,15 @@ const styles = StyleSheet.create({
     width: '18.4%',
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
     alignItems: 'center',
     justifyContent: 'center',
   },
   lunarDayChipSpecial: {
-    backgroundColor: '#FFF7ED',
-    borderColor: '#FED7AA',
+    backgroundColor: isDark ? 'rgba(234, 88, 12, 0.15)' : '#FFF7ED',
+    borderColor: isDark ? 'rgba(234, 88, 12, 0.35)' : '#FED7AA',
   },
   lunarDayChipActive: {
     backgroundColor: '#EA580C',
@@ -915,10 +921,10 @@ const styles = StyleSheet.create({
   lunarDayChipText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#334155',
+    color: colors.text.secondary,
   },
   lunarDayChipTextSpecial: {
-    color: '#C2410C',
+    color: isDark ? '#FDBA74' : '#C2410C',
     fontWeight: '700',
   },
   lunarDayChipTextActive: {
@@ -926,9 +932,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   lunarConversionPreviewBox: {
-    backgroundColor: '#FFFBEB',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FFFBEB',
     borderWidth: 1,
-    borderColor: '#FDE68A',
+    borderColor: isDark ? 'rgba(245, 158, 11, 0.35)' : '#FDE68A',
     borderRadius: 12,
     paddingVertical: 8,
     paddingHorizontal: 12,
@@ -937,17 +943,17 @@ const styles = StyleSheet.create({
   lunarConversionTitle: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#92400E',
+    color: isDark ? '#FBBF24' : '#92400E',
   },
   lunarConversionSub: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#B45309',
+    color: isDark ? '#FCD34D' : '#B45309',
     marginTop: 2,
   },
   footerRow: {
     borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    borderTopColor: isDark ? colors.border.default : '#F1F5F9',
     paddingTop: 10,
     flexDirection: 'row',
     alignItems: 'center',
@@ -959,12 +965,12 @@ const styles = StyleSheet.create({
   },
   selectedInfoValue: {
     fontSize: 12,
-    color: '#1E293B',
+    color: colors.text.primary,
     fontWeight: '800',
   },
   selectedLunarValue: {
     fontSize: 11,
-    color: '#C2410C',
+    color: isDark ? '#FB923C' : '#C2410C',
     fontWeight: '600',
     marginTop: 2,
   },
@@ -976,12 +982,12 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 10,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
   },
   cancelBtnText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#64748B',
+    color: colors.text.secondary,
   },
   confirmBtn: {
     paddingVertical: 8,

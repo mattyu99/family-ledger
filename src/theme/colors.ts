@@ -123,3 +123,4 @@ export const darkColors: ThemeColors = {
     purpleBg: 'rgba(139, 92, 246, 0.18)',
   },
 };
+

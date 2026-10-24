@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.7';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.7 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 15;
+export const APP_BUILD_REVISION = 16;
 
 // 完整版本字串 (例如 "1.0.7.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -21,9 +21,10 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.7',
     date: '2026-10-24',
-    title: 'Dark Mode 深色模式支援、語意色彩系統與跟隨手機外觀即時切換',
+    title: '全 App Dark Mode 深色模式支援、核心彈窗全面暗色適配與雙曆日期選擇器',
     highlights: [
-      '🌙 全 App 支援 Dark Mode 深色模式：首度導入沉浸舒適、護眼節能的深色外觀；色彩系統採用 Slate 質感深藍灰調配，搭配語意化色彩權杖（Semantic Design Tokens），大幅降低夜間記帳眼睛疲勞。',
+      '🌙 核心視窗全面支援 Dark Mode 深色模式：包括「新增記帳彈窗」、「編輯記帳彈窗」、「月份選擇器」與「國曆/農曆雙曆日期選擇器」全面適配深色外觀，達成無縫沉浸視覺體驗。',
+      '🎨 夜間無眩光沉浸輸入體驗：輸入框底色、次級卡片、邊框線條、零用錢/生活記事/折扣折抵面板與狀態高亮全面升級主題感知架構，色彩層次分明舒適護眼。',
       '🌓 支援三種外觀模式與本機偏好快取：提供「跟隨手機系統設定 🌓」、「強制淺色模式 ☀️」與「強制深色模式 🌙」三種模式，本機即刻持久化記憶，冷啟動即刻套用。',
       '☀️ 首頁頂部快捷輪播切換按鈕：於頂部導航列右側新增直覺切換按鈕，點擊即可一秒無縫輪播切換淺色、深色與跟隨系統外觀，操作流暢無需翻找設定。',
       '📱 首頁視圖與交易卡片全面暗色適配：收支總覽大盤卡片、統計篩選膠囊、搜尋列、生活備忘卡片、檢核清單與底部導航列全面適配深色視覺層次，兼顧極致對比度與高顏值質感。',

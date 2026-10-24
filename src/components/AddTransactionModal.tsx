@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text as RNText,
@@ -41,6 +41,8 @@ const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFont
   />
 );
 import { useLedger } from '../context/LedgerContext';
+import { useTheme } from '../theme/ThemeContext';
+import { ThemeColors } from '../theme/colors';
 import { TransactionType, PaymentMethod } from '../types/database';
 import {
   PAYMENT_METHOD_OPTIONS,
@@ -148,6 +150,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   linkedMemoId,
   linkedCompletionNote,
 }) => {
+  const { isDark, colors } = useTheme();
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const {
     categories,
     members,
@@ -2684,15 +2688,15 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.75)' : 'rgba(0, 0, 0, 0.45)',
     justifyContent: 'flex-end',
     width: '100%',
   },
   sheet: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background.modal,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 16,
@@ -2702,6 +2706,8 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 600,
     alignSelf: 'center',
+    borderTopWidth: isDark ? 1 : 0,
+    borderTopColor: isDark ? colors.border.default : 'transparent',
   },
   scrollArea: {
     width: '100%',
@@ -2720,7 +2726,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text.primary,
   },
   closeBtn: {
     paddingHorizontal: 6,
@@ -2729,12 +2735,12 @@ const styles = StyleSheet.create({
   },
   closeText: {
     fontSize: 16,
-    color: '#9CA3AF',
+    color: colors.text.muted,
     fontWeight: 'bold',
   },
   typeSelector: {
     flexDirection: 'row',
-    backgroundColor: '#F3F4F6',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
     borderRadius: 10,
     padding: 3,
     marginBottom: 10,
@@ -2761,7 +2767,7 @@ const styles = StyleSheet.create({
   typeBtnText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#6B7280',
+    color: isDark ? colors.text.secondary : '#6B7280',
   },
   typeBtnTextActive: {
     color: '#FFFFFF',
@@ -2778,7 +2784,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderBottomWidth: 1.5,
-    borderColor: '#E5E7EB',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
     paddingVertical: 4,
     marginBottom: 12,
     width: '100%',
@@ -2788,7 +2794,7 @@ const styles = StyleSheet.create({
   currencyPrefix: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#374151',
+    color: isDark ? colors.text.secondary : '#374151',
     marginRight: 6,
   },
   amountInput: {
@@ -2797,7 +2803,7 @@ const styles = StyleSheet.create({
     width: '100%',
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#111827',
+    color: colors.text.primary,
     padding: 0,
     paddingVertical: 0,
     height: 42,
@@ -2806,7 +2812,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#4B5563',
+    color: isDark ? colors.text.secondary : '#4B5563',
     marginBottom: 6,
   },
   categoryGrid: {
@@ -2822,9 +2828,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 14,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F9FAFB',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
     maxWidth: '100%',
   },
   categoryChipIcon: {
@@ -2833,7 +2839,7 @@ const styles = StyleSheet.create({
   },
   categoryChipText: {
     fontSize: 12,
-    color: '#374151',
+    color: isDark ? colors.text.primary : '#374151',
     fontWeight: '500',
   },
   payerRow: {
@@ -2849,14 +2855,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 14,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
     borderWidth: 1,
     borderColor: 'transparent',
     maxWidth: '100%',
   },
   payerChipActive: {
-    backgroundColor: '#EEF2FF',
-    borderColor: '#6366F1',
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF',
+    borderColor: isDark ? '#818CF8' : '#6366F1',
   },
   payerAvatar: {
     fontSize: 14,
@@ -2864,11 +2870,11 @@ const styles = StyleSheet.create({
   },
   payerName: {
     fontSize: 12,
-    color: '#4B5563',
+    color: isDark ? colors.text.secondary : '#4B5563',
     fontWeight: '500',
   },
   payerNameActive: {
-    color: '#4F46E5',
+    color: isDark ? '#A5B4FC' : '#4F46E5',
     fontWeight: '700',
   },
   sectionLabelRow: {
@@ -2893,58 +2899,58 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 10,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
   },
   dateChipActive: {
-    backgroundColor: '#EEF2FF',
-    borderColor: '#6366F1',
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF',
+    borderColor: isDark ? '#818CF8' : '#6366F1',
   },
   dateChipCustom: {
-    backgroundColor: '#FFF7ED',
+    backgroundColor: isDark ? 'rgba(249, 115, 22, 0.2)' : '#FFF7ED',
     borderColor: '#F97316',
   },
   dateChipText: {
     fontSize: 12,
-    color: '#4B5563',
+    color: isDark ? colors.text.secondary : '#4B5563',
     fontWeight: '500',
   },
   dateChipTextActive: {
-    color: '#4F46E5',
+    color: isDark ? '#A5B4FC' : '#4F46E5',
     fontWeight: '700',
   },
   dateMoreBtn: {
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 8,
-    backgroundColor: '#F0F9FF',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F0F9FF',
     borderWidth: 1,
-    borderColor: '#BAE6FD',
+    borderColor: isDark ? colors.border.default : '#BAE6FD',
     alignItems: 'center',
     justifyContent: 'center',
   },
   dateMoreBtnSelected: {
-    backgroundColor: '#EEF2FF',
-    borderColor: '#6366F1',
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF',
+    borderColor: isDark ? '#818CF8' : '#6366F1',
   },
   dateMoreBtnText: {
     fontSize: 12,
-    color: '#0284C7',
+    color: isDark ? '#7DD3FC' : '#0284C7',
     fontWeight: '700',
   },
   dateMoreBtnTextSelected: {
-    color: '#4F46E5',
+    color: isDark ? '#A5B4FC' : '#4F46E5',
     fontWeight: '700',
   },
   clearMerchantText: {
     fontSize: 12,
-    color: '#6366F1',
+    color: isDark ? '#A5B4FC' : '#6366F1',
     fontWeight: '500',
   },
   dismissKeyboardText: {
     fontSize: 12,
-    color: '#4F46E5',
+    color: isDark ? '#A5B4FC' : '#4F46E5',
     fontWeight: '600',
     marginLeft: 'auto',
   },
@@ -2952,9 +2958,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
     borderRadius: 10,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: isDark ? colors.background.input : '#F9FAFB',
     paddingHorizontal: 10,
     marginBottom: 8,
     minHeight: 38,
@@ -2966,7 +2972,7 @@ const styles = StyleSheet.create({
   merchantInput: {
     flex: 1,
     fontSize: 13,
-    color: '#111827',
+    color: colors.text.primary,
     paddingVertical: 7,
   },
   merchantClearBtn: {
@@ -2974,7 +2980,7 @@ const styles = StyleSheet.create({
   },
   merchantClearBtnText: {
     fontSize: 14,
-    color: '#9CA3AF',
+    color: colors.text.muted,
   },
   merchantChipsRow: {
     flexDirection: 'row',
@@ -2983,35 +2989,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 1,
   },
   merchantChip: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
     paddingHorizontal: 11,
     paddingVertical: 5,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
   },
   merchantChipActive: {
-    backgroundColor: '#EEF2FF',
-    borderColor: '#6366F1',
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF',
+    borderColor: isDark ? '#818CF8' : '#6366F1',
   },
   merchantChipText: {
     fontSize: 12,
-    color: '#4B5563',
+    color: isDark ? colors.text.secondary : '#4B5563',
     fontWeight: '500',
   },
   merchantChipTextActive: {
-    color: '#4F46E5',
+    color: isDark ? '#A5B4FC' : '#4F46E5',
     fontWeight: '700',
   },
   noteInput: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: isDark ? colors.background.input : '#F9FAFB',
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
     paddingHorizontal: 10,
     paddingVertical: 7,
     fontSize: 13,
-    color: '#111827',
+    color: colors.text.primary,
     marginBottom: 14,
     width: '100%',
     minHeight: 38,
@@ -3037,14 +3043,14 @@ const styles = StyleSheet.create({
   manageMethodsSmallBtn: {
     paddingHorizontal: 8,
     paddingVertical: 2.5,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
     borderRadius: 8,
     borderWidth: 0.5,
-    borderColor: '#E5E7EB',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
   },
   manageMethodsSmallBtnText: {
     fontSize: 11,
-    color: '#4B5563',
+    color: isDark ? colors.text.secondary : '#4B5563',
     fontWeight: '600',
   },
   methodRow: {
@@ -3056,17 +3062,17 @@ const styles = StyleSheet.create({
   methodChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F3F4F6',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
     paddingHorizontal: 11,
     paddingVertical: 6,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
     gap: 4,
   },
   methodChipActive: {
-    backgroundColor: '#EEF2FF',
-    borderColor: '#4F46E5',
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF',
+    borderColor: isDark ? '#818CF8' : '#4F46E5',
   },
   methodChipIcon: {
     fontSize: 13,
@@ -3074,24 +3080,24 @@ const styles = StyleSheet.create({
   methodChipText: {
     fontSize: 12,
     fontWeight: '500',
-    color: '#4B5563',
+    color: isDark ? colors.text.secondary : '#4B5563',
   },
   methodChipTextActive: {
-    color: '#4F46E5',
+    color: isDark ? '#A5B4FC' : '#4F46E5',
     fontWeight: '700',
   },
   subCardContainer: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.input : '#F8FAFC',
     borderRadius: 12,
     padding: 10,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   subCardLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#64748B',
+    color: isDark ? colors.text.muted : '#64748B',
     marginBottom: 8,
   },
   cardScroll: {
@@ -3101,12 +3107,12 @@ const styles = StyleSheet.create({
   cardChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: isDark ? colors.border.default : '#CBD5E1',
     gap: 6,
   },
   cardChipIcon: {
@@ -3115,16 +3121,16 @@ const styles = StyleSheet.create({
   cardChipName: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#1E293B',
+    color: colors.text.primary,
   },
   cardChipSub: {
     fontSize: 10,
-    color: '#64748B',
+    color: colors.text.muted,
     marginTop: 1,
   },
   allowanceModeSelector: {
     flexDirection: 'row',
-    backgroundColor: '#F1F5F9',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     borderRadius: 12,
     padding: 3,
     marginBottom: 10,
@@ -3139,7 +3145,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   allowanceModeBtnActive: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
@@ -3149,16 +3155,16 @@ const styles = StyleSheet.create({
   allowanceModeBtnText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#64748B',
+    color: isDark ? colors.text.secondary : '#64748B',
   },
   allowanceModeBtnTextActive: {
-    color: '#6D28D9',
+    color: isDark ? '#C4B5FD' : '#6D28D9',
     fontWeight: '700',
   },
   allowanceBanner: {
     flexDirection: 'row',
-    backgroundColor: '#F5F3FF',
-    borderColor: '#DDD6FE',
+    backgroundColor: isDark ? 'rgba(109, 40, 217, 0.18)' : '#F5F3FF',
+    borderColor: isDark ? 'rgba(109, 40, 217, 0.4)' : '#DDD6FE',
     borderWidth: 1,
     borderRadius: 12,
     padding: 10,
@@ -3175,12 +3181,12 @@ const styles = StyleSheet.create({
   allowanceBannerTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#6D28D9',
+    color: isDark ? '#DDD6FE' : '#6D28D9',
     marginBottom: 2,
   },
   allowanceBannerDesc: {
     fontSize: 12,
-    color: '#5B21B6',
+    color: isDark ? '#C4B5FD' : '#5B21B6',
     lineHeight: 16,
   },
   quickAmountRow: {
@@ -3193,14 +3199,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
   },
   quickAmountChipText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#4B5563',
+    color: isDark ? colors.text.secondary : '#4B5563',
   },
   quickAmountClearChip: {
     backgroundColor: '#FEE2E2',
@@ -3213,10 +3219,10 @@ const styles = StyleSheet.create({
   },
   recipientChipActive: {
     borderColor: '#10B981',
-    backgroundColor: '#ECFDF5',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#ECFDF5',
   },
   recipientNameActive: {
-    color: '#065F46',
+    color: isDark ? '#6EE7B7' : '#065F46',
     fontWeight: '700',
   },
   recipientBadge: {
@@ -3238,38 +3244,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#F9FAFB',
+    backgroundColor: isDark ? colors.background.input : '#F9FAFB',
     borderRadius: 12,
     padding: 10,
     borderWidth: 1,
-    borderColor: '#F3F4F6',
+    borderColor: isDark ? colors.border.default : '#F3F4F6',
   },
   allowanceCatBox: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     borderRadius: 8,
     padding: 8,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
   },
   allowanceCatBoxIncome: {
-    borderColor: '#A7F3D0',
-    backgroundColor: '#F0FDF4',
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.5)' : '#A7F3D0',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#F0FDF4',
   },
   allowanceCatBoxTitle: {
     fontSize: 11,
-    color: '#6B7280',
+    color: isDark ? colors.text.muted : '#6B7280',
     fontWeight: '600',
     marginBottom: 3,
   },
   allowanceCatBoxVal: {
     fontSize: 13,
-    color: '#1F2937',
+    color: isDark ? colors.text.primary : '#1F2937',
     fontWeight: '700',
   },
   allowanceCatArrow: {
     fontSize: 16,
-    color: '#9CA3AF',
+    color: isDark ? colors.text.muted : '#9CA3AF',
     marginHorizontal: 8,
   },
   quickNoteRow: {
@@ -3283,20 +3289,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
   },
   quickNoteChipActive: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7',
     borderColor: '#F59E0B',
   },
   quickNoteChipText: {
     fontSize: 11,
-    color: '#4B5563',
+    color: isDark ? colors.text.secondary : '#4B5563',
   },
   quickNoteChipTextActive: {
-    color: '#92400E',
+    color: isDark ? '#FCD34D' : '#92400E',
     fontWeight: '700',
   },
   submitBtnAllowance: {
@@ -3308,9 +3314,9 @@ const styles = StyleSheet.create({
   memoBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFBEB',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FFFBEB',
     borderWidth: 1,
-    borderColor: '#FDE68A',
+    borderColor: isDark ? 'rgba(245, 158, 11, 0.35)' : '#FDE68A',
     borderRadius: 12,
     padding: 10,
     marginBottom: 12,
@@ -3325,18 +3331,18 @@ const styles = StyleSheet.create({
   memoBannerTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#92400E',
+    color: isDark ? '#FCD34D' : '#92400E',
     marginBottom: 2,
   },
   memoBannerDesc: {
     fontSize: 11,
-    color: '#B45309',
+    color: isDark ? '#FDE68A' : '#B45309',
     lineHeight: 15,
   },
   insertCheckboxBtn: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7',
     borderWidth: 1,
-    borderColor: '#FDE68A',
+    borderColor: isDark ? '#B45309' : '#FDE68A',
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -3344,7 +3350,7 @@ const styles = StyleSheet.create({
   insertCheckboxBtnText: {
     fontSize: 11.5,
     fontWeight: '700',
-    color: '#D97706',
+    color: isDark ? '#FCD34D' : '#D97706',
   },
   templateSection: {
     marginBottom: 10,
@@ -3352,7 +3358,7 @@ const styles = StyleSheet.create({
   templateSectionLabel: {
     fontSize: 11.5,
     fontWeight: '700',
-    color: '#92400E',
+    color: isDark ? '#FCD34D' : '#92400E',
     marginBottom: 5,
   },
   templateChipsRow: {
@@ -3363,9 +3369,9 @@ const styles = StyleSheet.create({
   templateChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFBEB',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#FFFBEB',
     borderWidth: 1,
-    borderColor: '#FDE68A',
+    borderColor: isDark ? colors.border.default : '#FDE68A',
     borderRadius: 8,
     paddingHorizontal: 9,
     paddingVertical: 5.5,
@@ -3377,23 +3383,23 @@ const styles = StyleSheet.create({
   templateChipText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#B45309',
+    color: isDark ? '#FCD34D' : '#B45309',
   },
   memoContentInput: {
-    backgroundColor: '#FAFAFA',
+    backgroundColor: isDark ? colors.background.input : '#FAFAFA',
     borderWidth: 1.5,
-    borderColor: '#E5E7EB',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
     borderRadius: 12,
     padding: 12,
     fontSize: 15,
-    color: '#111827',
+    color: colors.text.primary,
     minHeight: 96,
     marginBottom: 10,
   },
   linkedMemoBanner: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: isDark ? 'rgba(59, 130, 246, 0.18)' : '#EFF6FF',
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: isDark ? 'rgba(59, 130, 246, 0.4)' : '#BFDBFE',
     borderRadius: 12,
     paddingVertical: 9,
     paddingHorizontal: 12,
@@ -3401,28 +3407,28 @@ const styles = StyleSheet.create({
   },
   linkedMemoBannerText: {
     fontSize: 12.5,
-    color: '#1D4ED8',
+    color: isDark ? '#93C5FD' : '#1D4ED8',
     fontWeight: '600',
   },
   lunarMoreBtn: {
-    borderColor: '#FDE68A',
-    backgroundColor: '#FFFBEB',
+    borderColor: isDark ? '#B45309' : '#FDE68A',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#FFFBEB',
   },
   lunarMoreBtnSelected: {
     borderColor: '#D97706',
-    backgroundColor: '#FEF3C7',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7',
   },
   lunarMoreBtnText: {
-    color: '#B45309',
+    color: isDark ? '#FCD34D' : '#B45309',
   },
   lunarMoreBtnTextSelected: {
-    color: '#92400E',
+    color: isDark ? '#FBBF24' : '#92400E',
     fontWeight: '800',
   },
   memoRepeatCard: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.input : '#F8FAFC',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
     borderRadius: 12,
     padding: 10,
     marginBottom: 14,
@@ -3438,11 +3444,11 @@ const styles = StyleSheet.create({
   memoRepeatTitle: {
     fontSize: 12.5,
     fontWeight: '700',
-    color: '#334155',
+    color: isDark ? colors.text.primary : '#334155',
   },
   calendarBasisSwitch: {
     flexDirection: 'row',
-    backgroundColor: '#E2E8F0',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#E2E8F0',
     borderRadius: 8,
     padding: 2,
   },
@@ -3452,22 +3458,22 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   calendarBasisBtnActive: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
   },
   calendarBasisBtnLunarActive: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7',
   },
   calendarBasisBtnText: {
     fontSize: 11,
-    color: '#64748B',
+    color: isDark ? colors.text.muted : '#64748B',
     fontWeight: '600',
   },
   calendarBasisBtnTextActive: {
-    color: '#2563EB',
+    color: isDark ? '#93C5FD' : '#2563EB',
     fontWeight: '700',
   },
   calendarBasisBtnTextLunarActive: {
-    color: '#B45309',
+    color: isDark ? '#FCD34D' : '#B45309',
     fontWeight: '700',
   },
   memoRepeatChipsRow: {
@@ -3479,43 +3485,43 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: isDark ? colors.border.default : '#CBD5E1',
   },
   memoRepeatChipLunar: {
-    backgroundColor: '#FFFBEB',
-    borderColor: '#FDE68A',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#FFFBEB',
+    borderColor: isDark ? colors.border.default : '#FDE68A',
   },
   memoRepeatChipActive: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#3B82F6',
+    backgroundColor: isDark ? 'rgba(59, 130, 246, 0.25)' : '#EFF6FF',
+    borderColor: isDark ? '#60A5FA' : '#3B82F6',
   },
   memoRepeatChipLunarActive: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7',
     borderColor: '#D97706',
   },
   memoRepeatChipText: {
     fontSize: 12,
-    color: '#475569',
+    color: isDark ? colors.text.secondary : '#475569',
     fontWeight: '600',
   },
   memoRepeatChipTextLunar: {
-    color: '#B45309',
+    color: isDark ? '#FCD34D' : '#B45309',
   },
   memoRepeatChipTextActive: {
-    color: '#1D4ED8',
+    color: isDark ? '#93C5FD' : '#1D4ED8',
     fontWeight: '700',
   },
   memoRepeatChipTextLunarActive: {
-    color: '#92400E',
+    color: isDark ? '#FCD34D' : '#92400E',
     fontWeight: '800',
   },
   memoReminderPreviewBox: {
     marginTop: 8,
-    backgroundColor: '#FFFBEB',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FFFBEB',
     borderWidth: 1,
-    borderColor: '#FDE68A',
+    borderColor: isDark ? 'rgba(245, 158, 11, 0.35)' : '#FDE68A',
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 7,
@@ -3523,17 +3529,17 @@ const styles = StyleSheet.create({
   memoReminderPreviewPrimary: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#92400E',
+    color: isDark ? '#FCD34D' : '#92400E',
   },
   memoReminderPreviewNext: {
     fontSize: 11,
-    color: '#B45309',
+    color: isDark ? '#FDE68A' : '#B45309',
     marginTop: 3,
     fontWeight: '600',
   },
   discountToggleChip: {
-    backgroundColor: '#ECFDF5',
-    borderColor: '#6EE7B7',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5',
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.4)' : '#6EE7B7',
   },
   discountToggleChipActive: {
     backgroundColor: '#059669',
@@ -3542,22 +3548,22 @@ const styles = StyleSheet.create({
   discountToggleChipText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#047857',
+    color: isDark ? '#6EE7B7' : '#047857',
   },
   discountToggleChipTextActive: {
     color: '#FFFFFF',
   },
   discountPanelBox: {
-    backgroundColor: '#F0FDF4',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.12)' : '#F0FDF4',
     borderWidth: 1,
-    borderColor: '#A7F3D0',
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#A7F3D0',
     borderRadius: 12,
     padding: 12,
     marginBottom: 12,
   },
   discountModeSwitchRow: {
     flexDirection: 'row',
-    backgroundColor: '#E2E8F0',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#E2E8F0',
     borderRadius: 8,
     padding: 2,
     marginBottom: 10,
@@ -3570,15 +3576,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   discountModeBtnActive: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
   },
   discountModeBtnText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#64748B',
+    color: isDark ? colors.text.muted : '#64748B',
   },
   discountModeBtnTextActive: {
-    color: '#047857',
+    color: isDark ? '#34D399' : '#047857',
     fontWeight: '700',
   },
   discountLabelScroll: {
@@ -3587,24 +3593,24 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   discountLabelChip: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: isDark ? colors.border.default : '#CBD5E1',
     borderRadius: 14,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
   discountLabelChipActive: {
-    backgroundColor: '#DCFCE7',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#DCFCE7',
     borderColor: '#10B981',
   },
   discountLabelChipText: {
     fontSize: 11.5,
     fontWeight: '600',
-    color: '#475569',
+    color: isDark ? colors.text.secondary : '#475569',
   },
   discountLabelChipTextActive: {
-    color: '#065F46',
+    color: isDark ? '#6EE7B7' : '#065F46',
     fontWeight: '700',
   },
   discountInputRow: {
@@ -3615,72 +3621,72 @@ const styles = StyleSheet.create({
   discountFieldLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#065F46',
+    color: isDark ? '#6EE7B7' : '#065F46',
     marginBottom: 4,
   },
   discountTextInput: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.input : '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#A7F3D0',
+    borderColor: isDark ? colors.border.default : '#A7F3D0',
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 7,
     fontSize: 13,
-    color: '#0F172A',
+    color: colors.text.primary,
   },
   discountAmountInput: {
     fontWeight: '700',
-    color: '#059669',
+    color: isDark ? '#34D399' : '#059669',
   },
   discountPreviewBanner: {
     marginTop: 10,
-    backgroundColor: '#DCFCE7',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#DCFCE7',
     borderRadius: 8,
     paddingVertical: 7,
     paddingHorizontal: 10,
   },
   discountPreviewText: {
     fontSize: 11.5,
-    color: '#065F46',
+    color: isDark ? '#A7F3D0' : '#065F46',
     fontWeight: '600',
   },
   discountPreviewHighlight: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#047857',
+    color: isDark ? '#34D399' : '#047857',
   },
   invoiceInputContainer: {
     marginTop: 14,
   },
   optionalBadgeText: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.text.muted,
     fontWeight: '500',
   },
   invoiceScanBtn: {
-    backgroundColor: '#ECFDF5',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.18)' : '#ECFDF5',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#A7F3D0',
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.4)' : '#A7F3D0',
   },
   invoiceScanBtnText: {
     fontSize: 11.5,
-    color: '#059669',
+    color: isDark ? '#6EE7B7' : '#059669',
     fontWeight: '700',
   },
   invoicePasteBtn: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: isDark ? 'rgba(59, 130, 246, 0.18)' : '#EFF6FF',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: isDark ? 'rgba(59, 130, 246, 0.4)' : '#BFDBFE',
   },
   invoicePasteBtnText: {
     fontSize: 11.5,
-    color: '#2563EB',
+    color: isDark ? '#93C5FD' : '#2563EB',
     fontWeight: '600',
   },
   invoiceInputRow: {
@@ -3690,31 +3696,31 @@ const styles = StyleSheet.create({
   },
   invoiceNumberInput: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: isDark ? colors.background.input : '#F9FAFB',
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
     paddingHorizontal: 10,
     paddingVertical: 8,
     fontSize: 14,
-    color: '#1F2937',
+    color: colors.text.primary,
     fontWeight: '600',
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   invoiceInputWon: {
     borderColor: '#F59E0B',
-    backgroundColor: '#FEF3C7',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7',
   },
   invoiceRandomCodeInput: {
     width: 76,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: isDark ? colors.background.input : '#F9FAFB',
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
     paddingHorizontal: 8,
     paddingVertical: 8,
     fontSize: 13,
-    color: '#1F2937',
+    color: colors.text.primary,
     textAlign: 'center',
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
@@ -3723,31 +3729,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 6,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
     alignSelf: 'flex-start',
   },
   invoiceStatusRowWon: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7',
     borderWidth: 1,
     borderColor: '#F59E0B',
   },
   invoiceStatusText: {
     fontSize: 12,
-    color: '#4B5563',
+    color: isDark ? colors.text.secondary : '#4B5563',
     fontWeight: '600',
   },
   invoiceStatusTextWon: {
-    color: '#B45309',
+    color: isDark ? '#FCD34D' : '#B45309',
     fontWeight: '700',
   },
   duplicateWarningBox: {
     marginTop: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: '#FFFBEB',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FFFBEB',
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#FCD34D',
+    borderColor: isDark ? 'rgba(245, 158, 11, 0.35)' : '#FCD34D',
   },
   duplicateWarningIcon: {
     fontSize: 14,
@@ -3755,11 +3761,11 @@ const styles = StyleSheet.create({
   duplicateWarningTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#B45309',
+    color: isDark ? '#FCD34D' : '#B45309',
   },
   duplicateWarningDesc: {
     fontSize: 11,
-    color: '#92400E',
+    color: isDark ? '#FDE68A' : '#92400E',
     lineHeight: 16,
   },
 });

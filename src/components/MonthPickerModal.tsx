@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextProps,
 } from 'react-native';
+import { useTheme } from '../theme/ThemeContext';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
   <RNText
@@ -33,6 +34,7 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
   availableMonths = [],
   availableYears = [],
 }) => {
+  const { isDark, colors } = useTheme();
   const now = new Date();
   const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
@@ -97,91 +99,131 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
-        <View style={styles.card}>
+        <View style={[styles.card, isDark && { backgroundColor: colors.background.modal, borderColor: colors.border.default, borderWidth: 1 }]}>
           {/* 頂部標題 */}
           <View style={styles.headerRow}>
             <View>
-              <Text style={styles.title}>📅 選擇統計期間</Text>
-              <Text style={styles.subtitle}>自由選擇全年度或任意月份查看財務分析</Text>
+              <Text style={[styles.title, isDark && { color: colors.text.primary }]}>📅 選擇統計期間</Text>
+              <Text style={[styles.subtitle, isDark && { color: colors.text.muted }]}>自由選擇全年度或任意月份查看財務分析</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Text style={styles.closeText}>✕</Text>
+            <TouchableOpacity onPress={onClose} style={[styles.closeBtn, isDark && { backgroundColor: colors.background.cardSubtle }]}>
+              <Text style={[styles.closeText, isDark && { color: colors.text.secondary }]}>✕</Text>
             </TouchableOpacity>
           </View>
 
           {/* 快捷選項 */}
           <View style={styles.quickRow}>
             <TouchableOpacity
-              style={[styles.quickChip, selectedMonth === currentYm && styles.quickChipActive]}
+              style={[
+                styles.quickChip,
+                isDark && { backgroundColor: colors.background.cardSubtle },
+                selectedMonth === currentYm && styles.quickChipActive,
+                isDark && selectedMonth === currentYm && { backgroundColor: 'rgba(99, 102, 241, 0.25)', borderColor: '#818CF8' },
+              ]}
               onPress={() => {
                 onSelectMonth(currentYm);
                 onClose();
               }}
               activeOpacity={0.7}
             >
-              <Text style={[styles.quickChipText, selectedMonth === currentYm && styles.quickChipTextActive]}>
+              <Text style={[
+                styles.quickChipText,
+                isDark && { color: colors.text.secondary },
+                selectedMonth === currentYm && styles.quickChipTextActive,
+                isDark && selectedMonth === currentYm && { color: '#C7D2FE' },
+              ]}>
                 📍 本月
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.quickChip, selectedMonth === lastMonthYm && styles.quickChipActive]}
+              style={[
+                styles.quickChip,
+                isDark && { backgroundColor: colors.background.cardSubtle },
+                selectedMonth === lastMonthYm && styles.quickChipActive,
+                isDark && selectedMonth === lastMonthYm && { backgroundColor: 'rgba(99, 102, 241, 0.25)', borderColor: '#818CF8' },
+              ]}
               onPress={() => {
                 onSelectMonth(lastMonthYm);
                 onClose();
               }}
               activeOpacity={0.7}
             >
-              <Text style={[styles.quickChipText, selectedMonth === lastMonthYm && styles.quickChipTextActive]}>
+              <Text style={[
+                styles.quickChipText,
+                isDark && { color: colors.text.secondary },
+                selectedMonth === lastMonthYm && styles.quickChipTextActive,
+                isDark && selectedMonth === lastMonthYm && { color: '#C7D2FE' },
+              ]}>
                 📅 上月
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.quickChip, selectedMonth === String(now.getFullYear()) && styles.quickChipActive]}
+              style={[
+                styles.quickChip,
+                isDark && { backgroundColor: colors.background.cardSubtle },
+                selectedMonth === String(now.getFullYear()) && styles.quickChipActive,
+                isDark && selectedMonth === String(now.getFullYear()) && { backgroundColor: 'rgba(99, 102, 241, 0.25)', borderColor: '#818CF8' },
+              ]}
               onPress={() => {
                 onSelectMonth(String(now.getFullYear()));
                 onClose();
               }}
               activeOpacity={0.7}
             >
-              <Text style={[styles.quickChipText, selectedMonth === String(now.getFullYear()) && styles.quickChipTextActive]}>
+              <Text style={[
+                styles.quickChipText,
+                isDark && { color: colors.text.secondary },
+                selectedMonth === String(now.getFullYear()) && styles.quickChipTextActive,
+                isDark && selectedMonth === String(now.getFullYear()) && { color: '#C7D2FE' },
+              ]}>
                 🗓️ 今年
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.quickChip, selectedMonth === 'all' && styles.quickChipActive]}
+              style={[
+                styles.quickChip,
+                isDark && { backgroundColor: colors.background.cardSubtle },
+                selectedMonth === 'all' && styles.quickChipActive,
+                isDark && selectedMonth === 'all' && { backgroundColor: 'rgba(99, 102, 241, 0.25)', borderColor: '#818CF8' },
+              ]}
               onPress={() => {
                 onSelectMonth('all');
                 onClose();
               }}
               activeOpacity={0.7}
             >
-              <Text style={[styles.quickChipText, selectedMonth === 'all' && styles.quickChipTextActive]}>
+              <Text style={[
+                styles.quickChipText,
+                isDark && { color: colors.text.secondary },
+                selectedMonth === 'all' && styles.quickChipTextActive,
+                isDark && selectedMonth === 'all' && { color: '#C7D2FE' },
+              ]}>
                 🌐 全部
               </Text>
             </TouchableOpacity>
           </View>
 
           {/* 年份切換控制列 */}
-          <View style={styles.yearRow}>
+          <View style={[styles.yearRow, isDark && { backgroundColor: colors.background.cardSubtle }]}>
             <TouchableOpacity
-              style={styles.yearArrowBtn}
+              style={[styles.yearArrowBtn, isDark && { backgroundColor: colors.background.card }]}
               onPress={() => setPickerYear(y => y - 1)}
               activeOpacity={0.7}
             >
-              <Text style={styles.yearArrowText}>◀</Text>
+              <Text style={[styles.yearArrowText, isDark && { color: '#A5B4FC' }]}>◀</Text>
             </TouchableOpacity>
 
-            <Text style={styles.yearTitleText}>{pickerYear} 年</Text>
+            <Text style={[styles.yearTitleText, isDark && { color: colors.text.primary }]}>{pickerYear} 年</Text>
 
             <TouchableOpacity
-              style={styles.yearArrowBtn}
+              style={[styles.yearArrowBtn, isDark && { backgroundColor: colors.background.card }]}
               onPress={() => setPickerYear(y => y + 1)}
               activeOpacity={0.7}
             >
-              <Text style={styles.yearArrowText}>▶</Text>
+              <Text style={[styles.yearArrowText, isDark && { color: '#A5B4FC' }]}>▶</Text>
             </TouchableOpacity>
           </View>
 
@@ -189,6 +231,7 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
           <TouchableOpacity
             style={[
               styles.fullYearBtn,
+              isDark && { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default },
               selectedMonth === String(pickerYear) && styles.fullYearBtnActive,
             ]}
             onPress={() => {
@@ -201,6 +244,7 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
               <Text
                 style={[
                   styles.fullYearBtnText,
+                  isDark && { color: colors.text.primary },
                   selectedMonth === String(pickerYear) && styles.fullYearBtnTextActive,
                 ]}
               >
@@ -209,6 +253,7 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
               <Text
                 style={[
                   styles.fullYearCountText,
+                  isDark && { color: colors.text.muted },
                   selectedMonth === String(pickerYear) && styles.fullYearCountTextActive,
                 ]}
               >
@@ -220,7 +265,7 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
                 <Text style={styles.fullYearActiveBadgeText}>✓ 目前選取</Text>
               </View>
             ) : (
-              <Text style={styles.fullYearArrowHint}>選擇 ➔</Text>
+              <Text style={[styles.fullYearArrowHint, isDark && { color: '#818CF8' }]}>選擇 ➔</Text>
             )}
           </TouchableOpacity>
 
@@ -237,8 +282,10 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
                   key={ym}
                   style={[
                     styles.monthGridItem,
+                    isDark && { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default },
                     isSelected && styles.monthGridItemActive,
                     isCurrent && !isSelected && styles.monthGridItemCurrent,
+                    isDark && isCurrent && !isSelected && { backgroundColor: 'rgba(99, 102, 241, 0.25)', borderColor: '#818CF8' },
                   ]}
                   onPress={() => {
                     onSelectMonth(ym);
@@ -249,17 +296,19 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
                   <Text
                     style={[
                       styles.monthGridText,
+                      isDark && { color: colors.text.primary },
                       isSelected && styles.monthGridTextActive,
                       isCurrent && !isSelected && styles.monthGridTextCurrent,
+                      isDark && isCurrent && !isSelected && { color: '#A5B4FC' },
                     ]}
                   >
                     {m} 月
                   </Text>
                   {isCurrent && !isSelected && (
-                    <Text style={styles.currentMonthBadgeText}>本月</Text>
+                    <Text style={[styles.currentMonthBadgeText, isDark && { color: '#A5B4FC' }]}>本月</Text>
                   )}
                   {txCount > 0 && !isSelected && (
-                    <Text style={styles.txCountBadgeText}>{txCount}筆</Text>
+                    <Text style={[styles.txCountBadgeText, isDark && { color: colors.text.muted }]}>{txCount}筆</Text>
                   )}
                   {isSelected && (
                     <Text style={styles.selectedCheckText}>✓</Text>
@@ -270,8 +319,8 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
           </View>
 
           {/* 關閉按鈕 */}
-          <TouchableOpacity style={styles.cancelBtn} onPress={onClose} activeOpacity={0.8}>
-            <Text style={styles.cancelBtnText}>關閉</Text>
+          <TouchableOpacity style={[styles.cancelBtn, isDark && { backgroundColor: colors.background.cardSubtle }]} onPress={onClose} activeOpacity={0.8}>
+            <Text style={[styles.cancelBtnText, isDark && { color: colors.text.secondary }]}>關閉</Text>
           </TouchableOpacity>
         </View>
       </View>
