@@ -1,17 +1,35 @@
 import React, { useEffect, useState } from 'react';
 import {
   View,
-  Text,
+  Text as RNText,
   TouchableOpacity,
   StyleSheet,
   Modal,
-  TextInput,
+  TextInput as RNTextInput,
   Platform,
+  TextProps,
+  TextInputProps,
 } from 'react-native';
 import { usePrivacy } from '../context/PrivacyContext';
 import { useTheme } from '../theme/ThemeContext';
 import { useLedger } from '../context/LedgerContext';
 import { showAlert } from '../lib/alert';
+
+const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
+  <RNText
+    allowFontScaling={allowFontScaling}
+    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
+    {...rest}
+  />
+);
+
+const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
+  <RNTextInput
+    allowFontScaling={allowFontScaling}
+    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
+    {...rest}
+  />
+);
 
 export const AppLockOverlay: React.FC = () => {
   const { isAppLocked, unlockApp, forceUnlockApp, capability } = usePrivacy();

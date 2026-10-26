@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
-  Text,
+  Text as RNText,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
   Switch,
   Platform,
+  TextProps,
 } from 'react-native';
 import * as Updates from 'expo-updates';
 import { useLedger } from '../context/LedgerContext';
@@ -37,6 +38,14 @@ import {
   QuickActionKind,
   QUICK_ACTIONS_CONFIG,
 } from '../lib/quickActions';
+
+const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
+  <RNText
+    allowFontScaling={allowFontScaling}
+    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
+    {...rest}
+  />
+);
 
 interface FamilySettingsScreenProps {
   onOpenModal: (mode: 'expense' | 'income' | 'transfer' | 'allowance' | 'memo', recipientId?: string) => void;
@@ -314,7 +323,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
         <View style={styles.sectionHeaderRow}>
           <View style={styles.sectionHeaderLeft}>
-            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]}>
+            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} numberOfLines={1}>
               👨‍👩‍👧 家庭成員名單 ({members.length})
             </Text>
             <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]}>
@@ -458,7 +467,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
         <View style={styles.inviteHeaderRow}>
           <View style={styles.sectionHeaderLeft}>
-            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]}>🔗 邀請家人共同記帳</Text>
+            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} numberOfLines={1}>🔗 邀請家人共同記帳</Text>
             <Text style={[styles.cardSectionDesc, { color: colors.text.secondary }]}>讓伴侶或家人加入這本公帳，資料即時雙向同步</Text>
           </View>
           <View style={[styles.roleBadge, isOwner ? styles.roleBadgeOwner : styles.roleBadgeProtected]}>
@@ -635,7 +644,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
         <View style={styles.sectionHeaderRow}>
           <View style={styles.sectionHeaderLeft}>
-            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]}>🎯 預算控管與成員額度</Text>
+            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} numberOfLines={1}>🎯 預算控管與成員額度</Text>
             <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]}>
               設定每月家庭公帳預算、成員個人專屬上限，或自訂此裝置顯隱偏好
             </Text>
@@ -1398,7 +1407,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   cardSectionTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     marginBottom: 4,
   },
