@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.8';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.8 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 0;
+export const APP_BUILD_REVISION = 3;
 
-// 完整版本字串 (例如 "1.0.8.0")
+// 完整版本字串 (例如 "1.0.8.3")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -20,11 +20,13 @@ export interface ChangelogItem {
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.8',
-    date: '2026-10-24',
-    title: '手機桌面 Quick Actions 捷徑、原生 APK 二進位模組編譯與全域防護',
+    date: '2026-10-24 ~ 2026-10-26',
+    title: '手機桌面 Quick Actions 捷徑、全域文字防禦對齊與文件指引補齊 (v1.0.8.0 ~ v1.0.8.3)',
     highlights: [
-      '⚡ 手機桌面 Quick Actions 快捷直達：長按桌面圖示彈出「記支出」、「記收入」、「掃描發票」、「隨手記事」4 大捷徑一鍵秒開。',
-      '📦 原生二進位正式編譯與全新 APK 發布：完整編譯生物辨識與桌面捷徑原生代碼，消除舊版環境相依並產出直接安裝之 Android APK。',
+      '📱 全域文字防禦層與字體大小統一 (v1.0.8.3)：全面封裝文字防禦層，消除系統字體縮放導致之卡片異常膨脹與換行，標題統一緊湊對齊。',
+      '📖 產品文件與 App 內建指南全量補齊 (v1.0.8.2)：同步補齊 23 大核心特色、最新專案目錄結構與 App 內建 14 大操作指引手冊。',
+      '⚡ 手機桌面 Quick Actions 快捷直達 (v1.0.8.1)：長按桌面圖示彈出「記支出」、「記收入」、「掃描發票」、「隨手記事」4 大捷徑一鍵秒開。',
+      '📦 原生二進位正式編譯與全新 APK 發布 (v1.0.8.0)：完整編譯生物辨識與桌面捷徑原生代碼，消除舊版環境相依並產出直接安裝之 Android APK。',
       '🛡️ 防禦型原生模組載入架構：採用動態安全探測與優雅降級，未編譯原生模組時自動切換 PIN 碼防護，徹底消弭 OTA 黑屏風險。',
       '🚨 全域根層安全邊界 (Root Error Boundary)：於應用程式頂層掛載保護層，即便發生非預期例外亦能自動隔離並提供一鍵恢復介面。',
       '🔗 Deep Linking 自訂協議支援：支援 familyledger://quick-action 自訂 URL Scheme，可連動 iOS 捷徑、Siri 與外部自動化呼叫。',
