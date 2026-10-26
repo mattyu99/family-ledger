@@ -152,6 +152,7 @@ interface AddTransactionModalProps {
   linkedMemoId?: string;
   linkedCompletionNote?: string;
   autoOpenScanner?: boolean;
+  onClearAutoOpenScanner?: () => void;
 }
 
 export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
@@ -165,6 +166,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   linkedMemoId,
   linkedCompletionNote,
   autoOpenScanner = false,
+  onClearAutoOpenScanner,
 }) => {
   const { isDark, colors } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
@@ -853,9 +855,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       resetForm();
       if (autoOpenScanner) {
         setScannerModalVisible(true);
+        onClearAutoOpenScanner?.();
       }
     }
-  }, [visible, resetForm, autoOpenScanner]);
+  }, [visible, resetForm, autoOpenScanner, onClearAutoOpenScanner]);
 
   // 關閉彈窗時同步清空重設表單狀態
   const handleClose = React.useCallback(() => {

@@ -243,7 +243,7 @@ flowchart TD
 
 ### 📌 目前最新發布版本
 * **主版本號**：`v1.0.8`
-* **完整建置版本號**：`v1.0.8.3` (Build 3)
+* **完整建置版本號**：`v1.0.8.4` (Build 4)
 * **網頁體驗版網址**：[https://mattyu99.github.io/family-ledger/](https://mattyu99.github.io/family-ledger/)
 
 ### 📱 取得與安裝

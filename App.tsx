@@ -208,8 +208,15 @@ const AppContent: React.FC = () => {
 
   // 隱私鎖與桌面快捷動作 (Quick Actions)
   const { isAppLocked } = usePrivacy();
+  const isAppLockedRef = useRef<boolean>(isAppLocked);
+  useEffect(() => {
+    isAppLockedRef.current = isAppLocked;
+  }, [isAppLocked]);
+
   const [modalAutoOpenScanner, setModalAutoOpenScanner] = useState<boolean>(false);
   const pendingQuickActionRef = useRef<QuickActionKind | null>(null);
+  const initialActionHandledRef = useRef<boolean>(false);
+  const initialUrlHandledRef = useRef<boolean>(false);
 
   const executeQuickAction = useCallback((kind: QuickActionKind) => {
     setEditingTransaction(null);
@@ -240,12 +247,12 @@ const AppContent: React.FC = () => {
   }, []);
 
   const dispatchQuickAction = useCallback((kind: QuickActionKind) => {
-    if (isAppLocked) {
+    if (isAppLockedRef.current) {
       pendingQuickActionRef.current = kind;
     } else {
       executeQuickAction(kind);
     }
-  }, [isAppLocked, executeQuickAction]);
+  }, [executeQuickAction]);
 
   // 當 AppLock 解鎖完成時，若有排隊的 Quick Action 則立即執行
   useEffect(() => {
@@ -264,11 +271,14 @@ const AppContent: React.FC = () => {
     try {
       setupQuickActions();
 
-      const initialAction = QuickActions?.initial;
-      if (initialAction) {
-        const kind = parseQuickAction(initialAction);
-        if (kind) {
-          dispatchQuickAction(kind);
+      if (!initialActionHandledRef.current) {
+        initialActionHandledRef.current = true;
+        const initialAction = QuickActions?.initial;
+        if (initialAction) {
+          const kind = parseQuickAction(initialAction);
+          if (kind) {
+            dispatchQuickAction(kind);
+          }
         }
       }
     } catch (err) {
@@ -298,12 +308,15 @@ const AppContent: React.FC = () => {
     let linkSub: any = null;
     try {
       linkSub = Linking.addEventListener('url', handleUrlEvent);
-      Linking.getInitialURL().then((url) => {
-        const kind = parseQuickActionUrl(url);
-        if (kind) {
-          dispatchQuickAction(kind);
-        }
-      }).catch(() => {});
+      if (!initialUrlHandledRef.current) {
+        initialUrlHandledRef.current = true;
+        Linking.getInitialURL().then((url) => {
+          const kind = parseQuickActionUrl(url);
+          if (kind) {
+            dispatchQuickAction(kind);
+          }
+        }).catch(() => {});
+      }
     } catch (err) {
       console.warn('[DeepLink] 監聽註冊失敗:', err);
     }
@@ -1000,6 +1013,7 @@ const AppContent: React.FC = () => {
         linkedMemoId={modalLinkedMemoId}
         linkedCompletionNote={modalLinkedCompletionNote}
         autoOpenScanner={modalAutoOpenScanner}
+        onClearAutoOpenScanner={() => setModalAutoOpenScanner(false)}
         onSuccess={() => {
           setCompletingMemo(null);
           setCompletionTempNote('');
