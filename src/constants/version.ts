@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.8';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.8 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 4;
+export const APP_BUILD_REVISION = 5;
 
-// 完整版本字串 (例如 "1.0.8.4")
+// 完整版本字串 (例如 "1.0.8.5")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.8',
     date: '2026-10-24 ~ 2026-10-26',
-    title: '手機桌面 Quick Actions 捷徑、全域文字防禦對齊與文件指引補齊 (v1.0.8.0 ~ v1.0.8.4)',
+    title: '手機桌面 Quick Actions 捷徑、全域文字防禦對齊與文件指引補齊 (v1.0.8.0 ~ v1.0.8.5)',
     highlights: [
+      '🎨 深色主題介面深度適配與精簡：修復管理員身分卡片背景白底問題，移除冗餘標註文字，標籤全面自適應深淺模式。',
       '🛡️ 生物辨識解鎖與桌面快捷狀態防禦：修復冷啟動與長按捷徑意圖快取殘留問題，確保逾時重新解鎖時精準停留在原操作畫面。',
       '📱 全域文字防禦層與字體大小統一：全面封裝文字防禦層，消除系統字體縮放導致之卡片異常膨脹與換行，標題統一緊湊對齊。',
       '📖 產品文件與 App 內建指南全量補齊：同步補齊 23 大核心特色、最新專案目錄結構與 App 內建 14 大操作指引手冊。',

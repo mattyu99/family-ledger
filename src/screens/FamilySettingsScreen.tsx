@@ -470,9 +470,19 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} numberOfLines={1}>🔗 邀請家人共同記帳</Text>
             <Text style={[styles.cardSectionDesc, { color: colors.text.secondary }]}>讓伴侶或家人加入這本公帳，資料即時雙向同步</Text>
           </View>
-          <View style={[styles.roleBadge, isOwner ? styles.roleBadgeOwner : styles.roleBadgeProtected]}>
-            <Text style={[styles.roleBadgeText, isOwner ? styles.roleBadgeTextOwner : styles.roleBadgeTextProtected]}>
-              {isOwner ? '👑 帳本管理員 (已啟用)' : (realIsOwner ? '🛡️ 日常成員模式 (安全防護中)' : '👤 家庭成員')}
+          <View style={[
+            styles.roleBadge,
+            isOwner
+              ? { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7' }
+              : { backgroundColor: isDark ? '#334155' : '#E2E8F0' },
+          ]}>
+            <Text style={[
+              styles.roleBadgeText,
+              isOwner
+                ? { color: isDark ? '#FBBF24' : '#B45309' }
+                : { color: isDark ? '#CBD5E1' : '#475569' },
+            ]}>
+              {isOwner ? '👑 管理員' : (realIsOwner ? '🛡️ 日常模式' : '👤 一般成員')}
             </Text>
           </View>
         </View>
@@ -840,8 +850,18 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
               以 {capability.biometryType} 或安全碼保護資產負債與真實淨值，防旁人窺視
             </Text>
           </View>
-          <View style={[styles.roleBadge, capability.isSupported ? styles.roleBadgeOwner : styles.roleBadgeMember]}>
-            <Text style={[styles.roleBadgeText, capability.isSupported ? styles.roleBadgeTextOwner : styles.roleBadgeTextMember]}>
+          <View style={[
+            styles.roleBadge,
+            capability.isSupported
+              ? { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }
+              : { backgroundColor: isDark ? '#334155' : '#F1F5F9' },
+          ]}>
+            <Text style={[
+              styles.roleBadgeText,
+              capability.isSupported
+                ? { color: isDark ? '#34D399' : '#065F46' }
+                : { color: isDark ? '#94A3B8' : '#64748B' },
+            ]}>
               {capability.isSupported ? `🟢 支援 ${capability.biometryType}` : '⚪ 密碼備援'}
             </Text>
           </View>
@@ -915,8 +935,18 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
               長按手機桌面「甜心記帳本」App 圖示即可喚出捷徑，一鍵直達記帳
             </Text>
           </View>
-          <View style={[styles.roleBadge, isQuickActionSupportedState ? styles.roleBadgeOwner : styles.roleBadgeMember]}>
-            <Text style={[styles.roleBadgeText, isQuickActionSupportedState ? styles.roleBadgeTextOwner : styles.roleBadgeTextMember]}>
+          <View style={[
+            styles.roleBadge,
+            isQuickActionSupportedState
+              ? { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }
+              : { backgroundColor: isDark ? '#334155' : '#F1F5F9' },
+          ]}>
+            <Text style={[
+              styles.roleBadgeText,
+              isQuickActionSupportedState
+                ? { color: isDark ? '#34D399' : '#065F46' }
+                : { color: isDark ? '#94A3B8' : '#64748B' },
+            ]}>
               {isQuickActionSupportedState ? '🟢 桌面支援' : '⚪ 快捷就緒'}
             </Text>
           </View>
@@ -970,8 +1000,18 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
               隨時匯出整本帳簿，資料自主永久保存在個人設備
             </Text>
           </View>
-          <View style={[styles.roleBadge, isCloudSynced ? styles.roleBadgeOwner : styles.roleBadgeMember]}>
-            <Text style={[styles.roleBadgeText, isCloudSynced ? styles.roleBadgeTextOwner : styles.roleBadgeTextMember]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          <View style={[
+            styles.roleBadge,
+            isCloudSynced
+              ? { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }
+              : { backgroundColor: isDark ? '#334155' : '#F1F5F9' },
+          ]}>
+            <Text style={[
+              styles.roleBadgeText,
+              isCloudSynced
+                ? { color: isDark ? '#34D399' : '#065F46' }
+                : { color: isDark ? '#94A3B8' : '#64748B' },
+            ]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
               {historySyncProgress ? `🔄 歷史資料同步中 (${Math.max(historySyncProgress.loaded, transactions.length).toLocaleString()} / ${historySyncProgress.total.toLocaleString()})` : (isCloudSynced ? '🟢 雲端已同步' : '💾 本機離線模式')}
             </Text>
           </View>
@@ -1337,17 +1377,38 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
 
       {/* 管理員日常成員模式 / 提權管理模式切換窗條 */}
       {realIsOwner && (
-        <View style={[styles.sudoCard, isAdminMode ? styles.sudoCardUnlocked : styles.sudoCardProtected, { marginTop: 12 }]}>
+        <View
+          style={[
+            styles.sudoCard,
+            isAdminMode
+              ? {
+                  backgroundColor: isDark ? 'rgba(245, 158, 11, 0.12)' : '#FEF3C7',
+                  borderColor: isDark ? 'rgba(245, 158, 11, 0.35)' : '#F59E0B',
+                }
+              : {
+                  backgroundColor: isDark ? colors.background.modal : '#F8FAFC',
+                  borderColor: isDark ? colors.border.default : '#CBD5E1',
+                },
+            { marginTop: 12 },
+          ]}
+        >
           <View style={styles.sudoCardLeft}>
             <Text style={styles.sudoCardIcon}>{isAdminMode ? '👑' : '🛡️'}</Text>
             <View style={{ flex: 1, marginRight: 8 }}>
-              <Text style={[styles.sudoCardTitle, isAdminMode ? styles.sudoCardTitleUnlocked : styles.sudoCardTitleProtected]}>
-                {isAdminMode ? '目前模式：管理員模式 (已啟用)' : '目前模式：日常成員模式 (安全防護中)'}
+              <Text
+                style={[
+                  styles.sudoCardTitle,
+                  isAdminMode
+                    ? { color: isDark ? '#FBBF24' : '#B45309' }
+                    : { color: colors.text.primary },
+                ]}
+              >
+                {isAdminMode ? '目前模式：管理員模式' : '目前模式：日常成員模式'}
               </Text>
               <Text style={[styles.sudoCardDesc, { color: colors.text.secondary }]}>
                 {isAdminMode
-                  ? '管理員特權已全面解除隱藏，可自由維護帳本、管理成員與資料庫備份。管理完成後建議切回日常成員模式。'
-                  : '本機已進入日常成員保護模式，所有管理員專屬按鈕已自動隱藏，日常記帳更安心防誤觸。需要管理時請輸入 PIN 碼切換。'}
+                  ? '已解除管理專屬按鈕限制，可自由維護帳本、管理成員與資料庫備份。完成後建議切回日常成員模式。'
+                  : '管理員專屬按鈕已自動隱藏，日常記帳更安心防誤觸。需要管理時請輸入 PIN 碼切換。'}
               </Text>
             </View>
           </View>
@@ -1368,7 +1429,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                 onPress={onOpenAdminModeModal}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.sudoCardBtnText, styles.sudoCardBtnUnlock]}>
+                <Text style={[styles.sudoCardBtnText, styles.sudoCardBtnTextUnlock]}>
                   🔐 輸入 PIN 碼切換為管理員模式
                 </Text>
               </TouchableOpacity>
