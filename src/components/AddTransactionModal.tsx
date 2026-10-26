@@ -226,7 +226,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     }
   }, [removeRecentMemoTag]);
 
-  const [mode, setMode] = useState<'expense' | 'income' | 'transfer' | 'allowance' | 'memo'>(initialMode);
+  const [mode, setMode] = useState<'expense' | 'income' | 'transfer' | 'allowance' | 'memo'>(
+    initialMode === 'allowance' ? 'transfer' : (initialMode || 'expense')
+  );
+  const [transferTargetType, setTransferTargetType] = useState<'account' | 'member'>(
+    initialMode === 'allowance' || !!defaultRecipientId ? 'member' : 'account'
+  );
   const [type, setType] = useState<TransactionType>('expense');
   const [amount, setAmount] = useState<string>('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
@@ -795,12 +800,18 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     setTransferFromAccountId(fromCandidate?.id || '');
     setTransferToAccountId(toCandidate?.id || '');
 
-    const targetMode = initialMode || 'expense';
+    const targetMode = initialMode === 'allowance' ? 'transfer' : (initialMode || 'expense');
     setMode(targetMode);
     if (targetMode === 'expense' || targetMode === 'income' || targetMode === 'memo') {
       setType(targetMode);
     } else if (targetMode === 'transfer') {
       setType('transfer');
+    }
+
+    if (initialMode === 'allowance' || defaultRecipientId) {
+      setTransferTargetType('member');
+    } else {
+      setTransferTargetType('account');
     }
 
     if (defaultNote) {
@@ -1085,9 +1096,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
   const handleSubmit = async () => {
     if (mode === 'transfer') {
+      if (transferTargetType === 'member') {
+        return handleAllowanceSubmit();
+      }
       return handleTransferSubmit();
     }
-    if (mode === 'allowance') {
+    if ((mode as string) === 'allowance') {
       return handleAllowanceSubmit();
     }
     if (mode === 'memo') {
@@ -1262,9 +1276,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={1.15}>
               {mode === 'transfer'
-                ? '⇄ 帳戶資金互轉 / 提款 / 繳卡費'
-                : mode === 'allowance'
-                ? '🎁 撥發零用錢 (雙向記帳)'
+                ? (transferTargetType === 'member' ? '🎁 轉給家人 / 撥發零用錢' : '⇄ 帳戶資金互轉 / 提款 / 繳卡費')
+                : (mode as string) === 'allowance'
+                ? '🎁 轉給家人 / 撥發零用錢'
                 : mode === 'income'
                 ? '新增一筆收入'
                 : mode === 'memo'
@@ -1348,20 +1362,6 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.typeBtn, mode === 'allowance' && styles.typeBtnActiveAllowance]}
-                onPress={() => {
-                  setMode('allowance');
-                }}
-              >
-                <Text
-                  style={[styles.typeBtnText, mode === 'allowance' && styles.typeBtnTextActiveAllowance]}
-                  maxFontSizeMultiplier={1.15}
-                >
-                  🎁 撥零用錢
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
                 style={[styles.typeBtn, mode === 'memo' && styles.typeBtnActiveMemo]}
                 onPress={() => {
                   setMode('memo');
@@ -1376,6 +1376,49 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {/* ⇄ 轉帳子目標切換：帳戶互轉 VS 轉給家人 / 撥零用錢 */}
+            {mode === 'transfer' && (
+              <View style={styles.transferTargetTypeContainer}>
+                <TouchableOpacity
+                  style={[
+                    styles.transferTargetTypeBtn,
+                    transferTargetType === 'account' && styles.transferTargetTypeBtnActive,
+                  ]}
+                  onPress={() => setTransferTargetType('account')}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.transferTargetTypeBtnText,
+                      transferTargetType === 'account' && styles.transferTargetTypeBtnTextActive,
+                    ]}
+                    maxFontSizeMultiplier={1.12}
+                  >
+                    🏦 帳戶互轉 / 提款 / 繳卡費
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.transferTargetTypeBtn,
+                    transferTargetType === 'member' && styles.transferTargetTypeBtnActiveAllowance,
+                  ]}
+                  onPress={() => setTransferTargetType('member')}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.transferTargetTypeBtnText,
+                      transferTargetType === 'member' && styles.transferTargetTypeBtnTextActive,
+                    ]}
+                    maxFontSizeMultiplier={1.12}
+                  >
+                    🎁 轉給家人 / 撥零用錢
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             {mode === 'memo' ? (
               <>
@@ -1751,8 +1794,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               </>
             ) : (
               <>
-                {/* 撥零用錢模式切換與說明橫幅 */}
-                {mode === 'allowance' && (
+                {/* 轉給家人 / 撥零用錢模式切換與說明橫幅 */}
+                {((mode === 'transfer' && transferTargetType === 'member') || (mode as string) === 'allowance') && (
                   <>
                     <View style={styles.allowanceModeSelector}>
                       <TouchableOpacity
@@ -2015,8 +2058,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               </View>
             )}
 
-            {/* 模式切換：零用錢專屬表單 VS 一般收支表單 */}
-            {mode === 'allowance' ? (
+            {/* 模式切換：轉帳模式 (轉給家人 vs 帳戶互轉) VS 一般收支表單 */}
+            {(mode === 'transfer' || (mode as string) === 'allowance') ? (
+              (transferTargetType === 'member' || (mode as string) === 'allowance') ? (
               <>
                 {/* 出資家長選擇 */}
                 <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>出資家長 (付款支出方)</Text>
@@ -2312,7 +2356,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   />
                 </View>
               </>
-            ) : mode === 'transfer' ? (
+            ) : (
               <>
                 {/* 轉出帳戶 (扣款來源) */}
                 <View style={styles.sectionLabelRow}>
@@ -2514,7 +2558,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   maxFontSizeMultiplier={1.15}
                 />
               </>
-            ) : (
+            )) : (
               <>
                 {/* 分類選擇 */}
                 <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>選擇分類</Text>
@@ -3066,17 +3110,17 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         <TouchableOpacity
           style={[
             styles.submitBtn,
-            mode === 'transfer' && styles.submitBtnTransfer,
-            mode === 'allowance' && styles.submitBtnAllowance,
+            mode === 'transfer' && (transferTargetType === 'member' ? styles.submitBtnAllowance : styles.submitBtnTransfer),
+            (mode as string) === 'allowance' && styles.submitBtnAllowance,
             mode === 'memo' && styles.submitBtnMemo,
           ]}
           onPress={handleSubmit}
         >
           <Text style={styles.submitBtnText} maxFontSizeMultiplier={1.15}>
             {mode === 'transfer'
-              ? '⇄ 確認轉帳 / 調撥 / 繳款'
-              : mode === 'allowance'
-              ? '🎁 一鍵撥款 (自動建立雙向收支)'
+              ? (transferTargetType === 'member' ? '🎁 確認轉發零用錢給家人' : '⇄ 確認轉帳 / 調撥 / 繳款')
+              : (mode as string) === 'allowance'
+              ? '🎁 確認轉發零用錢給家人'
               : mode === 'memo'
               ? '📌 儲存生活記事'
               : mode === 'expense' && parsedDiscountAmount > 0
@@ -3232,6 +3276,48 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontWeight: '700',
   },
   typeBtnTextActiveMemo: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  transferTargetTypeContainer: {
+    flexDirection: 'row',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
+    borderRadius: 12,
+    padding: 3,
+    marginBottom: 12,
+    gap: 4,
+    width: '100%',
+  },
+  transferTargetTypeBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  transferTargetTypeBtnActive: {
+    backgroundColor: isDark ? '#0284C7' : '#0284C7',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  transferTargetTypeBtnActiveAllowance: {
+    backgroundColor: isDark ? '#8B5CF6' : '#8B5CF6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  transferTargetTypeBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: isDark ? colors.text.secondary : '#64748B',
+  },
+  transferTargetTypeBtnTextActive: {
     color: '#FFFFFF',
     fontWeight: '700',
   },

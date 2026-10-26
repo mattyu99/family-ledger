@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.8';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.8 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 6;
+export const APP_BUILD_REVISION = 7;
 
-// 完整版本字串 (例如 "1.0.8.6")
+// 完整版本字串 (例如 "1.0.8.7")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.8',
     date: '2026-10-24 ~ 2026-10-26',
-    title: '手機桌面 Quick Actions 捷徑、全域文字防禦對齊與文件指引補齊 (v1.0.8.0 ~ v1.0.8.6)',
+    title: '手機桌面 Quick Actions 捷徑、轉帳與零用錢二合一統整、全域文字防禦對齊與文件指引補齊 (v1.0.8.0 ~ v1.0.8.7)',
     highlights: [
+      '⇄ 轉帳與零用錢功能二合一統整：將記帳彈窗主分類精簡為「支出 / 收入 / 轉帳 / 記事」4 大維度，轉帳內部提供「帳戶互轉/提款/繳卡費」與「轉給家人/撥零用錢」雙軌切換，保留完整內部資金調撥與雙表記帳能力。',
       '⚡ Android 桌面快捷圖示綁定與名稱簡化：修正桌面釘選捷徑圖示空白問題，全面綁定應用程式圖示並精簡文字長度避免截斷。',
       '🎨 深色主題介面深度適配與精簡：修復管理員身分卡片背景白底問題，移除冗餘標註文字，標籤全面自適應深淺模式。',
       '🛡️ 生物辨識解鎖與桌面快捷狀態防禦：修復冷啟動與長按捷徑意圖快取殘留問題，確保逾時重新解鎖時精準停留在原操作畫面。',
