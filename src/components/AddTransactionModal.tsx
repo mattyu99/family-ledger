@@ -187,6 +187,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     paymentAccounts,
     paymentMethods,
     recentMemoTags,
+    dismissedMemoTags,
     recordMemoTag,
     removeRecentMemoTag,
     taxIdMerchantMap,
@@ -203,8 +204,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   );
 
   const displayedMemoTags = React.useMemo(() => {
-    return getMergedMemoTags(recentMemoTags);
-  }, [recentMemoTags]);
+    return getMergedMemoTags(recentMemoTags, dismissedMemoTags);
+  }, [recentMemoTags, dismissedMemoTags]);
 
   const handleLongPressMemoTag = React.useCallback((tag: string) => {
     if (DEFAULT_MEMO_QUICK_TAGS.includes(tag)) {
@@ -1516,7 +1517,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         style={[styles.quickNoteChip, active && styles.quickNoteChipActive]}
                         onPress={() => {
                           setNote(toggleMemoTag(note, tag));
-                          recordMemoTag(tag);
+                          recordMemoTag(tag, true);
                         }}
                         onLongPress={() => handleLongPressMemoTag(tag)}
                         activeOpacity={0.7}

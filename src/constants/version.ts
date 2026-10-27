@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.8';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.8 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 14;
+export const APP_BUILD_REVISION = 15;
 
-// 完整版本字串 (例如 "1.0.8.14")
+// 完整版本字串 (例如 "1.0.8.15")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.8',
     date: '2026-10-24 ~ 2026-10-27',
-    title: '手機桌面快捷捷徑、轉帳零用錢整合、信用卡通知個人化與待辦分流 (v1.0.8.0 ~ v1.0.8.14)',
+    title: '手機桌面快捷捷徑、轉帳零用錢整合、信用卡通知個人化與待辦分流 (v1.0.8.0 ~ v1.0.8.15)',
     highlights: [
+      '🏷️ 自訂快捷標籤移除機制徹底修復：建立持久化已移除標籤黑名單 (dismissedMemoTags)，嚴格阻絕雲端同步與歷史明細重載時自動將已刪除標籤加回之問題，確保長按移除後永不反覆復活。',
       '🔔 待辦通知排程預覽純化與精準過濾：家庭設定「📌 生活記事待辦提醒」排除已逾期項目（僅列出今日與未來尚未推播之排程），並自動過濾排除非本人的個人專屬待辦；標題去除冗贅工程標籤。',
       '📋 生活備忘與待辦總覽開關精簡為兩段（全部 ⇄ 我的）：切換視角更直覺緊湊；彈窗拉高至 94% 全開高，卡片垂直分層解決標題遮蓋。',
       '📌 生活記事快捷標籤常駐置頂：內建 10 大核心標籤（待辦清單、採買清單、紀念日、重要備忘等）永遠固定在最前面不跳動，使用者自訂之歷史標籤接續在後。',

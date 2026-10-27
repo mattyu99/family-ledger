@@ -21,10 +21,12 @@ export const MEMO_QUICK_TAGS = DEFAULT_MEMO_QUICK_TAGS;
 
 /**
  * 智慧合併生活記事標籤：固定內建核心項目在最前面維持位置穩定，使用者自訂或歷史常用標籤接在後面
+ * 嚴格排除已被使用者長按主動移除的黑名單標籤 (dismissedTags)
  */
-export function getMergedMemoTags(recentTags: string[] = []): string[] {
+export function getMergedMemoTags(recentTags: string[] = [], dismissedTags: string[] = []): string[] {
   const pool: string[] = [];
   const seen = new Set<string>();
+  const dismissedSet = new Set((dismissedTags || []).map(t => (t || '').trim().toLowerCase()));
 
   // 1. 內建項目固定排在最前面，順序永遠固定不跳動
   for (const t of DEFAULT_MEMO_QUICK_TAGS) {
@@ -35,12 +37,12 @@ export function getMergedMemoTags(recentTags: string[] = []): string[] {
     }
   }
 
-  // 2. 使用者自訂/新增的歷史常用標籤排在後面 (排除已包含的內建項目)
+  // 2. 使用者自訂/新增的歷史常用標籤排在後面 (排除已包含的內建項目，且排除已被使用者移除之項目)
   for (const t of recentTags) {
     const clean = (t || '').trim();
     if (!clean) continue;
     const key = clean.toLowerCase();
-    if (!seen.has(key)) {
+    if (!seen.has(key) && !dismissedSet.has(key)) {
       seen.add(key);
       pool.push(clean);
     }

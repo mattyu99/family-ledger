@@ -208,6 +208,7 @@ export const STORAGE_KEYS = {
   AUTO_BACKUP_CONFIG: '@family_ledger_auto_backup_config',
   RECENT_MERCHANTS: '@family_ledger_recent_merchants',
   RECENT_MEMO_TAGS: '@family_ledger_recent_memo_tags',
+  DISMISSED_MEMO_TAGS: '@family_ledger_dismissed_memo_tags',
   PAYMENT_ACCOUNTS: '@family_ledger_payment_accounts',
   DELETED_ACCOUNT_IDS: '@family_ledger_deleted_account_ids',
   ACCOUNTS_INITIALIZED: '@family_ledger_accounts_initialized',

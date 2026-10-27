@@ -216,7 +216,8 @@ interface LedgerContextType {
   taxIdMerchantMap: Record<string, string>;
   recordTaxIdMerchant: (taxId: string, merchantName: string) => Promise<void>;
   recentMemoTags: string[];
-  recordMemoTag: (tag: string) => Promise<void>;
+  dismissedMemoTags: string[];
+  recordMemoTag: (tag: string, isManual?: boolean) => Promise<void>;
   removeRecentMemoTag: (tag: string) => Promise<void>;
   toggleMemoChecklistItem: (transactionId: string, itemIndex: number) => Promise<boolean>;
   exportToCSV: () => string;
@@ -482,6 +483,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // 智慧店家 / 對象自學習名單與雲端欄位探測
   const [recentMerchants, setRecentMerchants] = useState<string[]>(DEFAULT_POPULAR_MERCHANTS);
   const [recentMemoTags, setRecentMemoTags] = useState<string[]>(DEFAULT_MEMO_QUICK_TAGS);
+  const [dismissedMemoTags, setDismissedMemoTags] = useState<string[]>([]);
+  const dismissedMemoTagsRef = useRef<Set<string>>(new Set());
   const hasMerchantColumnRef = useRef<boolean>(false);
   const hasPaymentColumnsRef = useRef<boolean>(false);
   const deletedTxIdsRef = useRef<Set<string>>(new Set());
@@ -524,11 +527,28 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   }, []);
 
-  const recordMemoTag = React.useCallback(async (tag: string) => {
+  const recordMemoTag = React.useCallback(async (tag: string, isManual = false) => {
     const clean = (tag || '').trim();
     if (!clean) return;
+    const lower = clean.toLowerCase();
+
+    // 若非使用者手動點擊/輸入，且已被使用者主動移除過，嚴格阻絕歷史交易載入時自動加回
+    if (!isManual && dismissedMemoTagsRef.current.has(lower)) {
+      return;
+    }
+
+    // 若為使用者手動套用，視為使用者解除移除狀態
+    if (isManual && dismissedMemoTagsRef.current.has(lower)) {
+      dismissedMemoTagsRef.current.delete(lower);
+      setDismissedMemoTags(prev => {
+        const next = prev.filter(t => t.toLowerCase() !== lower);
+        AsyncStorage.setItem(STORAGE_KEYS.DISMISSED_MEMO_TAGS, JSON.stringify(next)).catch(() => {});
+        return next;
+      });
+    }
+
     setRecentMemoTags(prev => {
-      const filtered = prev.filter(item => item.toLowerCase() !== clean.toLowerCase());
+      const filtered = prev.filter(item => item.toLowerCase() !== lower);
       const updated = [clean, ...filtered].slice(0, 30);
       AsyncStorage.setItem(STORAGE_KEYS.RECENT_MEMO_TAGS, JSON.stringify(updated)).catch(() => {});
       return updated;
@@ -537,8 +557,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const removeRecentMemoTag = React.useCallback(async (tag: string) => {
     const clean = (tag || '').trim();
+    if (!clean) return;
+    const lower = clean.toLowerCase();
+
+    // 1. 登記到被主動移除的黑名單中並持久化，確保跨同步與重載時絕不再自動跑出
+    dismissedMemoTagsRef.current.add(lower);
+    setDismissedMemoTags(prev => {
+      if (prev.some(t => t.toLowerCase() === lower)) return prev;
+      const updated = [...prev, clean];
+      AsyncStorage.setItem(STORAGE_KEYS.DISMISSED_MEMO_TAGS, JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
+
+    // 2. 從常用標籤清單中移除
     setRecentMemoTags(prev => {
-      const updated = prev.filter(item => item.toLowerCase() !== clean.toLowerCase());
+      const updated = prev.filter(item => item.toLowerCase() !== lower);
       AsyncStorage.setItem(STORAGE_KEYS.RECENT_MEMO_TAGS, JSON.stringify(updated)).catch(() => {});
       return updated;
     });
@@ -990,6 +1023,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const parsed = JSON.parse(savedRecentMemoTags);
             if (Array.isArray(parsed) && parsed.length > 0) {
               setRecentMemoTags(parsed);
+            }
+          } catch {}
+        }
+
+        const savedDismissedMemoTags = await AsyncStorage.getItem(STORAGE_KEYS.DISMISSED_MEMO_TAGS);
+        if (savedDismissedMemoTags) {
+          try {
+            const parsed = JSON.parse(savedDismissedMemoTags);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setDismissedMemoTags(parsed);
+              dismissedMemoTagsRef.current = new Set(parsed.map((t: string) => (t || '').trim().toLowerCase()));
             }
           } catch {}
         }
@@ -6676,6 +6720,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         taxIdMerchantMap,
         recordTaxIdMerchant,
         recentMemoTags,
+        dismissedMemoTags,
         recordMemoTag,
         removeRecentMemoTag,
         toggleMemoChecklistItem,
