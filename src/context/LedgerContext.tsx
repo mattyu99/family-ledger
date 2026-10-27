@@ -104,6 +104,7 @@ interface LedgerContextType {
     reminder_date?: string;
     reminder_calendar?: CalendarSystem;
     reminder_repeat?: MemoRepeatFrequency;
+    reminder_target?: 'family' | 'personal';
     completed_by?: string;
     transacted_at?: string;
     payment_method?: PaymentMethod;
@@ -132,6 +133,7 @@ interface LedgerContextType {
       reminder_date?: string;
       reminder_calendar?: CalendarSystem;
       reminder_repeat?: MemoRepeatFrequency;
+      reminder_target?: 'family' | 'personal';
       completed_by?: string;
       completion_note?: string;
       linked_transaction_id?: string;
@@ -1145,6 +1147,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               reminder_date: reminderDate || newRow.reminder_date,
               reminder_calendar: reminderCalendar || newRow.reminder_calendar,
               reminder_repeat: reminderRepeat || newRow.reminder_repeat,
+              reminder_target: newRow.reminder_target || 'family',
               completed_by: completedBy || newRow.completed_by,
               merchant: parsedMerchant || undefined,
               note: parsedNote || '',
@@ -4918,6 +4921,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     reminder_date?: string;
     reminder_calendar?: CalendarSystem;
     reminder_repeat?: MemoRepeatFrequency;
+    reminder_target?: 'family' | 'personal';
     completed_by?: string;
     transacted_at?: string;
     payment_method?: PaymentMethod;
@@ -5059,6 +5063,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       reminder_date: data.reminder_date,
       reminder_calendar: effectiveReminderCal,
       reminder_repeat: effectiveReminderRep,
+      reminder_target: data.reminder_target || 'family',
       completed_by: data.completed_by,
       completion_note: data.completion_note || undefined,
       linked_transaction_id: data.linked_transaction_id || undefined,
@@ -5162,6 +5167,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (newTx.image_url) {
           insertPayload.image_url = newTx.image_url;
         }
+        if (newTx.reminder_target) {
+          insertPayload.reminder_target = newTx.reminder_target;
+        }
 
         let { error: txError } = await supabase.from('transactions').insert(insertPayload);
 
@@ -5183,6 +5191,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           delete insertPayload.completion_note;
           delete insertPayload.linked_transaction_id;
           delete insertPayload.image_url;
+          delete insertPayload.reminder_target;
           insertPayload.note = newTx.merchant
             ? `[${newTx.merchant}] ${newTx.note || ''}`.trim()
             : newTx.note;
@@ -5682,6 +5691,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       reminder_date?: string;
       reminder_calendar?: CalendarSystem;
       reminder_repeat?: MemoRepeatFrequency;
+      reminder_target?: 'family' | 'personal';
       completed_by?: string;
       completion_note?: string;
       linked_transaction_id?: string;
@@ -5882,6 +5892,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             reminder_date: isTargetMemo ? effectiveReminder : (data.reminder_date !== undefined ? (data.reminder_date || undefined) : t.reminder_date),
             reminder_calendar: isTargetMemo ? effectiveCalendar : t.reminder_calendar,
             reminder_repeat: isTargetMemo ? effectiveRepeat : t.reminder_repeat,
+            reminder_target: data.reminder_target !== undefined ? data.reminder_target : t.reminder_target,
             completed_by: rowCompletedBy,
             completion_note: data.completion_note !== undefined ? (data.completion_note || undefined) : t.completion_note,
             linked_transaction_id: data.linked_transaction_id !== undefined ? (data.linked_transaction_id || undefined) : t.linked_transaction_id,
@@ -5936,6 +5947,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               reminder_date: nextReminderYmd,
               reminder_calendar: effectiveCalendar,
               reminder_repeat: effectiveRepeat,
+              reminder_target: targetTx.reminder_target || 'family',
               completed_by: undefined,
               paid_by: targetTx.paid_by,
               payer_profile: targetTx.payer_profile,
@@ -5989,6 +6001,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (data.completion_note !== undefined) updatePayload.completion_note = data.completion_note || null;
         if (data.linked_transaction_id !== undefined) updatePayload.linked_transaction_id = data.linked_transaction_id || null;
         if (data.image_url !== undefined) updatePayload.image_url = data.image_url || null;
+        if (data.reminder_target !== undefined) updatePayload.reminder_target = data.reminder_target;
         updatePayload.updated_at = new Date().toISOString();
 
         if (hasMerchantColumnRef.current) {
@@ -6025,6 +6038,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           delete updatePayload.completion_note;
           delete updatePayload.linked_transaction_id;
           delete updatePayload.image_url;
+          delete updatePayload.reminder_target;
           const effectiveMerchant = data.merchant !== undefined ? cleanMerchant : targetTx?.merchant;
           updatePayload.note = effectiveMerchant
             ? `[${effectiveMerchant}] ${effectiveNote}`.trim()
@@ -6241,7 +6255,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (updateSuccess) {
       scheduleMemoReminderNotifications(
         transactions.map(t => (t.id === id ? { ...t, is_settled: nextSettled } : t)),
-        members
+        members,
+        currentUser?.id
       ).catch(() => {});
     }
 

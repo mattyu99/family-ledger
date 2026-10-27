@@ -86,11 +86,12 @@ ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS payment_method TEXT DEF
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS account_id UUID;
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS is_reconciled BOOLEAN DEFAULT FALSE;
 
--- 為 transactions 表新增生活備忘與待辦延伸欄位：completed_by (辦妥人), reminder_date (提醒日期), completion_note (辦妥說明), linked_transaction_id (連動之支出或記事 ID)
+-- 為 transactions 表新增生活備忘與待辦延伸欄位：completed_by (辦妥人), reminder_date (提醒日期), completion_note (辦妥說明), linked_transaction_id (連動之支出或記事 ID), reminder_target (提醒對象範圍)
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS completed_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL;
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS reminder_date TEXT;
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS completion_note TEXT;
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS linked_transaction_id UUID;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS reminder_target TEXT DEFAULT 'family';
 
 -- 確保 Supabase Realtime DELETE 事件包含完整欄位（含 ledger_id 與 id），防止 RLS 阻斷 DELETE 推播
 ALTER TABLE public.transactions REPLICA IDENTITY FULL;

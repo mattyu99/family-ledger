@@ -104,7 +104,7 @@ function getTaiwanTimeRanges() {
 /**
  * 檢查帳本內的信用卡是否適逢出帳日隔天或繳款到期前 3 天
  */
-async function checkCreditCardAlerts(supabase, ledgerId, targetTwDate) {
+async function checkCreditCardAlerts(supabase, ledgerId, targetTwDate, profileMap) {
   try {
     const { data: cards, error } = await supabase
       .from('payment_accounts')
@@ -122,6 +122,9 @@ async function checkCreditCardAlerts(supabase, ledgerId, targetTwDate) {
 
     for (const card of cards) {
       const cycleDate = Math.max(1, Math.min(31, card.billing_cycle_date || 15));
+      const cardholder = card.user_id ? (profileMap?.get ? profileMap.get(card.user_id) : profileMap?.[card.user_id]) : null;
+      const cardholderName = cardholder ? cardholder.display_name : '';
+      const holderTag = cardholderName ? ` (${cardholderName})` : '';
 
       // 1. 出帳日隔天判定 (結帳日次日)
       const statementDate = new Date(nowYear, nowMonth, cycleDate + 1, 0, 0, 0, 0);
@@ -154,14 +157,14 @@ async function checkCreditCardAlerts(supabase, ledgerId, targetTwDate) {
           alerts.push({
             type: 'statement',
             cardName: card.name,
-            title: `💳 ${card.name} 本期帳單已出帳`,
+            title: `💳 ${card.name}${holderTag} 本期帳單已出帳`,
             body: `帳單已於今日出帳，待繳約 ${amountStr}，請記得於 ${dueDayStr} 前完成繳納！`,
           });
         } else if (isDueSoon) {
           alerts.push({
             type: 'due_soon',
             cardName: card.name,
-            title: `⏰ ${card.name} 繳款期限倒數 ${daysRemaining} 天`,
+            title: `⏰ ${card.name}${holderTag} 繳款期限倒數 ${daysRemaining} 天`,
             body: `帳單將於 ${dueDayStr} 到期，待繳約 ${amountStr}，請及早安排扣款或轉帳！`,
           });
         }
@@ -215,12 +218,16 @@ async function checkMemoAlerts(supabase, ledgerId, targetTwDate, profileMap) {
       const title = match ? match[1].trim() : '生活待辦';
       const cleanContent = match ? rawText.replace(match[0], '').trim() : rawText;
 
+      const isPersonal = m.reminder_target === 'personal';
+      const scopeTag = isPersonal ? (assigneeName ? `[個人·${assigneeName}]` : '[個人]') : '[全家]';
+
       const item = {
         id: m.id,
-        title,
+        title: `${scopeTag} ${title}`,
         content: cleanContent || '(無備註)',
         reminderDate: rYmd,
         assigneeName,
+        isPersonal,
       };
 
       if (rYmd === todayYmd) {
@@ -1007,7 +1014,7 @@ async function main() {
     const todayBalance = todayIncome - todayExpense;
 
     // (D) 巡檢信用卡出帳日與繳款期限警戒
-    const billingAlerts = await checkCreditCardAlerts(supabase, ledger.id, targetTwDate);
+    const billingAlerts = await checkCreditCardAlerts(supabase, ledger.id, targetTwDate, profileMap);
     if (billingAlerts.length > 0) {
       console.log(`💳 偵測到 ${billingAlerts.length} 則信用卡帳單出帳或繳款警戒提醒！`);
     }

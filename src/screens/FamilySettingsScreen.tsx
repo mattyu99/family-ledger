@@ -188,14 +188,14 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     await setBillingNotificationsEnabled(nextState);
     if (nextState) {
       setIsSchedulingNotice(true);
-      const count = await scheduleBillingReminderNotifications(paymentAccounts, transactions);
+      const count = await scheduleBillingReminderNotifications(paymentAccounts, transactions, currentUser?.id);
       setIsSchedulingNotice(false);
       showAlert(
-        '🔔 信用卡提醒已開啟',
-        `已成功為您排程 ${count} 則信用卡結帳與繳款到期提醒！\n\n・出帳日隔天 09:30：帳單出帳提醒\n・繳款到期前 3 天 09:30：待繳金額與防違約金提醒`
+        '🔔 信用卡個人提醒已開啟',
+        `已成功為您本人持有的信用卡排程 ${count} 則結帳與繳款到期提醒！\n（其他家庭成員之卡片將不干擾本機）\n\n・出帳日隔天 09:30：帳單出帳提醒\n・繳款到期前 3 天 09:30：待繳金額與防違約金提醒`
       );
     } else {
-      await scheduleBillingReminderNotifications(paymentAccounts, transactions);
+      await scheduleBillingReminderNotifications(paymentAccounts, transactions, currentUser?.id);
       showAlert('信用卡提醒已關閉', '已取消所有信用卡本機排程提醒。');
     }
   };
@@ -205,11 +205,11 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       showAlert('平台提示', 'Web 網頁端不支援發送系統本機通知，請在 iOS / Android 手機 App 測試。');
       return;
     }
-    const sampleCard = creditCards[0];
+    const sampleCard = creditCards.find(c => c.user_id === currentUser?.id) || creditCards[0];
     const cardName = sampleCard ? sampleCard.name : '玉山信用卡';
     const amount = sampleCard ? calculateCardOutstandingAmount(sampleCard.id, transactions) || 12800 : 12800;
 
-    const success = await sendTestBillingNotification(cardName, amount);
+    const success = await sendTestBillingNotification(cardName, amount, currentUser?.display_name);
     if (success) {
       showAlert('測試通知已發送', `已發送「${cardName}」帳單出帳測試通知！\n請留意手機螢幕頂部或通知中心橫幅。`);
     } else {
@@ -237,14 +237,14 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     await setMemoNotificationsEnabled(nextState);
     if (nextState) {
       setIsSchedulingMemoNotice(true);
-      const count = await scheduleMemoReminderNotifications(transactions, members);
+      const count = await scheduleMemoReminderNotifications(transactions, members, currentUser?.id);
       setIsSchedulingMemoNotice(false);
       showAlert(
-        '📌 記事提醒已開啟',
-        `已成功為您排程 ${count} 則生活記事到期提醒！\n\n・提醒日當天 09:00：待辦清單提醒\n・重要拜拜/紀念日：前一晚 20:00 預警通知`
+        '📌 記事待辦提醒已開啟',
+        `已成功為您排程 ${count} 則待辦提醒！\n（包含全家共同待辦，以及指派給您本人的個人專屬備忘）\n\n・提醒日當天 09:00：待辦清單提醒\n・重要拜拜/紀念日：前一晚 20:00 預警通知`
       );
     } else {
-      await scheduleMemoReminderNotifications(transactions, members);
+      await scheduleMemoReminderNotifications(transactions, members, currentUser?.id);
       showAlert('記事提醒已關閉', '已取消所有生活記事本機排程提醒。');
     }
   };
@@ -674,10 +674,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
         <View style={styles.sectionHeaderRow}>
           <View style={styles.sectionHeaderLeft}>
             <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              💳 信用卡帳單與繳款提醒
+              💳 信用卡帳單個人提醒
             </Text>
             <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              結帳日隔天與繳款到期前 3 天自動推送通知，掌握刷卡待繳金額防忘繳
+              僅提醒您本人持有的信用卡，於出帳日與繳款期限前自動發送專屬推播防忘繳
             </Text>
           </View>
           <TouchableOpacity
@@ -713,10 +713,16 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                       <Text style={[styles.cardScheduleName, { color: colors.text.primary }]} numberOfLines={1}>
                         {card.name}
                       </Text>
-                      {cardholder && (
+                      {card.user_id ? (
+                        <View style={[styles.cardholderBadge, { backgroundColor: card.user_id === currentUser?.id ? (isDark ? '#1E3A8A' : '#EFF6FF') : colors.border.default }]}>
+                          <Text style={[styles.cardholderBadgeText, { color: card.user_id === currentUser?.id ? (isDark ? '#93C5FD' : '#2563EB') : colors.text.secondary }]}>
+                            {card.user_id === currentUser?.id ? '📱 本人卡片 (本機提醒)' : `👤 ${cardholder?.display_name || '其他成員'}`}
+                          </Text>
+                        </View>
+                      ) : (
                         <View style={[styles.cardholderBadge, { backgroundColor: colors.border.default }]}>
                           <Text style={[styles.cardholderBadgeText, { color: colors.text.secondary }]}>
-                            {cardholder.display_name}
+                            🌐 通用公用卡 (本機提醒)
                           </Text>
                         </View>
                       )}
@@ -757,10 +763,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
         <View style={styles.sectionHeaderRow}>
           <View style={styles.sectionHeaderLeft}>
             <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              📌 生活記事與待辦提醒
+              📌 生活記事待辦提醒 (全家 ⇄ 個人分流)
             </Text>
             <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              設定提醒日期的待辦備忘於當天 09:00 推播通知，重大拜拜/紀念日前一晚預先警示
+              全家待辦全員接收；個人專屬待辦僅提醒被指派之負責成員，精準防擾
             </Text>
           </View>
           <TouchableOpacity
@@ -795,13 +801,11 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                       <Text style={[styles.cardScheduleName, { color: colors.text.primary }]} numberOfLines={1}>
                         {parsed.title}
                       </Text>
-                      {assignee && (
-                        <View style={[styles.cardholderBadge, { backgroundColor: colors.border.default }]}>
-                          <Text style={[styles.cardholderBadgeText, { color: colors.text.secondary }]}>
-                            {assignee.display_name}
-                          </Text>
-                        </View>
-                      )}
+                      <View style={[styles.cardholderBadge, { backgroundColor: memo.reminder_target === 'personal' ? (isDark ? '#581C87' : '#FAF5FF') : (isDark ? '#1E3A8A' : '#EFF6FF') }]}>
+                        <Text style={[styles.cardholderBadgeText, { color: memo.reminder_target === 'personal' ? (isDark ? '#D8B4FE' : '#9333EA') : (isDark ? '#93C5FD' : '#2563EB') }]}>
+                          {memo.reminder_target === 'personal' ? `👤 個人專屬${assignee ? `·${assignee.display_name}` : ''}` : '🌐 全家待辦'}
+                        </Text>
+                      </View>
                     </View>
                     <Text style={[styles.cardScheduleMeta, { color: colors.text.secondary }]} numberOfLines={1}>
                       {parsed.cleanContent || memo.note}

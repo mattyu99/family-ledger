@@ -371,10 +371,17 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                           </Text>
                         </View>
                       ) : dueStatus ? (
-                        <View style={[styles.dueBadge, { backgroundColor: dueStatus.bg, borderColor: dueStatus.border }]}>
-                          <Text style={[styles.dueBadgeText, { color: dueStatus.color }]} maxFontSizeMultiplier={1.08}>
-                            {dueStatus.label}
-                          </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <View style={[styles.dueBadge, { backgroundColor: dueStatus.bg, borderColor: dueStatus.border }]}>
+                            <Text style={[styles.dueBadgeText, { color: dueStatus.color }]} maxFontSizeMultiplier={1.08}>
+                              {dueStatus.label}
+                            </Text>
+                          </View>
+                          <View style={[styles.scopeBadge, item.reminder_target === 'personal' ? styles.scopeBadgePersonal : styles.scopeBadgeFamily]}>
+                            <Text style={[styles.scopeBadgeText, item.reminder_target === 'personal' ? styles.scopeBadgeTextPersonal : styles.scopeBadgeTextFamily]} maxFontSizeMultiplier={1.08}>
+                              {item.reminder_target === 'personal' ? `👤 個人${payer?.display_name ? `·${payer.display_name}` : ''}` : '🌐 全家'}
+                            </Text>
+                          </View>
                         </View>
                       ) : (
                         <Text style={styles.itemDateText} maxFontSizeMultiplier={1.08}>{dateFormatted}</Text>
@@ -763,6 +770,30 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   dueBadgeText: {
     fontSize: 10.5,
     fontWeight: '700',
+  },
+  scopeBadge: {
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+  },
+  scopeBadgeFamily: {
+    backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF',
+    borderColor: isDark ? '#3B82F6' : '#BFDBFE',
+  },
+  scopeBadgePersonal: {
+    backgroundColor: isDark ? 'rgba(168, 85, 247, 0.2)' : '#FAF5FF',
+    borderColor: isDark ? '#A855F7' : '#E9D5FF',
+  },
+  scopeBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+  },
+  scopeBadgeTextFamily: {
+    color: isDark ? '#93C5FD' : '#2563EB',
+  },
+  scopeBadgeTextPersonal: {
+    color: isDark ? '#D8B4FE' : '#9333EA',
   },
   completedBadge: {
     backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5',

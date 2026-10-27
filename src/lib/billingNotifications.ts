@@ -203,11 +203,12 @@ export const calculateCardScheduleDates = (
 };
 
 /**
- * 重新排程所有信用卡的本機到期提醒通知
+ * 重新排程所有信用卡的本機到期提醒通知（支援個人化：僅排程持卡人為本人的卡片）
  */
 export const scheduleBillingReminderNotifications = async (
   paymentAccounts: PaymentAccount[],
-  transactions: Transaction[]
+  transactions: Transaction[],
+  currentUserId?: string
 ): Promise<number> => {
   if (!isNotificationSupported()) return 0;
 
@@ -224,7 +225,14 @@ export const scheduleBillingReminderNotifications = async (
     // 清空舊信用卡排程
     await cancelBillingScheduledNotifications();
 
-    const creditCards = paymentAccounts.filter(acc => acc.type === 'credit_card');
+    // 個人化持卡人過濾：若卡片已指派持卡人且傳入 currentUserId，僅排程屬於本人的卡片；未指派持卡人之公用卡則全體排程
+    const creditCards = paymentAccounts.filter(acc => {
+      if (acc.type !== 'credit_card') return false;
+      if (currentUserId && acc.user_id) {
+        return acc.user_id === currentUserId;
+      }
+      return true;
+    });
     if (creditCards.length === 0) return 0;
 
     let scheduledCount = 0;
@@ -280,11 +288,12 @@ export const scheduleBillingReminderNotifications = async (
 };
 
 /**
- * 重新排程所有未完成生活記事的本機提醒通知
+ * 重新排程所有未完成生活記事的本機提醒通知（支援全家 vs 個人專屬分流）
  */
 export const scheduleMemoReminderNotifications = async (
   transactions: Transaction[],
-  members?: Profile[]
+  members?: Profile[],
+  currentUserId?: string
 ): Promise<number> => {
   if (!isNotificationSupported()) return 0;
 
@@ -310,6 +319,12 @@ export const scheduleMemoReminderNotifications = async (
     const now = new Date();
 
     for (const memo of pendingMemos) {
+      const isPersonal = memo.reminder_target === 'personal';
+      // 個人專屬待辦分流：若為個人專屬待辦且指派了負責人，只有當前登入者為該負責人時才在本機排程提醒
+      if (isPersonal && currentUserId && memo.paid_by && memo.paid_by !== currentUserId) {
+        continue;
+      }
+
       const dateParts = (memo.reminder_date || '').split('-');
       if (dateParts.length !== 3) continue;
 
@@ -326,6 +341,7 @@ export const scheduleMemoReminderNotifications = async (
       const icon = parsed.icon || '📌';
       const title = parsed.title || '生活待辦';
       const cleanContent = parsed.cleanContent || memo.note || '';
+      const scopeBadge = isPersonal ? '【個人專屬】' : '【全家】';
 
       // 責任成員稱謂
       let assigneeText = '';
@@ -337,7 +353,7 @@ export const scheduleMemoReminderNotifications = async (
       if (reminderDate.getTime() > now.getTime()) {
         await Notifications.scheduleNotificationAsync({
           content: {
-            title: `${icon} 生活記事提醒：【${title}】`,
+            title: `${icon} ${scopeBadge}生活待辦提醒：【${title}】`,
             body: `${cleanContent}${assigneeText}`,
             sound: true,
             data: { memoId: memo.id, type: 'memo_reminder' },
@@ -363,7 +379,7 @@ export const scheduleMemoReminderNotifications = async (
         if (preReminderDate.getTime() > now.getTime()) {
           await Notifications.scheduleNotificationAsync({
             content: {
-              title: `🔔 明日生活備忘預告：【${title}】`,
+              title: `🔔 ${scopeBadge}明日生活備忘預告：【${title}】`,
               body: `提醒您明日有重要事項：「${cleanContent}」，請預先準備！${assigneeText}`,
               sound: true,
               data: { memoId: memo.id, type: 'memo_pre_reminder' },
@@ -391,7 +407,8 @@ export const scheduleMemoReminderNotifications = async (
  */
 export const sendTestBillingNotification = async (
   cardName: string = '玉山信用卡',
-  amount: number = 12800
+  amount: number = 12800,
+  cardholderName?: string
 ): Promise<boolean> => {
   if (!isNotificationSupported()) {
     return false;
@@ -401,9 +418,10 @@ export const sendTestBillingNotification = async (
     const hasPermission = await requestNotificationPermission();
     if (!hasPermission) return false;
 
+    const holderText = cardholderName ? ` (${cardholderName})` : '';
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: `💳 ${cardName} 本期帳單已出帳 (測試)`,
+        title: `💳 ${cardName}${holderText} 本期帳單已出帳 (測試)`,
         body: `您的「${cardName}」本期帳單已出帳，應繳 NT$ ${amount.toLocaleString()}，請記得於本月 25 號前繳納！`,
         sound: true,
         data: { test: true },
@@ -423,7 +441,8 @@ export const sendTestBillingNotification = async (
  */
 export const sendTestMemoNotification = async (
   title: string = '採買清單',
-  content: string = '記得下班順路購買鮮奶與雞蛋！'
+  content: string = '記得下班順路購買鮮奶與雞蛋！',
+  isPersonal: boolean = false
 ): Promise<boolean> => {
   if (!isNotificationSupported()) return false;
 
@@ -431,9 +450,10 @@ export const sendTestMemoNotification = async (
     const hasPermission = await requestNotificationPermission();
     if (!hasPermission) return false;
 
+    const scopeBadge = isPersonal ? '【個人專屬】' : '【全家】';
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: `🛒 生活記事提醒 (測試)：【${title}】`,
+        title: `🛒 ${scopeBadge}生活待辦提醒 (測試)：【${title}】`,
         body: content,
         sound: true,
         data: { test: true, type: 'memo_reminder' },

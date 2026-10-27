@@ -120,6 +120,7 @@ export interface Transaction {
   reminder_date?: string; // 選填生活記事提醒日期 (YYYY-MM-DD)
   reminder_calendar?: 'solar' | 'lunar'; // 提醒曆法基準：'solar' (國曆) | 'lunar' (農曆)
   reminder_repeat?: 'once' | 'monthly' | 'lunar_1_15' | 'lunar_2_16' | 'yearly'; // 提醒重複週期
+  reminder_target?: 'family' | 'personal'; // 提醒對象範圍：'family' (全家提醒，預設) | 'personal' (個人專屬)
   completed_by?: string; // 完成此待辦事項的家庭成員 ID (Profile ID)
   completion_note?: string; // 辦妥此待辦事項的補充說明 / 回報備註
   linked_transaction_id?: string; // 連動之交易 ID (記事連動之支出 ID，或支出反向關聯之記事 ID)

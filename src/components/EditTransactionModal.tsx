@@ -268,6 +268,9 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const [memoReminderRepeat, setMemoReminderRepeat] = useState<MemoRepeatFrequency>(
     () => transaction?.reminder_repeat || 'once'
   );
+  const [memoReminderTarget, setMemoReminderTarget] = useState<'family' | 'personal'>(
+    () => transaction?.reminder_target || 'family'
+  );
   const [reminderPickerInitialMode, setReminderPickerInitialMode] = useState<CalendarSystem>(
     () => transaction?.reminder_calendar || 'solar'
   );
@@ -864,6 +867,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       setMemoReminderDate(transaction.reminder_date || '');
       setMemoReminderCalendar(transaction.reminder_calendar || 'solar');
       setMemoReminderRepeat(transaction.reminder_repeat || 'once');
+      setMemoReminderTarget(transaction.reminder_target || 'family');
       setReminderPickerInitialMode(transaction.reminder_calendar || 'solar');
       setIsSettled(!!transaction.is_settled);
       setCompletionNote(transaction.completion_note || '');
@@ -1097,6 +1101,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           reminder_date: memoReminderDate || undefined,
           reminder_calendar: memoReminderDate ? memoReminderCalendar : undefined,
           reminder_repeat: memoReminderDate ? memoReminderRepeat : undefined,
+          reminder_target: memoReminderDate ? memoReminderTarget : undefined,
           is_settled: true,
           completed_by: effectiveCompleter,
           completion_note: noteToSave || undefined,
@@ -1171,6 +1176,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           reminder_date: memoReminderDate || undefined,
           reminder_calendar: memoReminderDate ? memoReminderCalendar : undefined,
           reminder_repeat: memoReminderDate ? memoReminderRepeat : undefined,
+          reminder_target: memoReminderDate ? memoReminderTarget : undefined,
           transacted_at: transactedAt || transaction.transacted_at,
           is_settled: isSettled,
           completed_by: isSettled ? (transaction.completed_by || currentUser?.id) : undefined,
@@ -1950,8 +1956,67 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   })()}
                 </View>
 
-                {/* 記錄成員 */}
-                <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記錄成員</Text>
+                {/* 🎯 待辦提醒對象範圍切換 (全家 vs 個人專屬) */}
+                {!!memoReminderDate && (
+                  <View style={styles.memoTargetCard}>
+                    <View style={styles.memoRepeatHeaderRow}>
+                      <Text style={styles.memoRepeatTitle} maxFontSizeMultiplier={1.08}>
+                        🎯 提醒對象 (通知範圍)
+                      </Text>
+                    </View>
+                    <View style={styles.memoTargetButtonsRow}>
+                      <TouchableOpacity
+                        disabled={!canEdit}
+                        style={[
+                          styles.memoTargetBtn,
+                          memoReminderTarget === 'family' && styles.memoTargetBtnActiveFamily,
+                        ]}
+                        onPress={() => setMemoReminderTarget('family')}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.memoTargetBtnText,
+                            memoReminderTarget === 'family' && styles.memoTargetBtnTextActive,
+                          ]}
+                          maxFontSizeMultiplier={1.1}
+                        >
+                          🌐 全家提醒 (全員通知)
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        disabled={!canEdit}
+                        style={[
+                          styles.memoTargetBtn,
+                          memoReminderTarget === 'personal' && styles.memoTargetBtnActivePersonal,
+                        ]}
+                        onPress={() => setMemoReminderTarget('personal')}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.memoTargetBtnText,
+                            memoReminderTarget === 'personal' && styles.memoTargetBtnTextActive,
+                          ]}
+                          maxFontSizeMultiplier={1.1}
+                        >
+                          👤 個人專屬 (僅提醒負責人)
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.memoTargetDescText} maxFontSizeMultiplier={1.05}>
+                      {memoReminderTarget === 'personal'
+                        ? `💡 僅指派之負責人（${(members.find(m => m.id === (paidBy || transaction.paid_by)) || currentUser)?.display_name || '此成員'}）的手機會在到期日收到推播。`
+                        : '💡 全體家庭成員的手機在提醒日皆會收到推播，適合家庭採買與公共待辦。'}
+                    </Text>
+                  </View>
+                )}
+
+                {/* 負責 / 記錄成員 */}
+                <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>
+                  {memoReminderTarget === 'personal' ? '負責成員 (僅該成員手機接收個人提醒)' : '記錄成員'}
+                </Text>
                 <View style={styles.payerRow}>
                   {members.map(member => {
                     const isSelected = (paidBy || transaction.paid_by) === member.id;
@@ -4053,6 +4118,54 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     color: isDark ? '#FDE68A' : '#B45309',
     marginTop: 3,
     fontWeight: '600',
+  },
+  memoTargetCard: {
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
+    borderWidth: 1,
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 14,
+  },
+  memoTargetButtonsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 2,
+    marginBottom: 6,
+  },
+  memoTargetBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: isDark ? colors.background.card : '#EDF2F7',
+    borderWidth: 1,
+    borderColor: isDark ? colors.border.default : '#CBD5E1',
+  },
+  memoTargetBtnActiveFamily: {
+    backgroundColor: isDark ? '#1E3A8A' : '#EFF6FF',
+    borderColor: '#3B82F6',
+  },
+  memoTargetBtnActivePersonal: {
+    backgroundColor: isDark ? '#581C87' : '#FAF5FF',
+    borderColor: '#A855F7',
+  },
+  memoTargetBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: isDark ? colors.text.secondary : '#64748B',
+  },
+  memoTargetBtnTextActive: {
+    color: isDark ? '#FFFFFF' : '#1E293B',
+    fontWeight: '700',
+  },
+  memoTargetDescText: {
+    fontSize: 11,
+    color: isDark ? colors.text.muted : '#64748B',
+    lineHeight: 16,
+    marginTop: 2,
   },
   discountToggleChip: {
     paddingHorizontal: 10,
