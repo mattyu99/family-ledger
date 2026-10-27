@@ -8,7 +8,9 @@ export interface QuickActionItemConfig {
   kind: QuickActionKind;
   title: string;
   subtitle: string;
-  iconName: string;
+  iconName?: string;
+  iconIos: string;
+  iconAndroid: string;
 }
 
 export const QUICK_ACTIONS_CONFIG: QuickActionItemConfig[] = [
@@ -18,6 +20,8 @@ export const QUICK_ACTIONS_CONFIG: QuickActionItemConfig[] = [
     title: '記支出',
     subtitle: '記錄日常花費與消費',
     iconName: 'compose',
+    iconIos: 'symbol:cart.badge.minus',
+    iconAndroid: 'shortcut_expense',
   },
   {
     id: 'quick_income',
@@ -25,6 +29,8 @@ export const QUICK_ACTIONS_CONFIG: QuickActionItemConfig[] = [
     title: '記收入',
     subtitle: '薪資、獎金或入帳',
     iconName: 'add',
+    iconIos: 'symbol:dollarsign.circle.fill',
+    iconAndroid: 'shortcut_income',
   },
   {
     id: 'quick_scan',
@@ -32,6 +38,8 @@ export const QUICK_ACTIONS_CONFIG: QuickActionItemConfig[] = [
     title: '掃描發票',
     subtitle: '相機拍照與 QR 碼辨識',
     iconName: 'capturePhoto',
+    iconIos: 'symbol:qrcode.viewfinder',
+    iconAndroid: 'shortcut_scan',
   },
   {
     id: 'quick_memo',
@@ -39,6 +47,8 @@ export const QUICK_ACTIONS_CONFIG: QuickActionItemConfig[] = [
     title: '隨手記事',
     subtitle: '備忘、待辦與重要提醒',
     iconName: 'task',
+    iconIos: 'symbol:checklist',
+    iconAndroid: 'shortcut_memo',
   },
 ];
 
@@ -50,8 +60,8 @@ const QUICK_ACTION_ITEMS: QuickActions.Action[] = QUICK_ACTIONS_CONFIG.map(item 
   title: item.title,
   subtitle: item.subtitle,
   icon: Platform.select({
-    ios: item.iconName,
-    android: 'ic_launcher',
+    ios: item.iconIos || item.iconName,
+    android: item.iconAndroid,
     default: undefined,
   }),
   params: {

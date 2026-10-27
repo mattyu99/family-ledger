@@ -63,7 +63,35 @@
           "faceIDPermission": "允許使用 Face ID 驗證身分以保護家庭資產與存款隱私"
         }
       ],
-      "expo-quick-actions"
+      [
+        "expo-quick-actions",
+        {
+          "androidIcons": {
+            "shortcut_expense": {
+              "foregroundImage": "./assets/shortcuts/shortcut_expense.png",
+              "backgroundColor": "#FFF0F5"
+            },
+            "shortcut_income": {
+              "foregroundImage": "./assets/shortcuts/shortcut_income.png",
+              "backgroundColor": "#FFF0F5"
+            },
+            "shortcut_scan": {
+              "foregroundImage": "./assets/shortcuts/shortcut_scan.png",
+              "backgroundColor": "#FFF0F5"
+            },
+            "shortcut_memo": {
+              "foregroundImage": "./assets/shortcuts/shortcut_memo.png",
+              "backgroundColor": "#FFF0F5"
+            }
+          },
+          "iosIcons": {
+            "shortcut_expense": "./assets/shortcuts/shortcut_expense.png",
+            "shortcut_income": "./assets/shortcuts/shortcut_income.png",
+            "shortcut_scan": "./assets/shortcuts/shortcut_scan.png",
+            "shortcut_memo": "./assets/shortcuts/shortcut_memo.png"
+          }
+        }
+      ]
     ],
     "web": {
       "favicon": "./assets/favicon.png"
