@@ -30,6 +30,7 @@ const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultip
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 type TodoTab = 'all' | 'today' | 'upcoming' | 'undated' | 'completed';
+type TodoScope = 'all' | 'family' | 'mine';
 
 interface MemoTodoModalProps {
   visible: boolean;
@@ -48,8 +49,9 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
 }) => {
   const { isDark, colors } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-  const { transactions, getMemberById, toggleMemoSettled, toggleMemoChecklistItem } = useLedger();
+  const { transactions, getMemberById, toggleMemoSettled, toggleMemoChecklistItem, currentUser } = useLedger();
   const [activeTab, setActiveTab] = useState<TodoTab>('all');
+  const [scopeFilter, setScopeFilter] = useState<TodoScope>('all');
   const scrollRef = useRef<ScrollView>(null);
 
   // 切換分頁時捲動位置即時歸零置頂
@@ -58,9 +60,16 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   };
 
-  // 顯式關閉彈窗時歸零分頁與位置
+  // 切換視角時捲動位置即時歸零置頂
+  const handleScopeChange = (newScope: TodoScope) => {
+    setScopeFilter(newScope);
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  };
+
+  // 顯式關閉彈窗時歸零分頁、視角與捲動位置
   const handleExplicitClose = () => {
     setActiveTab('all');
+    setScopeFilter('all');
     scrollRef.current?.scrollTo({ y: 0, animated: false });
     onClose();
   };
@@ -68,10 +77,24 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
   // 每次開啟彈窗或交易更新時，精準取得本地最新日期 (避免空依賴緩存或 UTC 時區差)
   const todayYmd = useMemo(() => getLocalDateYmd(), [visible, transactions]);
 
-  // 篩選生活記事
+  // 依當前視角篩選生活記事母體 (連動指標看板與各分類統計數字)
   const allMemos = useMemo(() => {
-    return transactions.filter(t => t.type === 'memo');
-  }, [transactions]);
+    return transactions.filter(t => {
+      if (t.type !== 'memo') return false;
+      if (scopeFilter === 'family') {
+        return t.reminder_target !== 'personal';
+      }
+      if (scopeFilter === 'mine') {
+        const isPersonal = t.reminder_target === 'personal';
+        if (!isPersonal) return false;
+        if (t.paid_by) {
+          return t.paid_by === currentUser?.id;
+        }
+        return !!t.creator_id && t.creator_id === currentUser?.id;
+      }
+      return true;
+    });
+  }, [transactions, scopeFilter, currentUser?.id]);
 
   // 今日或已逾期待辦 (未完成)
   const todayAndOverdueMemos = useMemo(() => {
@@ -196,15 +219,42 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
         <View style={styles.modalCard}>
           {/* 頂部標題列 */}
           <View style={styles.header}>
-            <View>
+            <View style={{ flex: 1, marginRight: 8 }}>
               <Text style={styles.title} maxFontSizeMultiplier={1.15}>📋 生活備忘與待辦總覽</Text>
-              <Text style={styles.subtitle} maxFontSizeMultiplier={1.08}>
-                全家日常採買、生活雜記與未來排程提醒
-              </Text>
             </View>
             <TouchableOpacity onPress={handleExplicitClose} style={styles.closeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Text style={styles.closeText} maxFontSizeMultiplier={1.15}>✕</Text>
             </TouchableOpacity>
+          </View>
+
+          {/* 指標區頂部：副標題與視角切換開關 (配置 1) */}
+          <View style={styles.scopeBarRow}>
+            <Text style={styles.subtitle} maxFontSizeMultiplier={1.08} numberOfLines={1}>
+              日常採買、生活雜記與排程提醒
+            </Text>
+            <View style={styles.scopeSwitchContainer}>
+              <TouchableOpacity
+                style={[styles.scopeTab, scopeFilter === 'all' && styles.scopeTabActive]}
+                onPress={() => handleScopeChange('all')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.scopeTabText, scopeFilter === 'all' && styles.scopeTabTextActive]}>全部</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.scopeTab, scopeFilter === 'family' && styles.scopeTabActive]}
+                onPress={() => handleScopeChange('family')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.scopeTabText, scopeFilter === 'family' && styles.scopeTabTextActive]}>全家</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.scopeTab, scopeFilter === 'mine' && styles.scopeTabActive]}
+                onPress={() => handleScopeChange('mine')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.scopeTabText, scopeFilter === 'mine' && styles.scopeTabTextActive]}>我的</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* 統計摘要指標列 */}
@@ -273,10 +323,10 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
             </HorizontalScrollView>
           </View>
 
-          {/* 待辦事項列表（切換分頁自動歸零置頂） */}
+          {/* 待辦事項列表（切換分頁與視角自動歸零置頂） */}
           <ScrollView
             ref={scrollRef}
-            key={activeTab}
+            key={`${activeTab}_${scopeFilter}`}
             style={styles.listArea}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
@@ -363,28 +413,19 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                         </Text>
                       </View>
 
-                      {/* 提醒狀態徽章 */}
+                      {/* 右側：已辦妥徽章 或 提醒對象膠囊 (全家 / 個人·某某) */}
                       {isCompleted ? (
                         <View style={styles.completedBadge}>
                           <Text style={styles.completedBadgeText} maxFontSizeMultiplier={1.08}>
                             ✓ {completer?.display_name ? `${completer.display_name} 辦妥` : '已辦妥'}
                           </Text>
                         </View>
-                      ) : dueStatus ? (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                          <View style={[styles.dueBadge, { backgroundColor: dueStatus.bg, borderColor: dueStatus.border }]}>
-                            <Text style={[styles.dueBadgeText, { color: dueStatus.color }]} maxFontSizeMultiplier={1.08}>
-                              {dueStatus.label}
-                            </Text>
-                          </View>
-                          <View style={[styles.scopeBadge, item.reminder_target === 'personal' ? styles.scopeBadgePersonal : styles.scopeBadgeFamily]}>
-                            <Text style={[styles.scopeBadgeText, item.reminder_target === 'personal' ? styles.scopeBadgeTextPersonal : styles.scopeBadgeTextFamily]} maxFontSizeMultiplier={1.08}>
-                              {item.reminder_target === 'personal' ? `👤 個人${payer?.display_name ? `·${payer.display_name}` : ''}` : '🌐 全家'}
-                            </Text>
-                          </View>
-                        </View>
                       ) : (
-                        <Text style={styles.itemDateText} maxFontSizeMultiplier={1.08}>{dateFormatted}</Text>
+                        <View style={[styles.scopeBadge, item.reminder_target === 'personal' ? styles.scopeBadgePersonal : styles.scopeBadgeFamily]}>
+                          <Text style={[styles.scopeBadgeText, item.reminder_target === 'personal' ? styles.scopeBadgeTextPersonal : styles.scopeBadgeTextFamily]} maxFontSizeMultiplier={1.08}>
+                            {item.reminder_target === 'personal' ? `👤 個人${payer?.display_name ? `·${payer.display_name}` : ''}` : '🌐 全家'}
+                          </Text>
+                        </View>
                       )}
                     </View>
 
@@ -481,6 +522,17 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                       </Text>
                     )}
 
+                    {/* 提醒時程獨立展示列 (未完成時享有整行寬度，告別擠壓遮蓋) */}
+                    {!isCompleted && dueStatus && (
+                      <View style={styles.dueRowContainer}>
+                        <View style={[styles.dueBadgeStandalone, { backgroundColor: dueStatus.bg, borderColor: dueStatus.border }]}>
+                          <Text style={[styles.dueBadgeTextStandalone, { color: dueStatus.color }]} maxFontSizeMultiplier={1.08}>
+                            {dueStatus.label}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+
                     {/* 辦妥回報說明 */}
                     {isCompleted && !!item.completion_note && (
                       <View style={styles.itemReportBubble}>
@@ -566,7 +618,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.background.modal,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: Math.min(SCREEN_HEIGHT * 0.88, 760),
+    height: Math.min(SCREEN_HEIGHT * 0.94, 880),
+    maxHeight: Math.min(SCREEN_HEIGHT * 0.94, 880),
     paddingTop: 16,
     paddingBottom: Platform.OS === 'ios' ? 32 : 16,
     paddingHorizontal: 16,
@@ -576,8 +629,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
+    alignItems: 'center',
+    marginBottom: 8,
   },
   title: {
     fontSize: 18,
@@ -587,7 +640,50 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   subtitle: {
     fontSize: 12,
     color: colors.text.muted,
-    marginTop: 2,
+    flex: 1,
+    marginRight: 8,
+  },
+  scopeBarRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+    marginTop: -2,
+  },
+  scopeSwitchContainer: {
+    flexDirection: 'row',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
+    borderRadius: 8,
+    padding: 2,
+    borderWidth: 1,
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
+  },
+  scopeTab: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  scopeTabActive: {
+    backgroundColor: isDark ? '#D97706' : '#FFFFFF',
+    ...(Platform.OS === 'ios'
+      ? {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.15,
+          shadowRadius: 2,
+        }
+      : {
+          elevation: 1,
+        }),
+  },
+  scopeTabText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: colors.text.muted,
+  },
+  scopeTabTextActive: {
+    color: isDark ? '#FFFFFF' : '#D97706',
+    fontWeight: '700',
   },
   closeBtn: {
     width: 32,
@@ -660,7 +756,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontWeight: '700',
   },
   listArea: {
-    maxHeight: SCREEN_HEIGHT * 0.48,
+    flex: 1,
     marginBottom: 12,
   },
   listContent: {
@@ -769,6 +865,24 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   },
   dueBadgeText: {
     fontSize: 10.5,
+    fontWeight: '700',
+  },
+  dueRowContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  dueBadgeStandalone: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+  },
+  dueBadgeTextStandalone: {
+    fontSize: 11.5,
     fontWeight: '700',
   },
   scopeBadge: {
