@@ -743,95 +743,166 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
       </View>
 
       {/* 雙提醒單行膠囊 (待繳週期帳單 + 生活待辦備忘) */}
-      {(currentFilterPendingBills.length > 0 || pendingMemos.length > 0 || upcomingMemos.length > 0) && (
-        <View style={styles.compactNoticeRow}>
-          {currentFilterPendingBills.length > 0 && (
-            <TouchableOpacity
-              style={[
-                styles.compactNoticeChip,
-                styles.compactNoticeBillChip,
-                isDark && styles.compactNoticeBillChipDark,
-              ]}
-              activeOpacity={0.8}
-              onPress={() => {
-                if (filterMemberId === 'all') {
-                  onOpenRecurringModal('all', undefined, 'pending');
-                } else {
-                  const targetM = members.find(m => m.id === filterMemberId);
-                  const isMe =
-                    filterMemberId === currentUser?.id ||
-                    (!!currentUser?.display_name && targetM?.display_name === currentUser.display_name);
-                  if (isMe) {
-                    onOpenRecurringModal('my', undefined, 'pending');
-                  } else {
-                    onOpenRecurringModal('all', filterMemberId, 'pending');
-                  }
-                }
-              }}
-            >
-              <Text style={styles.compactNoticeChipIcon}>🗓️</Text>
-              <Text
-                style={[
-                  styles.compactNoticeChipText,
-                  styles.compactNoticeBillText,
-                  isDark && styles.compactNoticeBillTextDark,
-                ]}
-                numberOfLines={1}
-                maxFontSizeMultiplier={1.08}
-              >
-                待繳帳單 ({currentFilterPendingBills.length})
-              </Text>
-              <Text
-                style={[
-                  styles.compactNoticeChipArrow,
-                  styles.compactNoticeBillText,
-                  isDark && styles.compactNoticeBillTextDark,
-                ]}
-                maxFontSizeMultiplier={1.08}
-              >
-                ›
-              </Text>
-            </TouchableOpacity>
-          )}
+      {(() => {
+        const hasPendingBills = currentFilterPendingBills.length > 0;
+        const hasPendingMemos = pendingMemos.length > 0 || upcomingMemos.length > 0;
+        if (!hasPendingBills && !hasPendingMemos) return null;
 
-          {(pendingMemos.length > 0 || upcomingMemos.length > 0) && (
-            <TouchableOpacity
-              style={[
-                styles.compactNoticeChip,
-                pendingMemos.length > 0 ? styles.compactNoticeMemoChip : styles.compactNoticeUpcomingChip,
-                isDark && (pendingMemos.length > 0 ? styles.compactNoticeMemoChipDark : styles.compactNoticeUpcomingChipDark),
-              ]}
-              activeOpacity={0.8}
-              onPress={onOpenMemoTodoModal}
-            >
-              <Text style={styles.compactNoticeChipIcon}>{pendingMemos.length > 0 ? '🔔' : '📌'}</Text>
-              <Text
+        const hasBothNotices = hasPendingBills && hasPendingMemos;
+
+        const isMe =
+          filterMemberId === currentUser?.id ||
+          (!!currentUser?.display_name && members.find(m => m.id === filterMemberId)?.display_name === currentUser.display_name);
+        const canActBill = isMe || filterMemberId === 'all';
+        const billActionText = canActBill ? '核對記帳 ›' : '查看帳單 ›';
+        const billPrefix = filterMemberId === 'all' ? '全家待繳' : '本期待繳';
+        const billName = currentFilterPendingBills[0]?.name || '週期帳單';
+        const billAmount = currentFilterPendingBills[0]?.default_amount ? ` · NT$ ${currentFilterPendingBills[0].default_amount.toLocaleString()}` : '';
+        const billMore = currentFilterPendingBills.length > 1 ? ` 等 ${currentFilterPendingBills.length} 筆` : '';
+        const billTitle = hasBothNotices
+          ? `待繳帳單 (${currentFilterPendingBills.length})`
+          : `${billPrefix} (${currentFilterPendingBills.length})：${billName}${billAmount}${billMore}`;
+
+        const todayYmd = getLocalDateYmd();
+        const hasOverdueMemo = pendingMemos.some(t => t.reminder_date && t.reminder_date < todayYmd);
+        const memoPrefix = hasOverdueMemo ? '待辦/逾期' : '今日待辦';
+        const firstMemoNote = (pendingMemos.length > 0 ? pendingMemos[0]?.note : upcomingMemos[0]?.note) || '';
+        const memoCount = pendingMemos.length > 0 ? pendingMemos.length : upcomingMemos.length;
+        const memoMore = memoCount > 1 ? ` 等 ${memoCount} 則` : '';
+        const memoTitle = hasBothNotices
+          ? pendingMemos.length > 0
+            ? `今日待辦 (${pendingMemos.length})`
+            : `排程預告 (${upcomingMemos.length})`
+          : pendingMemos.length > 0
+          ? `${memoPrefix} (${pendingMemos.length})：${firstMemoNote}${memoMore}`
+          : `排程預告 (${upcomingMemos.length})：${firstMemoNote}${memoMore}`;
+
+        return (
+          <View style={styles.compactNoticeRow}>
+            {hasPendingBills && (
+              <TouchableOpacity
                 style={[
-                  styles.compactNoticeChipText,
-                  pendingMemos.length > 0 ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText,
-                  isDark && (pendingMemos.length > 0 ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark),
+                  styles.compactNoticeChip,
+                  styles.compactNoticeBillChip,
+                  isDark && styles.compactNoticeBillChipDark,
                 ]}
-                numberOfLines={1}
-                maxFontSizeMultiplier={1.08}
+                activeOpacity={0.8}
+                onPress={() => {
+                  if (filterMemberId === 'all') {
+                    onOpenRecurringModal('all', undefined, 'pending');
+                  } else {
+                    if (isMe) {
+                      onOpenRecurringModal('my', undefined, 'pending');
+                    } else {
+                      onOpenRecurringModal('all', filterMemberId, 'pending');
+                    }
+                  }
+                }}
               >
-                {pendingMemos.length > 0
-                  ? `今日待辦 (${pendingMemos.length})`
-                  : `排程預告 (${upcomingMemos.length})`}
-              </Text>
-              <Text
+                <Text style={styles.compactNoticeChipIcon}>🗓️</Text>
+                <Text
+                  style={[
+                    styles.compactNoticeChipText,
+                    styles.compactNoticeBillText,
+                    isDark && styles.compactNoticeBillTextDark,
+                  ]}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={1.08}
+                >
+                  {billTitle}
+                </Text>
+                {hasBothNotices ? (
+                  <Text
+                    style={[
+                      styles.compactNoticeChipArrow,
+                      styles.compactNoticeBillText,
+                      isDark && styles.compactNoticeBillTextDark,
+                    ]}
+                    maxFontSizeMultiplier={1.08}
+                  >
+                    ›
+                  </Text>
+                ) : (
+                  <View
+                    style={[
+                      styles.compactNoticeActionPill,
+                      styles.compactNoticeActionPillBill,
+                      isDark && styles.compactNoticeActionPillBillDark,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.compactNoticeActionPillText,
+                        styles.compactNoticeBillText,
+                        isDark && styles.compactNoticeBillTextDark,
+                      ]}
+                      maxFontSizeMultiplier={1.08}
+                    >
+                      {billActionText}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {hasPendingMemos && (
+              <TouchableOpacity
                 style={[
-                  styles.compactNoticeChipArrow,
-                  pendingMemos.length > 0 ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText,
-                  isDark && (pendingMemos.length > 0 ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark),
+                  styles.compactNoticeChip,
+                  pendingMemos.length > 0 ? styles.compactNoticeMemoChip : styles.compactNoticeUpcomingChip,
+                  isDark && (pendingMemos.length > 0 ? styles.compactNoticeMemoChipDark : styles.compactNoticeUpcomingChipDark),
                 ]}
-                maxFontSizeMultiplier={1.08}
+                activeOpacity={0.8}
+                onPress={onOpenMemoTodoModal}
               >
-                ›
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
+                <Text style={styles.compactNoticeChipIcon}>{pendingMemos.length > 0 ? '🔔' : '📌'}</Text>
+                <Text
+                  style={[
+                    styles.compactNoticeChipText,
+                    pendingMemos.length > 0 ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText,
+                    isDark && (pendingMemos.length > 0 ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark),
+                  ]}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={1.08}
+                >
+                  {memoTitle}
+                </Text>
+                {hasBothNotices ? (
+                  <Text
+                    style={[
+                      styles.compactNoticeChipArrow,
+                      pendingMemos.length > 0 ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText,
+                      isDark && (pendingMemos.length > 0 ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark),
+                    ]}
+                    maxFontSizeMultiplier={1.08}
+                  >
+                    ›
+                  </Text>
+                ) : (
+                  <View
+                    style={[
+                      styles.compactNoticeActionPill,
+                      pendingMemos.length > 0 ? styles.compactNoticeActionPillMemo : styles.compactNoticeActionPillUpcoming,
+                      isDark && (pendingMemos.length > 0 ? styles.compactNoticeActionPillMemoDark : styles.compactNoticeActionPillUpcomingDark),
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.compactNoticeActionPillText,
+                        pendingMemos.length > 0 ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText,
+                        isDark && (pendingMemos.length > 0 ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark),
+                      ]}
+                      maxFontSizeMultiplier={1.08}
+                    >
+                      待辦總覽 ›
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+        );
+      })()}
 
       {/* 💎 財務淨值與儲值票證折疊看板 */}
       <View style={styles.collapsibleAssetWrapper}>
@@ -1542,7 +1613,35 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     compactNoticeChipArrow: {
       fontSize: 13,
       fontWeight: '700',
-      marginLeft: 3,
+      marginLeft: 4,
+    },
+    compactNoticeActionPill: {
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 6,
+      marginLeft: 6,
+    },
+    compactNoticeActionPillText: {
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    compactNoticeActionPillBill: {
+      backgroundColor: '#FEE2E2',
+    },
+    compactNoticeActionPillBillDark: {
+      backgroundColor: 'rgba(239, 68, 68, 0.25)',
+    },
+    compactNoticeActionPillMemo: {
+      backgroundColor: '#FEF3C7',
+    },
+    compactNoticeActionPillMemoDark: {
+      backgroundColor: 'rgba(245, 158, 11, 0.25)',
+    },
+    compactNoticeActionPillUpcoming: {
+      backgroundColor: '#DBEAFE',
+    },
+    compactNoticeActionPillUpcomingDark: {
+      backgroundColor: 'rgba(59, 130, 246, 0.25)',
     },
     compactNoticeBillChip: {
       backgroundColor: '#FEF2F2',

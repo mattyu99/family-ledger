@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.8';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.8 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 18;
+export const APP_BUILD_REVISION = 19;
 
-// 完整版本字串 (例如 "1.0.8.18")
+// 完整版本字串 (例如 "1.0.8.19")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.8',
     date: '2026-10-24 ~ 2026-10-27',
-    title: '明細頁版面瘦身、家庭設定分流、桌面快捷圖示與信用卡個人化 (v1.0.8.0 ~ v1.0.8.18)',
+    title: '明細頁提醒智慧展開、版面瘦身、家庭設定分流與快捷圖示 (v1.0.8.0 ~ v1.0.8.19)',
     highlights: [
+      '明細頁提醒列單一與雙向智慧自適應：當待繳帳單或生活待辦僅有一項時，自動展開第一筆事項摘要內容（如：今日待辦 (2)：買小夜燈 等 2 則）與專屬操作膠囊按鈕；當兩者並存時自動切換為緊湊並排雙膠囊，兼具資訊完整度與極致省空間。',
       '明細頁版面瘦身與首屏優化：預算進度內嵌融入收支摘要卡、待辦與待繳整併為單行雙膠囊、財務淨值與儲值卡整合為預設折疊欄，首屏立即可見多筆交易明細。',
       '家庭設定頁面分流優化：新增頂部常駐版本與即時更新捷徑列（0 滾動即見），並建立「家庭協作、提醒與個人、系統與資料」三大主題頁籤快速切換。',
       '專屬桌面快捷圖示設計：為「記支出、記收入、掃描發票、隨手記事」打造可愛 3D 黏土專屬自適應圖示與 SF Symbols。',
