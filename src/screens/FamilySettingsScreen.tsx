@@ -158,9 +158,16 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     isQuickActionSupported().then(setIsQuickActionSupportedState);
   }, []);
 
+  // 僅篩選出本機實際會推播提醒的信用卡（持卡人為本人，或未設定持卡人之全家公用卡；其餘家庭成員之信用卡不用列出）
   const creditCards = useMemo(() => {
-    return (paymentAccounts || []).filter(acc => acc.type === 'credit_card');
-  }, [paymentAccounts]);
+    return (paymentAccounts || []).filter(acc => {
+      if (acc.type !== 'credit_card') return false;
+      if (currentUser?.id && acc.user_id) {
+        return acc.user_id === currentUser.id;
+      }
+      return true;
+    });
+  }, [paymentAccounts, currentUser?.id]);
 
   const pendingMemos = useMemo(() => {
     return (transactions || [])
@@ -697,14 +704,13 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           {creditCards.length === 0 ? (
             <View style={styles.noCardBox}>
               <Text style={[styles.noCardText, { color: colors.text.muted }]}>
-                💳 目前尚未建立信用卡帳戶，可至「錢包與帳戶」新增信用卡並設定結帳日
+                💳 目前無屬於您本人的信用卡提醒。可至「錢包與帳戶」新增信用卡或指派持卡人為您本人
               </Text>
             </View>
           ) : (
             creditCards.map((card) => {
               const dates = calculateCardScheduleDates(card);
               const outstanding = calculateCardOutstandingAmount(card.id, transactions);
-              const cardholder = card.user_id ? getMemberById(card.user_id) : null;
               return (
                 <View key={card.id} style={[styles.cardScheduleRow, { borderBottomColor: colors.border.default }]}>
                   <View style={{ flex: 1, marginRight: 8 }}>
@@ -713,10 +719,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                       <Text style={[styles.cardScheduleName, { color: colors.text.primary }]} numberOfLines={1}>
                         {card.name}
                       </Text>
-                      {card.user_id ? (
-                        <View style={[styles.cardholderBadge, { backgroundColor: card.user_id === currentUser?.id ? (isDark ? '#1E3A8A' : '#EFF6FF') : colors.border.default }]}>
-                          <Text style={[styles.cardholderBadgeText, { color: card.user_id === currentUser?.id ? (isDark ? '#93C5FD' : '#2563EB') : colors.text.secondary }]}>
-                            {card.user_id === currentUser?.id ? '📱 本人卡片 (本機提醒)' : `👤 ${cardholder?.display_name || '其他成員'}`}
+                      {card.user_id === currentUser?.id ? (
+                        <View style={[styles.cardholderBadge, { backgroundColor: isDark ? '#1E3A8A' : '#EFF6FF' }]}>
+                          <Text style={[styles.cardholderBadgeText, { color: isDark ? '#93C5FD' : '#2563EB' }]}>
+                            📱 本人卡片 (本機提醒)
                           </Text>
                         </View>
                       ) : (
