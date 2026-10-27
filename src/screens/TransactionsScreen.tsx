@@ -13,11 +13,11 @@ import {
   TextInputProps,
 } from 'react-native';
 import { useLedger } from '../context/LedgerContext';
+import { usePrivacy } from '../context/PrivacyContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import { Transaction } from '../types/database';
 import { TransactionItem } from '../components/TransactionItem';
-import { BudgetHeroWidget } from '../components/BudgetHeroWidget';
 import { NetWorthWidget } from '../components/NetWorthWidget';
 import { StoredValueWidget } from '../components/StoredValueWidget';
 import { HorizontalScrollView } from '../components/HorizontalScrollView';
@@ -93,7 +93,6 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
     members,
     currentUser,
     currentLedger,
-    isOwner,
     historySyncProgress,
     lastBackupAt,
     autoBackupInterval,
@@ -104,7 +103,12 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
     getMemberById,
     getCategoryById,
     recentMerchants,
+    getBudgetProgress,
+    isBudgetWidgetVisibleOnDevice,
+    getNetWorthSummary,
   } = useLedger();
+
+  const { isPrivacyMaskActive } = usePrivacy();
 
   const internalScrollRef = useRef<ScrollView>(null);
   const activeScrollRef = scrollRef || internalScrollRef;
@@ -114,6 +118,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
   const [isReminderDismissed, setIsReminderDismissed] = useState(false);
+  const [isAssetSectionExpanded, setIsAssetSectionExpanded] = useState(false);
 
   // 當前與可選月份計算
   const currentMonthYm = useMemo(() => {
@@ -465,6 +470,20 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
     return { wonCount };
   }, [transactions]);
 
+  // 方向 1：預算進度內嵌與資產淨值折疊計算
+  const budgetProgress = useMemo(() => {
+    return getBudgetProgress(filterMonth === 'all' ? undefined : filterMonth, filterMemberId);
+  }, [getBudgetProgress, filterMonth, filterMemberId]);
+
+  const netWorthSummary = useMemo(() => {
+    return getNetWorthSummary(filterMemberId);
+  }, [getNetWorthSummary, filterMemberId]);
+
+  const maskedNetWorth = useMemo(() => {
+    if (isPrivacyMaskActive) return 'NT$ ••••••';
+    return `NT$ ${netWorthSummary.netWorth.toLocaleString()}`;
+  }, [isPrivacyMaskActive, netWorthSummary.netWorth]);
+
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
@@ -652,140 +671,222 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
             )}
           </View>
         )}
+
+        {/* 內嵌預算迷你進度條 (方向 1 版面瘦身) */}
+        {isBudgetWidgetVisibleOnDevice && (
+          <View style={styles.summaryBudgetSection}>
+            {!budgetProgress.isEnabled ? (
+              <TouchableOpacity
+                style={styles.summaryBudgetUnconfiguredRow}
+                onPress={() => onOpenBudgetManageModal('family')}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.summaryBudgetUnconfiguredText} maxFontSizeMultiplier={1.08}>
+                  🎯 尚未設定每月預算 · 點擊立即開啟預算控管 ›
+                </Text>
+              </TouchableOpacity>
+            ) : budgetProgress.isMemberPerspective && !budgetProgress.hasMemberBudgetConfigured ? (
+              <TouchableOpacity
+                style={styles.summaryBudgetUnconfiguredRow}
+                onPress={() => onOpenBudgetManageModal('members')}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.summaryBudgetUnconfiguredText} maxFontSizeMultiplier={1.08}>
+                  👤 點此設定 {budgetProgress.targetMemberName || '該成員'} 的專屬預算額度 ›
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.summaryBudgetBarWrap}
+                onPress={() => onOpenBudgetManageModal(budgetProgress.isMemberPerspective ? 'members' : 'family')}
+                activeOpacity={0.75}
+              >
+                <View style={styles.summaryBudgetInfoRow}>
+                  <Text style={styles.summaryBudgetLabel} numberOfLines={1} maxFontSizeMultiplier={1.08}>
+                    {budgetProgress.isOverBudget
+                      ? `🚨 預算超支 ${isPrivacyMaskActive ? '••••••' : `NT$ ${Math.abs(budgetProgress.remainingAmount).toLocaleString()}`}`
+                      : `🎯 預算剩餘 ${isPrivacyMaskActive ? '••••••' : `NT$ ${budgetProgress.remainingAmount.toLocaleString()}`}`}
+                  </Text>
+                  <View style={styles.summaryBudgetRightWrap}>
+                    <Text
+                      style={[
+                        styles.summaryBudgetPercent,
+                        budgetProgress.isOverBudget && styles.summaryBudgetPercentOver,
+                        budgetProgress.isWarning && styles.summaryBudgetPercentWarning,
+                      ]}
+                      maxFontSizeMultiplier={1.08}
+                    >
+                      {budgetProgress.spentRatio}%
+                    </Text>
+                    <Text style={styles.summaryBudgetArrow} maxFontSizeMultiplier={1.08}>›</Text>
+                  </View>
+                </View>
+                <View style={styles.summaryBudgetTrack}>
+                  <View
+                    style={[
+                      styles.summaryBudgetFill,
+                      {
+                        width: `${Math.min(100, Math.max(0, budgetProgress.spentRatio))}%`,
+                        backgroundColor: budgetProgress.isOverBudget
+                          ? '#EF4444'
+                          : budgetProgress.isWarning
+                          ? '#F59E0B'
+                          : '#10B981',
+                      },
+                    ]}
+                  />
+                </View>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
       </View>
 
-      {/* 🎯 家庭/個人每月預算進度看板 */}
-      <BudgetHeroWidget
-        onOpenManageModal={(tab) => onOpenBudgetManageModal(tab || 'family')}
-        targetMonthYm={filterMonth === 'all' ? undefined : filterMonth}
-        filterMemberId={filterMemberId}
-      />
-
-      {/* 💎 財務淨值總覽看板 (連動成員篩選範圍) */}
-      <NetWorthWidget
-        filterMemberId={filterMemberId}
-        onOpenTransferModal={() => onOpenModal('transfer')}
-        onOpenAccountsManageModal={onOpenAccountsManageModal}
-      />
-
-      {/* 🗓️ 待繳週期帳單提醒膠囊 */}
-      {currentFilterPendingBills.length > 0 && (
-        <TouchableOpacity
-          style={styles.pendingRecurringBanner}
-          activeOpacity={0.8}
-          onPress={() => {
-            if (filterMemberId === 'all') {
-              onOpenRecurringModal('all', undefined, 'pending');
-            } else {
-              const targetM = members.find(m => m.id === filterMemberId);
-              const isMe =
-                filterMemberId === currentUser?.id ||
-                (!!currentUser?.display_name && targetM?.display_name === currentUser.display_name);
-              if (isMe) {
-                onOpenRecurringModal('my', undefined, 'pending');
-              } else {
-                onOpenRecurringModal('all', filterMemberId, 'pending');
-              }
-            }
-          }}
-        >
-          <View style={styles.pendingRecurringLeft}>
-            <View style={styles.pendingRecurringBadge}>
-              <Text style={styles.pendingRecurringBadgeText}>
-                {filterMemberId === 'all' ? '🗓️ 全家待繳' : '🗓️ 待繳'}
+      {/* 雙提醒單行膠囊 (待繳週期帳單 + 生活待辦備忘) */}
+      {(currentFilterPendingBills.length > 0 || pendingMemos.length > 0 || upcomingMemos.length > 0) && (
+        <View style={styles.compactNoticeRow}>
+          {currentFilterPendingBills.length > 0 && (
+            <TouchableOpacity
+              style={[
+                styles.compactNoticeChip,
+                styles.compactNoticeBillChip,
+                isDark && styles.compactNoticeBillChipDark,
+              ]}
+              activeOpacity={0.8}
+              onPress={() => {
+                if (filterMemberId === 'all') {
+                  onOpenRecurringModal('all', undefined, 'pending');
+                } else {
+                  const targetM = members.find(m => m.id === filterMemberId);
+                  const isMe =
+                    filterMemberId === currentUser?.id ||
+                    (!!currentUser?.display_name && targetM?.display_name === currentUser.display_name);
+                  if (isMe) {
+                    onOpenRecurringModal('my', undefined, 'pending');
+                  } else {
+                    onOpenRecurringModal('all', filterMemberId, 'pending');
+                  }
+                }
+              }}
+            >
+              <Text style={styles.compactNoticeChipIcon}>🗓️</Text>
+              <Text
+                style={[
+                  styles.compactNoticeChipText,
+                  styles.compactNoticeBillText,
+                  isDark && styles.compactNoticeBillTextDark,
+                ]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.08}
+              >
+                待繳帳單 ({currentFilterPendingBills.length})
               </Text>
-            </View>
-            <Text style={styles.pendingRecurringTitle}>
-              {filterMemberId === 'all' ? (
-                <>全家本期有 <Text style={styles.pendingRecurringCountHighlight}>{currentFilterPendingBills.length}</Text> 筆週期帳單待確認</>
-              ) : filterMemberId === currentUser?.id || (!!currentUser?.display_name && members.find(m => m.id === filterMemberId)?.display_name === currentUser.display_name) ? (
-                <>您本期有 <Text style={styles.pendingRecurringCountHighlight}>{currentFilterPendingBills.length}</Text> 筆週期帳單待確認</>
-              ) : (
-                <>「{members.find(m => m.id === filterMemberId)?.display_name || '該成員'}」本期有 <Text style={styles.pendingRecurringCountHighlight}>{currentFilterPendingBills.length}</Text> 筆週期帳單待確認</>
-              )}
-            </Text>
-          </View>
-          <View style={styles.pendingRecurringAction}>
-            <Text style={styles.pendingRecurringActionText}>
-              {(() => {
-                const isMe =
-                  filterMemberId === currentUser?.id ||
-                  (!!currentUser?.display_name && members.find(m => m.id === filterMemberId)?.display_name === currentUser.display_name);
-                const canAct = isOwner || isMe || filterMemberId === 'all';
-                return canAct ? '核對記帳 ›' : '查看帳單 ›';
-              })()}
-            </Text>
-          </View>
-        </TouchableOpacity>
+              <Text
+                style={[
+                  styles.compactNoticeChipArrow,
+                  styles.compactNoticeBillText,
+                  isDark && styles.compactNoticeBillTextDark,
+                ]}
+                maxFontSizeMultiplier={1.08}
+              >
+                ›
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {(pendingMemos.length > 0 || upcomingMemos.length > 0) && (
+            <TouchableOpacity
+              style={[
+                styles.compactNoticeChip,
+                pendingMemos.length > 0 ? styles.compactNoticeMemoChip : styles.compactNoticeUpcomingChip,
+                isDark && (pendingMemos.length > 0 ? styles.compactNoticeMemoChipDark : styles.compactNoticeUpcomingChipDark),
+              ]}
+              activeOpacity={0.8}
+              onPress={onOpenMemoTodoModal}
+            >
+              <Text style={styles.compactNoticeChipIcon}>{pendingMemos.length > 0 ? '🔔' : '📌'}</Text>
+              <Text
+                style={[
+                  styles.compactNoticeChipText,
+                  pendingMemos.length > 0 ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText,
+                  isDark && (pendingMemos.length > 0 ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark),
+                ]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.08}
+              >
+                {pendingMemos.length > 0
+                  ? `今日待辦 (${pendingMemos.length})`
+                  : `排程預告 (${upcomingMemos.length})`}
+              </Text>
+              <Text
+                style={[
+                  styles.compactNoticeChipArrow,
+                  pendingMemos.length > 0 ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText,
+                  isDark && (pendingMemos.length > 0 ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark),
+                ]}
+                maxFontSizeMultiplier={1.08}
+              >
+                ›
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
       )}
 
-      {/* 🔔 生活備忘與待辦提醒膠囊 */}
-      {(pendingMemos.length > 0 || upcomingMemos.length > 0) && (
+      {/* 💎 財務淨值與儲值票證折疊看板 */}
+      <View style={styles.collapsibleAssetWrapper}>
         <TouchableOpacity
           style={[
-            styles.pendingMemoBanner,
-            pendingMemos.length === 0 && {
-              backgroundColor: '#EFF6FF',
-              borderColor: '#BFDBFE',
-              shadowColor: '#3B82F6',
-            },
+            styles.compactAssetBar,
+            isDark && styles.compactAssetBarDark,
+            isAssetSectionExpanded && styles.compactAssetBarExpanded,
+            isDark && isAssetSectionExpanded && styles.compactAssetBarExpandedDark,
           ]}
           activeOpacity={0.8}
-          onPress={onOpenMemoTodoModal}
+          onPress={() => setIsAssetSectionExpanded(prev => !prev)}
         >
-          <View style={styles.pendingMemoLeft}>
-            <View
-              style={[
-                styles.pendingMemoBadge,
-                pendingMemos.length === 0 && { backgroundColor: '#2563EB' },
-              ]}
-            >
-              <Text style={styles.pendingMemoBadgeText}>
-                {pendingMemos.length > 0 ? '🔔 待辦' : '🗓️ 預告'}
-              </Text>
-            </View>
-            <Text
-              style={[
-                styles.pendingMemoTitle,
-                pendingMemos.length === 0 && { color: '#1E40AF' },
-              ]}
-              numberOfLines={1}
-            >
-              {pendingMemos.length > 0 ? (
-                <>
-                  今日/逾期 <Text style={styles.pendingMemoCountHighlight}>{pendingMemos.length}</Text> 則待辦：{pendingMemos[0]?.note}
-                </>
-              ) : (
-                <>
-                  排程預告 <Text style={[styles.pendingMemoCountHighlight, { color: '#2563EB' }]}>{upcomingMemos.length}</Text> 則事項：{upcomingMemos[0]?.note}
-                </>
-              )}
+          <View style={styles.compactAssetLeft}>
+            <Text style={styles.compactAssetIcon}>💎</Text>
+            <Text style={[styles.compactAssetLabel, isDark && { color: colors.text.secondary }]} maxFontSizeMultiplier={1.08}>
+              {filterMemberId === 'all'
+                ? '全家淨值'
+                : filterMemberId === currentUser?.id
+                ? '我的淨值'
+                : `${members.find(m => m.id === filterMemberId)?.display_name || '成員'}淨值`}
             </Text>
+            <Text style={[styles.compactAssetAmount, isDark && { color: colors.text.primary }]} maxFontSizeMultiplier={1.08}>
+              {maskedNetWorth}
+            </Text>
+            {netWorthSummary.accounts.storedValues.length > 0 && (
+              <View style={[styles.compactAssetPill, isDark && styles.compactAssetPillDark]}>
+                <Text style={[styles.compactAssetPillText, isDark && styles.compactAssetPillTextDark]} maxFontSizeMultiplier={1.08}>
+                  💳 儲值卡 {netWorthSummary.accounts.storedValues.length}
+                </Text>
+              </View>
+            )}
           </View>
-          <View
-            style={[
-              styles.pendingMemoAction,
-              pendingMemos.length === 0 && { backgroundColor: '#DBEAFE' },
-            ]}
-          >
-            <Text
-              style={[
-                styles.pendingMemoActionText,
-                pendingMemos.length === 0 && { color: '#1D4ED8' },
-              ]}
-            >
-              待辦總覽 ›
+          <View style={styles.compactAssetRight}>
+            <Text style={[styles.compactAssetToggleText, isDark && { color: '#818CF8' }]} maxFontSizeMultiplier={1.08}>
+              {isAssetSectionExpanded ? '收合資產 ▴' : '展開資產 ▾'}
             </Text>
           </View>
         </TouchableOpacity>
-      )}
 
-      {/* 悠遊卡 / 一卡通 即時餘額與快捷儲值小工具 */}
-      <StoredValueWidget
-        filterMemberId={filterMemberId}
-        onOpenCreditCardReconcile={() => onOpenReconcileModal('credit_card')}
-        onOpenReconcile={(card) => onOpenReconcileModal('stored_value', card?.id)}
-      />
+        {isAssetSectionExpanded && (
+          <View style={styles.expandedAssetContent}>
+            <NetWorthWidget
+              filterMemberId={filterMemberId}
+              onOpenTransferModal={() => onOpenModal('transfer')}
+              onOpenAccountsManageModal={onOpenAccountsManageModal}
+            />
+            <StoredValueWidget
+              filterMemberId={filterMemberId}
+              onOpenCreditCardReconcile={() => onOpenReconcileModal('credit_card')}
+              onOpenReconcile={(card) => onOpenReconcileModal('stored_value', card?.id)}
+            />
+          </View>
+        )}
+      </View>
 
       {/* 交易列表標題 */}
       <View style={styles.sectionHeader}>
@@ -1274,8 +1375,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     summaryCard: {
       backgroundColor: '#4F46E5',
       borderRadius: 20,
-      padding: 20,
-      marginBottom: 20,
+      padding: 18,
+      marginBottom: 10,
       shadowColor: '#4F46E5',
       shadowOffset: { width: 0, height: 6 },
       shadowOpacity: 0.25,
@@ -1286,7 +1387,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 16,
+      marginBottom: 14,
     },
     summaryTitle: {
       fontSize: 15,
@@ -1353,119 +1454,220 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       color: '#E0E7FF',
       fontWeight: '600',
     },
-    pendingRecurringBanner: {
+    summaryBudgetSection: {
+      marginTop: 12,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: 'rgba(255, 255, 255, 0.15)',
+    },
+    summaryBudgetUnconfiguredRow: {
+      paddingVertical: 2,
+      alignItems: 'center',
+    },
+    summaryBudgetUnconfiguredText: {
+      fontSize: 12,
+      color: '#E0E7FF',
+      fontWeight: '600',
+    },
+    summaryBudgetBarWrap: {
+      gap: 6,
+    },
+    summaryBudgetInfoRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    summaryBudgetLabel: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: '#E0E7FF',
+      flex: 1,
+      marginRight: 8,
+    },
+    summaryBudgetRightWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+    },
+    summaryBudgetPercent: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: '#A7F3D0',
+    },
+    summaryBudgetPercentOver: {
+      color: '#FCA5A5',
+    },
+    summaryBudgetPercentWarning: {
+      color: '#FDE68A',
+    },
+    summaryBudgetArrow: {
+      fontSize: 13,
+      color: '#C7D2FE',
+      fontWeight: '700',
+    },
+    summaryBudgetTrack: {
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: 'rgba(255, 255, 255, 0.22)',
+      overflow: 'hidden',
+    },
+    summaryBudgetFill: {
+      height: '100%',
+      borderRadius: 3,
+    },
+    compactNoticeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 10,
+    },
+    compactNoticeChip: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      borderRadius: 12,
+      borderWidth: 1,
+    },
+    compactNoticeChipIcon: {
+      fontSize: 13,
+      marginRight: 5,
+    },
+    compactNoticeChipText: {
+      fontSize: 12,
+      fontWeight: '600',
+      flex: 1,
+    },
+    compactNoticeChipArrow: {
+      fontSize: 13,
+      fontWeight: '700',
+      marginLeft: 3,
+    },
+    compactNoticeBillChip: {
+      backgroundColor: '#FEF2F2',
+      borderColor: '#FECACA',
+    },
+    compactNoticeBillChipDark: {
+      backgroundColor: 'rgba(239, 68, 68, 0.15)',
+      borderColor: 'rgba(239, 68, 68, 0.35)',
+    },
+    compactNoticeBillText: {
+      color: '#DC2626',
+    },
+    compactNoticeBillTextDark: {
+      color: '#FCA5A5',
+    },
+    compactNoticeMemoChip: {
+      backgroundColor: '#FFFBEB',
+      borderColor: '#FDE68A',
+    },
+    compactNoticeMemoChipDark: {
+      backgroundColor: 'rgba(245, 158, 11, 0.15)',
+      borderColor: 'rgba(245, 158, 11, 0.35)',
+    },
+    compactNoticeMemoText: {
+      color: '#D97706',
+    },
+    compactNoticeMemoTextDark: {
+      color: '#FCD34D',
+    },
+    compactNoticeUpcomingChip: {
+      backgroundColor: '#EFF6FF',
+      borderColor: '#BFDBFE',
+    },
+    compactNoticeUpcomingChipDark: {
+      backgroundColor: 'rgba(59, 130, 246, 0.15)',
+      borderColor: 'rgba(59, 130, 246, 0.35)',
+    },
+    compactNoticeUpcomingText: {
+      color: '#2563EB',
+    },
+    compactNoticeUpcomingTextDark: {
+      color: '#93C5FD',
+    },
+    collapsibleAssetWrapper: {
+      marginBottom: 10,
+    },
+    compactAssetBar: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEF2F2',
-      borderWidth: 1.5,
-      borderColor: isDark ? 'rgba(239, 68, 68, 0.35)' : '#FECACA',
+      backgroundColor: '#FFFFFF',
       borderRadius: 14,
       paddingVertical: 10,
       paddingHorizontal: 14,
-      marginBottom: 12,
-      shadowColor: '#EF4444',
+      borderWidth: 1,
+      borderColor: '#E2E8F0',
+      shadowColor: '#6366F1',
       shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.08,
+      shadowOpacity: 0.05,
       shadowRadius: 4,
-      elevation: 2,
+      elevation: 1,
     },
-    pendingRecurringLeft: {
+    compactAssetBarDark: {
+      backgroundColor: '#1E293B',
+      borderColor: '#334155',
+    },
+    compactAssetBarExpanded: {
+      borderBottomLeftRadius: 4,
+      borderBottomRightRadius: 4,
+      borderColor: '#C7D2FE',
+    },
+    compactAssetBarExpandedDark: {
+      borderColor: '#4338CA',
+    },
+    compactAssetLeft: {
       flexDirection: 'row',
       alignItems: 'center',
       flex: 1,
-      marginRight: 8,
+      flexWrap: 'nowrap',
+      gap: 6,
     },
-    pendingRecurringBadge: {
-      backgroundColor: '#EF4444',
-      paddingHorizontal: 7,
-      paddingVertical: 3,
-      borderRadius: 6,
-      marginRight: 8,
+    compactAssetIcon: {
+      fontSize: 14,
     },
-    pendingRecurringBadgeText: {
-      color: '#FFFFFF',
-      fontSize: 11,
-      fontWeight: '800',
+    compactAssetLabel: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: '#64748B',
     },
-    pendingRecurringTitle: {
-      fontSize: 13,
+    compactAssetAmount: {
+      fontSize: 14,
       fontWeight: '700',
-      color: isDark ? '#F87171' : '#991B1B',
-      flex: 1,
+      color: '#0F172A',
     },
-    pendingRecurringCountHighlight: {
-      fontSize: 15,
-      fontWeight: '900',
-      color: isDark ? '#F87171' : '#DC2626',
-    },
-    pendingRecurringAction: {
-      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2',
-      paddingHorizontal: 10,
-      paddingVertical: 5,
+    compactAssetPill: {
+      backgroundColor: '#F1F5F9',
+      paddingHorizontal: 6,
+      paddingVertical: 2,
       borderRadius: 8,
+      marginLeft: 2,
     },
-    pendingRecurringActionText: {
+    compactAssetPillDark: {
+      backgroundColor: '#334155',
+    },
+    compactAssetPillText: {
+      fontSize: 10,
+      fontWeight: '600',
+      color: '#475569',
+    },
+    compactAssetPillTextDark: {
+      color: '#94A3B8',
+    },
+    compactAssetRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginLeft: 8,
+    },
+    compactAssetToggleText: {
       fontSize: 12,
       fontWeight: '700',
-      color: isDark ? '#F87171' : '#DC2626',
+      color: '#4F46E5',
     },
-    pendingMemoBanner: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FFFBEB',
-      borderWidth: 1.5,
-      borderColor: isDark ? 'rgba(245, 158, 11, 0.35)' : '#FDE68A',
-      borderRadius: 14,
-      paddingVertical: 10,
-      paddingHorizontal: 14,
-      marginBottom: 12,
-      shadowColor: '#F59E0B',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.08,
-      shadowRadius: 4,
-      elevation: 2,
-    },
-    pendingMemoLeft: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flex: 1,
-      marginRight: 8,
-    },
-    pendingMemoBadge: {
-      backgroundColor: '#F59E0B',
-      paddingHorizontal: 7,
-      paddingVertical: 3,
-      borderRadius: 6,
-      marginRight: 8,
-    },
-    pendingMemoBadgeText: {
-      color: '#FFFFFF',
-      fontSize: 11,
-      fontWeight: '800',
-    },
-    pendingMemoTitle: {
-      fontSize: 13,
-      fontWeight: '700',
-      color: isDark ? '#FBBF24' : '#92400E',
-      flex: 1,
-    },
-    pendingMemoCountHighlight: {
-      fontSize: 15,
-      fontWeight: '900',
-      color: isDark ? '#FBBF24' : '#D97706',
-    },
-    pendingMemoAction: {
-      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FEF3C7',
-      paddingHorizontal: 10,
-      paddingVertical: 5,
-      borderRadius: 8,
-    },
-    pendingMemoActionText: {
-      fontSize: 12,
-      fontWeight: '700',
-      color: isDark ? '#FBBF24' : '#B45309',
+    expandedAssetContent: {
+      marginTop: 8,
+      gap: 8,
     },
     sectionHeader: {
       flexDirection: 'row',
