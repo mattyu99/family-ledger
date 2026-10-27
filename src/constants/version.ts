@@ -1,13 +1,13 @@
 import appConfig from '../../app.json';
 
-// 主版本號（來自 app.json，例如 1.0.8）
-export const APP_BASE_VERSION = appConfig.expo.version || '1.0.8';
+// 主版本號（來自 app.json，例如 1.0.9）
+export const APP_BASE_VERSION = appConfig.expo.version || '1.0.9';
 
 // 小版號 / 建置修訂版號 (Build Revision)
-// 代表自 v1.0.8 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 19;
+// 代表自 v1.0.9 正式發布以來，歷次功能更新與修訂的累計版次
+export const APP_BUILD_REVISION = 0;
 
-// 完整版本字串 (例如 "1.0.8.19")
+// 完整版本字串 (例如 "1.0.9.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,22 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.9',
+    date: '2026-10-27',
+    title: '明細頁極致瘦身、提醒智慧自適應、家庭設定分流導覽與原生 APK 正式發布 (v1.0.9)',
+    highlights: [
+      '明細頁版面瘦身與首屏優化：預算進度內嵌融入收支摘要卡、待辦與待繳整併為單行雙膠囊、財務淨值與儲值卡整合為預設折疊欄，首屏立即可見多筆交易明細，淨省超過 450px 垂直高度。',
+      '提醒列單一與雙向智慧自適應：當待繳或待辦僅有一項時，自動展開顯示第一筆事項內容摘要與專屬操作膠囊按鈕；當兩者並存時自動切換為緊湊並排雙膠囊，兼具資訊完整度與極致省空間。',
+      '家庭設定頁面分流優化：新增頂部常駐版本與即時更新捷徑列（0 滾動即見），並建立「家庭協作、提醒與個人、系統與資料、全部」四大主題頁籤快速切換。',
+      '專屬 3D 黏土桌面快捷圖示：為「記支出、記收入、掃描發票、隨手記事」打造可愛自適應圖示與 SF Symbols，桌面上長按應用程式一鍵秒開。',
+      '生活記事自訂標籤防禦升級：建立持久化已移除標籤黑名單 (dismissedMemoTags)，徹底修復長按刪除後反覆復活之問題；內建 10 大核心標籤永遠置頂。',
+      '生活備忘待辦排程純化：排除已逾期項目，僅列出今日與未來排程；自動過濾非本人的個人專屬待辦；備忘總覽彈窗精簡為兩段（全部 ⇄ 我的）並拉高至 94% 全開高。',
+      '信用卡個人化出帳與繳款提醒：嚴格依持卡人發送提醒防隱私洩漏；家庭設定中自動過濾非本人卡片，介面聚焦防干擾。',
+      '全域文字防禦與深色模式適配：統一封裝標題與數值字體大小防護，消除大字體擠壓變形；深度適配深淺色模式。',
+      '原生二進位正式編譯與全新 APK 發布：編譯全新 Android Release/Preview APK (VersionCode 3)，完整打包所有原生模組與桌面 Quick Actions。',
+    ],
+  },
   {
     version: '1.0.8',
     date: '2026-10-24 ~ 2026-10-27',
