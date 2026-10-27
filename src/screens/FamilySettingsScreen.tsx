@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text as RNText,
@@ -38,6 +38,20 @@ import {
   QuickActionKind,
   QUICK_ACTIONS_CONFIG,
 } from '../lib/quickActions';
+
+export type SettingsCategoryTab = 'family' | 'reminders' | 'system' | 'all';
+
+interface SettingsTabItem {
+  key: SettingsCategoryTab;
+  label: string;
+}
+
+const SETTINGS_TABS: SettingsTabItem[] = [
+  { key: 'family', label: '👨‍👩‍👧 家庭協作' },
+  { key: 'reminders', label: '🔔 提醒與個人' },
+  { key: 'system', label: '⚙️ 系統與資料' },
+  { key: 'all', label: '全部設定' },
+];
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
   <RNText
@@ -334,13 +348,107 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     });
   };
 
+  const [activeTab, setActiveTab] = useState<SettingsCategoryTab>('family');
+  const scrollViewRef = useRef<ScrollView>(null);
+
+  const handleTabChange = (tab: SettingsCategoryTab) => {
+    setActiveTab(tab);
+    scrollViewRef.current?.scrollTo({ y: 0, animated: false });
+  };
+
+  const showFamilyCards = activeTab === 'all' || activeTab === 'family';
+  const showReminderCards = activeTab === 'all' || activeTab === 'reminders';
+  const showSystemCards = activeTab === 'all' || activeTab === 'system';
+
   return (
     <ScrollView
+      ref={scrollViewRef}
       showsVerticalScrollIndicator={false}
       contentContainerStyle={[styles.scrollPadding, { backgroundColor: colors.background.root }]}
     >
-      {/* 家庭成員名冊與管理 */}
-      <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
+      {/* 頂部常駐版本與即時同步簡報列 (0 滾動即見) */}
+      <View style={[styles.topVersionBar, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
+        <View style={styles.topVersionLeft}>
+          <TouchableOpacity
+            style={styles.topVersionTag}
+            onPress={onOpenChangelogModal}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.topVersionAppName, { color: colors.text.primary }]}>甜心記帳本</Text>
+            <View style={styles.topVersionBadge}>
+              <Text style={styles.topVersionBadgeText}>v{APP_VERSION} 📜</Text>
+            </View>
+          </TouchableOpacity>
+          <View style={styles.topSyncStatusRow}>
+            <View style={[styles.syncDot, { backgroundColor: isCloudSynced ? '#10B981' : '#F59E0B' }]} />
+            <Text style={[styles.topSyncStatusText, { color: colors.text.secondary }]}>
+              {isCloudSynced ? '雲端即時同步' : '同步處理中...'}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.topVersionRight}>
+          <TouchableOpacity
+            style={[styles.topCheckUpdateBtn, isCheckingUpdate && styles.topCheckUpdateBtnDisabled]}
+            onPress={onCheckForUpdates}
+            disabled={isCheckingUpdate}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.topCheckUpdateBtnText}>
+              {isCheckingUpdate ? '⏳ 檢查中' : '🔄 檢查更新'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.topChangelogBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
+            onPress={onOpenChangelogModal}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.topChangelogBtnText, { color: colors.text.primary }]}>📜 歷程</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* 主題分類切換頁籤 */}
+      <View style={styles.categoryTabsContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryTabsScroll}>
+          {SETTINGS_TABS.map(tab => {
+            const isSelected = activeTab === tab.key;
+            return (
+              <TouchableOpacity
+                key={tab.key}
+                style={[
+                  styles.categoryTabChip,
+                  {
+                    backgroundColor: isSelected
+                      ? (isDark ? 'rgba(244, 63, 94, 0.22)' : '#FFE4E6')
+                      : (isDark ? colors.background.cardSubtle : '#F1F5F9'),
+                    borderColor: isSelected ? '#F43F5E' : (isDark ? colors.border.default : '#E2E8F0'),
+                  },
+                ]}
+                onPress={() => handleTabChange(tab.key)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.categoryTabText,
+                    { color: isSelected ? (isDark ? '#FDA4AF' : '#E11D48') : colors.text.secondary },
+                    isSelected && styles.categoryTabTextActive,
+                  ]}
+                  maxFontSizeMultiplier={1.08}
+                >
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* 👨‍👩‍👧 家庭協作維度 */}
+      {showFamilyCards && (
+        <>
+          {/* 家庭成員名冊與管理 */}
+          <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
         <View style={styles.sectionHeaderRow}>
           <View style={styles.sectionHeaderLeft}>
             <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} numberOfLines={1}>
@@ -688,7 +796,12 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           </TouchableOpacity>
         </View>
       </View>
+    </>
+  )}
 
+  {/* 🔔 提醒與個人維度 */}
+  {showReminderCards && (
+    <>
       {/* 💳 信用卡帳單與智慧推播提醒卡片 */}
       <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
         <View style={styles.sectionHeaderRow}>
@@ -1011,7 +1124,12 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           💡 使用秘訣：在 iPhone 或 Android 手機桌面上，用手指長按 App 圖示即可彈出捷徑選單；若有開啟「身分解鎖防護」，會先以 Face ID / 指紋完成驗證後自動直達表單！
         </Text>
       </View>
+    </>
+  )}
 
+  {/* ⚙️ 系統與資料維度 */}
+  {showSystemCards && (
+    <>
       {/* 資料備份與掌控 */}
       <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
         <View style={styles.sectionHeaderRow}>
@@ -1460,7 +1578,9 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           </View>
         </View>
       )}
-    </ScrollView>
+    </>
+  )}
+</ScrollView>
   );
 };
 
@@ -1468,6 +1588,109 @@ const styles = StyleSheet.create({
   scrollPadding: {
     padding: 16,
     paddingBottom: 100,
+  },
+  topVersionBar: {
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  topVersionLeft: {
+    flex: 1,
+    marginRight: 8,
+  },
+  topVersionTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 3,
+  },
+  topVersionAppName: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  topVersionBadge: {
+    backgroundColor: '#F43F5E',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  topVersionBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  topSyncStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  syncDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  topSyncStatusText: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  topVersionRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  topCheckUpdateBtn: {
+    backgroundColor: '#F43F5E',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  topCheckUpdateBtnDisabled: {
+    opacity: 0.6,
+  },
+  topCheckUpdateBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  topChangelogBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  topChangelogBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  categoryTabsContainer: {
+    marginBottom: 14,
+  },
+  categoryTabsScroll: {
+    gap: 8,
+    paddingVertical: 2,
+  },
+  categoryTabChip: {
+    paddingVertical: 7,
+    paddingHorizontal: 13,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  categoryTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  categoryTabTextActive: {
+    fontWeight: '700',
   },
   cardSection: {
     borderRadius: 16,
