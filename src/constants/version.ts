@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.8';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.8 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 9;
+export const APP_BUILD_REVISION = 10;
 
-// 完整版本字串 (例如 "1.0.8.9")
+// 完整版本字串 (例如 "1.0.8.10")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.8',
     date: '2026-10-24 ~ 2026-10-27',
-    title: '手機桌面快捷捷徑、轉帳零用錢整合、信用卡通知個人化與待辦分流 (v1.0.8.0 ~ v1.0.8.9)',
+    title: '手機桌面快捷捷徑、轉帳零用錢整合、信用卡通知個人化與待辦分流 (v1.0.8.0 ~ v1.0.8.10)',
     highlights: [
+      '📝 記帳/記事彈窗生命週期隔離與表單保護：修復點擊記事快捷標籤（如紀念日、重要備忘）時觸發 Context 狀態更新導致視窗錯誤重設並跳回支出頁面之問題，確保編輯中狀態絕不中斷。',
       '🛠️ 雲端帳本總管穩定性優化：修正陣列參照引發之無限重新渲染迴圈，徹底消除總管視窗內容閃爍與反覆循環重讀問題。',
       '📊 GitHub Actions 自動日報修復：修復 daily-report.mjs 之 targetTwDate 變數參照，確保每日 LINE 收支日報與資料庫 Keep-Alive 順利執行。',
       '🔔 信用卡通知個人化與待辦提醒（全家 ⇄ 個人）分流：信用卡出帳與繳款通知嚴格依持卡人本人發送，保護個人隱私防干擾；生活記事新增「全家提醒」與「個人專屬」切換，待辦卡片新增範圍膠囊，公私分明精準提醒。',

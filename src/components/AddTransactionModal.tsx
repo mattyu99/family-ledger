@@ -863,15 +863,28 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   }, [initialMode, defaultNote, defaultPayerId, defaultRecipientId, currentUser, members, categories, getMemberById, paymentAccounts]);
 
   // 當彈窗開啟時，全面執行 resetForm 確保畫面乾淨無前次殘留；若指定 autoOpenScanner 則自動喚起發票相機
+  const prevVisibleRef = React.useRef(false);
+  const prevInitialModeRef = React.useRef(initialMode);
+  const resetFormRef = React.useRef(resetForm);
+
   React.useEffect(() => {
-    if (visible) {
-      resetForm();
+    resetFormRef.current = resetForm;
+  }, [resetForm]);
+
+  React.useEffect(() => {
+    const justOpened = visible && !prevVisibleRef.current;
+    const initialModeChanged = visible && initialMode !== prevInitialModeRef.current;
+
+    if (justOpened || initialModeChanged) {
+      resetFormRef.current();
       if (autoOpenScanner) {
         setScannerModalVisible(true);
         onClearAutoOpenScanner?.();
       }
     }
-  }, [visible, resetForm, autoOpenScanner, onClearAutoOpenScanner]);
+    prevVisibleRef.current = visible;
+    prevInitialModeRef.current = initialMode;
+  }, [visible, initialMode, autoOpenScanner, onClearAutoOpenScanner]);
 
   // 關閉彈窗時同步清空重設表單狀態
   const handleClose = React.useCallback(() => {

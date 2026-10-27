@@ -819,9 +819,15 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     return pool.filter(m => m.toLowerCase().includes(query)).slice(0, 10);
   }, [categories, type, selectedCategoryId, recentMerchants, merchant, note]);
 
+  const prevVisibleRef = useRef(false);
+  const prevTxIdRef = useRef<string | undefined>(undefined);
+
   // 當 transaction 或 visible 改變時同步資料
   useEffect(() => {
-    if (visible && transaction) {
+    const justOpened = visible && !prevVisibleRef.current;
+    const txChanged = visible && transaction?.id !== prevTxIdRef.current;
+
+    if ((justOpened || txChanged) && transaction) {
       setType(transaction.type);
       setAmount(transaction.amount ? String(transaction.amount) : '');
       const cat = getCategoryById(transaction.category_id, transaction.category);
@@ -878,7 +884,9 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       setTransactedAt(transaction.transacted_at || new Date().toISOString());
       setDatePickerVisible(false);
     }
-  }, [visible, transaction, getMemberById, categories, getCategoryById]);
+    prevVisibleRef.current = visible;
+    prevTxIdRef.current = transaction?.id;
+  }, [visible, transaction?.id, getMemberById, categories, getCategoryById]);
 
   // 切換支出/收入時，若當前分類不屬於新類型，才調整為新類型的第一個分類
   const handleTypeChange = (newType: TransactionType) => {
