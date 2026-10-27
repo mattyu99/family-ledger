@@ -890,7 +890,7 @@ async function main() {
   const profileMap = new Map();
   (allProfiles || []).forEach(p => profileMap.set(p.id, p));
 
-  const { startOfDayIso, endOfDayIso, startOfMonthIso, formattedDate, yearMonthStr } = getTaiwanTimeRanges();
+  const { startOfDayIso, endOfDayIso, startOfMonthIso, formattedDate, yearMonthStr, targetTwDate } = getTaiwanTimeRanges();
 
   // 若目前資料庫尚無特定帳本紀錄，產生通用防休眠日報
   if (ledgersToReport.length === 0) {

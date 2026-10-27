@@ -30,6 +30,8 @@ import {
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+const EMPTY_KNOWN_LEDGERS: any[] = [];
+
 interface CloudLedgerManagerModalProps {
   visible: boolean;
   currentLedgerId: string;
@@ -41,7 +43,7 @@ interface CloudLedgerManagerModalProps {
 export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = ({
   visible,
   currentLedgerId,
-  knownLedgers = [],
+  knownLedgers = EMPTY_KNOWN_LEDGERS,
   onClose,
   onLedgerDeleted,
 }) => {
@@ -53,10 +55,15 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
   const [quota, setQuota] = useState<CloudDatabaseQuota | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'active' | 'test' | 'ghost'>('all');
 
+  const knownLedgersRef = React.useRef(knownLedgers);
+  useEffect(() => {
+    knownLedgersRef.current = knownLedgers;
+  }, [knownLedgers]);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchCloudLedgersSummary(knownLedgers);
+      const data = await fetchCloudLedgersSummary(knownLedgersRef.current);
       setLedgers(data.ledgers);
       setQuota(data.quota);
     } catch (e) {
@@ -65,7 +72,7 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
     } finally {
       setLoading(false);
     }
-  }, [knownLedgers]);
+  }, []);
 
   useEffect(() => {
     if (visible) {
@@ -142,7 +149,7 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
           </View>
 
           {/* 帳本清單與捲動區域 */}
-          {loading ? (
+          {loading && ledgers.length === 0 ? (
             <View style={styles.loadingBox}>
               <ActivityIndicator size="large" color="#3B82F6" />
               <Text style={styles.loadingText}>正在從雲端盤點全體帳本...</Text>
