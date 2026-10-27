@@ -30,7 +30,7 @@ const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultip
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 type TodoTab = 'all' | 'today' | 'upcoming' | 'undated' | 'completed';
-type TodoScope = 'all' | 'family' | 'mine';
+type TodoScope = 'all' | 'mine';
 
 interface MemoTodoModalProps {
   visible: boolean;
@@ -81,9 +81,6 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
   const allMemos = useMemo(() => {
     return transactions.filter(t => {
       if (t.type !== 'memo') return false;
-      if (scopeFilter === 'family') {
-        return t.reminder_target !== 'personal';
-      }
       if (scopeFilter === 'mine') {
         const isPersonal = t.reminder_target === 'personal';
         if (!isPersonal) return false;
@@ -239,13 +236,6 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                 activeOpacity={0.7}
               >
                 <Text style={[styles.scopeTabText, scopeFilter === 'all' && styles.scopeTabTextActive]}>全部</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.scopeTab, scopeFilter === 'family' && styles.scopeTabActive]}
-                onPress={() => handleScopeChange('family')}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.scopeTabText, scopeFilter === 'family' && styles.scopeTabTextActive]}>全家</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.scopeTab, scopeFilter === 'mine' && styles.scopeTabActive]}

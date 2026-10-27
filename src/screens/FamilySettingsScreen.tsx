@@ -18,7 +18,7 @@ import { showAlert, showConfirm, copyToClipboard } from '../lib/alert';
 import { formatLastBackupText } from '../lib/backup';
 import { APP_FULL_VERSION as APP_VERSION } from '../constants/version';
 import { Profile, MemberDevice } from '../types';
-import { parseMemoNote } from '../lib/memo';
+import { parseMemoNote, getLocalDateYmd } from '../lib/memo';
 import {
   isNotificationSupported,
   getBillingNotificationsEnabled,
@@ -169,11 +169,24 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     });
   }, [paymentAccounts, currentUser?.id]);
 
+  // 僅篩選出本機實際會推播提醒的待辦記事：
+  // 1. 僅保留今天與未來尚未過期的排程（reminder_date >= todayYmd；已逾期之提醒不屬於未來推播排程）
+  // 2. 個人專屬待辦僅列出指派給當前使用者的項目（其餘家庭成員之個人專屬待辦本機不響鈴，予以隱藏避免混淆）
   const pendingMemos = useMemo(() => {
+    const todayYmd = getLocalDateYmd();
     return (transactions || [])
-      .filter(t => t.type === 'memo' && !t.is_settled && !!t.reminder_date)
+      .filter(t => {
+        if (t.type !== 'memo' || t.is_settled || !t.reminder_date) return false;
+        // 排除已逾期的提醒（只保留今天與未來即將推播的排程）
+        if (t.reminder_date < todayYmd) return false;
+        // 個人專屬待辦分流純化：若非全家公用，僅列出指派給自己的項目
+        if (t.reminder_target === 'personal' && currentUser?.id && t.paid_by && t.paid_by !== currentUser.id) {
+          return false;
+        }
+        return true;
+      })
       .sort((a, b) => (a.reminder_date || '').localeCompare(b.reminder_date || ''));
-  }, [transactions]);
+  }, [transactions, currentUser?.id]);
 
   const handleToggleBillingNotice = async () => {
     const nextState = !billingNoticeEnabled;
@@ -769,7 +782,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
         <View style={styles.sectionHeaderRow}>
           <View style={styles.sectionHeaderLeft}>
             <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              📌 生活記事待辦提醒 (全家 ⇄ 個人分流)
+              📌 生活記事待辦提醒
             </Text>
             <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
               全家待辦全員接收；個人專屬待辦僅提醒被指派之負責成員，精準防擾
