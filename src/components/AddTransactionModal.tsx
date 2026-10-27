@@ -57,6 +57,7 @@ import {
 } from '../lib/payment';
 import { getCategoryIcon } from '../lib/icons';
 import {
+  DEFAULT_MEMO_QUICK_TAGS,
   getMergedMemoTags,
   toggleMemoTag,
   isMemoTagActive,
@@ -206,13 +207,16 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   }, [recentMemoTags]);
 
   const handleLongPressMemoTag = React.useCallback((tag: string) => {
+    if (DEFAULT_MEMO_QUICK_TAGS.includes(tag)) {
+      return; // 內建核心標籤常駐保留在最前面
+    }
     if (Platform.OS === 'web') {
-      if (typeof window !== 'undefined' && window.confirm(`是否將「${tag}」從快捷標籤中移除？`)) {
+      if (typeof window !== 'undefined' && window.confirm(`是否將「${tag}」從自訂快捷標籤中移除？`)) {
         removeRecentMemoTag(tag);
       }
     } else {
       Alert.alert(
-        '移除快捷標籤',
+        '移除自訂快捷標籤',
         `確定要將「${tag}」從常用標籤中移除嗎？`,
         [
           { text: '取消', style: 'cancel' },

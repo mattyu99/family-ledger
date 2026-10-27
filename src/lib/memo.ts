@@ -20,13 +20,22 @@ export const DEFAULT_MEMO_QUICK_TAGS = [
 export const MEMO_QUICK_TAGS = DEFAULT_MEMO_QUICK_TAGS;
 
 /**
- * 智慧合併生活記事標籤（策略 1：最常用/最近使用的排前面，未使用的內建項目接在後面備用）
+ * 智慧合併生活記事標籤：固定內建核心項目在最前面維持位置穩定，使用者自訂或歷史常用標籤接在後面
  */
 export function getMergedMemoTags(recentTags: string[] = []): string[] {
   const pool: string[] = [];
   const seen = new Set<string>();
 
-  // 1. 最近/最常用的自學習與常用標籤排最前面
+  // 1. 內建項目固定排在最前面，順序永遠固定不跳動
+  for (const t of DEFAULT_MEMO_QUICK_TAGS) {
+    const key = t.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      pool.push(t);
+    }
+  }
+
+  // 2. 使用者自訂/新增的歷史常用標籤排在後面 (排除已包含的內建項目)
   for (const t of recentTags) {
     const clean = (t || '').trim();
     if (!clean) continue;
@@ -37,17 +46,8 @@ export function getMergedMemoTags(recentTags: string[] = []): string[] {
     }
   }
 
-  // 2. 內建項目接在後面備用
-  for (const t of DEFAULT_MEMO_QUICK_TAGS) {
-    const key = t.toLowerCase();
-    if (!seen.has(key)) {
-      seen.add(key);
-      pool.push(t);
-    }
-  }
-
-  // 最多保留前 16 個標籤，兼顧豐富度與版面整潔
-  return pool.slice(0, 16);
+  // 最多保留前 24 個標籤，兼顧豐富度與版面整潔
+  return pool.slice(0, 24);
 }
 
 /**

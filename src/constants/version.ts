@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.8';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.8 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 11;
+export const APP_BUILD_REVISION = 12;
 
-// 完整版本字串 (例如 "1.0.8.11")
+// 完整版本字串 (例如 "1.0.8.12")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.8',
     date: '2026-10-24 ~ 2026-10-27',
-    title: '手機桌面快捷捷徑、轉帳零用錢整合、信用卡通知個人化與待辦分流 (v1.0.8.0 ~ v1.0.8.11)',
+    title: '手機桌面快捷捷徑、轉帳零用錢整合、信用卡通知個人化與待辦分流 (v1.0.8.0 ~ v1.0.8.12)',
     highlights: [
+      '📌 生活記事快捷標籤常駐置頂：內建 10 大核心標籤（待辦清單、採買清單、紀念日、重要備忘等）永遠固定在最前面不跳動，使用者自訂之歷史標籤接續在後。',
       '💳 信用卡個人提醒清單純化：家庭設定之「信用卡帳單個人提醒」清單嚴格僅列出本機提醒之卡片（本人持卡或全家公用卡），自動隱藏其餘家庭成員卡片，介面聚焦防干擾。',
       '📝 記帳/記事彈窗生命週期隔離與表單保護：修復點擊記事快捷標籤（如紀念日、重要備忘）時觸發 Context 狀態更新導致視窗錯誤重設並跳回支出頁面之問題，確保編輯中狀態絕不中斷。',
       '🛠️ 雲端帳本總管穩定性優化：修正陣列參照引發之無限重新渲染迴圈，徹底消除總管視窗內容閃爍與反覆循環重讀問題。',
