@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.9';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.9 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 0;
+export const APP_BUILD_REVISION = 1;
 
-// 完整版本字串 (例如 "1.0.9.0")
+// 完整版本字串 (例如 "1.0.9.1")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -20,11 +20,14 @@ export interface ChangelogItem {
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.9',
-    date: '2026-10-27',
-    title: '全新 1.0.9 正式版發布與原生二進位 APK 編譯 (v1.0.9.0)',
+    date: '2026-10-27 ~ 2026-10-28',
+    title: '全新 1.0.9 正式版發布、跨裝置 Google 權限鏈接、防幽靈成員與快取自癒 (v1.0.9.0 ~ v1.0.9.1)',
     highlights: [
       '📦 全新 Android 原生 APK 編譯發布：完成 VersionCode 3 原生二進位獨立安裝檔打包，完整封裝相機辨識、生物辨識與桌面 Quick Actions。',
-      '🎉 跨版本功能集大成與效能升級：完整收斂 v1.0.8 歷次演進成果，全面提升首屏載入效能、介面流暢度與雲端同步穩定性。',
+      '🛡️ 多機 Google 授權與 RLS 權限鏈接：換機登入 Google 認領身分後自動補登雲端權限，徹底杜絕因 RLS 阻斷導致交易與卡片為 0 或受困舊快取。',
+      '🚫 邀請碼加入防幽靈假人：嚴禁未填暱稱建立「家庭成員」假人；受保護身分新增【以 Google 帳號直接解鎖認領】按鈕，無縫解鎖。',
+      '🧹 快取洗淨、載入去重與本機自癒：退出帳本徹底清洗全域快取；載入明細嚴格以雲端為準，終結 321+41=362 膨脹；設定頁新增【清除本機快取並重新同步】一鍵自癒。',
+      '📵 關閉 Android Auto Backup 污染：配置 allowBackup: false，防止 Google Drive 在安裝 APK 時將舊機過期快取自動還原到新手機。',
     ],
   },
   {
