@@ -3994,10 +3994,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       try {
         await processOfflineQueue();
         const { data: { session } } = await supabase.auth.getSession();
-        const authUserId = session?.user?.id;
-        if (authUserId) {
-          await loadLedgerData(currentLedger, authUserId);
-        }
+        const authUserId = session?.user?.id || currentUser?.id || '';
+        await loadLedgerData(currentLedger, authUserId);
         if (loadBudgetRef.current && currentLedger?.id) {
           await loadBudgetRef.current(currentLedger.id);
         }
