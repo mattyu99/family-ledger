@@ -388,6 +388,48 @@ export function useDeviceAuth({
 
       await registerDevice(matched.id, currentLedger.id);
 
+      // 跨裝置 Google 授權與 RLS 權限鏈接：
+      // 確保當前連線 Session 的 auth.uid() 獲得雲端 ledger_members 存取權限
+      const { data: { session: curSession } } = await supabase.auth.getSession();
+      const currentAuthUserId = curSession?.user?.id;
+      if (currentAuthUserId) {
+        try {
+          const { data: matchedLedgerRows } = await supabase
+            .from('ledger_members')
+            .select('ledger_id, role')
+            .eq('user_id', matched.id);
+
+          if (matchedLedgerRows && matchedLedgerRows.length > 0) {
+            for (const row of matchedLedgerRows) {
+              await supabase.from('ledger_members').upsert({
+                ledger_id: row.ledger_id,
+                user_id: currentAuthUserId,
+                role: row.role || 'member',
+              }, { onConflict: 'ledger_id,user_id' });
+            }
+          } else if (currentLedger?.id && currentLedger.id !== DEMO_LEDGER_ID) {
+            await supabase.from('ledger_members').upsert({
+              ledger_id: currentLedger.id,
+              user_id: currentAuthUserId,
+              role: matched.role || 'member',
+            }, { onConflict: 'ledger_id,user_id' });
+          }
+
+          // 同步更新當前 Session 在 profiles 中的身分與保護狀態
+          await supabase.from('profiles').upsert({
+            id: currentAuthUserId,
+            display_name: matched.display_name,
+            avatar_url: matched.avatar_url,
+            auth_email: matched.auth_email,
+            auth_provider: 'google',
+            is_locked: true,
+            updated_at: new Date().toISOString(),
+          });
+        } catch (linkErr) {
+          console.warn('同步 Google 授權成員權限失敗:', linkErr);
+        }
+      }
+
       if (!clean.includes('@')) {
         await supabase.from('profiles').update({
           claim_code: null,

@@ -333,6 +333,13 @@ interface LedgerContextType {
   linkGoogleAccount: (targetProfileId?: string, actionType?: 'bind_google' | 'claim') => Promise<{ success: boolean; message?: string }>;
   unlinkGoogleAccount: (targetProfileId?: string) => Promise<{ success: boolean; message?: string }>;
   claimGoogleIdentity: (codeOrEmail: string) => Promise<{ success: boolean; message?: string; profile?: Profile }>;
+  resetLocalCacheAndResync: () => Promise<{
+    success: boolean;
+    txCount: number;
+    memberCount: number;
+    accountCount: number;
+    message?: string;
+  }>;
   isCurrentUserLocked: boolean;
   signInWithGoogle: () => Promise<{ success: boolean; message?: string }>;
   signOutGoogle: () => Promise<void>;
@@ -2445,8 +2452,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (!deletedSet.has(t.id)) mergedMap.set(t.id, t);
         });
         if (hasLocalCache && localCachedTransactions.length > 0) {
+          // 嚴格保護：雲端已有權威明細時，本地只允許合併「真正帶有 _isPendingSync 標記之離線新記帳」
+          // 絕不盲目合併無 _isPendingSync 的舊孤兒快取，徹底杜絕多裝置間交易筆數膨脹分裂 (321+41=362)
           localCachedTransactions.forEach(t => {
-            if (!mergedMap.has(t.id) && !deletedSet.has(t.id)) {
+            if (Boolean((t as any)._isPendingSync) && !mergedMap.has(t.id) && !deletedSet.has(t.id)) {
               mergedMap.set(t.id, t);
             }
           });
@@ -3641,6 +3650,68 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  // 重新校準本機資料 (清除本機暫存快取並從雲端重新下載權威資料，絕不影響雲端任何資料)
+  const resetLocalCacheAndResync = async (): Promise<{
+    success: boolean;
+    txCount: number;
+    memberCount: number;
+    accountCount: number;
+    message?: string;
+  }> => {
+    try {
+      if (!isConfigured || !currentLedger?.id || currentLedger.id === DEMO_LEDGER_ID) {
+        return { success: false, txCount: 0, memberCount: 0, accountCount: 0, message: '目前為離線或示範模式，無需重新同步' };
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const authUserId = session?.user?.id;
+      if (!authUserId) {
+        return { success: false, txCount: 0, memberCount: 0, accountCount: 0, message: '尚未登入，無法重新同步雲端資料' };
+      }
+
+      // 1. 清空本機暫存檔與記憶體快取
+      inMemoryLedgerTxCacheRef.current.delete(currentLedger.id);
+      await AsyncStorage.removeItem(STORAGE_KEYS.TRANSACTIONS);
+      await AsyncStorage.removeItem(`${STORAGE_KEYS.TRANSACTIONS}_${currentLedger.id}`);
+      await AsyncStorage.removeItem(STORAGE_KEYS.PAYMENT_ACCOUNTS);
+      await AsyncStorage.removeItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${currentLedger.id}`);
+      await AsyncStorage.removeItem(STORAGE_KEYS.MEMBERS);
+      await AsyncStorage.removeItem(`${STORAGE_KEYS.MEMBERS}_${currentLedger.id}`);
+      await AsyncStorage.removeItem(STORAGE_KEYS.ALIAS_MAP);
+      await AsyncStorage.removeItem(`${STORAGE_KEYS.ALIAS_MAP}_${currentLedger.id}`);
+      await AsyncStorage.removeItem(STORAGE_KEYS.DELETED_TX_IDS);
+      await AsyncStorage.removeItem(`${STORAGE_KEYS.DELETED_TX_IDS}_${currentLedger.id}`);
+      await AsyncStorage.removeItem(`${STORAGE_KEYS.ACCOUNTS_INITIALIZED}_${currentLedger.id}`);
+
+      // 2. 重新從雲端載入該帳本的權威最新資料
+      await loadLedgerData(currentLedger, authUserId);
+      if (loadBudgetRef.current) {
+        await loadBudgetRef.current(currentLedger.id);
+      }
+
+      // 3. 獲取重新整理後的最新資料數量
+      const freshTxs = inMemoryLedgerTxCacheRef.current.get(currentLedger.id) || [];
+      const { data: latestAccs } = await supabase
+        .from('payment_accounts')
+        .select('id')
+        .eq('ledger_id', currentLedger.id);
+      const { data: latestMems } = await supabase
+        .from('ledger_members')
+        .select('user_id')
+        .eq('ledger_id', currentLedger.id);
+
+      return {
+        success: true,
+        txCount: freshTxs.length,
+        memberCount: latestMems?.length || members.length,
+        accountCount: latestAccs?.length || paymentAccounts.length,
+      };
+    } catch (err: any) {
+      console.warn('重新校準本機資料失敗:', err);
+      return { success: false, txCount: 0, memberCount: 0, accountCount: 0, message: err?.message || '重整快取失敗' };
+    }
+  };
+
   // Google 帳號一鍵登入與同步 (Phase 3)
   // 3. 當 App 從背景回到前景時，自動檢查並重新載入最新雲端資料，並自動完成待處理的 Google 授權同步
   useEffect(() => {
@@ -4432,13 +4503,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
+      // 嚴格門禁防護：絕不允許未選身分且未填寫暱稱時，在背景自動以「家庭成員」假人新增成員
+      if (!claimedMember && (!memberName || !memberName.trim() || memberName.trim() === '家庭成員')) {
+        return {
+          success: false,
+          message: '請選擇您在家庭中的稱謂或輸入您的專屬暱稱，無法建立空白或匿名成員。',
+        };
+      }
+
       const assignedRole: 'owner' | 'admin' | 'member' = isCreator
         ? 'owner'
         : (isClaimingAdmin ? (claimedMember?.role === 'admin' ? 'admin' : 'owner') : 'member');
 
       const finalDisplayName = claimedMember
         ? claimedMember.display_name
-        : (memberName || (isCreator ? '爸爸 (我)' : '家庭成員'));
+        : (memberName?.trim() || (isCreator ? '爸爸 (我)' : '新成員'));
       const finalAvatar = claimedMember
         ? claimedMember.avatar_url
         : (avatar || (isCreator ? '👨' : '👩'));
@@ -4796,6 +4875,23 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await AsyncStorage.removeItem(`${STORAGE_KEYS.CURRENT_USER}_${currentLedger.id}`);
     await AsyncStorage.removeItem(`${STORAGE_KEYS.MEMBERS}_${currentLedger.id}`);
     await AsyncStorage.removeItem(`${STORAGE_KEYS.TRANSACTIONS}_${currentLedger.id}`);
+    await AsyncStorage.removeItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${currentLedger.id}`);
+    await AsyncStorage.removeItem(`${STORAGE_KEYS.PAYMENT_METHODS}_${currentLedger.id}`);
+    await AsyncStorage.removeItem(`${STORAGE_KEYS.RECURRING_RULES}_${currentLedger.id}`);
+    await AsyncStorage.removeItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${currentLedger.id}`);
+    await AsyncStorage.removeItem(`${STORAGE_KEYS.BUDGET}_${currentLedger.id}`);
+    await AsyncStorage.removeItem(`${STORAGE_KEYS.LAST_VISITED_PREFIX}${currentLedger.id}`);
+
+    // 徹底清除全域交易與快取，避免殘留孤兒明細污染下一本帳本或重新加入時膨脹
+    await AsyncStorage.removeItem(STORAGE_KEYS.TRANSACTIONS);
+    await AsyncStorage.removeItem(STORAGE_KEYS.MEMBERS);
+    await AsyncStorage.removeItem(STORAGE_KEYS.PAYMENT_ACCOUNTS);
+    await AsyncStorage.removeItem(STORAGE_KEYS.ALIAS_MAP);
+    inMemoryLedgerTxCacheRef.current.clear();
+    setTransactions([]);
+    setMembers([]);
+    setPaymentAccounts([]);
+    setMemberAliasMap({});
 
     // 重要：自帳本清單中移除當前帳本，避免切換清單殘留幽靈帳本
     setLedgers(prev => prev.filter(l => l.id !== currentLedger.id));
@@ -4914,7 +5010,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await AsyncStorage.removeItem(`${STORAGE_KEYS.CURRENT_USER}_${targetLedgerId}`);
       await AsyncStorage.removeItem(`${STORAGE_KEYS.MEMBERS}_${targetLedgerId}`);
       await AsyncStorage.removeItem(`${STORAGE_KEYS.TRANSACTIONS}_${targetLedgerId}`);
+      await AsyncStorage.removeItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${targetLedgerId}`);
+      await AsyncStorage.removeItem(`${STORAGE_KEYS.PAYMENT_METHODS}_${targetLedgerId}`);
+      await AsyncStorage.removeItem(`${STORAGE_KEYS.RECURRING_RULES}_${targetLedgerId}`);
+      await AsyncStorage.removeItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${targetLedgerId}`);
+      await AsyncStorage.removeItem(`${STORAGE_KEYS.BUDGET}_${targetLedgerId}`);
       await AsyncStorage.removeItem(`${STORAGE_KEYS.LAST_VISITED_PREFIX}${targetLedgerId}`);
+      inMemoryLedgerTxCacheRef.current.delete(targetLedgerId);
       setUnreadLedgerMap(prev => {
         if (!prev[targetLedgerId]) return prev;
         const next = { ...prev };
@@ -6827,6 +6929,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         linkGoogleAccount,
         unlinkGoogleAccount,
         claimGoogleIdentity,
+        resetLocalCacheAndResync,
         isCurrentUserLocked,
         signInWithGoogle,
         signOutGoogle,

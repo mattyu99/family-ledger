@@ -76,7 +76,7 @@ export const JoinLedgerModal: React.FC<JoinLedgerModalProps> = ({
 }) => {
   const { isDark, colors } = useTheme();
   const styles = React.useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-  const { previewInvite, joinLedgerByCode } = useLedger();
+  const { previewInvite, joinLedgerByCode, linkGoogleAccount } = useLedger();
 
   const [joinCodeInput, setJoinCodeInput] = useState(initialCode);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
@@ -300,7 +300,7 @@ export const JoinLedgerModal: React.FC<JoinLedgerModalProps> = ({
                   </View>
                 </ScrollView>
 
-                {selectedClaimMember && (selectedClaimMember.role === 'owner' || selectedClaimMember.role === 'admin') && (
+                {selectedClaimMember && (selectedClaimMember.role === 'owner' || selectedClaimMember.role === 'admin') && !selectedClaimMember.is_locked && (
                   <View style={styles.adminPinPromptBox}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
                       <Text style={{ fontSize: 16, marginRight: 6 }}>🔐</Text>
@@ -322,19 +322,46 @@ export const JoinLedgerModal: React.FC<JoinLedgerModalProps> = ({
                   </View>
                 )}
 
-                <TouchableOpacity
-                  style={[styles.submitBtn, (!selectedClaimMember || isJoining) && { opacity: 0.6 }]}
-                  disabled={!selectedClaimMember || isJoining}
-                  onPress={handleClaimJoin}
-                >
-                  <Text style={styles.submitBtnText}>
-                    {isJoining
-                      ? '正在認領並進入...'
-                      : selectedClaimMember
-                      ? `🚀 以「${selectedClaimMember.display_name}」身分進入帳本`
-                      : '請先點選上方的身分'}
-                  </Text>
-                </TouchableOpacity>
+                {selectedClaimMember && selectedClaimMember.is_locked && (
+                  <View style={styles.googleLockedPromptBox}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                      <Text style={{ fontSize: 16, marginRight: 6 }}>🛡️</Text>
+                      <Text style={styles.googleLockedPromptTitle}>Google 電子鎖安全保護中</Text>
+                    </View>
+                    <Text style={styles.googleLockedPromptDesc}>
+                      「{selectedClaimMember.display_name}」已由 Google 帳號鎖定保護
+                      {selectedClaimMember.auth_email ? ` (${selectedClaimMember.auth_email.replace(/(.{2})(.*)(@.*)/, '$1***$3')})` : ''}。
+                      {'\n'}若您為本人，請直接點擊下方按鈕以 Google 帳號授權解鎖並認領進入：
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.googleDirectClaimBtn}
+                      activeOpacity={0.8}
+                      onPress={async () => {
+                        onClose();
+                        const res = await linkGoogleAccount(selectedClaimMember.id, 'claim');
+                        if (!res.success && res.message) showAlert('提示', res.message);
+                      }}
+                    >
+                      <Text style={styles.googleDirectClaimBtnText}>🔑 以 Google 帳號直接解鎖認領</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {!selectedClaimMember?.is_locked && (
+                  <TouchableOpacity
+                    style={[styles.submitBtn, (!selectedClaimMember || isJoining) && { opacity: 0.6 }]}
+                    disabled={!selectedClaimMember || isJoining}
+                    onPress={handleClaimJoin}
+                  >
+                    <Text style={styles.submitBtnText}>
+                      {isJoining
+                        ? '正在認領並進入...'
+                        : selectedClaimMember
+                        ? `🚀 以「${selectedClaimMember.display_name}」身分進入帳本`
+                        : '請先點選上方的身分'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
 
                 <View style={styles.orDividerRow}>
                   <View style={styles.dividerLine} />
@@ -603,6 +630,38 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       paddingVertical: 8,
       fontSize: 14,
       color: colors.text.primary,
+    },
+    googleLockedPromptBox: {
+      backgroundColor: isDark ? 'rgba(16, 185, 129, 0.12)' : '#ECFDF5',
+      borderRadius: 12,
+      padding: 12,
+      marginTop: 10,
+      borderWidth: 1.5,
+      borderColor: isDark ? 'rgba(16, 185, 129, 0.3)' : '#A7F3D0',
+    },
+    googleLockedPromptTitle: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: isDark ? '#34D399' : '#065F46',
+    },
+    googleLockedPromptDesc: {
+      fontSize: 12,
+      color: isDark ? '#D1FAE5' : '#047857',
+      lineHeight: 18,
+      marginVertical: 6,
+    },
+    googleDirectClaimBtn: {
+      backgroundColor: '#059669',
+      borderRadius: 10,
+      paddingVertical: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 4,
+    },
+    googleDirectClaimBtnText: {
+      color: '#FFFFFF',
+      fontSize: 13,
+      fontWeight: '700',
     },
     submitBtn: {
       backgroundColor: '#4F46E5',

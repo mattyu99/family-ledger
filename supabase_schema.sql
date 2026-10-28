@@ -175,7 +175,7 @@ ALTER TABLE public.payment_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transaction_splits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ledger_invites ENABLE ROW LEVEL SECURITY;
 
--- 檢查當前登入者是否屬於特定帳本成員的輔助函式（包含建立者與已加入成員）
+-- 檢查當前登入者是否屬於特定帳本成員的輔助函式（包含建立者、已加入成員、以及已綁定同 Google 帳號之受保護成員）
 CREATE OR REPLACE FUNCTION public.is_ledger_member(target_ledger_id UUID)
 RETURNS BOOLEAN AS $$
 BEGIN
@@ -185,6 +185,12 @@ BEGIN
   ) OR EXISTS (
     SELECT 1 FROM public.ledgers
     WHERE id = target_ledger_id AND created_by = auth.uid()
+  ) OR EXISTS (
+    SELECT 1 FROM public.ledger_members lm
+    JOIN public.profiles p ON lm.user_id = p.id
+    WHERE lm.ledger_id = target_ledger_id
+      AND lower(p.auth_email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+      AND p.is_locked = true
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

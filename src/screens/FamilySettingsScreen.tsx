@@ -135,6 +135,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     pendingOfflineCount,
     isProcessingQueue,
     processOfflineQueue,
+    resetLocalCacheAndResync,
   } = useLedger();
 
   const {
@@ -346,6 +347,33 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       }
       return false;
     });
+  };
+
+  const [isResettingCache, setIsResettingCache] = useState(false);
+
+  const handleResetLocalCache = () => {
+    showConfirm(
+      '清除本機快取並重新同步',
+      '確定要清除手機上的本機暫存快取嗎？\n\n系統將保留雲端資料不動，重新為此手機下載最新完整的明細、成員名冊與支付卡片。',
+      async () => {
+        setIsResettingCache(true);
+        try {
+          const res = await resetLocalCacheAndResync();
+          if (res.success) {
+            showAlert(
+              '✅ 本機快取已重整校準完成！',
+              `已從雲端載入最新的 ${res.txCount} 筆明細、${res.memberCount} 位成員與 ${res.accountCount} 張支付卡片。`
+            );
+          } else {
+            showAlert('重整失敗', res.message || '無法重新載入雲端資料，請檢查網路連線');
+          }
+        } catch (err: any) {
+          showAlert('重整失敗', err?.message || '操作發生錯誤');
+        } finally {
+          setIsResettingCache(false);
+        }
+      }
+    );
   };
 
   const [activeTab, setActiveTab] = useState<SettingsCategoryTab>('family');
@@ -1367,6 +1395,23 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             {isOwner
               ? '支援上傳 .json 備份檔或直接貼上代碼安全還原'
               : '此操作具有覆蓋全帳本之影響，需管理員權限'}
+          </Text>
+        </TouchableOpacity>
+
+        {/* 🔄 清除本機快取並重新同步 (自癒校準) */}
+        <TouchableOpacity
+          style={[styles.restoreEntryBtn, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.12)' : '#EEF2FF', borderColor: isDark ? 'rgba(99, 102, 241, 0.3)' : '#C7D2FE', marginTop: 10 }]}
+          onPress={handleResetLocalCache}
+          activeOpacity={0.8}
+          disabled={isResettingCache}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={[styles.restoreEntryBtnText, { color: isDark ? '#A5B4FC' : '#4F46E5' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              {isResettingCache ? '⏳ 正在重新校準本機資料...' : '🔄 清除本機快取並重新同步'}
+            </Text>
+          </View>
+          <Text style={[styles.restoreEntryBtnSub, { color: isDark ? '#C7D2FE' : '#6366F1' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+            以雲端資料為準，清空手機暫存並重新載入最新明細（絕不影響或修改雲端資料）
           </Text>
         </TouchableOpacity>
 
