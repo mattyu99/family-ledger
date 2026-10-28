@@ -1,10 +1,9 @@
-import { Platform, Share } from 'react-native';
 import { Transaction, PaymentAccount, RecurringRule, Profile, Category } from '../types/database';
 import {
   StatementFile,
   formatFileSize,
 } from './statementStorage';
-import { showAlert, copyToClipboard } from './alert';
+import { exportAndDownloadFile, FileExportResult } from './fileExport';
 
 export interface AttachmentItem {
   id: string;
@@ -698,50 +697,23 @@ export const generateAttachmentArchiveHtml = (params: {
 
 /**
  * 匯出或分享附件離線索引庫 HTML 檔案
+ * Web 直接下載，行動端透過 Supabase Storage + 瀏覽器直接下載實體 HTML 檔案，離線則自動複製至剪貼簿
  */
 export const exportAttachmentArchive = async (params: {
+  ledgerId?: string;
   ledgerName: string;
   stats: AttachmentStats;
-}): Promise<boolean> => {
-  const { ledgerName, stats } = params;
+}): Promise<FileExportResult> => {
+  const { ledgerId, ledgerName, stats } = params;
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   const filename = `甜心記帳本_${ledgerName || '家庭公帳'}_附件離線封存庫_${dateStr}.html`;
   const htmlContent = generateAttachmentArchiveHtml({ ledgerName, stats });
 
-  if (Platform.OS === 'web') {
-    if (typeof document !== 'undefined') {
-      try {
-        const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.setAttribute('href', url);
-        link.setAttribute('download', filename);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        showAlert('下載成功', `已將附件離線封存庫「${filename}」下載至您的電腦！\n\n以任何瀏覽器開啟即可離線檢視並一鍵批次下載全部真實檔案。`);
-        return true;
-      } catch (err) {
-        console.warn('下載 HTML 失敗:', err);
-      }
-    }
-    return false;
-  }
-
-  // 原生行動裝置 (iOS / Android)
-  try {
-    await Share.share({
-      title: filename,
-      message: htmlContent,
-    });
-    return true;
-  } catch (err) {
-    copyToClipboard(
-      htmlContent,
-      '已將附件離線封存庫 HTML 內容複製到剪貼簿！可儲存為 .html 檔案後開啟。'
-    );
-    return true;
-  }
+  return exportAndDownloadFile({
+    ledgerId,
+    filename,
+    content: htmlContent,
+    mimeType: 'text/html;charset=utf-8;',
+  });
 };
 

@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.9';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.9 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 9;
+export const APP_BUILD_REVISION = 10;
 
-// 完整版本字串 (例如 "1.0.9.9")
+// 完整版本字串 (例如 "1.0.9.10")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -21,8 +21,10 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.9',
     date: '2026-10-27 ~ 2026-10-28',
-    title: '全新 1.0.9 正式版發布、收據快傳逾時防禦、儲存防重複鎖定與離線隊列死鎖治癒 (v1.0.9.0 ~ v1.0.9.9)',
+    title: '全新 1.0.9 正式版發布、JSON 下載凍結修復、收據快傳逾時防禦與離線隊列死鎖治癒 (v1.0.9.0 ~ v1.0.9.10)',
     highlights: [
+      '📥 手機 App 端 JSON/CSV 備份下載無回應與介面凍結徹底修復：徹底修復手機端點擊「下載 .json 檔案」畫面卡死無回應問題。全面移除 React Native Share.share 傳送 300KB+ 原始文本造成的 Android Binder 崩潰 (TransactionTooLargeException)；改採專屬雲端中轉技術，直接由手機系統瀏覽器將真實 .json / .csv 實體檔案下載至手機「Download (下載)」資料夾，並徹底拔除 Modal 內 Alert.alert 引起的 Android 視窗層次死鎖。',
+      '⚡ 備份預覽效能與非阻塞即時反饋：長文本預覽實施 1,500 字元安全截斷與 selectable 智慧停用，杜絕 Android 原生 TextView 排版凍結 UI 執行緒；新增內建式防呆狀態橫幅與「📤 分享下載連結」輕量化通道，支援 LINE 與雲端硬碟秒傳。',
       '📷 收據照片上傳掛起與逾時防禦修復：React Native 原生端新增 Base64 快速位元組通道與原生 FormData 傳輸適配，全面配置 8 秒嚴格逾時防禦控制器（AbortController），杜絕原生網路 Blob 串流延遲導致畫面掛起 30 秒，逾時安全降級回退本機 URI 絕不卡住畫面。',
       '🔒 記帳儲存防重複提交鎖（Submission Lock）：新增 isSubmitting 鎖定防呆狀態，點擊儲存記帳/修改時按鈕立即鎖定變灰（透明度 0.6）、顯示「⏳ 上傳收據中...」或「⏳ 儲存中...」並禁用點擊，徹底防止使用者因等待上傳而連續按壓產生多筆重複交易。',
       '🛡️ 離線待補傳隊列死鎖解鎖與白名單清洗：修復離線補傳時 payload 夾帶 _isPendingSync 等虛擬欄位導致 PostgREST PGRST204 阻斷報錯問題；建立純淨資料庫欄位白名單過濾機制，並為離線補傳通道注入雙軌服務權杖穿透備援，自動洗淨補傳手機端受困之待補明細並還原雲端綠燈即時同步。',

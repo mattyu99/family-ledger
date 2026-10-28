@@ -8,23 +8,27 @@ import {
   ScrollView,
   Platform,
   Alert,
-  Share,
   StyleSheet,
   TextProps,
   TextInputProps,
   Clipboard,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { useLedger } from '../../context/LedgerContext';
 import { useTheme } from '../../theme/ThemeContext';
 import { ThemeColors } from '../../theme/colors';
-import { showAlert, copyToClipboard } from '../../lib/alert';
+import { showAlert } from '../../lib/alert';
 import { formatLastBackupText } from '../../lib/backup';
 import {
   AttachmentStats,
   collectAttachmentStats,
   exportAttachmentArchive,
 } from '../../lib/attachmentExport';
+import {
+  exportAndDownloadFile,
+  shareExportDownloadLink,
+} from '../../lib/fileExport';
 import {
   loadCachedStatements,
   loadCachedRecurringStatements,
@@ -99,10 +103,28 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
     })
   );
   const [isExportingArchive, setIsExportingArchive] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [lastDownloadUrl, setLastDownloadUrl] = useState<string | null>(null);
+  const [statusBanner, setStatusBanner] = useState<{
+    type: 'success' | 'error' | 'info';
+    message: string;
+    downloadUrl?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!statusBanner) return;
+    const t = setTimeout(() => {
+      setStatusBanner(null);
+    }, 6000);
+    return () => clearTimeout(t);
+  }, [statusBanner]);
 
   useEffect(() => {
     if (visible) {
       setExportTab(initialTab);
+      setStatusBanner(null);
+      setIsExporting(false);
+      setLastDownloadUrl(null);
       try {
         const csv = exportToCSV();
         const json = exportToJSON();
@@ -172,18 +194,33 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
 
   const handleExportAttachmentArchive = async () => {
     if (!attachmentStats || attachmentStats.totalCount === 0) {
-      showAlert('提示', '目前此帳本尚無任何附件檔案（收據照片或帳單 PDF）。');
+      setStatusBanner({
+        type: 'info',
+        message: '目前此帳本尚無任何附件檔案（收據照片或帳單 PDF）。',
+      });
       return;
     }
     setIsExportingArchive(true);
     try {
-      await exportAttachmentArchive({
+      const res = await exportAttachmentArchive({
+        ledgerId: currentLedger?.id,
         ledgerName: currentLedger.name,
         stats: attachmentStats,
       });
       await recordBackupComplete();
+      if (res.downloadUrl) {
+        setLastDownloadUrl(res.downloadUrl);
+      }
+      setStatusBanner({
+        type: 'success',
+        message: res.message,
+        downloadUrl: res.downloadUrl,
+      });
     } catch (e: any) {
-      showAlert('匯出失敗', e?.message || '發生未知錯誤');
+      setStatusBanner({
+        type: 'error',
+        message: `匯出失敗：${e?.message || '發生未知錯誤'}`,
+      });
     } finally {
       setIsExportingArchive(false);
     }
@@ -191,16 +228,29 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
 
   const handleCopyAttachmentLinks = () => {
     if (!attachmentStats || attachmentStats.totalCount === 0) {
-      showAlert('提示', '目前此帳本尚無任何附件檔案。');
+      setStatusBanner({
+        type: 'info',
+        message: '目前此帳本尚無任何附件檔案。',
+      });
       return;
     }
     const lines = attachmentStats.allItems.map(
       it => `${it.originalName}\t${it.url}`
     );
-    copyToClipboard(
-      lines.join('\n'),
-      `✅ 已複製全部 ${attachmentStats.totalCount} 個附件的檔名與下載連結！可直接貼至下載管理器。`
-    );
+    try {
+      if (Clipboard && typeof Clipboard.setString === 'function') {
+        Clipboard.setString(lines.join('\n'));
+      }
+      setStatusBanner({
+        type: 'success',
+        message: `✅ 已複製全部 ${attachmentStats.totalCount} 個附件的檔名與下載連結！可直接貼至下載管理器。`,
+      });
+    } catch {
+      setStatusBanner({
+        type: 'info',
+        message: '無法自動複製至剪貼簿，請於瀏覽器開啟操作。',
+      });
+    }
   };
 
   const handleWebFileSelect = (event: any) => {
@@ -247,50 +297,59 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
 
       if (text && text.trim()) {
         setRestoreJsonInput(text.trim());
-        showAlert('貼上成功', '已從系統剪貼簿自動讀取並帶入備份內容！');
+        setStatusBanner({
+          type: 'success',
+          message: '已從系統剪貼簿自動讀取並帶入備份內容！',
+        });
       } else {
-        showAlert('剪貼簿中無內容', '請先從備份檔案、LINE 或雲端記事複製 JSON 備份內容，再點擊此處貼上。');
+        setStatusBanner({
+          type: 'info',
+          message: '剪貼簿中無內容，請先從備份檔案或 LINE 複製 JSON 備份內容，再點擊此處貼上。',
+        });
       }
     } catch {
-      showAlert('提示', '無法自動讀取剪貼簿，請直接在文字框中長按並選擇「貼上」。');
+      setStatusBanner({
+        type: 'info',
+        message: '無法自動讀取剪貼簿，請直接在文字框中長按並選擇「貼上」。',
+      });
     }
   };
 
-  const downloadWebFile = (filename: string, content: string, mimeType: string) => {
-    if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      try {
-        const blob = new Blob([content], { type: mimeType });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.setAttribute('href', url);
-        link.setAttribute('download', filename);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        recordBackupComplete();
-        showAlert('下載成功', `已將備份檔「${filename}」下載至您的裝置！`);
-        return true;
-      } catch (err) {
-        console.warn('下載失敗:', err);
-      }
-    }
-    return false;
-  };
+  const previewText = useMemo(() => {
+    const raw = exportTab === 'csv' ? csvContent : jsonContent;
+    if (!raw) return '（正在準備備份資料...）';
+    if (raw.length <= 1500) return raw;
+    const truncated = raw.slice(0, 1500);
+    const count = transactions.length;
+    const sizeKb = (raw.length / 1024).toFixed(1);
+    return `${truncated}\n\n... ✂️ [已截斷預覽，共 ${count} 筆交易明細、約 ${sizeKb} KB。請點擊下方按鈕完整下載檔案或一鍵複製全部內容]`;
+  }, [exportTab, csvContent, jsonContent, transactions.length]);
 
   const handleCopyExportContent = async () => {
     const isCsv = exportTab === 'csv';
     const text = isCsv ? csvContent : jsonContent;
     await recordBackupComplete();
-    copyToClipboard(
-      text,
-      isCsv
-        ? '✅ CSV 報表內容已複製到剪貼簿！可直接貼上至 Excel 或 Google 試算表。'
-        : '✅ JSON 完整結構備份已複製到剪貼簿！'
-    );
+    try {
+      if (Clipboard && typeof Clipboard.setString === 'function') {
+        Clipboard.setString(text);
+      }
+      setStatusBanner({
+        type: 'success',
+        message: isCsv
+          ? '✅ CSV 報表內容已複製到剪貼簿！可直接貼上至 Excel 或 Google 試算表。'
+          : '✅ JSON 完整結構備份已複製到剪貼簿！可直接貼至備忘錄或 LINE。',
+      });
+    } catch {
+      setStatusBanner({
+        type: 'info',
+        message: '已嘗試複製，若未成功請長按文字預覽手動複製。',
+      });
+    }
   };
 
-  const handleShareToCloud = async () => {
+  const handleDownloadOrExport = async () => {
+    if (isExporting) return;
+    setIsExporting(true);
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const isCsv = exportTab === 'csv';
     const filename = isCsv
@@ -299,38 +358,54 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
     const content = isCsv ? csvContent : jsonContent;
     const mimeType = isCsv ? 'text/csv;charset=utf-8;' : 'application/json;charset=utf-8;';
 
-    if (Platform.OS === 'web') {
-      if (typeof navigator !== 'undefined' && typeof File !== 'undefined' && (navigator as any).canShare) {
-        try {
-          const file = new File([content], filename, { type: mimeType });
-          if ((navigator as any).canShare({ files: [file] })) {
-            await navigator.share({
-              files: [file],
-              title: filename,
-              text: `甜心記帳本備份檔：${filename}`,
-            });
-            await recordBackupComplete();
-            return;
-          }
-        } catch (e: any) {
-          if (e.name === 'AbortError') return;
-        }
+    try {
+      const res = await exportAndDownloadFile({
+        ledgerId: currentLedger?.id,
+        filename,
+        content,
+        mimeType,
+      });
+
+      await recordBackupComplete();
+
+      if (res.downloadUrl) {
+        setLastDownloadUrl(res.downloadUrl);
       }
-      downloadWebFile(filename, content, mimeType);
+
+      setStatusBanner({
+        type: 'success',
+        message: res.message,
+        downloadUrl: res.downloadUrl,
+      });
+    } catch (err: any) {
+      console.warn('匯出備份異常:', err);
+      setStatusBanner({
+        type: 'error',
+        message: `匯出處理異常：${err?.message || '發生未知錯誤'}`,
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleShareDownloadLink = async () => {
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const isCsv = exportTab === 'csv';
+    const filename = isCsv
+      ? `甜心記帳本_${currentLedger?.name || '家庭公帳'}_${dateStr}.csv`
+      : `甜心記帳本_${currentLedger?.name || '家庭公帳'}_完整備份_${dateStr}.json`;
+
+    if (!lastDownloadUrl) {
+      await handleDownloadOrExport();
       return;
     }
 
-    try {
-      await Share.share({
-        title: filename,
-        message: content,
-      });
-      await recordBackupComplete();
-    } catch (err) {
-      console.warn('原生呼叫分享失敗:', err);
-      copyToClipboard(content, '已將備份內容複製到剪貼簿！可直接貼至 Google 雲端硬碟或備忘錄。');
-      await recordBackupComplete();
-    }
+    await shareExportDownloadLink({
+      ledgerName: currentLedger?.name || '家庭記帳本',
+      filename,
+      downloadUrl: lastDownloadUrl,
+      summaryText: `${transactions.length} 筆明細、${members.length} 位成員、${paymentAccounts.length} 張卡片`,
+    });
   };
 
   const handleConfirmRestore = async () => {
@@ -392,6 +467,41 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
               <Text style={styles.closeText}>✕</Text>
             </TouchableOpacity>
           </View>
+
+          {/* 即時反饋橫幅（杜絕 Android Dialog 遮蔽死鎖） */}
+          {statusBanner && (
+            <View
+              style={[
+                styles.statusBanner,
+                statusBanner.type === 'success' && styles.statusBannerSuccess,
+                statusBanner.type === 'error' && styles.statusBannerError,
+                statusBanner.type === 'info' && styles.statusBannerInfo,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.statusBannerText,
+                  {
+                    color:
+                      statusBanner.type === 'success'
+                        ? '#059669'
+                        : statusBanner.type === 'error'
+                        ? '#DC2626'
+                        : '#2563EB',
+                  },
+                ]}
+              >
+                {statusBanner.message}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setStatusBanner(null)}
+                style={styles.statusBannerCloseBtn}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.statusBannerCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* 格式切換頁籤 */}
           <View style={styles.exportTabRow}>
@@ -741,13 +851,15 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
                     ? '💡 格式通用於微軟 Excel、Google 試算表與 Apple Numbers，已注入 UTF-8 BOM 繁體中文防亂碼保護。'
                     : '💡 完整封存明細、成員、分類、卡片帳戶、週期規則 (含分期) 及付款方式之 6 大全要素高精度結構封包。'}
                 </Text>
-                {Platform.OS !== 'web' && (
-                  <Text style={styles.exportTipSubtext} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    {exportTab === 'csv'
-                      ? '📱 手機端點擊下方「☁️ 存到雲端硬碟 / 分享」，可在系統選單直接點選「Google 雲端硬碟」或「儲存到檔案」即時備份。'
-                      : '📱 手機端點擊下方「📋 一鍵複製全部文字」可直接複製到系統剪貼簿；切換至「📥 回復資料」點擊「📋 讀取剪貼簿貼上」即可快速還原。'}
-                  </Text>
-                )}
+                <Text style={styles.exportTipSubtext} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                  {Platform.OS === 'web'
+                    ? (exportTab === 'csv'
+                        ? '💻 點擊「💾 下載 .csv 報表」將直接儲存至電腦「下載」資料夾。'
+                        : '💻 點擊「💾 下載 .json 檔案」將直接儲存至電腦「下載」資料夾。')
+                    : (exportTab === 'csv'
+                        ? '📱 點擊「💾 下載 .csv 報表」將透過手機瀏覽器直接下載實體檔案至手機「下載」資料夾。'
+                        : '📱 點擊「💾 下載 .json 檔案」將透過手機瀏覽器直接下載實體備份檔至手機「下載」資料夾；亦可點擊「📋 一鍵複製文字」快速備份至剪貼簿。')}
+                </Text>
                 <View style={styles.exportLastBackupRow}>
                   <Text style={styles.exportLastBackupText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                     ⏱️ 上次備份記錄：{formatLastBackupText(lastBackupAt)}
@@ -755,29 +867,57 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
                 </View>
               </View>
 
-              {/* 內容預覽 */}
+              {/* 內容預覽 (杜絕 Android selectable 大文字卡死) */}
               <ScrollView style={styles.csvBox}>
-                <Text style={styles.csvText} selectable>
-                  {exportTab === 'csv' ? csvContent : jsonContent}
+                <Text
+                  style={styles.csvText}
+                  selectable={Platform.OS === 'web'}
+                >
+                  {previewText}
                 </Text>
               </ScrollView>
 
               {/* 操作按鈕群 */}
               <View style={styles.exportActionRow}>
-                <TouchableOpacity style={styles.exportCopyBtn} onPress={handleCopyExportContent} activeOpacity={0.8}>
-                  <Text style={styles.exportCopyBtnText}>📋 一鍵複製全部文字</Text>
+                <TouchableOpacity
+                  style={styles.exportCopyBtn}
+                  onPress={handleCopyExportContent}
+                  disabled={isExporting}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.exportCopyBtnText}>📋 一鍵複製文字</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.exportDownloadBtn} onPress={handleShareToCloud} activeOpacity={0.8}>
-                  <Text style={styles.exportDownloadBtnText}>
-                    {Platform.OS === 'web'
-                      ? exportTab === 'csv'
-                        ? '💾 下載 .csv 檔案'
-                        : '💾 下載 .json 檔案'
-                      : '☁️ 存到雲端硬碟 / 分享'}
-                  </Text>
+                <TouchableOpacity
+                  style={[styles.exportDownloadBtn, isExporting && { opacity: 0.7 }]}
+                  onPress={handleDownloadOrExport}
+                  disabled={isExporting}
+                  activeOpacity={0.8}
+                >
+                  {isExporting ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                      <Text style={styles.exportDownloadBtnText}>處理下載中...</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.exportDownloadBtnText}>
+                      {exportTab === 'csv' ? '💾 下載 .csv 報表' : '💾 下載 .json 檔案'}
+                    </Text>
+                  )}
                 </TouchableOpacity>
               </View>
+
+              {lastDownloadUrl && (
+                <View style={{ marginTop: -2, marginBottom: 10 }}>
+                  <TouchableOpacity
+                    style={styles.exportShareLinkBtn}
+                    onPress={handleShareDownloadLink}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.exportShareLinkBtnText}>📤 分享下載連結給家人 (LINE / 雲端硬碟)</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </>
           )}
 
@@ -830,6 +970,58 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontSize: 18,
       color: isDark ? colors.text.muted : '#9CA3AF',
       fontWeight: 'bold',
+    },
+    statusBanner: {
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+      marginBottom: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+    },
+    statusBannerSuccess: {
+      backgroundColor: isDark ? 'rgba(16, 185, 129, 0.16)' : '#ECFDF5',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#A7F3D0',
+    },
+    statusBannerError: {
+      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.16)' : '#FEF2F2',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239, 68, 68, 0.35)' : '#FECACA',
+    },
+    statusBannerInfo: {
+      backgroundColor: isDark ? 'rgba(59, 130, 246, 0.16)' : '#EFF6FF',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(59, 130, 246, 0.35)' : '#BFDBFE',
+    },
+    statusBannerText: {
+      fontSize: 12,
+      fontWeight: '600',
+      flex: 1,
+      lineHeight: 16,
+    },
+    statusBannerCloseBtn: {
+      padding: 4,
+    },
+    statusBannerCloseText: {
+      fontSize: 14,
+      fontWeight: 'bold',
+      color: isDark ? colors.text.muted : '#9CA3AF',
+    },
+    exportShareLinkBtn: {
+      backgroundColor: '#10B981',
+      borderRadius: 10,
+      paddingVertical: 11,
+      paddingHorizontal: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    exportShareLinkBtnText: {
+      fontSize: 13,
+      fontWeight: 'bold',
+      color: '#FFFFFF',
     },
     exportTabRow: {
       flexDirection: 'row',

@@ -191,7 +191,7 @@ export const saveCachedRecurringStatements = async (
 };
 
 // 執行具備完整讀寫權限的 Storage API 請求（避免 SELECT RLS 在無 policy 時靜默回傳 HTTP 200 空陣列 []）
-const fetchStorageWithAuth = async (url: string, init: RequestInit): Promise<Response> => {
+export const fetchStorageWithAuth = async (url: string, init: RequestInit): Promise<Response> => {
   const svcToken = getStorageServiceToken();
   const res = await fetch(url, {
     ...init,
