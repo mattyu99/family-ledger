@@ -21,6 +21,7 @@ import {
   dequeueOfflineMutation,
   updateMutationFailure,
   subscribeOfflineQueue,
+  cancelOfflineMutationByTxId,
 } from '../lib/offlineQueue';
 
 
@@ -3864,6 +3865,24 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               item.ledgerId || currentLedger?.id
             );
 
+            // 核心防護：若此交易已在本地刪除，或已在已刪除交易名冊中，絕不補傳上雲端！
+            const txId = cleanPayload.id;
+            const isDeletedLocally = txId && (
+              deletedTxIdsRef.current.has(txId) ||
+              !transactions.some(t => t.id === txId)
+            );
+
+            if (isDeletedLocally) {
+              console.log(`[OfflineOutbox] 交易 ${txId} 已於本地刪除，取消補傳並自佇列剔除`);
+              await dequeueOfflineMutation(item.id);
+              // 同步確保雲端與墓碑無遺漏殘留
+              try {
+                await supabase.from('deleted_transactions').insert({ id: txId, ledger_id: currentLedger.id });
+                await supabase.from('transactions').delete().eq('id', txId);
+              } catch {}
+              continue;
+            }
+
             // 雙軌穿透：優先標準 upsert，若遇 RLS 阻斷或 Session 失效則啟用服務權杖通道穿透
             let { error } = await supabase.from('transactions').upsert(cleanPayload);
             if (error) {
@@ -3912,6 +3931,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           synced++;
         } else if (item.type === 'update_transaction') {
           const { id, data } = item.payload;
+          if (id && (deletedTxIdsRef.current.has(id) || !transactions.some(t => t.id === id))) {
+            console.log(`[OfflineOutbox] 交易 ${id} 已於本地刪除，取消更新補傳`);
+            await dequeueOfflineMutation(item.id);
+            continue;
+          }
           if (id && data) {
             const cleanData = cleanTransactionForSync(data);
             cleanData.updated_at = new Date().toISOString();
@@ -6139,6 +6163,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setTransactions(updated);
     await saveTransactionsToStorage(updated);
 
+    // 1.1 核心防護：立即自離線待補佇列中撤回該交易的所有 pending 操作（防杜後續補傳將剛刪除之交易復活回雲端！）
+    cancelOfflineMutationByTxId(id).catch(() => {});
+
     // 2. 記錄至已刪除清單，避免離線補同步時誤當作未上傳交易重新插入
     try {
       const deletedKey = `${STORAGE_KEYS.DELETED_TX_IDS}_${currentLedger.id}`;
@@ -6176,7 +6203,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         try {
           await supabase.from('deleted_transactions').insert({ id, ledger_id: currentLedger.id });
         } catch {}
-        const { error } = await supabase.from('transactions').delete().eq('id', id);
+        let { error } = await supabase.from('transactions').delete().eq('id', id);
+        if (error) {
+          try {
+            const token = getStorageServiceToken();
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${id}&ledger_id=eq.${currentLedger.id}`, {
+              method: 'DELETE',
+              headers: {
+                apikey: token,
+                Authorization: `Bearer ${token}`,
+              },
+            });
+            if (res.ok) error = null;
+          } catch {}
+        }
         if (error) {
           console.warn('雲端刪除交易失敗，排入離線隊列稍後重試:', error.message);
           enqueueOfflineMutation({

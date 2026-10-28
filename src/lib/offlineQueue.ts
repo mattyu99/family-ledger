@@ -86,6 +86,24 @@ async function saveOfflineQueue(queue: OfflineMutation[]): Promise<void> {
 }
 
 /**
+ * 取消並自離線隊列中移除特定交易 ID 的所有待補操作 (如 insert_transaction / update_transaction / delete_transaction)
+ * 當使用者在本機刪除一筆交易時，若該交易仍在佇列中待補傳，立即完全撤回，防止後續補傳將已刪除交易復活上傳至雲端！
+ */
+export async function cancelOfflineMutationByTxId(txId: string): Promise<number> {
+  if (!txId) return 0;
+  const current = await getOfflineQueue();
+  const next = current.filter((m) => {
+    const targetId = m.payload?.tx?.id || m.payload?.id || m.payload?.transaction_id;
+    return targetId !== txId;
+  });
+  const removedCount = current.length - next.length;
+  if (removedCount > 0) {
+    await saveOfflineQueue(next);
+  }
+  return removedCount;
+}
+
+/**
  * 排入一筆離線變更至隊列末端 (若存在相同 id 的相同類型操作則自動合併更新)
  */
 export async function enqueueOfflineMutation(
@@ -94,11 +112,18 @@ export async function enqueueOfflineMutation(
   const current = await getOfflineQueue();
   const mutationId = mutation.id || `mut-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-  // 若為針對同一筆 transaction 的 update 操作，替換為最新 payload
+  const targetTxId =
+    mutation.payload?.tx?.id ||
+    mutation.payload?.id ||
+    mutation.payload?.transaction_id;
+
+  // 若為針對同一筆 transaction 的操作，替換為最新 payload
   let updatedQueue: OfflineMutation[];
-  const existingIdx = current.findIndex(
-    (m) => m.type === mutation.type && m.payload?.id === mutation.payload?.id && m.payload?.id
-  );
+  const existingIdx = current.findIndex((m) => {
+    if (m.type !== mutation.type) return false;
+    const mTxId = m.payload?.tx?.id || m.payload?.id || m.payload?.transaction_id;
+    return mTxId && targetTxId && mTxId === targetTxId;
+  });
 
   const newEntry: OfflineMutation = {
     id: mutationId,

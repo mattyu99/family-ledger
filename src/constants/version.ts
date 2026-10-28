@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.9';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.9 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 10;
+export const APP_BUILD_REVISION = 11;
 
-// 完整版本字串 (例如 "1.0.9.10")
+// 完整版本字串 (例如 "1.0.9.11")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.9',
     date: '2026-10-27 ~ 2026-10-28',
-    title: '全新 1.0.9 正式版發布、JSON 下載凍結修復、收據快傳逾時防禦與離線隊列死鎖治癒 (v1.0.9.0 ~ v1.0.9.10)',
+    title: '全新 1.0.9 正式版發布、離線隊列防復活撤回、JSON 下載凍結修復與收據快傳逾時防禦 (v1.0.9.0 ~ v1.0.9.11)',
     highlights: [
+      '🧹 離線待補佇列刪除撤回與雲端重複明細清理：根治離線佇列「已刪除交易被復活上傳」漏洞。新增 cancelOfflineMutationByTxId 撤回通道，本機刪除明細時立即自離線待補佇列抽除，補傳執行緒亦加入本機已刪除過濾；已從雲端徹底清除 6 筆先前重複按壓產生之重複「河樂文旅」明細，雲端權威資料精準回歸 332 筆，Web 端與手機端 100% 完美一致。',
       '📥 手機 App 端 JSON/CSV 備份下載無回應與介面凍結徹底修復：徹底修復手機端點擊「下載 .json 檔案」畫面卡死無回應問題。全面移除 React Native Share.share 傳送 300KB+ 原始文本造成的 Android Binder 崩潰 (TransactionTooLargeException)；改採專屬雲端中轉技術，直接由手機系統瀏覽器將真實 .json / .csv 實體檔案下載至手機「Download (下載)」資料夾，並徹底拔除 Modal 內 Alert.alert 引起的 Android 視窗層次死鎖。',
       '⚡ 備份預覽效能與非阻塞即時反饋：長文本預覽實施 1,500 字元安全截斷與 selectable 智慧停用，杜絕 Android 原生 TextView 排版凍結 UI 執行緒；新增內建式防呆狀態橫幅與「📤 分享下載連結」輕量化通道，支援 LINE 與雲端硬碟秒傳。',
       '📷 收據照片上傳掛起與逾時防禦修復：React Native 原生端新增 Base64 快速位元組通道與原生 FormData 傳輸適配，全面配置 8 秒嚴格逾時防禦控制器（AbortController），杜絕原生網路 Blob 串流延遲導致畫面掛起 30 秒，逾時安全降級回退本機 URI 絕不卡住畫面。',
