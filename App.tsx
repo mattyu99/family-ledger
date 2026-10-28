@@ -430,7 +430,7 @@ const AppContent: React.FC = () => {
   const [transferDeleteTargetMember, setTransferDeleteTargetMember] = useState<Profile | null>(null);
 
   const [exportModalVisible, setExportModalVisible] = useState(false);
-  const [exportModalTab, setExportModalTab] = useState<'csv' | 'json' | 'restore'>('csv');
+  const [exportModalTab, setExportModalTab] = useState<'csv' | 'json' | 'attachments' | 'restore'>('csv');
   const [cloudLedgerManagerVisible, setCloudLedgerManagerVisible] = useState(false);
   const [productGuideModalVisible, setProductGuideModalVisible] = useState(false);
   const [changelogModalVisible, setChangelogModalVisible] = useState(false);

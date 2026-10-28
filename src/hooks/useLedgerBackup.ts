@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Ledger,
@@ -14,6 +14,13 @@ import { generateUUID } from '../lib/uuid';
 import { APP_FULL_VERSION } from '../constants/version';
 import { STORAGE_KEYS, DEMO_LEDGER_ID, isValidUUID } from '../constants/ledgerDefaults';
 import { hydrateTransactionWithInvoice, deduplicateMembers, buildMemberAliasMap } from '../lib/ledgerUtils';
+import {
+  StatementFile,
+  loadCachedStatements,
+  loadCachedRecurringStatements,
+  saveCachedStatements,
+  saveCachedRecurringStatements,
+} from '../lib/statementStorage';
 
 export interface UseLedgerBackupProps {
   currentLedger: Ledger;
@@ -85,6 +92,28 @@ export function useLedgerBackup({
   const [lastBackupAt, setLastBackupAt] = useState<string | null>(null);
   const [autoBackupEnabled, setAutoBackupEnabled] = useState<boolean>(true);
   const [autoBackupInterval, setAutoBackupInterval] = useState<7 | 14 | 30>(7);
+
+  const cachedStatementsRef = useRef<StatementFile[]>([]);
+  const cachedRecurringStatementsRef = useRef<StatementFile[]>([]);
+
+  useEffect(() => {
+    if (!currentLedger?.id) return;
+    let isMounted = true;
+    Promise.all([
+      loadCachedStatements(currentLedger.id),
+      loadCachedRecurringStatements(currentLedger.id),
+    ])
+      .then(([stmts, recStmts]) => {
+        if (isMounted) {
+          cachedStatementsRef.current = stmts || [];
+          cachedRecurringStatementsRef.current = recStmts || [];
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [currentLedger?.id]);
 
   const recordBackupComplete = useCallback(async () => {
     const nowIso = new Date().toISOString();
@@ -166,10 +195,37 @@ export function useLedgerBackup({
         transacted_at: t.transacted_at,
         merchant: t.merchant,
         note: t.note,
+        image_url: t.image_url,
         payment_method: t.payment_method,
         account_id: t.account_id,
         is_reconciled: t.is_reconciled,
         is_settled: t.is_settled,
+      })),
+      statement_attachments: (cachedStatementsRef.current || []).map(s => ({
+        path: s.path,
+        fileName: s.fileName,
+        cardId: s.cardId,
+        targetId: s.targetId || s.cardId,
+        ruleId: s.ruleId,
+        cycleKey: s.cycleKey,
+        originalName: s.originalName,
+        mimeType: s.mimeType,
+        size: s.size,
+        createdAt: s.createdAt,
+        publicUrl: s.publicUrl,
+      })),
+      recurring_statement_attachments: (cachedRecurringStatementsRef.current || []).map(s => ({
+        path: s.path,
+        fileName: s.fileName,
+        cardId: s.cardId,
+        targetId: s.targetId || s.cardId,
+        ruleId: s.ruleId,
+        cycleKey: s.cycleKey,
+        originalName: s.originalName,
+        mimeType: s.mimeType,
+        size: s.size,
+        createdAt: s.createdAt,
+        publicUrl: s.publicUrl,
       })),
       recurring_rules: recurringRules
         .filter(r => !r.ledger_id || r.ledger_id === currentLedger.id)
@@ -712,6 +768,7 @@ export function useLedgerBackup({
           transacted_at: t.transacted_at || new Date().toISOString(),
           merchant: t.merchant || undefined,
           note: t.note || '',
+          image_url: t.image_url || undefined,
           payment_method: t.payment_method || 'cash',
           account_id: resolvedAccountId || undefined,
           is_reconciled: Boolean(t.is_reconciled),
@@ -749,6 +806,9 @@ export function useLedgerBackup({
               is_settled: t.is_settled || false,
               note: t.note || '',
             };
+            if (t.image_url) {
+              p.image_url = t.image_url;
+            }
             if (hasMerchantColumnRef.current) {
               p.merchant = t.merchant || null;
             }
@@ -768,6 +828,49 @@ export function useLedgerBackup({
         }
       }
 
+      // 5. 還原/合併 電子帳單與繳費單附件清單 (Statement Attachments)
+      const stmtsFromBackup = backup.statement_attachments || backup.statements;
+      if (Array.isArray(stmtsFromBackup) && stmtsFromBackup.length > 0) {
+        try {
+          let mergedStatements = [...cachedStatementsRef.current];
+          if (mode === 'overwrite') {
+            mergedStatements = stmtsFromBackup;
+          } else {
+            stmtsFromBackup.forEach((bs: StatementFile) => {
+              if (!bs || !bs.path) return;
+              if (!mergedStatements.some(s => s.path === bs.path)) {
+                mergedStatements.push(bs);
+              }
+            });
+          }
+          cachedStatementsRef.current = mergedStatements;
+          await saveCachedStatements(targetLedgerId, mergedStatements);
+        } catch (stmtErr) {
+          console.warn('還原信用卡帳單中繼資料快取失敗:', stmtErr);
+        }
+      }
+
+      const recStmtsFromBackup = backup.recurring_statement_attachments || backup.recurring_statements;
+      if (Array.isArray(recStmtsFromBackup) && recStmtsFromBackup.length > 0) {
+        try {
+          let mergedRecurring = [...cachedRecurringStatementsRef.current];
+          if (mode === 'overwrite') {
+            mergedRecurring = recStmtsFromBackup;
+          } else {
+            recStmtsFromBackup.forEach((bs: StatementFile) => {
+              if (!bs || !bs.path) return;
+              if (!mergedRecurring.some(s => s.path === bs.path)) {
+                mergedRecurring.push(bs);
+              }
+            });
+          }
+          cachedRecurringStatementsRef.current = mergedRecurring;
+          await saveCachedRecurringStatements(targetLedgerId, mergedRecurring);
+        } catch (recStmtErr) {
+          console.warn('還原固定帳單中繼資料快取失敗:', recStmtErr);
+        }
+      }
+
       const parts: string[] = [`${sanitizedTxs.length} 筆明細`];
       if (Array.isArray(backup.members) && backup.members.length > 0) {
         parts.push(`${nextMembers.length} 位成員`);
@@ -783,6 +886,9 @@ export function useLedgerBackup({
       }
       if (Array.isArray(backup.payment_methods) && backup.payment_methods.length > 0) {
         parts.push(`${nextPaymentMethods.length} 個付款方式`);
+      }
+      if (Array.isArray(stmtsFromBackup) && stmtsFromBackup.length > 0) {
+        parts.push(`${stmtsFromBackup.length} 份帳單附件`);
       }
 
       return {

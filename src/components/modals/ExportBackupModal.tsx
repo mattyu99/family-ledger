@@ -19,6 +19,15 @@ import { useTheme } from '../../theme/ThemeContext';
 import { ThemeColors } from '../../theme/colors';
 import { showAlert, copyToClipboard } from '../../lib/alert';
 import { formatLastBackupText } from '../../lib/backup';
+import {
+  AttachmentStats,
+  collectAttachmentStats,
+  exportAttachmentArchive,
+} from '../../lib/attachmentExport';
+import {
+  loadCachedStatements,
+  loadCachedRecurringStatements,
+} from '../../lib/statementStorage';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
   <RNText
@@ -38,7 +47,7 @@ const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFont
 
 export interface ExportBackupModalProps {
   visible: boolean;
-  initialTab?: 'csv' | 'json' | 'restore';
+  initialTab?: 'csv' | 'json' | 'attachments' | 'restore';
   onClose: () => void;
   onOpenClaimAdmin: () => void;
 }
@@ -56,6 +65,10 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
     currentLedger,
     isOwner,
     transactions,
+    members,
+    categories,
+    paymentAccounts,
+    recurringRules,
     lastBackupAt,
     historySyncProgress,
     exportToCSV,
@@ -64,12 +77,14 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
     recordBackupComplete,
   } = useLedger();
 
-  const [exportTab, setExportTab] = useState<'csv' | 'json' | 'restore'>(initialTab);
+  const [exportTab, setExportTab] = useState<'csv' | 'json' | 'attachments' | 'restore'>(initialTab);
   const [csvContent, setCsvContent] = useState('');
   const [jsonContent, setJsonContent] = useState('');
   const [restoreJsonInput, setRestoreJsonInput] = useState('');
   const [restoreMode, setRestoreMode] = useState<'merge' | 'overwrite'>('merge');
   const [isRestoring, setIsRestoring] = useState(false);
+  const [attachmentStats, setAttachmentStats] = useState<AttachmentStats | null>(null);
+  const [isExportingArchive, setIsExportingArchive] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -85,12 +100,45 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
     }
   }, [visible, initialTab]);
 
+  // 載入附件與電子帳單統計數據
+  useEffect(() => {
+    if (!visible || !currentLedger?.id) return;
+    let isMounted = true;
+    Promise.all([
+      loadCachedStatements(currentLedger.id),
+      loadCachedRecurringStatements(currentLedger.id),
+    ])
+      .then(([stmts, recStmts]) => {
+        if (!isMounted) return;
+        const stats = collectAttachmentStats({
+          ledgerName: currentLedger.name,
+          transactions,
+          cardStatements: stmts || [],
+          recurringStatements: recStmts || [],
+          paymentAccounts,
+          recurringRules,
+          members,
+          categories,
+        });
+        setAttachmentStats(stats);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [visible, currentLedger?.id, currentLedger?.name, transactions, paymentAccounts, recurringRules, members, categories]);
+
   const parsedBackupPreview = useMemo(() => {
     if (!restoreJsonInput.trim()) return null;
     try {
       const data = JSON.parse(restoreJsonInput.trim());
       if (!data || typeof data !== 'object') return null;
       if (!Array.isArray(data.transactions)) return null;
+      const receiptCount = data.transactions.filter((t: any) => !!t.image_url).length;
+      const statementCount =
+        (Array.isArray(data.statement_attachments) ? data.statement_attachments.length : (Array.isArray(data.statements) ? data.statements.length : 0)) +
+        (Array.isArray(data.recurring_statement_attachments) ? data.recurring_statement_attachments.length : (Array.isArray(data.recurring_statements) ? data.recurring_statements.length : 0));
+
       return {
         isValid: true,
         appName: data.app || '甜心記帳本',
@@ -100,11 +148,46 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
         memberCount: Array.isArray(data.members) ? data.members.length : 0,
         categoryCount: Array.isArray(data.categories) ? data.categories.length : 0,
         cardCount: Array.isArray(data.payment_accounts) ? data.payment_accounts.length : 0,
+        receiptCount,
+        statementCount,
       };
     } catch {
       return null;
     }
   }, [restoreJsonInput]);
+
+  const handleExportAttachmentArchive = async () => {
+    if (!attachmentStats || attachmentStats.totalCount === 0) {
+      showAlert('提示', '目前此帳本尚無任何附件檔案（收據照片或帳單 PDF）。');
+      return;
+    }
+    setIsExportingArchive(true);
+    try {
+      await exportAttachmentArchive({
+        ledgerName: currentLedger.name,
+        stats: attachmentStats,
+      });
+      await recordBackupComplete();
+    } catch (e: any) {
+      showAlert('匯出失敗', e?.message || '發生未知錯誤');
+    } finally {
+      setIsExportingArchive(false);
+    }
+  };
+
+  const handleCopyAttachmentLinks = () => {
+    if (!attachmentStats || attachmentStats.totalCount === 0) {
+      showAlert('提示', '目前此帳本尚無任何附件檔案。');
+      return;
+    }
+    const lines = attachmentStats.allItems.map(
+      it => `${it.originalName}\t${it.url}`
+    );
+    copyToClipboard(
+      lines.join('\n'),
+      `✅ 已複製全部 ${attachmentStats.totalCount} 個附件的檔名與下載連結！可直接貼至下載管理器。`
+    );
+  };
 
   const handleWebFileSelect = (event: any) => {
     const file = event.target?.files?.[0];
@@ -304,7 +387,7 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
               activeOpacity={0.7}
             >
               <Text style={[styles.exportTabBtnText, exportTab === 'csv' && styles.exportTabBtnTextActive]}>
-                📊 CSV 報表
+                📊 CSV
               </Text>
             </TouchableOpacity>
 
@@ -314,7 +397,17 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
               activeOpacity={0.7}
             >
               <Text style={[styles.exportTabBtnText, exportTab === 'json' && styles.exportTabBtnTextActive]}>
-                📦 JSON 備份
+                📦 JSON
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.exportTabBtn, exportTab === 'attachments' && styles.exportTabBtnActive]}
+              onPress={() => setExportTab('attachments')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.exportTabBtnText, exportTab === 'attachments' && styles.exportTabBtnTextActive]}>
+                🗂️ 附件
               </Text>
             </TouchableOpacity>
 
@@ -333,12 +426,114 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
               activeOpacity={0.7}
             >
               <Text style={[styles.exportTabBtnText, exportTab === 'restore' && styles.exportTabBtnTextActive]}>
-                {isOwner ? '📥 回復資料' : '🔒 回復資料'}
+                {isOwner ? '📥 還原' : '🔒 還原'}
               </Text>
             </TouchableOpacity>
           </View>
 
-          {exportTab === 'restore' ? (
+          {exportTab === 'attachments' ? (
+            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+              {/* 現況數據橫幅 */}
+              <View style={styles.attachmentStatsCard}>
+                <View style={styles.attachmentStatsHeader}>
+                  <Text style={styles.attachmentStatsTitle}>📦 附件庫現況統計</Text>
+                  <Text style={styles.attachmentStatsSub}>
+                    估算雲端空間：{attachmentStats?.totalEstimatedFormatted || '0 KB'}
+                  </Text>
+                </View>
+
+                <View style={styles.attachmentStatsGrid}>
+                  <View style={styles.attachmentStatBox}>
+                    <Text style={styles.attachmentStatNum}>{attachmentStats?.receiptCount || 0}</Text>
+                    <Text style={styles.attachmentStatLabel}>📷 收據照片</Text>
+                  </View>
+                  <View style={styles.attachmentStatBox}>
+                    <Text style={styles.attachmentStatNum}>{attachmentStats?.cardStatementCount || 0}</Text>
+                    <Text style={styles.attachmentStatLabel}>💳 信用卡帳單</Text>
+                  </View>
+                  <View style={styles.attachmentStatBox}>
+                    <Text style={styles.attachmentStatNum}>{attachmentStats?.recurringStatementCount || 0}</Text>
+                    <Text style={styles.attachmentStatLabel}>⚡ 水電固定</Text>
+                  </View>
+                  <View style={styles.attachmentStatBox}>
+                    <Text style={[styles.attachmentStatNum, { color: '#10B981' }]}>
+                      {attachmentStats?.totalCount || 0}
+                    </Text>
+                    <Text style={styles.attachmentStatLabel}>總附件量</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* 說明提示卡片 */}
+              <View style={styles.exportTipBox}>
+                <Text style={styles.exportTipText}>
+                  💡 實體檔案已 100% 安全儲存於 Supabase 雲端儲存桶。只要雲端帳本正常運作，隨時可於明細與帳單中直接開啟。
+                </Text>
+                <Text style={styles.exportTipSubtext}>
+                  🌐 點擊下方「📥 匯出附件離線索引庫」，將產出包含所有照片縮圖與帳單連結的專屬 HTML 頁面；在任何電腦或手機瀏覽器開啟，即可離線檢視並一鍵批次將真實檔案下載存檔至個人硬碟！
+                </Text>
+              </View>
+
+              {/* 下載/分享操作群 */}
+              <View style={styles.exportActionRow}>
+                <TouchableOpacity
+                  style={[styles.exportDownloadBtn, isExportingArchive && { opacity: 0.7 }]}
+                  onPress={handleExportAttachmentArchive}
+                  disabled={isExportingArchive}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.exportDownloadBtnText}>
+                    {isExportingArchive ? '⏳ 正在封裝...' : '📥 匯出附件離線索引庫 (HTML)'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.exportCopyBtn}
+                  onPress={handleCopyAttachmentLinks}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.exportCopyBtnText}>📋 複製全附件 URL 清單</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* 附件清單預覽 */}
+              {attachmentStats && attachmentStats.allItems.length > 0 ? (
+                <View style={styles.attachmentListSection}>
+                  <Text style={styles.attachmentListHeader}>
+                    🗂️ 最近附件預覽 ({attachmentStats.allItems.length} 個項目)
+                  </Text>
+                  {attachmentStats.allItems.slice(0, 15).map(item => (
+                    <View key={item.id} style={styles.attachmentListItem}>
+                      <Text style={styles.attachmentItemIcon}>
+                        {item.type === 'receipt' ? '📷' : item.type === 'card_statement' ? '💳' : '⚡'}
+                      </Text>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={styles.attachmentItemTitle} numberOfLines={1}>
+                          {item.title}
+                        </Text>
+                        <Text style={styles.attachmentItemSub} numberOfLines={1}>
+                          {item.date} · {item.subtitle}
+                        </Text>
+                      </View>
+                      {item.amountText ? (
+                        <Text style={styles.attachmentItemAmount}>{item.amountText}</Text>
+                      ) : null}
+                    </View>
+                  ))}
+                  {attachmentStats.allItems.length > 15 ? (
+                    <Text style={styles.attachmentMoreHint}>
+                      ...其餘 {attachmentStats.allItems.length - 15} 個項目完整收錄於匯出之 HTML 封存庫中
+                    </Text>
+                  ) : null}
+                </View>
+              ) : (
+                <View style={styles.emptyAttachmentBox}>
+                  <Text style={styles.emptyAttachmentIcon}>📭</Text>
+                  <Text style={styles.emptyAttachmentText}>目前尚無上傳任何收據照片或電子帳單</Text>
+                </View>
+              )}
+            </ScrollView>
+          ) : exportTab === 'restore' ? (
             !isOwner ? (
               <View style={styles.restoreLockedBox}>
                 <Text style={styles.restoreLockedIcon}>🔒</Text>
@@ -455,6 +650,14 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
                       <View style={styles.previewGridItem}>
                         <Text style={styles.previewItemLabel}>支付卡片與帳戶</Text>
                         <Text style={styles.previewItemValue}>{parsedBackupPreview.cardCount} 張</Text>
+                      </View>
+                      <View style={styles.previewGridItem}>
+                        <Text style={styles.previewItemLabel}>附件與帳單</Text>
+                        <Text style={[styles.previewItemValue, { color: '#8B5CF6', fontWeight: '800' }]}>
+                          {parsedBackupPreview.receiptCount > 0 || parsedBackupPreview.statementCount > 0
+                            ? `${parsedBackupPreview.receiptCount} 張照片 / ${parsedBackupPreview.statementCount} 份帳單`
+                            : '無附件'}
+                        </Text>
                       </View>
                       <View style={styles.previewGridItem}>
                         <Text style={styles.previewItemLabel}>來源應用</Text>
@@ -928,6 +1131,111 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontSize: 13,
       fontWeight: 'bold',
       color: '#FFFFFF',
+    },
+    attachmentStatsCard: {
+      backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
+      borderWidth: 1,
+      borderColor: isDark ? colors.border.default : '#E2E8F0',
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 12,
+    },
+    attachmentStatsHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'baseline',
+      marginBottom: 10,
+    },
+    attachmentStatsTitle: {
+      fontSize: 14,
+      fontWeight: 'bold',
+      color: isDark ? colors.text.primary : '#1F2937',
+    },
+    attachmentStatsSub: {
+      fontSize: 12,
+      color: '#059669',
+      fontWeight: '600',
+    },
+    attachmentStatsGrid: {
+      flexDirection: 'row',
+      gap: 6,
+    },
+    attachmentStatBox: {
+      flex: 1,
+      backgroundColor: isDark ? colors.background.modal : '#FFFFFF',
+      borderWidth: 1,
+      borderColor: isDark ? colors.border.default : '#E5E7EB',
+      borderRadius: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 4,
+      alignItems: 'center',
+    },
+    attachmentStatNum: {
+      fontSize: 15,
+      fontWeight: '800',
+      color: isDark ? colors.text.primary : '#1F2937',
+      marginBottom: 2,
+    },
+    attachmentStatLabel: {
+      fontSize: 10,
+      color: isDark ? colors.text.muted : '#6B7280',
+    },
+    attachmentListSection: {
+      marginTop: 8,
+      marginBottom: 12,
+    },
+    attachmentListHeader: {
+      fontSize: 13,
+      fontWeight: 'bold',
+      color: isDark ? colors.text.secondary : '#475569',
+      marginBottom: 8,
+    },
+    attachmentListItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: isDark ? colors.background.cardSubtle : '#FFFFFF',
+      borderWidth: 1,
+      borderColor: isDark ? colors.border.default : '#F1F5F9',
+      borderRadius: 8,
+      padding: 8,
+      marginBottom: 6,
+    },
+    attachmentItemIcon: {
+      fontSize: 18,
+      marginRight: 8,
+    },
+    attachmentItemTitle: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: isDark ? colors.text.primary : '#1F2937',
+    },
+    attachmentItemSub: {
+      fontSize: 11,
+      color: isDark ? colors.text.muted : '#64748B',
+      marginTop: 1,
+    },
+    attachmentItemAmount: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: '#0284C7',
+    },
+    attachmentMoreHint: {
+      fontSize: 11,
+      textAlign: 'center',
+      color: isDark ? colors.text.muted : '#94A3B8',
+      marginVertical: 6,
+    },
+    emptyAttachmentBox: {
+      alignItems: 'center',
+      paddingVertical: 24,
+    },
+    emptyAttachmentIcon: {
+      fontSize: 32,
+      marginBottom: 6,
+    },
+    emptyAttachmentText: {
+      fontSize: 13,
+      color: isDark ? colors.text.muted : '#94A3B8',
     },
     closeExportBtn: {
       paddingVertical: 10,

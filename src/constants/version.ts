@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.9';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.9 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 6;
+export const APP_BUILD_REVISION = 7;
 
-// 完整版本字串 (例如 "1.0.9.6")
+// 完整版本字串 (例如 "1.0.9.7")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.9',
     date: '2026-10-27 ~ 2026-10-28',
-    title: '全新 1.0.9 正式版發布、跨裝置 Google 權限鏈接、防幽靈成員、快取自癒與雲端總管名冊純化 (v1.0.9.0 ~ v1.0.9.6)',
+    title: '全新 1.0.9 正式版發布、跨裝置 Google 權限鏈接、防幽靈成員、官方預設名單常駐與全附件離線封存 (v1.0.9.0 ~ v1.0.9.7)',
     highlights: [
+      '🗂️ 附件檔案（收據照片、電子帳單 PDF）完整備份與離線封存：JSON 結構備份 100% 補齊 image_url 與帳單中繼清單；新增【附件離線封存庫 (HTML)】，以獨立視覺化網頁呈現所有收據縮圖與帳單，並支援一鍵在瀏覽器批次將真實 JPG/PDF 儲存至本機硬碟。',
       '🎨 自訂分類與付款方式直接收錄為 App 官方預設：將「衣飾美容 👕」、「數位３Ｃ 💻」正式納入 13 大官方預設分類；將「Google Pay 🏦」、「醫指付 🍎」、「大利PAY ⛽」正式納入 11 種官方預設付款方式，支援歷史 UUID 無縫對齊，離線、全新帳本或重整皆完整呈現。',
       '🛡️ 6 大核心要素全線雙軌穿透封裝：全面確認明細 (325)、卡片 (25)、分類 (13)、付款方式 (11)、週期分期 (11) 與成員名冊 (4) 皆配備服務權杖無縫穿透備援與 Realtime 防空覆寫機制，杜絕任何 RLS 誤傷。',
       '🏷️ 自訂分類與付款方式雙軌穿透備援：全面為「自訂分類」與「付款方式」加入服務權杖穿透載入通道，徹底解決快取重整後分類 (13項) 與付款方式 (11項) 變少問題，彈窗成員數完美對齊去重後人數。',

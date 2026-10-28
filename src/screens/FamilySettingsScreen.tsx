@@ -72,7 +72,7 @@ interface FamilySettingsScreenProps {
   onOpenChangePinModal: () => void;
   onOpenSwitchLedgerModal: () => void;
   onOpenBudgetManageModal: () => void;
-  onOpenExportModal: (tab: 'csv' | 'json' | 'restore') => void;
+  onOpenExportModal: (tab: 'csv' | 'json' | 'attachments' | 'restore') => void;
   onOpenCloudLedgerManager: () => void;
   onOpenProductGuideModal: () => void;
   onOpenChangelogModal: () => void;
@@ -1250,7 +1250,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
 
           <View style={[styles.backupStatsFooter, { borderTopColor: colors.border.default }]}>
             <Text style={[styles.backupStatsFooterText, { color: colors.text.muted }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              🛡️ JSON 備份檔 100% 完整封存以上 6 類全要素資料
+              🛡️ JSON 備份檔 100% 完整封存以上 6 類全要素資料 (含收據照片與帳單連結)
             </Text>
           </View>
         </View>
@@ -1372,9 +1372,24 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             activeOpacity={0.8}
           >
             <Text style={styles.exportJsonBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>📦 匯出 JSON 結構備份</Text>
-            <Text style={styles.exportBtnSubtext} allowFontScaling={false} maxFontSizeMultiplier={1.08}>包含成員頭像與自訂分類</Text>
+            <Text style={styles.exportBtnSubtext} allowFontScaling={false} maxFontSizeMultiplier={1.08}>全要素結構 (含照片與帳單)</Text>
           </TouchableOpacity>
         </View>
+
+        <TouchableOpacity
+          style={[styles.restoreEntryBtn, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.12)' : '#EEF2FF', borderColor: isDark ? 'rgba(99, 102, 241, 0.3)' : '#C7D2FE', marginTop: 10 }]}
+          onPress={() => onOpenExportModal('attachments')}
+          activeOpacity={0.8}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={[styles.restoreEntryBtnText, { color: isDark ? '#A5B4FC' : '#4F46E5' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              🗂️ 附件離線封存與下載 (收據照片 / 電子帳單)
+            </Text>
+          </View>
+          <Text style={[styles.restoreEntryBtnSub, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+            匯出 HTML 視覺化封存庫，一鍵在瀏覽器批次下載全部實體 JPG / PDF 檔案
+          </Text>
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.restoreEntryBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}

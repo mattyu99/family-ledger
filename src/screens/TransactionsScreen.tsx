@@ -60,7 +60,7 @@ export interface TransactionsScreenProps {
   onOpenMemoTodoModal: () => void;
   onOpenInvoiceLotteryModal: () => void;
   onOpenReconcileModal: (type: 'credit_card' | 'stored_value', cardId?: string) => void;
-  onOpenExportModal: (tab: 'csv' | 'json' | 'restore') => void;
+  onOpenExportModal: (tab: 'csv' | 'json' | 'attachments' | 'restore') => void;
   onViewImage: (url: string, title?: string) => void;
   onOpenFilterModal: (type: 'month' | 'member') => void;
 }
