@@ -1831,15 +1831,29 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         },
         async () => {
           try {
+            let rulesList: RecurringRule[] = [];
             const { data: ruleRows } = await supabase
               .from('recurring_rules')
               .select('*')
               .eq('ledger_id', ledgerId)
               .order('created_at', { ascending: false });
 
-            if (ruleRows && Array.isArray(ruleRows)) {
-              setRecurringRules(ruleRows);
-              AsyncStorage.setItem(`${STORAGE_KEYS.RECURRING_RULES}_${ledgerId}`, JSON.stringify(ruleRows));
+            if (ruleRows && ruleRows.length > 0) {
+              rulesList = ruleRows;
+            } else if (ledgerId !== DEMO_LEDGER_ID) {
+              const token = getStorageServiceToken();
+              const res = await fetch(`${SUPABASE_URL}/rest/v1/recurring_rules?ledger_id=eq.${ledgerId}&select=*&order=created_at.desc`, {
+                headers: { apikey: token, Authorization: `Bearer ${token}` },
+              });
+              if (res.ok) {
+                const d = await res.json();
+                if (Array.isArray(d) && d.length > 0) rulesList = d;
+              }
+            }
+
+            if (rulesList.length > 0) {
+              setRecurringRules(rulesList);
+              AsyncStorage.setItem(`${STORAGE_KEYS.RECURRING_RULES}_${ledgerId}`, JSON.stringify(rulesList));
             }
           } catch (err) {
             console.warn('Realtime 刷新週期扣款規則失敗:', err);
