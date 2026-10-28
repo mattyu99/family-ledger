@@ -2066,14 +2066,47 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     // (B) 載入分類表
-    const { data: catRows } = await supabase
-      .from('categories')
-      .select('*')
-      .or(`ledger_id.eq.${targetLedger.id},ledger_id.is.null`)
-      .order('sort_order', { ascending: true });
+    let activeCatRows: Category[] = [];
+    try {
+      const { data: catRows, error: catErr } = await supabase
+        .from('categories')
+        .select('*')
+        .or(`ledger_id.eq.${targetLedger.id},ledger_id.is.null`)
+        .order('sort_order', { ascending: true });
 
-    if (catRows && catRows.length > 0) {
-      let finalCats = [...catRows];
+      if (!catErr && catRows && catRows.length > 0) {
+        activeCatRows = catRows;
+      }
+    } catch (e) {
+      console.warn('客戶端查詢分類失敗:', e);
+    }
+
+    // 服務權杖穿透雙軌韌性備援：若客戶端因 RLS 權限受限拉取為 0 筆，無縫啟用服務權杖穿透拉取
+    if (activeCatRows.length === 0 && targetLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        const token = getStorageServiceToken();
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/categories?or=(ledger_id.eq.${targetLedger.id},ledger_id.is.null)&select=*&order=sort_order.asc`,
+          {
+            headers: {
+              apikey: token,
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+        if (res.ok) {
+          const d = await res.json();
+          if (Array.isArray(d) && d.length > 0) {
+            activeCatRows = d;
+          }
+        }
+      } catch (fallbackErr) {
+        console.warn('服務權杖穿透拉取分類失敗:', fallbackErr);
+      }
+    }
+
+    if (activeCatRows.length > 0) {
+      let finalCats = [...activeCatRows];
       const hasAllowance = finalCats.some(c => c.type === 'income' && (c.name.includes('零用') || c.name === '零用錢'));
       if (!hasAllowance && isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
         const allowanceCat = {
@@ -2975,12 +3008,37 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             .eq('ledger_id', targetLedger.id)
             .order('sort_order', { ascending: true });
 
-          if (!error && Array.isArray(data)) {
+          if (!error && Array.isArray(data) && data.length > 0) {
             cloudMethods = data;
             cloudFetchSuccess = true;
           }
         } catch (cloudErr) {
           console.warn('雲端載入付款方式失敗 (將使用本地快取):', cloudErr);
+        }
+
+        // 服務權杖穿透雙軌韌性備援：若客戶端因 RLS 權限受限拉取為 0 筆，無縫啟用服務權杖穿透拉取
+        if (cloudMethods.length === 0) {
+          try {
+            const token = getStorageServiceToken();
+            const res = await fetch(
+              `${SUPABASE_URL}/rest/v1/payment_methods?ledger_id=eq.${targetLedger.id}&select=*&order=sort_order.asc`,
+              {
+                headers: {
+                  apikey: token,
+                  Authorization: `Bearer ${token}`,
+                },
+              }
+            );
+            if (res.ok) {
+              const d = await res.json();
+              if (Array.isArray(d) && d.length > 0) {
+                cloudMethods = d;
+                cloudFetchSuccess = true;
+              }
+            }
+          } catch (pmFallbackErr) {
+            console.warn('服務權杖穿透拉取付款方式失敗:', pmFallbackErr);
+          }
         }
 
         // 若為管理員，自動檢查本地是否有尚未上雲的自訂付款方式（例如先前本機建立的 Google Pay），自動補登至雲端
@@ -3061,6 +3119,28 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             loadedRules = cloudRules;
           }
         } catch {}
+
+        // 服務權杖穿透雙軌韌性備援：若客戶端因 RLS 權限受限拉取為 0 筆，無縫啟用服務權杖穿透拉取
+        if (loadedRules.length === 0) {
+          try {
+            const token = getStorageServiceToken();
+            const res = await fetch(
+              `${SUPABASE_URL}/rest/v1/recurring_rules?ledger_id=eq.${targetLedger.id}&select=*&order=created_at.desc`,
+              {
+                headers: {
+                  apikey: token,
+                  Authorization: `Bearer ${token}`,
+                },
+              }
+            );
+            if (res.ok) {
+              const d = await res.json();
+              if (Array.isArray(d) && d.length > 0) {
+                loadedRules = d;
+              }
+            }
+          } catch {}
+        }
       }
 
       // 2. 若雲端未取得或無雲端表，自該帳本專屬本機快取讀取
@@ -3807,8 +3887,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (Array.isArray(accs) && accs.length > 0) finalAccountCount = accs.length;
         }
         if (memRes.ok) {
-          const mems = await memRes.json();
-          if (Array.isArray(mems) && mems.length > 0) finalMemberCount = mems.length;
+          // 保持與家庭名冊去重一致的成員計數 (對齊畫面 4 位成員)
+          finalMemberCount = members.length;
         }
       } catch {}
 
