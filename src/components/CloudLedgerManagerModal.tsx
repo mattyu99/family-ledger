@@ -14,6 +14,12 @@ import {
 } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
+import { MemberAvatar } from './MemberAvatar';
+import {
+  fetchCloudLedgersSummary,
+  CloudLedgerSummary,
+  CloudDatabaseQuota,
+} from '../lib/cloudLedgerService';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
   <RNText
@@ -22,11 +28,6 @@ const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultip
     {...rest}
   />
 );
-import {
-  fetchCloudLedgersSummary,
-  CloudLedgerSummary,
-  CloudDatabaseQuota,
-} from '../lib/cloudLedgerService';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -289,8 +290,9 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
                           <View style={styles.memberChipsRow}>
                             {l.members.map((m, mIdx) => (
                               <View key={`${m.userId}_${mIdx}`} style={styles.memberChip}>
+                                <MemberAvatar avatar={m.avatarUrl} size={15} style={styles.memberAvatar} />
                                 <Text style={styles.memberChipText}>
-                                  {m.avatarUrl} {m.displayName}
+                                  {m.displayName}
                                   {m.role === 'owner' ? ' (👑)' : ''}
                                 </Text>
                               </View>
@@ -650,6 +652,12 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: 7,
     paddingVertical: 3,
     borderRadius: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  memberAvatar: {
+    fontSize: 13,
   },
   memberChipText: {
     fontSize: 11,

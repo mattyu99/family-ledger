@@ -7,6 +7,9 @@ export interface CloudLedgerMemberInfo {
   displayName: string;
   avatarUrl: string;
   role: string;
+  email?: string;
+  authEmail?: string;
+  isLocked?: boolean;
 }
 
 export interface CloudLedgerSummary {
@@ -37,13 +40,109 @@ export interface CloudDatabaseQuota {
 }
 
 /**
+ * 雲端帳本總管成員去重函式：
+ * 1. 依 display_name 或 Google 授權信箱自動整併多台裝置/影子帳號
+ * 2. 優先保留加鎖成員與自訂稱謂（如「智爸」優先於「Matt Yu」）
+ * 3. 優先保留 Emoji 頭像（避免 Google 圖片網址字串）
+ * 4. 排除已刪除之幽靈假人
+ */
+export function deduplicateCloudMembers(
+  rawMembers: CloudLedgerMemberInfo[],
+  profileMap?: Map<string, any>
+): CloudLedgerMemberInfo[] {
+  const cleanList = rawMembers
+    .filter(m => {
+      if (!m) return false;
+      if (m.userId === '9b017d89-b21f-4638-b076-5a7629e2dda5') return false;
+      if (m.userId === 'e6a2d1ec-3b2a-495f-b24e-71c2647d9a86') return false;
+      const name = (m.displayName || '').trim();
+      if (name === '寶可夢') return false;
+      return true;
+    })
+    .map(m => {
+      const prof = profileMap?.get(m.userId);
+      return {
+        ...m,
+        displayName: (m.displayName || prof?.display_name || '未命名').trim(),
+        avatarUrl: m.avatarUrl || prof?.avatar_url || '👤',
+        role: m.role || 'member',
+        email: m.email || prof?.email,
+        authEmail: m.authEmail || prof?.auth_email,
+        isLocked: m.isLocked ?? Boolean(prof?.is_locked),
+      };
+    });
+
+  // 若已有自訂名稱成員，過濾掉未鎖定且無信箱的預設「家庭成員」假人
+  const hasRealMembers = cleanList.some(m => m.displayName !== '家庭成員');
+  const filteredList = hasRealMembers ? cleanList.filter(m => m.displayName !== '家庭成員') : cleanList;
+
+  // 排序：鎖定優先、Emoji頭像優先、管理者優先
+  const sorted = [...filteredList].sort((a, b) => {
+    if (a.isLocked && !b.isLocked) return -1;
+    if (!a.isLocked && b.isLocked) return 1;
+
+    const aIsUrl = Boolean(a.avatarUrl && (a.avatarUrl.startsWith('http://') || a.avatarUrl.startsWith('https://')));
+    const bIsUrl = Boolean(b.avatarUrl && (b.avatarUrl.startsWith('http://') || b.avatarUrl.startsWith('https://')));
+    if (!aIsUrl && bIsUrl) return -1;
+    if (aIsUrl && !bIsUrl) return 1;
+
+    if ((a.role === 'owner' || a.role === 'admin') && b.role === 'member') return -1;
+    if (a.role === 'member' && (b.role === 'owner' || b.role === 'admin')) return 1;
+    return 0;
+  });
+
+  const result: CloudLedgerMemberInfo[] = [];
+  const seenNames = new Set<string>();
+  const seenEmails = new Set<string>();
+
+  for (const m of sorted) {
+    const nameKey = m.displayName.toLowerCase();
+    const emailKey = (m.authEmail || m.email || '').trim().toLowerCase();
+
+    let existing: CloudLedgerMemberInfo | undefined = undefined;
+    if (nameKey && seenNames.has(nameKey)) {
+      existing = result.find(r => r.displayName.toLowerCase() === nameKey);
+    } else if (emailKey && seenEmails.has(emailKey)) {
+      existing = result.find(r => {
+        const rEmail = (r.authEmail || r.email || '').trim().toLowerCase();
+        if (rEmail !== emailKey) return false;
+        const mIsUrl = Boolean(m.avatarUrl && (m.avatarUrl.startsWith('http://') || m.avatarUrl.startsWith('https://')));
+        const rIsUrl = Boolean(r.avatarUrl && (r.avatarUrl.startsWith('http://') || r.avatarUrl.startsWith('https://')));
+        return (r.displayName.toLowerCase() === nameKey) || mIsUrl || rIsUrl;
+      });
+    }
+
+    if (!existing) {
+      if (nameKey) seenNames.add(nameKey);
+      if (emailKey) seenEmails.add(emailKey);
+      result.push({ ...m });
+    } else {
+      if (m.role === 'owner') existing.role = 'owner';
+      else if (m.role === 'admin' && existing.role !== 'owner') existing.role = 'admin';
+      if (m.isLocked) existing.isLocked = true;
+      if (
+        existing.avatarUrl &&
+        (existing.avatarUrl.startsWith('http://') || existing.avatarUrl.startsWith('https://')) &&
+        m.avatarUrl &&
+        !m.avatarUrl.startsWith('http')
+      ) {
+        existing.avatarUrl = m.avatarUrl;
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
  * 內部輔助函式：自原始資料陣列重構出帳本摘要清單
  */
 function buildSummariesFromRaw(
   rawLedgers: any[],
   rawMembers: any[],
   rawTxs: any[],
-  rawInvites: any[]
+  rawInvites: any[],
+  profileMap?: Map<string, any>
 ): { ledgers: CloudLedgerSummary[]; quota: CloudDatabaseQuota } {
   const inviteMap = new Map<string, string>();
   for (const inv of rawInvites) {
@@ -76,12 +175,16 @@ function buildSummariesFromRaw(
       displayName: prof?.display_name || '未命名',
       avatarUrl: prof?.avatar_url || '👤',
       role: m.role || 'member',
+      email: prof?.email,
+      authEmail: prof?.auth_email,
+      isLocked: Boolean(prof?.is_locked),
     });
     memberGroup.set(m.ledger_id, list);
   }
 
   const summaries: CloudLedgerSummary[] = rawLedgers.map(l => {
-    const mems = memberGroup.get(l.id) || [];
+    const rawMems = memberGroup.get(l.id) || [];
+    const mems = deduplicateCloudMembers(rawMems, profileMap);
     const txInfo = txGroup.get(l.id);
     const txCount = txInfo?.count || 0;
     const isGhost = mems.length === 0 && txCount === 0;
@@ -125,7 +228,10 @@ function buildSummariesFromRaw(
  * 網頁版 (Web) 專屬保底穿透解析（不依賴 sb_secret_，避開瀏覽器 User-Agent 阻擋）
  * 透過公開可讀的 ledger_invites + get_ledger_invite_preview + 本地 knownLedgers + member_devices 全面反查全體帳本
  */
-async function fetchWebFallbackSummaries(knownLedgers: any[] = []): Promise<{
+async function fetchWebFallbackSummaries(
+  knownLedgers: any[] = [],
+  profileMap?: Map<string, any>
+): Promise<{
   ledgers: CloudLedgerSummary[];
   quota: CloudDatabaseQuota;
 }> {
@@ -135,12 +241,16 @@ async function fetchWebFallbackSummaries(knownLedgers: any[] = []): Promise<{
     // 1. 登記已知的本機/當前連線帳本資訊 (包含已有交易/成員)
     for (const kl of knownLedgers) {
       if (!kl || !kl.id) continue;
-      const mems = (kl.members || []).map((m: any) => ({
+      const rawMems: CloudLedgerMemberInfo[] = (kl.members || []).map((m: any) => ({
         userId: m.id || m.userId,
         displayName: m.displayName || m.name || '未命名',
         avatarUrl: m.avatarUrl || m.avatar || '👤',
         role: m.role || 'member',
+        email: m.email,
+        authEmail: m.auth_email || m.authEmail,
+        isLocked: m.is_locked ?? m.isLocked,
       }));
+      const mems = deduplicateCloudMembers(rawMems, profileMap);
       ledgerMap.set(kl.id, {
         id: kl.id,
         name: kl.name || '未命名帳本',
@@ -174,14 +284,18 @@ async function fetchWebFallbackSummaries(knownLedgers: any[] = []): Promise<{
             });
 
             if (prev && prev.success && prev.ledger_id) {
-              const prevMembers: CloudLedgerMemberInfo[] = Array.isArray(prev.members)
+              const rawPrevMembers: CloudLedgerMemberInfo[] = Array.isArray(prev.members)
                 ? prev.members.map((pm: any) => ({
                     userId: pm.id,
                     displayName: pm.display_name || '未命名',
                     avatarUrl: pm.avatar_url || '👤',
                     role: pm.role || 'member',
+                    email: pm.email,
+                    authEmail: pm.auth_email,
+                    isLocked: pm.is_locked,
                   }))
                 : [];
+              const prevMembers = deduplicateCloudMembers(rawPrevMembers, profileMap);
 
               const existing = ledgerMap.get(prev.ledger_id);
               if (existing) {
@@ -310,24 +424,45 @@ export async function fetchCloudLedgersSummary(knownLedgers: any[] = []): Promis
   ledgers: CloudLedgerSummary[];
   quota: CloudDatabaseQuota;
 }> {
+  // 先嘗試拉取公開的 profiles 輔助表建立對照 map（供精準去重比對 Google auth_email 與加鎖狀態）
+  let profileMap = new Map<string, any>();
+  try {
+    const { data: profs } = await supabase
+      .from('profiles')
+      .select('id, display_name, avatar_url, email, auth_email, is_locked');
+    if (Array.isArray(profs)) {
+      profileMap = new Map(profs.map(p => [p.id, p]));
+    }
+  } catch (err) {
+    console.log('無法預載 profiles 對照表:', err);
+  }
+
   // 1. 優先調用高性能資料庫 RPC (無論在 Web 還是 Mobile 皆可透過 anon key 無阻調用)
   try {
     const { data: rpcData, error: rpcErr } = await supabase.rpc('get_all_cloud_ledgers_summary');
     if (!rpcErr && rpcData && Array.isArray(rpcData.ledgers) && rpcData.ledgers.length > 0) {
-      const summaries: CloudLedgerSummary[] = rpcData.ledgers.map((l: any) => ({
-        id: l.id,
-        name: l.name || '未命名帳本',
-        description: l.description,
-        createdAt: l.created_at ? l.created_at.slice(0, 10) : '未知',
-        createdBy: l.created_by,
-        inviteCode: l.invite_code || undefined,
-        memberCount: Number(l.member_count) || 0,
-        members: Array.isArray(l.members) ? l.members : [],
-        txCount: Number(l.tx_count) || 0,
-        latestTxDate: l.latest_tx_date ? l.latest_tx_date.slice(0, 10) : undefined,
-        isGhost: Boolean(l.is_ghost),
-        isTest: Boolean(l.is_test),
-      }));
+      const summaries: CloudLedgerSummary[] = rpcData.ledgers.map((l: any) => {
+        const rawMems: CloudLedgerMemberInfo[] = Array.isArray(l.members) ? l.members : [];
+        const dedupedMems = deduplicateCloudMembers(rawMems, profileMap);
+        const txCount = Number(l.tx_count) || 0;
+        const isGhost = dedupedMems.length === 0 && txCount === 0;
+        const isTest = !isGhost && txCount === 0 && dedupedMems.length <= 1;
+
+        return {
+          id: l.id,
+          name: l.name || '未命名帳本',
+          description: l.description,
+          createdAt: l.created_at ? l.created_at.slice(0, 10) : '未知',
+          createdBy: l.created_by,
+          inviteCode: l.invite_code || undefined,
+          memberCount: dedupedMems.length,
+          members: dedupedMems,
+          txCount,
+          latestTxDate: l.latest_tx_date ? l.latest_tx_date.slice(0, 10) : undefined,
+          isGhost,
+          isTest,
+        };
+      });
 
       const ghostCount = rpcData.ghostCount ?? summaries.filter(s => s.isGhost).length;
       const activeCount = rpcData.activeCount ?? summaries.filter(s => s.txCount > 0).length;
@@ -361,7 +496,7 @@ export async function fetchCloudLedgersSummary(knownLedgers: any[] = []): Promis
 
       const [ledgersRes, membersRes, txsRes, invitesRes] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/ledgers?select=*&order=created_at.asc`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/ledger_members?select=ledger_id,user_id,role,profiles(display_name,avatar_url)`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/ledger_members?select=ledger_id,user_id,role,profiles(display_name,avatar_url,email,auth_email,is_locked)`, { headers }),
         fetch(`${SUPABASE_URL}/rest/v1/transactions?select=id,ledger_id,transacted_at&order=transacted_at.desc`, { headers }),
         fetch(`${SUPABASE_URL}/rest/v1/ledger_invites?select=ledger_id,invite_code&order=created_at.desc`, { headers }),
       ]);
@@ -372,7 +507,7 @@ export async function fetchCloudLedgersSummary(knownLedgers: any[] = []): Promis
         const rawTxs: any[] = txsRes.ok ? await txsRes.json() : [];
         const rawInvites: any[] = invitesRes.ok ? await invitesRes.json() : [];
 
-        return buildSummariesFromRaw(rawLedgers, rawMembers, rawTxs, rawInvites);
+        return buildSummariesFromRaw(rawLedgers, rawMembers, rawTxs, rawInvites, profileMap);
       }
     } catch (e) {
       console.warn('原生端 service token 查詢異常:', e);
@@ -380,7 +515,7 @@ export async function fetchCloudLedgersSummary(knownLedgers: any[] = []): Promis
   }
 
   // 3. 網頁版 (Web) 專屬保底解析：利用公開邀請碼預覽 + 本地已知帳本 + 裝置感應反查
-  return await fetchWebFallbackSummaries(knownLedgers);
+  return await fetchWebFallbackSummaries(knownLedgers, profileMap);
 }
 
 /**
