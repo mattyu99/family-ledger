@@ -314,8 +314,10 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
   // 📷 收據 / 保固憑證照片 (階段 B)
   const [receiptPhotoUri, setReceiptPhotoUri] = useState<string>(() => transaction?.image_url || '');
+  const [receiptPhotoBase64, setReceiptPhotoBase64] = useState<string>('');
   const [viewingPhotoModal, setViewingPhotoModal] = useState<boolean>(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // 相機拍攝收據/保固照片 (階段 B)
   const handlePickReceiptFromCamera = async () => {
@@ -325,11 +327,15 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     }
     try {
       const result = await ImagePickerModule.launchCameraAsync({
-        quality: 0.8,
+        quality: 0.7,
         allowsEditing: true,
+        base64: true,
       });
       if (!result.canceled && result.assets?.[0]?.uri) {
         setReceiptPhotoUri(result.assets[0].uri);
+        if (result.assets[0].base64) {
+          setReceiptPhotoBase64(result.assets[0].base64);
+        }
       }
     } catch (e: any) {
       safeAlert('相機錯誤', e?.message || '無法開啟相機');
@@ -344,11 +350,15 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     }
     try {
       const result = await ImagePickerModule.launchImageLibraryAsync({
-        quality: 0.8,
+        quality: 0.7,
         allowsEditing: true,
+        base64: true,
       });
       if (!result.canceled && result.assets?.[0]?.uri) {
         setReceiptPhotoUri(result.assets[0].uri);
+        if (result.assets[0].base64) {
+          setReceiptPhotoBase64(result.assets[0].base64);
+        }
       }
     } catch (e: any) {
       safeAlert('相簿錯誤', e?.message || '無法讀取相簿');
@@ -884,6 +894,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       setCompletionNote(transaction.completion_note || '');
       setLinkedTxId(transaction.linked_transaction_id || '');
       setReceiptPhotoUri(transaction.image_url || '');
+      setReceiptPhotoBase64('');
       setViewingPhotoModal(false);
       setReminderDatePickerVisible(false);
       setTransactedAt(transaction.transacted_at || new Date().toISOString());
@@ -1140,10 +1151,11 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   };
 
   const handleSubmit = async () => {
-    if (!transaction) return;
+    if (!transaction || isSubmitting || isUploadingPhoto) return;
 
     if (!canEdit) {
       if (transaction.type === 'memo' && canEditCompletion) {
+        setIsSubmitting(true);
         try {
           const effectiveCompleter = isSettled
             ? (transaction.completed_by || currentUser?.id)
@@ -1162,6 +1174,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           }
         } catch (err: any) {
           alert(err.message || '更新回報時發生錯誤');
+        } finally {
+          setIsSubmitting(false);
         }
         return;
       }
@@ -1179,6 +1193,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       }
       const canonicalPayer = getMemberById(transaction.paid_by);
       const targetPayer = paidBy || canonicalPayer?.id || currentUser.id || members[0]?.id;
+      setIsSubmitting(true);
       try {
         const success = await updateTransaction(transaction.id, {
           amount: 0,
@@ -1204,6 +1219,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         }
       } catch (err: any) {
         alert(err.message || '更新記事時發生錯誤');
+      } finally {
+        setIsSubmitting(false);
       }
       return;
     }
@@ -1269,6 +1286,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     }
 
     const executeUpdateTransaction = async () => {
+      if (isSubmitting || isUploadingPhoto) return;
+      setIsSubmitting(true);
       try {
         let finalImageUrl: string | undefined = transaction.image_url;
         if (receiptPhotoUri !== transaction.image_url) {
@@ -1282,6 +1301,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               finalImageUrl = await uploadReceiptPhoto({
                 ledgerId: currentLedger.id,
                 uri: receiptPhotoUri,
+                base64: receiptPhotoBase64 || undefined,
               });
             } catch {
               finalImageUrl = receiptPhotoUri;
@@ -1318,6 +1338,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         }
       } catch (err: any) {
         alert(err.message || '更新記帳時發生錯誤');
+      } finally {
+        setIsSubmitting(false);
       }
     };
 
@@ -2920,7 +2942,10 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.receiptActionBtn, styles.receiptDeleteBtn]}
-                    onPress={() => setReceiptPhotoUri('')}
+                    onPress={() => {
+                      setReceiptPhotoUri('');
+                      setReceiptPhotoBase64('');
+                    }}
                     activeOpacity={0.7}
                   >
                     <Text style={styles.receiptDeleteBtnText}>🗑️ 移除照片</Text>
@@ -2968,8 +2993,16 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 {transaction.type === 'memo' ? '🗑️ 刪除備忘' : '🗑️ 刪除紀錄'}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
-              <Text style={styles.submitBtnText} maxFontSizeMultiplier={1.15}>儲存修改</Text>
+            <TouchableOpacity
+              style={[styles.submitBtn, (isSubmitting || isUploadingPhoto) && { opacity: 0.6 }]}
+              disabled={isSubmitting || isUploadingPhoto}
+              onPress={handleSubmit}
+            >
+              <Text style={styles.submitBtnText} maxFontSizeMultiplier={1.15}>
+                {isSubmitting || isUploadingPhoto
+                  ? (isUploadingPhoto ? '⏳ 上傳收據中...' : '⏳ 儲存中...')
+                  : '儲存修改'}
+              </Text>
             </TouchableOpacity>
           </View>
         ) : (transaction.type === 'memo' && canEditCompletion) ? (
@@ -2977,8 +3010,14 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             <TouchableOpacity style={styles.readOnlyCloseBtn} onPress={onClose} activeOpacity={0.8}>
               <Text style={styles.readOnlyCloseBtnText} maxFontSizeMultiplier={1.15}>關閉</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
-              <Text style={styles.submitBtnText} maxFontSizeMultiplier={1.15}>儲存回報</Text>
+            <TouchableOpacity
+              style={[styles.submitBtn, (isSubmitting || isUploadingPhoto) && { opacity: 0.6 }]}
+              disabled={isSubmitting || isUploadingPhoto}
+              onPress={handleSubmit}
+            >
+              <Text style={styles.submitBtnText} maxFontSizeMultiplier={1.15}>
+                {isSubmitting ? '⏳ 儲存中...' : '儲存回報'}
+              </Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -3039,7 +3078,10 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     onClose={() => setViewingPhotoModal(false)}
     imageUrl={receiptPhotoUri}
     title="消費收據 / 保固憑證"
-    onDelete={canEdit ? () => setReceiptPhotoUri('') : undefined}
+    onDelete={canEdit ? () => {
+      setReceiptPhotoUri('');
+      setReceiptPhotoBase64('');
+    } : undefined}
   />
 </Modal>
   );

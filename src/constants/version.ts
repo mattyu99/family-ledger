@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.9';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.9 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 8;
+export const APP_BUILD_REVISION = 9;
 
-// 完整版本字串 (例如 "1.0.9.8")
+// 完整版本字串 (例如 "1.0.9.9")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -21,8 +21,11 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.9',
     date: '2026-10-27 ~ 2026-10-28',
-    title: '全新 1.0.9 正式版發布、跨裝置 Google 權限鏈接、防幽靈成員、官方預設名單常駐與全附件離線封存 (v1.0.9.0 ~ v1.0.9.8)',
+    title: '全新 1.0.9 正式版發布、收據快傳逾時防禦、儲存防重複鎖定與離線隊列死鎖治癒 (v1.0.9.0 ~ v1.0.9.9)',
     highlights: [
+      '📷 收據照片上傳掛起與逾時防禦修復：React Native 原生端新增 Base64 快速位元組通道與原生 FormData 傳輸適配，全面配置 8 秒嚴格逾時防禦控制器（AbortController），杜絕原生網路 Blob 串流延遲導致畫面掛起 30 秒，逾時安全降級回退本機 URI 絕不卡住畫面。',
+      '🔒 記帳儲存防重複提交鎖（Submission Lock）：新增 isSubmitting 鎖定防呆狀態，點擊儲存記帳/修改時按鈕立即鎖定變灰（透明度 0.6）、顯示「⏳ 上傳收據中...」或「⏳ 儲存中...」並禁用點擊，徹底防止使用者因等待上傳而連續按壓產生多筆重複交易。',
+      '🛡️ 離線待補傳隊列死鎖解鎖與白名單清洗：修復離線補傳時 payload 夾帶 _isPendingSync 等虛擬欄位導致 PostgREST PGRST204 阻斷報錯問題；建立純淨資料庫欄位白名單過濾機制，並為離線補傳通道注入雙軌服務權杖穿透備援，自動洗淨補傳手機端受困之待補明細並還原雲端綠燈即時同步。',
       '📱 手機 App 端附件分頁佈局相容修復：修正 React Native 彈窗在無固定高度下 ScrollView 高度塌陷為 0 導致空白問題，導入自適應高度約束與同步預熱，APP 端與 Web 端一致呈現完整附件統計與離線封存工具。',
       '🗂️ 附件檔案（收據照片、電子帳單 PDF）完整備份與離線封存：JSON 結構備份 100% 補齊 image_url 與帳單中繼清單；新增【附件離線封存庫 (HTML)】，以獨立視覺化網頁呈現所有收據縮圖與帳單，並支援一鍵在瀏覽器批次將真實 JPG/PDF 儲存至本機硬碟。',
       '🎨 自訂分類與付款方式直接收錄為 App 官方預設：將「衣飾美容 👕」、「數位３Ｃ 💻」正式納入 13 大官方預設分類；將「Google Pay 🏦」、「醫指付 🍎」、「大利PAY ⛽」正式納入 11 種官方預設付款方式，支援歷史 UUID 無縫對齊，離線、全新帳本或重整皆完整呈現。',

@@ -253,8 +253,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
   // 📎 收據/保固照片附件狀態 (階段 B)
   const [receiptPhotoUri, setReceiptPhotoUri] = useState<string>('');
+  const [receiptPhotoBase64, setReceiptPhotoBase64] = useState<string>('');
   const [viewingPhotoModal, setViewingPhotoModal] = useState<boolean>(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   const handleSelectTemplate = React.useCallback((template: MemoChecklistTemplate) => {
     if (!note || !note.trim()) {
@@ -800,6 +802,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     setAllowanceMode('transfer');
     setTransferFee('0');
     setReceiptPhotoUri('');
+    setReceiptPhotoBase64('');
     setViewingPhotoModal(false);
 
     const fromCandidate = paymentAccounts.find(a => a.type === 'bank' || a.type === 'cash') || paymentAccounts[0];
@@ -916,11 +919,15 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     }
     try {
       const result = await ImagePickerModule.launchCameraAsync({
-        quality: 0.8,
+        quality: 0.7,
         allowsEditing: true,
+        base64: true,
       });
       if (!result.canceled && result.assets?.[0]?.uri) {
         setReceiptPhotoUri(result.assets[0].uri);
+        if (result.assets[0].base64) {
+          setReceiptPhotoBase64(result.assets[0].base64);
+        }
       }
     } catch (e: any) {
       safeAlert('相機錯誤', e?.message || '無法開啟相機');
@@ -935,11 +942,15 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     }
     try {
       const result = await ImagePickerModule.launchImageLibraryAsync({
-        quality: 0.8,
+        quality: 0.7,
         allowsEditing: true,
+        base64: true,
       });
       if (!result.canceled && result.assets?.[0]?.uri) {
         setReceiptPhotoUri(result.assets[0].uri);
+        if (result.assets[0].base64) {
+          setReceiptPhotoBase64(result.assets[0].base64);
+        }
       }
     } catch (e: any) {
       safeAlert('相簿錯誤', e?.message || '無法讀取相簿');
@@ -948,6 +959,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
   // 送出內部轉帳 / 提款 / 繳卡費 (階段 B)
   const handleTransferSubmit = async () => {
+    if (isSubmitting) return;
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount <= 0) {
       safeAlert('請輸入金額', '請輸入大於 0 的轉帳金額');
@@ -967,27 +979,33 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     const txDate = new Date(selectedDate);
     txDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
 
-    const res = await executeTransfer({
-      fromAccountId: transferFromAccountId,
-      toAccountId: transferToAccountId,
-      amount: numAmount,
-      fee: feeNum,
-      payerId: paidBy || currentUser.id,
-      transactedAt: txDate.toISOString(),
-      note: note.trim() || undefined,
-    });
+    setIsSubmitting(true);
+    try {
+      const res = await executeTransfer({
+        fromAccountId: transferFromAccountId,
+        toAccountId: transferToAccountId,
+        amount: numAmount,
+        fee: feeNum,
+        payerId: paidBy || currentUser.id,
+        transactedAt: txDate.toISOString(),
+        note: note.trim() || undefined,
+      });
 
-    if (!res.success) {
-      safeAlert('轉帳失敗', res.error || '執行轉帳時發生錯誤');
-      return;
+      if (!res.success) {
+        safeAlert('轉帳失敗', res.error || '執行轉帳時發生錯誤');
+        return;
+      }
+
+      safeAlert('🎉 轉帳成功！', '已完成資金調撥與各帳戶餘額更新！此筆內部資金流動不計入公帳總支出。');
+      onClose();
+    } finally {
+      setIsSubmitting(false);
     }
-
-    safeAlert('🎉 轉帳成功！', '已完成資金調撥與各帳戶餘額更新！此筆內部資金流動不計入公帳總支出。');
-    onClose();
   };
 
   // 送出撥零用錢 (一鍵雙向記帳)
   const handleAllowanceSubmit = async () => {
+    if (isSubmitting) return;
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount <= 0) {
       safeAlert('請輸入金額', '請輸入大於 0 的零用錢金額');
@@ -1006,6 +1024,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       return;
     }
 
+    setIsSubmitting(true);
     try {
       const now = new Date();
       const txDate = new Date(selectedDate);
@@ -1050,11 +1069,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       onClose();
     } catch (err: any) {
       safeAlert('撥發失敗', err?.message || '發放零用錢時發生錯誤');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   // 生活記事與待辦備忘提交
   const handleMemoSubmit = async () => {
+    if (isSubmitting) return;
     if (!note.trim()) {
       safeAlert('請輸入記事內容', '請填寫您想記錄的生活記事或備忘內容');
       return;
@@ -1063,6 +1085,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     const defaultMemoCat = categories.find(c => c.name.includes('其他') || c.name.includes('日常')) || categories[0];
     const targetPayer = paidBy || currentUser.id || members[0]?.id;
 
+    setIsSubmitting(true);
     try {
       const now = new Date();
       const txDate = new Date(selectedDate);
@@ -1093,6 +1116,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       onClose();
     } catch (err: any) {
       safeAlert('儲存失敗', err?.message || '儲存生活記事時發生錯誤');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1117,6 +1142,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       : parsedInputAmount;
 
   const handleSubmit = async () => {
+    if (isSubmitting || isUploadingPhoto) {
+      return;
+    }
+
     if (mode === 'transfer') {
       if (transferTargetType === 'member') {
         return handleAllowanceSubmit();
@@ -1185,6 +1214,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     }
 
     const executeSaveTransaction = async () => {
+      if (isSubmitting || isUploadingPhoto) return;
+      setIsSubmitting(true);
       try {
         const now = new Date();
         const txDate = new Date(selectedDate);
@@ -1203,6 +1234,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               finalImageUrl = await uploadReceiptPhoto({
                 ledgerId: currentLedger.id,
                 uri: receiptPhotoUri,
+                base64: receiptPhotoBase64 || undefined,
               });
             } catch {
               finalImageUrl = receiptPhotoUri;
@@ -1255,10 +1287,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         setPaymentMethod('cash');
         setSelectedAccountId('');
         setSelectedDate(new Date());
+        setReceiptPhotoUri('');
+        setReceiptPhotoBase64('');
         onSuccess?.(createdTxId);
         onClose();
       } catch (err: any) {
         safeAlert('儲存失敗', err.message || '儲存記帳時發生錯誤');
+      } finally {
+        setIsSubmitting(false);
       }
     };
 
@@ -3156,7 +3192,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.receiptActionBtn, styles.receiptDeleteBtn]}
-                  onPress={() => setReceiptPhotoUri('')}
+                  onPress={() => {
+                    setReceiptPhotoUri('');
+                    setReceiptPhotoBase64('');
+                  }}
                   activeOpacity={0.7}
                 >
                   <Text style={styles.receiptDeleteBtnText}>🗑️ 移除照片</Text>
@@ -3192,11 +3231,15 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             mode === 'transfer' && (transferTargetType === 'member' ? styles.submitBtnAllowance : styles.submitBtnTransfer),
             (mode as string) === 'allowance' && styles.submitBtnAllowance,
             mode === 'memo' && styles.submitBtnMemo,
+            (isSubmitting || isUploadingPhoto) && { opacity: 0.6 },
           ]}
+          disabled={isSubmitting || isUploadingPhoto}
           onPress={handleSubmit}
         >
           <Text style={styles.submitBtnText} maxFontSizeMultiplier={1.15}>
-            {mode === 'transfer'
+            {isSubmitting || isUploadingPhoto
+              ? (isUploadingPhoto ? '⏳ 上傳收據中...' : '⏳ 儲存中...')
+              : mode === 'transfer'
               ? (transferTargetType === 'member' ? '🎁 確認轉發零用錢給家人' : '⇄ 確認轉帳 / 調撥 / 繳款')
               : (mode as string) === 'allowance'
               ? '🎁 確認轉發零用錢給家人'
@@ -3253,7 +3296,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     onClose={() => setViewingPhotoModal(false)}
     imageUrl={receiptPhotoUri}
     title="消費收據 / 保固憑證"
-    onDelete={() => setReceiptPhotoUri('')}
+    onDelete={() => {
+      setReceiptPhotoUri('');
+      setReceiptPhotoBase64('');
+    }}
   />
 </Modal>
   );
