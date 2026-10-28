@@ -2,8 +2,6 @@ import { Platform, Share } from 'react-native';
 import { Transaction, PaymentAccount, RecurringRule, Profile, Category } from '../types/database';
 import {
   StatementFile,
-  loadCachedStatements,
-  loadCachedRecurringStatements,
   formatFileSize,
 } from './statementStorage';
 import { showAlert, copyToClipboard } from './alert';
@@ -114,14 +112,14 @@ export const collectAttachmentStats = (params: {
   // 2. 信用卡電子帳單
   const cardItems: AttachmentItem[] = [];
   cardStatements.forEach(s => {
-    if (!s.publicUrl) return;
+    if (!s || !s.publicUrl) return;
     const card = cardMap.get(s.cardId);
     const cardName = card?.name || '信用卡';
-    const ext = s.fileName.split('.').pop() || 'pdf';
+    const ext = (s.fileName || s.path || '').split('.').pop() || 'pdf';
     const originalName = s.originalName || `${s.cycleKey}_${cardName}_電子帳單.${ext}`;
 
     cardItems.push({
-      id: `stmt_${s.path || s.fileName}`,
+      id: `stmt_${s.path || s.fileName || Math.random()}`,
       type: 'card_statement',
       title: `${cardName} (${s.cycleKey})`,
       subtitle: s.originalName || `${s.cycleKey} 電子帳單`,
@@ -136,14 +134,14 @@ export const collectAttachmentStats = (params: {
   // 3. 水電瓦斯固定帳單
   const recurringItems: AttachmentItem[] = [];
   recurringStatements.forEach(s => {
-    if (!s.publicUrl) return;
+    if (!s || !s.publicUrl) return;
     const rule = s.ruleId ? ruleMap.get(s.ruleId) : undefined;
     const ruleName = rule?.name || '固定帳單';
-    const ext = s.fileName.split('.').pop() || 'pdf';
+    const ext = (s.fileName || s.path || '').split('.').pop() || 'pdf';
     const originalName = s.originalName || `${s.cycleKey}_${ruleName}_繳費單.${ext}`;
 
     recurringItems.push({
-      id: `rec_${s.path || s.fileName}`,
+      id: `rec_${s.path || s.fileName || Math.random()}`,
       type: 'recurring_statement',
       title: `${ruleName} (${s.cycleKey})`,
       subtitle: s.originalName || `${s.cycleKey} 繳費單`,
@@ -746,3 +744,4 @@ export const exportAttachmentArchive = async (params: {
     return true;
   }
 };
+

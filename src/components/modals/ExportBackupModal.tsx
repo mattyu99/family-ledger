@@ -13,6 +13,7 @@ import {
   TextProps,
   TextInputProps,
   Clipboard,
+  Dimensions,
 } from 'react-native';
 import { useLedger } from '../../context/LedgerContext';
 import { useTheme } from '../../theme/ThemeContext';
@@ -44,6 +45,8 @@ const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFont
     {...rest}
   />
 );
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export interface ExportBackupModalProps {
   visible: boolean;
@@ -83,7 +86,18 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
   const [restoreJsonInput, setRestoreJsonInput] = useState('');
   const [restoreMode, setRestoreMode] = useState<'merge' | 'overwrite'>('merge');
   const [isRestoring, setIsRestoring] = useState(false);
-  const [attachmentStats, setAttachmentStats] = useState<AttachmentStats | null>(null);
+  const [attachmentStats, setAttachmentStats] = useState<AttachmentStats>(() =>
+    collectAttachmentStats({
+      ledgerName: currentLedger?.name || '家庭記帳本',
+      transactions: transactions || [],
+      cardStatements: [],
+      recurringStatements: [],
+      paymentAccounts: paymentAccounts || [],
+      recurringRules: recurringRules || [],
+      members: members || [],
+      categories: categories || [],
+    })
+  );
   const [isExportingArchive, setIsExportingArchive] = useState(false);
 
   useEffect(() => {
@@ -432,7 +446,11 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
           </View>
 
           {exportTab === 'attachments' ? (
-            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              style={styles.attachmentScrollArea}
+              contentContainerStyle={{ paddingBottom: 16 }}
+              showsVerticalScrollIndicator={false}
+            >
               {/* 現況數據橫幅 */}
               <View style={styles.attachmentStatsCard}>
                 <View style={styles.attachmentStatsHeader}>
@@ -880,6 +898,9 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     },
     restoreScrollArea: {
       maxHeight: 460,
+    },
+    attachmentScrollArea: {
+      maxHeight: Math.min(480, SCREEN_HEIGHT * 0.62),
     },
     exportTipBox: {
       backgroundColor: isDark ? colors.background.cardSubtle : '#EFF6FF',
