@@ -5,7 +5,7 @@ import { Transaction, Category, Ledger, Profile, TransactionType, CategoryType, 
 import { supabase, isConfigured, SUPABASE_URL } from '../lib/supabase';
 import { getStorageServiceToken } from '../lib/statementStorage';
 import { generateUUID } from '../lib/uuid';
-import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS, isAccountBelongingToMember } from '../lib/payment';
+import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS, isAccountBelongingToMember, KNOWN_PAYMENT_METHOD_UUIDS } from '../lib/payment';
 import { DEFAULT_RECURRING_PRESETS, getCurrentPeriodKey, getBillPeriodLabel, getInstallmentInfo, appendPeriodKey } from '../lib/recurring';
 import { parseMemoNote, encodeMemoMerchantTag, decodeMemoMerchantTag, DEFAULT_MEMO_QUICK_TAGS, extractMemoTag, toggleChecklistItem } from '../lib/memo';
 import { CalendarSystem, MemoRepeatFrequency, getNextMemoReminderDate, formatMemoReminderBadge } from '../lib/lunar';
@@ -3081,10 +3081,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
-      // 組裝全體可用定義
+      // 組裝全體可用定義 (自動依照名稱或已知 UUID 去重，防止自訂與預設重複)
+      const existingNames = new Set(DEFAULT_PAYMENT_METHODS.map(m => m.name.trim().toLowerCase()));
+      const customCloudMethods = cloudMethods.filter(cm => {
+        if (!cm.name) return false;
+        if (KNOWN_PAYMENT_METHOD_UUIDS[cm.id]) return false;
+        return !existingNames.has(cm.name.trim().toLowerCase());
+      });
+
       const allDefs: CustomPaymentMethod[] = [
         ...DEFAULT_PAYMENT_METHODS,
-        ...cloudMethods.map(cm => ({
+        ...customCloudMethods.map(cm => ({
           id: cm.id,
           ledger_id: targetLedger.id,
           name: cm.name,

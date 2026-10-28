@@ -1,4 +1,4 @@
-import { PaymentMethod, PaymentAccount, AccountType, CustomPaymentMethod, Profile } from '../types/database';
+import { PaymentMethod, PaymentAccount, CustomPaymentMethod, Profile } from '../types/database';
 
 export interface PaymentMethodOption {
   key: PaymentMethod;
@@ -97,7 +97,47 @@ export const DEFAULT_PAYMENT_METHODS: CustomPaymentMethod[] = [
     is_system: true,
     sort_order: 8,
   },
+  {
+    id: 'google_pay',
+    name: 'Google Pay',
+    icon: '🏦',
+    color: '#0055B8',
+    type: 'e_wallet',
+    supports_credit_card: true,
+    is_enabled: true,
+    is_system: true,
+    sort_order: 9,
+  },
+  {
+    id: 'medical_pay',
+    name: '醫指付',
+    icon: '🍎',
+    color: '#0055B8',
+    type: 'e_wallet',
+    supports_credit_card: true,
+    is_enabled: true,
+    is_system: true,
+    sort_order: 10,
+  },
+  {
+    id: 'dali_pay',
+    name: '大利PAY',
+    icon: '⛽',
+    color: '#0055B8',
+    type: 'e_wallet',
+    supports_credit_card: true,
+    is_enabled: true,
+    is_system: true,
+    sort_order: 11,
+  },
 ];
+
+// 已知雲端資料庫自訂付款方式 UUID 映射表（確保舊交易付款方式 100% 完整解析至對應預設選項）
+export const KNOWN_PAYMENT_METHOD_UUIDS: Record<string, string> = {
+  'a54ba77c-4f3b-4ccd-b650-0379794ab007': 'google_pay',
+  'b4ecbb07-6b78-4ef6-a665-898bd0378b8f': 'medical_pay',
+  '6c8c83ca-cc8c-4e54-a296-74999477523e': 'dali_pay',
+};
 
 export const PAYMENT_METHOD_OPTIONS: PaymentMethodOption[] = DEFAULT_PAYMENT_METHODS.map(m => ({
   key: m.id,
@@ -336,7 +376,8 @@ export const formatPaymentLabel = (
   customMethods?: CustomPaymentMethod[]
 ): { icon: string; text: string; color: string } => {
   const allMethods = customMethods && customMethods.length > 0 ? customMethods : DEFAULT_PAYMENT_METHODS;
-  const currentMethod = allMethods.find(m => m.id === paymentMethod);
+  const normalizedId = (paymentMethod && KNOWN_PAYMENT_METHOD_UUIDS[paymentMethod]) || paymentMethod;
+  const currentMethod = allMethods.find(m => m.id === paymentMethod || m.id === normalizedId);
 
   if (account) {
     if (account.type === 'credit_card') {

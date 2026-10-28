@@ -11,7 +11,7 @@ import {
 } from '../types/database';
 import { generateUUID } from '../lib/uuid';
 import { safeAlert, isAccountBoundToUser } from '../lib/ledgerUtils';
-import { isAccountBelongingToMember, DEFAULT_PAYMENT_METHODS } from '../lib/payment';
+import { isAccountBelongingToMember, DEFAULT_PAYMENT_METHODS, KNOWN_PAYMENT_METHOD_UUIDS } from '../lib/payment';
 import { STORAGE_KEYS, DEMO_LEDGER_ID, DEFAULT_CATEGORIES } from '../constants/ledgerDefaults';
 
 export interface UsePaymentAccountsProps {
@@ -426,7 +426,11 @@ export function usePaymentAccounts({
   // 取得付款方式資訊輔助函式
   const getPaymentMethodById = useCallback((id?: string): CustomPaymentMethod | undefined => {
     if (!id) return undefined;
-    return paymentMethods.find(m => m.id === id) || DEFAULT_PAYMENT_METHODS.find(m => m.id === id);
+    const normalizedId = KNOWN_PAYMENT_METHOD_UUIDS[id] || id;
+    return (
+      paymentMethods.find(m => m.id === id || m.id === normalizedId) ||
+      DEFAULT_PAYMENT_METHODS.find(m => m.id === id || m.id === normalizedId)
+    );
   }, [paymentMethods]);
 
   // 加值儲值卡

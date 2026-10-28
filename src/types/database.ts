@@ -68,6 +68,9 @@ export type PaymentMethod =
   | 'jkopay'
   | 'stored_value'
   | 'transfer'
+  | 'google_pay'
+  | 'medical_pay'
+  | 'dali_pay'
   | 'other'
   | (string & {});
 
