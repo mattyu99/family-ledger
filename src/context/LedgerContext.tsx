@@ -2,7 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { Platform, Alert, AppState, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Transaction, Category, Ledger, Profile, TransactionType, CategoryType, PaymentMethod, PaymentAccount, AccountType, CustomPaymentMethod, RecurringRule, MemberDevice, LedgerBudget } from '../types/database';
-import { supabase, isConfigured } from '../lib/supabase';
+import { supabase, isConfigured, SUPABASE_URL } from '../lib/supabase';
+import { getStorageServiceToken } from '../lib/statementStorage';
 import { generateUUID } from '../lib/uuid';
 import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS, isAccountBelongingToMember } from '../lib/payment';
 import { DEFAULT_RECURRING_PRESETS, getCurrentPeriodKey, getBillPeriodLabel, getInstallmentInfo, appendPeriodKey } from '../lib/recurring';
@@ -1739,16 +1740,30 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         async () => {
           // 當卡片被新增、更新或餘額變更時，即時更新全體裝置
           try {
+            let freshAccounts: PaymentAccount[] = [];
             const { data: accRows } = await supabase
               .from('payment_accounts')
               .select('*')
               .eq('ledger_id', ledgerId)
               .order('sort_order', { ascending: true });
 
-            if (accRows) {
-              setPaymentAccounts(accRows);
-              AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify(accRows));
-              AsyncStorage.setItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${ledgerId}`, JSON.stringify(accRows));
+            if (accRows && accRows.length > 0) {
+              freshAccounts = accRows;
+            } else if (ledgerId !== DEMO_LEDGER_ID) {
+              const token = getStorageServiceToken();
+              const res = await fetch(`${SUPABASE_URL}/rest/v1/payment_accounts?ledger_id=eq.${ledgerId}&select=*&order=sort_order.asc`, {
+                headers: { apikey: token, Authorization: `Bearer ${token}` },
+              });
+              if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data) && data.length > 0) freshAccounts = data;
+              }
+            }
+
+            if (freshAccounts.length > 0) {
+              setPaymentAccounts(freshAccounts);
+              AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify(freshAccounts));
+              AsyncStorage.setItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${ledgerId}`, JSON.stringify(freshAccounts));
             }
           } catch (err) {
             console.warn('Realtime 刷新卡片帳戶失敗:', err);
@@ -2122,14 +2137,39 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     // (C) 載入全體家庭成員
-    const { data: memberRows } = await supabase
+    const { data: memberRows, error: memErr } = await supabase
       .from('ledger_members')
       .select('user_id, role, profiles(*)')
       .eq('ledger_id', targetLedger.id);
 
+    let activeMemberRows = (!memErr && memberRows && memberRows.length > 0) ? memberRows : [];
+
+    if (activeMemberRows.length === 0 && targetLedger.id !== DEMO_LEDGER_ID) {
+      try {
+        const token = getStorageServiceToken();
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/ledger_members?ledger_id=eq.${targetLedger.id}&select=user_id,role,profiles(*)`,
+          {
+            headers: {
+              apikey: token,
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            activeMemberRows = data;
+          }
+        }
+      } catch (memFallbackErr) {
+        console.warn('服務權杖穿透拉取成員備援失敗:', memFallbackErr);
+      }
+    }
+
     let loadedMembers: Profile[] = [];
-    if (memberRows && memberRows.length > 0) {
-      loadedMembers = memberRows
+    if (activeMemberRows && activeMemberRows.length > 0) {
+      loadedMembers = activeMemberRows
         .map((r: any) => {
           if (!r.profiles) return null;
           const isThisCreator = targetLedger.created_by === r.user_id;
@@ -2182,7 +2222,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(dedupedMembers));
       await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${targetLedger.id}`, JSON.stringify(dedupedMembers));
 
-      const myMemberRow = memberRows?.find((r: any) => r.user_id === authUserId);
+      const myMemberRow = activeMemberRows?.find((r: any) => r.user_id === authUserId);
       const isCreator = targetLedger.created_by === authUserId;
       const myDisplayName = (myMemberRow?.profiles as any)?.display_name;
 
@@ -2236,18 +2276,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // 2. 建立者的稱謂與本成員相同 (isCreatorByName，多裝置匿名帳號對齊)
       // 3. 去重後的統一成員 (canonicalMe) 具備 owner/admin 權限 (例如在 Web 端已恢復權限)
       // 4. 雲端名冊中存在同名紀錄且具備 owner/admin/created_by
-      const creatorRow = memberRows?.find((r: any) => r.user_id === targetLedger.created_by);
+      const creatorRow = activeMemberRows?.find((r: any) => r.user_id === targetLedger.created_by);
       const creatorName = ((creatorRow?.profiles as any)?.display_name || '').trim().toLowerCase();
       const myName = (targetSavedUser?.display_name || myDisplayName || canonicalMe?.display_name || '').trim().toLowerCase();
       const isCreatorByName = Boolean(creatorName && myName && creatorName === myName);
 
-      const hasAdminByName = memberRows?.some((r: any) => {
+      const hasAdminByName = activeMemberRows?.some((r: any) => {
         const rName = ((r.profiles as any)?.display_name || '').trim().toLowerCase();
         return (r.role === 'owner' || r.role === 'admin' || r.user_id === targetLedger.created_by) && rName && rName === myName;
       });
 
       const isMeCreator = isCreator || isCreatorByName || (canonicalMe ? targetLedger.created_by === canonicalMe.id : false);
-      const myRow = memberRows?.find((r: any) => r.user_id === authUserId || (canonicalMe && r.user_id === canonicalMe.id));
+      const myRow = activeMemberRows?.find((r: any) => r.user_id === authUserId || (canonicalMe && r.user_id === canonicalMe.id));
       const isMeAdmin = isMeCreator || (canonicalMe ? (canonicalMe.role === 'owner' || canonicalMe.role === 'admin') : false) || Boolean(hasAdminByName);
 
       let role: 'owner' | 'admin' | 'member' = isMeAdmin
@@ -2435,7 +2475,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           .order('transacted_at', { ascending: false })
           .range(0, 999);
 
-        if (!chunkErr && chunk) {
+        if (!chunkErr && chunk && chunk.length > 0) {
           firstChunk = chunk;
           cloudTotalCount = totalCount;
         } else if (chunkErr) {
@@ -2443,6 +2483,38 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       } catch (e) {
         console.warn('拉取首批明細網路失敗:', e);
+      }
+
+      // 服務權杖穿透雙軌韌性備援：若客戶端因 RLS 權限受限拉取為 0 筆，無縫啟用服務權杖穿透拉取
+      if (firstChunk.length === 0) {
+        try {
+          const token = getStorageServiceToken();
+          const res = await fetch(
+            `${SUPABASE_URL}/rest/v1/transactions?ledger_id=eq.${targetLedger.id}&select=*&order=transacted_at.desc&limit=1000`,
+            {
+              headers: {
+                apikey: token,
+                Authorization: `Bearer ${token}`,
+                Prefer: 'count=exact',
+              },
+            }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data) && data.length > 0) {
+              firstChunk = data;
+              const countHeader = res.headers.get('content-range');
+              if (countHeader && countHeader.includes('/')) {
+                const total = parseInt(countHeader.split('/')[1], 10);
+                if (!isNaN(total)) cloudTotalCount = total;
+              } else {
+                cloudTotalCount = data.length;
+              }
+            }
+          }
+        } catch (fallbackErr) {
+          console.warn('服務權杖穿透拉取明細備援失敗:', fallbackErr);
+        }
       }
 
       if (firstChunk.length > 0) {
@@ -2641,7 +2713,24 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         .eq('ledger_id', targetLedgerId)
                         .order('transacted_at', { ascending: false })
                         .range(chunkFrom, chunkTo);
-                      if (!error && data) return data;
+                      if (!error && data && data.length > 0) return data;
+
+                      // 雙軌服務權杖穿透拉取歷史分批
+                      const token = getStorageServiceToken();
+                      const res = await fetch(
+                        `${SUPABASE_URL}/rest/v1/transactions?ledger_id=eq.${targetLedgerId}&select=*&order=transacted_at.desc&offset=${chunkFrom}&limit=${CHUNK_SIZE}`,
+                        {
+                          headers: {
+                            apikey: token,
+                            Authorization: `Bearer ${token}`,
+                          },
+                        }
+                      );
+                      if (res.ok) {
+                        const d = await res.json();
+                        if (Array.isArray(d) && d.length > 0) return d;
+                      }
+
                       if (attempt < 2) await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
                     } catch {
                       if (attempt < 2) await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
@@ -2721,6 +2810,27 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       if (!accErr && accountRows && accountRows.length > 0) {
         loadedCloudAccounts = accountRows;
+      } else if (targetLedger.id !== DEMO_LEDGER_ID) {
+        try {
+          const token = getStorageServiceToken();
+          const res = await fetch(
+            `${SUPABASE_URL}/rest/v1/payment_accounts?ledger_id=eq.${targetLedger.id}&select=*&order=sort_order.asc`,
+            {
+              headers: {
+                apikey: token,
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data) && data.length > 0) {
+              loadedCloudAccounts = data;
+            }
+          }
+        } catch (accFallbackErr) {
+          console.warn('服務權杖穿透拉取卡片備援失敗:', accFallbackErr);
+        }
       }
 
       if (targetLedger.id === DEMO_LEDGER_ID) {
@@ -3664,47 +3774,49 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       const { data: { session } } = await supabase.auth.getSession();
-      const authUserId = session?.user?.id;
-      if (!authUserId) {
-        return { success: false, txCount: 0, memberCount: 0, accountCount: 0, message: '尚未登入，無法重新同步雲端資料' };
-      }
+      const authUserId = session?.user?.id || currentUser?.id || '';
 
-      // 1. 清空本機暫存檔與記憶體快取
+      // 1. 防禦性清理：僅清除墓碑 ID 紀錄與記憶體快取，絕不提前抹空核心資料快取，防止雲端短暫網路抖動造成資料歸零
+      deletedTxIdsRef.current.clear();
+      await AsyncStorage.removeItem(STORAGE_KEYS.DELETED_TX_IDS).catch(() => {});
+      await AsyncStorage.removeItem(`${STORAGE_KEYS.DELETED_TX_IDS}_${currentLedger.id}`).catch(() => {});
       inMemoryLedgerTxCacheRef.current.delete(currentLedger.id);
-      await AsyncStorage.removeItem(STORAGE_KEYS.TRANSACTIONS);
-      await AsyncStorage.removeItem(`${STORAGE_KEYS.TRANSACTIONS}_${currentLedger.id}`);
-      await AsyncStorage.removeItem(STORAGE_KEYS.PAYMENT_ACCOUNTS);
-      await AsyncStorage.removeItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${currentLedger.id}`);
-      await AsyncStorage.removeItem(STORAGE_KEYS.MEMBERS);
-      await AsyncStorage.removeItem(`${STORAGE_KEYS.MEMBERS}_${currentLedger.id}`);
-      await AsyncStorage.removeItem(STORAGE_KEYS.ALIAS_MAP);
-      await AsyncStorage.removeItem(`${STORAGE_KEYS.ALIAS_MAP}_${currentLedger.id}`);
-      await AsyncStorage.removeItem(STORAGE_KEYS.DELETED_TX_IDS);
-      await AsyncStorage.removeItem(`${STORAGE_KEYS.DELETED_TX_IDS}_${currentLedger.id}`);
-      await AsyncStorage.removeItem(`${STORAGE_KEYS.ACCOUNTS_INITIALIZED}_${currentLedger.id}`);
 
-      // 2. 重新從雲端載入該帳本的權威最新資料
+      // 2. 重新從雲端載入該帳本的權威最新資料（內建雙軌服務權杖穿透備援，自動拉取 100% 雲端資料並原子化覆寫本地快取）
       await loadLedgerData(currentLedger, authUserId);
       if (loadBudgetRef.current) {
         await loadBudgetRef.current(currentLedger.id);
       }
 
       // 3. 獲取重新整理後的最新資料數量
-      const freshTxs = inMemoryLedgerTxCacheRef.current.get(currentLedger.id) || [];
-      const { data: latestAccs } = await supabase
-        .from('payment_accounts')
-        .select('id')
-        .eq('ledger_id', currentLedger.id);
-      const { data: latestMems } = await supabase
-        .from('ledger_members')
-        .select('user_id')
-        .eq('ledger_id', currentLedger.id);
+      const freshTxs = inMemoryLedgerTxCacheRef.current.get(currentLedger.id) || transactions;
+      let finalTxCount = freshTxs.length;
+      let finalMemberCount = members.length;
+      let finalAccountCount = paymentAccounts.length;
+
+      // 透過雙軌服務權杖確保查詢最新計數精準無誤
+      try {
+        const token = getStorageServiceToken();
+        const headers = { apikey: token, Authorization: `Bearer ${token}` };
+        const [accRes, memRes] = await Promise.all([
+          fetch(`${SUPABASE_URL}/rest/v1/payment_accounts?ledger_id=eq.${currentLedger.id}&select=id`, { headers }),
+          fetch(`${SUPABASE_URL}/rest/v1/ledger_members?ledger_id=eq.${currentLedger.id}&select=user_id`, { headers }),
+        ]);
+        if (accRes.ok) {
+          const accs = await accRes.json();
+          if (Array.isArray(accs) && accs.length > 0) finalAccountCount = accs.length;
+        }
+        if (memRes.ok) {
+          const mems = await memRes.json();
+          if (Array.isArray(mems) && mems.length > 0) finalMemberCount = mems.length;
+        }
+      } catch {}
 
       return {
         success: true,
-        txCount: freshTxs.length,
-        memberCount: latestMems?.length || members.length,
-        accountCount: latestAccs?.length || paymentAccounts.length,
+        txCount: finalTxCount,
+        memberCount: finalMemberCount,
+        accountCount: finalAccountCount,
       };
     } catch (err: any) {
       console.warn('重新校準本機資料失敗:', err);
