@@ -159,40 +159,54 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
     };
     loadCacheCounts();
 
-    // 2. 雲端非同步精確計數更新 (HEAD / count=exact 輕量查詢)
+    // 2. 雲端非同步精確計數更新 (優先使用 SECURITY DEFINER RPC，服務權杖保底)
     const fetchCloudCounts = async () => {
       if (!isConfigured) return;
       const cloudMap: Record<string, number> = {};
+
+      // A. 優先嘗試全體雲端帳本統計 RPC (SECURITY DEFINER，繞過 RLS 精確統計)
+      try {
+        const { data: rpcData, error: rpcErr } = await supabase.rpc('get_all_cloud_ledgers_summary');
+        if (!rpcErr && rpcData?.ledgers && Array.isArray(rpcData.ledgers)) {
+          for (const item of rpcData.ledgers) {
+            if (item?.id && typeof item.tx_count === 'number') {
+              cloudMap[item.id] = item.tx_count;
+            }
+          }
+        }
+      } catch {}
+
+      // B. 雙軌服務權杖穿透保底 (針對 RPC 未覆蓋之帳本)
       const token = getStorageServiceToken();
+      const headers = {
+        apikey: token,
+        Authorization: `Bearer ${token}`,
+      };
 
       await Promise.all(
         ledgers.map(async (l) => {
+          if (l.id === currentLedger.id) {
+            cloudMap[l.id] = transactions.length;
+            return;
+          }
+          if (typeof cloudMap[l.id] === 'number' && cloudMap[l.id] > 0) return;
           if (!l.id || l.id.startsWith('demo-')) return;
           try {
-            // 優先嘗試標準 supabase client 輕量 count
-            const { count, error } = await supabase
-              .from('transactions')
-              .select('id', { count: 'exact', head: true })
-              .eq('ledger_id', l.id);
-
-            if (!error && typeof count === 'number') {
-              cloudMap[l.id] = count;
-              return;
-            }
-
-            // 雙軌服務權杖穿透保底
-            const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?ledger_id=eq.${l.id}&select=id`, {
-              method: 'HEAD',
-              headers: {
-                apikey: token,
-                Authorization: `Bearer ${token}`,
-                Prefer: 'count=exact',
-              },
-            });
+            const res = await fetch(
+              `${SUPABASE_URL}/rest/v1/transactions?ledger_id=eq.${l.id}&select=id`,
+              {
+                method: 'GET',
+                headers: {
+                  ...headers,
+                  Prefer: 'count=exact',
+                  Range: '0-0',
+                },
+              }
+            );
             const range = res.headers.get('content-range');
             if (range) {
               const total = range.split('/')[1];
-              if (total && total !== '*') {
+              if (total && total !== '*' && !isNaN(parseInt(total, 10))) {
                 cloudMap[l.id] = parseInt(total, 10);
               }
             }
@@ -200,8 +214,23 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
         })
       );
 
+      // C. 防禦性狀態合併：雲端 0 筆絕不覆寫本地已存在的正整數真實筆數
       if (!isCancelled && Object.keys(cloudMap).length > 0) {
-        setLedgerTxCountMap(prev => ({ ...prev, ...cloudMap }));
+        setLedgerTxCountMap(prev => {
+          const merged = { ...prev };
+          for (const [lid, cnt] of Object.entries(cloudMap)) {
+            // 防呆：若雲端回傳 0，但本地快取已持有真實大於 0 之筆數，保留本地快取
+            if (cnt === 0 && (prev[lid] || 0) > 0) {
+              continue;
+            }
+            merged[lid] = cnt;
+          }
+          // 當前帳本始終以記憶體中真實的 transactions.length 為權威準則
+          if (currentLedger?.id && typeof transactions?.length === 'number') {
+            merged[currentLedger.id] = Math.max(merged[currentLedger.id] || 0, transactions.length);
+          }
+          return merged;
+        });
       }
     };
     fetchCloudCounts();
@@ -456,69 +485,66 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
                         </View>
                       </TouchableOpacity>
 
-                      {/* 下半部：管理員獨立控制晶片工具列 */}
+                      {/* 下半部：管理員獨立控制晶片工具列（平整雙晶片左右對稱） */}
                       {isAdmin ? (
                         <View style={styles.ledgerAdminFooter}>
-                          <Text style={styles.adminFooterLabel}>公帳管理：</Text>
-                          <View style={styles.adminChipsContainer}>
-                            {/* 門禁開關晶片 */}
-                            <TouchableOpacity
-                              style={[
-                                styles.adminChip,
-                                l.allow_new_members === false ? styles.adminChipLocked : styles.adminChipOpen,
-                              ]}
-                              onPress={async () => {
-                                const nextVal = l.allow_new_members === false;
-                                const res = await updateAllowNewMembers(nextVal, l.id);
-                                if (res.success) {
-                                  showAlert(
-                                    nextVal ? '🟢 門禁已開啟' : '🔒 門禁已上鎖',
-                                    nextVal
-                                      ? `「${l.name}」已開放新成員憑邀請碼加入！`
-                                      : `「${l.name}」已關閉新成員加入通道，防範外流！`
-                                  );
-                                } else {
-                                  showAlert('更新失敗', res.message || '無法更新門禁設定');
-                                }
-                              }}
-                            >
-                              <Text
-                                style={[
-                                  styles.adminChipText,
-                                  l.allow_new_members === false ? styles.adminChipTextLocked : styles.adminChipTextOpen,
-                                ]}
-                              >
-                                {l.allow_new_members === false ? '🔒 門禁：已上鎖 ▾' : '🟢 門禁：開放中 ▾'}
-                              </Text>
-                            </TouchableOpacity>
-
-                            {/* 唯讀模式切換晶片 */}
-                            <TouchableOpacity
-                              style={[
-                                styles.adminChip,
-                                l.is_read_only ? styles.adminChipReadOnly : styles.adminChipNormal,
-                              ]}
-                              onPress={async () => {
-                                const nextVal = !l.is_read_only;
-                                await toggleLedgerReadOnly(l.id, nextVal);
+                          {/* 門禁開關晶片 */}
+                          <TouchableOpacity
+                            style={[
+                              styles.adminChip,
+                              l.allow_new_members === false ? styles.adminChipLocked : styles.adminChipOpen,
+                            ]}
+                            onPress={async () => {
+                              const nextVal = l.allow_new_members === false;
+                              const res = await updateAllowNewMembers(nextVal, l.id);
+                              if (res.success) {
                                 showAlert(
-                                  nextVal ? '🔒 已開啟唯讀保護' : '🔓 已解除唯讀鎖定',
+                                  nextVal ? '🟢 門禁已開啟' : '🔒 門禁已上鎖',
                                   nextVal
-                                    ? `「${l.name}」已設為唯讀模式，防止任何新增、修改或刪除。`
-                                    : `「${l.name}」已恢復為一般編輯模式。`
+                                    ? `「${l.name}」已開放新成員憑邀請碼加入！`
+                                    : `「${l.name}」已關閉新成員加入通道，防範外流！`
                                 );
-                              }}
+                              } else {
+                                showAlert('更新失敗', res.message || '無法更新門禁設定');
+                              }
+                            }}
+                          >
+                            <Text
+                              style={[
+                                styles.adminChipText,
+                                l.allow_new_members === false ? styles.adminChipTextLocked : styles.adminChipTextOpen,
+                              ]}
                             >
-                              <Text
-                                style={[
-                                  styles.adminChipText,
-                                  l.is_read_only ? styles.adminChipTextReadOnly : styles.adminChipTextNormal,
-                                ]}
-                              >
-                                {l.is_read_only ? '🔒 模式：唯讀鎖定 ▾' : '✏️ 模式：自由記帳 ▾'}
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
+                              {l.allow_new_members === false ? '🔒 門禁：已上鎖' : '🟢 門禁：開放中'}
+                            </Text>
+                          </TouchableOpacity>
+
+                          {/* 唯讀模式切換晶片 */}
+                          <TouchableOpacity
+                            style={[
+                              styles.adminChip,
+                              l.is_read_only ? styles.adminChipReadOnly : styles.adminChipNormal,
+                            ]}
+                            onPress={async () => {
+                              const nextVal = !l.is_read_only;
+                              await toggleLedgerReadOnly(l.id, nextVal);
+                              showAlert(
+                                nextVal ? '🔒 已開啟唯讀保護' : '🔓 已解除唯讀鎖定',
+                                nextVal
+                                  ? `「${l.name}」已設為唯讀模式，防止任何新增、修改或刪除。`
+                                  : `「${l.name}」已恢復為一般編輯模式。`
+                              );
+                            }}
+                          >
+                            <Text
+                              style={[
+                                styles.adminChipText,
+                                l.is_read_only ? styles.adminChipTextReadOnly : styles.adminChipTextNormal,
+                              ]}
+                            >
+                              {l.is_read_only ? '🔒 唯讀模式' : '✏️ 自由記帳'}
+                            </Text>
+                          </TouchableOpacity>
                         </View>
                       ) : (
                         /* 一般成員狀態提示條（若非特殊狀態則不佔用空間） */
@@ -836,37 +862,25 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontWeight: '600',
     },
     ledgerAdminFooter: {
-      marginTop: 10,
+      marginTop: 8,
       paddingTop: 8,
       borderTopWidth: 1,
       borderTopColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E5E7EB',
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
-      flexWrap: 'wrap',
-      gap: 6,
-    },
-    adminFooterLabel: {
-      fontSize: 11,
-      color: colors.text.muted,
-      fontWeight: '600',
-    },
-    adminChipsContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flexWrap: 'wrap',
-      gap: 6,
-      flex: 1,
-      justifyContent: 'flex-end',
+      gap: 8,
     },
     adminChip: {
+      flex: 1,
       paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 6,
+      paddingVertical: 6,
+      borderRadius: 8,
       borderWidth: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     adminChipText: {
-      fontSize: 11,
+      fontSize: 12,
       fontWeight: '700',
     },
     adminChipOpen: {
