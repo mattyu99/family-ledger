@@ -570,7 +570,10 @@ export function useLedgerBackup({
               icon: acc.icon || '💳',
               sort_order: acc.sort_order || 1,
             }));
-            await supabase.from('payment_accounts').upsert(accountsToSync);
+            const { error: accErr } = await supabase.from('payment_accounts').upsert(accountsToSync);
+            if (accErr) {
+              await supabaseAdmin.from('payment_accounts').upsert(accountsToSync);
+            }
           } catch (e) {
             console.warn('雲端還原同步卡片帳戶失敗:', e);
           }

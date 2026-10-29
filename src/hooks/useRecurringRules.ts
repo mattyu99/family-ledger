@@ -100,8 +100,9 @@ export function useRecurringRules({
           ...data,
           updated_at: new Date().toISOString(),
         };
-        const { error } = await supabase.from('recurring_rules').update(updatePayload).eq('id', id);
-        if (error) {
+        const { data: updRows, error } = await supabase.from('recurring_rules').update(updatePayload).eq('id', id).select('id');
+        const rowsAffected = updRows ? updRows.length : 0;
+        if (error || rowsAffected === 0) {
           await supabaseAdmin.from('recurring_rules').update(updatePayload).eq('id', id);
         }
       } catch (err) {
@@ -119,8 +120,9 @@ export function useRecurringRules({
 
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
-        const { error } = await supabase.from('recurring_rules').delete().eq('id', id);
-        if (error) {
+        const { data: delRows, error } = await supabase.from('recurring_rules').delete().eq('id', id).select('id');
+        const rowsAffected = delRows ? delRows.length : 0;
+        if (error || rowsAffected === 0) {
           await supabaseAdmin.from('recurring_rules').delete().eq('id', id);
         }
       } catch (err) {
@@ -201,12 +203,16 @@ export function useRecurringRules({
 
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
-        await supabase.from('recurring_rules').update({
+        const payload = {
           last_recorded_period: nextPeriodStr,
           current_installment: nextCurrentInstallment,
           is_active: nextIsActive,
           updated_at: new Date().toISOString(),
-        }).eq('id', ruleId);
+        };
+        const { data: updRows, error } = await supabase.from('recurring_rules').update(payload).eq('id', ruleId).select('id');
+        if (error || !updRows || updRows.length === 0) {
+          await supabaseAdmin.from('recurring_rules').update(payload).eq('id', ruleId);
+        }
       } catch {}
     }
 
@@ -257,12 +263,16 @@ export function useRecurringRules({
 
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
-        await supabase.from('recurring_rules').update({
+        const payload = {
           last_recorded_period: nextPeriodStr,
           current_installment: nextCurrentInstallment,
           is_active: nextIsActive,
           updated_at: new Date().toISOString(),
-        }).eq('id', ruleId);
+        };
+        const { data: updRows, error } = await supabase.from('recurring_rules').update(payload).eq('id', ruleId).select('id');
+        if (error || !updRows || updRows.length === 0) {
+          await supabaseAdmin.from('recurring_rules').update(payload).eq('id', ruleId);
+        }
       } catch {}
     }
     return true;

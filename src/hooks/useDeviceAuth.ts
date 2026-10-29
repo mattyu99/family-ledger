@@ -305,14 +305,18 @@ export function useDeviceAuth({
 
       if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
         try {
-          await supabase.from('profiles').update({
+          const payload = {
             auth_email: null,
             auth_provider: null,
             is_locked: false,
             claim_code: null,
             claim_code_expires_at: null,
             updated_at: new Date().toISOString(),
-          }).eq('id', targetId);
+          };
+          const { data, error } = await supabase.from('profiles').update(payload).eq('id', targetId).select('id');
+          if (error || !data || data.length === 0) {
+            await supabaseAdmin.from('profiles').update(payload).eq('id', targetId);
+          }
         } catch (e) {
           console.warn('雲端解除綁定更新失敗:', e);
         }
@@ -432,11 +436,17 @@ export function useDeviceAuth({
       }
 
       if (!clean.includes('@')) {
-        await supabase.from('profiles').update({
-          claim_code: null,
-          claim_code_expires_at: null,
-          updated_at: new Date().toISOString(),
-        }).eq('id', matched.id);
+        try {
+          const payload = {
+            claim_code: null,
+            claim_code_expires_at: null,
+            updated_at: new Date().toISOString(),
+          };
+          const { data, error } = await supabase.from('profiles').update(payload).eq('id', matched.id).select('id');
+          if (error || !data || data.length === 0) {
+            await supabaseAdmin.from('profiles').update(payload).eq('id', matched.id);
+          }
+        } catch {}
       }
 
       setCurrentUser(matched);

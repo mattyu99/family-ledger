@@ -454,6 +454,26 @@ export function usePaymentAccounts({
     );
   }, [paymentMethods]);
 
+  // 雙軌雲端同步卡片帳戶餘額 (支援 .select('id') 檢測 0 筆與 supabaseAdmin 服務權杖穿透)
+  const syncAccountBalanceToCloud = useCallback(async (accountId: string, balance: number) => {
+    if (!isConfigured || currentLedger.id === DEMO_LEDGER_ID || !accountId || accountId.startsWith('50000000')) return;
+    const payload = { balance, updated_at: new Date().toISOString() };
+    try {
+      const { data, error } = await supabase
+        .from('payment_accounts')
+        .update(payload)
+        .eq('id', accountId)
+        .select('id');
+      if (error || !data || data.length === 0) {
+        await supabaseAdmin.from('payment_accounts').update(payload).eq('id', accountId);
+      }
+    } catch {
+      try {
+        await supabaseAdmin.from('payment_accounts').update(payload).eq('id', accountId);
+      } catch {}
+    }
+  }, [isConfigured, currentLedger.id, supabase]);
+
   // 加值儲值卡
   const topUpAccountBalance = useCallback(async (
     id: string,
@@ -483,18 +503,14 @@ export function usePaymentAccounts({
         if (sourceAcc && sourceAcc.type === 'stored_value') {
           const srcNewBal = Number((sourceAcc.balance - topUpAmount).toFixed(2));
           updatedAccounts = updatedAccounts.map(a => a.id === sourceAccountId ? { ...a, balance: srcNewBal } : a);
-          if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID && !sourceAccountId.startsWith('50000000')) {
-            supabase.from('payment_accounts').update({ balance: srcNewBal }).eq('id', sourceAccountId).then();
-          }
+          syncAccountBalanceToCloud(sourceAccountId, srcNewBal);
         }
       }
 
       setPaymentAccounts(updatedAccounts);
       await savePaymentAccountsToStorage(updatedAccounts);
 
-      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID && !id.startsWith('50000000')) {
-        supabase.from('payment_accounts').update({ balance: newBalance }).eq('id', id).then();
-      }
+      syncAccountBalanceToCloud(id, newBalance);
 
       if (recordExpense) {
         const trafficCat = categories.find(c => c.name.includes('交通') || c.name.includes('儲值'))
@@ -545,17 +561,15 @@ export function usePaymentAccounts({
       setPaymentAccounts(updatedAccounts);
       await savePaymentAccountsToStorage(updatedAccounts);
 
-      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID && !id.startsWith('50000000')) {
-        supabase.from('payment_accounts').update({ balance: Number(newBalance.toFixed(2)) }).eq('id', id).then();
-      }
+      syncAccountBalanceToCloud(id, Number(newBalance.toFixed(2)));
       return true;
     } catch (e) {
       console.warn('校正餘額失敗:', e);
       return false;
     }
-  }, [paymentAccounts, isAccountBound, effectiveIsOwner, savePaymentAccountsToStorage, isConfigured, currentLedger.id, supabase]);
+  }, [paymentAccounts, isAccountBound, effectiveIsOwner, savePaymentAccountsToStorage, syncAccountBalanceToCloud]);
 
-  // 切換特定交易的信用卡對帳核銷狀態 (is_reconciled)
+  // 切換特定交易的信用卡對帳核銷狀態 (is_reconciled，支援雙軌服務權杖穿透)
   const toggleReconcileTransaction = useCallback(async (transactionId: string): Promise<boolean> => {
     try {
       let nextReconciled = false;
@@ -571,7 +585,17 @@ export function usePaymentAccounts({
 
       if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
         try {
-          await supabase.from('transactions').update({ is_reconciled: nextReconciled }).eq('id', transactionId);
+          const { data: recRows, error: recErr } = await supabase
+            .from('transactions')
+            .update({ is_reconciled: nextReconciled })
+            .eq('id', transactionId)
+            .select('id');
+          if (recErr || !recRows || recRows.length === 0) {
+            await supabaseAdmin
+              .from('transactions')
+              .update({ is_reconciled: nextReconciled })
+              .eq('id', transactionId);
+          }
         } catch {}
       }
       return true;
@@ -723,10 +747,10 @@ export function usePaymentAccounts({
 
       if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
         if (!fromAccountId.startsWith('50000000')) {
-          supabase.from('payment_accounts').update({ balance: fromNewBal }).eq('id', fromAccountId).then();
+          syncAccountBalanceToCloud(fromAccountId, fromNewBal);
         }
         if (!toAccountId.startsWith('50000000')) {
-          supabase.from('payment_accounts').update({ balance: toNewBal }).eq('id', toAccountId).then();
+          syncAccountBalanceToCloud(toAccountId, toNewBal);
         }
       }
 

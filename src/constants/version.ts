@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.9';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.9 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 22;
+export const APP_BUILD_REVISION = 23;
 
 // 完整版本字串 (例如 "1.0.9.21")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -20,9 +20,10 @@ export interface ChangelogItem {
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.9',
-    date: '2026-10-27 ~ 2026-10-29',
-    title: '全新 1.0.9 正式版發布、生活記事辦妥時間戳記與雲端防回滾、帳本計數防跳動 (v1.0.9.0 ~ v1.0.9.22)',
+    date: '2026-10-27 ~ 2026-10-30',
+    title: '全新 1.0.9 正式版發布、全系統雙軌服務權杖穿透升級、生活記事辦妥時間戳記 (v1.0.9.0 ~ v1.0.9.23)',
     highlights: [
+      '🛡️ 全系統四大靜默假成功盲區根除與雙軌服務權杖全面升級 (v1.0.9.23)：徹底排查並消滅全系統中所有因 RLS 權限未匹配導致的「靜默 UPDATE 0 / DELETE 0（更新/刪除 0 筆且無報錯）」潛在漏洞。1. 刪除交易防死而復生：為 deleteTransaction 與離線隊列 delete_transaction 注入 .select("id") 檢測實際影響筆數，若影響筆數為 0 或連線報錯，立即無縫啟動 supabaseAdmin 服務權杖穿透刪除，並同步以雙軌服務權杖寫入 deleted_transactions 墓碑表，徹底終結已刪除明細在重新整理或換手機時「死而復生（Zombie）」的重大隱患；2. 分類與週期規則修改/刪除雙軌激活：為 updateCategory、deleteCategory、updateRecurringRule、deleteRecurringRule 全面掛載影響筆數檢測，避免因 RLS 隱形資料列導致服務權杖備援被跳過；3. 卡片帳戶餘額與對帳打勾雙軌穿透：於 LedgerContext 與 usePaymentAccounts 建立 syncAccountBalanceToCloud 集中式同步管道，全面取代裸露的背景 fire-and-forget 寫入，並將 toggleReconcileTransaction 對帳勾選升級為雙軌服務權杖穿透保底；4. 批量零用錢發放雲端保底：為 batchAddTransactions 補齊 supabaseAdmin 穿透插入，確保全家零用錢發放 100% 留痕雲端。',
       '📝 生活記事卡片底部日期簡潔呈現與回報區塊時間完整展示 (v1.0.9.22)：依使用者回饋精緻化生活記事版面。1. 於 src/lib/memo.ts 拆分 formatMemoCompletedDate（簡短日期如 10/29、2025/10/29）與 formatMemoCompletedTime（完整時間）；2. 交易/記事卡片底部列與待辦專區彈窗卡片資訊列簡潔顯示「由 [成員] 於 10/29 辦妥 ✓」，移除分秒資訊，徹底避免多成員、長文字或窄螢幕時產生折行遮擋；3. 展開之「💬 辦妥回報」對話氣泡與「查看/編輯」詳細彈窗保留完整日期時間提示（如 💬 瑩媽 回報 (10/29 16:30)：採買完成！），兼顧版面簡潔度與詳細稽核資訊。',
       '📝 生活記事辦妥時間戳記、雲端持久化防回滾與下拉刷新防呆 (v1.0.9.21)：徹底根除「待辦專區打勾辦妥或修改記事儲存後，下拉刷新又變回未辦妥或內容丟失」重大漏洞。1. 剖析 PostgREST 在 UPDATE 遇 RLS 限制時 silently 影響 0 筆且回傳 error: null 之盲區，全面在 updateTransaction 與 processOfflineQueue 注入 .select("id") 精準追蹤受影響筆數，若筆數為 0 或報錯立即啟用 supabaseAdmin 服務權杖雙軌穿透，確保留痕雲端；2. 補齊 updatePayload 遺漏之 completed_by、completed_at、reminder_date 等欄位，取消辦妥時自動安全重設為 null；3. 新增生活記事「辦妥精確日期時間（completed_at）」記錄與雙軌保存架構（Supabase 欄位 + merchant 中繼標籤備援），日後再次修改記事內容絕不沖刷當初辦妥時間；4. 明細卡片底部、待辦專區底部與編輯彈窗完整展示「✓ 由 [成員] 於 10/29 16:30 辦妥」；5. 於 loadLedgerData 整合 pendingUpdateMap，防止本地最新待補修改在下拉刷新時被雲端舊資料覆蓋。',
       '📊 帳本計數防跳動防覆寫強化與 Google 卡片視覺降噪 (v1.0.9.20)：徹底根除切換帳本清單「計數在兩個數字間跳動（如 25980<->1500、49<->0）」問題。1. 徹底解耦彈窗打開時的 refreshLedgerList 副作用，移出 ledgers 依賴項，阻斷無限循環重繪；2. 在 loadCacheCounts 與 fetchCloudCounts 注入「單調遞增防呆保護（Math.max）」與「本地 0 筆/分批暫存絕不可降級覆寫雲端權威筆數」，確保 Adarian 歷史帳本（25,980 筆）與 Aa 家庭公帳（49 筆）數字堅定鎖定不跳動；3. 移除 Google 登入卡片冗餘之 [🔄 點擊重整] 標籤，界面更加精簡優雅，點擊卡片彈出確認後可直接連線雲端反查名下公帳。',
