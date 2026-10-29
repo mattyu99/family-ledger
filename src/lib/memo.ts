@@ -320,7 +320,27 @@ export function decodeMemoMerchantTag(rawMerchant?: string): {
 }
 
 /**
- * 格式化待辦事項辦妥時間字串
+ * 格式化待辦事項辦妥日期字串 (簡潔版，僅顯示日期，適合卡片底部列避免換行遮擋)
+ * 範例：10/29、2025/10/29
+ */
+export function formatMemoCompletedDate(completedAt?: string, fallbackTimestamp?: string): string {
+  const ts = completedAt || fallbackTimestamp;
+  if (!ts) return '';
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '';
+  const now = new Date();
+  const isThisYear = d.getFullYear() === now.getFullYear();
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+
+  if (isThisYear) {
+    return `${month}/${day}`;
+  }
+  return `${d.getFullYear()}/${month}/${day}`;
+}
+
+/**
+ * 格式化待辦事項辦妥時間字串 (完整版，包含時與分，適合詳細彈窗與展開回報區塊)
  * 範例：今天 16:30、10/29 16:30、2025/10/29 16:30
  */
 export function formatMemoCompletedTime(completedAt?: string, fallbackTimestamp?: string): string {

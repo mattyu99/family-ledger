@@ -5,7 +5,7 @@ import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { getCategoryIcon } from '../lib/icons';
 import { formatPaymentLabel, parseExpenseDiscount, isTransferToMember } from '../lib/payment';
-import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedTime } from '../lib/memo';
+import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { stripInvoiceTag } from '../lib/invoice';
 
@@ -352,7 +352,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
         {isCompleted && !!transaction.completion_note && (
           <View style={[styles.memoReportBubble, isDark && { backgroundColor: 'rgba(59, 130, 246, 0.15)', borderColor: 'rgba(59, 130, 246, 0.3)' }]}>
             <Text style={[styles.memoReportText, isDark && { color: '#93C5FD' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              💬 {completer?.display_name ? `${completer.display_name} 回報` : '辦妥回報'}：{transaction.completion_note}
+              💬 {completer?.display_name ? `${completer.display_name} 回報` : '辦妥回報'}{formatMemoCompletedTime(transaction.completed_at, transaction.updated_at) ? ` (${formatMemoCompletedTime(transaction.completed_at, transaction.updated_at)})` : ''}：{transaction.completion_note}
             </Text>
           </View>
         )}
@@ -377,8 +377,8 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
             {payer?.avatar_url || '👤'} {payer?.display_name || '成員'} 記錄
             {isCompleted && (
               completer
-                ? ` · 由 ${completer.avatar_url || '👤'} ${completer.display_name}${formatMemoCompletedTime(transaction.completed_at, transaction.updated_at) ? ` 於 ${formatMemoCompletedTime(transaction.completed_at, transaction.updated_at)}` : ''} 辦妥 ✓`
-                : (formatMemoCompletedTime(transaction.completed_at, transaction.updated_at) ? ` · 於 ${formatMemoCompletedTime(transaction.completed_at, transaction.updated_at)} 辦妥 ✓` : ' · 已辦妥 ✓')
+                ? ` · 由 ${completer.avatar_url || '👤'} ${completer.display_name}${formatMemoCompletedDate(transaction.completed_at, transaction.updated_at) ? ` 於 ${formatMemoCompletedDate(transaction.completed_at, transaction.updated_at)}` : ''} 辦妥 ✓`
+                : (formatMemoCompletedDate(transaction.completed_at, transaction.updated_at) ? ` · 於 ${formatMemoCompletedDate(transaction.completed_at, transaction.updated_at)} 辦妥 ✓` : ' · 已辦妥 ✓')
             )}
           </Text>
           <Text style={[styles.memoActionHint, isCompleted && styles.memoActionHintCompleted, isDark && { color: isCompleted ? colors.text.muted : '#FBBF24' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>

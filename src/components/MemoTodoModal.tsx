@@ -15,7 +15,7 @@ import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
-import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedTime } from '../lib/memo';
+import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { HorizontalScrollView } from './HorizontalScrollView';
 
@@ -527,7 +527,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                     {isCompleted && !!item.completion_note && (
                       <View style={styles.itemReportBubble}>
                         <Text style={styles.itemReportText} maxFontSizeMultiplier={1.08}>
-                          💬 {completer?.display_name ? `${completer.display_name} 回報` : '辦妥回報'}：{item.completion_note}
+                          💬 {completer?.display_name ? `${completer.display_name} 回報` : '辦妥回報'}{formatMemoCompletedTime(item.completed_at, item.updated_at) ? ` (${formatMemoCompletedTime(item.completed_at, item.updated_at)})` : ''}：{item.completion_note}
                         </Text>
                       </View>
                     )}
@@ -554,8 +554,8 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                         {payer?.avatar_url || '👤'} {payer?.display_name || '成員'} 記錄 · {dateFormatted}
                         {isCompleted && (
                           completer
-                            ? ` · 由 ${completer.avatar_url || '👤'} ${completer.display_name}${formatMemoCompletedTime(item.completed_at, item.updated_at) ? ` 於 ${formatMemoCompletedTime(item.completed_at, item.updated_at)}` : ''} 辦妥 ✓`
-                            : (formatMemoCompletedTime(item.completed_at, item.updated_at) ? ` · 於 ${formatMemoCompletedTime(item.completed_at, item.updated_at)} 辦妥 ✓` : ' · 已辦妥 ✓')
+                            ? ` · 由 ${completer.avatar_url || '👤'} ${completer.display_name}${formatMemoCompletedDate(item.completed_at, item.updated_at) ? ` 於 ${formatMemoCompletedDate(item.completed_at, item.updated_at)}` : ''} 辦妥 ✓`
+                            : (formatMemoCompletedDate(item.completed_at, item.updated_at) ? ` · 於 ${formatMemoCompletedDate(item.completed_at, item.updated_at)} 辦妥 ✓` : ' · 已辦妥 ✓')
                         )}
                       </Text>
                       <Text style={[styles.itemHint, isCompleted && styles.itemHintCompleted]} maxFontSizeMultiplier={1.08}>
