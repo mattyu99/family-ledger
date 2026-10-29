@@ -17,6 +17,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLedger } from '../../context/LedgerContext';
 import { useTheme } from '../../theme/ThemeContext';
 import { ThemeColors } from '../../theme/colors';
+import { supabase, SUPABASE_URL, isConfigured } from '../../lib/supabase';
+import { getStorageServiceToken } from '../../lib/statementStorage';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
   <RNText
@@ -72,6 +74,7 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
     ledgers,
     currentLedger,
     currentUser,
+    transactions,
     switchLedgerById,
     toggleLedgerReadOnly,
     updateAllowNewMembers,
@@ -87,6 +90,7 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
   } = useLedger();
 
   const [ledgerUserMap, setLedgerUserMap] = useState<Record<string, { displayName: string; avatarUrl?: string }>>({});
+  const [ledgerTxCountMap, setLedgerTxCountMap] = useState<Record<string, number>>({});
   const [authPinInput, setAuthPinInput] = useState('');
   const [switchCodeInput, setSwitchCodeInput] = useState('');
   const [isJoining, setIsJoining] = useState(false);
@@ -94,6 +98,8 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
   useEffect(() => {
     if (!visible) return;
     let isCancelled = false;
+
+    // 載入使用者稱謂資訊
     const loadLedgerUsers = async () => {
       const map: Record<string, { displayName: string; avatarUrl?: string }> = {};
       for (const l of ledgers) {
@@ -128,10 +134,82 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
       }
     };
     loadLedgerUsers();
+
+    // 1. 本機快取優先載入筆數 (0ms 秒顯)
+    const loadCacheCounts = async () => {
+      const initialMap: Record<string, number> = {};
+      for (const l of ledgers) {
+        if (l.id === currentLedger.id) {
+          initialMap[l.id] = transactions.length;
+        } else {
+          try {
+            const cachedStr = await AsyncStorage.getItem(`@family_ledger_transactions_${l.id}`);
+            if (cachedStr) {
+              const parsed = JSON.parse(cachedStr);
+              if (Array.isArray(parsed)) {
+                initialMap[l.id] = parsed.length;
+              }
+            }
+          } catch {}
+        }
+      }
+      if (!isCancelled) {
+        setLedgerTxCountMap(prev => ({ ...prev, ...initialMap }));
+      }
+    };
+    loadCacheCounts();
+
+    // 2. 雲端非同步精確計數更新 (HEAD / count=exact 輕量查詢)
+    const fetchCloudCounts = async () => {
+      if (!isConfigured) return;
+      const cloudMap: Record<string, number> = {};
+      const token = getStorageServiceToken();
+
+      await Promise.all(
+        ledgers.map(async (l) => {
+          if (!l.id || l.id.startsWith('demo-')) return;
+          try {
+            // 優先嘗試標準 supabase client 輕量 count
+            const { count, error } = await supabase
+              .from('transactions')
+              .select('id', { count: 'exact', head: true })
+              .eq('ledger_id', l.id);
+
+            if (!error && typeof count === 'number') {
+              cloudMap[l.id] = count;
+              return;
+            }
+
+            // 雙軌服務權杖穿透保底
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?ledger_id=eq.${l.id}&select=id`, {
+              method: 'HEAD',
+              headers: {
+                apikey: token,
+                Authorization: `Bearer ${token}`,
+                Prefer: 'count=exact',
+              },
+            });
+            const range = res.headers.get('content-range');
+            if (range) {
+              const total = range.split('/')[1];
+              if (total && total !== '*') {
+                cloudMap[l.id] = parseInt(total, 10);
+              }
+            }
+          } catch {}
+        })
+      );
+
+      if (!isCancelled && Object.keys(cloudMap).length > 0) {
+        setLedgerTxCountMap(prev => ({ ...prev, ...cloudMap }));
+      }
+    };
+    fetchCloudCounts();
+
     return () => {
       isCancelled = true;
     };
-  }, [visible, ledgers]);
+  }, [visible, ledgers, currentLedger.id, transactions.length]);
 
   const handleSwitchLedgerByCode = async () => {
     const cleanCode = switchCodeInput.trim();
@@ -281,6 +359,8 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
                   const userInfo = ledgerUserMap[l.id];
                   const userDisplayName = l.userDisplayName || userInfo?.displayName || (isCurrent ? currentUser.display_name : '');
                   const userAvatar = l.userAvatar || userInfo?.avatarUrl || (isCurrent ? currentUser.avatar_url : '');
+                  const txCount = ledgerTxCountMap[l.id];
+
                   return (
                     <View
                       key={l.id}
@@ -289,8 +369,9 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
                         isCurrent && styles.ledgerItemCardActive,
                       ]}
                     >
+                      {/* 上半部：主點擊切換區（享有全卡片完整寬度） */}
                       <TouchableOpacity
-                        style={{ flex: 1, paddingRight: 6 }}
+                        style={styles.ledgerCardMain}
                         activeOpacity={isCurrent ? 1 : 0.7}
                         onPress={() => {
                           if (isCurrent) return;
@@ -305,120 +386,157 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
                           );
                         }}
                       >
-                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
+                        {/* 第一列：帳本名稱 + 使用中標籤 + 未讀動態 + 右上角獨立退出按鈕 */}
+                        <View style={styles.ledgerHeaderRow}>
+                          <View style={styles.ledgerTitleGroup}>
                             <Text
-                              style={{
-                                fontSize: 15,
-                                fontWeight: '700',
-                                color: isCurrent ? '#4F46E5' : colors.text.primary,
-                                flexShrink: 1,
-                              }}
+                              style={[
+                                styles.ledgerTitleText,
+                                isCurrent && { color: '#4F46E5' },
+                              ]}
                               numberOfLines={1}
                             >
-                              {l.name} {isCurrent ? '（使用中 ✓）' : ''}
+                              {l.name}
                             </Text>
-                            {Boolean(l.is_read_only) && (
-                              <View style={styles.readOnlyBadge}>
-                                <Text style={styles.readOnlyBadgeText}>🔒 唯讀</Text>
+                            {isCurrent && (
+                              <View style={styles.currentBadge}>
+                                <Text style={styles.currentBadgeText}>使用中 ✓</Text>
                               </View>
                             )}
-                            {l.allow_new_members === false && (
-                              <View style={[styles.readOnlyBadge, { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' }]}>
-                                <Text style={[styles.readOnlyBadgeText, { color: '#DC2626' }]}>🔒 門禁鎖定</Text>
+                            {!isCurrent && (unreadLedgerMap[l.id] || 0) > 0 && (
+                              <View style={styles.unreadBadge}>
+                                <Text style={styles.unreadBadgeText}>
+                                  🔴 {(unreadLedgerMap[l.id] || 0) > 1 ? `${unreadLedgerMap[l.id]} 筆` : '新記帳'}
+                                </Text>
                               </View>
                             )}
                           </View>
-                          {!isCurrent && (unreadLedgerMap[l.id] || 0) > 0 && (
-                            <View style={styles.unreadBadge}>
-                              <Text style={styles.unreadBadgeText}>
-                                🔴 {(unreadLedgerMap[l.id] || 0) > 1 ? `${unreadLedgerMap[l.id]} 筆新動態` : '有新記帳'}
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 4, gap: 6 }}>
-                          <Text style={{ fontSize: 12, color: colors.text.secondary }}>
-                            身分：<Text style={{ fontWeight: '700', color: isAdmin ? '#D97706' : colors.text.secondary }}>{isAdmin ? '👑 管理員' : '👤 成員'}</Text>
-                          </Text>
-                          {userDisplayName ? (
-                            <>
-                              <Text style={{ fontSize: 11, color: colors.text.muted }}>•</Text>
-                              <Text style={{ fontSize: 12, color: colors.text.secondary }}>
-                                我的稱謂：<Text style={{ fontWeight: '700', color: colors.text.primary }}>{userAvatar ? `${userAvatar} ` : ''}{userDisplayName}</Text>
-                              </Text>
-                            </>
-                          ) : null}
-                        </View>
-                      </TouchableOpacity>
 
-                      {isAdmin && (
-                        <>
                           <TouchableOpacity
-                            style={[
-                              styles.readOnlyToggleBtn,
-                              l.is_read_only && styles.readOnlyToggleBtnActive,
-                            ]}
-                            onPress={async () => {
-                              const nextVal = !l.is_read_only;
-                              await toggleLedgerReadOnly(l.id, nextVal);
-                              showAlert(
-                                nextVal ? '🔒 已開啟唯讀保護' : '🔓 已解除唯讀鎖定',
-                                nextVal
-                                  ? `「${l.name}」已設為唯讀模式，防止任何新增、修改或刪除。`
-                                  : `「${l.name}」已恢復為一般編輯模式。`
+                            style={styles.leaveMiniBtn}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            onPress={() => {
+                              showConfirm(
+                                '退出此帳本',
+                                `確定要退出「${l.name}」嗎？退出後該帳本將從您的帳本清單中移除。`,
+                                async () => {
+                                  await leaveLedgerById(l.id);
+                                  if (isCurrent) {
+                                    onClose();
+                                  }
+                                }
                               );
                             }}
                           >
-                            <Text style={{ fontSize: 11, color: l.is_read_only ? '#B45309' : colors.text.muted, fontWeight: '700' }}>
-                              {l.is_read_only ? '🔒 唯讀' : '🔓 正常'}
-                            </Text>
+                            <Text style={styles.leaveMiniBtnText}>退出</Text>
                           </TouchableOpacity>
+                        </View>
 
-                          <TouchableOpacity
-                            style={[
-                              styles.readOnlyToggleBtn,
-                              l.allow_new_members === false && { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' },
-                            ]}
-                            onPress={async () => {
-                              const nextVal = l.allow_new_members === false;
-                              const res = await updateAllowNewMembers(nextVal, l.id);
-                              if (res.success) {
-                                showAlert(
-                                  nextVal ? '🟢 門禁已開啟' : '🔒 門禁已上鎖',
-                                  nextVal
-                                    ? `「${l.name}」已開放新成員憑邀請碼加入！`
-                                    : `「${l.name}」已關閉新成員加入通道，防範外流！`
-                                );
-                              } else {
-                                showAlert('更新失敗', res.message || '無法更新門禁設定');
-                              }
-                            }}
-                          >
-                            <Text style={{ fontSize: 11, color: l.allow_new_members === false ? '#DC2626' : '#16A34A', fontWeight: '700' }}>
-                              {l.allow_new_members === false ? '🔒 門禁鎖' : '🟢 門禁開'}
+                        {/* 第二列：身分 + 稱謂 + 交易總筆數（全寬度單行呈現） */}
+                        <View style={styles.ledgerSubRow}>
+                          <View style={[styles.roleBadge, isAdmin ? styles.roleBadgeAdmin : styles.roleBadgeMember]}>
+                            <Text style={[styles.roleBadgeText, isAdmin ? styles.roleBadgeTextAdmin : styles.roleBadgeTextMember]}>
+                              {isAdmin ? '👑 管理員' : '👤 成員'}
                             </Text>
-                          </TouchableOpacity>
-                        </>
-                      )}
+                          </View>
 
-                      <TouchableOpacity
-                        style={styles.leaveMiniBtn}
-                        onPress={() => {
-                          showConfirm(
-                            '退出此帳本',
-                            `確定要退出「${l.name}」嗎？退出後該帳本將從您的帳本清單中移除。`,
-                            async () => {
-                              await leaveLedgerById(l.id);
-                              if (isCurrent) {
-                                onClose();
-                              }
-                            }
-                          );
-                        }}
-                      >
-                        <Text style={styles.leaveMiniBtnText}>退出</Text>
+                          {userDisplayName ? (
+                            <>
+                              <Text style={styles.subRowBullet}>•</Text>
+                              <Text style={styles.userTitleText} numberOfLines={1}>
+                                {userAvatar ? `${userAvatar} ` : ''}{userDisplayName}
+                              </Text>
+                            </>
+                          ) : null}
+
+                          <Text style={styles.subRowBullet}>•</Text>
+                          <Text style={styles.txCountText}>
+                            📊 {typeof txCount === 'number' ? `${txCount} 筆交易` : '計算中...'}
+                          </Text>
+                        </View>
                       </TouchableOpacity>
+
+                      {/* 下半部：管理員獨立控制晶片工具列 */}
+                      {isAdmin ? (
+                        <View style={styles.ledgerAdminFooter}>
+                          <Text style={styles.adminFooterLabel}>公帳管理：</Text>
+                          <View style={styles.adminChipsContainer}>
+                            {/* 門禁開關晶片 */}
+                            <TouchableOpacity
+                              style={[
+                                styles.adminChip,
+                                l.allow_new_members === false ? styles.adminChipLocked : styles.adminChipOpen,
+                              ]}
+                              onPress={async () => {
+                                const nextVal = l.allow_new_members === false;
+                                const res = await updateAllowNewMembers(nextVal, l.id);
+                                if (res.success) {
+                                  showAlert(
+                                    nextVal ? '🟢 門禁已開啟' : '🔒 門禁已上鎖',
+                                    nextVal
+                                      ? `「${l.name}」已開放新成員憑邀請碼加入！`
+                                      : `「${l.name}」已關閉新成員加入通道，防範外流！`
+                                  );
+                                } else {
+                                  showAlert('更新失敗', res.message || '無法更新門禁設定');
+                                }
+                              }}
+                            >
+                              <Text
+                                style={[
+                                  styles.adminChipText,
+                                  l.allow_new_members === false ? styles.adminChipTextLocked : styles.adminChipTextOpen,
+                                ]}
+                              >
+                                {l.allow_new_members === false ? '🔒 門禁：已上鎖 ▾' : '🟢 門禁：開放中 ▾'}
+                              </Text>
+                            </TouchableOpacity>
+
+                            {/* 唯讀模式切換晶片 */}
+                            <TouchableOpacity
+                              style={[
+                                styles.adminChip,
+                                l.is_read_only ? styles.adminChipReadOnly : styles.adminChipNormal,
+                              ]}
+                              onPress={async () => {
+                                const nextVal = !l.is_read_only;
+                                await toggleLedgerReadOnly(l.id, nextVal);
+                                showAlert(
+                                  nextVal ? '🔒 已開啟唯讀保護' : '🔓 已解除唯讀鎖定',
+                                  nextVal
+                                    ? `「${l.name}」已設為唯讀模式，防止任何新增、修改或刪除。`
+                                    : `「${l.name}」已恢復為一般編輯模式。`
+                                );
+                              }}
+                            >
+                              <Text
+                                style={[
+                                  styles.adminChipText,
+                                  l.is_read_only ? styles.adminChipTextReadOnly : styles.adminChipTextNormal,
+                                ]}
+                              >
+                                {l.is_read_only ? '🔒 模式：唯讀鎖定 ▾' : '✏️ 模式：自由記帳 ▾'}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ) : (
+                        /* 一般成員狀態提示條（若非特殊狀態則不佔用空間） */
+                        (Boolean(l.is_read_only) || l.allow_new_members === false) && (
+                          <View style={styles.memberStatusFooter}>
+                            {Boolean(l.is_read_only) && (
+                              <View style={styles.statusPill}>
+                                <Text style={styles.statusPillText}>🔒 唯讀模式（僅供查閱）</Text>
+                              </View>
+                            )}
+                            {l.allow_new_members === false && (
+                              <View style={[styles.statusPill, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2' }]}>
+                                <Text style={[styles.statusPillText, { color: '#DC2626' }]}>🔒 門禁已鎖（防護外流中）</Text>
+                              </View>
+                            )}
+                          </View>
+                        )
+                      )}
                     </View>
                   );
                 })}
@@ -539,8 +657,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     googleCard: {
       borderWidth: 1.5,
       borderRadius: 12,
-      padding: 12,
-      marginBottom: 16,
+      padding: 10,
+      marginBottom: 12,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
@@ -561,11 +679,11 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       paddingRight: 6,
     },
     googleCardTitle: {
-      fontSize: 14,
+      fontSize: 13,
       fontWeight: '700',
     },
     googleCardDesc: {
-      fontSize: 12,
+      fontSize: 11,
       marginTop: 2,
     },
     pinVerifyCard: {
@@ -616,9 +734,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       marginBottom: 8,
     },
     ledgerItemCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
+      flexDirection: 'column',
+      alignItems: 'stretch',
       backgroundColor: isDark ? colors.background.cardSubtle : '#F9FAFB',
       borderColor: colors.border.default,
       borderWidth: 1,
@@ -631,18 +748,174 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       borderColor: '#4F46E5',
       borderWidth: 2,
     },
-    readOnlyBadge: {
-      backgroundColor: isDark ? colors.background.card : '#F1F5F9',
-      borderColor: colors.border.default,
+    ledgerCardMain: {
+      width: '100%',
+    },
+    ledgerHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 6,
+    },
+    ledgerTitleGroup: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      flex: 1,
+      marginRight: 8,
+    },
+    ledgerTitleText: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.text.primary,
+      flexShrink: 1,
+    },
+    currentBadge: {
+      backgroundColor: isDark ? 'rgba(79, 70, 229, 0.3)' : '#EEF2FF',
+      borderColor: '#6366F1',
       borderWidth: 1,
       paddingHorizontal: 6,
-      paddingVertical: 2,
+      paddingVertical: 1,
       borderRadius: 6,
     },
-    readOnlyBadgeText: {
+    currentBadgeText: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: isDark ? '#A5B4FC' : '#4F46E5',
+    },
+    leaveMiniBtn: {
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2',
+      borderRadius: 6,
+    },
+    leaveMiniBtnText: {
+      fontSize: 11,
+      color: '#EF4444',
+      fontWeight: '700',
+    },
+    ledgerSubRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 6,
+    },
+    roleBadge: {
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+    },
+    roleBadgeAdmin: {
+      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
+    },
+    roleBadgeMember: {
+      backgroundColor: isDark ? colors.background.card : '#F3F4F6',
+    },
+    roleBadgeText: {
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    roleBadgeTextAdmin: {
+      color: isDark ? '#FBBF24' : '#D97706',
+    },
+    roleBadgeTextMember: {
+      color: colors.text.secondary,
+    },
+    subRowBullet: {
       fontSize: 10,
       color: colors.text.muted,
-      fontWeight: '800',
+    },
+    userTitleText: {
+      fontSize: 12,
+      color: colors.text.secondary,
+      fontWeight: '600',
+    },
+    txCountText: {
+      fontSize: 11,
+      color: isDark ? '#94A3B8' : '#64748B',
+      fontWeight: '600',
+    },
+    ledgerAdminFooter: {
+      marginTop: 10,
+      paddingTop: 8,
+      borderTopWidth: 1,
+      borderTopColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E5E7EB',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      flexWrap: 'wrap',
+      gap: 6,
+    },
+    adminFooterLabel: {
+      fontSize: 11,
+      color: colors.text.muted,
+      fontWeight: '600',
+    },
+    adminChipsContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 6,
+      flex: 1,
+      justifyContent: 'flex-end',
+    },
+    adminChip: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      borderWidth: 1,
+    },
+    adminChipText: {
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    adminChipOpen: {
+      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.15)' : '#DCFCE7',
+      borderColor: isDark ? '#22C55E' : '#86EFAC',
+    },
+    adminChipTextOpen: {
+      color: isDark ? '#4ADE80' : '#15803D',
+    },
+    adminChipLocked: {
+      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2',
+      borderColor: isDark ? '#EF4444' : '#FCA5A5',
+    },
+    adminChipTextLocked: {
+      color: isDark ? '#F87171' : '#DC2626',
+    },
+    adminChipNormal: {
+      backgroundColor: isDark ? colors.background.card : '#F3F4F6',
+      borderColor: colors.border.default,
+    },
+    adminChipTextNormal: {
+      color: colors.text.secondary,
+    },
+    adminChipReadOnly: {
+      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FEF3C7',
+      borderColor: isDark ? '#F59E0B' : '#FCD34D',
+    },
+    adminChipTextReadOnly: {
+      color: isDark ? '#FBBF24' : '#B45309',
+    },
+    memberStatusFooter: {
+      marginTop: 8,
+      paddingTop: 6,
+      borderTopWidth: 1,
+      borderTopColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E5E7EB',
+      flexDirection: 'row',
+      gap: 6,
+      flexWrap: 'wrap',
+    },
+    statusPill: {
+      backgroundColor: isDark ? colors.background.card : '#F1F5F9',
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+    },
+    statusPillText: {
+      fontSize: 10,
+      color: colors.text.muted,
+      fontWeight: '600',
     },
     unreadBadge: {
       backgroundColor: '#FEE2E2',
@@ -654,31 +927,6 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontSize: 10,
       color: '#DC2626',
       fontWeight: '700',
-    },
-    readOnlyToggleBtn: {
-      paddingHorizontal: 8,
-      paddingVertical: 6,
-      backgroundColor: isDark ? colors.background.card : '#F3F4F6',
-      borderRadius: 8,
-      marginLeft: 6,
-      borderWidth: 1,
-      borderColor: colors.border.default,
-    },
-    readOnlyToggleBtnActive: {
-      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
-      borderColor: '#F59E0B',
-    },
-    leaveMiniBtn: {
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      backgroundColor: '#FEE2E2',
-      borderRadius: 8,
-      marginLeft: 8,
-    },
-    leaveMiniBtnText: {
-      fontSize: 12,
-      color: '#EF4444',
-      fontWeight: 'bold',
     },
     orDividerRow: {
       flexDirection: 'row',
