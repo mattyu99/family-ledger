@@ -137,6 +137,7 @@ interface LedgerContextType {
       reminder_repeat?: MemoRepeatFrequency;
       reminder_target?: 'family' | 'personal';
       completed_by?: string;
+      completed_at?: string;
       completion_note?: string;
       linked_transaction_id?: string;
       invoice_number?: string;
@@ -1457,7 +1458,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         async (payload: any) => {
           const data = payload?.payload;
           if (!data || !data.id) return;
-          const { id, is_settled, actorId, actorName, completed_by } = data;
+          const { id, is_settled, actorId, actorName, completed_by, completed_at } = data;
           const myId = currentUserRef.current?.id;
           if (myId && actorId === myId) return;
 
@@ -1472,6 +1473,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     ...t,
                     is_settled,
                     completed_by: is_settled ? (completed_by || actorId) : undefined,
+                    completed_at: is_settled ? (completed_at || new Date().toISOString()) : undefined,
                   }
                 : t
             );
@@ -2530,6 +2532,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       let reminderCalendar: CalendarSystem | undefined = t.reminder_calendar;
       let reminderRepeat: MemoRepeatFrequency | undefined = t.reminder_repeat;
       let completedBy: string | undefined = t.completed_by;
+      let completedAt: string | undefined = t.completed_at;
       let resolvedType: TransactionType = t.type;
       const decodedMemo = decodeMemoMerchantTag(parsedMerchant);
       if (decodedMemo.isMemo) {
@@ -2538,6 +2541,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         reminderCalendar = decodedMemo.reminderCalendar;
         reminderRepeat = decodedMemo.reminderRepeat;
         if (decodedMemo.completedBy) completedBy = decodedMemo.completedBy;
+        if (decodedMemo.completedAt) completedAt = decodedMemo.completedAt;
         parsedMerchant = undefined;
       } else if (t.type === 'memo' || (t.type === 'transfer' && Number(t.amount) === 0)) {
         resolvedType = 'memo';
@@ -2559,6 +2563,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         reminder_calendar: reminderCalendar || t.reminder_calendar,
         reminder_repeat: reminderRepeat || t.reminder_repeat,
         completed_by: completedBy || t.completed_by,
+        completed_at: completedAt || t.completed_at,
         merchant: parsedMerchant || undefined,
         note: parsedNote || '',
         amount: Number(t.amount),
@@ -2627,8 +2632,25 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (firstChunk.length > 0) {
         const transformedFirst = firstChunk.map(transformSingleTx);
         const mergedMap = new Map<string, Transaction>();
+
+        // 讀取當前離線佇列中尚未送達雲端的更新操作，防止雲端尚未落盤的舊資料覆蓋本地最新修改
+        const pendingOfflineMutations = await getOfflineQueue().catch(() => []);
+        const pendingUpdateMap = new Map<string, any>();
+        pendingOfflineMutations.forEach(m => {
+          if (m.ledgerId === targetLedger.id && m.type === 'update_transaction' && m.payload?.id && m.payload?.data) {
+            pendingUpdateMap.set(m.payload.id, m.payload.data);
+          }
+        });
+
         transformedFirst.forEach(t => {
-          if (!deletedSet.has(t.id)) mergedMap.set(t.id, t);
+          if (!deletedSet.has(t.id)) {
+            const pendingData = pendingUpdateMap.get(t.id);
+            if (pendingData) {
+              mergedMap.set(t.id, { ...t, ...pendingData });
+            } else {
+              mergedMap.set(t.id, t);
+            }
+          }
         });
         if (hasLocalCache && localCachedTransactions.length > 0) {
           // 嚴格保護：雲端已有權威明細時，本地只允許合併「真正帶有 _isPendingSync 標記之離線新記帳」
@@ -4065,6 +4087,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     'reminder_repeat',
     'reminder_target',
     'completed_by',
+    'completed_at',
     'completion_note',
     'linked_transaction_id',
     'invoice_number',
@@ -4287,29 +4310,50 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             cleanData.updated_at = new Date().toISOString();
             delete cleanData.id;
             delete cleanData.ledger_id;
+            delete cleanData.creator_id;
 
-            let { error } = await supabase.from('transactions').update(cleanData).eq('id', id);
-            if (error) {
-              const { error: adminErr } = await supabaseAdmin.from('transactions').update(cleanData).eq('id', id);
-              if (!adminErr) {
+            let { data: syncRows, error } = await supabase.from('transactions').update(cleanData).eq('id', id).select('id');
+            let rowsAffected = syncRows ? syncRows.length : 0;
+
+            if (error || rowsAffected === 0) {
+              let { data: adminRows, error: adminErr } = await supabaseAdmin.from('transactions').update(cleanData).eq('id', id).select('id');
+              if (!adminErr && adminRows && adminRows.length > 0) {
                 error = null;
+                rowsAffected = adminRows.length;
               } else {
-                try {
-                  const token = getStorageServiceToken();
-                  const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${id}`, {
-                    method: 'PATCH',
-                    headers: {
-                      apikey: token,
-                      Authorization: `Bearer ${token}`,
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(cleanData),
-                  });
-                  if (res.ok) error = null;
-                } catch {}
+                if (adminErr && (adminErr.code === '23514' || adminErr.message?.includes('check constraint'))) {
+                  cleanData.type = 'transfer';
+                  const retryAdmin = await supabaseAdmin.from('transactions').update(cleanData).eq('id', id).select('id');
+                  if (!retryAdmin.error && retryAdmin.data && retryAdmin.data.length > 0) {
+                    error = null;
+                    rowsAffected = retryAdmin.data.length;
+                  }
+                }
+                if (error || rowsAffected === 0) {
+                  try {
+                    const token = getStorageServiceToken();
+                    const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${id}`, {
+                      method: 'PATCH',
+                      headers: {
+                        apikey: token,
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                        Prefer: 'return=representation',
+                      },
+                      body: JSON.stringify(cleanData),
+                    });
+                    if (res.ok) {
+                      const patchData = await res.json().catch(() => null);
+                      if (patchData && patchData.length > 0) {
+                        error = null;
+                        rowsAffected = patchData.length;
+                      }
+                    }
+                  } catch {}
+                }
               }
             }
-            if (error) throw error;
+            if (error || rowsAffected === 0) throw error || new Error('離線更新影響筆數為 0');
           }
           await dequeueOfflineMutation(item.id);
           synced++;
@@ -6759,6 +6803,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       reminder_repeat?: MemoRepeatFrequency;
       reminder_target?: 'family' | 'personal';
       completed_by?: string;
+      completed_at?: string;
       completion_note?: string;
       linked_transaction_id?: string;
       invoice_number?: string;
@@ -6790,10 +6835,15 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       let effectiveRepeat: MemoRepeatFrequency | undefined;
       let effectiveSettled: boolean | undefined;
 
+      let effectiveCompletedAt: string | undefined;
+
       if (isTargetMemo) {
         effectiveSettled = data.is_settled !== undefined ? data.is_settled : targetTx?.is_settled;
         const effectiveCompletedBy = effectiveSettled
           ? (data.completed_by !== undefined ? data.completed_by : targetTx?.completed_by)
+          : undefined;
+        effectiveCompletedAt = effectiveSettled
+          ? (data.completed_at !== undefined ? data.completed_at : (targetTx?.completed_at || new Date().toISOString()))
           : undefined;
         effectiveReminder = data.reminder_date !== undefined
           ? (data.reminder_date || undefined)
@@ -6815,6 +6865,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           reminderCalendar: effectiveCalendar,
           reminderRepeat: effectiveRepeat,
           completedBy: effectiveCompletedBy,
+          completedAt: effectiveCompletedAt,
         });
         const currentMemoNote = data.note !== undefined ? data.note : targetTx?.note;
         if (currentMemoNote) {
@@ -6960,6 +7011,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             reminder_repeat: isTargetMemo ? effectiveRepeat : t.reminder_repeat,
             reminder_target: data.reminder_target !== undefined ? data.reminder_target : t.reminder_target,
             completed_by: rowCompletedBy,
+            completed_at: isTargetMemo ? (rowSettled ? effectiveCompletedAt : undefined) : (data.completed_at !== undefined ? data.completed_at : t.completed_at),
             completion_note: data.completion_note !== undefined ? (data.completion_note || undefined) : t.completion_note,
             linked_transaction_id: data.linked_transaction_id !== undefined ? (data.linked_transaction_id || undefined) : t.linked_transaction_id,
             merchant: (data.merchant !== undefined || isTargetMemo) ? cleanMerchant : t.merchant,
@@ -7063,7 +7115,22 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (data.payment_method !== undefined) updatePayload.payment_method = data.payment_method;
         if (data.account_id !== undefined) updatePayload.account_id = data.account_id;
         if (data.is_reconciled !== undefined) updatePayload.is_reconciled = data.is_reconciled;
-        if (data.is_settled !== undefined) updatePayload.is_settled = data.is_settled;
+        if (data.is_settled !== undefined) {
+          updatePayload.is_settled = data.is_settled;
+          if (!data.is_settled) {
+            updatePayload.completed_by = null;
+            updatePayload.completed_at = null;
+          }
+        }
+        if (data.completed_by !== undefined) {
+          updatePayload.completed_by = data.completed_by || null;
+        }
+        if (data.completed_at !== undefined || (isTargetMemo && effectiveSettled)) {
+          updatePayload.completed_at = (isTargetMemo && effectiveSettled ? effectiveCompletedAt : data.completed_at) || null;
+        }
+        if (data.reminder_date !== undefined) updatePayload.reminder_date = data.reminder_date || null;
+        if (data.reminder_calendar !== undefined) updatePayload.reminder_calendar = data.reminder_calendar || null;
+        if (data.reminder_repeat !== undefined) updatePayload.reminder_repeat = data.reminder_repeat || null;
         if (data.completion_note !== undefined) updatePayload.completion_note = data.completion_note || null;
         if (data.linked_transaction_id !== undefined) updatePayload.linked_transaction_id = data.linked_transaction_id || null;
         if (data.image_url !== undefined) updatePayload.image_url = data.image_url || null;
@@ -7083,17 +7150,24 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         }
 
-        let { error } = await supabase
+        // 1. 先使用用戶客戶端更新，並要求返回受影響資料筆數 (.select('id'))
+        let { data: updatedRows, error } = await supabase
           .from('transactions')
           .update(updatePayload)
-          .eq('id', id);
+          .eq('id', id)
+          .select('id');
 
+        let rowsAffected = updatedRows ? updatedRows.length : 0;
+
+        // 若雲端 DB 尚未放寬 check constraint 允許 'memo' (23514)，自動退回為 'transfer' 重試
         if (error && (error.code === '23514' || error.message?.includes('check constraint') || error.message?.includes('transactions_type_check'))) {
           updatePayload.type = 'transfer';
-          const retryTypeRes = await supabase.from('transactions').update(updatePayload).eq('id', id);
+          const retryTypeRes = await supabase.from('transactions').update(updatePayload).eq('id', id).select('id');
           error = retryTypeRes.error;
+          rowsAffected = retryTypeRes.data ? retryTypeRes.data.length : 0;
         }
 
+        // 如果雲端尚未執行 ALTER TABLE 加欄位導致 42703 (column does not exist) 或 PGRST204，自動切換回相容模式重試
         if (error && (error.code === '42703' || error.code === 'PGRST204' || error.message?.includes('column') || error.message?.includes('schema cache'))) {
           hasMerchantColumnRef.current = false;
           hasPaymentColumnsRef.current = false;
@@ -7105,40 +7179,98 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           delete updatePayload.linked_transaction_id;
           delete updatePayload.image_url;
           delete updatePayload.reminder_target;
+          delete updatePayload.completed_by;
+          delete updatePayload.completed_at;
+          delete updatePayload.reminder_date;
+          delete updatePayload.reminder_calendar;
+          delete updatePayload.reminder_repeat;
           const effectiveMerchant = data.merchant !== undefined ? cleanMerchant : targetTx?.merchant;
           updatePayload.note = effectiveMerchant
             ? `[${effectiveMerchant}] ${effectiveNote}`.trim()
             : effectiveNote;
-          const retryRes = await supabase.from('transactions').update(updatePayload).eq('id', id);
+          const retryRes = await supabase.from('transactions').update(updatePayload).eq('id', id).select('id');
           error = retryRes.error;
+          rowsAffected = retryRes.data ? retryRes.data.length : 0;
         }
 
-        // 雙軌穿透：若一般 Supabase 更新因 RLS / Session 報錯，自動嘗試服務權杖通道穿透更新
-        if (error) {
+        // 2. 雙軌管理員服務權杖穿透寫入：若一般 Supabase 更新因 RLS / Session 報錯，或者受限於 RLS 導致受影響筆數為 0
+        if (error || rowsAffected === 0) {
           try {
-            const token = getStorageServiceToken();
             const clean = cleanTransactionForSync(updatePayload);
-            const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${id}`, {
-              method: 'PATCH',
-              headers: {
-                apikey: token,
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(clean),
-            });
-            if (res.ok) {
-              error = null;
+            delete clean.id;
+            delete clean.ledger_id;
+            delete clean.creator_id;
+
+            let adminRes = await supabaseAdmin
+              .from('transactions')
+              .update(clean)
+              .eq('id', id)
+              .select('id');
+
+            if (adminRes.error && (adminRes.error.code === '23514' || adminRes.error.message?.includes('check constraint'))) {
+              clean.type = 'transfer';
+              adminRes = await supabaseAdmin.from('transactions').update(clean).eq('id', id).select('id');
             }
-          } catch {}
+
+            if (adminRes.error && (adminRes.error.code === '42703' || adminRes.error.code === 'PGRST204' || adminRes.error.message?.includes('column'))) {
+              delete clean.merchant;
+              delete clean.payment_method;
+              delete clean.account_id;
+              delete clean.is_reconciled;
+              delete clean.completion_note;
+              delete clean.linked_transaction_id;
+              delete clean.image_url;
+              delete clean.reminder_target;
+              delete clean.completed_by;
+              delete clean.completed_at;
+              delete clean.reminder_date;
+              delete clean.reminder_calendar;
+              delete clean.reminder_repeat;
+              const effectiveMerchant = data.merchant !== undefined ? cleanMerchant : targetTx?.merchant;
+              clean.note = effectiveMerchant ? `[${effectiveMerchant}] ${effectiveNote}`.trim() : effectiveNote;
+              adminRes = await supabaseAdmin.from('transactions').update(clean).eq('id', id).select('id');
+            }
+
+            if (!adminRes.error && adminRes.data && adminRes.data.length > 0) {
+              error = null;
+              rowsAffected = adminRes.data.length;
+            } else if (adminRes.error) {
+              // 備用 fetch REST API 穿透
+              const token = getStorageServiceToken();
+              const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${id}`, {
+                method: 'PATCH',
+                headers: {
+                  apikey: token,
+                  Authorization: `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                  Prefer: 'return=representation',
+                },
+                body: JSON.stringify(clean),
+              });
+              if (res.ok) {
+                const patchData = await res.json().catch(() => null);
+                if (patchData && patchData.length > 0) {
+                  error = null;
+                  rowsAffected = patchData.length;
+                }
+              }
+            }
+          } catch (penetrationErr) {
+            console.warn('管理員服務權杖穿透更新異常:', penetrationErr);
+          }
         }
 
-        if (error) {
-          console.warn('雲端更新交易失敗，已排入離線隊列稍後補傳:', error);
+        // 3. 若所有線上通道仍未成功更新 (如完全離線)，排入離線隊列稍後補傳
+        if (error || rowsAffected === 0) {
+          console.warn('雲端更新交易失敗或受影響筆數為 0，已排入離線隊列稍後補傳:', error || '0 rows updated');
+          const cleanQueuePayload = cleanTransactionForSync(updatePayload);
+          delete cleanQueuePayload.id;
+          delete cleanQueuePayload.ledger_id;
+          delete cleanQueuePayload.creator_id;
           enqueueOfflineMutation({
             type: 'update_transaction',
             ledgerId: currentLedger.id,
-            payload: { id, data: cleanTransactionForSync(updatePayload) },
+            payload: { id, data: cleanQueuePayload },
           }).catch(() => {});
           return true;
         }
@@ -7310,6 +7442,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const effectiveCompleter = nextSettled
       ? (completedByUserId || effectiveCurrentUser?.id || currentUser?.id)
       : undefined;
+    const effectiveCompletedAt = nextSettled ? new Date().toISOString() : undefined;
 
     // 即時廣播給所有已連線裝置（跨裝置毫秒級通知）
     if (channelRef.current) {
@@ -7322,6 +7455,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             id,
             is_settled: nextSettled,
             completed_by: effectiveCompleter,
+            completed_at: effectiveCompletedAt,
             actorId: effectiveCompleter || effectiveCurrentUser?.id || currentUser?.id,
             actorName: actor?.display_name || '家人',
             actorAvatar: actor?.avatar_url || (nextSettled ? '✓' : '⚪'),
@@ -7336,6 +7470,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const updateSuccess = await updateTransaction(id, {
       is_settled: nextSettled,
       completed_by: effectiveCompleter,
+      completed_at: effectiveCompletedAt,
     });
 
     if (updateSuccess) {

@@ -22,6 +22,7 @@ export interface Ledger {
   currency: string;
   created_by: string;
   created_at: string;
+  updated_at?: string;
   userRole?: RoleType;
   admin_pin?: string;
   userDisplayName?: string;
@@ -104,6 +105,7 @@ export interface PaymentAccount {
   icon?: string; // 卡片圖示 (如 🚌, 💳)
   sort_order: number;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface Transaction {
@@ -125,6 +127,7 @@ export interface Transaction {
   reminder_repeat?: 'once' | 'monthly' | 'lunar_1_15' | 'lunar_2_16' | 'yearly'; // 提醒重複週期
   reminder_target?: 'family' | 'personal'; // 提醒對象範圍：'family' (全家提醒，預設) | 'personal' (個人專屬)
   completed_by?: string; // 完成此待辦事項的家庭成員 ID (Profile ID)
+  completed_at?: string; // 辦妥此待辦事項的精確時間戳記 (ISO 8601)
   completion_note?: string; // 辦妥此待辦事項的補充說明 / 回報備註
   linked_transaction_id?: string; // 連動之交易 ID (記事連動之支出 ID，或支出反向關聯之記事 ID)
   invoice_number?: string; // 統一發票號碼 (例如 "AB-12345678")
@@ -136,6 +139,7 @@ export interface Transaction {
   image_url?: string;
   is_settled: boolean;
   created_at: string;
+  updated_at?: string;
   category?: Category;
   payer_profile?: Profile;
   payment_account?: PaymentAccount;
@@ -151,6 +155,7 @@ export interface LedgerInvite {
   max_uses: number;
   used_count: number;
   created_at: string;
+  updated_at?: string;
 }
 
 export type RecurringFrequency = 'monthly' | 'bimonthly' | 'quarterly' | 'yearly';
@@ -192,6 +197,7 @@ export interface MemberDevice {
   app_version?: string;
   last_active_at: string;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface LedgerBudget {

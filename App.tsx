@@ -393,6 +393,7 @@ const AppContent: React.FC = () => {
     await updateTransaction(memoId, {
       is_settled: true,
       completed_by: completedBy,
+      completed_at: new Date().toISOString(),
       completion_note: note || undefined,
     });
     setCompletingMemo(null);

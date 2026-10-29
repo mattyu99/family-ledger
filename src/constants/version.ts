@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.9';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.9 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 20;
+export const APP_BUILD_REVISION = 21;
 
-// 完整版本字串 (例如 "1.0.9.20")
+// 完整版本字串 (例如 "1.0.9.21")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.9',
     date: '2026-10-27 ~ 2026-10-29',
-    title: '全新 1.0.9 正式版發布、雙軌管理架構全線統一、跨裝置公帳自動對齊與計數防跳動 (v1.0.9.0 ~ v1.0.9.20)',
+    title: '全新 1.0.9 正式版發布、生活記事辦妥時間戳記與雲端防回滾、帳本計數防跳動 (v1.0.9.0 ~ v1.0.9.21)',
     highlights: [
+      '📝 生活記事辦妥時間戳記、雲端持久化防回滾與下拉刷新防呆 (v1.0.9.21)：徹底根除「待辦專區打勾辦妥或修改記事儲存後，下拉刷新又變回未辦妥或內容丟失」重大漏洞。1. 剖析 PostgREST 在 UPDATE 遇 RLS 限制時 silently 影響 0 筆且回傳 error: null 之盲區，全面在 updateTransaction 與 processOfflineQueue 注入 .select("id") 精準追蹤受影響筆數，若筆數為 0 或報錯立即啟用 supabaseAdmin 服務權杖雙軌穿透，確保留痕雲端；2. 補齊 updatePayload 遺漏之 completed_by、completed_at、reminder_date 等欄位，取消辦妥時自動安全重設為 null；3. 新增生活記事「辦妥精確日期時間（completed_at）」記錄與雙軌保存架構（Supabase 欄位 + merchant 中繼標籤備援），日後再次修改記事內容絕不沖刷當初辦妥時間；4. 明細卡片底部、待辦專區底部與編輯彈窗完整展示「✓ 由 [成員] 於 10/29 16:30 辦妥」；5. 於 loadLedgerData 整合 pendingUpdateMap，防止本地最新待補修改在下拉刷新時被雲端舊資料覆蓋。',
       '📊 帳本計數防跳動防覆寫強化與 Google 卡片視覺降噪 (v1.0.9.20)：徹底根除切換帳本清單「計數在兩個數字間跳動（如 25980<->1500、49<->0）」問題。1. 徹底解耦彈窗打開時的 refreshLedgerList 副作用，移出 ledgers 依賴項，阻斷無限循環重繪；2. 在 loadCacheCounts 與 fetchCloudCounts 注入「單調遞增防呆保護（Math.max）」與「本地 0 筆/分批暫存絕不可降級覆寫雲端權威筆數」，確保 Adarian 歷史帳本（25,980 筆）與 Aa 家庭公帳（49 筆）數字堅定鎖定不跳動；3. 移除 Google 登入卡片冗餘之 [🔄 點擊重整] 標籤，界面更加精簡優雅，點擊卡片彈出確認後可直接連線雲端反查名下公帳。',
       '🔄 跨裝置公帳清單實時同步與主動重整機制 (v1.0.9.19)：徹底升級「加入或切換家庭公帳」清單具備全自動背景雲端對齊能力。1. 於 LedgerContext 封裝 refreshLedgerList 雲端拉取函式，全自動透過 Google 授權信箱反查雲端 profiles 與 ledger_members 最新成員關係，精確同步跨裝置新加入或建立之公帳；2. 打開切換帳本彈窗時自動於背景觸發 refreshLedgerList，實現跨手機公帳秒級自動出現，無需重開 App；3. 將頂部「Google 帳號已登入同步」卡片升級為具備實質重整功能之操作晶片，新增防呆確認機制，使用者可隨時手動點擊連線雲端反查名下公帳並取得即時完成回饋。',
       '📴 跨帳本離線待補傳安全自動同步與連線狀態精準隔離 (v1.0.9.18)：徹底解決「A 帳本離線記帳切換至 B 帳本後，右上角誤報離線且待補傳卡死」之缺陷。1. 右上角連線狀態精準以當前帳本為準，B 帳本無待補傳且網路通暢時堅定顯示「🟢 雲端即時同步」，不再誤導使用者為離線狀態；2. 升級 processOfflineQueue 具備安全跨帳本背景穿透補傳能力，網路復原、切換帳本或手動重整時自動透過 supabaseAdmin 將所有公帳待補紀錄送達雲端，並實施跨帳本本地刪除防護與快取隔離，補傳完成自動清除 _isPendingSync 標記；3. 帳本切換選單中為持有未送出紀錄之公帳卡片獨立標示「📴 X 筆待補傳」徽章，透明清晰；4. 家庭設定離線看板支援多帳本待補傳筆數細緻分流與一鍵立即補傳。',

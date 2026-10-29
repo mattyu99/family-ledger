@@ -223,15 +223,16 @@ export function getLocalDateYmd(d: Date = new Date()): string {
 
 /**
  * 編碼生活記事之提醒與週期 메타 標籤（存入 merchant 欄位，100% 相容既有雲端資料表）
- * 格式範例：remind:2026-10-25|cal:lunar|rep:lunar_1_15|done:uuid
+ * 格式範例：remind:2026-10-25|cal:lunar|rep:lunar_1_15|done:uuid|done_at:2026-10-29T16:30:00.000Z
  */
 export function encodeMemoMerchantTag(options: {
   reminderDate?: string;
   reminderCalendar?: CalendarSystem;
   reminderRepeat?: MemoRepeatFrequency;
   completedBy?: string;
+  completedAt?: string;
 }): string {
-  const { reminderDate, reminderCalendar, reminderRepeat, completedBy } = options;
+  const { reminderDate, reminderCalendar, reminderRepeat, completedBy, completedAt } = options;
   const parts: string[] = [];
 
   if (reminderDate && reminderDate.trim()) {
@@ -255,6 +256,10 @@ export function encodeMemoMerchantTag(options: {
     parts.push(`done:${completedBy.trim()}`);
   }
 
+  if (completedAt && completedAt.trim()) {
+    parts.push(`done_at:${completedAt.trim()}`);
+  }
+
   return parts.join('|');
 }
 
@@ -267,6 +272,7 @@ export function decodeMemoMerchantTag(rawMerchant?: string): {
   reminderCalendar?: CalendarSystem;
   reminderRepeat?: MemoRepeatFrequency;
   completedBy?: string;
+  completedAt?: string;
 } {
   if (!rawMerchant) return { isMemo: false };
   const trimmed = rawMerchant.trim();
@@ -278,6 +284,7 @@ export function decodeMemoMerchantTag(rawMerchant?: string): {
   let reminderCalendar: CalendarSystem | undefined;
   let reminderRepeat: MemoRepeatFrequency | undefined;
   let completedBy: string | undefined;
+  let completedAt: string | undefined;
 
   const segments = trimmed.split('|');
   for (const seg of segments) {
@@ -293,6 +300,8 @@ export function decodeMemoMerchantTag(rawMerchant?: string): {
       }
     } else if (seg.startsWith('done:')) {
       completedBy = seg.slice(5).trim() || undefined;
+    } else if (seg.startsWith('done_at:')) {
+      completedAt = seg.slice(8).trim() || undefined;
     }
   }
 
@@ -306,7 +315,35 @@ export function decodeMemoMerchantTag(rawMerchant?: string): {
     reminderCalendar: reminderDate ? (reminderCalendar || 'solar') : undefined,
     reminderRepeat: reminderDate ? (reminderRepeat || 'once') : undefined,
     completedBy,
+    completedAt,
   };
+}
+
+/**
+ * 格式化待辦事項辦妥時間字串
+ * 範例：今天 16:30、10/29 16:30、2025/10/29 16:30
+ */
+export function formatMemoCompletedTime(completedAt?: string, fallbackTimestamp?: string): string {
+  const ts = completedAt || fallbackTimestamp;
+  if (!ts) return '';
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '';
+  const now = new Date();
+  const isThisYear = d.getFullYear() === now.getFullYear();
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const timeStr = `${hours}:${minutes}`;
+
+  const isToday = isThisYear && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  if (isToday) {
+    return `今天 ${timeStr}`;
+  }
+  if (isThisYear) {
+    return `${month}/${day} ${timeStr}`;
+  }
+  return `${d.getFullYear()}/${month}/${day} ${timeStr}`;
 }
 
 export const CHECKLIST_LINE_REGEX = /^(\s*(?:[-*]\s*)?)(?:\[([ xX✓✔])\]|([☐☑✅]))(\s*.*)$/;

@@ -72,6 +72,7 @@ import {
   applyChecklistTemplate,
   insertChecklistCheckbox,
   handleChecklistInput,
+  formatMemoCompletedTime,
 } from '../lib/memo';
 import {
   CalendarSystem,
@@ -1160,9 +1161,13 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           const effectiveCompleter = isSettled
             ? (transaction.completed_by || currentUser?.id)
             : undefined;
+          const effectiveCompletedAt = isSettled
+            ? (transaction.completed_at || new Date().toISOString())
+            : undefined;
           const success = await updateTransaction(transaction.id, {
             is_settled: isSettled,
             completed_by: effectiveCompleter,
+            completed_at: effectiveCompletedAt,
             completion_note: completionNote.trim() || undefined,
             linked_transaction_id: linkedTxId || undefined,
           });
@@ -1208,6 +1213,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           transacted_at: transactedAt || transaction.transacted_at,
           is_settled: isSettled,
           completed_by: isSettled ? (transaction.completed_by || currentUser?.id) : undefined,
+          completed_at: isSettled ? (transaction.completed_at || new Date().toISOString()) : undefined,
           completion_note: completionNote.trim() || undefined,
           linked_transaction_id: linkedTxId || undefined,
         });
@@ -1502,7 +1508,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   {isSettled && (
                     <Text style={styles.memoCompleterHint} maxFontSizeMultiplier={1.08}>
                       {transaction.completed_by
-                        ? `✓ 由 ${getMemberById(transaction.completed_by)?.display_name || '家庭成員'} 打勾辦妥`
+                        ? `✓ 由 ${getMemberById(transaction.completed_by)?.display_name || '家庭成員'}${formatMemoCompletedTime(transaction.completed_at, transaction.updated_at) ? ` 於 ${formatMemoCompletedTime(transaction.completed_at, transaction.updated_at)}` : ''} 打勾辦妥`
                         : `✓ 儲存後將標記由 ${currentUser?.display_name || '本人'} 辦妥`}
                     </Text>
                   )}
