@@ -737,7 +737,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             <View style={styles.gatekeeperHeaderRow}>
               <View style={{ flex: 1, marginRight: 12 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                  <Text style={[styles.gatekeeperHeaderTitle, { color: colors.text.primary }]}>🔒 家庭門禁安全鎖</Text>
+                  <Text style={[styles.gatekeeperHeaderTitle, { color: colors.text.primary }]}>🔒 {currentLedger.name} 門禁安全鎖</Text>
                   <View style={[styles.gatekeeperBadge, allowNewMembers ? styles.gatekeeperBadgeOpen : styles.gatekeeperBadgeLocked]}>
                     <Text style={[styles.gatekeeperBadgeText, allowNewMembers ? styles.gatekeeperBadgeTextOpen : styles.gatekeeperBadgeTextLocked]}>
                       {allowNewMembers ? '🟢 開放加入中' : '🔒 門禁已上鎖'}

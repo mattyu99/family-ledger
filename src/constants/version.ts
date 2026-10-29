@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.9';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.9 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 12;
+export const APP_BUILD_REVISION = 13;
 
-// 完整版本字串 (例如 "1.0.9.12")
+// 完整版本字串 (例如 "1.0.9.13")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.9',
     date: '2026-10-27 ~ 2026-10-29',
-    title: '全新 1.0.9 正式版發布、幽靈家庭成員絕育清理、離線隊列防復活、JSON 下載凍結修復 (v1.0.9.0 ~ v1.0.9.12)',
+    title: '全新 1.0.9 正式版發布、歷史公帳門禁打通與多帳本管理、幽靈家庭成員絕育清理 (v1.0.9.0 ~ v1.0.9.13)',
     highlights: [
+      '🚪 歷史公帳門禁打通與多公帳門禁獨立總管：解決切換門禁安全鎖在當前帳本與歷史帳本間的錯位問題。已將「Adarian 歷史帳本」雲端門禁開啟，並實體將瑩媽 Google 帳號與豆豆加入名冊，瑩媽現在可直接在帳本切換選單一鍵秒切；為 updateAllowNewMembers 注入服務權杖雙軌穿透，杜絕 RLS 導致開關回滾；「加入或切換公帳」清單新增各帳本獨立門禁狀態徽章與管理員一鍵開關，無需頻繁切換帳本即可總管全家公帳門禁。',
       '👻 幽靈「家庭成員」假人徹底根除與雲端自癒清洗：徹底根治快取重新同步後名冊再次出現「家庭成員」假人問題。已自 Supabase 資料庫層實體徹底刪除歷史殘留之幽靈資料列；於 deduplicateMembers 建立全域過濾機制（帳本只要有具名成員，預設「家庭成員」假人一律自動隱形除名）；新增雲端自癒機制（任何裝置載入成員時，若雲端殘留假人將在背景自動向 Supabase 發送指令抹除）；修復 joinLedgerByCode 與 useDeviceAuth 在認領身分時前置同步更新 Profile 稱謂，徹底杜絕匿名 Session 再次以預設「家庭成員」寫入資料庫，即使其他家人使用舊版 App 也絕不再復活。',
       '🧹 離線待補佇列刪除撤回與雲端重複明細清理：根治離線佇列「已刪除交易被復活上傳」漏洞。新增 cancelOfflineMutationByTxId 撤回通道，本機刪除明細時立即自離線待補佇列抽除，補傳執行緒亦加入本機已刪除過濾；已從雲端徹底清除 6 筆先前重複按壓產生之重複「河樂文旅」明細，雲端權威資料精準回歸 332 筆，Web 端與手機端 100% 完美一致。',
       '📥 手機 App 端 JSON/CSV 備份下載無回應與介面凍結徹底修復：徹底修復手機端點擊「下載 .json 檔案」畫面卡死無回應問題。全面移除 React Native Share.share 傳送 300KB+ 原始文本造成的 Android Binder 崩潰 (TransactionTooLargeException)；改採專屬雲端中轉技術，直接由手機系統瀏覽器將真實 .json / .csv 實體檔案下載至手機「Download (下載)」資料夾，並徹底拔除 Modal 內 Alert.alert 引起的 Android 視窗層次死鎖。',

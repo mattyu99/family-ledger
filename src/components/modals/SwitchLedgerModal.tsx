@@ -74,6 +74,7 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
     currentUser,
     switchLedgerById,
     toggleLedgerReadOnly,
+    updateAllowNewMembers,
     leaveLedgerById,
     leaveCurrentLedger,
     isGoogleAuthenticated,
@@ -322,6 +323,11 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
                                 <Text style={styles.readOnlyBadgeText}>🔒 唯讀</Text>
                               </View>
                             )}
+                            {l.allow_new_members === false && (
+                              <View style={[styles.readOnlyBadge, { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' }]}>
+                                <Text style={[styles.readOnlyBadgeText, { color: '#DC2626' }]}>🔒 門禁鎖定</Text>
+                              </View>
+                            )}
                           </View>
                           {!isCurrent && (unreadLedgerMap[l.id] || 0) > 0 && (
                             <View style={styles.unreadBadge}>
@@ -347,26 +353,53 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
                       </TouchableOpacity>
 
                       {isAdmin && (
-                        <TouchableOpacity
-                          style={[
-                            styles.readOnlyToggleBtn,
-                            l.is_read_only && styles.readOnlyToggleBtnActive,
-                          ]}
-                          onPress={async () => {
-                            const nextVal = !l.is_read_only;
-                            await toggleLedgerReadOnly(l.id, nextVal);
-                            showAlert(
-                              nextVal ? '🔒 已開啟唯讀保護' : '🔓 已解除唯讀鎖定',
-                              nextVal
-                                ? `「${l.name}」已設為唯讀模式，防止任何新增、修改或刪除。`
-                                : `「${l.name}」已恢復為一般編輯模式。`
-                            );
-                          }}
-                        >
-                          <Text style={{ fontSize: 11, color: l.is_read_only ? '#B45309' : colors.text.muted, fontWeight: '700' }}>
-                            {l.is_read_only ? '🔒 唯讀中' : '🔓 正常'}
-                          </Text>
-                        </TouchableOpacity>
+                        <>
+                          <TouchableOpacity
+                            style={[
+                              styles.readOnlyToggleBtn,
+                              l.is_read_only && styles.readOnlyToggleBtnActive,
+                            ]}
+                            onPress={async () => {
+                              const nextVal = !l.is_read_only;
+                              await toggleLedgerReadOnly(l.id, nextVal);
+                              showAlert(
+                                nextVal ? '🔒 已開啟唯讀保護' : '🔓 已解除唯讀鎖定',
+                                nextVal
+                                  ? `「${l.name}」已設為唯讀模式，防止任何新增、修改或刪除。`
+                                  : `「${l.name}」已恢復為一般編輯模式。`
+                              );
+                            }}
+                          >
+                            <Text style={{ fontSize: 11, color: l.is_read_only ? '#B45309' : colors.text.muted, fontWeight: '700' }}>
+                              {l.is_read_only ? '🔒 唯讀' : '🔓 正常'}
+                            </Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={[
+                              styles.readOnlyToggleBtn,
+                              l.allow_new_members === false && { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' },
+                            ]}
+                            onPress={async () => {
+                              const nextVal = l.allow_new_members === false;
+                              const res = await updateAllowNewMembers(nextVal, l.id);
+                              if (res.success) {
+                                showAlert(
+                                  nextVal ? '🟢 門禁已開啟' : '🔒 門禁已上鎖',
+                                  nextVal
+                                    ? `「${l.name}」已開放新成員憑邀請碼加入！`
+                                    : `「${l.name}」已關閉新成員加入通道，防範外流！`
+                                );
+                              } else {
+                                showAlert('更新失敗', res.message || '無法更新門禁設定');
+                              }
+                            }}
+                          >
+                            <Text style={{ fontSize: 11, color: l.allow_new_members === false ? '#DC2626' : '#16A34A', fontWeight: '700' }}>
+                              {l.allow_new_members === false ? '🔒 門禁鎖' : '🟢 門禁開'}
+                            </Text>
+                          </TouchableOpacity>
+                        </>
                       )}
 
                       <TouchableOpacity
