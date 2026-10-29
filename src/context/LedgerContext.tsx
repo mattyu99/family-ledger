@@ -411,7 +411,9 @@ interface LedgerContextType {
     };
   };
   offlineQueue: OfflineMutation[];
-  pendingOfflineCount: number;
+  pendingOfflineCount: number; // 當前帳本待補傳筆數
+  totalPendingOfflineCount: number; // 全帳本待補傳總筆數
+  offlineCountByLedgerMap: Record<string, number>; // 各帳本待補傳筆數字典
   isProcessingQueue: boolean;
   processOfflineQueue: () => Promise<{ success: boolean; syncedCount: number; failedCount: number }>;
 }
@@ -439,7 +441,25 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return unsub;
   }, []);
 
-  const pendingOfflineCount = offlineQueue.length;
+  const totalPendingOfflineCount = offlineQueue.length;
+
+  // 當前公帳的待補傳筆數（隔離其他帳本，避免非當前帳本之任務誤導首頁連線狀態）
+  const pendingOfflineCount = React.useMemo(() => {
+    return offlineQueue.filter(item => !item.ledgerId || item.ledgerId === currentLedger?.id).length;
+  }, [offlineQueue, currentLedger?.id]);
+
+  // 各公帳待補傳筆數映射表（供帳本切換選單顯示徽章）
+  const offlineCountByLedgerMap = React.useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const item of offlineQueue) {
+      const lId = item.ledgerId || currentLedger?.id;
+      if (lId) {
+        map[lId] = (map[lId] || 0) + 1;
+      }
+    }
+    return map;
+  }, [offlineQueue, currentLedger?.id]);
+
   const activeLoadingLedgerIdRef = useRef<string | null>(null);
   const inMemoryLedgerTxCacheRef = useRef<Map<string, Transaction[]>>(new Map());
 
@@ -3790,6 +3810,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             if (!isMountedRef.current) return;
 
             await loadLedgerData(activeLedger, authUser.id);
+            processOfflineQueue().catch(() => {});
             setHasJoinedLedger(true);
             await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
           }
@@ -3910,23 +3931,66 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return clean;
   };
 
-  // 處理並批次上傳離線佇列中的待補變更 (支援 Optimistic Outbox 補同步與雙軌服務權杖穿透)
+  // 檢查特定交易在指定帳本中是否已在本地被刪除（支援跨帳本安全檢查，絕不與當前帳本混淆）
+  const isTransactionDeletedForLedger = async (txId: string, ledgerId: string): Promise<boolean> => {
+    if (!txId) return false;
+    if (deletedTxIdsRef.current.has(txId)) return true;
+
+    try {
+      const deletedKey = `${STORAGE_KEYS.DELETED_TX_IDS}_${ledgerId}`;
+      const savedDeletedStr = await AsyncStorage.getItem(deletedKey);
+      if (savedDeletedStr) {
+        const list = JSON.parse(savedDeletedStr);
+        if (Array.isArray(list) && list.includes(txId)) return true;
+      }
+    } catch {}
+
+    if (ledgerId === currentLedger?.id) {
+      return !transactions.some(t => t.id === txId);
+    }
+
+    // 若非當前帳本，檢查記憶體快取或該帳本專屬本機快取
+    const memList = inMemoryLedgerTxCacheRef.current.get(ledgerId);
+    if (memList && memList.length > 0) {
+      return !memList.some(t => t.id === txId);
+    }
+
+    try {
+      const savedTxStr = await AsyncStorage.getItem(`${STORAGE_KEYS.TRANSACTIONS}_${ledgerId}`);
+      if (savedTxStr) {
+        const parsed: any[] = JSON.parse(savedTxStr);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return !parsed.some((t: any) => t.id === txId);
+        }
+      }
+    } catch {}
+
+    return false;
+  };
+
+  // 處理並批次上傳離線佇列中的待補變更 (支援跨帳本安全補同步與雙軌服務權杖穿透)
   const processOfflineQueue = async (): Promise<{ success: boolean; syncedCount: number; failedCount: number }> => {
     if (isProcessingQueue) return { success: false, syncedCount: 0, failedCount: 0 };
+    if (!isConfigured) return { success: false, syncedCount: 0, failedCount: 0 };
+
     const queue = await getOfflineQueue();
-    const ledgerQueue = queue.filter(item => !item.ledgerId || item.ledgerId === currentLedger?.id);
-    if (ledgerQueue.length === 0) {
+    if (queue.length === 0) {
       return { success: true, syncedCount: 0, failedCount: 0 };
-    }
-    if (!isConfigured || currentLedger.id === DEMO_LEDGER_ID) {
-      return { success: false, syncedCount: 0, failedCount: ledgerQueue.length };
     }
 
     setIsProcessingQueue(true);
     let synced = 0;
     let failed = 0;
+    const syncedLedgerIds = new Set<string>();
 
-    for (const item of ledgerQueue) {
+    for (const item of queue) {
+      const targetLedgerId = item.ledgerId || currentLedger?.id;
+      if (!targetLedgerId || targetLedgerId === DEMO_LEDGER_ID) {
+        // 示範帳本之離線異動不向雲端上傳，直接出列
+        await dequeueOfflineMutation(item.id);
+        continue;
+      }
+
       try {
         if (item.type === 'insert_transaction') {
           const raw = item.payload?.insertPayload || item.payload?.tx;
@@ -3934,50 +3998,52 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const cleanPayload = cleanTransactionForSync(
               raw,
               currentLedger?.created_by || currentUser?.id,
-              item.ledgerId || currentLedger?.id
+              targetLedgerId
             );
 
-            // 核心防護：若此交易已在本地刪除，或已在已刪除交易名冊中，絕不補傳上雲端！
+            // 核心防護：跨帳本精準檢查此交易是否已在本地刪除，絕不誤傳上雲端！
             const txId = cleanPayload.id;
-            const isDeletedLocally = txId && (
-              deletedTxIdsRef.current.has(txId) ||
-              !transactions.some(t => t.id === txId)
-            );
+            const isDeletedLocally = await isTransactionDeletedForLedger(txId, targetLedgerId);
 
             if (isDeletedLocally) {
               console.log(`[OfflineOutbox] 交易 ${txId} 已於本地刪除，取消補傳並自佇列剔除`);
               await dequeueOfflineMutation(item.id);
               // 同步確保雲端與墓碑無遺漏殘留
               try {
-                await supabase.from('deleted_transactions').insert({ id: txId, ledger_id: currentLedger.id });
-                await supabase.from('transactions').delete().eq('id', txId);
+                await supabaseAdmin.from('deleted_transactions').insert({ id: txId, ledger_id: targetLedgerId });
+                await supabaseAdmin.from('transactions').delete().eq('id', txId);
               } catch {}
               continue;
             }
 
-            // 雙軌穿透：優先標準 upsert，若遇 RLS 阻斷或 Session 失效則啟用服務權杖通道穿透
+            // 雙軌穿透：標準與服務權杖雙軌 upsert
             let { error } = await supabase.from('transactions').upsert(cleanPayload);
             if (error) {
-              try {
-                const token = getStorageServiceToken();
-                const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions`, {
-                  method: 'POST',
-                  headers: {
-                    apikey: token,
-                    Authorization: `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    Prefer: 'resolution=merge-duplicates',
-                  },
-                  body: JSON.stringify(cleanPayload),
-                });
-                if (res.ok) {
-                  error = null;
-                } else {
-                  const errBody = await res.text();
-                  console.warn('[OfflineOutbox] 服務權杖補同步未通過:', errBody);
+              const { error: adminErr } = await supabaseAdmin.from('transactions').upsert(cleanPayload);
+              if (!adminErr) {
+                error = null;
+              } else {
+                try {
+                  const token = getStorageServiceToken();
+                  const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions`, {
+                    method: 'POST',
+                    headers: {
+                      apikey: token,
+                      Authorization: `Bearer ${token}`,
+                      'Content-Type': 'application/json',
+                      Prefer: 'resolution=merge-duplicates',
+                    },
+                    body: JSON.stringify(cleanPayload),
+                  });
+                  if (res.ok) {
+                    error = null;
+                  } else {
+                    const errBody = await res.text();
+                    console.warn('[OfflineOutbox] 服務權杖補同步未通過:', errBody);
+                  }
+                } catch (bypassErr: any) {
+                  console.warn('[OfflineOutbox] 服務權杖穿透通道例外:', bypassErr?.message);
                 }
-              } catch (bypassErr: any) {
-                console.warn('[OfflineOutbox] 服務權杖穿透通道例外:', bypassErr?.message);
               }
             }
 
@@ -3987,23 +4053,51 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const splits = raw.splits;
             if (Array.isArray(splits) && splits.length > 0) {
               try {
-                await supabase.from('transaction_splits').upsert(
-                  splits.map((s: any) => ({
-                    id: s.id,
-                    transaction_id: cleanPayload.id,
-                    user_id: s.user_id,
-                    split_amount: s.split_amount,
-                    is_settled: s.is_settled,
-                  }))
+                const splitRows = splits.map((s: any) => ({
+                  id: s.id,
+                  transaction_id: cleanPayload.id,
+                  user_id: s.user_id,
+                  split_amount: s.split_amount,
+                  is_settled: s.is_settled,
+                }));
+                const { error: spErr } = await supabase.from('transaction_splits').upsert(splitRows);
+                if (spErr) {
+                  await supabaseAdmin.from('transaction_splits').upsert(splitRows);
+                }
+              } catch {}
+            }
+
+            // 本地快取解除 _isPendingSync 標記
+            if (targetLedgerId === currentLedger?.id) {
+              setTransactions(prev => prev.map(t => t.id === cleanPayload.id ? { ...t, _isPendingSync: false } : t));
+            } else {
+              const memList = inMemoryLedgerTxCacheRef.current.get(targetLedgerId);
+              if (memList) {
+                inMemoryLedgerTxCacheRef.current.set(
+                  targetLedgerId,
+                  memList.map(t => t.id === cleanPayload.id ? { ...t, _isPendingSync: false } : t)
                 );
+              }
+              try {
+                const storageKey = `${STORAGE_KEYS.TRANSACTIONS}_${targetLedgerId}`;
+                const savedTxStr = await AsyncStorage.getItem(storageKey);
+                if (savedTxStr) {
+                  const list = JSON.parse(savedTxStr);
+                  if (Array.isArray(list)) {
+                    const updatedList = list.map((t: any) => t.id === cleanPayload.id ? { ...t, _isPendingSync: false } : t);
+                    await AsyncStorage.setItem(storageKey, JSON.stringify(updatedList));
+                  }
+                }
               } catch {}
             }
           }
           await dequeueOfflineMutation(item.id);
           synced++;
+          syncedLedgerIds.add(targetLedgerId);
         } else if (item.type === 'update_transaction') {
           const { id, data } = item.payload;
-          if (id && (deletedTxIdsRef.current.has(id) || !transactions.some(t => t.id === id))) {
+          const isDeletedLocally = await isTransactionDeletedForLedger(id, targetLedgerId);
+          if (id && isDeletedLocally) {
             console.log(`[OfflineOutbox] 交易 ${id} 已於本地刪除，取消更新補傳`);
             await dequeueOfflineMutation(item.id);
             continue;
@@ -4016,48 +4110,60 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             let { error } = await supabase.from('transactions').update(cleanData).eq('id', id);
             if (error) {
-              try {
-                const token = getStorageServiceToken();
-                const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${id}`, {
-                  method: 'PATCH',
-                  headers: {
-                    apikey: token,
-                    Authorization: `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify(cleanData),
-                });
-                if (res.ok) error = null;
-              } catch {}
+              const { error: adminErr } = await supabaseAdmin.from('transactions').update(cleanData).eq('id', id);
+              if (!adminErr) {
+                error = null;
+              } else {
+                try {
+                  const token = getStorageServiceToken();
+                  const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${id}`, {
+                    method: 'PATCH',
+                    headers: {
+                      apikey: token,
+                      Authorization: `Bearer ${token}`,
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(cleanData),
+                  });
+                  if (res.ok) error = null;
+                } catch {}
+              }
             }
             if (error) throw error;
           }
           await dequeueOfflineMutation(item.id);
           synced++;
+          syncedLedgerIds.add(targetLedgerId);
         } else if (item.type === 'delete_transaction') {
           const { id } = item.payload;
           if (id) {
             try {
-              await supabase.from('transaction_splits').delete().eq('transaction_id', id);
+              await supabaseAdmin.from('transaction_splits').delete().eq('transaction_id', id);
             } catch {}
             let { error } = await supabase.from('transactions').delete().eq('id', id);
             if (error) {
-              try {
-                const token = getStorageServiceToken();
-                const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${id}`, {
-                  method: 'DELETE',
-                  headers: {
-                    apikey: token,
-                    Authorization: `Bearer ${token}`,
-                  },
-                });
-                if (res.ok) error = null;
-              } catch {}
+              const { error: adminErr } = await supabaseAdmin.from('transactions').delete().eq('id', id);
+              if (!adminErr) {
+                error = null;
+              } else {
+                try {
+                  const token = getStorageServiceToken();
+                  const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${id}`, {
+                    method: 'DELETE',
+                    headers: {
+                      apikey: token,
+                      Authorization: `Bearer ${token}`,
+                    },
+                  });
+                  if (res.ok) error = null;
+                } catch {}
+              }
             }
             if (error) throw error;
           }
           await dequeueOfflineMutation(item.id);
           synced++;
+          syncedLedgerIds.add(targetLedgerId);
         }
       } catch (err: any) {
         failed++;
@@ -5573,6 +5679,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } catch {}
 
         await loadLedgerData(targetLedger, authUserId);
+        processOfflineQueue().catch(() => {});
       }
     } catch (e) {
       console.warn('切換帳本失敗:', e);
@@ -7612,6 +7719,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         getNetWorthSummary,
         offlineQueue,
         pendingOfflineCount,
+        totalPendingOfflineCount,
+        offlineCountByLedgerMap,
         isProcessingQueue,
         processOfflineQueue,
       }}

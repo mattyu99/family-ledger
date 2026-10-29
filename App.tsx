@@ -138,6 +138,7 @@ const AppContent: React.FC = () => {
     confirmPendingInvite,
     cancelPendingInvite,
     pendingOfflineCount,
+    totalPendingOfflineCount,
     isProcessingQueue,
     processOfflineQueue,
   } = useLedger();

@@ -85,6 +85,7 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
     signInWithGoogle,
     claimGoogleIdentity,
     unreadLedgerMap,
+    offlineCountByLedgerMap,
     previewInvite,
     joinLedgerByCode,
   } = useLedger();
@@ -440,6 +441,13 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
                               <View style={styles.unreadBadge}>
                                 <Text style={styles.unreadBadgeText}>
                                   🔴 {(unreadLedgerMap[l.id] || 0) > 1 ? `${unreadLedgerMap[l.id]} 筆` : '新記帳'}
+                                </Text>
+                              </View>
+                            )}
+                            {(offlineCountByLedgerMap[l.id] || 0) > 0 && (
+                              <View style={styles.offlinePendingBadge}>
+                                <Text style={styles.offlinePendingBadgeText}>
+                                  📴 {offlineCountByLedgerMap[l.id]} 筆待補傳
                                 </Text>
                               </View>
                             )}
@@ -944,6 +952,19 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     unreadBadgeText: {
       fontSize: 10,
       color: '#DC2626',
+      fontWeight: '700',
+    },
+    offlinePendingBadge: {
+      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.25)' : '#FEE2E2',
+      borderWidth: 1,
+      borderColor: isDark ? '#EF4444' : '#FCA5A5',
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+    },
+    offlinePendingBadgeText: {
+      fontSize: 10,
+      color: isDark ? '#FCA5A5' : '#DC2626',
       fontWeight: '700',
     },
     orDividerRow: {

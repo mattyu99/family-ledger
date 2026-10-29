@@ -133,6 +133,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     updateAutoBackupConfig,
     hasOtherUnread,
     pendingOfflineCount,
+    totalPendingOfflineCount,
     isProcessingQueue,
     processOfflineQueue,
     resetLocalCacheAndResync,
@@ -1331,16 +1332,20 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
         </View>
 
         {/* 📴 離線待補同步隊列看板 */}
-        {pendingOfflineCount > 0 && (
+        {totalPendingOfflineCount > 0 && (
           <View style={[styles.offlineOutboxCard, { backgroundColor: isDark ? '#450A0A33' : '#FEF2F2', borderColor: isDark ? '#991B1B' : '#FCA5A5' }]}>
             <View style={styles.offlineOutboxLeft}>
               <Text style={styles.offlineOutboxIcon}>📴</Text>
               <View style={{ flex: 1, marginRight: 8 }}>
                 <Text style={[styles.offlineOutboxTitle, { color: isDark ? '#FCA5A5' : '#B91C1C' }]}>
-                  離線記帳待補傳隊列 ({pendingOfflineCount} 筆)
+                  {pendingOfflineCount > 0 && totalPendingOfflineCount === pendingOfflineCount
+                    ? `離線記帳待補傳隊列 (${pendingOfflineCount} 筆)`
+                    : pendingOfflineCount > 0
+                    ? `離線記帳待補傳 (本帳本 ${pendingOfflineCount} 筆，其他帳本 ${totalPendingOfflineCount - pendingOfflineCount} 筆)`
+                    : `其他帳本待補傳隊列 (${totalPendingOfflineCount} 筆)`}
                 </Text>
                 <Text style={[styles.offlineOutboxDesc, { color: colors.text.secondary }]}>
-                  您在無網路環境下記錄或編輯的帳目已安全暫存於本機。當網路通暢時，點擊右側按鈕即可立即上傳至雲端！
+                  您在離線環境上記錄或編輯的帳目已安全暫存於本機。當網路通暢時，點擊右側按鈕即可立即將所有公帳待補資料同步送達雲端！
                 </Text>
               </View>
             </View>
