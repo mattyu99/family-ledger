@@ -88,6 +88,7 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
     offlineCountByLedgerMap,
     previewInvite,
     joinLedgerByCode,
+    refreshLedgerList,
   } = useLedger();
 
   const [ledgerUserMap, setLedgerUserMap] = useState<Record<string, { displayName: string; avatarUrl?: string }>>({});
@@ -95,10 +96,16 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
   const [authPinInput, setAuthPinInput] = useState('');
   const [switchCodeInput, setSwitchCodeInput] = useState('');
   const [isJoining, setIsJoining] = useState(false);
+  const [isSyncingLedgers, setIsSyncingLedgers] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
     let isCancelled = false;
+
+    // 若使用者已登入 Google，打開切換選單時自動背景檢查並拉取最新公帳名冊
+    if (isGoogleAuthenticated) {
+      refreshLedgerList().catch(() => {});
+    }
 
     // 載入使用者稱謂資訊
     const loadLedgerUsers = async () => {
@@ -307,11 +314,22 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
                 isGoogleAuthenticated ? styles.googleCardAuth : styles.googleCardUnauth,
               ]}
               activeOpacity={0.85}
+              disabled={isSyncingLedgers}
               onPress={async () => {
                 if (isGoogleAuthenticated) {
-                  showAlert(
-                    'Google 帳號狀態',
-                    `目前已登入【${googleUserEmail || 'Google 帳號'}】\n所有家庭公帳均已自動同步解鎖！`
+                  showConfirm(
+                    'Google 帳號公帳同步',
+                    `目前已連線【${googleUserEmail || 'Google 帳號'}】\n\n是否立即向雲端重新整理名下的所有家庭公帳？`,
+                    async () => {
+                      setIsSyncingLedgers(true);
+                      const res = await refreshLedgerList();
+                      setIsSyncingLedgers(false);
+                      if (res.success) {
+                        showAlert('同步完成', `已成功重新整理公帳清單！名下共有 ${res.count} 本家庭公帳。`);
+                      } else {
+                        showAlert('提示', res.message || '連線逾時，請稍後重試');
+                      }
+                    }
                   );
                 } else {
                   const res = await signInWithGoogle();
@@ -322,24 +340,39 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
               }}
             >
               <View style={styles.googleCardContent}>
-                <Text style={{ fontSize: 22 }}>{isGoogleAuthenticated ? '🛡️' : '🟢'}</Text>
+                <Text style={{ fontSize: 22 }}>
+                  {isSyncingLedgers ? '⏳' : isGoogleAuthenticated ? '🛡️' : '🟢'}
+                </Text>
                 <View style={{ flex: 1 }}>
-                  <Text
-                    style={[
-                      styles.googleCardTitle,
-                      { color: isGoogleAuthenticated ? '#15803D' : '#FFFFFF' },
-                    ]}
-                  >
-                    {isGoogleAuthenticated ? 'Google 帳號已登入同步' : '使用 Google 帳號一鍵登入'}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text
+                      style={[
+                        styles.googleCardTitle,
+                        { color: isGoogleAuthenticated ? '#15803D' : '#FFFFFF' },
+                      ]}
+                    >
+                      {isSyncingLedgers
+                        ? '正在同步雲端公帳...'
+                        : isGoogleAuthenticated
+                        ? 'Google 帳號已登入同步'
+                        : '使用 Google 帳號一鍵登入'}
+                    </Text>
+                    {isGoogleAuthenticated && !isSyncingLedgers && (
+                      <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                        <Text style={{ fontSize: 11, color: '#15803D', fontWeight: '700' }}>🔄 點擊重整</Text>
+                      </View>
+                    )}
+                  </View>
                   <Text
                     style={[
                       styles.googleCardDesc,
                       { color: isGoogleAuthenticated ? '#166534' : '#E0E7FF' },
                     ]}
                   >
-                    {isGoogleAuthenticated
-                      ? `已連線 ${googleUserEmail || ''}，名下公帳已同步`
+                    {isSyncingLedgers
+                      ? '正在自雲端反查名下全部公帳名冊...'
+                      : isGoogleAuthenticated
+                      ? `已連線 ${googleUserEmail || ''}，點擊可立即重新整理名下公帳`
                       : '一鍵登入即可解鎖並還原名下的家庭公帳'}
                   </Text>
                 </View>

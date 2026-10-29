@@ -416,6 +416,7 @@ interface LedgerContextType {
   offlineCountByLedgerMap: Record<string, number>; // 各帳本待補傳筆數字典
   isProcessingQueue: boolean;
   processOfflineQueue: () => Promise<{ success: boolean; syncedCount: number; failedCount: number }>;
+  refreshLedgerList: () => Promise<{ success: boolean; count: number; message?: string }>;
 }
 
 const LedgerContext = createContext<LedgerContextType | null>(null);
@@ -3262,6 +3263,185 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // (F) Realtime 訂閱
     setupRealtimeSubscription(targetLedger.id);
+  };
+
+  // 重新向雲端拉取並刷新當前使用者名下的所有公帳清單 (支援 Google 信箱全庫自動反查與跨裝置同步)
+  const refreshLedgerList = async (): Promise<{ success: boolean; count: number; message?: string }> => {
+    try {
+      if (!isConfigured) return { success: false, count: 0, message: '未連線至雲端資料庫' };
+      let { data: { session } } = await supabase.auth.getSession();
+      const authUser = session?.user;
+      if (!authUser) return { success: false, count: 0, message: '尚未登入' };
+
+      let candidateUserIds = [authUser.id];
+      let lookupEmail: string | undefined = undefined;
+
+      if (authUser?.email && !authUser.email.endsWith('@family.local') && !authUser.email.includes('anonymous')) {
+        lookupEmail = authUser.email;
+      }
+
+      if (!lookupEmail) {
+        try {
+          const savedUserStr = await AsyncStorage.getItem(STORAGE_KEYS.CURRENT_USER);
+          if (savedUserStr) {
+            const u = JSON.parse(savedUserStr);
+            if (u?.auth_email && !u.auth_email.endsWith('@family.local')) {
+              lookupEmail = u.auth_email;
+            }
+          }
+        } catch {}
+      }
+
+      if (!lookupEmail) {
+        try {
+          const savedGoogleEmail = await AsyncStorage.getItem('@family_ledger_google_email');
+          if (savedGoogleEmail) lookupEmail = savedGoogleEmail;
+        } catch {}
+      }
+
+      if (!lookupEmail && authUser?.id) {
+        try {
+          const { data: myProf } = await supabase
+            .from('profiles')
+            .select('auth_email')
+            .eq('id', authUser.id)
+            .maybeSingle();
+          if (myProf?.auth_email && !myProf.auth_email.endsWith('@family.local')) {
+            lookupEmail = myProf.auth_email;
+          }
+        } catch {}
+      }
+
+      if (lookupEmail) {
+        try {
+          const { data: boundProfiles } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('auth_email', lookupEmail.toLowerCase());
+          if (boundProfiles && boundProfiles.length > 0) {
+            candidateUserIds = [...new Set([...candidateUserIds, ...boundProfiles.map(p => p.id)])];
+          }
+        } catch (e) {
+          console.warn('反查 Google 綁定帳本身分失敗:', e);
+        }
+      }
+
+      const { data: memberLedgers } = await supabase
+        .from('ledger_members')
+        .select('ledger_id, role, joined_at, ledgers(*), profiles(*)')
+        .in('user_id', candidateUserIds)
+        .order('joined_at', { ascending: false });
+
+      let validMemberLedgers = (memberLedgers || []).filter((m: any) => m.ledgers && isValidUUID(m.ledgers.id));
+
+      try {
+        const { data: createdLedgers } = await supabase
+          .from('ledgers')
+          .select('*')
+          .in('created_by', candidateUserIds);
+        if (createdLedgers && createdLedgers.length > 0) {
+          for (const cl of createdLedgers) {
+            const exists = validMemberLedgers.some((m: any) => {
+              const lObj = Array.isArray(m.ledgers) ? m.ledgers[0] : m.ledgers;
+              return lObj?.id === cl.id || m.ledger_id === cl.id;
+            });
+            if (!exists) {
+              validMemberLedgers.push({
+                ledger_id: cl.id,
+                role: 'owner',
+                joined_at: cl.created_at || new Date().toISOString(),
+                ledgers: cl,
+                profiles: null,
+              } as any);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('反查建立之帳本失敗:', e);
+      }
+
+      const ledgerMap = new Map<string, any>();
+      for (const m of validMemberLedgers) {
+        const lObj = Array.isArray(m.ledgers) ? m.ledgers[0] : m.ledgers;
+        const lId = m.ledger_id || lObj?.id;
+        if (!lId) continue;
+        if (!ledgerMap.has(lId)) {
+          ledgerMap.set(lId, m);
+        } else {
+          const existing = ledgerMap.get(lId);
+          const prof = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+          const isCustom = prof?.avatar_url && !prof.avatar_url.startsWith('http');
+          const existingProf = Array.isArray(existing.profiles) ? existing.profiles[0] : existing.profiles;
+          const existingIsUrl = existingProf?.avatar_url && existingProf.avatar_url.startsWith('http');
+          if (isCustom || existingIsUrl) {
+            ledgerMap.set(lId, m);
+          }
+        }
+      }
+      const uniqueMemberLedgers = Array.from(ledgerMap.values());
+
+      const allUserLedgers: Ledger[] = await Promise.all(uniqueMemberLedgers.map(async (m: any) => {
+        const l = (Array.isArray(m.ledgers) ? m.ledgers[0] : m.ledgers) as unknown as Ledger;
+        const isCreator = l.created_by === authUser.id;
+        let savedName = '';
+        let savedAvatar = '';
+        try {
+          const savedUserStr = await AsyncStorage.getItem(`${STORAGE_KEYS.CURRENT_USER}_${l.id}`);
+          if (savedUserStr) {
+            const u = JSON.parse(savedUserStr);
+            savedName = u.display_name;
+            savedAvatar = u.avatar_url;
+          }
+        } catch {}
+        if (!savedName && m.profiles) {
+          const prof = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+          if (prof?.display_name && (!prof.avatar_url || !prof.avatar_url.startsWith('http'))) {
+            savedName = prof.display_name;
+            savedAvatar = prof.avatar_url;
+          }
+        }
+        if (!savedName && lookupEmail) {
+          try {
+            const { data: bMems } = await supabase
+              .from('ledger_members')
+              .select('profiles(id, display_name, avatar_url, auth_email)')
+              .eq('ledger_id', l.id);
+            if (bMems && bMems.length > 0) {
+              const match = bMems.find((bm: any) => {
+                const bp = Array.isArray(bm.profiles) ? bm.profiles[0] : bm.profiles;
+                return bp && (bp.auth_email || '').toLowerCase() === lookupEmail.toLowerCase() &&
+                       (!bp.avatar_url || !bp.avatar_url.startsWith('http'));
+              });
+              if (match) {
+                const bp = Array.isArray(match.profiles) ? match.profiles[0] : match.profiles;
+                savedName = bp.display_name;
+                savedAvatar = bp.avatar_url;
+              }
+            }
+          } catch {}
+        }
+        let ledgerReadOnly = Boolean(l.is_read_only || l.description?.includes('[READ_ONLY]'));
+        try {
+          const savedReadOnly = await AsyncStorage.getItem(`${STORAGE_KEYS.LEDGER_READ_ONLY}_${l.id}`);
+          if (savedReadOnly === 'true') ledgerReadOnly = true;
+        } catch {}
+        return {
+          ...l,
+          is_read_only: ledgerReadOnly,
+          userRole: (isCreator ? 'owner' : m.role) as any,
+          userDisplayName: savedName,
+          userAvatar: savedAvatar,
+        };
+      }));
+
+      if (allUserLedgers.length > 0) {
+        setLedgers(allUserLedgers);
+      }
+      return { success: true, count: allUserLedgers.length };
+    } catch (e: any) {
+      console.warn('刷新公帳清單失敗:', e);
+      return { success: false, count: 0, message: e?.message };
+    }
   };
 
   // 2. 當連線設定具備時，啟動 Supabase 身分驗證與雲端即時同步
@@ -7723,6 +7903,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         offlineCountByLedgerMap,
         isProcessingQueue,
         processOfflineQueue,
+        refreshLedgerList,
       }}
     >
       {children}
