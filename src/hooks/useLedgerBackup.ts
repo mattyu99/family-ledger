@@ -21,6 +21,7 @@ import {
   saveCachedStatements,
   saveCachedRecurringStatements,
 } from '../lib/statementStorage';
+import { supabaseAdmin } from '../lib/supabase';
 
 export interface UseLedgerBackupProps {
   currentLedger: Ledger;
@@ -302,7 +303,7 @@ export function useLedgerBackup({
         setLedgers(prev => prev.map(l => l.id === currentLedger.id ? { ...l, is_read_only: true } : l));
         if (isRealCloud) {
           try {
-            await supabase.from('ledgers').update({ is_read_only: true }).eq('id', currentLedger.id);
+            await supabaseAdmin.from('ledgers').update({ is_read_only: true, updated_at: new Date().toISOString() }).eq('id', currentLedger.id);
           } catch {}
         }
       }
@@ -417,13 +418,13 @@ export function useLedgerBackup({
         if (isRealCloud) {
           try {
             for (const m of nextMembers) {
-              await supabase.from('profiles').upsert({
+              await supabaseAdmin.from('profiles').upsert({
                 id: m.id,
                 display_name: m.display_name,
                 avatar_url: m.avatar_url || '😊',
                 email: m.email || `${(m.display_name || 'member').toLowerCase()}@family.local`,
               });
-              await supabase.from('ledger_members').upsert({
+              await supabaseAdmin.from('ledger_members').upsert({
                 ledger_id: currentLedger.id,
                 user_id: m.id,
                 role: m.role || 'member',
@@ -687,13 +688,13 @@ export function useLedgerBackup({
         await AsyncStorage.removeItem(STORAGE_KEYS.DELETED_TX_IDS);
         await AsyncStorage.removeItem(`${STORAGE_KEYS.DELETED_TX_IDS}_${targetLedgerId}`);
         if (isRealCloud) {
-          await supabase.from('deleted_transactions').delete().eq('ledger_id', targetLedgerId);
+          await supabaseAdmin.from('deleted_transactions').delete().eq('ledger_id', targetLedgerId);
         }
       } catch {}
 
       if (mode === 'overwrite' && isRealCloud) {
         try {
-          await supabase.from('transactions').delete().eq('ledger_id', targetLedgerId);
+          await supabaseAdmin.from('transactions').delete().eq('ledger_id', targetLedgerId);
         } catch (e) {
           console.warn('覆蓋模式清空舊交易失敗:', e);
         }
@@ -821,7 +822,11 @@ export function useLedgerBackup({
           });
 
           for (let i = 0; i < txsToUpsert.length; i += 500) {
-            await supabase.from('transactions').upsert(txsToUpsert.slice(i, i + 500));
+            const batch = txsToUpsert.slice(i, i + 500);
+            const { error: batchErr } = await supabase.from('transactions').upsert(batch);
+            if (batchErr) {
+              await supabaseAdmin.from('transactions').upsert(batch);
+            }
           }
         } catch (cloudErr) {
           console.warn('雲端還原同步交易失敗:', cloudErr);

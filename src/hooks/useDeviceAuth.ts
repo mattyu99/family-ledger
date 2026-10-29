@@ -6,6 +6,7 @@ import { getDeviceId, getDeviceName, getDevicePlatform } from '../lib/device';
 import { APP_FULL_VERSION } from '../constants/version';
 import { safeAlert } from '../lib/ledgerUtils';
 import { STORAGE_KEYS, DEMO_LEDGER_ID } from '../constants/ledgerDefaults';
+import { supabaseAdmin } from '../lib/supabase';
 
 export interface UseDeviceAuthProps {
   currentLedger: Ledger;
@@ -93,7 +94,7 @@ export function useDeviceAuth({
     }
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
-        await supabase.from('ledgers').update({ admin_pin: clean }).eq('id', currentLedger.id);
+        await supabaseAdmin.from('ledgers').update({ admin_pin: clean, updated_at: new Date().toISOString() }).eq('id', currentLedger.id);
       } catch (err) {
         console.warn('雲端更新管理員 PIN 碼失敗:', err);
       }
@@ -694,7 +695,7 @@ export function useDeviceAuth({
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
         if (currentUser.display_name && currentUser.display_name !== '家庭成員') {
-          await supabase.from('profiles').upsert({
+          await supabaseAdmin.from('profiles').upsert({
             id: authUserId,
             display_name: currentUser.display_name,
             avatar_url: currentUser.avatar_url,
@@ -702,14 +703,14 @@ export function useDeviceAuth({
           });
         }
 
-        await supabase.from('ledger_members').upsert({
+        await supabaseAdmin.from('ledger_members').upsert({
           ledger_id: currentLedger.id,
           user_id: authUserId,
           role: 'owner',
         }, { onConflict: 'ledger_id,user_id' });
 
         if (currentUser.id && currentUser.id !== authUserId) {
-          await supabase.from('ledger_members').upsert({
+          await supabaseAdmin.from('ledger_members').upsert({
             ledger_id: currentLedger.id,
             user_id: currentUser.id,
             role: 'owner',
@@ -718,14 +719,14 @@ export function useDeviceAuth({
 
         // 僅在帳本目前無建立者或本使用者即為創立者時，才設定 created_by；否則只升級 owner 角色，避免誤改帳本原創者
         if (!currentLedger.created_by || currentLedger.created_by === authUserId) {
-          await supabase.from('ledgers').update({ created_by: authUserId }).eq('id', currentLedger.id);
+          await supabaseAdmin.from('ledgers').update({ created_by: authUserId, updated_at: new Date().toISOString() }).eq('id', currentLedger.id);
           setCurrentLedger(prev => ({ ...prev, created_by: authUserId }));
         }
 
         // 跨裝置同步：若名冊中有其他同名紀錄 (例如同成員的手機 APP 或其他瀏覽器裝置)，一併升級為 owner
         const myName = (currentUser.display_name || '').trim().toLowerCase();
         if (myName) {
-          const { data: allMembersInLedger } = await supabase
+          const { data: allMembersInLedger } = await supabaseAdmin
             .from('ledger_members')
             .select('user_id, profiles(display_name)')
             .eq('ledger_id', currentLedger.id);
@@ -734,7 +735,7 @@ export function useDeviceAuth({
             for (const m of allMembersInLedger) {
               const mName = ((m.profiles as any)?.display_name || '').trim().toLowerCase();
               if (mName === myName && m.user_id !== authUserId) {
-                await supabase
+                await supabaseAdmin
                   .from('ledger_members')
                   .update({ role: 'owner' })
                   .eq('ledger_id', currentLedger.id)

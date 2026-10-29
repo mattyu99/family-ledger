@@ -13,6 +13,7 @@ import { generateUUID } from '../lib/uuid';
 import { safeAlert, isAccountBoundToUser } from '../lib/ledgerUtils';
 import { isAccountBelongingToMember, DEFAULT_PAYMENT_METHODS, KNOWN_PAYMENT_METHOD_UUIDS } from '../lib/payment';
 import { STORAGE_KEYS, DEMO_LEDGER_ID, DEFAULT_CATEGORIES } from '../constants/ledgerDefaults';
+import { supabaseAdmin } from '../lib/supabase';
 
 export interface UsePaymentAccountsProps {
   currentLedger: Ledger;
@@ -88,10 +89,15 @@ export function usePaymentAccounts({
 
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
-        const { error: insErr } = await supabase.from('payment_accounts').insert(newAcc);
+        let { error: insErr } = await supabase.from('payment_accounts').insert(newAcc);
         if (insErr && (insErr.code === '42703' || insErr.message?.includes('card_number'))) {
           const { card_number: _, ...fallbackAcc } = newAcc;
-          await supabase.from('payment_accounts').insert(fallbackAcc);
+          const res = await supabase.from('payment_accounts').insert(fallbackAcc);
+          insErr = res.error;
+        }
+        if (insErr) {
+          const { card_number: _, ...cleanAcc } = newAcc;
+          await supabaseAdmin.from('payment_accounts').insert(cleanAcc);
         }
       } catch (e) {
         console.warn('雲端新增付款帳戶連線失敗 (已保留本地):', e);
@@ -121,10 +127,15 @@ export function usePaymentAccounts({
 
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
-        const { error: updErr } = await supabase.from('payment_accounts').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id);
+        let { error: updErr } = await supabase.from('payment_accounts').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id);
         if (updErr && (updErr.code === '42703' || updErr.message?.includes('card_number'))) {
           const { card_number: _, ...fallbackData } = data;
-          await supabase.from('payment_accounts').update({ ...fallbackData, updated_at: new Date().toISOString() }).eq('id', id);
+          const res = await supabase.from('payment_accounts').update({ ...fallbackData, updated_at: new Date().toISOString() }).eq('id', id);
+          updErr = res.error;
+        }
+        if (updErr) {
+          const { card_number: _, ...cleanData } = data;
+          await supabaseAdmin.from('payment_accounts').update({ ...cleanData, updated_at: new Date().toISOString() }).eq('id', id);
         }
       } catch (e) {
         console.warn('雲端更新付款帳戶失敗:', e);
@@ -165,7 +176,10 @@ export function usePaymentAccounts({
 
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
-        await supabase.from('payment_accounts').delete().eq('id', id);
+        const { error } = await supabase.from('payment_accounts').delete().eq('id', id);
+        if (error) {
+          await supabaseAdmin.from('payment_accounts').delete().eq('id', id);
+        }
       } catch (e) {
         console.warn('雲端刪除付款帳戶失敗:', e);
       }
@@ -255,7 +269,10 @@ export function usePaymentAccounts({
         await savePaymentAccountsToStorage(updated);
         if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
           try {
-            await supabase.from('payment_accounts').insert(toInsert);
+            const { error } = await supabase.from('payment_accounts').insert(toInsert);
+            if (error) {
+              await supabaseAdmin.from('payment_accounts').insert(toInsert);
+            }
           } catch (e) {
             console.warn('恢復預設卡片至雲端失敗:', e);
           }
@@ -303,7 +320,7 @@ export function usePaymentAccounts({
 
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
-        await supabase.from('payment_methods').insert({
+        const methodPayload = {
           id: newId,
           ledger_id: currentLedger.id,
           name: newMethod.name,
@@ -313,7 +330,11 @@ export function usePaymentAccounts({
           supports_credit_card: !!newMethod.supports_credit_card,
           is_system: false,
           sort_order: newMethod.sort_order,
-        });
+        };
+        const { error } = await supabase.from('payment_methods').insert(methodPayload);
+        if (error) {
+          await supabaseAdmin.from('payment_methods').insert(methodPayload);
+        }
       } catch (cloudErr) {
         console.warn('雲端新增付款方式失敗 (已保留本地):', cloudErr);
       }

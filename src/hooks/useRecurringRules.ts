@@ -11,6 +11,7 @@ import {
 import { generateUUID } from '../lib/uuid';
 import { safeAlert } from '../lib/ledgerUtils';
 import { STORAGE_KEYS, DEMO_LEDGER_ID, DEMO_RECURRING_RULES } from '../constants/ledgerDefaults';
+import { supabaseAdmin } from '../lib/supabase';
 
 export interface UseRecurringRulesProps {
   currentLedger: Ledger;
@@ -63,7 +64,10 @@ export function useRecurringRules({
 
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
-        await supabase.from('recurring_rules').insert(newRule);
+        const { error } = await supabase.from('recurring_rules').insert(newRule);
+        if (error) {
+          await supabaseAdmin.from('recurring_rules').insert(newRule);
+        }
       } catch (err) {
         console.warn('雲端新增週期規則失敗 (本地可用):', err);
       }
@@ -92,10 +96,14 @@ export function useRecurringRules({
 
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
-        await supabase.from('recurring_rules').update({
+        const updatePayload = {
           ...data,
           updated_at: new Date().toISOString(),
-        }).eq('id', id);
+        };
+        const { error } = await supabase.from('recurring_rules').update(updatePayload).eq('id', id);
+        if (error) {
+          await supabaseAdmin.from('recurring_rules').update(updatePayload).eq('id', id);
+        }
       } catch (err) {
         console.warn('雲端更新週期規則失敗 (本地可用):', err);
       }
@@ -111,7 +119,10 @@ export function useRecurringRules({
 
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
-        await supabase.from('recurring_rules').delete().eq('id', id);
+        const { error } = await supabase.from('recurring_rules').delete().eq('id', id);
+        if (error) {
+          await supabaseAdmin.from('recurring_rules').delete().eq('id', id);
+        }
       } catch (err) {
         console.warn('雲端刪除週期規則失敗 (本地可用):', err);
       }

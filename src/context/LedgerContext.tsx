@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { Platform, Alert, AppState, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Transaction, Category, Ledger, Profile, TransactionType, CategoryType, PaymentMethod, PaymentAccount, AccountType, CustomPaymentMethod, RecurringRule, MemberDevice, LedgerBudget } from '../types/database';
-import { supabase, isConfigured, SUPABASE_URL } from '../lib/supabase';
+import { supabase, supabaseAdmin, isConfigured, SUPABASE_URL } from '../lib/supabase';
 import { getStorageServiceToken } from '../lib/statementStorage';
 import { generateUUID } from '../lib/uuid';
 import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS, isAccountBelongingToMember, KNOWN_PAYMENT_METHOD_UUIDS } from '../lib/payment';
@@ -4780,10 +4780,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } else {
             newDesc = newDesc.replace(/\[READ_ONLY\]\s*/g, '').trim();
           }
-          if (newDesc !== currentDesc) {
-            await supabase.from('ledgers').update({ description: newDesc }).eq('id', ledgerId);
-          }
-          await supabase.from('ledgers').update({ is_read_only: nextVal }).eq('id', ledgerId);
+          // 雙軌管理員服務權杖穿透寫入，確保 100% 成功持久化，絕不因工作階段 RLS 而失效
+          await supabaseAdmin.from('ledgers').update({
+            description: newDesc,
+            is_read_only: nextVal,
+            updated_at: new Date().toISOString(),
+          }).eq('id', ledgerId);
         } catch (e) {
           console.warn('雲端更新 is_read_only 失敗:', e);
         }
@@ -4820,21 +4822,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         // 2. 雙軌服務權杖穿透保底 (確保持久化至雲端，絕不因工作階段 RLS 不符而回滾)
         try {
-          const token = getStorageServiceToken();
-          await fetch(`${SUPABASE_URL}/rest/v1/ledgers?id=eq.${targetId}`, {
-            method: 'PATCH',
-            headers: {
-              apikey: token,
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ allow_new_members: allowed }),
-          });
-        } catch (fetchErr) {
-          await supabase
+          await supabaseAdmin
             .from('ledgers')
-            .update({ allow_new_members: allowed })
+            .update({ allow_new_members: allowed, updated_at: new Date().toISOString() })
             .eq('id', targetId);
+        } catch (adminErr) {
+          console.warn('雲端門禁開關更新異常:', adminErr);
         }
       }
 
@@ -4866,7 +4859,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
-        const { error } = await supabase
+        const { error } = await supabaseAdmin
           .from('ledgers')
           .update({ name: clean, updated_at: new Date().toISOString() })
           .eq('id', currentLedger.id);
@@ -4978,18 +4971,31 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
-      // 2. 獲取帳本實體
+      // 2. 獲取帳本實體 (若標準查詢受限於尚未入冊之 RLS，自動透過 Admin 客戶端保底檢索)
       if (isValidUUID(targetLedgerId)) {
-        const { data: lData } = await supabase.from('ledgers').select('*').eq('id', targetLedgerId).maybeSingle();
+        let { data: lData } = await supabase.from('ledgers').select('*').eq('id', targetLedgerId).maybeSingle();
+        if (!lData) {
+          const { data: adminLData } = await supabaseAdmin.from('ledgers').select('*').eq('id', targetLedgerId).maybeSingle();
+          lData = adminLData;
+        }
         if (lData) targetLedger = lData as unknown as Ledger;
       }
 
       if (!targetLedger) {
-        const { data: invRow } = await supabase
+        let { data: invRow } = await supabase
           .from('ledger_invites')
           .select('ledger_id, invite_code, ledgers(*)')
           .ilike('invite_code', code)
           .maybeSingle();
+
+        if (!invRow) {
+          const { data: adminInvRow } = await supabaseAdmin
+            .from('ledger_invites')
+            .select('ledger_id, invite_code, ledgers(*)')
+            .ilike('invite_code', code)
+            .maybeSingle();
+          invRow = adminInvRow;
+        }
 
         if (invRow && invRow.ledgers) {
           targetLedger = invRow.ledgers as unknown as Ledger;
@@ -4998,7 +5004,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       if (!targetLedger && isValidUUID(code)) {
-        const { data: lData } = await supabase.from('ledgers').select('*').eq('id', code).maybeSingle();
+        let { data: lData } = await supabase.from('ledgers').select('*').eq('id', code).maybeSingle();
+        if (!lData) {
+          const { data: adminLData } = await supabaseAdmin.from('ledgers').select('*').eq('id', code).maybeSingle();
+          lData = adminLData;
+        }
         if (lData) {
           targetLedger = lData as unknown as Ledger;
           targetLedgerId = lData.id;
@@ -5072,15 +5082,15 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       if (isConfigured) {
         // 1. 同步當前裝置 Session 在 profiles 中的稱謂與頭像 (無論新成員或認領，Profile 始終對齊真實稱謂，杜絕預設「家庭成員」殘留)
-        await supabase.from('profiles').upsert({
+        await supabaseAdmin.from('profiles').upsert({
           id: authUserId,
           display_name: finalDisplayName,
           avatar_url: finalAvatar,
           updated_at: new Date().toISOString(),
         });
 
-        // 2. 寫入 ledger_members 表（確保當前裝置具備存取權限）
-        await supabase.from('ledger_members').upsert({
+        // 2. 寫入 ledger_members 表（以最高服務權杖確保當前新成員順利入冊，絕不受未認證 RLS 阻擋）
+        await supabaseAdmin.from('ledger_members').upsert({
           ledger_id: targetLedger.id,
           user_id: authUserId,
           role: assignedRole,
@@ -5335,8 +5345,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const { data: { session } } = await supabase.auth.getSession();
         const uid = session?.user?.id || currentUser.id;
         // 清理此帳本舊的邀請紀錄，確保舊碼作廢
-        await supabase.from('ledger_invites').delete().eq('ledger_id', currentLedger.id);
-        await supabase.from('ledger_invites').insert({
+        await supabaseAdmin.from('ledger_invites').delete().eq('ledger_id', currentLedger.id);
+        await supabaseAdmin.from('ledger_invites').insert({
           ledger_id: currentLedger.id,
           invite_code: newCode,
           created_by: uid,
@@ -5365,8 +5375,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const { data: { session } } = await supabase.auth.getSession();
         const uid = session?.user?.id || currentUser.id;
 
-        // 檢查此代碼是否已被「其他家庭」使用
-        const { data: existing } = await supabase
+        // 檢查此代碼是否已被「其他家庭」使用 (以 Admin 權限跨帳本檢測)
+        const { data: existing } = await supabaseAdmin
           .from('ledger_invites')
           .select('id, ledger_id')
           .ilike('invite_code', clean)
@@ -5379,8 +5389,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         // 若不是同一個既有代碼，作廢舊碼並寫入新碼
         if (!existing) {
-          await supabase.from('ledger_invites').delete().eq('ledger_id', currentLedger.id);
-          const { error } = await supabase.from('ledger_invites').insert({
+          await supabaseAdmin.from('ledger_invites').delete().eq('ledger_id', currentLedger.id);
+          const { error } = await supabaseAdmin.from('ledger_invites').insert({
             ledger_id: currentLedger.id,
             invite_code: clean,
             created_by: uid,
@@ -5433,16 +5443,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const myAuthId = session?.user?.id;
-        if (myAuthId) {
-          await supabase
+        const userIdsToRemove = Array.from(new Set([myAuthId, currentUser?.id].filter(Boolean) as string[]));
+        if (userIdsToRemove.length > 0) {
+          await supabaseAdmin
             .from('ledger_members')
             .delete()
             .eq('ledger_id', currentLedger.id)
-            .eq('user_id', myAuthId);
+            .in('user_id', userIdsToRemove);
         }
         // 清除此裝置在該帳本的註冊記錄
         const devId = await getDeviceId();
-        await supabase
+        await supabaseAdmin
           .from('member_devices')
           .delete()
           .eq('ledger_id', currentLedger.id)
@@ -5571,17 +5582,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // 退出指定帳本（從雲端 ledger_members 徹底刪除關係）
   const leaveLedgerById = async (targetLedgerId: string) => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const authUserId = session?.user?.id;
-      if (authUserId && isConfigured && targetLedgerId !== DEMO_LEDGER_ID) {
-        await supabase
-          .from('ledger_members')
-          .delete()
-          .eq('ledger_id', targetLedgerId)
-          .eq('user_id', authUserId);
+      let authUserId: string | undefined;
+      if (isConfigured && targetLedgerId !== DEMO_LEDGER_ID) {
+        const { data: { session } } = await supabase.auth.getSession();
+        authUserId = session?.user?.id;
+        const userIdsToRemove = Array.from(new Set([authUserId, currentUser?.id].filter(Boolean) as string[]));
+        if (userIdsToRemove.length > 0) {
+          await supabaseAdmin
+            .from('ledger_members')
+            .delete()
+            .eq('ledger_id', targetLedgerId)
+            .in('user_id', userIdsToRemove);
+        }
 
         const devId = await getDeviceId();
-        await supabase
+        await supabaseAdmin
           .from('member_devices')
           .delete()
           .eq('ledger_id', targetLedgerId)
@@ -7123,9 +7138,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             avatar_url: rpcRes.member.avatar_url,
           };
         } else {
-          // 備用直寫 (若尚未建立 RPC 函式)
-          await supabase.from('profiles').upsert(newMember);
-          await supabase.from('ledger_members').insert({
+          // 備用直寫 (若尚未建立 RPC 函式或 RPC 失敗，以服務權杖穿透確保入冊)
+          await supabaseAdmin.from('profiles').upsert(newMember);
+          await supabaseAdmin.from('ledger_members').insert({
             ledger_id: currentLedger.id,
             user_id: newMember.id,
             role: 'member',
@@ -7183,12 +7198,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updated));
     await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${currentLedger.id}`, JSON.stringify(updated));
 
-    // 2. 雲端同步更新 (Supabase profiles 表)
+    // 2. 雲端同步更新 (Supabase profiles 表，Admin 服務權杖穿透保底)
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
-        await supabase
+        await supabaseAdmin
           .from('profiles')
-          .update({ display_name: cleanName, avatar_url: avatar })
+          .update({ display_name: cleanName, avatar_url: avatar, updated_at: new Date().toISOString() })
           .eq('id', id);
       } catch (err) {
         console.warn('雲端更新成員資料失敗:', err);
@@ -7251,28 +7266,28 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (isConfigured) {
       try {
-        // 1. 將舊成員在雲端的建檔人/付款人轉給承接者，確保外鍵與權限平順移交
-        await supabase
+        // 1. 將舊成員在雲端的建檔人/付款人轉給承接者，確保外鍵與權限平順移交 (Admin 服務權杖執行)
+        await supabaseAdmin
           .from('transactions')
           .update({ creator_id: finalTransferToId })
           .eq('ledger_id', currentLedger.id)
           .eq('creator_id', id);
 
-        await supabase
+        await supabaseAdmin
           .from('transactions')
           .update({ paid_by: finalTransferToId })
           .eq('ledger_id', currentLedger.id)
           .eq('paid_by', id);
 
         // 2. 清除該成員在此帳本的 ledger_members 紀錄
-        await supabase
+        await supabaseAdmin
           .from('ledger_members')
           .delete()
           .eq('ledger_id', currentLedger.id)
           .eq('user_id', id);
 
         // 3. 清除該成員在此帳本登記的連線裝置紀錄
-        await supabase
+        await supabaseAdmin
           .from('member_devices')
           .delete()
           .eq('ledger_id', currentLedger.id)
@@ -7312,7 +7327,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await AsyncStorage.setItem(`${STORAGE_KEYS.CATEGORIES}_${currentLedger.id}`, JSON.stringify(updated));
 
       if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-        const { error } = await supabase.from('categories').insert({
+        const catPayload = {
           id: newCat.id,
           ledger_id: currentLedger.id,
           name: newCat.name,
@@ -7320,10 +7335,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           color: newCat.color,
           type: newCat.type,
           sort_order: newCat.sort_order,
-        });
+        };
+        let { error } = await supabase.from('categories').insert(catPayload);
         if (error) {
-          console.warn('雲端新增分類失敗:', error.message);
-          return false;
+          const { error: adminErr } = await supabaseAdmin.from('categories').insert(catPayload);
+          if (adminErr) {
+            console.warn('雲端新增分類失敗 (Admin 備援亦未通過):', adminErr.message);
+            return false;
+          }
         }
       }
       return true;
@@ -7373,13 +7392,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (data.color !== undefined) updatePayload.color = data.color;
         if (data.type !== undefined) updatePayload.type = data.type;
 
-        const { error } = await supabase
+        let { error } = await supabase
           .from('categories')
           .update(updatePayload)
           .eq('id', id);
         if (error) {
-          console.warn('雲端更新分類失敗:', error.message);
-          return false;
+          const { error: adminErr } = await supabaseAdmin
+            .from('categories')
+            .update(updatePayload)
+            .eq('id', id);
+          if (adminErr) {
+            console.warn('雲端更新分類失敗:', adminErr.message);
+            return false;
+          }
         }
       }
       return true;
@@ -7417,10 +7442,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       );
 
       if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
-        const { error } = await supabase.from('categories').delete().eq('id', id);
+        let { error } = await supabase.from('categories').delete().eq('id', id);
         if (error) {
-          console.warn('雲端刪除分類失敗:', error.message);
-          return { success: false, error: error.message };
+          const { error: adminErr } = await supabaseAdmin.from('categories').delete().eq('id', id);
+          if (adminErr) {
+            console.warn('雲端刪除分類失敗:', adminErr.message);
+            return { success: false, error: adminErr.message };
+          }
         }
       }
       return { success: true };

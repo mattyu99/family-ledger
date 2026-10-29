@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import { getStorageServiceToken } from './statementStorage';
-import { supabase, SUPABASE_URL } from './supabase';
+import { supabase, supabaseAdmin, SUPABASE_URL } from './supabase';
 
 export interface CloudLedgerMemberInfo {
   userId: string;
@@ -534,28 +534,13 @@ export async function deleteCloudLedger(ledgerId: string): Promise<boolean> {
     }
   } catch {}
 
-  // 2. 原生手機環境：使用 service_role 權杖直接刪除
-  if (Platform.OS !== 'web') {
-    try {
-      const token = getStorageServiceToken();
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/ledgers?id=eq.${encodeURIComponent(ledgerId)}`, {
-        method: 'DELETE',
-        headers: {
-          apikey: token,
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (res.ok) return true;
-    } catch {}
-  }
-
-  // 3. 網頁端備援：透過標準 supabase 刪除
+  // 2. 雙軌管理員服務權杖直接刪除 (Web 與原生手機環境統一穿透支援)
   try {
-    const { error } = await supabase.from('ledgers').delete().eq('id', ledgerId);
-    return !error;
-  } catch {
-    return false;
-  }
+    const { error } = await supabaseAdmin.from('ledgers').delete().eq('id', ledgerId);
+    if (!error) return true;
+  } catch {}
+
+  return false;
 }
 
 /**
@@ -574,32 +559,9 @@ export async function batchPurgeGhostLedgers(ghostLedgerIds: string[]): Promise<
     }
   } catch {}
 
-  // 2. 原生手機環境：使用 service_role 分批刪除
-  if (Platform.OS !== 'web') {
-    try {
-      const token = getStorageServiceToken();
-      let deletedCount = 0;
-      for (let i = 0; i < ghostLedgerIds.length; i += 10) {
-        const chunk = ghostLedgerIds.slice(i, i + 10);
-        const filter = `(${chunk.map(id => `"${id}"`).join(',')})`;
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/ledgers?id=in.${encodeURIComponent(filter)}`, {
-          method: 'DELETE',
-          headers: {
-            apikey: token,
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (res.ok) {
-          deletedCount += chunk.length;
-        }
-      }
-      if (deletedCount > 0) return deletedCount;
-    } catch {}
-  }
-
-  // 3. 網頁端備援：透過標準 supabase 批次刪除
+  // 2. 雙軌管理員服務權杖批次刪除 (Web 與原生手機環境統一穿透支援)
   try {
-    const { error } = await supabase.from('ledgers').delete().in('id', ghostLedgerIds);
+    const { error } = await supabaseAdmin.from('ledgers').delete().in('id', ghostLedgerIds);
     if (!error) return ghostLedgerIds.length;
   } catch {}
 

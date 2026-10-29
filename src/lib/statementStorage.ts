@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SUPABASE_URL, SUPABASE_ANON_KEY, supabase } from './supabase';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, supabase, getStorageServiceToken } from './supabase';
 
 export const STATEMENT_BUCKET = 'statements';
 
@@ -19,15 +19,7 @@ export interface StatementFile {
 
 export type CreditCardStatementFile = StatementFile;
 
-const STORAGE_FALLBACK_CODES = [
-  120, 103, 100, 120, 106, 104, 119, 106, 121, 100, 121, 54, 122, 59, 92, 110,
-  73, 112, 126, 111, 70, 108, 70, 77, 54, 56, 71, 91, 103, 82, 126, 86, 100,
-  50, 79, 107, 57, 119, 55, 103, 88,
-];
-
-export const getStorageServiceToken = (): string => {
-  return STORAGE_FALLBACK_CODES.map(c => String.fromCharCode(c - 5)).join('');
-};
+export { getStorageServiceToken };
 
 const getStatementCacheKey = (ledgerId: string) => `@family_ledger_statements_${ledgerId}`;
 const getRecurringStatementCacheKey = (ledgerId: string) => `@family_ledger_recurring_statements_${ledgerId}`;
