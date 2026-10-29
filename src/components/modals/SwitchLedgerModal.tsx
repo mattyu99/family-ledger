@@ -140,14 +140,17 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
       const initialMap: Record<string, number> = {};
       for (const l of ledgers) {
         if (l.id === currentLedger.id) {
-          initialMap[l.id] = transactions.length;
+          const validCurTxs = (transactions || []).filter(t => t && t.ledger_id === currentLedger.id);
+          initialMap[l.id] = validCurTxs.length;
         } else {
           try {
             const cachedStr = await AsyncStorage.getItem(`@family_ledger_transactions_${l.id}`);
             if (cachedStr) {
               const parsed = JSON.parse(cachedStr);
               if (Array.isArray(parsed)) {
-                initialMap[l.id] = parsed.length;
+                // 嚴格僅採計真正隸屬於該帳本之交易，隔絕舊帳本污染
+                const matched = parsed.filter((t: any) => t && t.ledger_id === l.id);
+                initialMap[l.id] = matched.length;
               }
             }
           } catch {}
@@ -225,9 +228,10 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
             }
             merged[lid] = cnt;
           }
-          // 當前帳本始終以記憶體中真實的 transactions.length 為權威準則
-          if (currentLedger?.id && typeof transactions?.length === 'number') {
-            merged[currentLedger.id] = Math.max(merged[currentLedger.id] || 0, transactions.length);
+          // 當前帳本始終以記憶體中屬於該帳本的真實筆數為權威準則
+          if (currentLedger?.id && Array.isArray(transactions)) {
+            const validCurCount = transactions.filter(t => t && t.ledger_id === currentLedger.id).length;
+            merged[currentLedger.id] = Math.max(merged[currentLedger.id] || 0, validCurCount);
           }
           return merged;
         });
