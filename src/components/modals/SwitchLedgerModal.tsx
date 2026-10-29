@@ -98,14 +98,16 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
   const [isJoining, setIsJoining] = useState(false);
   const [isSyncingLedgers, setIsSyncingLedgers] = useState(false);
 
+  // 當彈窗打開時：若已登入 Google，自動於背景檢查並拉取最新公帳名冊（單次觸發，絕不重複迴圈）
+  useEffect(() => {
+    if (visible && isGoogleAuthenticated) {
+      refreshLedgerList().catch(() => {});
+    }
+  }, [visible, isGoogleAuthenticated]);
+
   useEffect(() => {
     if (!visible) return;
     let isCancelled = false;
-
-    // 若使用者已登入 Google，打開切換選單時自動背景檢查並拉取最新公帳名冊
-    if (isGoogleAuthenticated) {
-      refreshLedgerList().catch(() => {});
-    }
 
     // 載入使用者稱謂資訊
     const loadLedgerUsers = async () => {
@@ -165,7 +167,19 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
         }
       }
       if (!isCancelled) {
-        setLedgerTxCountMap(prev => ({ ...prev, ...initialMap }));
+        setLedgerTxCountMap(prev => {
+          const next = { ...prev };
+          for (const [lid, cnt] of Object.entries(initialMap)) {
+            // 防呆核心原則：若現有狀態已持有筆數（如雲端計數 25980 或 49），本地快取絕不可將其覆寫為較小筆數或 0！
+            if (typeof next[lid] === 'number' && next[lid] > cnt) {
+              continue;
+            }
+            if (cnt > 0 || next[lid] === undefined) {
+              next[lid] = cnt;
+            }
+          }
+          return next;
+        });
       }
     };
     loadCacheCounts();
@@ -197,7 +211,8 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
       await Promise.all(
         ledgers.map(async (l) => {
           if (l.id === currentLedger.id) {
-            cloudMap[l.id] = transactions.length;
+            // 當前帳本：如果雲端 RPC 已經統計出真實筆數 (例如 25980)，且大於記憶體中正在背景分批載入的筆數 (例如 1500)，以較大者為準！
+            cloudMap[l.id] = Math.max(cloudMap[l.id] || 0, transactions.length);
             return;
           }
           if (typeof cloudMap[l.id] === 'number' && cloudMap[l.id] > 0) return;
@@ -234,9 +249,10 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
             if (cnt === 0 && (prev[lid] || 0) > 0) {
               continue;
             }
-            merged[lid] = cnt;
+            // 絕不被較小筆數覆寫（防呆防跳動）
+            merged[lid] = Math.max(merged[lid] || 0, cnt);
           }
-          // 當前帳本始終以記憶體中屬於該帳本的真實筆數為權威準則
+          // 當前帳本始終以記憶體中屬於該帳本的真實筆數為權威準則（取最大值）
           if (currentLedger?.id && Array.isArray(transactions)) {
             const validCurCount = transactions.filter(t => t && t.ledger_id === currentLedger.id).length;
             merged[currentLedger.id] = Math.max(merged[currentLedger.id] || 0, validCurCount);
@@ -344,25 +360,18 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
                   {isSyncingLedgers ? '⏳' : isGoogleAuthenticated ? '🛡️' : '🟢'}
                 </Text>
                 <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Text
-                      style={[
-                        styles.googleCardTitle,
-                        { color: isGoogleAuthenticated ? '#15803D' : '#FFFFFF' },
-                      ]}
-                    >
-                      {isSyncingLedgers
-                        ? '正在同步雲端公帳...'
-                        : isGoogleAuthenticated
-                        ? 'Google 帳號已登入同步'
-                        : '使用 Google 帳號一鍵登入'}
-                    </Text>
-                    {isGoogleAuthenticated && !isSyncingLedgers && (
-                      <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
-                        <Text style={{ fontSize: 11, color: '#15803D', fontWeight: '700' }}>🔄 點擊重整</Text>
-                      </View>
-                    )}
-                  </View>
+                  <Text
+                    style={[
+                      styles.googleCardTitle,
+                      { color: isGoogleAuthenticated ? '#15803D' : '#FFFFFF' },
+                    ]}
+                  >
+                    {isSyncingLedgers
+                      ? '正在同步雲端公帳...'
+                      : isGoogleAuthenticated
+                      ? 'Google 帳號已登入同步'
+                      : '使用 Google 帳號一鍵登入'}
+                  </Text>
                   <Text
                     style={[
                       styles.googleCardDesc,
@@ -372,7 +381,7 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
                     {isSyncingLedgers
                       ? '正在自雲端反查名下全部公帳名冊...'
                       : isGoogleAuthenticated
-                      ? `已連線 ${googleUserEmail || ''}，點擊可立即重新整理名下公帳`
+                      ? `已連線 ${googleUserEmail || ''}，名下公帳已同步`
                       : '一鍵登入即可解鎖並還原名下的家庭公帳'}
                   </Text>
                 </View>
