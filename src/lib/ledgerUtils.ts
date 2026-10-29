@@ -99,11 +99,21 @@ export const deduplicateMembers = (memberList: Profile[]): Profile[] => {
   const seenEmails = new Set<string>();
 
   // 排除殘留之訪客寶可夢與歷史幽靈成員，確保名冊永遠純淨
-  const cleanList = memberList.filter(m =>
+  const initialClean = memberList.filter(m =>
     m.id !== '9b017d89-b21f-4638-b076-5a7629e2dda5' &&
     m.id !== 'e6a2d1ec-3b2a-495f-b24e-71c2647d9a86' &&
     (m.display_name || '').trim() !== '寶可夢'
   );
+
+  // 若帳本名冊中已存在具名成員（如智爸、瑩媽），嚴密過濾排除未填寫暱稱之預設「家庭成員」假人
+  const hasRealMembers = initialClean.some(m => {
+    const name = (m.display_name || '').trim();
+    return name !== '' && name !== '家庭成員';
+  });
+
+  const cleanList = hasRealMembers
+    ? initialClean.filter(m => (m.display_name || '').trim() !== '家庭成員' && (m.display_name || '').trim() !== '')
+    : initialClean;
 
   // 步驟一：先將已綁定 Google 且加鎖之重要受保護成員放前，確保保留自訂家庭稱謂（如「智爸」優先於「Matt Yu」）
   const sortedList = [...cleanList].sort((a, b) => {
@@ -195,6 +205,9 @@ export const buildMemberAliasMap = (
           return (m.display_name || '').trim().toLowerCase() === rawName || rawIsUrl || mIsUrl;
         }
       );
+    }
+    if (!canonical && ((raw.display_name || '').trim() === '家庭成員' || !(raw.display_name || '').trim()) && deduped.length > 0) {
+      canonical = deduped[0];
     }
     map[raw.id] = canonical || raw;
   }

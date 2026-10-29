@@ -693,6 +693,15 @@ export function useDeviceAuth({
 
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
+        if (currentUser.display_name && currentUser.display_name !== '家庭成員') {
+          await supabase.from('profiles').upsert({
+            id: authUserId,
+            display_name: currentUser.display_name,
+            avatar_url: currentUser.avatar_url,
+            updated_at: new Date().toISOString(),
+          });
+        }
+
         await supabase.from('ledger_members').upsert({
           ledger_id: currentLedger.id,
           user_id: authUserId,

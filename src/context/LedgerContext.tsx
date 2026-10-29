@@ -2265,6 +2265,32 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     let aliasMap = buildMemberAliasMap(dedupedMembers, loadedMembers);
     let canonicalMe: Profile | undefined = undefined;
 
+    // 雲端幽靈成員自動自癒清理：若名冊中已存在具名自訂成員，但雲端仍殘留未命名的預設「家庭成員」假人，自動自雲端抹除
+    if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID && dedupedMembers.length > 0) {
+      const ghostRows = activeMemberRows.filter((r: any) =>
+        r.profiles &&
+        ((r.profiles.display_name || '').trim() === '家庭成員' || (r.profiles.display_name || '').trim() === '') &&
+        r.user_id !== targetLedger.created_by
+      );
+      if (ghostRows.length > 0) {
+        for (const ghost of ghostRows) {
+          supabase
+            .from('ledger_members')
+            .delete()
+            .eq('ledger_id', targetLedger.id)
+            .eq('user_id', ghost.user_id)
+            .then(
+              () => {
+                console.log(`[自癒] 已自雲端清理殘留之幽靈成員: ${ghost.user_id}`);
+              },
+              (err: any) => {
+                console.warn('[自癒] 雲端清理幽靈成員失敗:', err);
+              }
+            );
+        }
+      }
+    }
+
     if (dedupedMembers.length > 0) {
       setMembers(dedupedMembers);
       await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(dedupedMembers));
@@ -3254,6 +3280,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setGoogleUserEmail(effectiveGoogleEmail);
 
         // 使用者 Profile 初始化
+        let savedLocalName = '';
+        let savedLocalAvatar = '';
+        try {
+          const savedUserStr = await AsyncStorage.getItem(STORAGE_KEYS.CURRENT_USER);
+          if (savedUserStr) {
+            const u = JSON.parse(savedUserStr);
+            if (u?.display_name && u.display_name.trim() !== '家庭成員') {
+              savedLocalName = u.display_name.trim();
+              savedLocalAvatar = u.avatar_url;
+            }
+          }
+        } catch {}
+
         const { data: existingProfile } = await supabase
           .from('profiles')
           .select('*')
@@ -3262,10 +3301,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         let myProfile: Profile;
         if (!existingProfile) {
-          const fallbackName = (authUser as any)?.user_metadata?.full_name ||
+          const fallbackName = savedLocalName ||
+            (authUser as any)?.user_metadata?.full_name ||
             (authUser as any)?.user_metadata?.name ||
             (authUser?.email ? authUser.email.split('@')[0] : '家庭成員');
-          const fallbackAvatar = (authUser as any)?.user_metadata?.avatar_url || '👤';
+          const fallbackAvatar = savedLocalAvatar || (authUser as any)?.user_metadata?.avatar_url || '👤';
           myProfile = {
             id: authUser.id,
             email: authUser.email || undefined,
@@ -3274,6 +3314,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           };
           await supabase.from('profiles').upsert(myProfile);
         } else {
+          // 若 Profile 為預設「家庭成員」，且本地記有真實稱謂，自動洗淨修復為真實稱謂
+          if (existingProfile.display_name === '家庭成員' && savedLocalName) {
+            existingProfile.display_name = savedLocalName;
+            if (savedLocalAvatar) existingProfile.avatar_url = savedLocalAvatar;
+            await supabase.from('profiles').update({
+              display_name: savedLocalName,
+              avatar_url: existingProfile.avatar_url,
+              updated_at: new Date().toISOString(),
+            }).eq('id', authUser.id);
+          }
           myProfile = existingProfile;
         }
 
@@ -3436,6 +3486,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               }
             }
           } catch (e) {}
+        }
+
+        // 3. 嚴密安全防護：若本機無具名稱謂（全新訪客），絕不允許在背景自動以預設「家庭成員」假人加入！保留至彈窗引導認領或輸入暱稱
+        if (shouldAutoJoin && (!savedLocalName || savedLocalName === '家庭成員')) {
+          shouldAutoJoin = false;
+          if (targetInvite) {
+            setPendingInviteCode(targetInvite);
+          }
         }
 
         if (shouldAutoJoin) {
@@ -4798,6 +4856,31 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
+      // 嚴格門禁防護：絕不允許未選身分且未填寫暱稱時，在背景自動以「家庭成員」假人新增成員
+      if (!claimedMember && (!memberName || !memberName.trim() || memberName.trim() === '家庭成員')) {
+        return {
+          success: false,
+          message: '請選擇您在家庭中的稱謂或輸入您的專屬暱稱，無法建立空白或匿名成員。',
+        };
+      }
+
+      const initialDisplayName = claimedMember
+        ? claimedMember.display_name
+        : (memberName?.trim() || '新成員');
+      const initialAvatar = claimedMember
+        ? claimedMember.avatar_url
+        : (avatar || '👤');
+
+      if (isConfigured && authUserId) {
+        // 先將當前裝置 Session 的 Profile 稱謂對齊 (無論是認領身分或新建暱稱，杜絕在資料庫以預設「家庭成員」被插入)
+        await supabase.from('profiles').upsert({
+          id: authUserId,
+          display_name: initialDisplayName,
+          avatar_url: initialAvatar,
+          updated_at: new Date().toISOString(),
+        });
+      }
+
       // 1. 優先使用 SECURITY DEFINER 的 join_ledger_by_invite 函式以邀請碼加入 (自動驗證 PIN 與繞過 RLS 限制)
       if (code) {
         try {
@@ -4884,14 +4967,6 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
-      // 嚴格門禁防護：絕不允許未選身分且未填寫暱稱時，在背景自動以「家庭成員」假人新增成員
-      if (!claimedMember && (!memberName || !memberName.trim() || memberName.trim() === '家庭成員')) {
-        return {
-          success: false,
-          message: '請選擇您在家庭中的稱謂或輸入您的專屬暱稱，無法建立空白或匿名成員。',
-        };
-      }
-
       const assignedRole: 'owner' | 'admin' | 'member' = isCreator
         ? 'owner'
         : (isClaimingAdmin ? (claimedMember?.role === 'admin' ? 'admin' : 'owner') : 'member');
@@ -4904,14 +4979,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         : (avatar || (isCreator ? '👨' : '👩'));
 
       if (isConfigured) {
-        // 1. 若為全新成員建立或當前裝置自身的 Profile，更新雲端稱謂與頭像
-        if (!claimedMember || claimedMember.id === authUserId) {
-          await supabase.from('profiles').upsert({
-            id: authUserId,
-            display_name: finalDisplayName,
-            avatar_url: finalAvatar,
-          });
-        }
+        // 1. 同步當前裝置 Session 在 profiles 中的稱謂與頭像 (無論新成員或認領，Profile 始終對齊真實稱謂，杜絕預設「家庭成員」殘留)
+        await supabase.from('profiles').upsert({
+          id: authUserId,
+          display_name: finalDisplayName,
+          avatar_url: finalAvatar,
+          updated_at: new Date().toISOString(),
+        });
 
         // 2. 寫入 ledger_members 表（確保當前裝置具備存取權限）
         await supabase.from('ledger_members').upsert({

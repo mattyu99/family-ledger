@@ -361,8 +361,24 @@ BEGIN
     SET role = assigned_role
     WHERE ledger_id = target_ledger.id AND user_id = auth.uid();
 
-    -- 若尚未加入過，則新增成員紀錄
+    -- 若尚未加入過，則新增成員紀錄（防幽靈假人：若帳本已有具名成員，嚴禁以預設「家庭成員」直接插入）
     IF NOT FOUND THEN
+        IF EXISTS (
+            SELECT 1 FROM public.ledger_members lm
+            JOIN public.profiles p ON p.id = lm.user_id
+            WHERE lm.ledger_id = target_ledger.id AND p.display_name != '家庭成員' AND TRIM(COALESCE(p.display_name, '')) != ''
+        ) AND EXISTS (
+            SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND (p.display_name = '家庭成員' OR TRIM(COALESCE(p.display_name, '')) = '')
+        ) THEN
+            RETURN jsonb_build_object(
+                'success', true,
+                'ledger_id', target_ledger.id,
+                'ledger_name', target_ledger.name,
+                'requires_identity', true,
+                'message', '請先選擇或輸入您在家庭中的稱謂'
+            );
+        END IF;
+
         INSERT INTO public.ledger_members (ledger_id, user_id, role)
         VALUES (target_ledger.id, auth.uid(), assigned_role);
     END IF;
