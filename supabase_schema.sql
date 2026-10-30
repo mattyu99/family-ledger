@@ -1136,7 +1136,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.secure_delete_transaction(UUID, UUID) TO anon, authenticated;
 
--- 2. 安全更新交易明細 (注入 UUID 與時間防呆清洗，防止空字串引起語法錯誤)
+-- 2. 安全更新交易明細 (純 PL/pgSQL 流程控制，徹底杜絕 CASE WHEN 語法混淆)
 CREATE OR REPLACE FUNCTION public.secure_update_transaction(
     p_tx_id UUID,
     p_payload JSONB
@@ -1145,105 +1145,110 @@ RETURNS JSONB AS $$
 DECLARE
     v_updated_count INT := 0;
 BEGIN
-    UPDATE public.transactions
-    SET
-        amount = COALESCE(NULLIF(p_payload->>'amount', '')::NUMERIC, amount),
-        "type" = COALESCE(NULLIF(p_payload->>'type', ''), "type"),
-        category_id = CASE 
-            WHEN p_payload ? 'category_id' AND (p_payload->>'category_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-            THEN (p_payload->>'category_id')::UUID 
-            WHEN p_payload ? 'category_id' AND ((p_payload->>'category_id') IS NULL OR (p_payload->>'category_id') = '' OR (p_payload->>'category_id') = 'null')
-            THEN NULL
-            ELSE category_id 
-        END,
-        paid_by = CASE 
-            WHEN p_payload ? 'paid_by' AND (p_payload->>'paid_by') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-            THEN (p_payload->>'paid_by')::UUID 
-            WHEN p_payload ? 'paid_by' AND ((p_payload->>'paid_by') IS NULL OR (p_payload->>'paid_by') = '' OR (p_payload->>'paid_by') = 'null')
-            THEN NULL
-            ELSE paid_by 
-        END,
-        merchant = CASE 
-            WHEN p_payload ? 'merchant' 
-            THEN NULLIF(p_payload->>'merchant', '') 
-            ELSE merchant 
-        END,
-        payment_method = CASE 
-            WHEN p_payload ? 'payment_method' AND NULLIF(p_payload->>'payment_method', '') IS NOT NULL 
-            THEN (p_payload->>'payment_method') 
-            ELSE payment_method 
-        END,
-        account_id = CASE 
-            WHEN p_payload ? 'account_id' AND (p_payload->>'account_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-            THEN (p_payload->>'account_id')::UUID 
-            WHEN p_payload ? 'account_id' AND ((p_payload->>'account_id') IS NULL OR (p_payload->>'account_id') = '' OR (p_payload->>'account_id') = 'null')
-            THEN NULL
-            ELSE account_id 
-        END,
-        note = CASE 
-            WHEN p_payload ? 'note' 
-            THEN p_payload->>'note' 
-            ELSE note 
-        END,
-        image_url = CASE 
-            WHEN p_payload ? 'image_url' 
-            THEN NULLIF(p_payload->>'image_url', '') 
-            ELSE image_url 
-        END,
-        is_settled = CASE 
-            WHEN p_payload ? 'is_settled' AND (p_payload->>'is_settled') IS NOT NULL 
-            THEN (p_payload->>'is_settled')::BOOLEAN 
-            ELSE is_settled 
-        END,
-        is_reconciled = CASE 
-            WHEN p_payload ? 'is_reconciled' AND (p_payload->>'is_reconciled') IS NOT NULL 
-            THEN (p_payload->>'is_reconciled')::BOOLEAN 
-            ELSE is_reconciled 
-        END,
-        completed_by = CASE 
-            WHEN p_payload ? 'completed_by' AND (p_payload->>'completed_by') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-            THEN (p_payload->>'completed_by')::UUID 
-            WHEN p_payload ? 'completed_by' AND ((p_payload->>'completed_by') IS NULL OR (p_payload->>'completed_by') = '' OR (p_payload->>'completed_by') = 'null')
-            THEN NULL
-            ELSE completed_by 
-        END,
-        completed_at = CASE 
-            WHEN p_payload ? 'completed_at' AND NULLIF(p_payload->>'completed_at', '') IS NOT NULL AND (p_payload->>'completed_at') != 'null'
-            THEN (p_payload->>'completed_at')::TIMESTAMPTZ 
-            WHEN p_payload ? 'completed_at' AND (NULLIF(p_payload->>'completed_at', '') IS NULL OR (p_payload->>'completed_at') = 'null')
-            THEN NULL
-            ELSE completed_at 
-        END,
-        completion_note = CASE 
-            WHEN p_payload ? 'completion_note' 
-            THEN p_payload->>'completion_note' 
-            ELSE completion_note 
-        END,
-        reminder_date = CASE 
-            WHEN p_payload ? 'reminder_date' 
-            THEN NULLIF(p_payload->>'reminder_date', '') 
-            ELSE reminder_date 
-        END,
-        reminder_target = CASE 
-            WHEN p_payload ? 'reminder_target' 
-            THEN NULLIF(p_payload->>'reminder_target', '') 
-            ELSE reminder_target 
-        END,
-        linked_transaction_id = CASE 
-            WHEN p_payload ? 'linked_transaction_id' AND (p_payload->>'linked_transaction_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-            THEN (p_payload->>'linked_transaction_id')::UUID 
-            WHEN p_payload ? 'linked_transaction_id' AND ((p_payload->>'linked_transaction_id') IS NULL OR (p_payload->>'linked_transaction_id') = '' OR (p_payload->>'linked_transaction_id') = 'null')
-            THEN NULL
-            ELSE linked_transaction_id 
-        END,
-        transacted_at = CASE 
-            WHEN p_payload ? 'transacted_at' AND NULLIF(p_payload->>'transacted_at', '') IS NOT NULL 
-            THEN (p_payload->>'transacted_at')::TIMESTAMPTZ 
-            ELSE transacted_at 
-        END,
-        updated_at = NOW()
-    WHERE id = p_tx_id;
+    -- 若交易不存在則直接返回
+    IF NOT EXISTS (SELECT 1 FROM public.transactions WHERE id = p_tx_id) THEN
+        RETURN jsonb_build_object('success', true, 'rows_affected', 0, 'id', p_tx_id);
+    END IF;
 
+    -- 針對各欄位進行純淨個別更新
+    IF p_payload ? 'amount' AND NULLIF(p_payload->>'amount', '') IS NOT NULL THEN
+        UPDATE public.transactions SET amount = (p_payload->>'amount')::NUMERIC WHERE id = p_tx_id;
+    END IF;
+
+    IF p_payload ? 'type' AND NULLIF(p_payload->>'type', '') IS NOT NULL THEN
+        UPDATE public.transactions SET "type" = (p_payload->>'type') WHERE id = p_tx_id;
+    END IF;
+
+    IF p_payload ? 'category_id' THEN
+        IF (p_payload->>'category_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+            UPDATE public.transactions SET category_id = (p_payload->>'category_id')::UUID WHERE id = p_tx_id;
+        ELSE
+            UPDATE public.transactions SET category_id = NULL WHERE id = p_tx_id;
+        END IF;
+    END IF;
+
+    IF p_payload ? 'paid_by' THEN
+        IF (p_payload->>'paid_by') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+            UPDATE public.transactions SET paid_by = (p_payload->>'paid_by')::UUID WHERE id = p_tx_id;
+        ELSE
+            UPDATE public.transactions SET paid_by = NULL WHERE id = p_tx_id;
+        END IF;
+    END IF;
+
+    IF p_payload ? 'merchant' THEN
+        UPDATE public.transactions SET merchant = NULLIF(p_payload->>'merchant', '') WHERE id = p_tx_id;
+    END IF;
+
+    IF p_payload ? 'payment_method' AND NULLIF(p_payload->>'payment_method', '') IS NOT NULL THEN
+        UPDATE public.transactions SET payment_method = (p_payload->>'payment_method') WHERE id = p_tx_id;
+    END IF;
+
+    IF p_payload ? 'account_id' THEN
+        IF (p_payload->>'account_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+            UPDATE public.transactions SET account_id = (p_payload->>'account_id')::UUID WHERE id = p_tx_id;
+        ELSE
+            UPDATE public.transactions SET account_id = NULL WHERE id = p_tx_id;
+        END IF;
+    END IF;
+
+    IF p_payload ? 'note' THEN
+        UPDATE public.transactions SET note = (p_payload->>'note') WHERE id = p_tx_id;
+    END IF;
+
+    IF p_payload ? 'image_url' THEN
+        UPDATE public.transactions SET image_url = NULLIF(p_payload->>'image_url', '') WHERE id = p_tx_id;
+    END IF;
+
+    IF p_payload ? 'is_settled' AND (p_payload->>'is_settled') IS NOT NULL THEN
+        UPDATE public.transactions SET is_settled = (p_payload->>'is_settled')::BOOLEAN WHERE id = p_tx_id;
+    END IF;
+
+    IF p_payload ? 'is_reconciled' AND (p_payload->>'is_reconciled') IS NOT NULL THEN
+        UPDATE public.transactions SET is_reconciled = (p_payload->>'is_reconciled')::BOOLEAN WHERE id = p_tx_id;
+    END IF;
+
+    IF p_payload ? 'completed_by' THEN
+        IF (p_payload->>'completed_by') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+            UPDATE public.transactions SET completed_by = (p_payload->>'completed_by')::UUID WHERE id = p_tx_id;
+        ELSE
+            UPDATE public.transactions SET completed_by = NULL WHERE id = p_tx_id;
+        END IF;
+    END IF;
+
+    IF p_payload ? 'completed_at' THEN
+        IF NULLIF(p_payload->>'completed_at', '') IS NOT NULL AND (p_payload->>'completed_at') != 'null' THEN
+            UPDATE public.transactions SET completed_at = (p_payload->>'completed_at')::TIMESTAMPTZ WHERE id = p_tx_id;
+        ELSE
+            UPDATE public.transactions SET completed_at = NULL WHERE id = p_tx_id;
+        END IF;
+    END IF;
+
+    IF p_payload ? 'completion_note' THEN
+        UPDATE public.transactions SET completion_note = (p_payload->>'completion_note') WHERE id = p_tx_id;
+    END IF;
+
+    IF p_payload ? 'reminder_date' THEN
+        UPDATE public.transactions SET reminder_date = NULLIF(p_payload->>'reminder_date', '') WHERE id = p_tx_id;
+    END IF;
+
+    IF p_payload ? 'reminder_target' THEN
+        UPDATE public.transactions SET reminder_target = NULLIF(p_payload->>'reminder_target', '') WHERE id = p_tx_id;
+    END IF;
+
+    IF p_payload ? 'linked_transaction_id' THEN
+        IF (p_payload->>'linked_transaction_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+            UPDATE public.transactions SET linked_transaction_id = (p_payload->>'linked_transaction_id')::UUID WHERE id = p_tx_id;
+        ELSE
+            UPDATE public.transactions SET linked_transaction_id = NULL WHERE id = p_tx_id;
+        END IF;
+    END IF;
+
+    IF p_payload ? 'transacted_at' AND NULLIF(p_payload->>'transacted_at', '') IS NOT NULL THEN
+        UPDATE public.transactions SET transacted_at = (p_payload->>'transacted_at')::TIMESTAMPTZ WHERE id = p_tx_id;
+    END IF;
+
+    -- 最後統整更新 updated_at 並獲取受影響筆數
+    UPDATE public.transactions SET updated_at = NOW() WHERE id = p_tx_id;
     GET DIAGNOSTICS v_updated_count = ROW_COUNT;
 
     RETURN jsonb_build_object(
@@ -1371,13 +1376,29 @@ RETURNS JSONB AS $$
 DECLARE
     v_updated_count INT := 0;
 BEGIN
-    UPDATE public.categories
-    SET
-        name = CASE WHEN p_payload ? 'name' THEN p_payload->>'name' ELSE name END,
-        icon = CASE WHEN p_payload ? 'icon' THEN p_payload->>'icon' ELSE icon END,
-        color = CASE WHEN p_payload ? 'color' THEN p_payload->>'color' ELSE color END,
-        "type" = COALESCE(NULLIF(p_payload->>'type', ''), "type")
-    WHERE id = p_cat_id;
+    IF NOT EXISTS (SELECT 1 FROM public.categories WHERE id = p_cat_id) THEN
+        RETURN jsonb_build_object('success', true, 'rows_affected', 0, 'id', p_cat_id);
+    END IF;
+
+    IF p_payload ? 'name' AND NULLIF(p_payload->>'name', '') IS NOT NULL THEN
+        UPDATE public.categories SET name = (p_payload->>'name') WHERE id = p_cat_id;
+    END IF;
+
+    IF p_payload ? 'icon' AND NULLIF(p_payload->>'icon', '') IS NOT NULL THEN
+        UPDATE public.categories SET icon = (p_payload->>'icon') WHERE id = p_cat_id;
+    END IF;
+
+    IF p_payload ? 'color' AND NULLIF(p_payload->>'color', '') IS NOT NULL THEN
+        UPDATE public.categories SET color = (p_payload->>'color') WHERE id = p_cat_id;
+    END IF;
+
+    IF p_payload ? 'sort_order' AND NULLIF(p_payload->>'sort_order', '') IS NOT NULL THEN
+        UPDATE public.categories SET sort_order = (p_payload->>'sort_order')::INT WHERE id = p_cat_id;
+    END IF;
+
+    IF p_payload ? 'type' AND NULLIF(p_payload->>'type', '') IS NOT NULL THEN
+        UPDATE public.categories SET "type" = (p_payload->>'type') WHERE id = p_cat_id;
+    END IF;
 
     GET DIAGNOSTICS v_updated_count = ROW_COUNT;
 
@@ -1432,33 +1453,101 @@ RETURNS JSONB AS $$
 DECLARE
     v_updated_count INT := 0;
 BEGIN
-    UPDATE public.recurring_rules
-    SET
-        name = CASE WHEN p_payload ? 'name' THEN p_payload->>'name' ELSE name END,
-        default_amount = COALESCE(NULLIF(p_payload->>'default_amount', '')::NUMERIC, NULLIF(p_payload->>'amount', '')::NUMERIC, default_amount),
-        amount_type = COALESCE(NULLIF(p_payload->>'amount_type', ''), NULLIF(p_payload->>'type', ''), amount_type),
-        category_id = CASE WHEN p_payload ? 'category_id' AND (p_payload->>'category_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (p_payload->>'category_id')::UUID ELSE NULL END,
-        merchant = CASE WHEN p_payload ? 'merchant' THEN NULLIF(p_payload->>'merchant', '') ELSE merchant END,
-        paid_by = CASE WHEN p_payload ? 'paid_by' AND (p_payload->>'paid_by') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (p_payload->>'paid_by')::UUID ELSE NULL END,
-        payment_method = CASE WHEN p_payload ? 'payment_method' THEN p_payload->>'payment_method' ELSE payment_method END,
-        account_id = CASE WHEN p_payload ? 'account_id' AND (p_payload->>'account_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (p_payload->>'account_id')::UUID ELSE NULL END,
-        frequency = CASE WHEN p_payload ? 'frequency' THEN p_payload->>'frequency' ELSE frequency END,
-        due_day = CASE 
-            WHEN p_payload ? 'due_day' AND NULLIF(p_payload->>'due_day', '') IS NOT NULL THEN (p_payload->>'due_day')::INT 
-            WHEN p_payload ? 'day_of_month' AND NULLIF(p_payload->>'day_of_month', '') IS NOT NULL THEN (p_payload->>'day_of_month')::INT 
-            ELSE due_day 
-        END,
-        bimonthly_start_month = CASE WHEN p_payload ? 'bimonthly_start_month' THEN (p_payload->>'bimonthly_start_month')::INT ELSE bimonthly_start_month END,
-        is_active = CASE WHEN p_payload ? 'is_active' THEN (p_payload->>'is_active')::BOOLEAN ELSE is_active END,
-        last_recorded_period = CASE WHEN p_payload ? 'last_recorded_period' THEN p_payload->>'last_recorded_period' ELSE last_recorded_period END,
-        is_installment = CASE WHEN p_payload ? 'is_installment' THEN (p_payload->>'is_installment')::BOOLEAN ELSE is_installment END,
-        total_installments = CASE WHEN p_payload ? 'total_installments' THEN (p_payload->>'total_installments')::INT ELSE total_installments END,
-        current_installment = CASE WHEN p_payload ? 'current_installment' THEN (p_payload->>'current_installment')::INT ELSE current_installment END,
-        installment_start_period = CASE WHEN p_payload ? 'installment_start_period' THEN p_payload->>'installment_start_period' ELSE installment_start_period END,
-        note = CASE WHEN p_payload ? 'note' THEN p_payload->>'note' ELSE note END,
-        updated_at = NOW()
-    WHERE id = p_rule_id;
+    IF NOT EXISTS (SELECT 1 FROM public.recurring_rules WHERE id = p_rule_id) THEN
+        RETURN jsonb_build_object('success', true, 'rows_affected', 0, 'id', p_rule_id);
+    END IF;
 
+    IF p_payload ? 'name' AND NULLIF(p_payload->>'name', '') IS NOT NULL THEN
+        UPDATE public.recurring_rules SET name = (p_payload->>'name') WHERE id = p_rule_id;
+    END IF;
+
+    IF p_payload ? 'default_amount' AND NULLIF(p_payload->>'default_amount', '') IS NOT NULL THEN
+        UPDATE public.recurring_rules SET default_amount = (p_payload->>'default_amount')::NUMERIC WHERE id = p_rule_id;
+    ELSIF p_payload ? 'amount' AND NULLIF(p_payload->>'amount', '') IS NOT NULL THEN
+        UPDATE public.recurring_rules SET default_amount = (p_payload->>'amount')::NUMERIC WHERE id = p_rule_id;
+    END IF;
+
+    IF p_payload ? 'amount_type' AND NULLIF(p_payload->>'amount_type', '') IS NOT NULL THEN
+        UPDATE public.recurring_rules SET amount_type = (p_payload->>'amount_type') WHERE id = p_rule_id;
+    ELSIF p_payload ? 'type' AND NULLIF(p_payload->>'type', '') IS NOT NULL THEN
+        UPDATE public.recurring_rules SET amount_type = (p_payload->>'type') WHERE id = p_rule_id;
+    END IF;
+
+    IF p_payload ? 'category_id' THEN
+        IF (p_payload->>'category_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+            UPDATE public.recurring_rules SET category_id = (p_payload->>'category_id')::UUID WHERE id = p_rule_id;
+        ELSE
+            UPDATE public.recurring_rules SET category_id = NULL WHERE id = p_rule_id;
+        END IF;
+    END IF;
+
+    IF p_payload ? 'paid_by' THEN
+        IF (p_payload->>'paid_by') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+            UPDATE public.recurring_rules SET paid_by = (p_payload->>'paid_by')::UUID WHERE id = p_rule_id;
+        ELSE
+            UPDATE public.recurring_rules SET paid_by = NULL WHERE id = p_rule_id;
+        END IF;
+    END IF;
+
+    IF p_payload ? 'account_id' THEN
+        IF (p_payload->>'account_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+            UPDATE public.recurring_rules SET account_id = (p_payload->>'account_id')::UUID WHERE id = p_rule_id;
+        ELSE
+            UPDATE public.recurring_rules SET account_id = NULL WHERE id = p_rule_id;
+        END IF;
+    END IF;
+
+    IF p_payload ? 'merchant' THEN
+        UPDATE public.recurring_rules SET merchant = NULLIF(p_payload->>'merchant', '') WHERE id = p_rule_id;
+    END IF;
+
+    IF p_payload ? 'payment_method' AND NULLIF(p_payload->>'payment_method', '') IS NOT NULL THEN
+        UPDATE public.recurring_rules SET payment_method = (p_payload->>'payment_method') WHERE id = p_rule_id;
+    END IF;
+
+    IF p_payload ? 'frequency' AND NULLIF(p_payload->>'frequency', '') IS NOT NULL THEN
+        UPDATE public.recurring_rules SET frequency = (p_payload->>'frequency') WHERE id = p_rule_id;
+    END IF;
+
+    IF p_payload ? 'due_day' AND NULLIF(p_payload->>'due_day', '') IS NOT NULL THEN
+        UPDATE public.recurring_rules SET due_day = (p_payload->>'due_day')::INT WHERE id = p_rule_id;
+    ELSIF p_payload ? 'day_of_month' AND NULLIF(p_payload->>'day_of_month', '') IS NOT NULL THEN
+        UPDATE public.recurring_rules SET due_day = (p_payload->>'day_of_month')::INT WHERE id = p_rule_id;
+    END IF;
+
+    IF p_payload ? 'bimonthly_start_month' AND NULLIF(p_payload->>'bimonthly_start_month', '') IS NOT NULL THEN
+        UPDATE public.recurring_rules SET bimonthly_start_month = (p_payload->>'bimonthly_start_month')::INT WHERE id = p_rule_id;
+    END IF;
+
+    IF p_payload ? 'is_active' AND (p_payload->>'is_active') IS NOT NULL THEN
+        UPDATE public.recurring_rules SET is_active = (p_payload->>'is_active')::BOOLEAN WHERE id = p_rule_id;
+    END IF;
+
+    IF p_payload ? 'last_recorded_period' THEN
+        UPDATE public.recurring_rules SET last_recorded_period = (p_payload->>'last_recorded_period') WHERE id = p_rule_id;
+    END IF;
+
+    IF p_payload ? 'is_installment' AND (p_payload->>'is_installment') IS NOT NULL THEN
+        UPDATE public.recurring_rules SET is_installment = (p_payload->>'is_installment')::BOOLEAN WHERE id = p_rule_id;
+    END IF;
+
+    IF p_payload ? 'total_installments' AND NULLIF(p_payload->>'total_installments', '') IS NOT NULL THEN
+        UPDATE public.recurring_rules SET total_installments = (p_payload->>'total_installments')::INT WHERE id = p_rule_id;
+    END IF;
+
+    IF p_payload ? 'current_installment' AND NULLIF(p_payload->>'current_installment', '') IS NOT NULL THEN
+        UPDATE public.recurring_rules SET current_installment = (p_payload->>'current_installment')::INT WHERE id = p_rule_id;
+    END IF;
+
+    IF p_payload ? 'installment_start_period' THEN
+        UPDATE public.recurring_rules SET installment_start_period = (p_payload->>'installment_start_period') WHERE id = p_rule_id;
+    END IF;
+
+    IF p_payload ? 'note' THEN
+        UPDATE public.recurring_rules SET note = (p_payload->>'note') WHERE id = p_rule_id;
+    END IF;
+
+    UPDATE public.recurring_rules SET updated_at = NOW() WHERE id = p_rule_id;
     GET DIAGNOSTICS v_updated_count = ROW_COUNT;
 
     RETURN jsonb_build_object(
