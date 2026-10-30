@@ -112,9 +112,23 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
     return allMemos.filter(t => !t.is_settled && !t.reminder_date);
   }, [allMemos]);
 
-  // 已完成辦妥記事
+  // 已完成辦妥記事 (依辦妥時間 completed_at 降序排序，最新辦妥排在最上方)
   const completedMemos = useMemo(() => {
-    return allMemos.filter(t => !!t.is_settled);
+    const getCompletionTimestamp = (item: Transaction): number => {
+      const raw = item.completed_at || decodeMemoMerchantTag(item.merchant).completedAt || item.updated_at || item.transacted_at;
+      if (!raw) return 0;
+      const t = new Date(raw).getTime();
+      return isNaN(t) ? 0 : t;
+    };
+
+    return allMemos
+      .filter(t => !!t.is_settled)
+      .sort((a, b) => {
+        const timeA = getCompletionTimestamp(a);
+        const timeB = getCompletionTimestamp(b);
+        if (timeB !== timeA) return timeB - timeA;
+        return (b.transacted_at || '').localeCompare(a.transacted_at || '');
+      });
   }, [allMemos]);
 
   // 全部未完成待辦
