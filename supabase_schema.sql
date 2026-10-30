@@ -1136,7 +1136,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.secure_delete_transaction(UUID, UUID) TO anon, authenticated;
 
--- 2. 安全更新交易明細 (支援生活記事打勾、回報備註、對帳標記與動態欄位更新)
+-- 2. 安全更新交易明細 (注入 UUID 與時間防呆清洗，防止空字串引起語法錯誤)
 CREATE OR REPLACE FUNCTION public.secure_update_transaction(
     p_tx_id UUID,
     p_payload JSONB
@@ -1148,38 +1148,44 @@ BEGIN
     UPDATE public.transactions
     SET
         amount = CASE 
-            WHEN p_payload ? 'amount' AND (p_payload->>'amount') IS NOT NULL 
-            THEN (p_payload->>'amount')::NUMERIC 
+            WHEN p_payload ? 'amount' AND NULLIF(p_payload->>'amount', '') IS NOT NULL 
+            THEN (NULLIF(p_payload->>'amount', ''))::NUMERIC 
             ELSE amount 
         END,
         type = CASE 
-            WHEN p_payload ? 'type' AND (p_payload->>'type') IS NOT NULL 
+            WHEN p_payload ? 'type' AND NULLIF(p_payload->>'type', '') IS NOT NULL 
             THEN (p_payload->>'type') 
             ELSE type 
         END,
         category_id = CASE 
-            WHEN p_payload ? 'category_id' 
+            WHEN p_payload ? 'category_id' AND (p_payload->>'category_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
             THEN (p_payload->>'category_id')::UUID 
+            WHEN p_payload ? 'category_id' AND ((p_payload->>'category_id') IS NULL OR (p_payload->>'category_id') = '' OR (p_payload->>'category_id') = 'null')
+            THEN NULL
             ELSE category_id 
         END,
         paid_by = CASE 
-            WHEN p_payload ? 'paid_by' 
+            WHEN p_payload ? 'paid_by' AND (p_payload->>'paid_by') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
             THEN (p_payload->>'paid_by')::UUID 
+            WHEN p_payload ? 'paid_by' AND ((p_payload->>'paid_by') IS NULL OR (p_payload->>'paid_by') = '' OR (p_payload->>'paid_by') = 'null')
+            THEN NULL
             ELSE paid_by 
         END,
         merchant = CASE 
             WHEN p_payload ? 'merchant' 
-            THEN p_payload->>'merchant' 
+            THEN NULLIF(p_payload->>'merchant', '') 
             ELSE merchant 
         END,
         payment_method = CASE 
-            WHEN p_payload ? 'payment_method' AND (p_payload->>'payment_method') IS NOT NULL 
-            THEN p_payload->>'payment_method' 
+            WHEN p_payload ? 'payment_method' AND NULLIF(p_payload->>'payment_method', '') IS NOT NULL 
+            THEN (p_payload->>'payment_method') 
             ELSE payment_method 
         END,
         account_id = CASE 
-            WHEN p_payload ? 'account_id' 
+            WHEN p_payload ? 'account_id' AND (p_payload->>'account_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
             THEN (p_payload->>'account_id')::UUID 
+            WHEN p_payload ? 'account_id' AND ((p_payload->>'account_id') IS NULL OR (p_payload->>'account_id') = '' OR (p_payload->>'account_id') = 'null')
+            THEN NULL
             ELSE account_id 
         END,
         note = CASE 
@@ -1189,7 +1195,7 @@ BEGIN
         END,
         image_url = CASE 
             WHEN p_payload ? 'image_url' 
-            THEN p_payload->>'image_url' 
+            THEN NULLIF(p_payload->>'image_url', '') 
             ELSE image_url 
         END,
         is_settled = CASE 
@@ -1203,13 +1209,17 @@ BEGIN
             ELSE is_reconciled 
         END,
         completed_by = CASE 
-            WHEN p_payload ? 'completed_by' 
+            WHEN p_payload ? 'completed_by' AND (p_payload->>'completed_by') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
             THEN (p_payload->>'completed_by')::UUID 
+            WHEN p_payload ? 'completed_by' AND ((p_payload->>'completed_by') IS NULL OR (p_payload->>'completed_by') = '' OR (p_payload->>'completed_by') = 'null')
+            THEN NULL
             ELSE completed_by 
         END,
         completed_at = CASE 
-            WHEN p_payload ? 'completed_at' 
+            WHEN p_payload ? 'completed_at' AND NULLIF(p_payload->>'completed_at', '') IS NOT NULL AND (p_payload->>'completed_at') != 'null'
             THEN (p_payload->>'completed_at')::TIMESTAMPTZ 
+            WHEN p_payload ? 'completed_at' AND (NULLIF(p_payload->>'completed_at', '') IS NULL OR (p_payload->>'completed_at') = 'null')
+            THEN NULL
             ELSE completed_at 
         END,
         completion_note = CASE 
@@ -1219,21 +1229,23 @@ BEGIN
         END,
         reminder_date = CASE 
             WHEN p_payload ? 'reminder_date' 
-            THEN p_payload->>'reminder_date' 
+            THEN NULLIF(p_payload->>'reminder_date', '') 
             ELSE reminder_date 
         END,
         reminder_target = CASE 
             WHEN p_payload ? 'reminder_target' 
-            THEN p_payload->>'reminder_target' 
+            THEN NULLIF(p_payload->>'reminder_target', '') 
             ELSE reminder_target 
         END,
         linked_transaction_id = CASE 
-            WHEN p_payload ? 'linked_transaction_id' 
+            WHEN p_payload ? 'linked_transaction_id' AND (p_payload->>'linked_transaction_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
             THEN (p_payload->>'linked_transaction_id')::UUID 
+            WHEN p_payload ? 'linked_transaction_id' AND ((p_payload->>'linked_transaction_id') IS NULL OR (p_payload->>'linked_transaction_id') = '' OR (p_payload->>'linked_transaction_id') = 'null')
+            THEN NULL
             ELSE linked_transaction_id 
         END,
         transacted_at = CASE 
-            WHEN p_payload ? 'transacted_at' AND (p_payload->>'transacted_at') IS NOT NULL 
+            WHEN p_payload ? 'transacted_at' AND NULLIF(p_payload->>'transacted_at', '') IS NOT NULL 
             THEN (p_payload->>'transacted_at')::TIMESTAMPTZ 
             ELSE transacted_at 
         END,
@@ -1322,15 +1334,15 @@ BEGIN
             COALESCE((item->>'id')::UUID, uuid_generate_v4()),
             (item->>'ledger_id')::UUID,
             (item->>'creator_id')::UUID,
-            (item->>'category_id')::UUID,
+            CASE WHEN (item->>'category_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (item->>'category_id')::UUID ELSE NULL END,
             COALESCE((item->>'amount')::NUMERIC, 0),
             COALESCE(item->>'type', 'expense'),
-            (item->>'paid_by')::UUID,
-            item->>'merchant',
+            CASE WHEN (item->>'paid_by') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (item->>'paid_by')::UUID ELSE NULL END,
+            NULLIF(item->>'merchant', ''),
             COALESCE(item->>'payment_method', 'cash'),
-            (item->>'account_id')::UUID,
+            CASE WHEN (item->>'account_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (item->>'account_id')::UUID ELSE NULL END,
             item->>'note',
-            item->>'image_url',
+            NULLIF(item->>'image_url', ''),
             COALESCE((item->>'is_settled')::BOOLEAN, false),
             COALESCE((item->>'is_reconciled')::BOOLEAN, false),
             COALESCE((item->>'transacted_at')::TIMESTAMPTZ, NOW()),
@@ -1432,8 +1444,8 @@ BEGIN
     SET
         name = CASE WHEN p_payload ? 'name' THEN p_payload->>'name' ELSE name END,
         default_amount = CASE 
-            WHEN p_payload ? 'default_amount' THEN (p_payload->>'default_amount')::NUMERIC 
-            WHEN p_payload ? 'amount' THEN (p_payload->>'amount')::NUMERIC 
+            WHEN p_payload ? 'default_amount' AND NULLIF(p_payload->>'default_amount', '') IS NOT NULL THEN (p_payload->>'default_amount')::NUMERIC 
+            WHEN p_payload ? 'amount' AND NULLIF(p_payload->>'amount', '') IS NOT NULL THEN (p_payload->>'amount')::NUMERIC 
             ELSE default_amount 
         END,
         amount_type = CASE 
@@ -1441,15 +1453,15 @@ BEGIN
             WHEN p_payload ? 'type' THEN p_payload->>'type' 
             ELSE amount_type 
         END,
-        category_id = CASE WHEN p_payload ? 'category_id' THEN (p_payload->>'category_id')::UUID ELSE category_id END,
-        merchant = CASE WHEN p_payload ? 'merchant' THEN p_payload->>'merchant' ELSE merchant END,
-        paid_by = CASE WHEN p_payload ? 'paid_by' THEN (p_payload->>'paid_by')::UUID ELSE paid_by END,
+        category_id = CASE WHEN p_payload ? 'category_id' AND (p_payload->>'category_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (p_payload->>'category_id')::UUID ELSE NULL END,
+        merchant = CASE WHEN p_payload ? 'merchant' THEN NULLIF(p_payload->>'merchant', '') ELSE merchant END,
+        paid_by = CASE WHEN p_payload ? 'paid_by' AND (p_payload->>'paid_by') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (p_payload->>'paid_by')::UUID ELSE NULL END,
         payment_method = CASE WHEN p_payload ? 'payment_method' THEN p_payload->>'payment_method' ELSE payment_method END,
-        account_id = CASE WHEN p_payload ? 'account_id' THEN (p_payload->>'account_id')::UUID ELSE account_id END,
+        account_id = CASE WHEN p_payload ? 'account_id' AND (p_payload->>'account_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (p_payload->>'account_id')::UUID ELSE NULL END,
         frequency = CASE WHEN p_payload ? 'frequency' THEN p_payload->>'frequency' ELSE frequency END,
         due_day = CASE 
-            WHEN p_payload ? 'due_day' THEN (p_payload->>'due_day')::INT 
-            WHEN p_payload ? 'day_of_month' THEN (p_payload->>'day_of_month')::INT 
+            WHEN p_payload ? 'due_day' AND NULLIF(p_payload->>'due_day', '') IS NOT NULL THEN (p_payload->>'due_day')::INT 
+            WHEN p_payload ? 'day_of_month' AND NULLIF(p_payload->>'day_of_month', '') IS NOT NULL THEN (p_payload->>'day_of_month')::INT 
             ELSE due_day 
         END,
         bimonthly_start_month = CASE WHEN p_payload ? 'bimonthly_start_month' THEN (p_payload->>'bimonthly_start_month')::INT ELSE bimonthly_start_month END,

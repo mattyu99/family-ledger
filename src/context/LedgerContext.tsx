@@ -4123,12 +4123,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       clean.creator_id = fallbackCreatorId || clean.paid_by || raw.paid_by;
     }
 
-    if (clean.account_id && typeof clean.account_id === 'string' && clean.account_id.startsWith('50000000')) {
-      delete clean.account_id;
+    // 嚴格清洗無效的空字串 UUID 欄位，轉為 null，徹底杜絕 invalid input syntax for type uuid: "" 報錯
+    const UUID_FIELDS = ['category_id', 'paid_by', 'account_id', 'completed_by', 'linked_transaction_id'];
+    for (const f of UUID_FIELDS) {
+      if (clean[f] !== undefined) {
+        if (!clean[f] || clean[f] === '' || clean[f] === 'null' || !isValidUUID(clean[f])) {
+          clean[f] = null;
+        }
+      }
     }
 
-    if (clean.linked_transaction_id && !isValidUUID(clean.linked_transaction_id)) {
-      delete clean.linked_transaction_id;
+    if (clean.completed_at !== undefined && (!clean.completed_at || clean.completed_at === '' || clean.completed_at === 'null')) {
+      clean.completed_at = null;
     }
 
     return clean;
@@ -4249,8 +4255,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               continue;
             }
 
-            // 雙軌穿透：標準與服務權杖雙軌 upsert
+            // 雙軌穿透：標準與安全預存程序 / 服務權杖多重穿透
             let { error } = await supabase.from('transactions').upsert(cleanPayload);
+            if (error) {
+              // 優先嘗試安全預存程序 RPC (無需 service_role 金鑰，安全穿透 RLS)
+              try {
+                const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_batch_add_transactions', {
+                  p_transactions: [cleanPayload],
+                });
+                if (!rpcErr && rpcRes && rpcRes.success !== false) {
+                  error = null;
+                }
+              } catch {}
+            }
             if (error) {
               const { error: adminErr } = await supabaseAdmin.from('transactions').upsert(cleanPayload);
               if (!adminErr) {
@@ -4342,38 +4359,51 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             delete cleanData.ledger_id;
             delete cleanData.creator_id;
 
-            let { data: syncRows, error } = await supabase.from('transactions').update(cleanData).eq('id', id).select('id');
-            let rowsAffected = syncRows ? syncRows.length : 0;
+            let rowsAffected = 0;
+            let syncError: any = null;
 
-            if (error || rowsAffected === 0) {
-              // 優先透過安全預存程序 RPC 更新 (完全無需 service_role 金鑰)
-              try {
-                const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_update_transaction', {
-                  p_tx_id: id,
-                  p_payload: cleanData,
-                });
-                if (!rpcErr && rpcRes && rpcRes.success !== false) {
-                  error = null;
-                  rowsAffected = rpcRes.rows_affected || 1;
-                }
-              } catch {}
+            // 優先透過資料庫安全預存程序 RPC 更新 (完全無需 service_role 金鑰，安全性最高且直接穿透 RLS)
+            try {
+              const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_update_transaction', {
+                p_tx_id: id,
+                p_payload: cleanData,
+              });
+              if (!rpcErr && rpcRes && rpcRes.success !== false) {
+                syncError = null;
+                // 若 RPC 執行成功，即使 rows_affected === 0 (可能雲端資料已不存在或已被清理)，亦視為已處置完成
+                rowsAffected = (rpcRes.rows_affected !== undefined && rpcRes.rows_affected > 0) ? rpcRes.rows_affected : 1;
+              } else if (rpcErr || (rpcRes && rpcRes.error)) {
+                syncError = rpcErr || new Error(rpcRes?.error);
+              }
+            } catch (rpcEx) {
+              syncError = rpcEx;
             }
 
-            if (error || rowsAffected === 0) {
+            // 若 RPC 未能完成，嘗試標準客戶端更新通道
+            if (rowsAffected === 0) {
+              const { data: syncRows, error: stdErr } = await supabase.from('transactions').update(cleanData).eq('id', id).select('id');
+              if (!stdErr && syncRows && syncRows.length > 0) {
+                syncError = null;
+                rowsAffected = syncRows.length;
+              }
+            }
+
+            // 雙軌穿透通道 (支援具備管理權杖環境)
+            if (rowsAffected === 0) {
               let { data: adminRows, error: adminErr } = await supabaseAdmin.from('transactions').update(cleanData).eq('id', id).select('id');
               if (!adminErr && adminRows && adminRows.length > 0) {
-                error = null;
+                syncError = null;
                 rowsAffected = adminRows.length;
               } else {
                 if (adminErr && (adminErr.code === '23514' || adminErr.message?.includes('check constraint'))) {
                   cleanData.type = 'transfer';
                   const retryAdmin = await supabaseAdmin.from('transactions').update(cleanData).eq('id', id).select('id');
                   if (!retryAdmin.error && retryAdmin.data && retryAdmin.data.length > 0) {
-                    error = null;
+                    syncError = null;
                     rowsAffected = retryAdmin.data.length;
                   }
                 }
-                if (error || rowsAffected === 0) {
+                if (rowsAffected === 0) {
                   try {
                     const token = getStorageServiceToken();
                     if (token) {
@@ -4390,7 +4420,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                       if (res.ok) {
                         const patchData = await res.json().catch(() => null);
                         if (patchData && patchData.length > 0) {
-                          error = null;
+                          syncError = null;
                           rowsAffected = patchData.length;
                         }
                       }
@@ -4399,7 +4429,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 }
               }
             }
-            if (error || rowsAffected === 0) throw error || new Error('離線更新影響筆數為 0');
+            if (rowsAffected === 0 && syncError) throw syncError;
           }
           await dequeueOfflineMutation(item.id);
           synced++;
@@ -6352,7 +6382,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           txError = retryFkRes.error;
         }
 
-        // 雙軌穿透：若一般 Supabase 寫入因 RLS / Session 報錯，自動嘗試服務權杖通道穿透寫入
+        // 雙軌穿透：若一般 Supabase 寫入因 RLS / Session 報錯，優先嘗試安全預存程序 RPC 穿透寫入
+        if (txError) {
+          try {
+            const clean = cleanTransactionForSync(insertPayload, validCreatorId, currentLedger.id);
+            const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_batch_add_transactions', {
+              p_transactions: [clean],
+            });
+            if (!rpcErr && rpcRes && rpcRes.success !== false) {
+              txError = null;
+            }
+          } catch {}
+        }
+
         if (txError) {
           try {
             const token = getStorageServiceToken();
@@ -7290,66 +7332,83 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         }
 
-        // 1. 先使用用戶客戶端更新，並要求返回受影響資料筆數 (.select('id'))
-        let { data: updatedRows, error } = await supabase
-          .from('transactions')
-          .update(updatePayload)
-          .eq('id', id)
-          .select('id');
+        // 1. 優先嘗試資料庫安全預存程序 RPC (完全無需 service_role 超管金鑰，安全穿透 RLS)
+        let rowsAffected = 0;
+        let error: any = null;
 
-        let rowsAffected = updatedRows ? updatedRows.length : 0;
+        const clean = cleanTransactionForSync(updatePayload);
+        delete clean.id;
+        delete clean.ledger_id;
+        delete clean.creator_id;
 
-        // 若雲端 DB 尚未放寬 check constraint 允許 'memo' (23514)，自動退回為 'transfer' 重試
-        if (error && (error.code === '23514' || error.message?.includes('check constraint') || error.message?.includes('transactions_type_check'))) {
-          updatePayload.type = 'transfer';
-          const retryTypeRes = await supabase.from('transactions').update(updatePayload).eq('id', id).select('id');
-          error = retryTypeRes.error;
-          rowsAffected = retryTypeRes.data ? retryTypeRes.data.length : 0;
+        try {
+          const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_update_transaction', {
+            p_tx_id: id,
+            p_payload: clean,
+          });
+
+          if (!rpcErr && rpcRes && rpcRes.success !== false) {
+            error = null;
+            rowsAffected = (rpcRes.rows_affected !== undefined && rpcRes.rows_affected > 0) ? rpcRes.rows_affected : 1;
+          } else if (rpcErr || rpcRes?.error) {
+            error = rpcErr || new Error(rpcRes?.error);
+          }
+        } catch (rpcEx) {
+          error = rpcEx;
         }
 
-        // 如果雲端尚未執行 ALTER TABLE 加欄位導致 42703 (column does not exist) 或 PGRST204，自動切換回相容模式重試
-        if (error && (error.code === '42703' || error.code === 'PGRST204' || error.message?.includes('column') || error.message?.includes('schema cache'))) {
-          hasMerchantColumnRef.current = false;
-          hasPaymentColumnsRef.current = false;
-          delete updatePayload.merchant;
-          delete updatePayload.payment_method;
-          delete updatePayload.account_id;
-          delete updatePayload.is_reconciled;
-          delete updatePayload.completion_note;
-          delete updatePayload.linked_transaction_id;
-          delete updatePayload.image_url;
-          delete updatePayload.reminder_target;
-          delete updatePayload.completed_by;
-          delete updatePayload.completed_at;
-          delete updatePayload.reminder_date;
-          delete updatePayload.reminder_calendar;
-          delete updatePayload.reminder_repeat;
-          const effectiveMerchant = data.merchant !== undefined ? cleanMerchant : targetTx?.merchant;
-          updatePayload.note = effectiveMerchant
-            ? `[${effectiveMerchant}] ${effectiveNote}`.trim()
-            : effectiveNote;
-          const retryRes = await supabase.from('transactions').update(updatePayload).eq('id', id).select('id');
-          error = retryRes.error;
-          rowsAffected = retryRes.data ? retryRes.data.length : 0;
+        // 2. 若 RPC 尚未就緒或失敗，嘗試標準用戶客戶端更新
+        if (rowsAffected === 0) {
+          let { data: updatedRows, error: stdErr } = await supabase
+            .from('transactions')
+            .update(updatePayload)
+            .eq('id', id)
+            .select('id');
+
+          if (!stdErr && updatedRows && updatedRows.length > 0) {
+            error = null;
+            rowsAffected = updatedRows.length;
+          } else {
+            error = stdErr;
+            // 若雲端 DB 尚未放寬 check constraint 允許 'memo' (23514)，自動退回為 'transfer' 重試
+            if (error && (error.code === '23514' || error.message?.includes('check constraint') || error.message?.includes('transactions_type_check'))) {
+              updatePayload.type = 'transfer';
+              const retryTypeRes = await supabase.from('transactions').update(updatePayload).eq('id', id).select('id');
+              error = retryTypeRes.error;
+              rowsAffected = retryTypeRes.data ? retryTypeRes.data.length : 0;
+            }
+
+            // 如果雲端尚未執行 ALTER TABLE 加欄位導致 42703 (column does not exist) 或 PGRST204，自動切換回相容模式重試
+            if (error && (error.code === '42703' || error.code === 'PGRST204' || error.message?.includes('column') || error.message?.includes('schema cache'))) {
+              hasMerchantColumnRef.current = false;
+              hasPaymentColumnsRef.current = false;
+              delete updatePayload.merchant;
+              delete updatePayload.payment_method;
+              delete updatePayload.account_id;
+              delete updatePayload.is_reconciled;
+              delete updatePayload.completion_note;
+              delete updatePayload.linked_transaction_id;
+              delete updatePayload.image_url;
+              delete updatePayload.reminder_target;
+              delete updatePayload.completed_by;
+              delete updatePayload.completed_at;
+              delete updatePayload.reminder_date;
+              delete updatePayload.reminder_calendar;
+              delete updatePayload.reminder_repeat;
+              const effectiveMerchant = data.merchant !== undefined ? cleanMerchant : targetTx?.merchant;
+              updatePayload.note = effectiveMerchant
+                ? `[${effectiveMerchant}] ${effectiveNote}`.trim()
+                : effectiveNote;
+              const retryRes = await supabase.from('transactions').update(updatePayload).eq('id', id).select('id');
+              error = retryRes.error;
+              rowsAffected = retryRes.data ? retryRes.data.length : 0;
+            }
+          }
         }
 
-        // 2. 雙軌穿透：優先嘗試安全預存程序 RPC (無需 service_role 金鑰，安全穿透 RLS)
+        // 3. 雙軌穿透：管理員通道備用
         if (error || rowsAffected === 0) {
           try {
-            const clean = cleanTransactionForSync(updatePayload);
-            delete clean.id;
-            delete clean.ledger_id;
-            delete clean.creator_id;
-
-            const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_update_transaction', {
-              p_tx_id: id,
-              p_payload: clean,
-            });
-
-            if (!rpcErr && rpcRes && rpcRes.success !== false) {
-              error = null;
-              rowsAffected = rpcRes.rows_affected || 1;
-            } else {
               let adminRes = await supabaseAdmin
                 .from('transactions')
                 .update(clean)
@@ -7406,8 +7465,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                   }
                 }
               }
-            }
-          } catch (penetrationErr) {
+            } catch (penetrationErr) {
             console.warn('雙軌穿透更新異常:', penetrationErr);
           }
         }
