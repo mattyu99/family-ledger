@@ -295,7 +295,7 @@ export function decodeMemoMerchantTag(rawMerchant?: string): {
       reminderCalendar = calVal === 'lunar' ? 'lunar' : 'solar';
     } else if (seg.startsWith('rep:')) {
       const repVal = seg.slice(4).trim() as MemoRepeatFrequency;
-      if (['once', 'monthly', 'lunar_1_15', 'lunar_2_16', 'yearly'].includes(repVal)) {
+      if (['once', 'weekly', 'monthly', 'lunar_1_15', 'lunar_2_16', 'yearly'].includes(repVal)) {
         reminderRepeat = repVal;
       }
     } else if (seg.startsWith('done:')) {

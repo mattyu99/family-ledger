@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.10';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.10 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 4;
+export const APP_BUILD_REVISION = 5;
 
-// 完整版本字串 (例如 "1.0.10.4")
+// 完整版本字串 (例如 "1.0.10.5")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.10',
     date: '2026-10-30',
-    title: '全新 1.0.10 正式版：原生 Android 桌面小工具、小工具挑選器擬真預覽、跨裝置推播背景喚醒與零金鑰極速架構 (v1.0.10.0 ~ v1.0.10.4)',
+    title: '全新 1.0.10 正式版：原生 Android 桌面小工具、小工具挑選器擬真預覽、跨裝置推播背景喚醒與零金鑰極速架構 (v1.0.10.0 ~ v1.0.10.5)',
     highlights: [
+      '🔄 生活記事待辦每週重複提醒：新增「每週重複」週期選項，辦妥當週事項自動接力推算下週同天，支援國曆與農曆雙曆法及推播自動續排。',
       '📱 原生 Android 桌面小工具 (2x2 快捷捷徑 & 4x2 今日待辦)：全新打造 withAndroidWidgets Config Plugin，整合 RemoteViews 與 SQLite 本機快照直讀，提供免開 App 即時查待辦與一鍵記帳。',
       '🎨 桌面小工具選擇器 (Widget Picker) 原生擬真預覽：引入 Android 12+ previewLayout 規範，注入 2x2 快捷按鈕與 4x2 生活待辦展示版面，徹底根除白底九宮格空白。',
       '📂 提醒中心卡片清單摺疊收合：信用卡帳單排程與生活待辦提醒清單改採一鍵展開/收合設計，預設折疊精簡，大幅瘦身設定頁長度。',

@@ -124,7 +124,7 @@ export interface Transaction {
   note?: string;
   reminder_date?: string; // 選填生活記事提醒日期 (YYYY-MM-DD)
   reminder_calendar?: 'solar' | 'lunar'; // 提醒曆法基準：'solar' (國曆) | 'lunar' (農曆)
-  reminder_repeat?: 'once' | 'monthly' | 'lunar_1_15' | 'lunar_2_16' | 'yearly'; // 提醒重複週期
+  reminder_repeat?: 'once' | 'weekly' | 'monthly' | 'lunar_1_15' | 'lunar_2_16' | 'yearly'; // 提醒重複週期
   reminder_target?: 'family' | 'personal'; // 提醒對象範圍：'family' (全家提醒，預設) | 'personal' (個人專屬)
   completed_by?: string; // 完成此待辦事項的家庭成員 ID (Profile ID)
   completed_at?: string; // 辦妥此待辦事項的精確時間戳記 (ISO 8601)
