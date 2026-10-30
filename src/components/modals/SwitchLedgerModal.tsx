@@ -17,7 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLedger } from '../../context/LedgerContext';
 import { useTheme } from '../../theme/ThemeContext';
 import { ThemeColors } from '../../theme/colors';
-import { supabase, SUPABASE_URL, isConfigured } from '../../lib/supabase';
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY, isConfigured } from '../../lib/supabase';
 import { getStorageServiceToken } from '../../lib/statementStorage';
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
@@ -201,8 +201,8 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
         }
       } catch {}
 
-      // B. 雙軌服務權杖穿透保底 (針對 RPC 未覆蓋之帳本)
-      const token = getStorageServiceToken();
+      // B. 雙軌穿透保底 (針對 RPC 未覆蓋之帳本)
+      const token = getStorageServiceToken() || SUPABASE_ANON_KEY;
       const headers = {
         apikey: token,
         Authorization: `Bearer ${token}`,

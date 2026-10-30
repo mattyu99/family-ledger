@@ -4171,7 +4171,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return false;
   };
 
-  // 雙軌雲端同步卡片帳戶餘額 (支援 .select('id') 檢測 0 筆與 supabaseAdmin 服務權杖穿透)
+  // 雙軌雲端同步卡片帳戶餘額 (優先呼叫 SECURITY DEFINER RPC，無需 service_role 金鑰即可安全更新)
   const syncAccountBalanceToCloud = async (accountId: string, balance: number, targetLedgerId?: string) => {
     const lid = targetLedgerId || currentLedger?.id;
     if (!isConfigured || lid === DEMO_LEDGER_ID || !accountId || accountId.startsWith('50000000')) return;
@@ -4183,11 +4183,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .eq('id', accountId)
         .select('id');
       if (error || !data || data.length === 0) {
-        await supabaseAdmin.from('payment_accounts').update(payload).eq('id', accountId);
+        const { error: rpcErr } = await supabase.rpc('secure_update_account_balance', {
+          p_account_id: accountId,
+          p_balance: balance,
+        });
+        if (rpcErr) {
+          await supabaseAdmin.from('payment_accounts').update(payload).eq('id', accountId);
+        }
       }
     } catch {
       try {
-        await supabaseAdmin.from('payment_accounts').update(payload).eq('id', accountId);
+        await supabase.rpc('secure_update_account_balance', {
+          p_account_id: accountId,
+          p_balance: balance,
+        });
       } catch {}
     }
   };
@@ -4337,6 +4346,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             let rowsAffected = syncRows ? syncRows.length : 0;
 
             if (error || rowsAffected === 0) {
+              // 優先透過安全預存程序 RPC 更新 (完全無需 service_role 金鑰)
+              try {
+                const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_update_transaction', {
+                  p_tx_id: id,
+                  p_payload: cleanData,
+                });
+                if (!rpcErr && rpcRes && rpcRes.success !== false) {
+                  error = null;
+                  rowsAffected = rpcRes.rows_affected || 1;
+                }
+              } catch {}
+            }
+
+            if (error || rowsAffected === 0) {
               let { data: adminRows, error: adminErr } = await supabaseAdmin.from('transactions').update(cleanData).eq('id', id).select('id');
               if (!adminErr && adminRows && adminRows.length > 0) {
                 error = null;
@@ -4353,21 +4376,23 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 if (error || rowsAffected === 0) {
                   try {
                     const token = getStorageServiceToken();
-                    const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${id}`, {
-                      method: 'PATCH',
-                      headers: {
-                        apikey: token,
-                        Authorization: `Bearer ${token}`,
-                        'Content-Type': 'application/json',
-                        Prefer: 'return=representation',
-                      },
-                      body: JSON.stringify(cleanData),
-                    });
-                    if (res.ok) {
-                      const patchData = await res.json().catch(() => null);
-                      if (patchData && patchData.length > 0) {
-                        error = null;
-                        rowsAffected = patchData.length;
+                    if (token) {
+                      const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${id}`, {
+                        method: 'PATCH',
+                        headers: {
+                          apikey: token,
+                          Authorization: `Bearer ${token}`,
+                          'Content-Type': 'application/json',
+                          Prefer: 'return=representation',
+                        },
+                        body: JSON.stringify(cleanData),
+                      });
+                      if (res.ok) {
+                        const patchData = await res.json().catch(() => null);
+                        if (patchData && patchData.length > 0) {
+                          error = null;
+                          rowsAffected = patchData.length;
+                        }
                       }
                     }
                   } catch {}
@@ -4382,38 +4407,54 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } else if (item.type === 'delete_transaction') {
           const { id } = item.payload;
           if (id) {
+            let deletedOk = false;
+            // 優先嘗試資料庫安全預存程序 RPC (無需 service_role 金鑰，安全性最高)
             try {
-              await supabaseAdmin.from('transaction_splits').delete().eq('transaction_id', id);
-            } catch {}
-            let { data: delRows, error } = await supabase.from('transactions').delete().eq('id', id).select('id');
-            let rowsAffected = delRows ? delRows.length : 0;
-            if (error || rowsAffected === 0) {
-              const { data: adminRows, error: adminErr } = await supabaseAdmin.from('transactions').delete().eq('id', id).select('id');
-              if (!adminErr) {
-                error = null;
-                rowsAffected = adminRows ? adminRows.length : 1;
-              } else {
-                try {
-                  const token = getStorageServiceToken();
-                  const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${id}`, {
-                    method: 'DELETE',
-                    headers: {
-                      apikey: token,
-                      Authorization: `Bearer ${token}`,
-                    },
-                  });
-                  if (res.ok) {
-                    error = null;
-                    rowsAffected = 1;
-                  }
-                } catch {}
+              const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_delete_transaction', {
+                p_tx_id: id,
+                p_ledger_id: targetLedgerId,
+              });
+              if (!rpcErr && rpcRes && rpcRes.success !== false) {
+                deletedOk = true;
               }
-            }
-            // 雙軌補入墓碑表防復活
-            try {
-              await supabaseAdmin.from('deleted_transactions').insert({ id, ledger_id: targetLedgerId });
             } catch {}
-            if (error || rowsAffected === 0) throw error || new Error('離線刪除影響筆數為 0');
+
+            if (!deletedOk) {
+              try {
+                await supabaseAdmin.from('transaction_splits').delete().eq('transaction_id', id);
+              } catch {}
+              let { data: delRows, error } = await supabase.from('transactions').delete().eq('id', id).select('id');
+              let rowsAffected = delRows ? delRows.length : 0;
+              if (error || rowsAffected === 0) {
+                const { data: adminRows, error: adminErr } = await supabaseAdmin.from('transactions').delete().eq('id', id).select('id');
+                if (!adminErr) {
+                  error = null;
+                  rowsAffected = adminRows ? adminRows.length : 1;
+                } else {
+                  try {
+                    const token = getStorageServiceToken();
+                    if (token) {
+                      const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${id}`, {
+                        method: 'DELETE',
+                        headers: {
+                          apikey: token,
+                          Authorization: `Bearer ${token}`,
+                        },
+                      });
+                      if (res.ok) {
+                        error = null;
+                        rowsAffected = 1;
+                      }
+                    }
+                  } catch {}
+                }
+              }
+              // 雙軌補入墓碑表防復活
+              try {
+                await supabaseAdmin.from('deleted_transactions').insert({ id, ledger_id: targetLedgerId });
+              } catch {}
+              if (error || rowsAffected === 0) throw error || new Error('離線刪除影響筆數為 0');
+            }
           }
           await dequeueOfflineMutation(item.id);
           synced++;
@@ -6628,22 +6669,29 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           txError = retryFkRes.error;
         }
 
-        // 雙軌穿透：若一般連線受限於 RLS 或 Session 報錯，切換 supabaseAdmin 服務權杖穿透寫入
+        // 雙軌穿透：若一般連線受限於 RLS 或 Session 報錯，優先嘗試安全預存程序 RPC 穿透寫入 (無需 service_role 金鑰)
         if (txError) {
           try {
-            const adminRes = await supabaseAdmin.from('transactions').insert(payloads);
-            if (!adminRes.error) {
+            const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_batch_add_transactions', {
+              p_transactions: payloads,
+            });
+            if (!rpcErr && rpcRes && rpcRes.success !== false) {
               txError = null;
             } else {
-              const safePayloads = payloads.map(p => ({
-                ...p,
-                paid_by: validCreatorId || authUserId,
-                category_id: null,
-                account_id: null,
-              }));
-              const adminRetry = await supabaseAdmin.from('transactions').insert(safePayloads);
-              if (!adminRetry.error) {
+              const adminRes = await supabaseAdmin.from('transactions').insert(payloads);
+              if (!adminRes.error) {
                 txError = null;
+              } else {
+                const safePayloads = payloads.map(p => ({
+                  ...p,
+                  paid_by: validCreatorId || authUserId,
+                  category_id: null,
+                  account_id: null,
+                }));
+                const adminRetry = await supabaseAdmin.from('transactions').insert(safePayloads);
+                if (!adminRetry.error) {
+                  txError = null;
+                }
               }
             }
           } catch {}
@@ -6792,61 +6840,76 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
 
-    // 4. 雲端同步刪除 (支援雙軌服務權杖穿透與墓碑表記錄，徹底杜絕死而復生)
+    // 4. 雲端同步刪除 (優先透過資料庫 SECURITY DEFINER RPC 安全刪除，完全無需 service_role 金鑰即可穿透防死而復生)
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
+        let deletedOk = false;
         try {
-          await supabaseAdmin.from('transaction_splits').delete().eq('transaction_id', id);
-        } catch {
-          await supabase.from('transaction_splits').delete().eq('transaction_id', id);
-        }
-
-        // 先寫入墓碑表以防舊裝置復活（雙軌服務權杖穿透寫入）
-        try {
-          const { error: tombErr } = await supabase.from('deleted_transactions').insert({ id, ledger_id: currentLedger.id });
-          if (tombErr) {
-            await supabaseAdmin.from('deleted_transactions').insert({ id, ledger_id: currentLedger.id });
+          const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_delete_transaction', {
+            p_tx_id: id,
+            p_ledger_id: currentLedger.id,
+          });
+          if (!rpcErr && rpcRes && rpcRes.success !== false) {
+            deletedOk = true;
           }
-        } catch {
+        } catch {}
+
+        if (!deletedOk) {
           try {
-            await supabaseAdmin.from('deleted_transactions').insert({ id, ledger_id: currentLedger.id });
-          } catch {}
-        }
+            await supabaseAdmin.from('transaction_splits').delete().eq('transaction_id', id);
+          } catch {
+            await supabase.from('transaction_splits').delete().eq('transaction_id', id);
+          }
 
-        let { data: delRows, error } = await supabase.from('transactions').delete().eq('id', id).select('id');
-        let rowsAffected = delRows ? delRows.length : 0;
-
-        // 若一般連線受限於 RLS (刪除 0 筆或報錯)，切換 supabaseAdmin 服務權杖穿透刪除
-        if (error || rowsAffected === 0) {
-          const { data: adminRows, error: adminErr } = await supabaseAdmin.from('transactions').delete().eq('id', id).select('id');
-          if (!adminErr) {
-            error = null;
-            rowsAffected = adminRows ? adminRows.length : 1;
-          } else {
+          // 先寫入墓碑表以防舊裝置復活（雙軌服務權杖穿透寫入）
+          try {
+            const { error: tombErr } = await supabase.from('deleted_transactions').insert({ id, ledger_id: currentLedger.id });
+            if (tombErr) {
+              await supabaseAdmin.from('deleted_transactions').insert({ id, ledger_id: currentLedger.id });
+            }
+          } catch {
             try {
-              const token = getStorageServiceToken();
-              const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${id}&ledger_id=eq.${currentLedger.id}`, {
-                method: 'DELETE',
-                headers: {
-                  apikey: token,
-                  Authorization: `Bearer ${token}`,
-                },
-              });
-              if (res.ok) {
-                error = null;
-                rowsAffected = 1;
-              }
+              await supabaseAdmin.from('deleted_transactions').insert({ id, ledger_id: currentLedger.id });
             } catch {}
           }
-        }
 
-        if (error || rowsAffected === 0) {
-          console.warn('雲端刪除交易失敗或受影響筆數為 0，排入離線隊列稍後重試:', error?.message || '0 rows deleted');
-          enqueueOfflineMutation({
-            type: 'delete_transaction',
-            ledgerId: currentLedger.id,
-            payload: { id },
-          }).catch(() => {});
+          let { data: delRows, error } = await supabase.from('transactions').delete().eq('id', id).select('id');
+          let rowsAffected = delRows ? delRows.length : 0;
+
+          // 若一般連線受限於 RLS (刪除 0 筆或報錯)，切換 supabaseAdmin 服務權杖穿透刪除
+          if (error || rowsAffected === 0) {
+            const { data: adminRows, error: adminErr } = await supabaseAdmin.from('transactions').delete().eq('id', id).select('id');
+            if (!adminErr) {
+              error = null;
+              rowsAffected = adminRows ? adminRows.length : 1;
+            } else {
+              try {
+                const token = getStorageServiceToken();
+                if (token) {
+                  const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${id}&ledger_id=eq.${currentLedger.id}`, {
+                    method: 'DELETE',
+                    headers: {
+                      apikey: token,
+                      Authorization: `Bearer ${token}`,
+                    },
+                  });
+                  if (res.ok) {
+                    error = null;
+                    rowsAffected = 1;
+                  }
+                }
+              } catch {}
+            }
+          }
+
+          if (error || rowsAffected === 0) {
+            console.warn('雲端刪除交易失敗或受影響筆數為 0，排入離線隊列稍後重試:', error?.message || '0 rows deleted');
+            enqueueOfflineMutation({
+              type: 'delete_transaction',
+              ledgerId: currentLedger.id,
+              payload: { id },
+            }).catch(() => {});
+          }
         }
       } catch (err) {
         console.warn('雲端刪除交易連線失敗，排入離線隊列稍後重試:', err);
@@ -7270,7 +7333,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           rowsAffected = retryRes.data ? retryRes.data.length : 0;
         }
 
-        // 2. 雙軌管理員服務權杖穿透寫入：若一般 Supabase 更新因 RLS / Session 報錯，或者受限於 RLS 導致受影響筆數為 0
+        // 2. 雙軌穿透：優先嘗試安全預存程序 RPC (無需 service_role 金鑰，安全穿透 RLS)
         if (error || rowsAffected === 0) {
           try {
             const clean = cleanTransactionForSync(updatePayload);
@@ -7278,62 +7341,74 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             delete clean.ledger_id;
             delete clean.creator_id;
 
-            let adminRes = await supabaseAdmin
-              .from('transactions')
-              .update(clean)
-              .eq('id', id)
-              .select('id');
+            const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_update_transaction', {
+              p_tx_id: id,
+              p_payload: clean,
+            });
 
-            if (adminRes.error && (adminRes.error.code === '23514' || adminRes.error.message?.includes('check constraint'))) {
-              clean.type = 'transfer';
-              adminRes = await supabaseAdmin.from('transactions').update(clean).eq('id', id).select('id');
-            }
-
-            if (adminRes.error && (adminRes.error.code === '42703' || adminRes.error.code === 'PGRST204' || adminRes.error.message?.includes('column'))) {
-              delete clean.merchant;
-              delete clean.payment_method;
-              delete clean.account_id;
-              delete clean.is_reconciled;
-              delete clean.completion_note;
-              delete clean.linked_transaction_id;
-              delete clean.image_url;
-              delete clean.reminder_target;
-              delete clean.completed_by;
-              delete clean.completed_at;
-              delete clean.reminder_date;
-              delete clean.reminder_calendar;
-              delete clean.reminder_repeat;
-              const effectiveMerchant = data.merchant !== undefined ? cleanMerchant : targetTx?.merchant;
-              clean.note = effectiveMerchant ? `[${effectiveMerchant}] ${effectiveNote}`.trim() : effectiveNote;
-              adminRes = await supabaseAdmin.from('transactions').update(clean).eq('id', id).select('id');
-            }
-
-            if (!adminRes.error && adminRes.data && adminRes.data.length > 0) {
+            if (!rpcErr && rpcRes && rpcRes.success !== false) {
               error = null;
-              rowsAffected = adminRes.data.length;
-            } else if (adminRes.error) {
-              // 備用 fetch REST API 穿透
-              const token = getStorageServiceToken();
-              const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${id}`, {
-                method: 'PATCH',
-                headers: {
-                  apikey: token,
-                  Authorization: `Bearer ${token}`,
-                  'Content-Type': 'application/json',
-                  Prefer: 'return=representation',
-                },
-                body: JSON.stringify(clean),
-              });
-              if (res.ok) {
-                const patchData = await res.json().catch(() => null);
-                if (patchData && patchData.length > 0) {
-                  error = null;
-                  rowsAffected = patchData.length;
+              rowsAffected = rpcRes.rows_affected || 1;
+            } else {
+              let adminRes = await supabaseAdmin
+                .from('transactions')
+                .update(clean)
+                .eq('id', id)
+                .select('id');
+
+              if (adminRes.error && (adminRes.error.code === '23514' || adminRes.error.message?.includes('check constraint'))) {
+                clean.type = 'transfer';
+                adminRes = await supabaseAdmin.from('transactions').update(clean).eq('id', id).select('id');
+              }
+
+              if (adminRes.error && (adminRes.error.code === '42703' || adminRes.error.code === 'PGRST204' || adminRes.error.message?.includes('column'))) {
+                delete clean.merchant;
+                delete clean.payment_method;
+                delete clean.account_id;
+                delete clean.is_reconciled;
+                delete clean.completion_note;
+                delete clean.linked_transaction_id;
+                delete clean.image_url;
+                delete clean.reminder_target;
+                delete clean.completed_by;
+                delete clean.completed_at;
+                delete clean.reminder_date;
+                delete clean.reminder_calendar;
+                delete clean.reminder_repeat;
+                const effectiveMerchant = data.merchant !== undefined ? cleanMerchant : targetTx?.merchant;
+                clean.note = effectiveMerchant ? `[${effectiveMerchant}] ${effectiveNote}`.trim() : effectiveNote;
+                adminRes = await supabaseAdmin.from('transactions').update(clean).eq('id', id).select('id');
+              }
+
+              if (!adminRes.error && adminRes.data && adminRes.data.length > 0) {
+                error = null;
+                rowsAffected = adminRes.data.length;
+              } else if (adminRes.error) {
+                // 備用 fetch REST API 穿透
+                const token = getStorageServiceToken();
+                if (token) {
+                  const res = await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${id}`, {
+                    method: 'PATCH',
+                    headers: {
+                      apikey: token,
+                      Authorization: `Bearer ${token}`,
+                      'Content-Type': 'application/json',
+                      Prefer: 'return=representation',
+                    },
+                    body: JSON.stringify(clean),
+                  });
+                  if (res.ok) {
+                    const patchData = await res.json().catch(() => null);
+                    if (patchData && patchData.length > 0) {
+                      error = null;
+                      rowsAffected = patchData.length;
+                    }
+                  }
                 }
               }
             }
           } catch (penetrationErr) {
-            console.warn('管理員服務權杖穿透更新異常:', penetrationErr);
+            console.warn('雙軌穿透更新異常:', penetrationErr);
           }
         }
 
@@ -7898,14 +7973,22 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           .select('id');
         const rowsAffected = updRows ? updRows.length : 0;
         if (error || rowsAffected === 0) {
-          const { error: adminErr } = await supabaseAdmin
-            .from('categories')
-            .update(updatePayload)
-            .eq('id', id)
-            .select('id');
-          if (adminErr) {
-            console.warn('雲端更新分類失敗:', adminErr.message);
-            return false;
+          const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_update_category', {
+            p_cat_id: id,
+            p_payload: updatePayload,
+          });
+          if (!rpcErr && rpcRes && rpcRes.success !== false) {
+            error = null;
+          } else {
+            const { error: adminErr } = await supabaseAdmin
+              .from('categories')
+              .update(updatePayload)
+              .eq('id', id)
+              .select('id');
+            if (adminErr) {
+              console.warn('雲端更新分類失敗:', adminErr.message);
+              return false;
+            }
           }
         }
       }
@@ -7947,10 +8030,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         let { data: delRows, error } = await supabase.from('categories').delete().eq('id', id).select('id');
         const rowsAffected = delRows ? delRows.length : 0;
         if (error || rowsAffected === 0) {
-          const { error: adminErr } = await supabaseAdmin.from('categories').delete().eq('id', id).select('id');
-          if (adminErr) {
-            console.warn('雲端刪除分類失敗:', adminErr.message);
-            return { success: false, error: adminErr.message };
+          const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_delete_category', {
+            p_cat_id: id,
+          });
+          if (!rpcErr && rpcRes && rpcRes.success !== false) {
+            error = null;
+          } else {
+            const { error: adminErr } = await supabaseAdmin.from('categories').delete().eq('id', id).select('id');
+            if (adminErr) {
+              console.warn('雲端刪除分類失敗:', adminErr.message);
+              return { success: false, error: adminErr.message };
+            }
           }
         }
       }

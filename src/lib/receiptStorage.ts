@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import { SUPABASE_URL, supabase } from './supabase';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, supabase } from './supabase';
 import { STATEMENT_BUCKET, getStorageServiceToken, toHexUtf8 } from './statementStorage';
 
 /**
@@ -101,6 +101,14 @@ export const uploadReceiptPhoto = async (params: {
 
     const svcToken = getStorageServiceToken();
     let authToken = svcToken;
+    if (!authToken) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        authToken = data?.session?.access_token || SUPABASE_ANON_KEY;
+      } catch {
+        authToken = SUPABASE_ANON_KEY;
+      }
+    }
 
     const buildHeaders = (token: string) => {
       const h: Record<string, string> = {

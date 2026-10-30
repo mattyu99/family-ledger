@@ -454,7 +454,7 @@ export function usePaymentAccounts({
     );
   }, [paymentMethods]);
 
-  // 雙軌雲端同步卡片帳戶餘額 (支援 .select('id') 檢測 0 筆與 supabaseAdmin 服務權杖穿透)
+  // 雙軌雲端同步卡片帳戶餘額 (優先呼叫 SECURITY DEFINER RPC，無需 service_role 金鑰即可安全更新)
   const syncAccountBalanceToCloud = useCallback(async (accountId: string, balance: number) => {
     if (!isConfigured || currentLedger.id === DEMO_LEDGER_ID || !accountId || accountId.startsWith('50000000')) return;
     const payload = { balance, updated_at: new Date().toISOString() };
@@ -465,11 +465,20 @@ export function usePaymentAccounts({
         .eq('id', accountId)
         .select('id');
       if (error || !data || data.length === 0) {
-        await supabaseAdmin.from('payment_accounts').update(payload).eq('id', accountId);
+        const { error: rpcErr } = await supabase.rpc('secure_update_account_balance', {
+          p_account_id: accountId,
+          p_balance: balance,
+        });
+        if (rpcErr) {
+          await supabaseAdmin.from('payment_accounts').update(payload).eq('id', accountId);
+        }
       }
     } catch {
       try {
-        await supabaseAdmin.from('payment_accounts').update(payload).eq('id', accountId);
+        await supabase.rpc('secure_update_account_balance', {
+          p_account_id: accountId,
+          p_balance: balance,
+        });
       } catch {}
     }
   }, [isConfigured, currentLedger.id, supabase]);
@@ -591,10 +600,16 @@ export function usePaymentAccounts({
             .eq('id', transactionId)
             .select('id');
           if (recErr || !recRows || recRows.length === 0) {
-            await supabaseAdmin
-              .from('transactions')
-              .update({ is_reconciled: nextReconciled })
-              .eq('id', transactionId);
+            const { error: rpcErr } = await supabase.rpc('secure_update_transaction', {
+              p_tx_id: transactionId,
+              p_payload: { is_reconciled: nextReconciled },
+            });
+            if (rpcErr) {
+              await supabaseAdmin
+                .from('transactions')
+                .update({ is_reconciled: nextReconciled })
+                .eq('id', transactionId);
+            }
           }
         } catch {}
       }

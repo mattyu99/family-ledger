@@ -11,7 +11,6 @@ import {
 import { generateUUID } from '../lib/uuid';
 import { safeAlert } from '../lib/ledgerUtils';
 import { STORAGE_KEYS, DEMO_LEDGER_ID, DEMO_RECURRING_RULES } from '../constants/ledgerDefaults';
-import { supabaseAdmin } from '../lib/supabase';
 
 export interface UseRecurringRulesProps {
   currentLedger: Ledger;
@@ -66,7 +65,7 @@ export function useRecurringRules({
       try {
         const { error } = await supabase.from('recurring_rules').insert(newRule);
         if (error) {
-          await supabaseAdmin.from('recurring_rules').insert(newRule);
+          console.warn('雲端新增週期規則失敗 (本地可用):', error);
         }
       } catch (err) {
         console.warn('雲端新增週期規則失敗 (本地可用):', err);
@@ -103,7 +102,10 @@ export function useRecurringRules({
         const { data: updRows, error } = await supabase.from('recurring_rules').update(updatePayload).eq('id', id).select('id');
         const rowsAffected = updRows ? updRows.length : 0;
         if (error || rowsAffected === 0) {
-          await supabaseAdmin.from('recurring_rules').update(updatePayload).eq('id', id);
+          await supabase.rpc('secure_update_recurring_rule', {
+            p_rule_id: id,
+            p_payload: updatePayload,
+          });
         }
       } catch (err) {
         console.warn('雲端更新週期規則失敗 (本地可用):', err);
@@ -123,7 +125,9 @@ export function useRecurringRules({
         const { data: delRows, error } = await supabase.from('recurring_rules').delete().eq('id', id).select('id');
         const rowsAffected = delRows ? delRows.length : 0;
         if (error || rowsAffected === 0) {
-          await supabaseAdmin.from('recurring_rules').delete().eq('id', id);
+          await supabase.rpc('secure_delete_recurring_rule', {
+            p_rule_id: id,
+          });
         }
       } catch (err) {
         console.warn('雲端刪除週期規則失敗 (本地可用):', err);
@@ -211,7 +215,10 @@ export function useRecurringRules({
         };
         const { data: updRows, error } = await supabase.from('recurring_rules').update(payload).eq('id', ruleId).select('id');
         if (error || !updRows || updRows.length === 0) {
-          await supabaseAdmin.from('recurring_rules').update(payload).eq('id', ruleId);
+          await supabase.rpc('secure_update_recurring_rule', {
+            p_rule_id: ruleId,
+            p_payload: payload,
+          });
         }
       } catch {}
     }
@@ -271,7 +278,10 @@ export function useRecurringRules({
         };
         const { data: updRows, error } = await supabase.from('recurring_rules').update(payload).eq('id', ruleId).select('id');
         if (error || !updRows || updRows.length === 0) {
-          await supabaseAdmin.from('recurring_rules').update(payload).eq('id', ruleId);
+          await supabase.rpc('secure_update_recurring_rule', {
+            p_rule_id: ruleId,
+            p_payload: payload,
+          });
         }
       } catch {}
     }

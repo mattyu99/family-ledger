@@ -185,17 +185,19 @@ export const saveCachedRecurringStatements = async (
 // 執行具備完整讀寫權限的 Storage API 請求（避免 SELECT RLS 在無 policy 時靜默回傳 HTTP 200 空陣列 []）
 export const fetchStorageWithAuth = async (url: string, init: RequestInit): Promise<Response> => {
   const svcToken = getStorageServiceToken();
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      ...(init.headers || {}),
-      apikey: svcToken,
-      Authorization: `Bearer ${svcToken}`,
-    },
-  });
-  if (res.ok) return res;
+  if (svcToken) {
+    const res = await fetch(url, {
+      ...init,
+      headers: {
+        ...(init.headers || {}),
+        apikey: svcToken,
+        Authorization: `Bearer ${svcToken}`,
+      },
+    });
+    if (res.ok) return res;
+  }
 
-  // 備援：若服務權杖異常則退回使用者 session token
+  // 備援：若服務權杖異常則退回使用者 session token 或 anon key
   let token = SUPABASE_ANON_KEY;
   try {
     const { data } = await supabase.auth.getSession();

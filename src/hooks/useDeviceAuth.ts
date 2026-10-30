@@ -315,7 +315,7 @@ export function useDeviceAuth({
           };
           const { data, error } = await supabase.from('profiles').update(payload).eq('id', targetId).select('id');
           if (error || !data || data.length === 0) {
-            await supabaseAdmin.from('profiles').update(payload).eq('id', targetId);
+            await supabase.rpc('secure_unlink_profile', { p_profile_id: targetId });
           }
         } catch (e) {
           console.warn('雲端解除綁定更新失敗:', e);
