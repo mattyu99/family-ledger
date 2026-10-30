@@ -148,7 +148,7 @@ function withAndroidWidgets(config) {
         android:id="@+id/quick_widget_badge"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="家庭記帳本"
+        android:text="甜心記帳本 🍟"
         android:textColor="#F8FAFC"
         android:textSize="12sp"
         android:textStyle="bold"
@@ -432,13 +432,168 @@ function withAndroidWidgets(config) {
 </LinearLayout>`;
       fs.writeFileSync(path.join(layoutDir, 'widget_memo_today.xml'), memoTodayLayoutXml, 'utf8');
 
-      // 2.4 注入 Widget Info 元資料 XML
+      // 2.3.1 注入 4x2 今日待辦小工具預覽版面 (widget_memo_today_preview.xml，供 Android 12+ 啟動器 Widget Picker 展示)
+      const memoTodayPreviewLayoutXml = `<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_card_bg"
+    android:padding="12dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="6dp">
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="📋 今日生活待辦"
+            android:textColor="#F8FAFC"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="甜心記帳本 🍟"
+            android:textColor="#94A3B8"
+            android:textSize="10sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center_vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="4dp">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="⚠️ 【採買清單】買小夜燈"
+                android:textColor="#E2E8F0"
+                android:textSize="11sp"
+                android:singleLine="true"
+                android:ellipsize="end" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="已逾期"
+                android:textColor="#F87171"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:layout_marginStart="6dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="4dp">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="⚠️ 洋領鮮奶"
+                android:textColor="#E2E8F0"
+                android:textSize="11sp"
+                android:singleLine="true"
+                android:ellipsize="end" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="已逾期"
+                android:textColor="#F87171"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:layout_marginStart="6dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="⭕ 初一、十五吃素"
+                android:textColor="#E2E8F0"
+                android:textSize="11sp"
+                android:singleLine="true"
+                android:ellipsize="end" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="11-09"
+                android:textColor="#94A3B8"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:layout_marginStart="6dp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="6dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="28dp"
+            android:layout_weight="1"
+            android:background="@drawable/widget_btn_bg"
+            android:gravity="center"
+            android:text="💸 記支出"
+            android:textColor="#F8FAFC"
+            android:textSize="11sp"
+            android:layout_marginEnd="4dp" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="28dp"
+            android:layout_weight="1"
+            android:background="@drawable/widget_btn_bg"
+            android:gravity="center"
+            android:text="📷 掃發票"
+            android:textColor="#F8FAFC"
+            android:textSize="11sp"
+            android:layout_marginEnd="4dp" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="28dp"
+            android:layout_weight="1"
+            android:background="@drawable/widget_btn_bg"
+            android:gravity="center"
+            android:text="📝 加待辦"
+            android:textColor="#F8FAFC"
+            android:textSize="11sp" />
+    </LinearLayout>
+</LinearLayout>`;
+      fs.writeFileSync(path.join(layoutDir, 'widget_memo_today_preview.xml'), memoTodayPreviewLayoutXml, 'utf8');
+
+      // 2.4 注入 Widget Info 元資料 XML (支援 Android 12+ previewLayout 原生向量預覽)
       const quickActionsInfoXml = `<?xml version="1.0" encoding="utf-8"?>
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="140dp"
     android:minHeight="140dp"
     android:updatePeriodMillis="86400000"
     android:initialLayout="@layout/widget_quick_actions"
+    android:previewLayout="@layout/widget_quick_actions"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:description="@string/widget_quick_actions_desc" />`;
@@ -450,6 +605,7 @@ function withAndroidWidgets(config) {
     android:minHeight="110dp"
     android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/widget_memo_today"
+    android:previewLayout="@layout/widget_memo_today_preview"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:description="@string/widget_memo_today_desc" />`;
