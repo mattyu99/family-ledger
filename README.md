@@ -1,4 +1,4 @@
-# 💖 甜心記帳本 (Sweetheart Family Ledger) v1.0.9
+# 💖 甜心記帳本 (Sweetheart Family Ledger) v1.0.10
 
 一套基於 **React Native + Expo SDK 57** 與 **Supabase PostgreSQL Realtime** 打造的跨平台家庭共同記帳系統。  
 支援 **Android 原生 App（APK）、電腦網頁版（Web）與手機瀏覽器（PWA）** 多端併行，具備**多人協同記帳、即時雙向同步、離線隨身記帳、生活手帳記事、固定與分期帳單追蹤、Google 帳號一鍵綁定與身分電子鎖、4 位數安全防護、6 大全要素資料備份**與**雲端 OTA 熱更新**功能。
@@ -112,12 +112,35 @@
 23. **🛡️ 防禦型原生模組相容架構 ＋ 全域根層安全邊界 (Root Error Boundary)**：
     - **原生模組安全載入機制**：全面改用動態探測載入（`requireOptionalNativeModule`），在尚未重新編譯 APK 之舊用戶端自動平滑降級為 PIN 碼模式，徹底杜絕 OTA 黑屏現象。
     - **全域根層安全邊界**：於應用程式最外層掛載 `<RootErrorBoundary>`，攔截任何未預期例外執行緒，呈現友善提示與一鍵恢復按鈕，維持全 App 堅如磐石的穩定度。
+24. **📱 原生 Android 桌面小工具 (Home Screen AppWidgets) 與快捷直達**：
+    - **2x2 極速捷徑 (QuickActionsWidget)**：提供「💸 記支出、📷 掃發票、💰 記收入、📝 隨手記」四大高頻動作，桌面 0 毫秒極速直達對應表單。
+    - **4x2 今日生活待辦 (MemoTodayWidget)**：桌面直讀本機 SQLite 快照，即時檢視今日與逾期待辦細項，隨時掌握家庭任務。
+    - **自適應雙層佈局與智慧清洗**：自動清洗 Markdown 待辦標記，保留完整備忘內文；自適應防擠壓排版杜絕按鈕溢出。
+25. **🔔 跨裝置即時推播與桌面小工具背景靜默喚醒同步 (Silent Push)**：
+    - **推播分發引擎 (`pushDispatcher`)**：家人新增、辦妥、修改或刪除待辦時，自動過濾本機發送者，向同公帳其他家人手機發送通知。
+    - **靜默背景喚醒 (`_contentAvailable: true`)**：推播在背景喚醒手機作業系統 1 秒鐘，自動執行快照同步並即時刷新桌面小工具，跨裝置零時差。
+26. **🛡️ 企業級零金鑰架構 (Zero-Token Architecture) 與安全預存程序**：
+    - **徹底移除 service_role 權杖**：前端客戶端代碼與環境變數不再包含任何最高服務權杖與混淆碼，達成零信任 (Zero Trust) 安全防衛。
+    - **PostgreSQL 核心預存程序 (SECURITY DEFINER RPC)**：明細、卡片餘額、分類、週期規則等核心異動全線改採資料庫內部預存程序安全穿透 RLS，兼顧極致安全與穩定可用。
+27. **⚡ 主頁下拉刷新極速並行化管線 (RTT < 300ms)**：
+    - 打破 15 次循序排隊網路請求，將帳本主檔、分類、成員名冊、付款卡片、交易明細等 9 大核心查詢全面打包為 `Promise.all` 單一並發管線，下拉轉圈耗時自 15 秒驟降至 0.8 秒以內。
 
 ---
 
 ## 📋 歷次功能演進與重大更新記錄 (Changelog)
 
-### 🚀 v1.0.9 (當前最新版本: v1.0.9.1)
+### 🚀 v1.0.10 (當前最新版本: v1.0.10.0)
+* **📱 原生 Android 桌面小工具 (Home Screen AppWidgets)**：全新打造 withAndroidWidgets Config Plugin，深度注入 2x2 快捷按鈕 (QuickActionsWidget) 與 4x2 今日待辦 (MemoTodayWidget) 原生佈局 XML 與 Java Provider，支援由 SQLite 本機快照直讀渲染，免開 App 即時掌握待辦與一鍵記帳。
+* **🔔 跨裝置即時推播與背景靜默喚醒同步**：資料庫 member_devices 補齊 push_token 登記，建立 pushDispatcher 跨裝置推播分發引擎；家人新增或辦妥待辦時自動發送 _contentAvailable: true 靜默推播，背景喚醒手機作業系統 0 延遲刷新桌面小工具。
+* **📋 待辦智慧內文解析與快照排版優化**：widgetSync 自動清洗 Markdown 方框標記（- [ ] / - [x]），智慧提取真實活動與採買內文；修復家庭設定頁標題過長擠壓按鈕之問題，改採自適應雙層防擠壓排版。
+* **🛡️ 企業級零金鑰架構 (Zero-Token Architecture)**：前端客戶端徹底拔除所有 service_role 最高服務權杖與混淆碼，全線改採 PostgreSQL SECURITY DEFINER 核心預存程序 (RPC) 與標準公開 anon_key，達成零信任企業級安全防禦。
+* **⚡ 主頁下拉刷新極速並行化重構 (RTT < 300ms)**：打破 15 次循序排隊網路瀑布，將 9 大核心查詢全面打包為 Promise.all 單一並發請求，轉圈耗時自 15 秒驟降至 0.8 秒以內。
+* **📋 生活備忘已辦妥清單時間降序排列**：已辦妥列表改以實際辦妥時間戳記 (completed_at) 降序排列，剛完成事項即刻置頂於清單最上方。
+* **📦 全新 Android 原生 APK 編譯發布**：打包 VersionCode 4 原生二進位獨立安裝檔，完整收錄原生桌面小工具、推播喚醒與零金鑰極速架構。
+
+---
+
+### 📦 v1.0.9 (v1.0.9.0 ~ v1.0.9.33)
 * **📦 全新 Android 原生 APK 編譯發布**：完成 VersionCode 3 原生二進位獨立安裝檔打包，完整封裝相機辨識、生物辨識與桌面 Quick Actions。
 * **🛡️ 多機 Google 授權與 RLS 權限鏈接**：換機登入 Google 認領身分後自動補登雲端權限，徹底杜絕因 RLS 阻斷導致交易與卡片為 0 或受困舊快取。
 * **🚫 邀請碼加入防幽靈假人**：嚴禁未填暱稱建立「家庭成員」假人；受保護身分新增【以 Google 帳號直接解鎖認領】按鈕，無縫解鎖。

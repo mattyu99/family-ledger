@@ -1,13 +1,13 @@
 import appConfig from '../../app.json';
 
-// 主版本號（來自 app.json，例如 1.0.9）
-export const APP_BASE_VERSION = appConfig.expo.version || '1.0.9';
+// 主版本號（來自 app.json，例如 1.0.10）
+export const APP_BASE_VERSION = appConfig.expo.version || '1.0.10';
 
 // 小版號 / 建置修訂版號 (Build Revision)
-// 代表自 v1.0.9 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 33;
+// 代表自 v1.0.10 正式發布以來，歷次功能更新與修訂的累計版次
+export const APP_BUILD_REVISION = 0;
 
-// 完整版本字串 (例如 "1.0.9.21")
+// 完整版本字串 (例如 "1.0.10.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,18 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.10',
+    date: '2026-10-30',
+    title: '全新 1.0.10 正式版：原生 Android 桌面小工具、跨裝置推播背景喚醒與零金鑰極速架構',
+    highlights: [
+      '📱 原生 Android 桌面小工具 (2x2 快捷捷徑 & 4x2 今日待辦)：全新打造 withAndroidWidgets Config Plugin，整合 RemoteViews 與 SQLite 本機快照直讀，提供免開 App 即時查待辦與一鍵記帳。',
+      '🔔 跨裝置即時推播與背景靜默喚醒同步：新增 member_devices push_token 與 pushDispatcher，家人新增、辦妥待辦時自動喚醒背景線程更新桌面小工具快照。',
+      '📋 待辦智慧內文解析與快照排版優化：widgetSync 自動清洗 Markdown 方框標記，完整保留待辦與採買清單內文，自適應雙層佈局杜絕按鈕擠壓溢出。',
+      '🛡️ 企業級零金鑰架構 (Zero-Token Architecture)：前端徹底拔除最高服務權杖，全線改採 PostgreSQL SECURITY DEFINER 預存程序 (RPC) 與標準 anon_key，零信任安全防禦。',
+      '⚡ 下拉刷新極速並發管線 (RTT < 300ms)：9 大核心資料查詢全面打包 Promise.all 單一並行請求，響應耗時自 15 秒驟降至 0.8 秒以內。',
+    ],
+  },
   {
     version: '1.0.9',
     date: '2026-10-27 ~ 2026-10-30',
