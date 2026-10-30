@@ -145,13 +145,15 @@ function withAndroidWidgets(config) {
     android:padding="12dp">
 
     <TextView
-        android:id="@+id/widget_title"
-        android:layout_width="wrap_content"
+        android:id="@+id/quick_widget_badge"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="甜心記帳本 🍟"
+        android:text="家庭記帳本"
         android:textColor="#F8FAFC"
         android:textSize="12sp"
         android:textStyle="bold"
+        android:singleLine="true"
+        android:ellipsize="end"
         android:layout_marginBottom="8dp" />
 
     <LinearLayout
@@ -303,36 +305,87 @@ function withAndroidWidgets(config) {
         android:orientation="vertical"
         android:gravity="center_vertical">
 
-        <TextView
-            android:id="@+id/memo_item_1"
+        <LinearLayout
+            android:id="@+id/memo_row_1"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="⭕ 今日尚無待辦事項"
-            android:textColor="#E2E8F0"
-            android:textSize="11sp"
-            android:singleLine="true"
-            android:layout_marginBottom="4dp" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="4dp">
+            <TextView
+                android:id="@+id/memo_item_1"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="⭕ 今日尚無待辦事項"
+                android:textColor="#E2E8F0"
+                android:textSize="11sp"
+                android:singleLine="true"
+                android:ellipsize="end" />
+            <TextView
+                android:id="@+id/memo_badge_1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#F87171"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:layout_marginStart="6dp" />
+        </LinearLayout>
 
-        <TextView
-            android:id="@+id/memo_item_2"
+        <LinearLayout
+            android:id="@+id/memo_row_2"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text=""
-            android:textColor="#CBD5E1"
-            android:textSize="11sp"
-            android:singleLine="true"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
             android:layout_marginBottom="4dp"
-            android:visibility="gone" />
+            android:visibility="gone">
+            <TextView
+                android:id="@+id/memo_item_2"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text=""
+                android:textColor="#CBD5E1"
+                android:textSize="11sp"
+                android:singleLine="true"
+                android:ellipsize="end" />
+            <TextView
+                android:id="@+id/memo_badge_2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#F87171"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:layout_marginStart="6dp" />
+        </LinearLayout>
 
-        <TextView
-            android:id="@+id/memo_item_3"
+        <LinearLayout
+            android:id="@+id/memo_row_3"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text=""
-            android:textColor="#CBD5E1"
-            android:textSize="11sp"
-            android:singleLine="true"
-            android:visibility="gone" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:visibility="gone">
+            <TextView
+                android:id="@+id/memo_item_3"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text=""
+                android:textColor="#CBD5E1"
+                android:textSize="11sp"
+                android:singleLine="true"
+                android:ellipsize="end" />
+            <TextView
+                android:id="@+id/memo_badge_3"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#F87171"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:layout_marginStart="6dp" />
+        </LinearLayout>
     </LinearLayout>
 
     <LinearLayout
@@ -424,8 +477,12 @@ import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
 import android.content.Context;
 import android.content.Intent;
+import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
 import android.net.Uri;
 import android.widget.RemoteViews;
+import org.json.JSONObject;
+import java.io.File;
 
 public class QuickActionsWidgetProvider extends AppWidgetProvider {
 
@@ -438,6 +495,30 @@ public class QuickActionsWidgetProvider extends AppWidgetProvider {
 
     private static void updateAppWidget(Context context, AppWidgetManager appWidgetManager, int appWidgetId) {
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_quick_actions);
+
+        // 嘗試從本地快照讀取當前公帳名稱
+        String ledgerName = "家庭記帳本";
+        try {
+            File dbFile = context.getDatabasePath("RKStorage");
+            if (dbFile != null && dbFile.exists()) {
+                SQLiteDatabase db = SQLiteDatabase.openDatabase(dbFile.getPath(), null, SQLiteDatabase.OPEN_READONLY);
+                Cursor cursor = db.rawQuery("SELECT value FROM catalystLocalStorage WHERE key = ?", new String[]{"@family_ledger_widget_snapshot"});
+                if (cursor != null) {
+                    if (cursor.moveToFirst()) {
+                        String jsonString = cursor.getString(0);
+                        JSONObject json = new JSONObject(jsonString);
+                        if (json.has("ledgerName")) {
+                            ledgerName = json.getString("ledgerName");
+                        }
+                    }
+                    cursor.close();
+                }
+                db.close();
+            }
+        } catch (Exception ignored) {
+        }
+
+        views.setTextViewText(R.id.quick_widget_badge, ledgerName);
 
         // 綁定各快捷按鈕的 Deep Link
         setupClick(context, views, R.id.btn_expense, "familyledger://quick-action?mode=expense", 101);
@@ -495,9 +576,9 @@ public class MemoTodayWidgetProvider extends AppWidgetProvider {
 
         // 嘗試讀取本地快照
         String ledgerName = "家庭記帳本";
-        String memo1 = null;
-        String memo2 = null;
-        String memo3 = null;
+        String title1 = null, badge1 = null; int color1 = 0xFF94A3B8;
+        String title2 = null, badge2 = null; int color2 = 0xFF94A3B8;
+        String title3 = null, badge3 = null; int color3 = 0xFF94A3B8;
 
         try {
             File dbFile = context.getDatabasePath("RKStorage");
@@ -514,16 +595,61 @@ public class MemoTodayWidgetProvider extends AppWidgetProvider {
                         if (json.has("pendingMemos")) {
                             JSONArray memos = json.getJSONArray("pendingMemos");
                             if (memos.length() > 0) {
-                                JSONObject m1 = memos.getJSONObject(0);
-                                memo1 = (m1.optBoolean("isOverdue", false) ? "⚠️ " : "⭕ ") + m1.optString("title", "");
+                                JSONObject m = memos.getJSONObject(0);
+                                boolean isOverdue = m.optBoolean("isOverdue", false);
+                                title1 = (isOverdue ? "⚠️ " : "⭕ ") + m.optString("title", "");
+                                String date = m.optString("reminderDate", "");
+                                String assignee = m.optString("assigneeName", "");
+                                if (isOverdue) {
+                                    badge1 = "已逾期";
+                                    color1 = 0xFFF87171;
+                                } else if (!date.isEmpty()) {
+                                    badge1 = date.length() >= 5 ? date.substring(date.length() - 5) : date;
+                                    if (!assignee.isEmpty()) badge1 += " · " + assignee;
+                                    color1 = 0xFF94A3B8;
+                                } else {
+                                    badge1 = "日常";
+                                    if (!assignee.isEmpty()) badge1 += " · " + assignee;
+                                    color1 = 0xFF94A3B8;
+                                }
                             }
                             if (memos.length() > 1) {
-                                JSONObject m2 = memos.getJSONObject(1);
-                                memo2 = (m2.optBoolean("isOverdue", false) ? "⚠️ " : "⭕ ") + m2.optString("title", "");
+                                JSONObject m = memos.getJSONObject(1);
+                                boolean isOverdue = m.optBoolean("isOverdue", false);
+                                title2 = (isOverdue ? "⚠️ " : "⭕ ") + m.optString("title", "");
+                                String date = m.optString("reminderDate", "");
+                                String assignee = m.optString("assigneeName", "");
+                                if (isOverdue) {
+                                    badge2 = "已逾期";
+                                    color2 = 0xFFF87171;
+                                } else if (!date.isEmpty()) {
+                                    badge2 = date.length() >= 5 ? date.substring(date.length() - 5) : date;
+                                    if (!assignee.isEmpty()) badge2 += " · " + assignee;
+                                    color2 = 0xFF94A3B8;
+                                } else {
+                                    badge2 = "日常";
+                                    if (!assignee.isEmpty()) badge2 += " · " + assignee;
+                                    color2 = 0xFF94A3B8;
+                                }
                             }
                             if (memos.length() > 2) {
-                                JSONObject m3 = memos.getJSONObject(2);
-                                memo3 = (m3.optBoolean("isOverdue", false) ? "⚠️ " : "⭕ ") + m3.optString("title", "");
+                                JSONObject m = memos.getJSONObject(2);
+                                boolean isOverdue = m.optBoolean("isOverdue", false);
+                                title3 = (isOverdue ? "⚠️ " : "⭕ ") + m.optString("title", "");
+                                String date = m.optString("reminderDate", "");
+                                String assignee = m.optString("assigneeName", "");
+                                if (isOverdue) {
+                                    badge3 = "已逾期";
+                                    color3 = 0xFFF87171;
+                                } else if (!date.isEmpty()) {
+                                    badge3 = date.length() >= 5 ? date.substring(date.length() - 5) : date;
+                                    if (!assignee.isEmpty()) badge3 += " · " + assignee;
+                                    color3 = 0xFF94A3B8;
+                                } else {
+                                    badge3 = "日常";
+                                    if (!assignee.isEmpty()) badge3 += " · " + assignee;
+                                    color3 = 0xFF94A3B8;
+                                }
                             }
                         }
                     }
@@ -536,26 +662,36 @@ public class MemoTodayWidgetProvider extends AppWidgetProvider {
 
         views.setTextViewText(R.id.memo_widget_badge, ledgerName);
 
-        if (memo1 != null) {
-            views.setTextViewText(R.id.memo_item_1, memo1);
-            views.setViewVisibility(R.id.memo_item_1, View.VISIBLE);
+        if (title1 != null) {
+            views.setTextViewText(R.id.memo_item_1, title1);
+            views.setTextViewText(R.id.memo_badge_1, badge1 != null ? badge1 : "");
+            views.setTextColor(R.id.memo_badge_1, color1);
+            views.setViewVisibility(R.id.memo_badge_1, badge1 != null ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.memo_row_1, View.VISIBLE);
         } else {
             views.setTextViewText(R.id.memo_item_1, "🎉 今日尚無未辦妥之備忘事項");
-            views.setViewVisibility(R.id.memo_item_1, View.VISIBLE);
+            views.setViewVisibility(R.id.memo_badge_1, View.GONE);
+            views.setViewVisibility(R.id.memo_row_1, View.VISIBLE);
         }
 
-        if (memo2 != null) {
-            views.setTextViewText(R.id.memo_item_2, memo2);
-            views.setViewVisibility(R.id.memo_item_2, View.VISIBLE);
+        if (title2 != null) {
+            views.setTextViewText(R.id.memo_item_2, title2);
+            views.setTextViewText(R.id.memo_badge_2, badge2 != null ? badge2 : "");
+            views.setTextColor(R.id.memo_badge_2, color2);
+            views.setViewVisibility(R.id.memo_badge_2, badge2 != null ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.memo_row_2, View.VISIBLE);
         } else {
-            views.setViewVisibility(R.id.memo_item_2, View.GONE);
+            views.setViewVisibility(R.id.memo_row_2, View.GONE);
         }
 
-        if (memo3 != null) {
-            views.setTextViewText(R.id.memo_item_3, memo3);
-            views.setViewVisibility(R.id.memo_item_3, View.VISIBLE);
+        if (title3 != null) {
+            views.setTextViewText(R.id.memo_item_3, title3);
+            views.setTextViewText(R.id.memo_badge_3, badge3 != null ? badge3 : "");
+            views.setTextColor(R.id.memo_badge_3, color3);
+            views.setViewVisibility(R.id.memo_badge_3, badge3 != null ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.memo_row_3, View.VISIBLE);
         } else {
-            views.setViewVisibility(R.id.memo_item_3, View.GONE);
+            views.setViewVisibility(R.id.memo_row_3, View.GONE);
         }
 
         // 綁定按鈕動作

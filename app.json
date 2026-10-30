@@ -25,7 +25,7 @@
     },
     "android": {
       "package": "com.mattyu.familyledger",
-      "versionCode": 4,
+      "versionCode": 5,
       "allowBackup": false,
       "adaptiveIcon": {
         "backgroundColor": "#FFF0F5",

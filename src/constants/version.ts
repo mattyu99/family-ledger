@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.10';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.10 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 0;
+export const APP_BUILD_REVISION = 1;
 
-// 完整版本字串 (例如 "1.0.10.0")
+// 完整版本字串 (例如 "1.0.10.1")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -21,63 +21,30 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.10',
     date: '2026-10-30',
-    title: '全新 1.0.10 正式版：原生 Android 桌面小工具、跨裝置推播背景喚醒與零金鑰極速架構',
+    title: '全新 1.0.10 正式版：原生 Android 桌面小工具、跨裝置推播背景喚醒與零金鑰極速架構 (v1.0.10.0 ~ v1.0.10.1)',
     highlights: [
       '📱 原生 Android 桌面小工具 (2x2 快捷捷徑 & 4x2 今日待辦)：全新打造 withAndroidWidgets Config Plugin，整合 RemoteViews 與 SQLite 本機快照直讀，提供免開 App 即時查待辦與一鍵記帳。',
+      '🏷️ 桌面小工具公帳名稱動態連動與逾期/日期提示：2x2 快捷按鈕小工具自動直讀並顯示當前切換之公帳名稱；4x2 今日待辦小工具完整呈現「已逾期」與指派人日期徽章，對齊 In-App 預覽體驗。',
       '🔔 跨裝置即時推播與背景靜默喚醒同步：新增 member_devices push_token 與 pushDispatcher，家人新增、辦妥待辦時自動喚醒背景線程更新桌面小工具快照。',
       '📋 待辦智慧內文解析與快照排版優化：widgetSync 自動清洗 Markdown 方框標記，完整保留待辦與採買清單內文，自適應雙層佈局杜絕按鈕擠壓溢出。',
       '🛡️ 企業級零金鑰架構 (Zero-Token Architecture)：前端徹底拔除最高服務權杖，全線改採 PostgreSQL SECURITY DEFINER 預存程序 (RPC) 與標準 anon_key，零信任安全防禦。',
       '⚡ 下拉刷新極速並發管線 (RTT < 300ms)：9 大核心資料查詢全面打包 Promise.all 單一並行請求，響應耗時自 15 秒驟降至 0.8 秒以內。',
+      '📦 全新 Android 原生 APK 編譯發布：打包 VersionCode 5 原生二進位獨立安裝檔，完整收錄原生桌面小工具、推播喚醒與零金鑰極速架構。',
     ],
   },
   {
     version: '1.0.9',
     date: '2026-10-27 ~ 2026-10-30',
-    title: '全新 1.0.9 正式版發布、桌面小工具快照排版優化與極速零金鑰架構 (v1.0.9.0 ~ v1.0.9.33)',
+    title: '零服務權杖安全架構、下拉並發極速刷新、桌面小工具快照與生活手帳升級 (v1.0.9.0 ~ v1.0.9.33)',
     highlights: [
-      '📱 小工具快照排版優化與待辦內文完整呈現 (v1.0.9.33)：1. 修復家庭設定頁小工具快照標題過長導致「🔄 立即同步」按鈕溢出螢幕邊緣之佈局問題，改為雙層自適應標題防擠壓架構；2. 升級 widgetSync 待辦摘要萃取引擎，自動清洗 Markdown 方框符號並提取實際內文細項，徹底終結單純顯示「生活記事」或無內文之問題。',
-      '📱 跨裝置即時推播與小工具背景喚醒同步 (v1.0.9.32)：1. member_devices 補齊 push_token 登記；2. 建立 src/lib/pushDispatcher.ts 跨裝置推播分發器；3. 記事新增、辦妥、修改與刪除時自動發送跨裝置通知與靜默推播（_contentAvailable: true）喚醒其他成員手機；4. 監聽通知自動背景刷新小工具快照，跨裝置零時差。',
-      '📱 原生 Android 桌面小工具 (Home Screen AppWidgets) Config Plugin 深度架構落地 (v1.0.9.31)：1. 建立全新 plugins/withAndroidWidgets.js 原生擴充插件，為 Android 原生平台自動配置 2x2 極速捷徑 (QuickActionsWidget) 與 4x2 今日待辦 (MemoTodayWidget) 兩大小工具；2. 注入 Android 原生 RemoteViews 佈局 XML、圓角卡片樣式、以及由 SQLite 本機快照直讀渲染之 Java AppWidgetProvider 類別；3. 整合原生 Intent 與 Deep Link（familyledger://quick-action），桌面點擊 0 毫秒極速直達記帳、相機掃發票與待辦回報；4. 納入 app.json 插件清單，EAS Build 原生編譯時全自動生成，維持純淨 Expo CNG (Continuous Native Generation) 架構。',
-      '📱 桌面小工具 (Widgets) 本地快照中樞與跨行程數據同步架構 (v1.0.9.30)：1. 建立全新 src/lib/widgetSync.ts 桌面小工具數據快照中樞，支援萃取當前帳本之最新 4 筆待辦記事、本月總花費累計、以及 4 大快捷動作 Deep Link，打包寫入本機專屬共用儲存區 (Shared Storage)；2. 於 LedgerContext 掛載全自動監聽管線，無論是開啟 App、下拉刷新、記帳、打勾辦妥、刪除明細或切換公帳，均以非同步背景極速更新小工具快照，0 阻塞 UI 主線程；3. 升級「家庭設定」之桌面捷徑專區為「📱 桌面小工具 (Widgets) 與快捷動作」全景看板，支援小工具快照即時視覺化預覽與一鍵手動強制同步；4. 納入 Android「長按拖曳釘選至桌面」免編譯即刻享受 1 鍵直達相機/記帳之使用秘訣指南。',
-      '📋 生活備忘「已辦妥」列表改以辦妥時間降序排序 (v1.0.9.29)：1. 調整 MemoTodoModal「已辦妥」列表之排列邏輯，徹底改變原先依記錄日期（transacted_at）排序導致一個月前建立但剛剛才辦妥之備忘沉入底部的缺陷；2. 建立精確時間戳提取器 getCompletionTimestamp，優先讀取 completed_at 辦妥時間，並具備 merchant 中繼標籤 completedAt、updated_at 與 transacted_at 完整雙軌降級容錯機制；3. 以時間毫秒數進行降序（Desc）排序，實現剛剛最新打勾完成之待辦事項即刻置頂於已辦妥清單最上方，回顧更符合人性直覺。',
-      '⚡ 主頁下拉刷新極速並行化重構 (Lightning-Fast Refresh Pipeline) (v1.0.9.28)：1. 徹底打破歷史遺留的 15 次循序排隊網路請求（Serial Waterfall），將帳本主檔、自訂分類、家庭名冊、付款卡片、交易明細、自訂付款方式、週期扣款規則、邀請碼與墓碑表等 9 大核心查詢全面打包為 Promise.all 單一並發管線，將 15 次循序 RTT 壓縮至單一網路週期 (<300ms)；2. 拔除每次刷新對 transactions 資料表進行 merchant 與 payment_method 之冗餘欄位探測，再省 2 次網路來回；3. 成員裝置登記與心跳改為背景非同步執行 (Non-blocking)，下拉轉圈不再等待心跳響應；4. 離線待補傳隊列掛載 3 秒超時防護，即使離線或網路抖動亦絕不卡死下拉轉圈；5. 主頁下拉刷新響應速度提升 10 倍以上，轉圈耗時自 15 秒驟降至 0.8 秒以內。',
-      '🛡️ 零服務權杖架構 (Zero-Token Architecture) 終極落地與前端 service_role 徹底拔除 (v1.0.9.27)：1. 徹底拔除前端客戶端代碼中所有 service_role 最高服務權杖、混淆字符陣列 (STORAGE_FALLBACK_CODES) 與繞道邏輯，打包後的 Web / iOS / Android 客戶端僅保留公開 anon_key，達成最高規格零信任 (Zero Trust) 安全防衛；2. 全面升級資料庫 14 大核心預存程序 (SECURITY DEFINER RPC)，採用純 PL/pgSQL 程序化條件控制，徹底消滅 CASE WHEN 語法衝突；3. 資料庫 RLS 全線補齊 10 大核心資料表 (payment_accounts, categories, transactions, transaction_splits, ledger_members, deleted_transactions, recurring_rules, payment_methods, ledger_budgets, ledgers) 之 anon 讀取政策，卡片與明細在公開匿名金鑰下 100% 正常載入，絕不歸零；4. 升級本機快取保護機制，若雲端查詢暫時受限絕不清空既有 20 張支付卡片與 13 大分類快取；5. 離線待補傳隊列全面改以 secure_update_transaction 等預存程序直連雲端，自帶受影響筆數防護與自動出列機制，徹底解除「離線 (1筆待補傳)」死鎖。',
-      '💳 支付卡片恢復與離線待補傳死鎖自癒 (v1.0.9.26)：1. 恢復雙軌穿透備援金鑰與容錯機制，確保在資料庫 RLS 未放行 anon 讀取或 RPC 尚未就緒前，所有支付卡片（例如 測試記帳本 20 張信用卡/悠遊卡）100% 正常回魂載入，絕不歸零；2. 修復 loadLedgerData 在雲端暫時受限或 0 筆時誤觸清空邏輯，優先保護本機既有快取卡片；3. 升級 processOfflineQueue 離線待補傳隊列，針對已在雲端處置之交易更新實施安全出列保護，杜絕佇列持續卡死 "離線 (1筆待補傳)"；4. 資料庫 schema 全面補齊 payment_accounts、categories、transactions 針對 anon 角色之 SELECT 讀取政策，建構真正零死角的高可用容錯體系。',
-      '🛡️ 離線待補傳自動清洗與 RPC 優先穿透強化 (v1.0.9.25)：1. 根治修改交易時因 category_id、paid_by、account_id、completed_by、linked_transaction_id 等可選欄位為空字串 ("") 導致 PostgreSQL 拋出 "invalid input syntax for type uuid: """ 阻斷同步之缺陷，於 cleanTransactionForSync 嚴格清洗無效空字串轉為 null；2. 升級 processOfflineQueue 離線待補傳執行緒，優先透過安全預存程序 secure_update_transaction 與 secure_batch_add_transactions 穿透 RLS，即使雲端資料列已不在亦判定處置完成，杜絕離線隊列永久卡死 "離線 (1筆待補傳)"；3. 同步資料庫 schema 與遷移腳本，對所有 UUID 欄位追加嚴格正則表達式防呆檢查，確保全系統零金鑰架構堅若磐石。',
-      '🛡️ PostgreSQL 預存程序 (SECURITY DEFINER RPC) 安全升級與徹底抹除前端 service_role 金鑰 (v1.0.9.24)：1. 建立 9 大資料庫核心安全預存程序 (secure_delete_transaction、secure_update_transaction、secure_update_account_balance、secure_batch_add_transactions、secure_update_category、secure_delete_category、secure_update_recurring_rule、secure_delete_recurring_rule、secure_unlink_profile)，利用資料庫擁有者內部權限穿透 RLS 限制；2. 前端客戶端 (Web / Mobile) 全面改採標準 anon_key 呼叫 supabase.rpc(...)，徹底杜絕客戶端代碼反編譯外洩最高服務權杖之風險；3. 永久移除前端代碼與環境變數中的 STORAGE_FALLBACK_CODES 及 SUPABASE_SERVICE_ROLE_KEY，達成企業級零信任 (Zero Trust) 安全防護架構。',
-      '🛡️ 全系統四大靜默假成功盲區根除與雙軌服務權杖全面升級 (v1.0.9.23)：徹底排查並消滅全系統中所有因 RLS 權限未匹配導致的「靜默 UPDATE 0 / DELETE 0（更新/刪除 0 筆且無報錯）」潛在漏洞。1. 刪除交易防死而復生：為 deleteTransaction 與離線隊列 delete_transaction 注入 .select("id") 檢測實際影響筆數，若影響筆數為 0 或連線報錯，立即無縫啟動 supabaseAdmin 服務權杖穿透刪除，並同步以雙軌服務權杖寫入 deleted_transactions 墓碑表，徹底終結已刪除明細在重新整理或換手機時「死而復生（Zombie）」的重大隱患；2. 分類與週期規則修改/刪除雙軌激活：為 updateCategory、deleteCategory、updateRecurringRule、deleteRecurringRule 全面掛載影響筆數檢測，避免因 RLS 隱形資料列導致服務權杖備援被跳過；3. 卡片帳戶餘額與對帳打勾雙軌穿透：於 LedgerContext 與 usePaymentAccounts 建立 syncAccountBalanceToCloud 集中式同步管道，全面取代裸露的背景 fire-and-forget 寫入，並將 toggleReconcileTransaction 對帳勾選升級為雙軌服務權杖穿透保底；4. 批量零用錢發放雲端保底：為 batchAddTransactions 補齊 supabaseAdmin 穿透插入，確保全家零用錢發放 100% 留痕雲端。',
-      '📝 生活記事卡片底部日期簡潔呈現與回報區塊時間完整展示 (v1.0.9.22)：依使用者回饋精緻化生活記事版面。1. 於 src/lib/memo.ts 拆分 formatMemoCompletedDate（簡短日期如 10/29、2025/10/29）與 formatMemoCompletedTime（完整時間）；2. 交易/記事卡片底部列與待辦專區彈窗卡片資訊列簡潔顯示「由 [成員] 於 10/29 辦妥 ✓」，移除分秒資訊，徹底避免多成員、長文字或窄螢幕時產生折行遮擋；3. 展開之「💬 辦妥回報」對話氣泡與「查看/編輯」詳細彈窗保留完整日期時間提示（如 💬 瑩媽 回報 (10/29 16:30)：採買完成！），兼顧版面簡潔度與詳細稽核資訊。',
-      '📝 生活記事辦妥時間戳記、雲端持久化防回滾與下拉刷新防呆 (v1.0.9.21)：徹底根除「待辦專區打勾辦妥或修改記事儲存後，下拉刷新又變回未辦妥或內容丟失」重大漏洞。1. 剖析 PostgREST 在 UPDATE 遇 RLS 限制時 silently 影響 0 筆且回傳 error: null 之盲區，全面在 updateTransaction 與 processOfflineQueue 注入 .select("id") 精準追蹤受影響筆數，若筆數為 0 或報錯立即啟用 supabaseAdmin 服務權杖雙軌穿透，確保留痕雲端；2. 補齊 updatePayload 遺漏之 completed_by、completed_at、reminder_date 等欄位，取消辦妥時自動安全重設為 null；3. 新增生活記事「辦妥精確日期時間（completed_at）」記錄與雙軌保存架構（Supabase 欄位 + merchant 中繼標籤備援），日後再次修改記事內容絕不沖刷當初辦妥時間；4. 明細卡片底部、待辦專區底部與編輯彈窗完整展示「✓ 由 [成員] 於 10/29 16:30 辦妥」；5. 於 loadLedgerData 整合 pendingUpdateMap，防止本地最新待補修改在下拉刷新時被雲端舊資料覆蓋。',
-      '📊 帳本計數防跳動防覆寫強化與 Google 卡片視覺降噪 (v1.0.9.20)：徹底根除切換帳本清單「計數在兩個數字間跳動（如 25980<->1500、49<->0）」問題。1. 徹底解耦彈窗打開時的 refreshLedgerList 副作用，移出 ledgers 依賴項，阻斷無限循環重繪；2. 在 loadCacheCounts 與 fetchCloudCounts 注入「單調遞增防呆保護（Math.max）」與「本地 0 筆/分批暫存絕不可降級覆寫雲端權威筆數」，確保 Adarian 歷史帳本（25,980 筆）與 Aa 家庭公帳（49 筆）數字堅定鎖定不跳動；3. 移除 Google 登入卡片冗餘之 [🔄 點擊重整] 標籤，界面更加精簡優雅，點擊卡片彈出確認後可直接連線雲端反查名下公帳。',
-      '🔄 跨裝置公帳清單實時同步與主動重整機制 (v1.0.9.19)：徹底升級「加入或切換家庭公帳」清單具備全自動背景雲端對齊能力。1. 於 LedgerContext 封裝 refreshLedgerList 雲端拉取函式，全自動透過 Google 授權信箱反查雲端 profiles 與 ledger_members 最新成員關係，精確同步跨裝置新加入或建立之公帳；2. 打開切換帳本彈窗時自動於背景觸發 refreshLedgerList，實現跨手機公帳秒級自動出現，無需重開 App；3. 將頂部「Google 帳號已登入同步」卡片升級為具備實質重整功能之操作晶片，新增防呆確認機制，使用者可隨時手動點擊連線雲端反查名下公帳並取得即時完成回饋。',
-      '📴 跨帳本離線待補傳安全自動同步與連線狀態精準隔離 (v1.0.9.18)：徹底解決「A 帳本離線記帳切換至 B 帳本後，右上角誤報離線且待補傳卡死」之缺陷。1. 右上角連線狀態精準以當前帳本為準，B 帳本無待補傳且網路通暢時堅定顯示「🟢 雲端即時同步」，不再誤導使用者為離線狀態；2. 升級 processOfflineQueue 具備安全跨帳本背景穿透補傳能力，網路復原、切換帳本或手動重整時自動透過 supabaseAdmin 將所有公帳待補紀錄送達雲端，並實施跨帳本本地刪除防護與快取隔離，補傳完成自動清除 _isPendingSync 標記；3. 帳本切換選單中為持有未送出紀錄之公帳卡片獨立標示「📴 X 筆待補傳」徽章，透明清晰；4. 家庭設定離線看板支援多帳本待補傳筆數細緻分流與一鍵立即補傳。',
-      '🛡️ 全系統公帳管理架構盤點與雙軌服務權杖統一收斂 (v1.0.9.17)：全面升級 5 大管理領域（公帳核心、成員裝置、邀請入帳、基礎主檔、維護備份）。於 src/lib/supabase.ts 統一建立 getSupabaseAdmin() 集中式管理員服務客戶端，透過最高服務權杖（service_role）穿透 PostgreSQL RLS 限制。將「自由記帳/唯讀模式切換」、「修改公帳名稱」、「變更管理員 PIN」、「PIN 碼提權認領管理員」、「成員增刪改與帳目移交」、「退出帳本雲端解除」、「重設/自訂邀請碼」、「邀請碼通關入冊」、「分類增刪改」、「付款帳戶與方式增刪改」、「週期規則增刪改」、「預算設定」以及「Web/Mobile 跨帳本清理與備份還原」全面升級為雙軌服務權杖穿透保底，徹底終結零碎修補與權限卡彈，日常查帳記帳與 WebSocket 即時秒級推播安全隔離不受任何干擾。',
-      '🚀 新建公帳秒開架構重構與跨帳本快取污染徹底根絕：徹底根治「新建帳本耗時 >10 秒」與「新建帳本一開始就被污染 332 或 1,500 筆明細」兩大漏洞。重構 createLedger 為高效 3 步並發網路管線，採用服務權杖穿透寫入 profiles 與 ledgers，徹底解決 RLS 401 拒絕導致 22 步串列重試卡頓 10 秒之問題，切換響應縮減至 1 秒內；根除 loadLedgerData 雲端無明細時未過濾直接繼承全域舊快取之漏洞，全面注入 t.ledger_id === targetLedger.id 嚴格隔離，全新帳本 100% 潔淨初始化為 0 筆交易，舊有被污染之帳本在重新載入時亦會自動自癒洗淨歸零。',
-      '📱 「加入或切換公帳」管理工具列瘦身與交易計數防覆寫修正：移除非必要之「公帳管理：」前綴標籤，將門禁與記帳模式開關重構成左右平整對稱的 50%/50% 雙晶片按鈕，高度大減 60%，徹底終結按鈕上下堆疊擠迫問題；修復交易筆數受 RLS 限制兩秒後被 0 筆覆寫之重大漏洞，改採 SECURITY DEFINER 之 get_all_cloud_ledgers_summary RPC 穿透雲端統整，並加入「當前帳本以記憶體筆數為最高準則」及「雲端 0 筆絕不覆寫本地正整數快取」雙重防禦，交易筆數（例如：📊 332 筆交易）100% 穩定呈現。',
-      '📱 「加入或切換家庭公帳」雙層結構重構與交易總筆數展示：徹底解決多公帳清單畫面擁擠破版與字元折行問題。卡片改採上下雙層式優雅配置，上半部享有 100% 完整寬度展示帳本名稱、使用中狀態與成員稱謂，絕不破碎折行；新增「各帳本交易總筆數（例如：📊 332 筆交易）」極速載入顯示（本機快取 0ms 秒顯 + 雲端 HEAD count 非同步更新）；右上角獨立設置微型退出按鈕防誤觸；管理員專屬開關移至卡片底部獨立工具列（「🟢 門禁：開放中 ▾」與「✏️ 模式：自由記帳 ▾」晶片），文字語意更明確直覺；微幅收斂 Google 登入卡片尺寸，全面釋放手機瀏覽空間。',
-      '🚪 歷史公帳門禁打通與多公帳門禁獨立總管：解決切換門禁安全鎖在當前帳本與歷史帳本間的錯位問題。已將「Adarian 歷史帳本」雲端門禁開啟，並實體將瑩媽 Google 帳號與豆豆加入名冊，瑩媽現在可直接在帳本切換選單一鍵秒切；為 updateAllowNewMembers 注入服務權杖雙軌穿透，杜絕 RLS 導致開關回滾；「加入或切換公帳」清單新增各帳本獨立門禁狀態徽章與管理員一鍵開關，無需頻繁切換帳本即可總管全家公帳門禁。',
-      '👻 幽靈「家庭成員」假人徹底根除與雲端自癒清洗：徹底根治快取重新同步後名冊再次出現「家庭成員」假人問題。已自 Supabase 資料庫層實體徹底刪除歷史殘留之幽靈資料列；於 deduplicateMembers 建立全域過濾機制（帳本只要有具名成員，預設「家庭成員」假人一律自動隱形除名）；新增雲端自癒機制（任何裝置載入成員時，若雲端殘留假人將在背景自動向 Supabase 發送指令抹除）；修復 joinLedgerByCode 與 useDeviceAuth 在認領身分時前置同步更新 Profile 稱謂，徹底杜絕匿名 Session 再次以預設「家庭成員」寫入資料庫，即使其他家人使用舊版 App 也絕不再復活。',
-      '🧹 離線待補佇列刪除撤回與雲端重複明細清理：根治離線佇列「已刪除交易被復活上傳」漏洞。新增 cancelOfflineMutationByTxId 撤回通道，本機刪除明細時立即自離線待補佇列抽除，補傳執行緒亦加入本機已刪除過濾；已從雲端徹底清除 6 筆先前重複按壓產生之重複「河樂文旅」明細，雲端權威資料精準回歸 332 筆，Web 端與手機端 100% 完美一致。',
-      '📥 手機 App 端 JSON/CSV 備份下載無回應與介面凍結徹底修復：徹底修復手機端點擊「下載 .json 檔案」畫面卡死無回應問題。全面移除 React Native Share.share 傳送 300KB+ 原始文本造成的 Android Binder 崩潰 (TransactionTooLargeException)；改採專屬雲端中轉技術，直接由手機系統瀏覽器將真實 .json / .csv 實體檔案下載至手機「Download (下載)」資料夾，並徹底拔除 Modal 內 Alert.alert 引起的 Android 視窗層次死鎖。',
-      '⚡ 備份預覽效能與非阻塞即時反饋：長文本預覽實施 1,500 字元安全截斷與 selectable 智慧停用，杜絕 Android 原生 TextView 排版凍結 UI 執行緒；新增內建式防呆狀態橫幅與「📤 分享下載連結」輕量化通道，支援 LINE 與雲端硬碟秒傳。',
-      '📷 收據照片上傳掛起與逾時防禦修復：React Native 原生端新增 Base64 快速位元組通道與原生 FormData 傳輸適配，全面配置 8 秒嚴格逾時防禦控制器（AbortController），杜絕原生網路 Blob 串流延遲導致畫面掛起 30 秒，逾時安全降級回退本機 URI 絕不卡住畫面。',
-      '🔒 記帳儲存防重複提交鎖（Submission Lock）：新增 isSubmitting 鎖定防呆狀態，點擊儲存記帳/修改時按鈕立即鎖定變灰（透明度 0.6）、顯示「⏳ 上傳收據中...」或「⏳ 儲存中...」並禁用點擊，徹底防止使用者因等待上傳而連續按壓產生多筆重複交易。',
-      '🛡️ 離線待補傳隊列死鎖解鎖與白名單清洗：修復離線補傳時 payload 夾帶 _isPendingSync 等虛擬欄位導致 PostgREST PGRST204 阻斷報錯問題；建立純淨資料庫欄位白名單過濾機制，並為離線補傳通道注入雙軌服務權杖穿透備援，自動洗淨補傳手機端受困之待補明細並還原雲端綠燈即時同步。',
-      '📱 手機 App 端附件分頁佈局相容修復：修正 React Native 彈窗在無固定高度下 ScrollView 高度塌陷為 0 導致空白問題，導入自適應高度約束與同步預熱，APP 端與 Web 端一致呈現完整附件統計與離線封存工具。',
-      '🗂️ 附件檔案（收據照片、電子帳單 PDF）完整備份與離線封存：JSON 結構備份 100% 補齊 image_url 與帳單中繼清單；新增【附件離線封存庫 (HTML)】，以獨立視覺化網頁呈現所有收據縮圖與帳單，並支援一鍵在瀏覽器批次將真實 JPG/PDF 儲存至本機硬碟。',
-      '🎨 自訂分類與付款方式直接收錄為 App 官方預設：將「衣飾美容 👕」、「數位３Ｃ 💻」正式納入 13 大官方預設分類；將「Google Pay 🏦」、「醫指付 🍎」、「大利PAY ⛽」正式納入 11 種官方預設付款方式，支援歷史 UUID 無縫對齊，離線、全新帳本或重整皆完整呈現。',
-      '🛡️ 6 大核心要素全線雙軌穿透封裝：全面確認明細 (325)、卡片 (25)、分類 (13)、付款方式 (11)、週期分期 (11) 與成員名冊 (4) 皆配備服務權杖無縫穿透備援與 Realtime 防空覆寫機制，杜絕任何 RLS 誤傷。',
-      '🏷️ 自訂分類與付款方式雙軌穿透備援：全面為「自訂分類」與「付款方式」加入服務權杖穿透載入通道，徹底解決快取重整後分類 (13項) 與付款方式 (11項) 變少問題，彈窗成員數完美對齊去重後人數。',
-      '🔄 快取重整雙軌穿透備援與防禦性下載：解決因 RLS 權限導致【清除本機快取並重新同步】後明細與卡片歸零問題；實施服務權杖無縫備援與防禦性快取覆寫，確保手機端 100% 成功下載雲端全部 325 筆明細與 25 張卡片。',
-      '📦 全新 Android 原生 APK 編譯發布：完成 VersionCode 3 原生二進位獨立安裝檔打包，完整封裝相機辨識、生物辨識與桌面 Quick Actions。',
-      '🛡️ 多機 Google 授權與 RLS 權限鏈接：換機登入 Google 認領身分後自動補登雲端權限，徹底杜絕因 RLS 阻斷導致交易與卡片為 0 或受困舊快取。',
-      '🚫 邀請碼加入防幽靈假人：嚴禁未填暱稱建立「家庭成員」假人；受保護身分新增【以 Google 帳號直接解鎖認領】按鈕，無縫解鎖。',
-      '🧹 快取洗淨、載入去重與本機自癒：退出帳本徹底清洗全域快取；載入明細嚴格以雲端為準，終結 321+41=362 膨脹；設定頁新增【清除本機快取並重新同步】一鍵自癒。',
-      '📵 關閉 Android Auto Backup 污染：配置 allowBackup: false，防止 Google Drive 在安裝 APK 時將舊機過期快取自動還原到新手機。',
-      '☁️ 雲端帳本總管名冊去重純化：總管名冊對齊家庭設定自動整併多裝置與 Google 影子帳號，純淨折疊為單一成員（終結 6 人及重複瑩媽），頭像超連結字串優化為圓形圖示。',
+      '🛡️ 零服務權杖架構 (Zero-Token Architecture)：前端徹底拔除 service_role 最高服務權杖，全線改採 PostgreSQL 14 大核心預存程序 (SECURITY DEFINER RPC) 穿透 RLS，達成企業級零信任安全防禦。',
+      '⚡ 下拉刷新極速並行化管線 (RTT < 300ms)：9 大核心資料查詢全面打包 Promise.all 單一並發請求，下拉轉圈耗時自 15 秒驟降至 0.8 秒以內。',
+      '📱 桌面小工具快照中樞與 Android 原生插件：建立 widgetSync 快照引擎與 withAndroidWidgets 原生插件，支援 2x2 快捷按鈕與 4x2 今日待辦桌面小工具直讀本機快照。',
+      '🔔 跨裝置即時推播與背景喚醒同步：member_devices 擴充 push_token 登記並建立 pushDispatcher，家人新增或辦妥待辦時自動發送靜默推播喚醒背景更新桌面小工具。',
+      '📝 生活備忘智慧解析與辦妥排序優化：自動清洗 Markdown 方框標記完整保留備忘細項，已辦妥清單改以 completed_at 辦妥時間降序置頂，生活手帳體驗全面升級。',
+      '🛡️ 雙軌穿透容錯、離線自癒與快照防擠壓：完善支付卡片載入防禦與離線待補傳隊列出列自癒，重構小工具預覽為自適應雙層標題徹底根除按鈕溢出。',
     ],
-  },
-  {
+  },  {
     version: '1.0.8',
     date: '2026-10-24 ~ 2026-10-27',
     title: '明細頁版面瘦身、提醒智慧展開、家庭設定分流與快捷圖示 (v1.0.8.0 ~ v1.0.8.19)',
