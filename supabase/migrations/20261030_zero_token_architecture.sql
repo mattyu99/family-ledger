@@ -847,3 +847,20 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.secure_set_admin_pin(UUID, TEXT) TO anon, authenticated;
 
+-- ------------------------------------------------------------------------------
+-- 4. 登記遷移履歷至資料庫版本表 (schema_migrations)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.schema_migrations (
+    version TEXT PRIMARY KEY,
+    applied_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    description TEXT
+);
+
+ALTER TABLE public.schema_migrations ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow read access on schema_migrations" ON public.schema_migrations;
+CREATE POLICY "Allow read access on schema_migrations" ON public.schema_migrations FOR SELECT USING (true);
+
+INSERT INTO public.schema_migrations (version, description)
+VALUES ('20261030_zero_token_architecture', '零金鑰安全架構、全域 RLS 放行與 14 大核心預存程序')
+ON CONFLICT (version) DO UPDATE SET applied_at = NOW();
+

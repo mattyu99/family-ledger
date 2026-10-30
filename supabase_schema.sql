@@ -5,6 +5,18 @@
 -- 啟用 UUID 擴充功能
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- 0. 資料庫版本履歷管理表 (追蹤與查詢所有已執行的資料庫遷移腳本)
+CREATE TABLE IF NOT EXISTS public.schema_migrations (
+    version TEXT PRIMARY KEY,
+    applied_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    description TEXT
+);
+
+ALTER TABLE public.schema_migrations ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow read access on schema_migrations" ON public.schema_migrations;
+CREATE POLICY "Allow read access on schema_migrations" ON public.schema_migrations FOR SELECT
+  USING (true);
+
 -- 1. 使用者個人資料表 (支援登入使用者與家庭無帳號成員)
 CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1851,3 +1863,10 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.secure_set_admin_pin(UUID, TEXT) TO anon, authenticated;
+
+-- 登記版本履歷記錄
+INSERT INTO public.schema_migrations (version, description)
+VALUES 
+    ('00000000_baseline_schema', '系統全量基準綱要 (Initial Schema)'),
+    ('20261030_zero_token_architecture', '零金鑰安全架構、全域 RLS 放行與 14 大核心預存程序')
+ON CONFLICT (version) DO UPDATE SET applied_at = NOW();
