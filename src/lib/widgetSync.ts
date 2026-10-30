@@ -9,6 +9,8 @@ export const WIDGET_SNAPSHOT_STORAGE_KEY = '@family_ledger_widget_snapshot';
 export interface WidgetPendingMemo {
   id: string;
   title: string;
+  rawTitle?: string;
+  badgeText?: string;
   content?: string;
   reminderDate?: string;
   isOverdue: boolean;
@@ -102,9 +104,26 @@ export function extractWidgetSnapshot(
       displayTitle = parsed.title || item.note || '生活備忘';
     }
 
+    // 構造狀態與日期提示（如 "已逾期" 或 "11-09 · 智爸"）
+    let badgeText = '';
+    if (isOverdue) {
+      badgeText = '已逾期';
+    } else if (reminderDate) {
+      badgeText = reminderDate.slice(5);
+      if (assigneeName) badgeText += ` · ${assigneeName}`;
+    } else {
+      badgeText = '日常';
+      if (assigneeName) badgeText += ` · ${assigneeName}`;
+    }
+
+    // 複合標題：若小工具為單行渲染 (如既有 APK)，將狀態無縫融入標題尾部
+    const combinedTitle = badgeText ? `${displayTitle}  (${badgeText})` : displayTitle;
+
     return {
       id: item.id,
-      title: displayTitle,
+      title: combinedTitle,
+      rawTitle: displayTitle,
+      badgeText,
       content: cleanContent || undefined,
       reminderDate: reminderDate || undefined,
       isOverdue,

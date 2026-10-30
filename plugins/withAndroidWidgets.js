@@ -597,7 +597,8 @@ public class MemoTodayWidgetProvider extends AppWidgetProvider {
                             if (memos.length() > 0) {
                                 JSONObject m = memos.getJSONObject(0);
                                 boolean isOverdue = m.optBoolean("isOverdue", false);
-                                title1 = (isOverdue ? "⚠️ " : "⭕ ") + m.optString("title", "");
+                                String cleanTitle = m.has("rawTitle") ? m.getString("rawTitle") : m.optString("title", "");
+                                title1 = (isOverdue ? "⚠️ " : "⭕ ") + cleanTitle;
                                 String date = m.optString("reminderDate", "");
                                 String assignee = m.optString("assigneeName", "");
                                 if (isOverdue) {
@@ -616,7 +617,8 @@ public class MemoTodayWidgetProvider extends AppWidgetProvider {
                             if (memos.length() > 1) {
                                 JSONObject m = memos.getJSONObject(1);
                                 boolean isOverdue = m.optBoolean("isOverdue", false);
-                                title2 = (isOverdue ? "⚠️ " : "⭕ ") + m.optString("title", "");
+                                String cleanTitle = m.has("rawTitle") ? m.getString("rawTitle") : m.optString("title", "");
+                                title2 = (isOverdue ? "⚠️ " : "⭕ ") + cleanTitle;
                                 String date = m.optString("reminderDate", "");
                                 String assignee = m.optString("assigneeName", "");
                                 if (isOverdue) {
@@ -635,7 +637,8 @@ public class MemoTodayWidgetProvider extends AppWidgetProvider {
                             if (memos.length() > 2) {
                                 JSONObject m = memos.getJSONObject(2);
                                 boolean isOverdue = m.optBoolean("isOverdue", false);
-                                title3 = (isOverdue ? "⚠️ " : "⭕ ") + m.optString("title", "");
+                                String cleanTitle = m.has("rawTitle") ? m.getString("rawTitle") : m.optString("title", "");
+                                title3 = (isOverdue ? "⚠️ " : "⭕ ") + cleanTitle;
                                 String date = m.optString("reminderDate", "");
                                 String assignee = m.optString("assigneeName", "");
                                 if (isOverdue) {

@@ -1209,12 +1209,11 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                       style={{ fontSize: 12, color: colors.text.primary, fontWeight: '500', flex: 1 }}
                       numberOfLines={1}
                     >
-                      {memo.title}
+                      {memo.rawTitle || memo.title}
                     </Text>
                   </View>
                   <Text style={{ fontSize: 10, color: memo.isOverdue ? '#EF4444' : colors.text.muted, flexShrink: 0 }}>
-                    {memo.isOverdue ? '已逾期' : (memo.reminderDate ? memo.reminderDate.slice(5) : '日常')}
-                    {memo.assigneeName ? ` · ${memo.assigneeName}` : ''}
+                    {memo.badgeText || (memo.isOverdue ? '已逾期' : (memo.reminderDate ? memo.reminderDate.slice(5) : '日常') + (memo.assigneeName ? ` · ${memo.assigneeName}` : ''))}
                   </Text>
                 </View>
               ))}
