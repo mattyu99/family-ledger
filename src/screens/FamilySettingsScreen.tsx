@@ -169,8 +169,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
   const [showPinClear, setShowPinClear] = useState(false);
   const [billingNoticeEnabled, setBillingNoticeEnabled] = useState(false);
   const [isSchedulingNotice, setIsSchedulingNotice] = useState(false);
+  const [isCreditCardsExpanded, setIsCreditCardsExpanded] = useState(false);
   const [memoNoticeEnabled, setMemoNoticeEnabled] = useState(false);
   const [isSchedulingMemoNotice, setIsSchedulingMemoNotice] = useState(false);
+  const [isMemosExpanded, setIsMemosExpanded] = useState(false);
   const [isQuickActionSupportedState, setIsQuickActionSupportedState] = useState(false);
   const [widgetSnapshot, setWidgetSnapshot] = useState<WidgetSnapshotData | null>(null);
   const [isSyncingWidget, setIsSyncingWidget] = useState(false);
@@ -882,52 +884,67 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           </TouchableOpacity>
         </View>
 
+        {/* 展開/收合信用卡時程按鈕 */}
+        <TouchableOpacity
+          style={[styles.collapseToggleBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
+          onPress={() => setIsCreditCardsExpanded(prev => !prev)}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.collapseToggleBtnText, { color: colors.text.primary }]}>
+            {isCreditCardsExpanded
+              ? '收合卡片提醒排程 ▴'
+              : `展開卡片提醒排程 (${creditCards.length} 張) ▾`}
+          </Text>
+        </TouchableOpacity>
+
         {/* 信用卡時程清單預覽 */}
-        <View style={[styles.cardScheduleContainer, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
-          {creditCards.length === 0 ? (
-            <View style={styles.noCardBox}>
-              <Text style={[styles.noCardText, { color: colors.text.muted }]}>
-                💳 目前無屬於您本人的信用卡提醒。可至「錢包與帳戶」新增信用卡或指派持卡人為您本人
-              </Text>
-            </View>
-          ) : (
-            creditCards.map((card) => {
-              const dates = calculateCardScheduleDates(card);
-              const outstanding = calculateCardOutstandingAmount(card.id, transactions);
-              return (
-                <View key={card.id} style={[styles.cardScheduleRow, { borderBottomColor: colors.border.default }]}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={styles.cardScheduleIcon}>{card.icon || '💳'}</Text>
-                      <Text style={[styles.cardScheduleName, { color: colors.text.primary }]} numberOfLines={1}>
-                        {card.name}
+        {isCreditCardsExpanded && (
+          <View style={[styles.cardScheduleContainer, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
+            {creditCards.length === 0 ? (
+              <View style={styles.noCardBox}>
+                <Text style={[styles.noCardText, { color: colors.text.muted }]}>
+                  💳 目前無屬於您本人的信用卡提醒。可至「錢包與帳戶」新增信用卡或指派持卡人為您本人
+                </Text>
+              </View>
+            ) : (
+              creditCards.map((card) => {
+                const dates = calculateCardScheduleDates(card);
+                const outstanding = calculateCardOutstandingAmount(card.id, transactions);
+                return (
+                  <View key={card.id} style={[styles.cardScheduleRow, { borderBottomColor: colors.border.default }]}>
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={styles.cardScheduleIcon}>{card.icon || '💳'}</Text>
+                        <Text style={[styles.cardScheduleName, { color: colors.text.primary }]} numberOfLines={1}>
+                          {card.name}
+                        </Text>
+                        {card.user_id === currentUser?.id ? (
+                          <View style={[styles.cardholderBadge, { backgroundColor: isDark ? '#1E3A8A' : '#EFF6FF' }]}>
+                            <Text style={[styles.cardholderBadgeText, { color: isDark ? '#93C5FD' : '#2563EB' }]}>
+                              📱 本人卡片 (本機提醒)
+                            </Text>
+                          </View>
+                        ) : (
+                          <View style={[styles.cardholderBadge, { backgroundColor: colors.border.default }]}>
+                            <Text style={[styles.cardholderBadgeText, { color: colors.text.secondary }]}>
+                              🌐 通用公用卡 (本機提醒)
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={[styles.cardScheduleMeta, { color: colors.text.secondary }]}>
+                        結帳日：每月 {card.billing_cycle_date || 15} 號 · 待繳約 NT$ {outstanding.toLocaleString()}
                       </Text>
-                      {card.user_id === currentUser?.id ? (
-                        <View style={[styles.cardholderBadge, { backgroundColor: isDark ? '#1E3A8A' : '#EFF6FF' }]}>
-                          <Text style={[styles.cardholderBadgeText, { color: isDark ? '#93C5FD' : '#2563EB' }]}>
-                            📱 本人卡片 (本機提醒)
-                          </Text>
-                        </View>
-                      ) : (
-                        <View style={[styles.cardholderBadge, { backgroundColor: colors.border.default }]}>
-                          <Text style={[styles.cardholderBadgeText, { color: colors.text.secondary }]}>
-                            🌐 通用公用卡 (本機提醒)
-                          </Text>
-                        </View>
-                      )}
+                      <Text style={[styles.cardScheduleDates, { color: colors.text.muted }]}>
+                        下次出帳：{dates.billStatementDate.getMonth() + 1}/{dates.billStatementDate.getDate()} 09:30 · 繳費提醒：{dates.reminderDueDate.getMonth() + 1}/{dates.reminderDueDate.getDate()} 09:30
+                      </Text>
                     </View>
-                    <Text style={[styles.cardScheduleMeta, { color: colors.text.secondary }]}>
-                      結帳日：每月 {card.billing_cycle_date || 15} 號 · 待繳約 NT$ {outstanding.toLocaleString()}
-                    </Text>
-                    <Text style={[styles.cardScheduleDates, { color: colors.text.muted }]}>
-                      下次出帳：{dates.billStatementDate.getMonth() + 1}/{dates.billStatementDate.getDate()} 09:30 · 繳費提醒：{dates.reminderDueDate.getMonth() + 1}/{dates.reminderDueDate.getDate()} 09:30
-                    </Text>
                   </View>
-                </View>
-              );
-            })
-          )}
-        </View>
+                );
+              })
+            )}
+          </View>
+        )}
 
         {/* 測試按鈕與雙軌說明 */}
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 12, alignItems: 'center' }}>
@@ -970,49 +987,59 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           </TouchableOpacity>
         </View>
 
+        {/* 展開/收合生活待辦時程按鈕 */}
+        <TouchableOpacity
+          style={[styles.collapseToggleBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
+          onPress={() => setIsMemosExpanded(prev => !prev)}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.collapseToggleBtnText, { color: colors.text.primary }]}>
+            {isMemosExpanded
+              ? '收合生活待辦排程 ▴'
+              : `展開生活待辦排程 (${pendingMemos.length} 則) ▾`}
+          </Text>
+        </TouchableOpacity>
+
         {/* 待辦記事清單預覽 */}
-        <View style={[styles.cardScheduleContainer, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
-          {pendingMemos.length === 0 ? (
-            <View style={styles.noCardBox}>
-              <Text style={[styles.noCardText, { color: colors.text.muted }]}>
-                📝 目前無待提醒之生活記事，可在記帳選單中點擊「生活記事」新增並設定提醒日期
-              </Text>
-            </View>
-          ) : (
-            pendingMemos.slice(0, 4).map((memo) => {
-              const parsed = parseMemoNote(memo.note);
-              const assignee = memo.paid_by ? getMemberById(memo.paid_by) : null;
-              return (
-                <View key={memo.id} style={[styles.cardScheduleRow, { borderBottomColor: colors.border.default }]}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={styles.cardScheduleIcon}>{parsed.icon || '📌'}</Text>
-                      <Text style={[styles.cardScheduleName, { color: colors.text.primary }]} numberOfLines={1}>
-                        {parsed.title}
-                      </Text>
-                      <View style={[styles.cardholderBadge, { backgroundColor: memo.reminder_target === 'personal' ? (isDark ? '#581C87' : '#FAF5FF') : (isDark ? '#1E3A8A' : '#EFF6FF') }]}>
-                        <Text style={[styles.cardholderBadgeText, { color: memo.reminder_target === 'personal' ? (isDark ? '#D8B4FE' : '#9333EA') : (isDark ? '#93C5FD' : '#2563EB') }]}>
-                          {memo.reminder_target === 'personal' ? `👤 個人專屬${assignee ? `·${assignee.display_name}` : ''}` : '🌐 全家待辦'}
+        {isMemosExpanded && (
+          <View style={[styles.cardScheduleContainer, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
+            {pendingMemos.length === 0 ? (
+              <View style={styles.noCardBox}>
+                <Text style={[styles.noCardText, { color: colors.text.muted }]}>
+                  📝 目前無待提醒之生活記事，可在記帳選單中點擊「生活記事」新增並設定提醒日期
+                </Text>
+              </View>
+            ) : (
+              pendingMemos.map((memo) => {
+                const parsed = parseMemoNote(memo.note);
+                const assignee = memo.paid_by ? getMemberById(memo.paid_by) : null;
+                return (
+                  <View key={memo.id} style={[styles.cardScheduleRow, { borderBottomColor: colors.border.default }]}>
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={styles.cardScheduleIcon}>{parsed.icon || '📌'}</Text>
+                        <Text style={[styles.cardScheduleName, { color: colors.text.primary }]} numberOfLines={1}>
+                          {parsed.title}
                         </Text>
+                        <View style={[styles.cardholderBadge, { backgroundColor: memo.reminder_target === 'personal' ? (isDark ? '#581C87' : '#FAF5FF') : (isDark ? '#1E3A8A' : '#EFF6FF') }]}>
+                          <Text style={[styles.cardholderBadgeText, { color: memo.reminder_target === 'personal' ? (isDark ? '#D8B4FE' : '#9333EA') : (isDark ? '#93C5FD' : '#2563EB') }]}>
+                            {memo.reminder_target === 'personal' ? `👤 個人專屬${assignee ? `·${assignee.display_name}` : ''}` : '🌐 全家待辦'}
+                          </Text>
+                        </View>
                       </View>
+                      <Text style={[styles.cardScheduleMeta, { color: colors.text.secondary }]} numberOfLines={1}>
+                        {parsed.cleanContent || memo.note}
+                      </Text>
+                      <Text style={[styles.cardScheduleDates, { color: colors.text.muted }]}>
+                        🔔 預計提醒：{memo.reminder_date} 上午 09:00
+                      </Text>
                     </View>
-                    <Text style={[styles.cardScheduleMeta, { color: colors.text.secondary }]} numberOfLines={1}>
-                      {parsed.cleanContent || memo.note}
-                    </Text>
-                    <Text style={[styles.cardScheduleDates, { color: colors.text.muted }]}>
-                      🔔 預計提醒：{memo.reminder_date} 上午 09:00
-                    </Text>
                   </View>
-                </View>
-              );
-            })
-          )}
-          {pendingMemos.length > 4 && (
-            <Text style={[styles.noCardText, { color: colors.text.muted, marginVertical: 6 }]}>
-              ...另有 {pendingMemos.length - 4} 則待辦記事排程中
-            </Text>
-          )}
-        </View>
+                );
+              })
+            )}
+          </View>
+        )}
 
         {/* 測試按鈕與雙軌說明 */}
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 12, alignItems: 'center' }}>
@@ -2773,6 +2800,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   testNoticeBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  collapseToggleBtn: {
+    width: '100%',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+  },
+  collapseToggleBtnText: {
     fontSize: 13,
     fontWeight: '600',
   },
