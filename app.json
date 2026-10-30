@@ -92,7 +92,8 @@
             "shortcut_memo": "./assets/shortcuts/shortcut_memo.png"
           }
         }
-      ]
+      ],
+      "./plugins/withAndroidWidgets"
     ],
     "web": {
       "favicon": "./assets/favicon.png"
