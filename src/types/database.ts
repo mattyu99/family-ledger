@@ -195,6 +195,7 @@ export interface MemberDevice {
   device_name: string;
   platform: 'ios' | 'android' | 'web';
   app_version?: string;
+  push_token?: string;
   last_active_at: string;
   created_at: string;
   updated_at?: string;

@@ -3,6 +3,7 @@ import { Platform, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Profile, MemberDevice, Ledger } from '../types/database';
 import { getDeviceId, getDeviceName, getDevicePlatform } from '../lib/device';
+import { getExpoPushTokenSafely } from '../lib/pushDispatcher';
 import { APP_FULL_VERSION } from '../constants/version';
 import { safeAlert } from '../lib/ledgerUtils';
 import { STORAGE_KEYS, DEMO_LEDGER_ID } from '../constants/ledgerDefaults';
@@ -167,6 +168,7 @@ export function useDeviceAuth({
       const platform = getDevicePlatform();
       const lId = targetLedgerId || currentLedger.id;
       const mId = targetMemberId || effectiveCurrentUser?.id || currentUser.id;
+      const pushToken = await getExpoPushTokenSafely();
 
       if (!lId || lId === DEMO_LEDGER_ID) return;
 
@@ -179,6 +181,7 @@ export function useDeviceAuth({
         device_name: devName,
         platform,
         app_version: APP_FULL_VERSION,
+        push_token: pushToken || undefined,
         last_active_at: nowIso,
         created_at: nowIso,
       };
@@ -199,6 +202,7 @@ export function useDeviceAuth({
             device_name: devName,
             platform,
             app_version: APP_FULL_VERSION,
+            push_token: pushToken || null,
             last_active_at: nowIso,
           }, { onConflict: 'ledger_id,device_id' });
 

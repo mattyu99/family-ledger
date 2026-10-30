@@ -60,6 +60,8 @@ import { useRecurringRules } from '../hooks/useRecurringRules';
 import { useDeviceAuth } from '../hooks/useDeviceAuth';
 import { useLedgerBackup } from '../hooks/useLedgerBackup';
 import { syncWidgetData } from '../lib/widgetSync';
+import { sendFamilyPushNotification } from '../lib/pushDispatcher';
+import * as Notifications from 'expo-notifications';
 
 // 保持 100% 向後相容導出，確保全 App 任何既有 import 完全不壞
 export {
@@ -497,6 +499,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     transactionsRef.current = transactions;
   }, [transactions]);
 
+  const membersRef = useRef<Profile[]>(members);
+  useEffect(() => {
+    membersRef.current = members;
+  }, [members]);
+
   // 自動將最新待辦、收支與帳本資訊同步至桌面小工具快照 (Widget Snapshot)
   useEffect(() => {
     if (!currentLedger?.id) return;
@@ -504,6 +511,26 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.warn('[WidgetSync] 背景同步快照失敗:', err);
     });
   }, [transactions, currentLedger, members]);
+
+  // 跨裝置靜默推播喚醒監聽：當收到其他成員發布的待辦同步通知時，在背景自動更新小工具快照
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    try {
+      const sub = Notifications.addNotificationReceivedListener(notification => {
+        const data = notification.request.content.data;
+        if (data && (data.type === 'widget_sync' || data.type === 'memo_added' || data.type === 'memo_completed' || data.type === 'memo_updated')) {
+          if (currentLedger?.id) {
+            syncWidgetData(currentLedger, transactionsRef.current, membersRef.current).catch(() => {});
+          }
+        }
+      });
+      return () => {
+        sub.remove();
+      };
+    } catch (e) {
+      console.warn('[Push] 註冊推播同步監聽異常:', e);
+    }
+  }, [currentLedger]);
 
   const dismissLiveToast = React.useCallback(() => {
     setLiveToast(null);
@@ -6428,6 +6455,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         payload: { tx: cleanTransactionForSync(newTx, validCreatorId, currentLedger.id) },
       }).catch(() => {});
     }
+
+    // 若為生活待辦記事，向同公帳其他成員之裝置發送跨裝置即時推播 (含背景喚醒同步小工具)
+    if (newTx.type === 'memo' && isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      const parsedMemo = parseMemoNote(newTx.note);
+      sendFamilyPushNotification({
+        ledgerId: currentLedger.id,
+        senderName: currentUser.display_name || '家庭成員',
+        title: `📋 ${currentLedger.name} 新待辦記事`,
+        body: `${currentUser.display_name || '家庭成員'} 新增了待辦：${parsedMemo.title || '生活備忘'}`,
+        type: 'memo_added',
+        data: { id: txId },
+      }).catch(() => {});
+    }
+
     return txId;
   };
 
@@ -6936,6 +6977,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         type: 'delete_transaction',
         ledgerId: currentLedger.id,
         payload: { id },
+      }).catch(() => {});
+    }
+
+    // 若刪除生活待辦記事，通知其他家人小工具背景同步刷新
+    if (targetTx?.type === 'memo' && isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      sendFamilyPushNotification({
+        ledgerId: currentLedger.id,
+        senderName: currentUser.display_name || '家庭成員',
+        title: `📋 ${currentLedger.name} 待辦記事異動`,
+        body: `${currentUser.display_name || '家庭成員'} 移除了一則待辦記事`,
+        type: 'widget_sync',
+        isSilent: true,
+        data: { id, action: 'delete' },
       }).catch(() => {});
     }
   };
@@ -7517,6 +7571,27 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           type: 'update_transaction',
           ledgerId: currentLedger.id,
           payload: { id, data: cleanTransactionForSync(data) },
+        }).catch(() => {});
+      }
+
+      // 若為生活待辦記事，向同公帳其他成員之裝置發送跨裝置即時推播 (含背景喚醒同步小工具)
+      if (isTargetMemo && isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+        const updaterName = currentUser?.display_name || '家庭成員';
+        const parsedMemo = parseMemoNote(data.note !== undefined ? data.note : (targetTx?.note || ''));
+        const memoTitle = parsedMemo.title || '生活備忘';
+        const isNewlyCompleted = !targetTx?.is_settled && effectiveSettled === true;
+        const pushTitle = isNewlyCompleted ? `✅ ${currentLedger.name} 待辦已辦妥` : `📋 ${currentLedger.name} 待辦記事更新`;
+        const pushBody = isNewlyCompleted
+          ? `${updaterName} 已完成待辦：${memoTitle}`
+          : `${updaterName} 更新了待辦：${memoTitle}`;
+
+        sendFamilyPushNotification({
+          ledgerId: currentLedger.id,
+          senderName: updaterName,
+          title: pushTitle,
+          body: pushBody,
+          type: isNewlyCompleted ? 'memo_completed' : 'memo_updated',
+          data: { id, isSettled: !!effectiveSettled },
         }).catch(() => {});
       }
 

@@ -590,3 +590,4 @@ public class MemoTodayWidgetProvider extends AppWidgetProvider {
 }
 
 module.exports = withAndroidWidgets;
+

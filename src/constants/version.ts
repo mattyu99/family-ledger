@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.9';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.9 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 31;
+export const APP_BUILD_REVISION = 32;
 
 // 完整版本字串 (例如 "1.0.9.21")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.9',
     date: '2026-10-27 ~ 2026-10-30',
-    title: '全新 1.0.9 正式版發布、原生桌面小工具配置與極速零金鑰架構 (v1.0.9.0 ~ v1.0.9.31)',
+    title: '全新 1.0.9 正式版發布、跨裝置推播背景小工具喚醒與極速零金鑰架構 (v1.0.9.0 ~ v1.0.9.32)',
     highlights: [
+      '📱 跨裝置即時推播與小工具背景喚醒同步 (v1.0.9.32)：1. member_devices 補齊 push_token 登記；2. 建立 src/lib/pushDispatcher.ts 跨裝置推播分發器；3. 記事新增、辦妥、修改與刪除時自動發送跨裝置通知與靜默推播（_contentAvailable: true）喚醒其他成員手機；4. 監聽通知自動背景刷新小工具快照，跨裝置零時差。',
       '📱 原生 Android 桌面小工具 (Home Screen AppWidgets) Config Plugin 深度架構落地 (v1.0.9.31)：1. 建立全新 plugins/withAndroidWidgets.js 原生擴充插件，為 Android 原生平台自動配置 2x2 極速捷徑 (QuickActionsWidget) 與 4x2 今日待辦 (MemoTodayWidget) 兩大小工具；2. 注入 Android 原生 RemoteViews 佈局 XML、圓角卡片樣式、以及由 SQLite 本機快照直讀渲染之 Java AppWidgetProvider 類別；3. 整合原生 Intent 與 Deep Link（familyledger://quick-action），桌面點擊 0 毫秒極速直達記帳、相機掃發票與待辦回報；4. 納入 app.json 插件清單，EAS Build 原生編譯時全自動生成，維持純淨 Expo CNG (Continuous Native Generation) 架構。',
       '📱 桌面小工具 (Widgets) 本地快照中樞與跨行程數據同步架構 (v1.0.9.30)：1. 建立全新 src/lib/widgetSync.ts 桌面小工具數據快照中樞，支援萃取當前帳本之最新 4 筆待辦記事、本月總花費累計、以及 4 大快捷動作 Deep Link，打包寫入本機專屬共用儲存區 (Shared Storage)；2. 於 LedgerContext 掛載全自動監聽管線，無論是開啟 App、下拉刷新、記帳、打勾辦妥、刪除明細或切換公帳，均以非同步背景極速更新小工具快照，0 阻塞 UI 主線程；3. 升級「家庭設定」之桌面捷徑專區為「📱 桌面小工具 (Widgets) 與快捷動作」全景看板，支援小工具快照即時視覺化預覽與一鍵手動強制同步；4. 納入 Android「長按拖曳釘選至桌面」免編譯即刻享受 1 鍵直達相機/記帳之使用秘訣指南。',
       '📋 生活備忘「已辦妥」列表改以辦妥時間降序排序 (v1.0.9.29)：1. 調整 MemoTodoModal「已辦妥」列表之排列邏輯，徹底改變原先依記錄日期（transacted_at）排序導致一個月前建立但剛剛才辦妥之備忘沉入底部的缺陷；2. 建立精確時間戳提取器 getCompletionTimestamp，優先讀取 completed_at 辦妥時間，並具備 merchant 中繼標籤 completedAt、updated_at 與 transacted_at 完整雙軌降級容錯機制；3. 以時間毫秒數進行降序（Desc）排序，實現剛剛最新打勾完成之待辦事項即刻置頂於已辦妥清單最上方，回顧更符合人性直覺。',
