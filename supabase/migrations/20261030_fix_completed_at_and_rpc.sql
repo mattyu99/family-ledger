@@ -19,16 +19,8 @@ DECLARE
 BEGIN
     UPDATE public.transactions
     SET
-        amount = CASE 
-            WHEN p_payload ? 'amount' AND NULLIF(p_payload->>'amount', '') IS NOT NULL 
-            THEN (NULLIF(p_payload->>'amount', ''))::NUMERIC 
-            ELSE amount 
-        END,
-        type = CASE 
-            WHEN p_payload ? 'type' AND NULLIF(p_payload->>'type', '') IS NOT NULL 
-            THEN (p_payload->>'type') 
-            ELSE type 
-        END,
+        amount = COALESCE(NULLIF(p_payload->>'amount', '')::NUMERIC, amount),
+        "type" = COALESCE(NULLIF(p_payload->>'type', ''), "type"),
         category_id = CASE 
             WHEN p_payload ? 'category_id' AND (p_payload->>'category_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
             THEN (p_payload->>'category_id')::UUID 
@@ -154,16 +146,8 @@ BEGIN
     UPDATE public.recurring_rules
     SET
         name = CASE WHEN p_payload ? 'name' THEN p_payload->>'name' ELSE name END,
-        default_amount = CASE 
-            WHEN p_payload ? 'default_amount' THEN (p_payload->>'default_amount')::NUMERIC 
-            WHEN p_payload ? 'amount' THEN (p_payload->>'amount')::NUMERIC 
-            ELSE default_amount 
-        END,
-        amount_type = CASE 
-            WHEN p_payload ? 'amount_type' THEN p_payload->>'amount_type' 
-            WHEN p_payload ? 'type' THEN p_payload->>'type' 
-            ELSE amount_type 
-        END,
+        default_amount = COALESCE(NULLIF(p_payload->>'default_amount', '')::NUMERIC, NULLIF(p_payload->>'amount', '')::NUMERIC, default_amount),
+        amount_type = COALESCE(NULLIF(p_payload->>'amount_type', ''), NULLIF(p_payload->>'type', ''), amount_type),
         category_id = CASE WHEN p_payload ? 'category_id' AND (p_payload->>'category_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (p_payload->>'category_id')::UUID ELSE NULL END,
         merchant = CASE WHEN p_payload ? 'merchant' THEN NULLIF(p_payload->>'merchant', '') ELSE merchant END,
         paid_by = CASE WHEN p_payload ? 'paid_by' AND (p_payload->>'paid_by') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (p_payload->>'paid_by')::UUID ELSE NULL END,
