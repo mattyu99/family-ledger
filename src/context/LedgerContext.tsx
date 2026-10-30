@@ -136,10 +136,10 @@ interface LedgerContextType {
       paid_by?: string;
       merchant?: string;
       note?: string;
-      reminder_date?: string;
-      reminder_calendar?: CalendarSystem;
-      reminder_repeat?: MemoRepeatFrequency;
-      reminder_target?: 'family' | 'personal';
+      reminder_date?: string | null;
+      reminder_calendar?: CalendarSystem | null;
+      reminder_repeat?: MemoRepeatFrequency | null;
+      reminder_target?: 'family' | 'personal' | null;
       completed_by?: string;
       completed_at?: string;
       completion_note?: string;
@@ -6299,6 +6299,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setTransactions(updated);
     await saveTransactionsToStorage(updated);
 
+    if (newTx.type === 'memo') {
+      scheduleMemoReminderNotifications(updated, members, currentUser?.id).catch(() => {});
+    }
+
     // 若雲端已連線且為正式雲端帳本，推送至 Supabase PostgreSQL
     if (isOnlinePublishing) {
       try {
@@ -6861,6 +6865,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setTransactions(updated);
     await saveTransactionsToStorage(updated);
 
+    if (targetTx?.type === 'memo') {
+      scheduleMemoReminderNotifications(updated, members, currentUser?.id).catch(() => {});
+    }
+
     // 1.1 核心防護：立即自離線待補佇列中撤回該交易的所有 pending 操作（防杜後續補傳將剛刪除之交易復活回雲端！）
     cancelOfflineMutationByTxId(id).catch(() => {});
 
@@ -7004,10 +7012,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       paid_by?: string;
       merchant?: string;
       note?: string;
-      reminder_date?: string;
-      reminder_calendar?: CalendarSystem;
-      reminder_repeat?: MemoRepeatFrequency;
-      reminder_target?: 'family' | 'personal';
+      reminder_date?: string | null;
+      reminder_calendar?: CalendarSystem | null;
+      reminder_repeat?: MemoRepeatFrequency | null;
+      reminder_target?: 'family' | 'personal' | null;
       completed_by?: string;
       completed_at?: string;
       completion_note?: string;
@@ -7052,19 +7060,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           ? (data.completed_at !== undefined ? data.completed_at : (targetTx?.completed_at || new Date().toISOString()))
           : undefined;
         effectiveReminder = data.reminder_date !== undefined
-          ? (data.reminder_date || undefined)
+          ? (data.reminder_date && data.reminder_date.trim() ? data.reminder_date.trim() : undefined)
           : targetTx?.reminder_date;
         const rawRepeat = data.reminder_repeat !== undefined
-          ? data.reminder_repeat
+          ? (data.reminder_repeat || undefined)
           : (targetTx?.reminder_repeat || 'once');
         const rawCal = data.reminder_calendar !== undefined
-          ? data.reminder_calendar
+          ? (data.reminder_calendar || undefined)
           : (targetTx?.reminder_calendar || 'solar');
 
         effectiveCalendar = effectiveReminder
-          ? (rawRepeat === 'lunar_1_15' || rawRepeat === 'lunar_2_16' ? 'lunar' : rawCal)
+          ? (rawRepeat === 'lunar_1_15' || rawRepeat === 'lunar_2_16' ? 'lunar' : (rawCal || 'solar'))
           : undefined;
-        effectiveRepeat = effectiveReminder ? rawRepeat : undefined;
+        effectiveRepeat = effectiveReminder ? (rawRepeat || 'once') : undefined;
 
         cleanMerchant = encodeMemoMerchantTag({
           reminderDate: effectiveReminder,
@@ -7213,9 +7221,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             invoice_prize_name: formattedInvoiceNumber ? invoicePrizeName : (data.invoice_prize_name !== undefined ? data.invoice_prize_name : t.invoice_prize_name),
             amount: isTargetMemo ? 0 : (data.amount !== undefined ? data.amount : t.amount),
             reminder_date: isTargetMemo ? effectiveReminder : (data.reminder_date !== undefined ? (data.reminder_date || undefined) : t.reminder_date),
-            reminder_calendar: isTargetMemo ? effectiveCalendar : t.reminder_calendar,
-            reminder_repeat: isTargetMemo ? effectiveRepeat : t.reminder_repeat,
-            reminder_target: data.reminder_target !== undefined ? data.reminder_target : t.reminder_target,
+            reminder_calendar: isTargetMemo ? effectiveCalendar : (data.reminder_calendar !== undefined ? (data.reminder_calendar || undefined) : t.reminder_calendar),
+            reminder_repeat: isTargetMemo ? effectiveRepeat : (data.reminder_repeat !== undefined ? (data.reminder_repeat || undefined) : t.reminder_repeat),
+            reminder_target: isTargetMemo ? (effectiveReminder ? (data.reminder_target || t.reminder_target || 'family') : undefined) : (data.reminder_target !== undefined ? (data.reminder_target || undefined) : t.reminder_target),
             completed_by: rowCompletedBy,
             completed_at: isTargetMemo ? (rowSettled ? effectiveCompletedAt : undefined) : (data.completed_at !== undefined ? data.completed_at : t.completed_at),
             completion_note: data.completion_note !== undefined ? (data.completion_note || undefined) : t.completion_note,
@@ -7293,6 +7301,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setTransactions(finalTxs);
       await saveTransactionsToStorage(finalTxs);
 
+      if (isTargetMemo) {
+        scheduleMemoReminderNotifications(finalTxs, members, currentUser?.id).catch(() => {});
+      }
+
       if (nextMemoTx) {
         const memoParsed = parseMemoNote(nextMemoTx.note);
         const nextBadge = formatMemoReminderBadge(
@@ -7334,13 +7346,23 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (data.completed_at !== undefined || (isTargetMemo && effectiveSettled)) {
           updatePayload.completed_at = (isTargetMemo && effectiveSettled ? effectiveCompletedAt : data.completed_at) || null;
         }
-        if (data.reminder_date !== undefined) updatePayload.reminder_date = data.reminder_date || null;
-        if (data.reminder_calendar !== undefined) updatePayload.reminder_calendar = data.reminder_calendar || null;
-        if (data.reminder_repeat !== undefined) updatePayload.reminder_repeat = data.reminder_repeat || null;
-        if (data.completion_note !== undefined) updatePayload.completion_note = data.completion_note || null;
-        if (data.linked_transaction_id !== undefined) updatePayload.linked_transaction_id = data.linked_transaction_id || null;
-        if (data.image_url !== undefined) updatePayload.image_url = data.image_url || null;
-        if (data.reminder_target !== undefined) updatePayload.reminder_target = data.reminder_target;
+        if (data.reminder_date !== undefined) {
+          updatePayload.reminder_date = data.reminder_date && data.reminder_date.trim() ? data.reminder_date.trim() : null;
+          if (!updatePayload.reminder_date) {
+            updatePayload.reminder_calendar = null;
+            updatePayload.reminder_repeat = null;
+            updatePayload.reminder_target = null;
+          }
+        }
+        if (data.reminder_calendar !== undefined && updatePayload.reminder_date) {
+          updatePayload.reminder_calendar = data.reminder_calendar || null;
+        }
+        if (data.reminder_repeat !== undefined && updatePayload.reminder_date) {
+          updatePayload.reminder_repeat = data.reminder_repeat || null;
+        }
+        if (data.reminder_target !== undefined && updatePayload.reminder_date) {
+          updatePayload.reminder_target = data.reminder_target || null;
+        }
         updatePayload.updated_at = new Date().toISOString();
 
         if (hasMerchantColumnRef.current) {

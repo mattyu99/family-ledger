@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.10';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.10 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 3;
+export const APP_BUILD_REVISION = 4;
 
-// 完整版本字串 (例如 "1.0.10.3")
+// 完整版本字串 (例如 "1.0.10.4")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -21,11 +21,12 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.10',
     date: '2026-10-30',
-    title: '全新 1.0.10 正式版：原生 Android 桌面小工具、小工具挑選器擬真預覽、跨裝置推播背景喚醒與零金鑰極速架構 (v1.0.10.0 ~ v1.0.10.3)',
+    title: '全新 1.0.10 正式版：原生 Android 桌面小工具、小工具挑選器擬真預覽、跨裝置推播背景喚醒與零金鑰極速架構 (v1.0.10.0 ~ v1.0.10.4)',
     highlights: [
       '📱 原生 Android 桌面小工具 (2x2 快捷捷徑 & 4x2 今日待辦)：全新打造 withAndroidWidgets Config Plugin，整合 RemoteViews 與 SQLite 本機快照直讀，提供免開 App 即時查待辦與一鍵記帳。',
       '🎨 桌面小工具選擇器 (Widget Picker) 原生擬真預覽：引入 Android 12+ previewLayout 規範，注入 2x2 快捷按鈕與 4x2 生活待辦展示版面，徹底根除白底九宮格空白。',
       '📂 提醒中心卡片清單摺疊收合：信用卡帳單排程與生活待辦提醒清單改採一鍵展開/收合設計，預設折疊精簡，大幅瘦身設定頁長度。',
+      '🔔 記事提醒清除與排程自癒修復：修復編輯已設提醒記事時，改為「不設提醒」儲存後仍殘留提醒標記之缺陷，徹底清除雲端、本機快照與推播排程。',
       '🏷️ 桌面小工具公帳名稱動態連動與逾期/日期提示：2x2 快捷按鈕小工具自動直讀並顯示當前切換之公帳名稱；4x2 今日待辦小工具完整呈現「已逾期」與指派人日期徽章，對齊 In-App 預覽體驗。',
       '🔔 跨裝置即時推播與背景靜默喚醒同步：新增 member_devices push_token 與 pushDispatcher，家人新增、辦妥待辦時自動喚醒背景線程更新桌面小工具快照。',
       '📋 待辦智慧內文解析與快照排版優化：widgetSync 自動清洗 Markdown 方框標記，完整保留待辦與採買清單內文，自適應雙層佈局杜絕按鈕擠壓溢出。',

@@ -73,6 +73,7 @@ import {
   insertChecklistCheckbox,
   handleChecklistInput,
   formatMemoCompletedTime,
+  decodeMemoMerchantTag,
 } from '../lib/memo';
 import {
   CalendarSystem,
@@ -267,19 +268,29 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       ]
     );
   }, [note]);
-  const [memoReminderDate, setMemoReminderDate] = useState<string>(() => transaction?.reminder_date || '');
-  const [memoReminderCalendar, setMemoReminderCalendar] = useState<CalendarSystem>(
-    () => transaction?.reminder_calendar || 'solar'
-  );
-  const [memoReminderRepeat, setMemoReminderRepeat] = useState<MemoRepeatFrequency>(
-    () => transaction?.reminder_repeat || 'once'
-  );
+  const [memoReminderDate, setMemoReminderDate] = useState<string>(() => {
+    if (transaction?.reminder_date) return transaction.reminder_date;
+    const decoded = decodeMemoMerchantTag(transaction?.merchant);
+    return decoded.reminderDate || '';
+  });
+  const [memoReminderCalendar, setMemoReminderCalendar] = useState<CalendarSystem>(() => {
+    if (transaction?.reminder_calendar) return transaction.reminder_calendar;
+    const decoded = decodeMemoMerchantTag(transaction?.merchant);
+    return decoded.reminderCalendar || 'solar';
+  });
+  const [memoReminderRepeat, setMemoReminderRepeat] = useState<MemoRepeatFrequency>(() => {
+    if (transaction?.reminder_repeat) return transaction.reminder_repeat;
+    const decoded = decodeMemoMerchantTag(transaction?.merchant);
+    return decoded.reminderRepeat || 'once';
+  });
   const [memoReminderTarget, setMemoReminderTarget] = useState<'family' | 'personal'>(
     () => transaction?.reminder_target || 'family'
   );
-  const [reminderPickerInitialMode, setReminderPickerInitialMode] = useState<CalendarSystem>(
-    () => transaction?.reminder_calendar || 'solar'
-  );
+  const [reminderPickerInitialMode, setReminderPickerInitialMode] = useState<CalendarSystem>(() => {
+    if (transaction?.reminder_calendar) return transaction.reminder_calendar;
+    const decoded = decodeMemoMerchantTag(transaction?.merchant);
+    return decoded.reminderCalendar || 'solar';
+  });
   const [isSettled, setIsSettled] = useState<boolean>(() => !!transaction?.is_settled);
   const [completionNote, setCompletionNote] = useState<string>(() => transaction?.completion_note || '');
   const [linkedTxId, setLinkedTxId] = useState<string>(() => transaction?.linked_transaction_id || '');
@@ -886,11 +897,15 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           setDiscountCalcMode('subtract');
         }
       }
-      setMemoReminderDate(transaction.reminder_date || '');
-      setMemoReminderCalendar(transaction.reminder_calendar || 'solar');
-      setMemoReminderRepeat(transaction.reminder_repeat || 'once');
+      const decodedMemo = decodeMemoMerchantTag(transaction.merchant);
+      const initialReminder = transaction.reminder_date || decodedMemo.reminderDate || '';
+      const initialCal = transaction.reminder_calendar || decodedMemo.reminderCalendar || 'solar';
+      const initialRep = transaction.reminder_repeat || decodedMemo.reminderRepeat || 'once';
+      setMemoReminderDate(initialReminder);
+      setMemoReminderCalendar(initialCal);
+      setMemoReminderRepeat(initialRep);
       setMemoReminderTarget(transaction.reminder_target || 'family');
-      setReminderPickerInitialMode(transaction.reminder_calendar || 'solar');
+      setReminderPickerInitialMode(initialCal);
       setIsSettled(!!transaction.is_settled);
       setCompletionNote(transaction.completion_note || '');
       setLinkedTxId(transaction.linked_transaction_id || '');
@@ -1123,10 +1138,10 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       if (canEdit) {
         await updateTransaction(transaction.id, {
           note: note.trim() || transaction.note,
-          reminder_date: memoReminderDate || undefined,
-          reminder_calendar: memoReminderDate ? memoReminderCalendar : undefined,
-          reminder_repeat: memoReminderDate ? memoReminderRepeat : undefined,
-          reminder_target: memoReminderDate ? memoReminderTarget : undefined,
+          reminder_date: memoReminderDate ? memoReminderDate.trim() : null,
+          reminder_calendar: memoReminderDate ? memoReminderCalendar : null,
+          reminder_repeat: memoReminderDate ? memoReminderRepeat : null,
+          reminder_target: memoReminderDate ? memoReminderTarget : null,
           is_settled: true,
           completed_by: effectiveCompleter,
           completion_note: noteToSave || undefined,
@@ -1206,10 +1221,10 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           category_id: transaction.category_id || categories[0]?.id,
           paid_by: targetPayer,
           note: note.trim(),
-          reminder_date: memoReminderDate || undefined,
-          reminder_calendar: memoReminderDate ? memoReminderCalendar : undefined,
-          reminder_repeat: memoReminderDate ? memoReminderRepeat : undefined,
-          reminder_target: memoReminderDate ? memoReminderTarget : undefined,
+          reminder_date: memoReminderDate ? memoReminderDate.trim() : null,
+          reminder_calendar: memoReminderDate ? memoReminderCalendar : null,
+          reminder_repeat: memoReminderDate ? memoReminderRepeat : null,
+          reminder_target: memoReminderDate ? memoReminderTarget : null,
           transacted_at: transactedAt || transaction.transacted_at,
           is_settled: isSettled,
           completed_by: isSettled ? (transaction.completed_by || currentUser?.id) : undefined,
