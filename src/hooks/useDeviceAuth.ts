@@ -195,7 +195,7 @@ export function useDeviceAuth({
 
       if (isConfigured && lId !== DEMO_LEDGER_ID) {
         try {
-          const { error } = await supabase.from('member_devices').upsert({
+          let { error: upsertErr } = await supabase.from('member_devices').upsert({
             ledger_id: lId,
             member_id: mId,
             device_id: devId,
@@ -206,7 +206,21 @@ export function useDeviceAuth({
             last_active_at: nowIso,
           }, { onConflict: 'ledger_id,device_id' });
 
-          if (!error) {
+          // 若資料庫尚未執行 20261030_add_push_token_to_member_devices 遷移腳本，自動降級排除 push_token 再次登記
+          if (upsertErr && (upsertErr.code === '42703' || upsertErr.message?.includes('push_token'))) {
+            const fallbackRes = await supabase.from('member_devices').upsert({
+              ledger_id: lId,
+              member_id: mId,
+              device_id: devId,
+              device_name: devName,
+              platform,
+              app_version: APP_FULL_VERSION,
+              last_active_at: nowIso,
+            }, { onConflict: 'ledger_id,device_id' });
+            upsertErr = fallbackRes.error;
+          }
+
+          if (!upsertErr) {
             const { data: cloudData } = await supabase
               .from('member_devices')
               .select('*')
