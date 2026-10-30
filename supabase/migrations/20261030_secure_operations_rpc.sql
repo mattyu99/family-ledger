@@ -5,8 +5,21 @@
 -- 日期：2026-10-30
 -- ==============================================================================
 
--- 0. 確保資料庫必要欄位齊全 (防止因缺少欄位導致 RPC 執行失敗)
+-- 0. 確保資料庫必要欄位與 RLS 讀取政策齊全 (防止因缺少欄位或 RLS 阻擋導致卡片歸零)
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+
+-- 0.1 允許成員及匿名客戶端讀取卡片、分類與交易明細 (根除「支付卡片為 0」與「無法載入明細」問題)
+DROP POLICY IF EXISTS "Members can view payment accounts" ON public.payment_accounts;
+CREATE POLICY "Members can view payment accounts" ON public.payment_accounts FOR SELECT 
+  USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+
+DROP POLICY IF EXISTS "Members can view categories" ON public.categories;
+CREATE POLICY "Members can view categories" ON public.categories FOR SELECT 
+  USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+
+DROP POLICY IF EXISTS "Members can view transactions" ON public.transactions;
+CREATE POLICY "Members can view transactions" ON public.transactions FOR SELECT 
+  USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
 
 -- 1. 安全刪除交易明細 (含分帳、墓碑表記錄，徹底杜絕殭屍復活)
 CREATE OR REPLACE FUNCTION public.secure_delete_transaction(

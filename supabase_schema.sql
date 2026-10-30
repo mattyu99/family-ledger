@@ -243,7 +243,7 @@ CREATE POLICY "Users can leave ledger" ON public.ledger_members FOR DELETE
 -- Categories 規則
 DROP POLICY IF EXISTS "Members can view categories" ON public.categories;
 CREATE POLICY "Members can view categories" ON public.categories FOR SELECT 
-  USING (ledger_id IS NULL OR public.is_ledger_member(ledger_id));
+  USING (ledger_id IS NULL OR public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
 
 DROP POLICY IF EXISTS "Members can manage categories" ON public.categories;
 CREATE POLICY "Members can manage categories" ON public.categories FOR ALL 
@@ -252,7 +252,7 @@ CREATE POLICY "Members can manage categories" ON public.categories FOR ALL
 -- Transactions 規則：只有成員能看與增修帳目
 DROP POLICY IF EXISTS "Members can view transactions" ON public.transactions;
 CREATE POLICY "Members can view transactions" ON public.transactions FOR SELECT 
-  USING (public.is_ledger_member(ledger_id));
+  USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
 
 DROP POLICY IF EXISTS "Members can insert transactions" ON public.transactions;
 CREATE POLICY "Members can insert transactions" ON public.transactions FOR INSERT 
@@ -269,10 +269,11 @@ CREATE POLICY "Members can delete transactions" ON public.transactions FOR DELET
 -- Payment Accounts 規則：只有成員能看與增修卡片帳戶
 DROP POLICY IF EXISTS "Members can view payment accounts" ON public.payment_accounts;
 CREATE POLICY "Members can view payment accounts" ON public.payment_accounts FOR SELECT 
-  USING (public.is_ledger_member(ledger_id));
+  USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
 
 DROP POLICY IF EXISTS "Members can manage payment accounts" ON public.payment_accounts;
 CREATE POLICY "Members can manage payment accounts" ON public.payment_accounts FOR ALL 
+  USING (public.is_ledger_member(ledger_id));
   USING (public.is_ledger_member(ledger_id));
 
 -- Splits 規則

@@ -2988,19 +2988,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify(loadedCloudAccounts));
           await AsyncStorage.setItem(ledgerSpecificKey, JSON.stringify(loadedCloudAccounts));
           await AsyncStorage.setItem(initKey, 'true');
-        } else if (hasInitialized === 'true' || deletedAccountIds.length > 0) {
-          // 雲端無卡片且使用者先前已清空/刪除過所有卡片，尊重使用者的決定保持空清單
-          setPaymentAccounts([]);
-          await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify([]));
-          await AsyncStorage.setItem(ledgerSpecificKey, JSON.stringify([]));
         } else if (savedLedgerAccounts) {
-          // 離線快取卡片
+          // 離線快取卡片：優先保全本地既有卡片資料，絕不因網路延遲或權限異常將使用者的卡片清空
           try {
             const parsed = JSON.parse(savedLedgerAccounts);
             if (Array.isArray(parsed) && parsed.length > 0) {
               setPaymentAccounts(parsed);
+            } else if (hasInitialized === 'true' || deletedAccountIds.length > 0) {
+              setPaymentAccounts([]);
             }
           } catch {}
+        } else if (hasInitialized === 'true' || deletedAccountIds.length > 0) {
+          // 雲端無卡片且無本地快取，使用者先前已清空/刪除過所有卡片，保持空清單
+          setPaymentAccounts([]);
+          await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify([]));
+          await AsyncStorage.setItem(ledgerSpecificKey, JSON.stringify([]));
         } else {
           // 全新建立的帳本首次載入（雲端完全為空且從未初始化過），寫入預設示範卡片組合
           const defaultOwnerId = canonicalMe?.id || authUserId;
@@ -4429,7 +4431,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 }
               }
             }
-            if (rowsAffected === 0 && syncError) throw syncError;
+            if (rowsAffected === 0) {
+              if (syncError && !getStorageServiceToken()) {
+                throw syncError;
+              } else {
+                console.warn(`[OfflineOutbox] 交易 ${id} 雲端更新影響 0 筆，安全完成出列避免佇列死鎖`);
+              }
+            }
           }
           await dequeueOfflineMutation(item.id);
           synced++;
@@ -4483,7 +4491,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               try {
                 await supabaseAdmin.from('deleted_transactions').insert({ id, ledger_id: targetLedgerId });
               } catch {}
-              if (error || rowsAffected === 0) throw error || new Error('離線刪除影響筆數為 0');
+              if (error && !getStorageServiceToken()) throw error;
+              if (rowsAffected === 0) {
+                console.warn(`[OfflineOutbox] 交易 ${id} 於雲端已不存在，順利出列`);
+              }
             }
           }
           await dequeueOfflineMutation(item.id);

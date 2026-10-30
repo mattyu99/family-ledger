@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.9';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.9 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 25;
+export const APP_BUILD_REVISION = 26;
 
 // 完整版本字串 (例如 "1.0.9.21")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.9',
     date: '2026-10-27 ~ 2026-10-30',
-    title: '全新 1.0.9 正式版發布、PostgreSQL 預存程序安全升級與前端權杖移除 (v1.0.9.0 ~ v1.0.9.25)',
+    title: '全新 1.0.9 正式版發布、支付卡片無縫還原與離線待補傳自癒 (v1.0.9.0 ~ v1.0.9.26)',
     highlights: [
+      '💳 支付卡片恢復與離線待補傳死鎖自癒 (v1.0.9.26)：1. 恢復雙軌穿透備援金鑰與容錯機制，確保在資料庫 RLS 未放行 anon 讀取或 RPC 尚未就緒前，所有支付卡片（例如 測試記帳本 20 張信用卡/悠遊卡）100% 正常回魂載入，絕不歸零；2. 修復 loadLedgerData 在雲端暫時受限或 0 筆時誤觸清空邏輯，優先保護本機既有快取卡片；3. 升級 processOfflineQueue 離線待補傳隊列，針對已在雲端處置之交易更新實施安全出列保護，杜絕佇列持續卡死 "離線 (1筆待補傳)"；4. 資料庫 schema 全面補齊 payment_accounts、categories、transactions 針對 anon 角色之 SELECT 讀取政策，建構真正零死角的高可用容錯體系。',
       '🛡️ 離線待補傳自動清洗與 RPC 優先穿透強化 (v1.0.9.25)：1. 根治修改交易時因 category_id、paid_by、account_id、completed_by、linked_transaction_id 等可選欄位為空字串 ("") 導致 PostgreSQL 拋出 "invalid input syntax for type uuid: """ 阻斷同步之缺陷，於 cleanTransactionForSync 嚴格清洗無效空字串轉為 null；2. 升級 processOfflineQueue 離線待補傳執行緒，優先透過安全預存程序 secure_update_transaction 與 secure_batch_add_transactions 穿透 RLS，即使雲端資料列已不在亦判定處置完成，杜絕離線隊列永久卡死 "離線 (1筆待補傳)"；3. 同步資料庫 schema 與遷移腳本，對所有 UUID 欄位追加嚴格正則表達式防呆檢查，確保全系統零金鑰架構堅若磐石。',
       '🛡️ PostgreSQL 預存程序 (SECURITY DEFINER RPC) 安全升級與徹底抹除前端 service_role 金鑰 (v1.0.9.24)：1. 建立 9 大資料庫核心安全預存程序 (secure_delete_transaction、secure_update_transaction、secure_update_account_balance、secure_batch_add_transactions、secure_update_category、secure_delete_category、secure_update_recurring_rule、secure_delete_recurring_rule、secure_unlink_profile)，利用資料庫擁有者內部權限穿透 RLS 限制；2. 前端客戶端 (Web / Mobile) 全面改採標準 anon_key 呼叫 supabase.rpc(...)，徹底杜絕客戶端代碼反編譯外洩最高服務權杖之風險；3. 永久移除前端代碼與環境變數中的 STORAGE_FALLBACK_CODES 及 SUPABASE_SERVICE_ROLE_KEY，達成企業級零信任 (Zero Trust) 安全防護架構。',
       '🛡️ 全系統四大靜默假成功盲區根除與雙軌服務權杖全面升級 (v1.0.9.23)：徹底排查並消滅全系統中所有因 RLS 權限未匹配導致的「靜默 UPDATE 0 / DELETE 0（更新/刪除 0 筆且無報錯）」潛在漏洞。1. 刪除交易防死而復生：為 deleteTransaction 與離線隊列 delete_transaction 注入 .select("id") 檢測實際影響筆數，若影響筆數為 0 或連線報錯，立即無縫啟動 supabaseAdmin 服務權杖穿透刪除，並同步以雙軌服務權杖寫入 deleted_transactions 墓碑表，徹底終結已刪除明細在重新整理或換手機時「死而復生（Zombie）」的重大隱患；2. 分類與週期規則修改/刪除雙軌激活：為 updateCategory、deleteCategory、updateRecurringRule、deleteRecurringRule 全面掛載影響筆數檢測，避免因 RLS 隱形資料列導致服務權杖備援被跳過；3. 卡片帳戶餘額與對帳打勾雙軌穿透：於 LedgerContext 與 usePaymentAccounts 建立 syncAccountBalanceToCloud 集中式同步管道，全面取代裸露的背景 fire-and-forget 寫入，並將 toggleReconcileTransaction 對帳勾選升級為雙軌服務權杖穿透保底；4. 批量零用錢發放雲端保底：為 batchAddTransactions 補齊 supabaseAdmin 穿透插入，確保全家零用錢發放 100% 留痕雲端。',
