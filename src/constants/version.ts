@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.9';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.9 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 29;
+export const APP_BUILD_REVISION = 30;
 
 // 完整版本字串 (例如 "1.0.9.21")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.9',
     date: '2026-10-27 ~ 2026-10-30',
-    title: '全新 1.0.9 正式版發布、生活備忘辦妥時間排序與極速零金鑰架構 (v1.0.9.0 ~ v1.0.9.29)',
+    title: '全新 1.0.9 正式版發布、桌面小工具快照中樞與極速零金鑰架構 (v1.0.9.0 ~ v1.0.9.30)',
     highlights: [
+      '📱 桌面小工具 (Widgets) 本地快照中樞與跨行程數據同步架構 (v1.0.9.30)：1. 建立全新 src/lib/widgetSync.ts 桌面小工具數據快照中樞，支援萃取當前帳本之最新 4 筆待辦記事、本月總花費累計、以及 4 大快捷動作 Deep Link，打包寫入本機專屬共用儲存區 (Shared Storage)；2. 於 LedgerContext 掛載全自動監聽管線，無論是開啟 App、下拉刷新、記帳、打勾辦妥、刪除明細或切換公帳，均以非同步背景極速更新小工具快照，0 阻塞 UI 主線程；3. 升級「家庭設定」之桌面捷徑專區為「📱 桌面小工具 (Widgets) 與快捷動作」全景看板，支援小工具快照即時視覺化預覽與一鍵手動強制同步；4. 納入 Android「長按拖曳釘選至桌面」免編譯即刻享受 1 鍵直達相機/記帳之使用秘訣指南。',
       '📋 生活備忘「已辦妥」列表改以辦妥時間降序排序 (v1.0.9.29)：1. 調整 MemoTodoModal「已辦妥」列表之排列邏輯，徹底改變原先依記錄日期（transacted_at）排序導致一個月前建立但剛剛才辦妥之備忘沉入底部的缺陷；2. 建立精確時間戳提取器 getCompletionTimestamp，優先讀取 completed_at 辦妥時間，並具備 merchant 中繼標籤 completedAt、updated_at 與 transacted_at 完整雙軌降級容錯機制；3. 以時間毫秒數進行降序（Desc）排序，實現剛剛最新打勾完成之待辦事項即刻置頂於已辦妥清單最上方，回顧更符合人性直覺。',
       '⚡ 主頁下拉刷新極速並行化重構 (Lightning-Fast Refresh Pipeline) (v1.0.9.28)：1. 徹底打破歷史遺留的 15 次循序排隊網路請求（Serial Waterfall），將帳本主檔、自訂分類、家庭名冊、付款卡片、交易明細、自訂付款方式、週期扣款規則、邀請碼與墓碑表等 9 大核心查詢全面打包為 Promise.all 單一並發管線，將 15 次循序 RTT 壓縮至單一網路週期 (<300ms)；2. 拔除每次刷新對 transactions 資料表進行 merchant 與 payment_method 之冗餘欄位探測，再省 2 次網路來回；3. 成員裝置登記與心跳改為背景非同步執行 (Non-blocking)，下拉轉圈不再等待心跳響應；4. 離線待補傳隊列掛載 3 秒超時防護，即使離線或網路抖動亦絕不卡死下拉轉圈；5. 主頁下拉刷新響應速度提升 10 倍以上，轉圈耗時自 15 秒驟降至 0.8 秒以內。',
       '🛡️ 零服務權杖架構 (Zero-Token Architecture) 終極落地與前端 service_role 徹底拔除 (v1.0.9.27)：1. 徹底拔除前端客戶端代碼中所有 service_role 最高服務權杖、混淆字符陣列 (STORAGE_FALLBACK_CODES) 與繞道邏輯，打包後的 Web / iOS / Android 客戶端僅保留公開 anon_key，達成最高規格零信任 (Zero Trust) 安全防衛；2. 全面升級資料庫 14 大核心預存程序 (SECURITY DEFINER RPC)，採用純 PL/pgSQL 程序化條件控制，徹底消滅 CASE WHEN 語法衝突；3. 資料庫 RLS 全線補齊 10 大核心資料表 (payment_accounts, categories, transactions, transaction_splits, ledger_members, deleted_transactions, recurring_rules, payment_methods, ledger_budgets, ledgers) 之 anon 讀取政策，卡片與明細在公開匿名金鑰下 100% 正常載入，絕不歸零；4. 升級本機快取保護機制，若雲端查詢暫時受限絕不清空既有 20 張支付卡片與 13 大分類快取；5. 離線待補傳隊列全面改以 secure_update_transaction 等預存程序直連雲端，自帶受影響筆數防護與自動出列機制，徹底解除「離線 (1筆待補傳)」死鎖。',

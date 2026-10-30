@@ -59,6 +59,7 @@ import { usePaymentAccounts } from '../hooks/usePaymentAccounts';
 import { useRecurringRules } from '../hooks/useRecurringRules';
 import { useDeviceAuth } from '../hooks/useDeviceAuth';
 import { useLedgerBackup } from '../hooks/useLedgerBackup';
+import { syncWidgetData } from '../lib/widgetSync';
 
 // 保持 100% 向後相容導出，確保全 App 任何既有 import 完全不壞
 export {
@@ -495,6 +496,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     transactionsRef.current = transactions;
   }, [transactions]);
+
+  // 自動將最新待辦、收支與帳本資訊同步至桌面小工具快照 (Widget Snapshot)
+  useEffect(() => {
+    if (!currentLedger?.id) return;
+    syncWidgetData(currentLedger, transactions, members).catch(err => {
+      console.warn('[WidgetSync] 背景同步快照失敗:', err);
+    });
+  }, [transactions, currentLedger, members]);
 
   const dismissLiveToast = React.useCallback(() => {
     setLiveToast(null);

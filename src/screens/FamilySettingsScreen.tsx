@@ -38,6 +38,11 @@ import {
   QuickActionKind,
   QUICK_ACTIONS_CONFIG,
 } from '../lib/quickActions';
+import {
+  getWidgetSnapshot,
+  syncWidgetData,
+  WidgetSnapshotData,
+} from '../lib/widgetSync';
 
 export type SettingsCategoryTab = 'family' | 'reminders' | 'system' | 'all';
 
@@ -167,12 +172,35 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
   const [memoNoticeEnabled, setMemoNoticeEnabled] = useState(false);
   const [isSchedulingMemoNotice, setIsSchedulingMemoNotice] = useState(false);
   const [isQuickActionSupportedState, setIsQuickActionSupportedState] = useState(false);
+  const [widgetSnapshot, setWidgetSnapshot] = useState<WidgetSnapshotData | null>(null);
+  const [isSyncingWidget, setIsSyncingWidget] = useState(false);
+  const [widgetSyncMessage, setWidgetSyncMessage] = useState<string | null>(null);
 
   useEffect(() => {
     getBillingNotificationsEnabled().then(setBillingNoticeEnabled);
     getMemoNotificationsEnabled().then(setMemoNoticeEnabled);
     isQuickActionSupported().then(setIsQuickActionSupportedState);
+    getWidgetSnapshot().then(setWidgetSnapshot);
   }, []);
+
+  useEffect(() => {
+    getWidgetSnapshot().then(setWidgetSnapshot);
+  }, [transactions, currentLedger]);
+
+  const handleManualSyncWidget = async () => {
+    setIsSyncingWidget(true);
+    try {
+      const fresh = await syncWidgetData(currentLedger, transactions, members);
+      setWidgetSnapshot(fresh);
+      const nowTime = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      setWidgetSyncMessage(`已於 ${nowTime} 完成同步 ✓`);
+      setTimeout(() => setWidgetSyncMessage(null), 3500);
+    } catch (err) {
+      console.warn('[Widget] 手動同步失敗:', err);
+    } finally {
+      setIsSyncingWidget(false);
+    }
+  };
 
   // 僅篩選出本機實際會推播提醒的信用卡（持卡人為本人，或未設定持卡人之全家公用卡；其餘家庭成員之信用卡不用列出）
   const creditCards = useMemo(() => {
@@ -1089,30 +1117,129 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
         </Text>
       </View>
 
-      {/* ⚡ 手機桌面 Quick Actions 快捷功能卡片 */}
+      {/* 📱 手機桌面小工具 (Widgets) 與快捷動作 (Quick Actions) */}
       <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
         <View style={styles.sectionHeaderRow}>
           <View style={styles.sectionHeaderLeft}>
             <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              ⚡ 手機桌面 Quick Actions 快捷動作
+              📱 桌面小工具 (Widgets) 與快捷動作
             </Text>
             <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              長按手機桌面「甜心記帳本」App 圖示即可喚出捷徑，一鍵直達記帳
+              免開 App 在手機桌面即覽今日待辦、本月支出，或 1 鍵直達記帳
             </Text>
           </View>
           <View style={[
             styles.roleBadge,
-            isQuickActionSupportedState
-              ? { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }
-              : { backgroundColor: isDark ? '#334155' : '#F1F5F9' },
+            { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }
           ]}>
             <Text style={[
               styles.roleBadgeText,
-              isQuickActionSupportedState
-                ? { color: isDark ? '#34D399' : '#065F46' }
-                : { color: isDark ? '#94A3B8' : '#64748B' },
+              { color: isDark ? '#34D399' : '#065F46' }
             ]}>
-              {isQuickActionSupportedState ? '🟢 桌面支援' : '⚪ 快捷就緒'}
+              🟢 快照就緒
+            </Text>
+          </View>
+        </View>
+
+        {/* 桌面小工具即時快照預覽 */}
+        <View style={{
+          backgroundColor: isDark ? '#1E293B' : '#F8FAFC',
+          borderRadius: 12,
+          padding: 14,
+          marginBottom: 12,
+          borderWidth: 1,
+          borderColor: isDark ? '#334155' : '#E2E8F0',
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text.primary }}>
+                📋 今日待辦小工具 (4x2) 本地快照
+              </Text>
+              <Text style={{ fontSize: 11, color: colors.text.muted, marginLeft: 6 }}>
+                · {widgetSnapshot?.ledgerName || currentLedger?.name || '家庭公帳'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={{
+                backgroundColor: isSyncingWidget ? (isDark ? '#334155' : '#E2E8F0') : '#4F46E5',
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                borderRadius: 6,
+              }}
+              onPress={handleManualSyncWidget}
+              disabled={isSyncingWidget}
+              activeOpacity={0.7}
+            >
+              <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '600' }}>
+                {isSyncingWidget ? '同步中...' : '🔄 立即同步'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {widgetSyncMessage && (
+            <Text style={{ fontSize: 11, color: '#10B981', fontWeight: '600', marginBottom: 6 }}>
+              {widgetSyncMessage}
+            </Text>
+          )}
+
+          {/* 待辦事項清單預覽 */}
+          {widgetSnapshot?.pendingMemos && widgetSnapshot.pendingMemos.length > 0 ? (
+            <View style={{ gap: 6, marginBottom: 8 }}>
+              {widgetSnapshot.pendingMemos.slice(0, 3).map((memo, idx) => (
+                <View
+                  key={memo.id || idx}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: memo.isOverdue ? '#FCA5A5' : (isDark ? '#334155' : '#E2E8F0'),
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
+                    <Text style={{ fontSize: 12, marginRight: 6 }}>
+                      {memo.isOverdue ? '⚠️' : '⭕'}
+                    </Text>
+                    <Text
+                      style={{ fontSize: 12, color: colors.text.primary, fontWeight: '500', flex: 1 }}
+                      numberOfLines={1}
+                    >
+                      {memo.title}
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 10, color: memo.isOverdue ? '#EF4444' : colors.text.muted }}>
+                    {memo.isOverdue ? '已逾期' : (memo.reminderDate ? memo.reminderDate.slice(5) : '日常')}
+                    {memo.assigneeName ? ` · ${memo.assigneeName}` : ''}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={{ paddingVertical: 10, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 12, color: colors.text.muted }}>
+                🎉 今日尚無未辦妥之備忘事項
+              </Text>
+            </View>
+          )}
+
+          {/* 快照底部統計與快捷列 */}
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingTop: 8,
+            borderTopWidth: 1,
+            borderTopColor: isDark ? '#334155' : '#E2E8F0',
+          }}>
+            <Text style={{ fontSize: 11, color: colors.text.secondary }}>
+              本月支出：<Text style={{ fontWeight: '700', color: colors.text.primary }}>${Number(widgetSnapshot?.monthlyExpense || 0).toLocaleString()}</Text>
+            </Text>
+            <Text style={{ fontSize: 10, color: colors.text.muted }}>
+              快照時間：{widgetSnapshot?.updatedAt ? new Date(widgetSnapshot.updatedAt).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' }) : '剛剛'}
             </Text>
           </View>
         </View>
@@ -1149,9 +1276,15 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           ))}
         </View>
 
-        <Text style={[styles.backupPrivacyNote, { color: colors.text.muted, marginTop: 8 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-          💡 使用秘訣：在 iPhone 或 Android 手機桌面上，用手指長按 App 圖示即可彈出捷徑選單；若有開啟「身分解鎖防護」，會先以 Face ID / 指紋完成驗證後自動直達表單！
-        </Text>
+        {/* 實用秘訣指引 */}
+        <View style={{ marginTop: 10, gap: 6 }}>
+          <Text style={[styles.backupPrivacyNote, { color: colors.text.muted }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+            💡 桌面 1 鍵直達秘訣 (Android)：在手機桌面上長按 App 圖示後，按住「記支出」或「掃描發票」不放直接拖曳至螢幕空白處，即可將快捷按鈕釘選在桌面變成獨立 1x1 小工具！
+          </Text>
+          <Text style={[styles.backupPrivacyNote, { color: colors.text.muted }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+            🔒 身分防護整合：若有開啟「身分解鎖防護」，從小工具或捷徑點入時會先通過 Face ID / 指紋驗證後自動直達表單！
+          </Text>
+        </View>
       </View>
     </>
   )}
