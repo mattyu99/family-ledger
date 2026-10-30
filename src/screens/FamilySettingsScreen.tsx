@@ -1150,21 +1150,22 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           borderWidth: 1,
           borderColor: isDark ? '#334155' : '#E2E8F0',
         }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text.primary }}>
-                📋 今日待辦小工具 (4x2) 本地快照
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 8 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text.primary }} numberOfLines={1}>
+                📋 今日待辦 (4x2) 快照
               </Text>
-              <Text style={{ fontSize: 11, color: colors.text.muted, marginLeft: 6 }}>
-                · {widgetSnapshot?.ledgerName || currentLedger?.name || '家庭公帳'}
+              <Text style={{ fontSize: 11, color: colors.text.muted, marginTop: 1 }} numberOfLines={1}>
+                帳本：{widgetSnapshot?.ledgerName || currentLedger?.name || '家庭公帳'}
               </Text>
             </View>
             <TouchableOpacity
               style={{
                 backgroundColor: isSyncingWidget ? (isDark ? '#334155' : '#E2E8F0') : '#4F46E5',
                 paddingHorizontal: 10,
-                paddingVertical: 5,
+                paddingVertical: 6,
                 borderRadius: 6,
+                flexShrink: 0,
               }}
               onPress={handleManualSyncWidget}
               disabled={isSyncingWidget}
@@ -1200,8 +1201,8 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                     borderColor: memo.isOverdue ? '#FCA5A5' : (isDark ? '#334155' : '#E2E8F0'),
                   }}
                 >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
-                    <Text style={{ fontSize: 12, marginRight: 6 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0, marginRight: 8 }}>
+                    <Text style={{ fontSize: 12, marginRight: 6, flexShrink: 0 }}>
                       {memo.isOverdue ? '⚠️' : '⭕'}
                     </Text>
                     <Text
@@ -1211,7 +1212,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                       {memo.title}
                     </Text>
                   </View>
-                  <Text style={{ fontSize: 10, color: memo.isOverdue ? '#EF4444' : colors.text.muted }}>
+                  <Text style={{ fontSize: 10, color: memo.isOverdue ? '#EF4444' : colors.text.muted, flexShrink: 0 }}>
                     {memo.isOverdue ? '已逾期' : (memo.reminderDate ? memo.reminderDate.slice(5) : '日常')}
                     {memo.assigneeName ? ` · ${memo.assigneeName}` : ''}
                   </Text>

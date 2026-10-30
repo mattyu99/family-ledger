@@ -9,6 +9,7 @@ export const WIDGET_SNAPSHOT_STORAGE_KEY = '@family_ledger_widget_snapshot';
 export interface WidgetPendingMemo {
   id: string;
   title: string;
+  content?: string;
   reminderDate?: string;
   isOverdue: boolean;
   assigneeName?: string;
@@ -77,9 +78,34 @@ export function extractWidgetSnapshot(
     const isOverdue = Boolean(reminderDate && reminderDate < todayYmd);
     const assigneeName = item.paid_by ? memberMap.get(item.paid_by) : undefined;
 
+    // 清理內文：剔除 Markdown 待辦清單方框符號（如 - [ ] / - [x] / * [ ]）並整理換行
+    let cleanContent = (parsed.cleanContent || '')
+      .replace(/^[-*]\s*\[[ xX✓✔]?\]\s*/gm, '')
+      .trim();
+    cleanContent = cleanContent
+      .split('\n')
+      .map(l => l.trim().replace(/^[-*]\s*\[[ xX✓✔]?\]\s*/, ''))
+      .filter(Boolean)
+      .join('、');
+
+    let displayTitle = '';
+    const hasExplicitTag = Boolean(parsed.rawTag);
+    if (hasExplicitTag) {
+      if (cleanContent && cleanContent !== parsed.title) {
+        displayTitle = `【${parsed.title}】${cleanContent}`;
+      } else {
+        displayTitle = `【${parsed.title}】`;
+      }
+    } else if (cleanContent && cleanContent !== '(無內容)') {
+      displayTitle = cleanContent;
+    } else {
+      displayTitle = parsed.title || item.note || '生活備忘';
+    }
+
     return {
       id: item.id,
-      title: parsed.title || item.note || '未命名待辦',
+      title: displayTitle,
+      content: cleanContent || undefined,
       reminderDate: reminderDate || undefined,
       isOverdue,
       assigneeName,
