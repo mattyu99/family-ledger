@@ -846,3 +846,4 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.secure_set_admin_pin(UUID, TEXT) TO anon, authenticated;
+

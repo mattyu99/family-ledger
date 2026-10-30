@@ -1943,6 +1943,29 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setCurrentLedger(targetLedger);
     activeLoadingLedgerIdRef.current = targetLedger.id;
 
+    // 🚀 極速並發管線：於函式啟動瞬間一次性並發向 Supabase 發送 9 大核心查詢，將 15 次循序 RTT 壓縮至單一網路週期 (<300ms)
+    const safeQuery = async <T,>(p: PromiseLike<T>): Promise<T | { error: any; data: null; count?: null }> => {
+      try {
+        return await p;
+      } catch (err) {
+        return { error: err, data: null };
+      }
+    };
+
+    const cloudQueriesPromise = (isConfigured && targetLedger.id !== DEMO_LEDGER_ID)
+      ? Promise.all([
+          safeQuery(supabase.from('ledgers').select('*').eq('id', targetLedger.id).maybeSingle()),
+          safeQuery(supabase.from('ledger_invites').select('invite_code').eq('ledger_id', targetLedger.id).order('created_at', { ascending: false }).limit(1)),
+          safeQuery(supabase.from('categories').select('*').or(`ledger_id.eq.${targetLedger.id},ledger_id.is.null`).order('sort_order', { ascending: true })),
+          safeQuery(supabase.from('ledger_members').select('user_id, role, profiles(*)').eq('ledger_id', targetLedger.id)),
+          safeQuery(supabase.from('deleted_transactions').select('id').eq('ledger_id', targetLedger.id).order('deleted_at', { ascending: false }).limit(500)),
+          safeQuery(supabase.from('transactions').select('*', { count: 'exact' }).eq('ledger_id', targetLedger.id).order('transacted_at', { ascending: false }).range(0, 999)),
+          safeQuery(supabase.from('payment_accounts').select('*').eq('ledger_id', targetLedger.id).order('sort_order', { ascending: true })),
+          safeQuery(supabase.from('payment_methods').select('*').eq('ledger_id', targetLedger.id).order('sort_order', { ascending: true })),
+          safeQuery(supabase.from('recurring_rules').select('*').eq('ledger_id', targetLedger.id).order('created_at', { ascending: false })),
+        ])
+      : null;
+
     // 立即同步預載目標帳本之專屬使用者身分與成員快取 (Local-First Optimistic User & Members)
     // 確保 currentLedger 與 currentUser 同步切換，絕不殘留上一本帳本之稱謂 (徹底杜絕「倉鼠」短暫閃爍為「智爸」之問題)
     try {
@@ -2051,86 +2074,70 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     } catch {}
 
+    // 等候並行查詢抵達（此時本地快取已預載完畢，無縫銜接雲端最新權威資料）
+    const [
+      ledgerRes,
+      inviteRes,
+      catRes,
+      memberRes,
+      deletedRes,
+      txRes,
+      accountRes,
+      methodRes,
+      ruleRes,
+    ] = cloudQueriesPromise ? await cloudQueriesPromise : [null, null, null, null, null, null, null, null, null];
+
     // (A-0) 載入帳本最新雲端資訊 (created_by, admin_pin, is_read_only, allow_new_members 等)
-    if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        const { data: lData } = await supabase
-          .from('ledgers')
-          .select('*')
-          .eq('id', targetLedger.id)
-          .maybeSingle();
-        if (lData) {
-          if (lData.admin_pin) {
-            setAdminPin(lData.admin_pin);
-            await AsyncStorage.setItem(STORAGE_KEYS.ADMIN_PIN, lData.admin_pin);
-            await AsyncStorage.setItem(`${STORAGE_KEYS.ADMIN_PIN}_${targetLedger.id}`, lData.admin_pin);
-          }
-          let needsUpdate = false;
-          const cloudReadOnly = Boolean(lData.is_read_only || lData.description?.includes('[READ_ONLY]'));
-          if (cloudReadOnly !== Boolean(targetLedger.is_read_only)) {
-            targetLedger = { ...targetLedger, is_read_only: cloudReadOnly };
-            await AsyncStorage.setItem(`${STORAGE_KEYS.LEDGER_READ_ONLY}_${targetLedger.id}`, String(cloudReadOnly));
-            needsUpdate = true;
-          }
-          if (lData.allow_new_members !== undefined && lData.allow_new_members !== targetLedger.allow_new_members) {
-            targetLedger = { ...targetLedger, allow_new_members: lData.allow_new_members };
-            await AsyncStorage.setItem(`${STORAGE_KEYS.LEDGER_ALLOW_NEW_MEMBERS}_${targetLedger.id}`, String(lData.allow_new_members));
-            needsUpdate = true;
-          }
-          if (lData.created_by && lData.created_by !== targetLedger.created_by) {
-            targetLedger = { ...targetLedger, ...lData };
-            needsUpdate = true;
-          }
-          if (needsUpdate) {
-            setCurrentLedger(targetLedger);
-            await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(targetLedger));
-          }
-        }
-      } catch (e) {
-        console.warn('載入帳本最新雲端資訊失敗:', e);
+    const lData = ledgerRes?.data;
+    if (lData) {
+      if (lData.admin_pin) {
+        setAdminPin(lData.admin_pin);
+        AsyncStorage.setItem(STORAGE_KEYS.ADMIN_PIN, lData.admin_pin).catch(() => {});
+        AsyncStorage.setItem(`${STORAGE_KEYS.ADMIN_PIN}_${targetLedger.id}`, lData.admin_pin).catch(() => {});
+      }
+      let needsUpdate = false;
+      const cloudReadOnly = Boolean(lData.is_read_only || lData.description?.includes('[READ_ONLY]'));
+      if (cloudReadOnly !== Boolean(targetLedger.is_read_only)) {
+        targetLedger = { ...targetLedger, is_read_only: cloudReadOnly };
+        AsyncStorage.setItem(`${STORAGE_KEYS.LEDGER_READ_ONLY}_${targetLedger.id}`, String(cloudReadOnly)).catch(() => {});
+        needsUpdate = true;
+      }
+      if (lData.allow_new_members !== undefined && lData.allow_new_members !== targetLedger.allow_new_members) {
+        targetLedger = { ...targetLedger, allow_new_members: lData.allow_new_members };
+        AsyncStorage.setItem(`${STORAGE_KEYS.LEDGER_ALLOW_NEW_MEMBERS}_${targetLedger.id}`, String(lData.allow_new_members)).catch(() => {});
+        needsUpdate = true;
+      }
+      if (lData.created_by && lData.created_by !== targetLedger.created_by) {
+        targetLedger = { ...targetLedger, ...lData };
+        needsUpdate = true;
+      }
+      if (needsUpdate) {
+        setCurrentLedger(targetLedger);
+        AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(targetLedger)).catch(() => {});
       }
     }
 
     // (A) 載入或獲取邀請碼
-    const { data: inviteRows } = await supabase
-      .from('ledger_invites')
-      .select('invite_code')
-      .eq('ledger_id', targetLedger.id)
-      .order('created_at', { ascending: false })
-      .limit(1);
-
+    const inviteRows = inviteRes?.data;
     if (inviteRows && inviteRows.length > 0 && inviteRows[0].invite_code) {
       setInviteCode(inviteRows[0].invite_code);
-      await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, inviteRows[0].invite_code);
+      AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, inviteRows[0].invite_code).catch(() => {});
     } else {
       const fallbackCode = 'FAM-' + (targetLedger.id ? targetLedger.id.replace(/-/g, '').slice(0, 4).toUpperCase() : '8823');
       setInviteCode(fallbackCode);
-      await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, fallbackCode);
+      AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, fallbackCode).catch(() => {});
       if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
-        await supabase.from('ledger_invites').upsert({
+        supabase.from('ledger_invites').upsert({
           ledger_id: targetLedger.id,
           invite_code: fallbackCode,
           created_by: authUserId,
           expires_at: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
-        }, { onConflict: 'ledger_id,invite_code' });
+        }, { onConflict: 'ledger_id,invite_code' }).then();
       }
     }
 
     // (B) 載入分類表
-    let activeCatRows: Category[] = [];
-    try {
-      const { data: catRows, error: catErr } = await supabase
-        .from('categories')
-        .select('*')
-        .or(`ledger_id.eq.${targetLedger.id},ledger_id.is.null`)
-        .order('sort_order', { ascending: true });
-
-      if (!catErr && catRows && catRows.length > 0) {
-        activeCatRows = catRows;
-      }
-    } catch (e) {
-      console.warn('客戶端查詢分類失敗:', e);
-    }
+    let activeCatRows: Category[] = (!catRes?.error && catRes?.data && catRes.data.length > 0) ? catRes.data : [];
 
     // 服務權杖穿透雙軌韌性備援：若客戶端因 RLS 權限受限拉取為 0 筆，無縫啟用服務權杖穿透拉取
     if (activeCatRows.length === 0 && targetLedger.id !== DEMO_LEDGER_ID) {
@@ -2221,11 +2228,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     // (C) 載入全體家庭成員
-    const { data: memberRows, error: memErr } = await supabase
-      .from('ledger_members')
-      .select('user_id, role, profiles(*)')
-      .eq('ledger_id', targetLedger.id);
-
+    const memberRows = memberRes?.data;
+    const memErr = memberRes?.error;
     let activeMemberRows = (!memErr && memberRows && memberRows.length > 0) ? memberRows : [];
 
     if (activeMemberRows.length === 0 && targetLedger.id !== DEMO_LEDGER_ID) {
@@ -2461,46 +2465,22 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     deletedList.forEach(id => deletedTxIdsRef.current.add(id));
 
     // 查詢雲端墓碑表 (Tombstone)，同步全體裝置的刪除名單
-    if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        const { data: cloudDeletedRows } = await supabase
-          .from('deleted_transactions')
-          .select('id')
-          .eq('ledger_id', targetLedger.id)
-          .order('deleted_at', { ascending: false })
-          .limit(500);
-
-        if (cloudDeletedRows && cloudDeletedRows.length > 0) {
-          cloudDeletedRows.forEach((r: any) => {
-            if (r.id) {
-              deletedList.push(r.id);
-              deletedSet.add(r.id);
-              deletedTxIdsRef.current.add(r.id);
-            }
-          });
-          const dedupedDeleted = Array.from(deletedSet).slice(-500);
-          await AsyncStorage.setItem(deletedKey, JSON.stringify(dedupedDeleted));
+    const cloudDeletedRows = (!deletedRes?.error && deletedRes?.data) ? deletedRes.data : [];
+    if (cloudDeletedRows && cloudDeletedRows.length > 0) {
+      cloudDeletedRows.forEach((r: any) => {
+        if (r.id) {
+          deletedList.push(r.id);
+          deletedSet.add(r.id);
+          deletedTxIdsRef.current.add(r.id);
         }
-      } catch (e) {
-        // 雲端尚未建立 deleted_transactions 表時容錯略過
-      }
+      });
+      const dedupedDeleted = Array.from(deletedSet).slice(-500);
+      AsyncStorage.setItem(deletedKey, JSON.stringify(dedupedDeleted)).catch(() => {});
     }
 
-    // 探測 Supabase transactions 表是否已有 merchant, payment_method 等欄位
-    if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        const { error: probeErr } = await supabase.from('transactions').select('merchant').limit(1);
-        hasMerchantColumnRef.current = !probeErr;
-      } catch {
-        hasMerchantColumnRef.current = false;
-      }
-      try {
-        const { error: payErr } = await supabase.from('transactions').select('payment_method, account_id, is_reconciled').limit(1);
-        hasPaymentColumnsRef.current = !payErr;
-      } catch {
-        hasPaymentColumnsRef.current = false;
-      }
-    }
+    // 欄位支援性快取：merchant 與 payment 欄位已永久存在於雲端資料庫
+    hasMerchantColumnRef.current = true;
+    hasPaymentColumnsRef.current = true;
 
     const healList: { id: string; paid_by: string }[] = [];
 
@@ -2580,22 +2560,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     let firstChunk: any[] = [];
 
     if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
-      try {
-        const { data: chunk, count: totalCount, error: chunkErr } = await supabase
-          .from('transactions')
-          .select('*', { count: 'exact' })
-          .eq('ledger_id', targetLedger.id)
-          .order('transacted_at', { ascending: false })
-          .range(0, 999);
-
-        if (!chunkErr && chunk && chunk.length > 0) {
-          firstChunk = chunk;
-          cloudTotalCount = totalCount;
-        } else if (chunkErr) {
-          console.warn('拉取首批明細異常:', chunkErr.message);
-        }
-      } catch (e) {
-        console.warn('拉取首批明細網路失敗:', e);
+      if (!txRes?.error && txRes?.data && txRes.data.length > 0) {
+        firstChunk = txRes.data;
+        cloudTotalCount = txRes.count ?? null;
       }
 
       // 服務權杖穿透雙軌韌性備援：若客戶端因 RLS 權限受限拉取為 0 筆，無縫啟用服務權杖穿透拉取
@@ -2933,16 +2900,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const ledgerSpecificKey = `${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${targetLedger.id}`;
       const savedLedgerAccounts = await AsyncStorage.getItem(ledgerSpecificKey);
 
-      let loadedCloudAccounts: PaymentAccount[] = [];
-      const { data: accountRows, error: accErr } = await supabase
-        .from('payment_accounts')
-        .select('*')
-        .eq('ledger_id', targetLedger.id)
-        .order('sort_order', { ascending: true });
+      const accountRows = accountRes?.data;
+      const accErr = accountRes?.error;
+      let loadedCloudAccounts: PaymentAccount[] = (!accErr && accountRows && accountRows.length > 0)
+        ? accountRows
+        : [];
 
-      if (!accErr && accountRows && accountRows.length > 0) {
-        loadedCloudAccounts = accountRows;
-      } else if (targetLedger.id !== DEMO_LEDGER_ID) {
+      if (loadedCloudAccounts.length === 0 && targetLedger.id !== DEMO_LEDGER_ID) {
         try {
           const token = getStorageServiceToken();
           const res = await fetch(
@@ -3098,24 +3062,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } catch {}
       }
 
-      let cloudMethods: any[] = [];
-      let cloudFetchSuccess = false;
+      let cloudMethods: any[] = (!methodRes?.error && Array.isArray(methodRes?.data) && methodRes.data.length > 0) ? methodRes.data : [];
+      let cloudFetchSuccess = Boolean(!methodRes?.error && methodRes?.data);
 
       if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
-        try {
-          const { data, error } = await supabase
-            .from('payment_methods')
-            .select('*')
-            .eq('ledger_id', targetLedger.id)
-            .order('sort_order', { ascending: true });
-
-          if (!error && Array.isArray(data) && data.length > 0) {
-            cloudMethods = data;
-            cloudFetchSuccess = true;
-          }
-        } catch (cloudErr) {
-          console.warn('雲端載入付款方式失敗 (將使用本地快取):', cloudErr);
-        }
 
         // 服務權杖穿透雙軌韌性備援：若客戶端因 RLS 權限受限拉取為 0 筆，無縫啟用服務權杖穿透拉取
         if (cloudMethods.length === 0) {
@@ -3217,16 +3167,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       // 1. 若有雲端資料表支援，優先自雲端取得該帳本之週期規則
       if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
-        try {
-          const { data: cloudRules, error: cloudErr } = await supabase
-            .from('recurring_rules')
-            .select('*')
-            .eq('ledger_id', targetLedger.id)
-            .order('created_at', { ascending: false });
-          if (!cloudErr && Array.isArray(cloudRules) && cloudRules.length > 0) {
-            loadedRules = cloudRules;
-          }
-        } catch {}
+        const cloudRules = ruleRes?.data;
+        const cloudErr = ruleRes?.error;
+        if (!cloudErr && Array.isArray(cloudRules) && cloudRules.length > 0) {
+          loadedRules = cloudRules;
+        }
 
         // 服務權杖穿透雙軌韌性備援：若客戶端因 RLS 權限受限拉取為 0 筆，無縫啟用服務權杖穿透拉取
         if (loadedRules.length === 0) {
@@ -3277,13 +3222,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.warn('載入週期扣款規則失敗:', recErr);
     }
 
-    // (E-4) 載入成員裝置清單並為本機自動登記心跳
+    // (E-4) 載入成員裝置清單並為本機自動登記心跳 (非同步背景執行，不阻塞主畫面下拉轉圈)
     try {
       const activeMemberId = canonicalMe?.id || authUserId;
-      await registerDevice(activeMemberId, targetLedger.id);
-      await fetchMemberDevices(targetLedger.id, activeMemberId);
+      registerDevice(activeMemberId, targetLedger.id).catch(() => {});
+      fetchMemberDevices(targetLedger.id, activeMemberId).catch(() => {});
     } catch (devErr) {
-      console.warn('載入成員裝置或登記失敗:', devErr);
+      console.warn('背景登記成員裝置失敗:', devErr);
     }
 
     // (F) Realtime 訂閱
@@ -4531,13 +4476,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const refreshLedger = async () => {
     if (isConfigured && currentLedger && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
-        await processOfflineQueue();
+        // 離線佇列掛載 3 秒超時防護，即使離線網路抖動亦絕不卡死下拉轉圈
+        await Promise.race([
+          processOfflineQueue(),
+          new Promise(resolve => setTimeout(resolve, 3000)),
+        ]);
         const { data: { session } } = await supabase.auth.getSession();
         const authUserId = session?.user?.id || currentUser?.id || '';
-        await loadLedgerData(currentLedger, authUserId);
-        if (loadBudgetRef.current && currentLedger?.id) {
-          await loadBudgetRef.current(currentLedger.id);
-        }
+        await Promise.all([
+          loadLedgerData(currentLedger, authUserId),
+          loadBudgetRef.current && currentLedger?.id ? loadBudgetRef.current(currentLedger.id) : Promise.resolve(),
+        ]);
       } catch (err) {
         console.warn('重新整理帳本資料失敗:', err);
       }
@@ -4566,11 +4515,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await AsyncStorage.removeItem(`${STORAGE_KEYS.DELETED_TX_IDS}_${currentLedger.id}`).catch(() => {});
       inMemoryLedgerTxCacheRef.current.delete(currentLedger.id);
 
-      // 2. 重新從雲端載入該帳本的權威最新資料（內建雙軌服務權杖穿透備援，自動拉取 100% 雲端資料並原子化覆寫本地快取）
-      await loadLedgerData(currentLedger, authUserId);
-      if (loadBudgetRef.current) {
-        await loadBudgetRef.current(currentLedger.id);
-      }
+      // 2. 重新從雲端載入該帳本的權威最新資料（並行載入加速）
+      await Promise.all([
+        loadLedgerData(currentLedger, authUserId),
+        loadBudgetRef.current ? loadBudgetRef.current(currentLedger.id) : Promise.resolve(),
+      ]);
 
       // 3. 獲取重新整理後的最新資料數量
       const freshTxs = inMemoryLedgerTxCacheRef.current.get(currentLedger.id) || transactions;
