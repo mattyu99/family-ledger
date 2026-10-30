@@ -1094,6 +1094,9 @@ END $$;
 -- 日期：2026-10-30
 -- ==============================================================================
 
+-- 0. 確保資料庫必要欄位齊全 (防止因缺少欄位導致 RPC 執行失敗)
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+
 -- 1. 安全刪除交易明細 (含分帳、墓碑表記錄，徹底杜絕殭屍復活)
 CREATE OR REPLACE FUNCTION public.secure_delete_transaction(
     p_tx_id UUID,
@@ -1106,10 +1109,12 @@ BEGIN
     -- 1.1 刪除分帳明細
     DELETE FROM public.transaction_splits WHERE transaction_id = p_tx_id;
 
-    -- 1.2 寫入墓碑表以防舊裝置復活
-    INSERT INTO public.deleted_transactions (id, ledger_id)
-    VALUES (p_tx_id, p_ledger_id)
-    ON CONFLICT (id) DO NOTHING;
+    -- 1.2 寫入墓碑表以防舊裝置復活 (僅在 ledger 存在時記錄，防止外鍵違規)
+    IF p_ledger_id IS NOT NULL AND EXISTS (SELECT 1 FROM public.ledgers WHERE id = p_ledger_id) THEN
+        INSERT INTO public.deleted_transactions (id, ledger_id)
+        VALUES (p_tx_id, p_ledger_id)
+        ON CONFLICT (id) DO NOTHING;
+    END IF;
 
     -- 1.3 刪除主交易記錄
     DELETE FROM public.transactions WHERE id = p_tx_id;
@@ -1414,7 +1419,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.secure_delete_category(UUID) TO anon, authenticated;
 
--- 6. 安全更新與刪除週期扣款規則
+-- 6. 安全更新與刪除週期扣款規則 (相容 default_amount, due_day, amount_type 等欄位)
 CREATE OR REPLACE FUNCTION public.secure_update_recurring_rule(
     p_rule_id UUID,
     p_payload JSONB
@@ -1426,17 +1431,35 @@ BEGIN
     UPDATE public.recurring_rules
     SET
         name = CASE WHEN p_payload ? 'name' THEN p_payload->>'name' ELSE name END,
-        amount = CASE WHEN p_payload ? 'amount' THEN (p_payload->>'amount')::NUMERIC ELSE amount END,
-        type = CASE WHEN p_payload ? 'type' THEN p_payload->>'type' ELSE type END,
+        default_amount = CASE 
+            WHEN p_payload ? 'default_amount' THEN (p_payload->>'default_amount')::NUMERIC 
+            WHEN p_payload ? 'amount' THEN (p_payload->>'amount')::NUMERIC 
+            ELSE default_amount 
+        END,
+        amount_type = CASE 
+            WHEN p_payload ? 'amount_type' THEN p_payload->>'amount_type' 
+            WHEN p_payload ? 'type' THEN p_payload->>'type' 
+            ELSE amount_type 
+        END,
         category_id = CASE WHEN p_payload ? 'category_id' THEN (p_payload->>'category_id')::UUID ELSE category_id END,
+        merchant = CASE WHEN p_payload ? 'merchant' THEN p_payload->>'merchant' ELSE merchant END,
         paid_by = CASE WHEN p_payload ? 'paid_by' THEN (p_payload->>'paid_by')::UUID ELSE paid_by END,
         payment_method = CASE WHEN p_payload ? 'payment_method' THEN p_payload->>'payment_method' ELSE payment_method END,
         account_id = CASE WHEN p_payload ? 'account_id' THEN (p_payload->>'account_id')::UUID ELSE account_id END,
         frequency = CASE WHEN p_payload ? 'frequency' THEN p_payload->>'frequency' ELSE frequency END,
-        day_of_month = CASE WHEN p_payload ? 'day_of_month' THEN (p_payload->>'day_of_month')::INT ELSE day_of_month END,
+        due_day = CASE 
+            WHEN p_payload ? 'due_day' THEN (p_payload->>'due_day')::INT 
+            WHEN p_payload ? 'day_of_month' THEN (p_payload->>'day_of_month')::INT 
+            ELSE due_day 
+        END,
+        bimonthly_start_month = CASE WHEN p_payload ? 'bimonthly_start_month' THEN (p_payload->>'bimonthly_start_month')::INT ELSE bimonthly_start_month END,
         is_active = CASE WHEN p_payload ? 'is_active' THEN (p_payload->>'is_active')::BOOLEAN ELSE is_active END,
         last_recorded_period = CASE WHEN p_payload ? 'last_recorded_period' THEN p_payload->>'last_recorded_period' ELSE last_recorded_period END,
+        is_installment = CASE WHEN p_payload ? 'is_installment' THEN (p_payload->>'is_installment')::BOOLEAN ELSE is_installment END,
+        total_installments = CASE WHEN p_payload ? 'total_installments' THEN (p_payload->>'total_installments')::INT ELSE total_installments END,
         current_installment = CASE WHEN p_payload ? 'current_installment' THEN (p_payload->>'current_installment')::INT ELSE current_installment END,
+        installment_start_period = CASE WHEN p_payload ? 'installment_start_period' THEN p_payload->>'installment_start_period' ELSE installment_start_period END,
+        note = CASE WHEN p_payload ? 'note' THEN p_payload->>'note' ELSE note END,
         updated_at = NOW()
     WHERE id = p_rule_id;
 
