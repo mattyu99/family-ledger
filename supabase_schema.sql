@@ -1616,3 +1616,238 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.secure_unlink_profile(UUID) TO anon, authenticated;
+
+-- 8. 安全新增付款卡片
+CREATE OR REPLACE FUNCTION public.secure_add_payment_account(
+    p_account JSONB
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_id UUID;
+BEGIN
+    v_id := COALESCE(NULLIF(p_account->>'id', '')::UUID, uuid_generate_v4());
+    
+    INSERT INTO public.payment_accounts (
+        id,
+        ledger_id,
+        name,
+        type,
+        user_id,
+        last_four_digits,
+        card_number,
+        billing_cycle_date,
+        balance,
+        color,
+        icon,
+        sort_order,
+        created_at,
+        updated_at
+    ) VALUES (
+        v_id,
+        (p_account->>'ledger_id')::UUID,
+        COALESCE(p_account->>'name', '新卡片'),
+        COALESCE(p_account->>'type', 'credit_card'),
+        CASE WHEN (p_account->>'user_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (p_account->>'user_id')::UUID ELSE NULL END,
+        NULLIF(p_account->>'last_four_digits', ''),
+        NULLIF(p_account->>'card_number', ''),
+        NULLIF(p_account->>'billing_cycle_date', '')::INT,
+        COALESCE(NULLIF(p_account->>'balance', '')::NUMERIC, 0),
+        COALESCE(p_account->>'color', '#3B82F6'),
+        COALESCE(p_account->>'icon', '💳'),
+        COALESCE(NULLIF(p_account->>'sort_order', '')::INT, 0),
+        COALESCE(NULLIF(p_account->>'created_at', '')::TIMESTAMPTZ, NOW()),
+        NOW()
+    )
+    ON CONFLICT (id) DO UPDATE SET
+        name = EXCLUDED.name,
+        type = EXCLUDED.type,
+        user_id = EXCLUDED.user_id,
+        last_four_digits = EXCLUDED.last_four_digits,
+        card_number = EXCLUDED.card_number,
+        billing_cycle_date = EXCLUDED.billing_cycle_date,
+        balance = EXCLUDED.balance,
+        color = EXCLUDED.color,
+        icon = EXCLUDED.icon,
+        sort_order = EXCLUDED.sort_order,
+        updated_at = NOW();
+
+    RETURN jsonb_build_object('success', true, 'id', v_id);
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.secure_add_payment_account(JSONB) TO anon, authenticated;
+
+-- 9. 安全更新付款卡片
+CREATE OR REPLACE FUNCTION public.secure_update_payment_account(
+    p_account_id UUID,
+    p_payload JSONB
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_updated_count INT := 0;
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM public.payment_accounts WHERE id = p_account_id) THEN
+        RETURN jsonb_build_object('success', true, 'rows_affected', 0, 'id', p_account_id);
+    END IF;
+
+    IF p_payload ? 'name' AND NULLIF(p_payload->>'name', '') IS NOT NULL THEN
+        UPDATE public.payment_accounts SET name = (p_payload->>'name') WHERE id = p_account_id;
+    END IF;
+
+    IF p_payload ? 'type' AND NULLIF(p_payload->>'type', '') IS NOT NULL THEN
+        UPDATE public.payment_accounts SET "type" = (p_payload->>'type') WHERE id = p_account_id;
+    END IF;
+
+    IF p_payload ? 'user_id' THEN
+        IF (p_payload->>'user_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+            UPDATE public.payment_accounts SET user_id = (p_payload->>'user_id')::UUID WHERE id = p_account_id;
+        ELSE
+            UPDATE public.payment_accounts SET user_id = NULL WHERE id = p_account_id;
+        END IF;
+    END IF;
+
+    IF p_payload ? 'last_four_digits' THEN
+        UPDATE public.payment_accounts SET last_four_digits = NULLIF(p_payload->>'last_four_digits', '') WHERE id = p_account_id;
+    END IF;
+
+    IF p_payload ? 'card_number' THEN
+        UPDATE public.payment_accounts SET card_number = NULLIF(p_payload->>'card_number', '') WHERE id = p_account_id;
+    END IF;
+
+    IF p_payload ? 'billing_cycle_date' THEN
+        IF NULLIF(p_payload->>'billing_cycle_date', '') IS NOT NULL THEN
+            UPDATE public.payment_accounts SET billing_cycle_date = (p_payload->>'billing_cycle_date')::INT WHERE id = p_account_id;
+        ELSE
+            UPDATE public.payment_accounts SET billing_cycle_date = NULL WHERE id = p_account_id;
+        END IF;
+    END IF;
+
+    IF p_payload ? 'balance' AND NULLIF(p_payload->>'balance', '') IS NOT NULL THEN
+        UPDATE public.payment_accounts SET balance = (p_payload->>'balance')::NUMERIC WHERE id = p_account_id;
+    END IF;
+
+    IF p_payload ? 'color' AND NULLIF(p_payload->>'color', '') IS NOT NULL THEN
+        UPDATE public.payment_accounts SET color = (p_payload->>'color') WHERE id = p_account_id;
+    END IF;
+
+    IF p_payload ? 'icon' AND NULLIF(p_payload->>'icon', '') IS NOT NULL THEN
+        UPDATE public.payment_accounts SET icon = (p_payload->>'icon') WHERE id = p_account_id;
+    END IF;
+
+    IF p_payload ? 'sort_order' AND NULLIF(p_payload->>'sort_order', '') IS NOT NULL THEN
+        UPDATE public.payment_accounts SET sort_order = (p_payload->>'sort_order')::INT WHERE id = p_account_id;
+    END IF;
+
+    UPDATE public.payment_accounts SET updated_at = NOW() WHERE id = p_account_id;
+    GET DIAGNOSTICS v_updated_count = ROW_COUNT;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'rows_affected', v_updated_count,
+        'id', p_account_id
+    );
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'error', SQLERRM,
+        'id', p_account_id
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.secure_update_payment_account(UUID, JSONB) TO anon, authenticated;
+
+-- 10. 安全刪除付款卡片
+CREATE OR REPLACE FUNCTION public.secure_delete_payment_account(
+    p_account_id UUID
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_deleted_count INT := 0;
+BEGIN
+    DELETE FROM public.payment_accounts WHERE id = p_account_id;
+    GET DIAGNOSTICS v_deleted_count = ROW_COUNT;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'rows_affected', v_deleted_count,
+        'id', p_account_id
+    );
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'error', SQLERRM,
+        'id', p_account_id
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.secure_delete_payment_account(UUID) TO anon, authenticated;
+
+-- 11. 安全新增記帳分類
+CREATE OR REPLACE FUNCTION public.secure_add_category(
+    p_category JSONB
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_id UUID;
+BEGIN
+    v_id := COALESCE(NULLIF(p_category->>'id', '')::UUID, uuid_generate_v4());
+
+    INSERT INTO public.categories (
+        id,
+        ledger_id,
+        name,
+        icon,
+        color,
+        sort_order,
+        type,
+        created_at,
+        updated_at
+    ) VALUES (
+        v_id,
+        (p_category->>'ledger_id')::UUID,
+        COALESCE(p_category->>'name', '新分類'),
+        COALESCE(p_category->>'icon', '🏷️'),
+        COALESCE(p_category->>'color', '#6B7280'),
+        COALESCE(NULLIF(p_category->>'sort_order', '')::INT, 0),
+        COALESCE(p_category->>'type', 'expense'),
+        COALESCE(NULLIF(p_category->>'created_at', '')::TIMESTAMPTZ, NOW()),
+        NOW()
+    )
+    ON CONFLICT (id) DO UPDATE SET
+        name = EXCLUDED.name,
+        icon = EXCLUDED.icon,
+        color = EXCLUDED.color,
+        sort_order = EXCLUDED.sort_order,
+        type = EXCLUDED.type,
+        updated_at = NOW();
+
+    RETURN jsonb_build_object('success', true, 'id', v_id);
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.secure_add_category(JSONB) TO anon, authenticated;
+
+-- 12. 安全更新管理員 PIN 碼
+CREATE OR REPLACE FUNCTION public.secure_set_admin_pin(
+    p_ledger_id UUID,
+    p_admin_pin TEXT
+)
+RETURNS JSONB AS $$
+BEGIN
+    UPDATE public.ledgers 
+    SET admin_pin = NULLIF(p_admin_pin, ''), updated_at = NOW()
+    WHERE id = p_ledger_id;
+
+    RETURN jsonb_build_object('success', true, 'ledger_id', p_ledger_id);
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.secure_set_admin_pin(UUID, TEXT) TO anon, authenticated;

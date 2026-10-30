@@ -18,7 +18,7 @@ import { useLedger } from '../../context/LedgerContext';
 import { useTheme } from '../../theme/ThemeContext';
 import { ThemeColors } from '../../theme/colors';
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY, isConfigured } from '../../lib/supabase';
-import { getStorageServiceToken } from '../../lib/statementStorage';
+// statementStorage helper removed
 
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
   <RNText
@@ -202,7 +202,7 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
       } catch {}
 
       // B. 雙軌穿透保底 (針對 RPC 未覆蓋之帳本)
-      const token = getStorageServiceToken() || SUPABASE_ANON_KEY;
+      const token = SUPABASE_ANON_KEY;
       const headers = {
         apikey: token,
         Authorization: `Bearer ${token}`,

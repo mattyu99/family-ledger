@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LedgerBudget, Profile, Transaction, Category } from '../types/database';
 import { STORAGE_KEYS } from '../constants/ledgerDefaults';
-import { supabaseAdmin } from '../lib/supabase';
+// supabaseAdmin removed for zero-token security
 
 export interface UseLedgerBudgetProps {
   ledgerId?: string;
@@ -179,10 +179,7 @@ export function useLedgerBudget({
           member_budgets: merged.member_budgets,
           updated_at: merged.updated_at,
         };
-        const { error } = await supabase.from('ledger_budgets').upsert(budgetPayload, { onConflict: 'ledger_id' });
-        if (error) {
-          await supabaseAdmin.from('ledger_budgets').upsert(budgetPayload, { onConflict: 'ledger_id' });
-        }
+        await supabase.from('ledger_budgets').upsert(budgetPayload, { onConflict: 'ledger_id' });
       } catch {
         // 若雲端尚未建表則維持本機運作
       }

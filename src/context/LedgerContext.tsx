@@ -2,8 +2,9 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { Platform, Alert, AppState, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Transaction, Category, Ledger, Profile, TransactionType, CategoryType, PaymentMethod, PaymentAccount, AccountType, CustomPaymentMethod, RecurringRule, MemberDevice, LedgerBudget } from '../types/database';
-import { supabase, supabaseAdmin, isConfigured, SUPABASE_URL } from '../lib/supabase';
-import { getStorageServiceToken } from '../lib/statementStorage';
+import { supabase, supabaseAdmin, isConfigured, SUPABASE_URL, SUPABASE_ANON_KEY } from '../lib/supabase';
+// 零金鑰架構：所有 REST/穿透呼叫皆採用標準 anonKey，由資料庫端 RLS 政策放行讀取
+const getStorageServiceToken = (): string => SUPABASE_ANON_KEY;
 import { generateUUID } from '../lib/uuid';
 import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS, isAccountBelongingToMember, KNOWN_PAYMENT_METHOD_UUIDS } from '../lib/payment';
 import { DEFAULT_RECURRING_PRESETS, getCurrentPeriodKey, getBillPeriodLabel, getInstallmentInfo, appendPeriodKey } from '../lib/recurring';

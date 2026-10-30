@@ -1,6 +1,5 @@
 import { Platform } from 'react-native';
-import { getStorageServiceToken } from './statementStorage';
-import { supabase, supabaseAdmin, SUPABASE_URL } from './supabase';
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase';
 
 export interface CloudLedgerMemberInfo {
   userId: string;
@@ -485,13 +484,12 @@ export async function fetchCloudLedgersSummary(knownLedgers: any[] = []): Promis
     console.log('RPC get_all_cloud_ledgers_summary 尚未建立，進入環境備援解析');
   }
 
-  // 2. 原生手機環境 (Android / iOS) 備援：使用 service_role 權杖穿透查詢全量表
+  // 2. 原生手機環境 (Android / iOS) 備援：使用 anon 權杖查詢公開帳本表
   if (Platform.OS !== 'web') {
     try {
-      const token = getStorageServiceToken();
       const headers = {
-        apikey: token,
-        Authorization: `Bearer ${token}`,
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
       };
 
       const [ledgersRes, membersRes, txsRes, invitesRes] = await Promise.all([
@@ -510,7 +508,7 @@ export async function fetchCloudLedgersSummary(knownLedgers: any[] = []): Promis
         return buildSummariesFromRaw(rawLedgers, rawMembers, rawTxs, rawInvites, profileMap);
       }
     } catch (e) {
-      console.warn('原生端 service token 查詢異常:', e);
+      console.warn('原生端 anon 查詢異常:', e);
     }
   }
 
@@ -534,9 +532,9 @@ export async function deleteCloudLedger(ledgerId: string): Promise<boolean> {
     }
   } catch {}
 
-  // 2. 雙軌管理員服務權杖直接刪除 (Web 與原生手機環境統一穿透支援)
+  // 2. 標準刪除通道
   try {
-    const { error } = await supabaseAdmin.from('ledgers').delete().eq('id', ledgerId);
+    const { error } = await supabase.from('ledgers').delete().eq('id', ledgerId);
     if (!error) return true;
   } catch {}
 
@@ -559,9 +557,9 @@ export async function batchPurgeGhostLedgers(ghostLedgerIds: string[]): Promise<
     }
   } catch {}
 
-  // 2. 雙軌管理員服務權杖批次刪除 (Web 與原生手機環境統一穿透支援)
+  // 2. 標準批次刪除
   try {
-    const { error } = await supabaseAdmin.from('ledgers').delete().in('id', ghostLedgerIds);
+    const { error } = await supabase.from('ledgers').delete().in('id', ghostLedgerIds);
     if (!error) return ghostLedgerIds.length;
   } catch {}
 

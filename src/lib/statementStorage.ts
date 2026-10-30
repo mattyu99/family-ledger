@@ -1,7 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SUPABASE_URL, SUPABASE_ANON_KEY, supabase, getStorageServiceToken } from './supabase';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, supabase } from './supabase';
 
 export const STATEMENT_BUCKET = 'statements';
+
+export const getStorageServiceToken = (): string => '';
 
 export interface StatementFile {
   path: string;          // 儲存桶完整路徑：`${ledgerId}/${targetId}/${fileName}`
@@ -19,7 +21,6 @@ export interface StatementFile {
 
 export type CreditCardStatementFile = StatementFile;
 
-export { getStorageServiceToken };
 
 const getStatementCacheKey = (ledgerId: string) => `@family_ledger_statements_${ledgerId}`;
 const getRecurringStatementCacheKey = (ledgerId: string) => `@family_ledger_recurring_statements_${ledgerId}`;
@@ -182,22 +183,8 @@ export const saveCachedRecurringStatements = async (
   } catch {}
 };
 
-// 執行具備完整讀寫權限的 Storage API 請求（避免 SELECT RLS 在無 policy 時靜默回傳 HTTP 200 空陣列 []）
+// 執行具備標準 anon/session 權限的 Storage API 請求
 export const fetchStorageWithAuth = async (url: string, init: RequestInit): Promise<Response> => {
-  const svcToken = getStorageServiceToken();
-  if (svcToken) {
-    const res = await fetch(url, {
-      ...init,
-      headers: {
-        ...(init.headers || {}),
-        apikey: svcToken,
-        Authorization: `Bearer ${svcToken}`,
-      },
-    });
-    if (res.ok) return res;
-  }
-
-  // 備援：若服務權杖異常則退回使用者 session token 或 anon key
   let token = SUPABASE_ANON_KEY;
   try {
     const { data } = await supabase.auth.getSession();

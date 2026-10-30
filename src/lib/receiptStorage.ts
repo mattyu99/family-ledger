@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import { SUPABASE_URL, SUPABASE_ANON_KEY, supabase } from './supabase';
-import { STATEMENT_BUCKET, getStorageServiceToken, toHexUtf8 } from './statementStorage';
+import { STATEMENT_BUCKET, toHexUtf8 } from './statementStorage';
 
 /**
  * 將 base64 字串解碼為 Uint8Array 位元組陣列，供 React Native 原生安全二進位上傳
@@ -99,16 +99,13 @@ export const uploadReceiptPhoto = async (params: {
       isFormData = true;
     }
 
-    const svcToken = getStorageServiceToken();
-    let authToken = svcToken;
-    if (!authToken) {
-      try {
-        const { data } = await supabase.auth.getSession();
-        authToken = data?.session?.access_token || SUPABASE_ANON_KEY;
-      } catch {
-        authToken = SUPABASE_ANON_KEY;
+    let authToken = SUPABASE_ANON_KEY;
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (data?.session?.access_token) {
+        authToken = data.session.access_token;
       }
-    }
+    } catch {}
 
     const buildHeaders = (token: string) => {
       const h: Record<string, string> = {

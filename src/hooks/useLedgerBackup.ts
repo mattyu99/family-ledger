@@ -21,7 +21,7 @@ import {
   saveCachedStatements,
   saveCachedRecurringStatements,
 } from '../lib/statementStorage';
-import { supabaseAdmin } from '../lib/supabase';
+// supabaseAdmin removed for zero-token architecture
 
 export interface UseLedgerBackupProps {
   currentLedger: Ledger;
@@ -304,7 +304,7 @@ export function useLedgerBackup({
         setLedgers(prev => prev.map(l => l.id === currentLedger.id ? { ...l, is_read_only: true } : l));
         if (isRealCloud) {
           try {
-            await supabaseAdmin.from('ledgers').update({ is_read_only: true, updated_at: new Date().toISOString() }).eq('id', currentLedger.id);
+            await supabase.from('ledgers').update({ is_read_only: true, updated_at: new Date().toISOString() }).eq('id', currentLedger.id);
           } catch {}
         }
       }
@@ -419,13 +419,13 @@ export function useLedgerBackup({
         if (isRealCloud) {
           try {
             for (const m of nextMembers) {
-              await supabaseAdmin.from('profiles').upsert({
+              await supabase.from('profiles').upsert({
                 id: m.id,
                 display_name: m.display_name,
                 avatar_url: m.avatar_url || '😊',
                 email: m.email || `${(m.display_name || 'member').toLowerCase()}@family.local`,
               });
-              await supabaseAdmin.from('ledger_members').upsert({
+              await supabase.from('ledger_members').upsert({
                 ledger_id: currentLedger.id,
                 user_id: m.id,
                 role: m.role || 'member',
@@ -570,9 +570,8 @@ export function useLedgerBackup({
               icon: acc.icon || '💳',
               sort_order: acc.sort_order || 1,
             }));
-            const { error: accErr } = await supabase.from('payment_accounts').upsert(accountsToSync);
-            if (accErr) {
-              await supabaseAdmin.from('payment_accounts').upsert(accountsToSync);
+            for (const acc of accountsToSync) {
+              await supabase.rpc('secure_add_payment_account', { p_account: acc });
             }
           } catch (e) {
             console.warn('雲端還原同步卡片帳戶失敗:', e);
@@ -692,13 +691,13 @@ export function useLedgerBackup({
         await AsyncStorage.removeItem(STORAGE_KEYS.DELETED_TX_IDS);
         await AsyncStorage.removeItem(`${STORAGE_KEYS.DELETED_TX_IDS}_${targetLedgerId}`);
         if (isRealCloud) {
-          await supabaseAdmin.from('deleted_transactions').delete().eq('ledger_id', targetLedgerId);
+          await supabase.from('deleted_transactions').delete().eq('ledger_id', targetLedgerId);
         }
       } catch {}
 
       if (mode === 'overwrite' && isRealCloud) {
         try {
-          await supabaseAdmin.from('transactions').delete().eq('ledger_id', targetLedgerId);
+          await supabase.from('transactions').delete().eq('ledger_id', targetLedgerId);
         } catch (e) {
           console.warn('覆蓋模式清空舊交易失敗:', e);
         }
@@ -830,7 +829,7 @@ export function useLedgerBackup({
             const batch = txsToUpsert.slice(i, i + 500);
             const { error: batchErr } = await supabase.from('transactions').upsert(batch);
             if (batchErr) {
-              await supabaseAdmin.from('transactions').upsert(batch);
+              await supabase.rpc('secure_batch_add_transactions', { p_transactions: batch });
             }
           }
         } catch (cloudErr) {
