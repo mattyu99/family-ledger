@@ -1,16 +1,16 @@
 import React, { useState, useMemo, useRef } from 'react';
 import {
   View,
-  Text as RNText,
   Modal,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
   Dimensions,
   Platform,
-  TextProps,
   Linking,
 } from 'react-native';
+import { Text } from './common/Text';
+
 import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -18,14 +18,6 @@ import { ThemeColors } from '../theme/colors';
 import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { HorizontalScrollView } from './HorizontalScrollView';
-
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 

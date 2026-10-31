@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import {
   View,
-  Text as RNText,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  TextProps,
-} from 'react-native';
+  } from 'react-native';
+import { Text } from '../components/common/Text';
+
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
@@ -14,14 +14,6 @@ import { TrendChartsWidget } from '../components/TrendChartsWidget';
 import { MemberAvatar } from '../components/MemberAvatar';
 import { HorizontalScrollView } from '../components/HorizontalScrollView';
 import { getCategoryIcon } from '../lib/icons';
-
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 
 export interface AnalyticsScreenProps {
   analyticsMonth: string;

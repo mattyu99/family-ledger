@@ -1,39 +1,21 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
-  Text as RNText,
   Modal,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  TextInput as RNTextInput,
   Dimensions,
   Platform,
   Switch,
   KeyboardAvoidingView,
-  TextProps,
-  TextInputProps,
-} from 'react-native';
+  } from 'react-native';
+import { Text, TextInput } from './common/Text';
+
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import { getCategoryIcon } from '../lib/icons';
-
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
-
-const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNTextInput
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 

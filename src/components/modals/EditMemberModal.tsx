@@ -2,15 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Modal,
   View,
-  Text as RNText,
-  TextInput as RNTextInput,
   TouchableOpacity,
   ScrollView,
   Keyboard,
   StyleSheet,
-  TextProps,
-  TextInputProps,
-} from 'react-native';
+  } from 'react-native';
+import { Text, TextInput } from '../common/Text';
+
 import { useLedger } from '../../context/LedgerContext';
 import { useTheme } from '../../theme/ThemeContext';
 import { ThemeColors } from '../../theme/colors';
@@ -19,22 +17,6 @@ import { AvatarPicker } from '../AvatarPicker';
 import { MemberAvatar } from '../MemberAvatar';
 import { showAlert, showConfirm } from '../../lib/alert';
 import { getDevicePlatformIcon, formatDeviceRelativeTime } from '../../lib/device';
-
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
-
-const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNTextInput
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 
 export interface EditMemberModalProps {
   visible: boolean;

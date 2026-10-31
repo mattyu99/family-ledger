@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Modal,
   View,
-  Text as RNText,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
@@ -10,8 +9,9 @@ import {
   Alert,
   Platform,
   Dimensions,
-  TextProps,
-} from 'react-native';
+  } from 'react-native';
+import { Text } from './common/Text';
+
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import { MemberAvatar } from './MemberAvatar';
@@ -20,14 +20,6 @@ import {
   CloudLedgerSummary,
   CloudDatabaseQuota,
 } from '../lib/cloudLedgerService';
-
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 

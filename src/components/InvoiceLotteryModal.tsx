@@ -4,13 +4,13 @@ import { ThemeColors } from '../theme/colors';
 import {
   Modal,
   View,
-  Text as RNText,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  TextProps,
   Dimensions,
 } from 'react-native';
+import { Text } from './common/Text';
+
 import { useLedger } from '../context/LedgerContext';
 import {
   LotteryPeriodData,
@@ -20,14 +20,6 @@ import {
 } from '../lib/lottery';
 import { getInvoicePeriodKey, formatInvoiceNumber } from '../lib/invoice';
 import { Transaction } from '../types/database';
-
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 
 interface InvoiceLotteryModalProps {
   visible: boolean;

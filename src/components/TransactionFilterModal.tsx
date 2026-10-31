@@ -3,24 +3,16 @@ import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import {
   View,
-  Text as RNText,
   Modal,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
   Dimensions,
   Platform,
-  TextProps,
-} from 'react-native';
-import { Profile, Transaction } from '../types/database';
+  } from 'react-native';
+import { Text } from './common/Text';
 
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
+import { Profile, Transaction } from '../types/database';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 

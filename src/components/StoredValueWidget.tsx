@@ -1,41 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import {
   View,
-  Text as RNText,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
   Modal,
-  TextInput as RNTextInput,
-  TextProps,
-  TextInputProps,
   Alert,
   Platform,
   Keyboard,
   Clipboard,
 } from 'react-native';
+import { Text, TextInput } from './common/Text';
+
 import { PaymentAccount, PaymentMethod, CustomPaymentMethod } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import { sortAccountsByUser, DEFAULT_PAYMENT_METHODS } from '../lib/payment';
 import { HorizontalScrollView } from './HorizontalScrollView';
-
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
-
-const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNTextInput
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 
 interface StoredValueWidgetProps {
   onManageAccounts?: () => void;

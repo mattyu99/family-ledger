@@ -1,21 +1,19 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
-  Text as RNText,
   Modal,
   StyleSheet,
-  TextInput as RNTextInput,
   TouchableOpacity,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
   Dimensions,
-  TextProps,
-  TextInputProps,
   Keyboard,
   Alert,
   Image,
 } from 'react-native';
+import { Text, TextInput } from './common/Text';
+
 import { HorizontalScrollView } from './HorizontalScrollView';
 
 const safeAlert = (title: string, message: string) => {
@@ -26,21 +24,6 @@ const safeAlert = (title: string, message: string) => {
   }
 };
 
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
-
-const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNTextInput
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';

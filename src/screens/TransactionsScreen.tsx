@@ -1,17 +1,15 @@
 import React, { useState, useMemo, useRef } from 'react';
 import {
   View,
-  Text as RNText,
-  TextInput as RNTextInput,
   TouchableOpacity,
   ScrollView,
   RefreshControl,
   Keyboard,
   Platform,
   StyleSheet,
-  TextProps,
-  TextInputProps,
-} from 'react-native';
+  } from 'react-native';
+import { Text, TextInput } from '../components/common/Text';
+
 import { useLedger } from '../context/LedgerContext';
 import { usePrivacy } from '../context/PrivacyContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -27,22 +25,6 @@ import { getLocalDateYmd } from '../lib/memo';
 import { checkInvoiceWinning } from '../lib/lottery';
 
 const PAGE_SIZE = 40;
-
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
-
-const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNTextInput
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 
 export interface TransactionsScreenProps {
   scrollRef?: React.RefObject<ScrollView>;

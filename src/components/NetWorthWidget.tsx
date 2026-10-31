@@ -1,23 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import {
   View,
-  Text as RNText,
   StyleSheet,
   TouchableOpacity,
-  TextProps,
-} from 'react-native';
+  } from 'react-native';
+import { Text } from './common/Text';
+
 import { useLedger } from '../context/LedgerContext';
 import { usePrivacy } from '../context/PrivacyContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
-
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 
 export interface NetWorthWidgetProps {
   onOpenTransferModal: () => void;

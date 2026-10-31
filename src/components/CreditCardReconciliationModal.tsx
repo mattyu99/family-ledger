@@ -1,15 +1,11 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   View,
-  Text as RNText,
-  TextInput as RNTextInput,
   Modal,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
   Dimensions,
-  TextProps,
-  TextInputProps,
   Platform,
   Alert,
   Linking,
@@ -19,6 +15,8 @@ import {
   Keyboard,
   Clipboard,
 } from 'react-native';
+import { Text, TextInput } from './common/Text';
+
 import { PaymentAccount, Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -42,22 +40,6 @@ import {
 } from '../lib/statementStorage';
 import { getCategoryIcon } from '../lib/icons';
 import { HorizontalScrollView } from './HorizontalScrollView';
-
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
-
-const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNTextInput
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 

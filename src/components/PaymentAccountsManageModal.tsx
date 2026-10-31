@@ -1,41 +1,23 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
-  Text as RNText,
   Modal,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  TextInput as RNTextInput,
   Dimensions,
   Platform,
   Alert,
-  TextProps,
-  TextInputProps,
   Keyboard,
   KeyboardAvoidingView,
 } from 'react-native';
+import { Text, TextInput } from './common/Text';
+
 import { PaymentAccount, AccountType } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import { sortAccountsByUser } from '../lib/payment';
-
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
-
-const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNTextInput
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 

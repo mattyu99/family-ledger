@@ -1,19 +1,11 @@
 import React from 'react';
 import {
   Image,
-  Text as RNText,
   StyleProp,
   TextStyle,
-  TextProps,
-} from 'react-native';
+  } from 'react-native';
+import { Text } from './common/Text';
 
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 
 export interface MemberAvatarProps {
   avatar?: string;

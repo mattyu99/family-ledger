@@ -1,21 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
-  Text as RNText,
   Modal,
   StyleSheet,
   TouchableOpacity,
-  TextProps,
-} from 'react-native';
-import { useTheme } from '../theme/ThemeContext';
+  } from 'react-native';
+import { Text } from './common/Text';
 
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
+import { useTheme } from '../theme/ThemeContext';
 
 export interface MonthPickerModalProps {
   visible: boolean;

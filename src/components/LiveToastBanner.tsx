@@ -4,22 +4,14 @@ import {
   StyleSheet,
   TouchableOpacity,
   View,
-  Text as RNText,
   Platform,
   StatusBar,
-  TextProps,
-} from 'react-native';
+  } from 'react-native';
+import { Text } from './common/Text';
+
 import { LiveToastNotification } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
-
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 
 interface LiveToastBannerProps {
   toast: LiveToastNotification | null;

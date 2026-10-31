@@ -3,13 +3,13 @@ import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import {
   View,
-  Text as RNText,
   Modal,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  TextProps,
-} from 'react-native';
+  } from 'react-native';
+import { Text } from './common/Text';
+
 import {
   CalendarSystem,
   solarToLunar,
@@ -18,14 +18,6 @@ import {
   getLunarMonthDays,
   LUNAR_DAY_NAMES,
 } from '../lib/lunar';
-
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 
 export interface DatePickerModalProps {
   visible: boolean;

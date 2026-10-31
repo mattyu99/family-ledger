@@ -17,6 +17,7 @@ import * as Updates from 'expo-updates';
 import * as QuickActions from 'expo-quick-actions';
 
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
+import { FontSizeProvider } from './src/theme/FontSizeContext';
 import { LedgerProvider, useLedger } from './src/context/LedgerContext';
 import { PrivacyProvider, usePrivacy } from './src/context/PrivacyContext';
 import { setupQuickActions, parseQuickAction, parseQuickActionUrl, QuickActionKind } from './src/lib/quickActions';
@@ -1351,11 +1352,13 @@ export default function App() {
   return (
     <RootErrorBoundary>
       <ThemeProvider>
-        <LedgerProvider>
-          <PrivacyProvider>
-            <AppContent />
-          </PrivacyProvider>
-        </LedgerProvider>
+        <FontSizeProvider>
+          <LedgerProvider>
+            <PrivacyProvider>
+              <AppContent />
+            </PrivacyProvider>
+          </LedgerProvider>
+        </FontSizeProvider>
       </ThemeProvider>
     </RootErrorBoundary>
   );

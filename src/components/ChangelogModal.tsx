@@ -4,21 +4,13 @@ import { ThemeColors } from '../theme/colors';
 import {
   Modal,
   View,
-  Text as RNText,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  TextProps,
-} from 'react-native';
-import { APP_FULL_VERSION, CHANGELOG_HISTORY } from '../constants/version';
+  } from 'react-native';
+import { Text } from './common/Text';
 
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
+import { APP_FULL_VERSION, CHANGELOG_HISTORY } from '../constants/version';
 
 interface ChangelogModalProps {
   visible: boolean;

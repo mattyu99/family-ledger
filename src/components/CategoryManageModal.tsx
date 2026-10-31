@@ -3,36 +3,19 @@ import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import {
   View,
-  Text as RNText,
   Modal,
   StyleSheet,
-  TextInput as RNTextInput,
   TouchableOpacity,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
   Alert,
   Dimensions,
-  TextProps,
-  TextInputProps,
   Keyboard,
 } from 'react-native';
+import { Text, TextInput } from './common/Text';
 
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 
-const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNTextInput
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 import { useLedger } from '../context/LedgerContext';
 import { Category, CategoryType } from '../types/database';
 import { getCategoryIcon } from '../lib/icons';

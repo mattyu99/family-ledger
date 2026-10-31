@@ -1,5 +1,7 @@
 import React from 'react';
-import { View, Text as RNText, StyleSheet, TouchableOpacity, TextProps, Linking } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Linking } from 'react-native';
+import { Text } from './common/Text';
+
 import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -8,14 +10,6 @@ import { formatPaymentLabel, parseExpenseDiscount, isTransferToMember } from '..
 import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { stripInvoiceTag } from '../lib/invoice';
-
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 
 interface TransactionItemProps {
   transaction: Transaction;

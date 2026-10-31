@@ -2,15 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Modal,
   View,
-  Text as RNText,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
   Platform,
   Dimensions,
-  TextProps,
   StatusBar,
 } from 'react-native';
+import { Text } from './common/Text';
+
 import {
   parseTaiwanInvoiceQRCode,
   mergeParsedInvoiceData,
@@ -61,14 +61,6 @@ const DUAL_FRAME_TOTAL_WIDTH = Math.min(SCREEN_WIDTH * 0.88, 330);
 const DUAL_FRAME_GAP = 12;
 const SINGLE_BOX_SIZE = Math.floor((DUAL_FRAME_TOTAL_WIDTH - DUAL_FRAME_GAP) / 2);
 const DUAL_FRAME_HEIGHT = SINGLE_BOX_SIZE;
-
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 
 interface InvoiceScannerModalProps {
   visible: boolean;

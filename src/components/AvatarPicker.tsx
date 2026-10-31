@@ -1,15 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text as RNText, TouchableOpacity, StyleSheet, TextProps } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, } from 'react-native';
+import { Text } from './common/Text';
+
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
-
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 
 export interface AvatarCategory {
   id: string;

@@ -2,18 +2,16 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Modal,
   View,
-  Text as RNText,
-  TextInput as RNTextInput,
   TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   Dimensions,
-  TextProps,
-  TextInputProps,
   Keyboard,
 } from 'react-native';
+import { Text, TextInput } from './common/Text';
+
 import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -21,22 +19,6 @@ import { ThemeColors } from '../theme/colors';
 import { parseMemoNote, decodeMemoMerchantTag } from '../lib/memo';
 import { formatMemoReminderBadge, getNextMemoReminderDate } from '../lib/lunar';
 import { HorizontalScrollView } from './HorizontalScrollView';
-
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
-
-const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNTextInput
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 

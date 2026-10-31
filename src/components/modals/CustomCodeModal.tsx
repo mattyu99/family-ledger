@@ -2,35 +2,17 @@ import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
-  Text as RNText,
-  TextInput as RNTextInput,
   TouchableOpacity,
   Keyboard,
   Platform,
   Alert,
   StyleSheet,
-  TextProps,
-  TextInputProps,
-} from 'react-native';
+  } from 'react-native';
+import { Text, TextInput } from '../common/Text';
+
 import { useLedger } from '../../context/LedgerContext';
 import { useTheme } from '../../theme/ThemeContext';
 import { ThemeColors } from '../../theme/colors';
-
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
-
-const TextInput: React.FC<TextInputProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNTextInput
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 
 const showAlert = (title: string, message: string) => {
   if (Platform.OS === 'web') {
