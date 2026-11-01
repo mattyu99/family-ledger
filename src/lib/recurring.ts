@@ -217,6 +217,233 @@ export const getBillDueDate = (rule: RecurringRule, date = new Date()): Date => 
 };
 
 /**
+ * 滾動週期扣款到期資訊介面 (支援未來 7 天跨月平滑預告與平鋪時間軸)
+ */
+export interface RollingBillDueInfo {
+  rule: RecurringRule;
+  periodKey: string; // 例如 "2026-11"
+  periodLabel: string; // 例如 "2026年 11月份"
+  dueDate: Date; // 扣款截止時間 (Date 物件)
+  dueYmd: string; // "2026-11-01"
+  daysRemaining: number; // 距離今日午夜的剩餘天數 (負數為逾期，0為今天，正數為未來天數)
+  isPaid: boolean;
+  isOverdue: boolean; // daysRemaining < 0 && !isPaid
+  isToday: boolean; // daysRemaining === 0 && !isPaid
+  isUpcomingWithin7Days: boolean; // daysRemaining > 0 && daysRemaining <= 7 && !isPaid
+  badgeText: string; // 例如 "已逾期 3 天" | "今日扣款" | "明日扣款" | "3 天後" | "11/15"
+  badgeColor: string;
+  badgeBg: string;
+}
+
+/**
+ * 計算指定規則在當前時間點的滾動到期資訊 (自動檢查最近未繳期別，並跨月向前預告未來 N 天扣款)
+ */
+export const getRollingBillDueInfo = (rule: RecurringRule, referenceDate = new Date()): RollingBillDueInfo => {
+  const ref = new Date(referenceDate);
+  const todayMidnight = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 0, 0, 0, 0);
+
+  // 1. 先往前檢查上一期是否未繳且已逾期 (最多往前推 2 個月)
+  for (let offset = 2; offset >= 1; offset--) {
+    const prevDate = new Date(ref.getFullYear(), ref.getMonth() - offset, 1);
+    const pYear = prevDate.getFullYear();
+    const pMonth = prevDate.getMonth() + 1;
+    if (isBillDueInMonth(rule, pYear, pMonth)) {
+      const isPaid = isBillPaidForCurrentPeriod(rule, prevDate);
+      if (!isPaid) {
+        const dueDate = getBillDueDate(rule, prevDate);
+        const diffMs = dueDate.getTime() - todayMidnight.getTime();
+        const daysRemaining = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        const pKey = getCurrentPeriodKey(rule, prevDate);
+        const pLabel = getBillPeriodLabel(rule, prevDate);
+        const dueYmd = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`;
+        const absOverdue = Math.max(1, Math.abs(daysRemaining));
+        return {
+          rule,
+          periodKey: pKey,
+          periodLabel: pLabel,
+          dueDate,
+          dueYmd,
+          daysRemaining,
+          isPaid: false,
+          isOverdue: true,
+          isToday: false,
+          isUpcomingWithin7Days: false,
+          badgeText: absOverdue === 1 ? '逾期 1 天' : `逾期 ${absOverdue} 天`,
+          badgeColor: '#EF4444',
+          badgeBg: 'rgba(239, 68, 68, 0.15)',
+        };
+      }
+    }
+  }
+
+  // 2. 檢查當月
+  const currYear = ref.getFullYear();
+  const currMonth = ref.getMonth() + 1;
+  const isDueInCurrent = isBillDueInMonth(rule, currYear, currMonth);
+
+  if (isDueInCurrent) {
+    const isPaidInCurrent = isBillPaidForCurrentPeriod(rule, ref);
+    if (!isPaidInCurrent) {
+      const dueDate = getBillDueDate(rule, ref);
+      const diffMs = dueDate.getTime() - todayMidnight.getTime();
+      const daysRemaining = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      const pKey = getCurrentPeriodKey(rule, ref);
+      const pLabel = getBillPeriodLabel(rule, ref);
+      const dueYmd = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`;
+
+      const isOverdue = daysRemaining < 0;
+      const isToday = daysRemaining === 0;
+      const isUpcomingWithin7Days = daysRemaining > 0 && daysRemaining <= 7;
+
+      let badgeText = '';
+      let badgeColor = '#94A3B8';
+      let badgeBg = 'rgba(148, 163, 184, 0.15)';
+
+      if (isOverdue) {
+        const absOverdue = Math.max(1, Math.abs(daysRemaining));
+        badgeText = absOverdue === 1 ? '逾期 1 天' : `逾期 ${absOverdue} 天`;
+        badgeColor = '#EF4444';
+        badgeBg = 'rgba(239, 68, 68, 0.15)';
+      } else if (isToday) {
+        badgeText = '今日扣款';
+        badgeColor = '#F59E0B';
+        badgeBg = 'rgba(245, 158, 11, 0.15)';
+      } else if (daysRemaining === 1) {
+        badgeText = '明日扣款';
+        badgeColor = '#3B82F6';
+        badgeBg = 'rgba(59, 130, 246, 0.15)';
+      } else if (isUpcomingWithin7Days) {
+        badgeText = `${daysRemaining} 天後`;
+        badgeColor = '#06B6D4';
+        badgeBg = 'rgba(6, 182, 212, 0.15)';
+      } else {
+        badgeText = `${dueDate.getMonth() + 1}/${dueDate.getDate()}`;
+      }
+
+      return {
+        rule,
+        periodKey: pKey,
+        periodLabel: pLabel,
+        dueDate,
+        dueYmd,
+        daysRemaining,
+        isPaid: false,
+        isOverdue,
+        isToday,
+        isUpcomingWithin7Days,
+        badgeText,
+        badgeColor,
+        badgeBg,
+      };
+    }
+  }
+
+  // 3. 若當月已繳清（或當月非出帳月），往後尋找下一個應繳週期 (往前滾動跨月預告)
+  for (let offset = (isDueInCurrent ? 1 : 0); offset <= 12; offset++) {
+    const nextDate = new Date(ref.getFullYear(), ref.getMonth() + offset, 1);
+    const nYear = nextDate.getFullYear();
+    const nMonth = nextDate.getMonth() + 1;
+    if (isBillDueInMonth(rule, nYear, nMonth)) {
+      const isPaid = isBillPaidForCurrentPeriod(rule, nextDate);
+      const dueDate = getBillDueDate(rule, nextDate);
+      const diffMs = dueDate.getTime() - todayMidnight.getTime();
+      const daysRemaining = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      const pKey = getCurrentPeriodKey(rule, nextDate);
+      const pLabel = getBillPeriodLabel(rule, nextDate);
+      const dueYmd = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`;
+
+      const isOverdue = !isPaid && daysRemaining < 0;
+      const isToday = !isPaid && daysRemaining === 0;
+      const isUpcomingWithin7Days = !isPaid && daysRemaining > 0 && daysRemaining <= 7;
+
+      let badgeText = isPaid ? '已繳清' : '';
+      let badgeColor = isPaid ? '#10B981' : '#94A3B8';
+      let badgeBg = isPaid ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.15)';
+
+      if (!isPaid) {
+        if (isOverdue) {
+          const absOverdue = Math.max(1, Math.abs(daysRemaining));
+          badgeText = absOverdue === 1 ? '逾期 1 天' : `逾期 ${absOverdue} 天`;
+          badgeColor = '#EF4444';
+          badgeBg = 'rgba(239, 68, 68, 0.15)';
+        } else if (isToday) {
+          badgeText = '今日扣款';
+          badgeColor = '#F59E0B';
+          badgeBg = 'rgba(245, 158, 11, 0.15)';
+        } else if (daysRemaining === 1) {
+          badgeText = '明日扣款';
+          badgeColor = '#3B82F6';
+          badgeBg = 'rgba(59, 130, 246, 0.15)';
+        } else if (isUpcomingWithin7Days) {
+          badgeText = `${daysRemaining} 天後`;
+          badgeColor = '#06B6D4';
+          badgeBg = 'rgba(6, 182, 212, 0.15)';
+        } else {
+          badgeText = `${dueDate.getMonth() + 1}/${dueDate.getDate()}`;
+        }
+      }
+
+      return {
+        rule,
+        periodKey: pKey,
+        periodLabel: pLabel,
+        dueDate,
+        dueYmd,
+        daysRemaining,
+        isPaid,
+        isOverdue,
+        isToday,
+        isUpcomingWithin7Days,
+        badgeText,
+        badgeColor,
+        badgeBg,
+      };
+    }
+  }
+
+  // 兜底退回
+  const fallbackDate = getBillDueDate(rule, ref);
+  return {
+    rule,
+    periodKey: getCurrentPeriodKey(rule, ref),
+    periodLabel: getBillPeriodLabel(rule, ref),
+    dueDate: fallbackDate,
+    dueYmd: `${fallbackDate.getFullYear()}-${String(fallbackDate.getMonth() + 1).padStart(2, '0')}-${String(fallbackDate.getDate()).padStart(2, '0')}`,
+    daysRemaining: 0,
+    isPaid: true,
+    isOverdue: false,
+    isToday: false,
+    isUpcomingWithin7Days: false,
+    badgeText: '已繳清',
+    badgeColor: '#10B981',
+    badgeBg: 'rgba(16, 185, 129, 0.15)',
+  };
+};
+
+/**
+ * 取得當前所有未繳之待繳帳單，並依到期日平鋪時間軸排序 (逾期 -> 今日 -> 未來 7 天預告 -> 更遠期)
+ */
+export const getRollingPendingBills = (
+  rules: RecurringRule[],
+  referenceDate = new Date(),
+  windowDays = 7
+): RollingBillDueInfo[] => {
+  const result: RollingBillDueInfo[] = [];
+
+  for (const rule of rules) {
+    if (!rule.is_active) continue;
+    const info = getRollingBillDueInfo(rule, referenceDate);
+    // 納入所有未繳且在視窗內（已逾期、今日到期、或 windowDays 天內即將扣款）的項目
+    if (!info.isPaid && (info.isOverdue || info.isToday || info.daysRemaining <= windowDays)) {
+      result.push(info);
+    }
+  }
+
+  // 依到期時間升冪平鋪排序 (最急的排最上方)
+  return result.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+};
+
+/**
  * 預設常用家庭週期扣款範本（提供使用者一鍵快速建立）
  */
 export const DEFAULT_RECURRING_PRESETS = [

@@ -11,7 +11,7 @@ import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import { getCategoryIcon } from '../lib/icons';
-import { isBillDueInMonth, isBillPaidForCurrentPeriod } from '../lib/recurring';
+import { getRollingPendingBills, getRollingBillDueInfo, RollingBillDueInfo } from '../lib/recurring';
 
 export interface BillsScreenProps {
   onOpenAccountsManageModal: () => void;
@@ -72,48 +72,42 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
     return (paymentAccounts || []).filter(acc => isMatchedToCurrentUser(acc.user_id));
   }, [paymentAccounts, isMatchedToCurrentUser]);
 
-  // 全家待核對帳單筆數
-  const pendingRecurringBillsCount = useMemo(() => {
-    const now = new Date();
-    const currYear = now.getFullYear();
-    const currMonth = now.getMonth() + 1;
-    return scopedRecurringRules.filter(rule => {
-      if (!isBillDueInMonth(rule, currYear, currMonth)) return false;
-      return !isBillPaidForCurrentPeriod(rule, now);
-    }).length;
+  // 全家滾動待繳帳單 (包含已逾期與未來 7 天內即將扣款之平鋪時間軸)
+  const rollingPendingBills = useMemo(() => {
+    return getRollingPendingBills(scopedRecurringRules, new Date(), 7);
   }, [scopedRecurringRules]);
 
-  // 本機待核對帳單筆數
-  const myPendingRecurringBillsCount = useMemo(() => {
-    const now = new Date();
-    const currYear = now.getFullYear();
-    const currMonth = now.getMonth() + 1;
-    return myRecurringRules.filter(rule => {
-      if (!isBillDueInMonth(rule, currYear, currMonth)) return false;
-      return !isBillPaidForCurrentPeriod(rule, now);
-    }).length;
+  // 本機滾動待繳帳單
+  const myRollingPendingBills = useMemo(() => {
+    return getRollingPendingBills(myRecurringRules, new Date(), 7);
   }, [myRecurringRules]);
+
+  const pendingRecurringBillsCount = rollingPendingBills.length;
+  const myPendingRecurringBillsCount = myRollingPendingBills.length;
 
   const displayedRecurringRules = billsScope === 'my' ? myRecurringRules : scopedRecurringRules;
   const displayedPaymentAccounts = billsScope === 'my' ? myPaymentAccounts : paymentAccounts;
-  const activePendingBillsCount = billsScope === 'my' ? myPendingRecurringBillsCount : pendingRecurringBillsCount;
+  const activePendingBills = billsScope === 'my' ? myRollingPendingBills : rollingPendingBills;
+  const activePendingBillsCount = activePendingBills.length;
 
-  // 週期規則膠囊右上角標註紅點提示集合
-  const pendingRecurringRuleIds = useMemo(() => {
+  // 週期規則之滾動到期資訊映射 (rule.id -> RollingBillDueInfo)
+  const rollingBillDueInfoMap = useMemo(() => {
     const now = new Date();
-    const currYear = now.getFullYear();
-    const currMonth = now.getMonth() + 1;
+    const map = new Map<string, RollingBillDueInfo>();
+    scopedRecurringRules.forEach(rule => {
+      map.set(rule.id, getRollingBillDueInfo(rule, now));
+    });
+    return map;
+  }, [scopedRecurringRules]);
+
+  // 待繳規則集合 (未繳且在 7 天滾動窗口內或已逾期)
+  const pendingRecurringRuleIds = useMemo(() => {
     const set = new Set<string>();
-    (recurringRules || []).forEach(rule => {
-      if (rule.ledger_id && currentLedger?.id && rule.ledger_id !== currentLedger.id) return;
-      if (!rule.is_active) return;
-      if (!isBillDueInMonth(rule, currYear, currMonth)) return;
-      if (!isBillPaidForCurrentPeriod(rule, now)) {
-        set.add(rule.id);
-      }
+    activePendingBills.forEach(item => {
+      set.add(item.rule.id);
     });
     return set;
-  }, [recurringRules, currentLedger?.id]);
+  }, [activePendingBills]);
 
   return (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollPadding}>
@@ -203,14 +197,22 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
           {displayedRecurringRules.map(rule => {
             const cat = getCategoryById(rule.category_id);
             const payer = rule.paid_by ? getMemberById(rule.paid_by) : null;
+            const dueInfo = rollingBillDueInfoMap.get(rule.id);
             const isPending = pendingRecurringRuleIds.has(rule.id);
+
+            const badgeText = isPending && dueInfo?.badgeText ? dueInfo.badgeText : `${rule.due_day}日`;
+            const badgeBg = isPending && dueInfo?.badgeBg ? dueInfo.badgeBg : '#EFF6FF';
+            const badgeColor = isPending && dueInfo?.badgeColor ? dueInfo.badgeColor : '#1D4ED8';
+            const chipBorder = isPending ? (dueInfo?.isOverdue ? '#FECACA' : '#BAE6FD') : '#E2E8F0';
+            const chipBg = isPending ? (dueInfo?.isOverdue ? '#FFF5F5' : '#F0F9FF') : undefined;
+
             return (
               <View key={rule.id} style={{ position: 'relative', overflow: 'visible' }}>
                 <TouchableOpacity
                   style={[
                     styles.paymentAccountPreviewChip,
-                    { borderColor: isPending ? '#FECACA' : '#E2E8F0' },
-                    isPending && { backgroundColor: '#FFF5F5' },
+                    { borderColor: chipBorder },
+                    chipBg ? { backgroundColor: chipBg } : null,
                   ]}
                   onPress={() => {
                     onOpenRecurringModal(billsScope, undefined, 'pending');
@@ -224,18 +226,18 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
                   <View
                     style={[
                       styles.paymentAccountBadge,
-                      { backgroundColor: isPending ? '#FEE2E2' : '#EFF6FF' },
+                      { backgroundColor: badgeBg },
                     ]}
                   >
                     <Text
                       style={[
                         styles.paymentAccountBadgeText,
-                        { color: isPending ? '#DC2626' : '#1D4ED8' },
+                        { color: badgeColor },
                       ]}
                       allowFontScaling={false}
                       maxFontSizeMultiplier={1.08}
                     >
-                      {rule.due_day}日
+                      {badgeText}
                     </Text>
                   </View>
                 </TouchableOpacity>

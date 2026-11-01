@@ -624,5 +624,73 @@ export function applyChecklistTemplate(template: MemoChecklistTemplate, existing
   return templateBody;
 }
 
+/**
+ * 滾動生活待辦到期資訊介面 (支援未來 7 天跨月平滑預告與平鋪時間軸)
+ */
+export interface RollingMemoDueInfo {
+  reminderYmd: string;
+  daysRemaining: number;
+  isOverdue: boolean;
+  isToday: boolean;
+  isUpcomingWithin7Days: boolean;
+  badgeText: string;
+  badgeColor: string;
+  badgeBg: string;
+}
+
+export function getRollingMemoDueInfo(reminderYmd?: string | null, referenceYmd?: string): RollingMemoDueInfo | null {
+  if (!reminderYmd || !reminderYmd.trim()) return null;
+  const todayYmd = referenceYmd || getLocalDateYmd();
+
+  const [tY, tM, tD] = todayYmd.split('-').map(Number);
+  const [rY, rM, rD] = reminderYmd.split('-').map(Number);
+  if (!tY || !tM || !tD || !rY || !rM || !rD) return null;
+
+  const todayMid = new Date(tY, tM - 1, tD).getTime();
+  const remindMid = new Date(rY, rM - 1, rD).getTime();
+  const daysRemaining = Math.round((remindMid - todayMid) / (1000 * 60 * 60 * 24));
+
+  const isOverdue = daysRemaining < 0;
+  const isToday = daysRemaining === 0;
+  const isUpcomingWithin7Days = daysRemaining > 0 && daysRemaining <= 7;
+
+  let badgeText = '';
+  let badgeColor = '#94A3B8';
+  let badgeBg = 'rgba(148, 163, 184, 0.15)';
+
+  if (isOverdue) {
+    const abs = Math.abs(daysRemaining);
+    badgeText = abs === 1 ? '逾期 1 天' : `逾期 ${abs} 天`;
+    badgeColor = '#EF4444';
+    badgeBg = 'rgba(239, 68, 68, 0.15)';
+  } else if (isToday) {
+    badgeText = '今日待辦';
+    badgeColor = '#F59E0B';
+    badgeBg = 'rgba(245, 158, 11, 0.15)';
+  } else if (daysRemaining === 1) {
+    badgeText = '明日待辦';
+    badgeColor = '#3B82F6';
+    badgeBg = 'rgba(59, 130, 246, 0.15)';
+  } else if (isUpcomingWithin7Days) {
+    badgeText = `${daysRemaining} 天後`;
+    badgeColor = '#06B6D4';
+    badgeBg = 'rgba(6, 182, 212, 0.15)';
+  } else {
+    badgeText = `${rM}/${rD}`;
+  }
+
+  return {
+    reminderYmd,
+    daysRemaining,
+    isOverdue,
+    isToday,
+    isUpcomingWithin7Days,
+    badgeText,
+    badgeColor,
+    badgeBg,
+  };
+}
+
+
 
 

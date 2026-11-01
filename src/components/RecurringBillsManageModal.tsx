@@ -30,6 +30,9 @@ import {
   getBillDueDate,
   DEFAULT_RECURRING_PRESETS,
   getInstallmentInfo,
+  getRollingPendingBills,
+  getRollingBillDueInfo,
+  RollingBillDueInfo,
 } from '../lib/recurring';
 import { getCategoryIcon } from '../lib/icons';
 import { DatePickerModal } from './DatePickerModal';
@@ -206,6 +209,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
   // 入帳彈窗狀態 (用於浮動金額、固定金額、分期付款入帳確認)
   const [amountModalVisible, setAmountModalVisible] = useState<boolean>(false);
   const [targetRuleForAmount, setTargetRuleForAmount] = useState<RecurringRule | null>(null);
+  const [targetPeriodDate, setTargetPeriodDate] = useState<Date>(new Date());
   const [inputAmount, setInputAmount] = useState<string>('');
   const [inputNote, setInputNote] = useState<string>('');
   const [inputPaidBy, setInputPaidBy] = useState<string>('');
@@ -492,14 +496,19 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
   const isPastMonth = (year < currentYear) || (year === currentYear && (month - 1) < currentMonth);
   const isCurrentMonth = (year === currentYear) && (month - 1 === currentMonth);
 
-  // 當前月份的應繳週期項目分析
-  const { pendingBills, settledBills } = useMemo(() => {
+  // 當前月份的應繳週期項目分析 (包含未來 7 天滾動預告之平鋪時間軸)
+  const { pendingBills, settledBills, periodDateMap, dueInfoMap } = useMemo(() => {
     const pending: RecurringRule[] = [];
     const settled: RecurringRule[] = [];
+    const pDateMap = new Map<string, Date>();
+    const dInfoMap = new Map<string, RollingBillDueInfo>();
+    const pendingRuleIds = new Set<string>();
+
+    const now = new Date();
 
     scopedRules.forEach(rule => {
       if (!rule.is_active) return;
-      // 判定當月是否為出帳繳納月份
+      // 判定當前選定月份是否為出帳繳納月份
       if (!isBillDueInMonth(rule, year, month)) return;
 
       const isPaid = isBillPaidForCurrentPeriod(rule, selectedDate);
@@ -507,15 +516,40 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
         settled.push(rule);
       } else {
         pending.push(rule);
+        pendingRuleIds.add(rule.id);
+        pDateMap.set(rule.id, selectedDate);
+        if (isCurrentMonth) {
+          dInfoMap.set(rule.id, getRollingBillDueInfo(rule, now));
+        }
       }
     });
 
-    // 依扣款日排序
-    pending.sort((a, b) => (a.due_day || 1) - (b.due_day || 1));
+    // 當處於當前月份時，若有即將在未來 7 天內扣款的下一期帳單（如跨月 11/1 ~ 11/7），提前納入平鋪時間軸預告
+    if (isCurrentMonth) {
+      const rollingBills = getRollingPendingBills(scopedRules, now, 7);
+      rollingBills.forEach(item => {
+        if (!pendingRuleIds.has(item.rule.id)) {
+          pending.push(item.rule);
+          pendingRuleIds.add(item.rule.id);
+          pDateMap.set(item.rule.id, item.dueDate);
+          dInfoMap.set(item.rule.id, item);
+        }
+      });
+    }
+
+    // 依實際到期時間升冪平鋪排序 (最急迫者排最上方)
+    const getSortTimestamp = (rule: RecurringRule): number => {
+      const dInfo = dInfoMap.get(rule.id);
+      if (dInfo) return dInfo.dueDate.getTime();
+      const pDate = pDateMap.get(rule.id) || selectedDate;
+      return getBillDueDate(rule, pDate).getTime();
+    };
+
+    pending.sort((a, b) => getSortTimestamp(a) - getSortTimestamp(b));
     settled.sort((a, b) => (a.due_day || 1) - (b.due_day || 1));
 
-    return { pendingBills: pending, settledBills: settled };
-  }, [scopedRules, year, month, selectedDate]);
+    return { pendingBills: pending, settledBills: settled, periodDateMap: pDateMap, dueInfoMap: dInfoMap };
+  }, [scopedRules, year, month, selectedDate, isCurrentMonth]);
 
   // 切換月份（不可早於上個月）
   const handlePrevMonth = () => {
@@ -531,26 +565,29 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     setSelectedDate(new Date());
   };
 
-  // 目標規則之預定扣款日（落在當前選定月份）
+  // 目標規則之預定扣款日（落在當前選定月份或滾動預告期別）
   const scheduledDueDate = useMemo(() => {
     if (!targetRuleForAmount) return new Date();
+    const pDate = targetPeriodDate || selectedDate;
     const targetDay = Math.min(targetRuleForAmount.due_day || 1, 28);
-    return new Date(year, month - 1, targetDay, 12, 0, 0);
-  }, [targetRuleForAmount, year, month]);
+    return new Date(pDate.getFullYear(), pDate.getMonth(), targetDay, 12, 0, 0);
+  }, [targetRuleForAmount, targetPeriodDate, selectedDate]);
 
-  // 開啟入帳確認視窗（浮動金額、固定金額、分期付款統一由此彈窗確認，並支援切換入帳日期）
-  const handleOpenRecordModal = (rule: RecurringRule) => {
+  // 開啟入帳確認視窗（浮動金額、固定金額、分期付款統一由此彈窗確認，並支援切換入帳日期與期別）
+  const handleOpenRecordModal = (rule: RecurringRule, billPeriodDate?: Date) => {
     if (!canManage) {
       showAlert('純瀏覽模式', '全家一覽僅供查看待繳狀態；若需核對或記帳，請切換至「我的」視角。');
       return;
     }
+    const pDate = billPeriodDate || selectedDate;
+    setTargetPeriodDate(pDate);
     setTargetRuleForAmount(rule);
     const defaultVal = rule.default_amount > 0 ? String(rule.default_amount) : '';
     setInputAmount(defaultVal);
     setInputPaidBy(rule.paid_by || currentUser.id);
     setInputPaymentMethod(rule.payment_method);
     setInputAccountId(rule.account_id);
-    const periodLabel = getBillPeriodLabel(rule, selectedDate);
+    const periodLabel = getBillPeriodLabel(rule, pDate);
     setInputNote(`[${rule.name}] ${periodLabel}`);
 
     // 使用者指定：預設以「今天」為優先！
@@ -581,13 +618,13 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     }
 
     try {
-      // 傳入 inputDate（使用者選擇的入帳日期）與 selectedDate（當前帳單期別月份）
+      // 傳入 inputDate（使用者選擇的入帳日期）與 targetPeriodDate（對應帳單期別月份）
       const success = await recordRecurringBill(
         targetRuleForAmount.id,
         amountNum,
         inputDate.toISOString(),
         inputNote,
-        selectedDate
+        targetPeriodDate || selectedDate
       );
 
       if (success) {
@@ -602,17 +639,18 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
   };
 
   // 略過本期
-  const handleSkipBill = (rule: RecurringRule) => {
+  const handleSkipBill = (rule: RecurringRule, billPeriodDate?: Date) => {
     if (!canManage) {
       showAlert('純瀏覽模式', '全家一覽僅供查看待繳狀態；若需核對或略過，請切換至「我的」視角。');
       return;
     }
-    const periodLabel = getBillPeriodLabel(rule, selectedDate);
+    const pDate = billPeriodDate || selectedDate;
+    const periodLabel = getBillPeriodLabel(rule, pDate);
     showConfirm(
       '略過本期帳單',
       `確定略過「${rule.name}」在 ${periodLabel} 的帳單？\n(略過後本期將不再提示，亦不會寫入收支紀錄)`,
       async () => {
-        const periodKey = getCurrentPeriodKey(rule, selectedDate);
+        const periodKey = getCurrentPeriodKey(rule, pDate);
         await skipRecurringBill(rule.id, periodKey);
         showAlert('已略過', `已標記「${rule.name}」本期略過。`);
       }
@@ -842,13 +880,22 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     setRuleModalVisible(true);
   };
 
-  // 計算到期天數狀態標籤
-  const getDueStatusBadge = (rule: RecurringRule) => {
-    const today = new Date();
-    const dueDate = getBillDueDate(rule, selectedDate);
-    const isCurrentMonth = today.getFullYear() === year && today.getMonth() + 1 === month;
+  // 計算到期天數狀態標籤 (支援滾動到期資訊與跨月 7 天平鋪預告)
+  const getDueStatusBadge = (rule: RecurringRule, billPeriodDate?: Date, dueInfo?: RollingBillDueInfo) => {
+    if (dueInfo) {
+      return {
+        text: dueInfo.badgeText,
+        bg: dueInfo.badgeBg,
+        color: dueInfo.badgeColor,
+      };
+    }
 
-    if (!isCurrentMonth) {
+    const today = new Date();
+    const pDate = billPeriodDate || selectedDate;
+    const dueDate = getBillDueDate(rule, pDate);
+    const isThisMonth = today.getFullYear() === pDate.getFullYear() && today.getMonth() === pDate.getMonth();
+
+    if (!isThisMonth) {
       return {
         text: `預計 ${rule.due_day} 號扣款`,
         bg: '#F3F4F6',
@@ -872,11 +919,17 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
         bg: '#FEF3C7',
         color: '#D97706',
       };
-    } else if (diffDays <= 3) {
+    } else if (diffDays === 1) {
+      return {
+        text: '明日扣款預告',
+        bg: 'rgba(59, 130, 246, 0.15)',
+        color: '#2563EB',
+      };
+    } else if (diffDays <= 7) {
       return {
         text: `即將扣款 (剩 ${diffDays} 天)`,
-        bg: '#FEF3C7',
-        color: '#B45309',
+        bg: 'rgba(6, 182, 212, 0.15)',
+        color: '#0891B2',
       };
     } else {
       return {
@@ -1180,14 +1233,16 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                   </View>
                 ) : (
                   pendingBills.map(rule => {
-                    const dueBadge = getDueStatusBadge(rule);
+                    const billPeriodDate = periodDateMap.get(rule.id) || selectedDate;
+                    const billDueInfo = dueInfoMap.get(rule.id);
+                    const dueBadge = getDueStatusBadge(rule, billPeriodDate, billDueInfo);
                     const cat = getCategoryById(rule.category_id);
                     const payer = getMemberById(rule.paid_by);
                     const isFixed = rule.amount_type === 'fixed';
-                    const periodLabel = getBillPeriodLabel(rule, selectedDate);
-                    const periodKey = getCurrentPeriodKey(rule, selectedDate);
+                    const periodLabel = billDueInfo?.periodLabel || getBillPeriodLabel(rule, billPeriodDate);
+                    const periodKey = billDueInfo?.periodKey || getCurrentPeriodKey(rule, billPeriodDate);
                     const billStmt = getRuleStatementForPeriod(rule.id, periodKey);
-                    const instInfo = rule.is_installment ? getInstallmentInfo(rule, selectedDate) : null;
+                    const instInfo = rule.is_installment ? getInstallmentInfo(rule, billPeriodDate) : null;
 
                     return (
                       <View key={rule.id} style={styles.billCard}>
@@ -1290,7 +1345,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                           <View style={styles.cardActionRow}>
                             <TouchableOpacity
                               style={styles.skipButton}
-                              onPress={() => handleSkipBill(rule)}
+                              onPress={() => handleSkipBill(rule, billPeriodDate)}
                             >
                               <Text style={styles.skipButtonText}>略過本期</Text>
                             </TouchableOpacity>
@@ -1298,7 +1353,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                             {rule.is_installment ? (
                               <TouchableOpacity
                                 style={styles.recordPrimaryButton}
-                                onPress={() => handleQuickRecordFixed(rule)}
+                                onPress={() => handleQuickRecordFixed(rule, billPeriodDate)}
                               >
                                 <Text style={styles.recordPrimaryButtonText}>
                                   ✅ 確認記帳 ({instInfo?.labelText || ''} NT$ {rule.default_amount.toLocaleString()})
@@ -1307,7 +1362,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                             ) : isFixed ? (
                               <TouchableOpacity
                                 style={styles.recordPrimaryButton}
-                                onPress={() => handleQuickRecordFixed(rule)}
+                                onPress={() => handleQuickRecordFixed(rule, billPeriodDate)}
                               >
                                 <Text style={styles.recordPrimaryButtonText}>
                                   ✅ 確認記帳 (NT$ {rule.default_amount.toLocaleString()})
@@ -1316,7 +1371,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                             ) : (
                               <TouchableOpacity
                                 style={styles.recordVariableButton}
-                                onPress={() => handleOpenAmountModal(rule)}
+                                onPress={() => handleOpenAmountModal(rule, billPeriodDate)}
                               >
                                 <Text style={styles.recordVariableButtonText}>
                                   ⚡ 輸入金額並入帳

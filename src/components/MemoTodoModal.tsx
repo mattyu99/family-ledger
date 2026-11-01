@@ -176,12 +176,30 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
         border: '#FECACA',
       };
     }
+    if (diffDays === 1) {
+      return {
+        label: `明天到期${detailSuffix}`,
+        type: 'tomorrow',
+        color: '#2563EB',
+        bg: '#EFF6FF',
+        border: '#BFDBFE',
+      };
+    }
+    if (diffDays <= 7) {
+      return {
+        label: `${diffDays}天後到期${detailSuffix}`,
+        type: 'upcoming7Days',
+        color: '#0891B2',
+        bg: '#ECFEFF',
+        border: '#A5F3FC',
+      };
+    }
     return {
       label: `還有 ${diffDays} 天${detailSuffix}`,
       type: 'upcoming',
-      color: '#2563EB',
-      bg: '#EFF6FF',
-      border: '#BFDBFE',
+      color: '#64748B',
+      bg: '#F8FAFC',
+      border: '#E2E8F0',
     };
   };
 

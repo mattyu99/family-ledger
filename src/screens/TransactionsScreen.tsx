@@ -20,8 +20,8 @@ import { NetWorthWidget } from '../components/NetWorthWidget';
 import { StoredValueWidget } from '../components/StoredValueWidget';
 import { HorizontalScrollView } from '../components/HorizontalScrollView';
 import { isTransferToMember } from '../lib/payment';
-import { isBillDueInMonth, isBillPaidForCurrentPeriod } from '../lib/recurring';
-import { getLocalDateYmd } from '../lib/memo';
+import { getRollingPendingBills } from '../lib/recurring';
+import { getLocalDateYmd, parseMemoNote, getRollingMemoDueInfo } from '../lib/memo';
 import { checkInvoiceWinning } from '../lib/lottery';
 
 const PAGE_SIZE = 40;
@@ -202,16 +202,11 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
 
   const currentFilterPendingBills = useMemo(() => {
     const now = new Date();
-    const currYear = now.getFullYear();
-    const currMonth = now.getMonth() + 1;
-
-    const allDueBills = scopedRecurringRules.filter(rule => {
-      if (!isBillDueInMonth(rule, currYear, currMonth)) return false;
-      return !isBillPaidForCurrentPeriod(rule, now);
-    });
+    // 支援滾動未來 7 天時間軸（跨月平滑預告，已逾期 -> 今日 -> 7天內扣款）
+    const rollingBills = getRollingPendingBills(scopedRecurringRules, now, 7);
 
     if (filterMemberId === 'all') {
-      return allDueBills;
+      return rollingBills;
     }
 
     const targetM = members.find(m => m.id === filterMemberId);
@@ -220,10 +215,10 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
       (!!currentUser?.display_name && targetM?.display_name === currentUser.display_name);
 
     if (isMe) {
-      return allDueBills.filter(rule => isMatchedToCurrentUser(rule.paid_by));
+      return rollingBills.filter(item => isMatchedToCurrentUser(item.rule.paid_by));
     }
 
-    return allDueBills.filter(rule => isMatchedToTargetMember(rule.paid_by, filterMemberId));
+    return rollingBills.filter(item => isMatchedToTargetMember(item.rule.paid_by, filterMemberId));
   }, [scopedRecurringRules, filterMemberId, currentUser, members, isMatchedToCurrentUser, isMatchedToTargetMember]);
 
   // 提取此帳本現有紀錄中的店家清單
@@ -726,8 +721,15 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
 
       {/* 雙提醒單行膠囊 (待繳週期帳單 + 生活待辦備忘) */}
       {(() => {
+        const todayYmd = getLocalDateYmd();
+        const max7DaysDate = new Date();
+        max7DaysDate.setDate(max7DaysDate.getDate() + 7);
+        const max7DaysYmd = `${max7DaysDate.getFullYear()}-${String(max7DaysDate.getMonth() + 1).padStart(2, '0')}-${String(max7DaysDate.getDate()).padStart(2, '0')}`;
+
+        const upcoming7DaysMemos = transactions.filter(t => t.type === 'memo' && !t.is_settled && !!t.reminder_date && t.reminder_date > todayYmd && t.reminder_date <= max7DaysYmd).sort((a, b) => (a.reminder_date || '').localeCompare(b.reminder_date || ''));
+
         const hasPendingBills = currentFilterPendingBills.length > 0;
-        const hasPendingMemos = pendingMemos.length > 0 || upcomingMemos.length > 0;
+        const hasPendingMemos = pendingMemos.length > 0 || upcoming7DaysMemos.length > 0 || upcomingMemos.length > 0;
         if (!hasPendingBills && !hasPendingMemos) return null;
 
         const hasBothNotices = hasPendingBills && hasPendingMemos;
@@ -737,27 +739,52 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
           (!!currentUser?.display_name && members.find(m => m.id === filterMemberId)?.display_name === currentUser.display_name);
         const canActBill = isMe || filterMemberId === 'all';
         const billActionText = canActBill ? '核對記帳 ›' : '查看帳單 ›';
-        const billPrefix = filterMemberId === 'all' ? '全家待繳' : '本期待繳';
-        const billName = currentFilterPendingBills[0]?.name || '週期帳單';
-        const billAmount = currentFilterPendingBills[0]?.default_amount ? ` · NT$ ${currentFilterPendingBills[0].default_amount.toLocaleString()}` : '';
+
+        const firstBillInfo = currentFilterPendingBills[0];
+        const firstRule = firstBillInfo?.rule;
+        let billPrefix = filterMemberId === 'all' ? '全家待繳' : '本期待繳';
+        if (firstBillInfo?.isOverdue) {
+          billPrefix = '待繳逾期';
+        } else if (firstBillInfo?.isToday) {
+          billPrefix = '今日扣款';
+        } else if (firstBillInfo?.daysRemaining === 1) {
+          billPrefix = '明日扣款預告';
+        } else if (firstBillInfo?.isUpcomingWithin7Days) {
+          billPrefix = `待繳預告 (${firstBillInfo.daysRemaining}天後)`;
+        }
+        const billName = firstRule?.name || '週期帳單';
+        const billAmount = firstRule?.default_amount ? ` · NT$ ${firstRule.default_amount.toLocaleString()}` : '';
         const billMore = currentFilterPendingBills.length > 1 ? ` 等 ${currentFilterPendingBills.length} 筆` : '';
         const billTitle = hasBothNotices
           ? `待繳帳單 (${currentFilterPendingBills.length})`
           : `${billPrefix} (${currentFilterPendingBills.length})：${billName}${billAmount}${billMore}`;
 
-        const todayYmd = getLocalDateYmd();
         const hasOverdueMemo = pendingMemos.some(t => t.reminder_date && t.reminder_date < todayYmd);
-        const memoPrefix = hasOverdueMemo ? '待辦/逾期' : '今日待辦';
-        const firstMemoNote = (pendingMemos.length > 0 ? pendingMemos[0]?.note : upcomingMemos[0]?.note) || '';
-        const memoCount = pendingMemos.length > 0 ? pendingMemos.length : upcomingMemos.length;
+        const hasTodayMemo = pendingMemos.some(t => t.reminder_date && t.reminder_date === todayYmd);
+
+        let memoPrefix = '今日待辦';
+        if (hasOverdueMemo) {
+          memoPrefix = '待辦/逾期';
+        } else if (hasTodayMemo) {
+          memoPrefix = '今日待辦';
+        } else if (upcoming7DaysMemos.length > 0) {
+          const firstDue = getRollingMemoDueInfo(upcoming7DaysMemos[0]?.reminder_date, todayYmd);
+          memoPrefix = `近期待辦 (${firstDue?.badgeText || '7天內'})`;
+        } else {
+          memoPrefix = '排程預告';
+        }
+
+        const activeMemoList = pendingMemos.length > 0 ? pendingMemos : (upcoming7DaysMemos.length > 0 ? upcoming7DaysMemos : upcomingMemos);
+        const firstMemo = activeMemoList[0];
+        const firstMemoParsed = parseMemoNote(firstMemo?.note);
+        const firstMemoTitle = firstMemoParsed.title || firstMemoParsed.cleanContent || firstMemo?.note || '';
+        const memoCount = activeMemoList.length;
         const memoMore = memoCount > 1 ? ` 等 ${memoCount} 則` : '';
         const memoTitle = hasBothNotices
-          ? pendingMemos.length > 0
-            ? `今日待辦 (${pendingMemos.length})`
-            : `排程預告 (${upcomingMemos.length})`
-          : pendingMemos.length > 0
-          ? `${memoPrefix} (${pendingMemos.length})：${firstMemoNote}${memoMore}`
-          : `排程預告 (${upcomingMemos.length})：${firstMemoNote}${memoMore}`;
+          ? `${memoPrefix} (${memoCount})`
+          : `${memoPrefix} (${memoCount})：${firstMemoTitle}${memoMore}`;
+
+        const isUrgentMemo = pendingMemos.length > 0 || upcoming7DaysMemos.length > 0;
 
         return (
           <View style={styles.compactNoticeRow}>
@@ -831,18 +858,18 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
               <TouchableOpacity
                 style={[
                   styles.compactNoticeChip,
-                  pendingMemos.length > 0 ? styles.compactNoticeMemoChip : styles.compactNoticeUpcomingChip,
-                  isDark && (pendingMemos.length > 0 ? styles.compactNoticeMemoChipDark : styles.compactNoticeUpcomingChipDark),
+                  isUrgentMemo ? styles.compactNoticeMemoChip : styles.compactNoticeUpcomingChip,
+                  isDark && (isUrgentMemo ? styles.compactNoticeMemoChipDark : styles.compactNoticeUpcomingChipDark),
                 ]}
                 activeOpacity={0.8}
                 onPress={onOpenMemoTodoModal}
               >
-                <Text style={styles.compactNoticeChipIcon}>{pendingMemos.length > 0 ? '🔔' : '📌'}</Text>
+                <Text style={styles.compactNoticeChipIcon}>{pendingMemos.length > 0 ? '🔔' : (upcoming7DaysMemos.length > 0 ? '🗓️' : '📌')}</Text>
                 <Text
                   style={[
                     styles.compactNoticeChipText,
-                    pendingMemos.length > 0 ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText,
-                    isDark && (pendingMemos.length > 0 ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark),
+                    isUrgentMemo ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText,
+                    isDark && (isUrgentMemo ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark),
                   ]}
                   numberOfLines={1}
                   maxFontSizeMultiplier={1.08}
@@ -853,8 +880,8 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
                   <Text
                     style={[
                       styles.compactNoticeChipArrow,
-                      pendingMemos.length > 0 ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText,
-                      isDark && (pendingMemos.length > 0 ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark),
+                      isUrgentMemo ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText,
+                      isDark && (isUrgentMemo ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark),
                     ]}
                     maxFontSizeMultiplier={1.08}
                   >
@@ -864,15 +891,15 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
                   <View
                     style={[
                       styles.compactNoticeActionPill,
-                      pendingMemos.length > 0 ? styles.compactNoticeActionPillMemo : styles.compactNoticeActionPillUpcoming,
-                      isDark && (pendingMemos.length > 0 ? styles.compactNoticeActionPillMemoDark : styles.compactNoticeActionPillUpcomingDark),
+                      isUrgentMemo ? styles.compactNoticeActionPillMemo : styles.compactNoticeActionPillUpcoming,
+                      isDark && (isUrgentMemo ? styles.compactNoticeActionPillMemoDark : styles.compactNoticeActionPillUpcomingDark),
                     ]}
                   >
                     <Text
                       style={[
                         styles.compactNoticeActionPillText,
-                        pendingMemos.length > 0 ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText,
-                        isDark && (pendingMemos.length > 0 ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark),
+                        isUrgentMemo ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText,
+                        isDark && (isUrgentMemo ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark),
                       ]}
                       maxFontSizeMultiplier={1.08}
                     >

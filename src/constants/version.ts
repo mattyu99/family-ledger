@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.10';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.10 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 6;
+export const APP_BUILD_REVISION = 7;
 
-// 完整版本字串 (例如 "1.0.10.6")
+// 完整版本字串 (例如 "1.0.10.7")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -20,9 +20,10 @@ export interface ChangelogItem {
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.10',
-    date: '2026-10-31',
-    title: '全新 1.0.10 正式版：原生 Android 桌面小工具、小工具挑選器擬真預覽、跨裝置推播背景喚醒與零金鑰極速架構 (v1.0.10.0 ~ v1.0.10.6)',
+    date: '2026-11-01',
+    title: '全新 1.0.10 正式版：待辦與待繳未來7天滾動預告、平鋪時間軸、Android 桌面小工具擬真預覽與原生二進位 APK (v1.0.10.0 ~ v1.0.10.7)',
     highlights: [
+      '🗓️ 待繳帳單與生活待辦「未來 7 天滾動預告」與「平鋪時間軸」：打破以「單一自然月」為邊界的僵硬展示，自動向前推算 7 天內即將扣款之週期帳單與即將到期之生活待辦，解決月末跨月初（例如 10/31 以前看不到 11/1）的斷崖盲區；採用「逾期 ➔ 今日 ➔ 明日 ➔ 未來 7 天」平鋪時間軸排序與專屬顏色徽章。',
       '🔤 APP 內全域字型大小自訂與長輩友善模式：支援「精簡 (90%)、標準 (100%)、舒適放大 (112%)、特大長輩 (125%)」四檔位自訂，提供即時排版預覽與跟隨手機系統字體開關。',
       '🔄 生活記事待辦每週重複提醒：新增「每週重複」週期選項，辦妥當週事項自動接力推算下週同天，支援國曆與農曆雙曆法及推播自動續排。',
       '📱 原生 Android 桌面小工具 (2x2 快捷捷徑 & 4x2 今日待辦)：全新打造 withAndroidWidgets Config Plugin，整合 RemoteViews 與 SQLite 本機快照直讀，提供免開 App 即時查待辦與一鍵記帳。',
@@ -34,7 +35,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
       '📋 待辦智慧內文解析與快照排版優化：widgetSync 自動清洗 Markdown 方框標記，完整保留待辦與採買清單內文，自適應雙層佈局杜絕按鈕擠壓溢出。',
       '🛡️ 企業級零金鑰架構 (Zero-Token Architecture)：前端徹底拔除最高服務權杖，全線改採 PostgreSQL SECURITY DEFINER 預存程序 (RPC) 與標準 anon_key，零信任安全防禦。',
       '⚡ 下拉刷新極速並發管線 (RTT < 300ms)：9 大核心資料查詢全面打包 Promise.all 單一並行請求，響應耗時自 15 秒驟降至 0.8 秒以內。',
-      '📦 全新 Android 原生 APK 編譯發布：打包 VersionCode 5 原生二進位獨立安裝檔，完整收錄原生桌面小工具、挑選器擬真預覽、推播喚醒與零金鑰極速架構。',
+      '📦 全新 Android 原生 APK 編譯發布：打包 VersionCode 6 原生二進位獨立安裝檔，完整收錄原生桌面小工具、挑選器擬真預覽、跨月 7 天平鋪預告、推播喚醒與零金鑰極速架構。',
     ],
   },
   {
