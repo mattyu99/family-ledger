@@ -586,11 +586,17 @@ function withAndroidWidgets(config) {
 </LinearLayout>`;
       fs.writeFileSync(path.join(layoutDir, 'widget_memo_today_preview.xml'), memoTodayPreviewLayoutXml, 'utf8');
 
-      // 2.4 注入 Widget Info 元資料 XML (支援 Android 12+ previewLayout 原生向量預覽)
+      // 2.4 注入 Widget Info 元資料 XML (支援 Android 12+ previewLayout 原生向量預覽與 targetCell 標準格數鎖定)
       const quickActionsInfoXml = `<?xml version="1.0" encoding="utf-8"?>
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="140dp"
-    android:minHeight="140dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="110dp"
+    android:maxResizeWidth="320dp"
+    android:maxResizeHeight="320dp"
     android:updatePeriodMillis="86400000"
     android:initialLayout="@layout/widget_quick_actions"
     android:previewLayout="@layout/widget_quick_actions"
@@ -601,8 +607,14 @@ function withAndroidWidgets(config) {
 
       const memoTodayInfoXml = `<?xml version="1.0" encoding="utf-8"?>
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="250dp"
+    android:targetCellWidth="3"
+    android:targetCellHeight="2"
+    android:minWidth="180dp"
     android:minHeight="110dp"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="110dp"
+    android:maxResizeWidth="500dp"
+    android:maxResizeHeight="400dp"
     android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/widget_memo_today"
     android:previewLayout="@layout/widget_memo_today_preview"
