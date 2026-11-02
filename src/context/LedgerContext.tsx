@@ -2707,9 +2707,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
         if (hasLocalCache && localCachedTransactions.length > 0) {
           // 嚴格保護：雲端已有權威明細時，本地只允許合併「真正帶有 _isPendingSync 標記之離線新記帳」
-          // 絕不盲目合併無 _isPendingSync 的舊孤兒快取，徹底杜絕多裝置間交易筆數膨脹分裂 (321+41=362)
+          // 或本工作階段記憶體快取已載入之全量海量歷史明細 (>1500 筆，避免切換帳本時反覆向雲端發送 2.6 萬筆重複網路請求)
           localCachedTransactions.forEach(t => {
-            if (Boolean((t as any)._isPendingSync) && !mergedMap.has(t.id) && !deletedSet.has(t.id)) {
+            if (
+              (Boolean((t as any)._isPendingSync) || (memCached && memCached.length > 1500)) &&
+              !mergedMap.has(t.id) &&
+              !deletedSet.has(t.id)
+            ) {
               mergedMap.set(t.id, t);
             }
           });
@@ -2854,7 +2858,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await persistTransactionsCache(finalTx, targetLedger.id);
     setIsCloudSynced(true);
 
-    // 若雲端總筆數大於目前已載入筆數 (例如 25,980 > 1,000)，啟動高效並發分批接力拉取，補齊海量歷史明細 (Concurrency = 5)
+    // 若雲端總筆數大於目前已載入筆數 (例如 25,980 > 1,000)，啟動高效游標式接力拉取，補齊海量歷史明細 (Keyset Pagination)
     const targetLedgerId = targetLedger.id;
     const needsHistoricalSync = Boolean(
       isConfigured &&
@@ -2869,8 +2873,6 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       (async () => {
         try {
           const CHUNK_SIZE = 1000;
-          const CONCURRENCY = 5;
-          let from = 1000;
           let hasMore = true;
 
           // 建立累積對照表，直接在記憶體中維護即時全量資料 (不依賴 React 非同步 state updater 回調，確保計數零延遲準確)
@@ -2879,75 +2881,97 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             if (!deletedSet.has(t.id)) accumulatedMap.set(t.id, t);
           });
 
+          // 初始化游標：以當前已載入資料中最舊之一筆交易時間為起點
+          let cursor: string | null = finalTx.length > 0 ? finalTx[finalTx.length - 1].transacted_at : null;
+          let useStrictLt = false;
+
           while (hasMore && activeLoadingLedgerIdRef.current === targetLedgerId) {
-            const chunkPromises: Promise<any[]>[] = [];
-            for (let i = 0; i < CONCURRENCY; i++) {
-              const chunkFrom = from + i * CHUNK_SIZE;
-              if (cloudTotalCount !== null && chunkFrom >= cloudTotalCount) {
-                break;
-              }
-              const chunkTo = chunkFrom + CHUNK_SIZE - 1;
-              chunkPromises.push(
-                (async () => {
-                  for (let attempt = 0; attempt <= 2; attempt++) {
-                    try {
-                      const { data, error } = await supabase
-                        .from('transactions')
-                        .select('*')
-                        .eq('ledger_id', targetLedgerId)
-                        .order('transacted_at', { ascending: false })
-                        .range(chunkFrom, chunkTo);
-                      if (!error && data && data.length > 0) return data;
+            let rawRows: any[] | null = null;
 
-                      // 雙軌服務權杖穿透拉取歷史分批
-                      const token = getStorageServiceToken();
-                      const res = await fetch(
-                        `${SUPABASE_URL}/rest/v1/transactions?ledger_id=eq.${targetLedgerId}&select=*&order=transacted_at.desc&offset=${chunkFrom}&limit=${CHUNK_SIZE}`,
-                        {
-                          headers: {
-                            apikey: token,
-                            Authorization: `Bearer ${token}`,
-                          },
-                        }
-                      );
-                      if (res.ok) {
-                        const d = await res.json();
-                        if (Array.isArray(d) && d.length > 0) return d;
-                      }
+            for (let attempt = 0; attempt <= 2; attempt++) {
+              if (activeLoadingLedgerIdRef.current !== targetLedgerId) break;
 
-                      if (attempt < 2) await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
-                    } catch {
-                      if (attempt < 2) await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
-                    }
+              try {
+                let query = supabase
+                  .from('transactions')
+                  .select('*')
+                  .eq('ledger_id', targetLedgerId)
+                  .order('transacted_at', { ascending: false })
+                  .limit(CHUNK_SIZE);
+
+                if (cursor) {
+                  query = useStrictLt ? query.lt('transacted_at', cursor) : query.lte('transacted_at', cursor);
+                }
+
+                const { data, error } = await query;
+                if (!error && data && data.length > 0) {
+                  rawRows = data;
+                  break;
+                }
+
+                // 雙軌服務權杖穿透拉取歷史分批 (REST Keyset Fallback)
+                const token = getStorageServiceToken();
+                let restUrl = `${SUPABASE_URL}/rest/v1/transactions?ledger_id=eq.${targetLedgerId}&select=*&order=transacted_at.desc&limit=${CHUNK_SIZE}`;
+                if (cursor) {
+                  restUrl += `&transacted_at=${useStrictLt ? 'lt' : 'lte'}.${encodeURIComponent(cursor)}`;
+                }
+
+                const res = await fetch(restUrl, {
+                  headers: {
+                    apikey: token,
+                    Authorization: `Bearer ${token}`,
+                  },
+                });
+                if (res.ok) {
+                  const d = await res.json();
+                  if (Array.isArray(d) && d.length > 0) {
+                    rawRows = d;
+                    break;
                   }
-                  return [];
-                })()
-              );
-            }
+                }
 
-            if (chunkPromises.length === 0) {
-              hasMore = false;
-              break;
+                if (attempt < 2) await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
+              } catch (err) {
+                if (attempt < 2) await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
+              }
             }
-
-            const chunkResults = await Promise.all(chunkPromises);
 
             if (activeLoadingLedgerIdRef.current !== targetLedgerId) {
               break;
             }
 
-            const allNewRawRows = chunkResults.flat();
-            if (allNewRawRows.length === 0) {
+            if (!rawRows || rawRows.length === 0) {
               hasMore = false;
               break;
             }
 
-            const transformedBatch = allNewRawRows.map(transformSingleTx);
+            const transformedBatch = rawRows.map(transformSingleTx);
+            let newItemsCount = 0;
             transformedBatch.forEach(t => {
               if (!deletedSet.has(t.id)) {
+                if (!accumulatedMap.has(t.id)) {
+                  newItemsCount++;
+                }
                 accumulatedMap.set(t.id, t);
               }
             });
+
+            const lastRow = rawRows[rawRows.length - 1];
+            const nextCursor = lastRow?.transacted_at;
+
+            if (newItemsCount === 0) {
+              // 若整頁 1,000 筆資料皆已在累積對照表中（極端情況下剛好踩在相同時間戳），強制向前跨步 (<)
+              if (nextCursor) {
+                cursor = nextCursor;
+                useStrictLt = true;
+              } else {
+                hasMore = false;
+                break;
+              }
+            } else {
+              cursor = nextCursor;
+              useStrictLt = false;
+            }
 
             const combinedList = Array.from(accumulatedMap.values());
             combinedList.sort((a, b) => (b.transacted_at > a.transacted_at ? 1 : b.transacted_at < a.transacted_at ? -1 : 0));
@@ -2959,11 +2983,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const displayTotal = cloudTotalCount || Math.max(expectedTotal, currentTotalLoaded);
             setHistorySyncProgress({ loaded: currentTotalLoaded, total: displayTotal });
 
-            const anyChunkHasLessThanFull = chunkResults.some(res => res.length < CHUNK_SIZE);
-            if (anyChunkHasLessThanFull || (cloudTotalCount !== null && (from + chunkPromises.length * CHUNK_SIZE) >= cloudTotalCount)) {
+            if (rawRows.length < CHUNK_SIZE || (cloudTotalCount !== null && accumulatedMap.size >= cloudTotalCount)) {
               hasMore = false;
-            } else {
-              from += chunkPromises.length * CHUNK_SIZE;
             }
           }
         } catch (bgErr) {

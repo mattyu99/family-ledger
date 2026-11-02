@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.10';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.10 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 17;
+export const APP_BUILD_REVISION = 18;
 
-// 完整版本字串 (例如 "1.0.10.17")
+// 完整版本字串 (例如 "1.0.10.18")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.10',
     date: '2026-11-02',
-    title: '全新 1.0.10 正式版：管理員生物辨識提權、零信任邀請指派、桌面小工具與週期帳單期別修復 (v1.0.10.0 ~ v1.0.10.17)',
+    title: '全新 1.0.10 正式版：管理員生物辨識提權、零信任邀請指派、桌面小工具與週期帳單期別修復 (v1.0.10.0 ~ v1.0.10.18)',
     highlights: [
+      '⚡ 海量歷史帳本游標式同步 (Keyset Pagination)：徹底解決 25,000+ 筆海量歷史明細在雲端同步時因傳統 Offset 分頁引發 Supabase 語句逾時中斷在 16,000 筆之重大缺陷；重構為毫秒級游標式分頁 (WHERE transacted_at <= cursor)，12 秒無感全量同步 25,980 筆紀錄，零逾時、零中斷，並在同一工作階段切換帳本時自動記憶完整歷史免反覆重拉。',
       '📋 桌面小工具待辦項目點擊直達「生活待辦總覽」：修復桌面待辦小工具上方標題與三則待辦項目無點擊響應問題；全面綁定 familyledger://quick-action?mode=todo 捷徑，使用者在手機桌面點擊任一則待辦事項或標題，立刻秒開 App 並直達「生活備忘與待辦總覽」進行核對與打勾辦妥。',
       '🔒 桌面小工具個人待辦隱私分流對齊：桌面小工具待辦事項完全對齊訊息推播提醒規則——僅呈現「全家共同待辦」與「當前登入者本人的個人專屬待辦」，其餘家庭成員之個人專屬待辦自動隱藏，確保個人記事隱私不外洩。',
       '⚡ 桌面小工具秒級同步與右上角 🔄 手動刷新按鈕：透過 withMainActivity 注入 onPause 生命週期廣播，使用者在 App 內辦妥待辦、記帳或按立即同步後，按 Home 鍵跳回桌面 0 秒即刻自動廣播重繪小工具；待辦小工具頂部常駐「🔄」手動刷新按鈕，免開 App 在手機桌面上即可一鍵直讀本機快照秒級更新。',
