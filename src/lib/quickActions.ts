@@ -1,7 +1,7 @@
 import * as QuickActions from 'expo-quick-actions';
 import { Platform } from 'react-native';
 
-export type QuickActionKind = 'expense' | 'income' | 'scan' | 'memo';
+export type QuickActionKind = 'expense' | 'income' | 'scan' | 'memo' | 'todo';
 
 export interface QuickActionItemConfig {
   id: string;
@@ -126,6 +126,7 @@ export function parseQuickActionUrl(url?: string | null): QuickActionKind | null
     if (!lower.includes('quick-action') && !lower.includes('mode=') && !lower.includes('action=')) {
       return null;
     }
+    if (lower.includes('mode=todo') || lower.includes('action=todo') || lower.includes('mode=memo_todo') || lower.includes('mode=memo_list')) return 'todo';
     if (lower.includes('mode=scan') || lower.includes('action=scan')) return 'scan';
     if (lower.includes('mode=income') || lower.includes('action=income')) return 'income';
     if (lower.includes('mode=memo') || lower.includes('action=memo')) return 'memo';

@@ -225,7 +225,10 @@ const AppContent: React.FC = () => {
     setMemoTodoModalVisible(false);
     setInvoiceLotteryModalVisible(false);
 
-    if (kind === 'scan') {
+    if (kind === 'todo') {
+      setModalVisible(false);
+      setMemoTodoModalVisible(true);
+    } else if (kind === 'scan') {
       setModalMode('expense');
       setModalRecipientId(undefined);
       setModalAutoOpenScanner(true);

@@ -1234,8 +1234,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           {widgetSnapshot?.pendingMemos && widgetSnapshot.pendingMemos.length > 0 ? (
             <View style={{ gap: 6, marginBottom: 8 }}>
               {widgetSnapshot.pendingMemos.slice(0, 3).map((memo, idx) => (
-                <View
+                <TouchableOpacity
                   key={memo.id || idx}
+                  activeOpacity={0.7}
+                  onPress={() => onTriggerQuickAction ? onTriggerQuickAction('todo') : undefined}
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
@@ -1262,7 +1264,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                   <Text style={{ fontSize: 10, color: memo.isOverdue ? '#EF4444' : colors.text.muted, flexShrink: 0 }}>
                     {memo.badgeText || (memo.isOverdue ? '已逾期' : (memo.reminderDate ? memo.reminderDate.slice(5) : '日常') + (memo.assigneeName ? ` · ${memo.assigneeName}` : ''))}
                   </Text>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           ) : (

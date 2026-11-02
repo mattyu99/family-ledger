@@ -990,6 +990,18 @@ public class MemoTodayWidgetProvider extends AppWidgetProvider {
         );
         views.setOnClickPendingIntent(R.id.btn_memo_refresh, refreshPendingIntent);
 
+        // 綁定待辦事項項目與標題點擊，直達「生活備忘與待辦總覽」
+        setupClick(context, views, R.id.memo_widget_title, "familyledger://quick-action?mode=todo", 210);
+        setupClick(context, views, R.id.memo_row_1, "familyledger://quick-action?mode=todo", 211);
+        setupClick(context, views, R.id.memo_item_1, "familyledger://quick-action?mode=todo", 212);
+        setupClick(context, views, R.id.memo_badge_1, "familyledger://quick-action?mode=todo", 213);
+        setupClick(context, views, R.id.memo_row_2, "familyledger://quick-action?mode=todo", 214);
+        setupClick(context, views, R.id.memo_item_2, "familyledger://quick-action?mode=todo", 215);
+        setupClick(context, views, R.id.memo_badge_2, "familyledger://quick-action?mode=todo", 216);
+        setupClick(context, views, R.id.memo_row_3, "familyledger://quick-action?mode=todo", 217);
+        setupClick(context, views, R.id.memo_item_3, "familyledger://quick-action?mode=todo", 218);
+        setupClick(context, views, R.id.memo_badge_3, "familyledger://quick-action?mode=todo", 219);
+
         // 綁定按鈕動作
         setupClick(context, views, R.id.btn_memo_add_expense, "familyledger://quick-action?mode=expense", 201);
         setupClick(context, views, R.id.btn_memo_scan, "familyledger://quick-action?mode=scan", 202);
