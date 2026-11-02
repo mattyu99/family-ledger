@@ -447,26 +447,20 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       showsVerticalScrollIndicator={false}
       contentContainerStyle={[styles.scrollPadding, { backgroundColor: colors.background.root }]}
     >
-      {/* 頂部常駐版本與即時同步簡報列 (0 滾動即見) */}
+      {/* 頂部常駐版本與操作指南簡報列 (0 滾動即見) */}
       <View style={[styles.topVersionBar, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
-        <View style={styles.topVersionLeft}>
-          <TouchableOpacity
-            style={styles.topVersionTag}
-            onPress={onOpenChangelogModal}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.topVersionAppName, { color: colors.text.primary }]}>甜心記帳本</Text>
-            <View style={styles.topVersionBadge}>
-              <Text style={styles.topVersionBadgeText}>v{APP_VERSION} 📜</Text>
-            </View>
-          </TouchableOpacity>
-          <View style={styles.topSyncStatusRow}>
-            <View style={[styles.syncDot, { backgroundColor: isCloudSynced ? '#10B981' : '#F59E0B' }]} />
-            <Text style={[styles.topSyncStatusText, { color: colors.text.secondary }]}>
-              {isCloudSynced ? '雲端即時同步' : '同步處理中...'}
-            </Text>
+        <TouchableOpacity
+          style={styles.topVersionLeft}
+          onPress={onOpenChangelogModal}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.topVersionAppName, { color: colors.text.primary }]} numberOfLines={1}>
+            甜心記帳本
+          </Text>
+          <View style={styles.topVersionBadge}>
+            <Text style={styles.topVersionBadgeText}>v{APP_VERSION} 📜</Text>
           </View>
-        </View>
+        </TouchableOpacity>
 
         <View style={styles.topVersionRight}>
           <TouchableOpacity
@@ -1985,41 +1979,24 @@ const styles = StyleSheet.create({
   topVersionLeft: {
     flex: 1,
     marginRight: 8,
-  },
-  topVersionTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 3,
+    justifyContent: 'center',
   },
   topVersionAppName: {
     fontSize: 14,
     fontWeight: '700',
+    marginBottom: 4,
   },
   topVersionBadge: {
+    alignSelf: 'flex-start',
     backgroundColor: '#F43F5E',
     paddingHorizontal: 7,
     paddingVertical: 2,
-    borderRadius: 10,
+    borderRadius: 8,
   },
   topVersionBadgeText: {
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '700',
-  },
-  topSyncStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  syncDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  topSyncStatusText: {
-    fontSize: 11,
-    fontWeight: '500',
   },
   topVersionRight: {
     flexDirection: 'row',
