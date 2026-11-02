@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.10';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.10 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 18;
+export const APP_BUILD_REVISION = 19;
 
-// 完整版本字串 (例如 "1.0.10.18")
+// 完整版本字串 (例如 "1.0.10.19")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.10',
     date: '2026-11-02',
-    title: '全新 1.0.10 正式版：管理員生物辨識提權、零信任邀請指派、桌面小工具與週期帳單期別修復 (v1.0.10.0 ~ v1.0.10.18)',
+    title: '全新 1.0.10 正式版：管理員生物辨識提權、零信任邀請指派、桌面小工具與週期帳單期別修復 (v1.0.10.0 ~ v1.0.10.19)',
     highlights: [
+      '🛡️ 零金鑰架構深化與未登入管理預存程序 (Zero-Token Deepening)：全面補齊帳本管理 (secure_update_ledger)、自訂邀請碼唯一性作廢 (secure_set_invite_code) 與成員移除/帳目移交 (secure_remove_member) 之 SECURITY DEFINER 預存程序；徹底杜絕未登入管理員操作時靜默更新 0 筆的重大隱患；新增記帳與零用錢發放直通安全預存程序，消除 300~500ms 無謂 RLS 失敗往返延遲。',
       '⚡ 海量歷史帳本游標式同步 (Keyset Pagination)：徹底解決 25,000+ 筆海量歷史明細在雲端同步時因傳統 Offset 分頁引發 Supabase 語句逾時中斷在 16,000 筆之重大缺陷；重構為毫秒級游標式分頁 (WHERE transacted_at <= cursor)，12 秒無感全量同步 25,980 筆紀錄，零逾時、零中斷，並在同一工作階段切換帳本時自動記憶完整歷史免反覆重拉。',
       '📋 桌面小工具待辦項目點擊直達「生活待辦總覽」：修復桌面待辦小工具上方標題與三則待辦項目無點擊響應問題；全面綁定 familyledger://quick-action?mode=todo 捷徑，使用者在手機桌面點擊任一則待辦事項或標題，立刻秒開 App 並直達「生活備忘與待辦總覽」進行核對與打勾辦妥。',
       '🔒 桌面小工具個人待辦隱私分流對齊：桌面小工具待辦事項完全對齊訊息推播提醒規則——僅呈現「全家共同待辦」與「當前登入者本人的個人專屬待辦」，其餘家庭成員之個人專屬待辦自動隱藏，確保個人記事隱私不外洩。',

@@ -5278,12 +5278,27 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } else {
             newDesc = newDesc.replace(/\[READ_ONLY\]\s*/g, '').trim();
           }
-          // 雙軌管理員服務權杖穿透寫入，確保 100% 成功持久化，絕不因工作階段 RLS 而失效
-          await supabaseAdmin.from('ledgers').update({
-            description: newDesc,
-            is_read_only: nextVal,
-            updated_at: new Date().toISOString(),
-          }).eq('id', ledgerId);
+          // 零金鑰架構：優先調用 secure_update_ledger 預存程序
+          let rpcOk = false;
+          try {
+            const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_update_ledger', {
+              p_ledger_id: ledgerId,
+              p_payload: { is_read_only: nextVal, description: newDesc },
+              p_operator_id: currentUser?.id,
+              p_admin_pin: adminPin || undefined,
+            });
+            if (!rpcErr && rpcRes && rpcRes.success !== false) {
+              rpcOk = true;
+            }
+          } catch {}
+
+          if (!rpcOk) {
+            await supabaseAdmin.from('ledgers').update({
+              description: newDesc,
+              is_read_only: nextVal,
+              updated_at: new Date().toISOString(),
+            }).eq('id', ledgerId);
+          }
         } catch (e) {
           console.warn('雲端更新 is_read_only 失敗:', e);
         }
@@ -5310,22 +5325,41 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       if (isConfigured) {
-        // 1. 優先嘗試 RPC
+        // 1. 優先嘗試零金鑰安全預存程序 secure_update_ledger
+        let rpcOk = false;
         try {
-          await supabase.rpc('update_allow_new_members', {
-            target_ledger_id: targetId,
-            is_allowed: allowed,
+          const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_update_ledger', {
+            p_ledger_id: targetId,
+            p_payload: { allow_new_members: allowed },
+            p_operator_id: currentUser?.id,
+            p_admin_pin: adminPin || undefined,
           });
+          if (!rpcErr && rpcRes && rpcRes.success !== false) {
+            rpcOk = true;
+          }
         } catch {}
 
-        // 2. 雙軌服務權杖穿透保底 (確保持久化至雲端，絕不因工作階段 RLS 不符而回滾)
-        try {
-          await supabaseAdmin
-            .from('ledgers')
-            .update({ allow_new_members: allowed, updated_at: new Date().toISOString() })
-            .eq('id', targetId);
-        } catch (adminErr) {
-          console.warn('雲端門禁開關更新異常:', adminErr);
+        // 2. 嘗試舊版 update_allow_new_members RPC
+        if (!rpcOk) {
+          try {
+            const { data: oldRes } = await supabase.rpc('update_allow_new_members', {
+              target_ledger_id: targetId,
+              is_allowed: allowed,
+            });
+            if (oldRes && oldRes.success) rpcOk = true;
+          } catch {}
+        }
+
+        // 3. 雙軌服務權杖穿透保底
+        if (!rpcOk) {
+          try {
+            await supabaseAdmin
+              .from('ledgers')
+              .update({ allow_new_members: allowed, updated_at: new Date().toISOString() })
+              .eq('id', targetId);
+          } catch (adminErr) {
+            console.warn('雲端門禁開關更新異常:', adminErr);
+          }
         }
       }
 
@@ -5357,12 +5391,28 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
       try {
-        const { error } = await supabaseAdmin
-          .from('ledgers')
-          .update({ name: clean, updated_at: new Date().toISOString() })
-          .eq('id', currentLedger.id);
-        if (error) {
-          console.warn('雲端更新帳本名稱失敗:', error);
+        // 1. 優先嘗試零金鑰安全預存程序 secure_update_ledger (徹底杜絕未登入管理員更新 0 筆之靜默失敗)
+        let rpcOk = false;
+        try {
+          const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_update_ledger', {
+            p_ledger_id: currentLedger.id,
+            p_payload: { name: clean },
+            p_operator_id: currentUser?.id,
+            p_admin_pin: adminPin || undefined,
+          });
+          if (!rpcErr && rpcRes && rpcRes.success !== false) {
+            rpcOk = true;
+          }
+        } catch {}
+
+        if (!rpcOk) {
+          const { error } = await supabaseAdmin
+            .from('ledgers')
+            .update({ name: clean, updated_at: new Date().toISOString() })
+            .eq('id', currentLedger.id);
+          if (error) {
+            console.warn('雲端更新帳本名稱失敗:', error);
+          }
         }
       } catch (e) {
         console.warn('雲端更新帳本名稱失敗:', e);
@@ -5842,14 +5892,31 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const uid = session?.user?.id || currentUser.id;
-        // 清理此帳本舊的邀請紀錄，確保舊碼作廢
-        await supabaseAdmin.from('ledger_invites').delete().eq('ledger_id', currentLedger.id);
-        await supabaseAdmin.from('ledger_invites').insert({
-          ledger_id: currentLedger.id,
-          invite_code: newCode,
-          created_by: uid,
-          expires_at: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
-        });
+
+        // 1. 優先嘗試零金鑰安全預存程序 secure_set_invite_code (原子化舊碼作廢與新碼寫入)
+        let rpcOk = false;
+        try {
+          const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_set_invite_code', {
+            p_ledger_id: currentLedger.id,
+            p_invite_code: newCode,
+            p_operator_id: uid,
+            p_admin_pin: adminPin || undefined,
+          });
+          if (!rpcErr && rpcRes && rpcRes.success !== false) {
+            rpcOk = true;
+          }
+        } catch {}
+
+        if (!rpcOk) {
+          // 清理此帳本舊的邀請紀錄，確保舊碼作廢
+          await supabaseAdmin.from('ledger_invites').delete().eq('ledger_id', currentLedger.id);
+          await supabaseAdmin.from('ledger_invites').insert({
+            ledger_id: currentLedger.id,
+            invite_code: newCode,
+            created_by: uid,
+            expires_at: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+          });
+        }
       } catch (e) {
         console.warn('雲端更新邀請碼失敗:', e);
       }
@@ -5873,30 +5940,50 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const { data: { session } } = await supabase.auth.getSession();
         const uid = session?.user?.id || currentUser.id;
 
-        // 檢查此代碼是否已被「其他家庭」使用 (以 Admin 權限跨帳本檢測)
-        const { data: existing } = await supabaseAdmin
-          .from('ledger_invites')
-          .select('id, ledger_id')
-          .ilike('invite_code', clean)
-          .maybeSingle();
-
-        if (existing && existing.ledger_id !== currentLedger.id) {
-          alert('此自訂代碼已被其他家庭使用，請換一個！');
-          return false;
-        }
-
-        // 若不是同一個既有代碼，作廢舊碼並寫入新碼
-        if (!existing) {
-          await supabaseAdmin.from('ledger_invites').delete().eq('ledger_id', currentLedger.id);
-          const { error } = await supabaseAdmin.from('ledger_invites').insert({
-            ledger_id: currentLedger.id,
-            invite_code: clean,
-            created_by: uid,
-            expires_at: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+        // 1. 優先嘗試零金鑰安全預存程序 secure_set_invite_code
+        let rpcHandled = false;
+        try {
+          const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_set_invite_code', {
+            p_ledger_id: currentLedger.id,
+            p_invite_code: clean,
+            p_operator_id: uid,
+            p_admin_pin: adminPin || undefined,
           });
-          if (error) {
+          if (!rpcErr && rpcRes) {
+            rpcHandled = true;
+            if (rpcRes.success === false) {
+              alert(rpcRes.message || '此自訂代碼已被其他家庭使用，請換一個！');
+              return false;
+            }
+          }
+        } catch {}
+
+        if (!rpcHandled) {
+          // 檢查此代碼是否已被「其他家庭」使用 (以 Admin 權限跨帳本檢測)
+          const { data: existing } = await supabaseAdmin
+            .from('ledger_invites')
+            .select('id, ledger_id')
+            .ilike('invite_code', clean)
+            .maybeSingle();
+
+          if (existing && existing.ledger_id !== currentLedger.id) {
             alert('此自訂代碼已被其他家庭使用，請換一個！');
             return false;
+          }
+
+          // 若不是同一個既有代碼，作廢舊碼並寫入新碼
+          if (!existing) {
+            await supabaseAdmin.from('ledger_invites').delete().eq('ledger_id', currentLedger.id);
+            const { error } = await supabaseAdmin.from('ledger_invites').insert({
+              ledger_id: currentLedger.id,
+              invite_code: clean,
+              created_by: uid,
+              expires_at: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+            });
+            if (error) {
+              alert('此自訂代碼已被其他家庭使用，請換一個！');
+              return false;
+            }
           }
         }
       } catch (e) {
@@ -6416,45 +6503,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           insertPayload.reminder_target = newTx.reminder_target;
         }
 
-        let { error: txError } = await supabase.from('transactions').insert(insertPayload);
+        let txError: any = null;
 
-        // 若雲端 DB 尚未放寬 check constraint 允許 'memo' (23514)，自動退回為 'transfer' 重試
-        if (txError && (txError.code === '23514' || txError.message?.includes('check constraint') || txError.message?.includes('transactions_type_check'))) {
-          insertPayload.type = 'transfer';
-          const retryTypeRes = await supabase.from('transactions').insert(insertPayload);
-          txError = retryTypeRes.error;
-        }
-
-        // 如果雲端尚未執行 ALTER TABLE 加欄位導致 42703 (column does not exist) 或 PGRST204，自動切換回相容模式重試
-        if (txError && (txError.code === '42703' || txError.code === 'PGRST204' || txError.message?.includes('column') || txError.message?.includes('schema cache'))) {
-          hasMerchantColumnRef.current = false;
-          hasPaymentColumnsRef.current = false;
-          delete insertPayload.merchant;
-          delete insertPayload.payment_method;
-          delete insertPayload.account_id;
-          delete insertPayload.is_reconciled;
-          delete insertPayload.completion_note;
-          delete insertPayload.linked_transaction_id;
-          delete insertPayload.image_url;
-          delete insertPayload.reminder_target;
-          insertPayload.note = newTx.merchant
-            ? `[${newTx.merchant}] ${newTx.note || ''}`.trim()
-            : newTx.note;
-          const retryRes = await supabase.from('transactions').insert(insertPayload);
-          txError = retryRes.error;
-        }
-
-        // 若因外鍵 (23503) 約束報錯，自動修正為安全成員與預設分類並重試
-        if (txError && (txError.code === '23503' || txError.message?.includes('foreign key'))) {
-          delete insertPayload.account_id;
-          insertPayload.paid_by = validCreatorId || authUserId;
-          insertPayload.category_id = null;
-          const retryFkRes = await supabase.from('transactions').insert(insertPayload);
-          txError = retryFkRes.error;
-        }
-
-        // 雙軌穿透：若一般 Supabase 寫入因 RLS / Session 報錯，優先嘗試安全預存程序 RPC 穿透寫入
-        if (txError) {
+        // 零金鑰免登入架構優化：若當前裝置無 Supabase Auth 工作階段 (無 authUserId)，
+        // 表級 RLS insert 必定拋出 42501，故直接走 secure_batch_add_transactions 安全預存程序，
+        // 消除多餘的 300~500ms 網路往返延遲
+        if (!authUserId) {
           try {
             const clean = cleanTransactionForSync(insertPayload, validCreatorId, currentLedger.id);
             const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_batch_add_transactions', {
@@ -6462,8 +6516,63 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             });
             if (!rpcErr && rpcRes && rpcRes.success !== false) {
               txError = null;
+            } else {
+              txError = rpcErr || { message: rpcRes?.message || 'RPC insert failed' };
             }
-          } catch {}
+          } catch (e: any) {
+            txError = e;
+          }
+        } else {
+          const insertRes = await supabase.from('transactions').insert(insertPayload);
+          txError = insertRes.error;
+
+          // 若雲端 DB 尚未放寬 check constraint 允許 'memo' (23514)，自動退回為 'transfer' 重試
+          if (txError && (txError.code === '23514' || txError.message?.includes('check constraint') || txError.message?.includes('transactions_type_check'))) {
+            insertPayload.type = 'transfer';
+            const retryTypeRes = await supabase.from('transactions').insert(insertPayload);
+            txError = retryTypeRes.error;
+          }
+
+          // 如果雲端尚未執行 ALTER TABLE 加欄位導致 42703 (column does not exist) 或 PGRST204，自動切換回相容模式重試
+          if (txError && (txError.code === '42703' || txError.code === 'PGRST204' || txError.message?.includes('column') || txError.message?.includes('schema cache'))) {
+            hasMerchantColumnRef.current = false;
+            hasPaymentColumnsRef.current = false;
+            delete insertPayload.merchant;
+            delete insertPayload.payment_method;
+            delete insertPayload.account_id;
+            delete insertPayload.is_reconciled;
+            delete insertPayload.completion_note;
+            delete insertPayload.linked_transaction_id;
+            delete insertPayload.image_url;
+            delete insertPayload.reminder_target;
+            insertPayload.note = newTx.merchant
+              ? `[${newTx.merchant}] ${newTx.note || ''}`.trim()
+              : newTx.note;
+            const retryRes = await supabase.from('transactions').insert(insertPayload);
+            txError = retryRes.error;
+          }
+
+          // 若因外鍵 (23503) 約束報錯，自動修正為安全成員與預設分類並重試
+          if (txError && (txError.code === '23503' || txError.message?.includes('foreign key'))) {
+            delete insertPayload.account_id;
+            insertPayload.paid_by = validCreatorId || authUserId;
+            insertPayload.category_id = null;
+            const retryFkRes = await supabase.from('transactions').insert(insertPayload);
+            txError = retryFkRes.error;
+          }
+
+          // 雙軌穿透：若一般 Supabase 寫入因 RLS / Session 報錯，優先嘗試安全預存程序 RPC 穿透寫入
+          if (txError) {
+            try {
+              const clean = cleanTransactionForSync(insertPayload, validCreatorId, currentLedger.id);
+              const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_batch_add_transactions', {
+                p_transactions: [clean],
+              });
+              if (!rpcErr && rpcRes && rpcRes.success !== false) {
+                txError = null;
+              }
+            } catch {}
+          }
         }
 
         if (txError) {
@@ -6768,60 +6877,80 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
 
         const payloads = createdTxs.map(makePayload);
-        let { error: txError } = await supabase.from('transactions').insert(payloads);
+        let txError: any = null;
 
-        if (txError && (txError.code === '42703' || txError.code === 'PGRST204' || txError.message?.includes('column') || txError.message?.includes('schema cache'))) {
-          hasMerchantColumnRef.current = false;
-          hasPaymentColumnsRef.current = false;
-          const compatPayloads = payloads.map(p => {
-            const cp = { ...p };
-            delete cp.merchant;
-            delete cp.payment_method;
-            delete cp.account_id;
-            delete cp.is_reconciled;
-            return cp;
-          });
-          const retryRes = await supabase.from('transactions').insert(compatPayloads);
-          txError = retryRes.error;
-        }
-
-        if (txError && (txError.code === '23503' || txError.message?.includes('foreign key'))) {
-          const safePayloads = payloads.map(p => ({
-            ...p,
-            paid_by: validCreatorId || authUserId,
-            category_id: null,
-            account_id: null,
-          }));
-          const retryFkRes = await supabase.from('transactions').insert(safePayloads);
-          txError = retryFkRes.error;
-        }
-
-        // 雙軌穿透：若一般連線受限於 RLS 或 Session 報錯，優先嘗試安全預存程序 RPC 穿透寫入 (無需 service_role 金鑰)
-        if (txError) {
+        // 零金鑰免登入架構優化：若無 Supabase Auth session，直接調用 secure_batch_add_transactions
+        if (!authUserId) {
           try {
+            const cleanPayloads = payloads.map(p => cleanTransactionForSync(p, validCreatorId, currentLedger.id));
             const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_batch_add_transactions', {
-              p_transactions: payloads,
+              p_transactions: cleanPayloads,
             });
             if (!rpcErr && rpcRes && rpcRes.success !== false) {
               txError = null;
             } else {
-              const adminRes = await supabaseAdmin.from('transactions').insert(payloads);
-              if (!adminRes.error) {
+              txError = rpcErr || { message: rpcRes?.message || 'RPC insert failed' };
+            }
+          } catch (e: any) {
+            txError = e;
+          }
+        } else {
+          const insertRes = await supabase.from('transactions').insert(payloads);
+          txError = insertRes.error;
+
+          if (txError && (txError.code === '42703' || txError.code === 'PGRST204' || txError.message?.includes('column') || txError.message?.includes('schema cache'))) {
+            hasMerchantColumnRef.current = false;
+            hasPaymentColumnsRef.current = false;
+            const compatPayloads = payloads.map(p => {
+              const cp = { ...p };
+              delete cp.merchant;
+              delete cp.payment_method;
+              delete cp.account_id;
+              delete cp.is_reconciled;
+              return cp;
+            });
+            const retryRes = await supabase.from('transactions').insert(compatPayloads);
+            txError = retryRes.error;
+          }
+
+          if (txError && (txError.code === '23503' || txError.message?.includes('foreign key'))) {
+            const safePayloads = payloads.map(p => ({
+              ...p,
+              paid_by: validCreatorId || authUserId,
+              category_id: null,
+              account_id: null,
+            }));
+            const retryFkRes = await supabase.from('transactions').insert(safePayloads);
+            txError = retryFkRes.error;
+          }
+
+          // 雙軌穿透：若一般連線受限於 RLS 或 Session 報錯，優先嘗試安全預存程序 RPC 穿透寫入 (無需 service_role 金鑰)
+          if (txError) {
+            try {
+              const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_batch_add_transactions', {
+                p_transactions: payloads,
+              });
+              if (!rpcErr && rpcRes && rpcRes.success !== false) {
                 txError = null;
               } else {
-                const safePayloads = payloads.map(p => ({
-                  ...p,
-                  paid_by: validCreatorId || authUserId,
-                  category_id: null,
-                  account_id: null,
-                }));
-                const adminRetry = await supabaseAdmin.from('transactions').insert(safePayloads);
-                if (!adminRetry.error) {
+                const adminRes = await supabaseAdmin.from('transactions').insert(payloads);
+                if (!adminRes.error) {
                   txError = null;
+                } else {
+                  const safePayloads = payloads.map(p => ({
+                    ...p,
+                    paid_by: validCreatorId || authUserId,
+                    category_id: null,
+                    account_id: null,
+                  }));
+                  const adminRetry = await supabaseAdmin.from('transactions').insert(safePayloads);
+                  if (!adminRetry.error) {
+                    txError = null;
+                  }
                 }
               }
-            }
-          } catch {}
+            } catch {}
+          }
         }
 
         if (txError) {
@@ -8035,32 +8164,47 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (isConfigured) {
       try {
-        // 1. 將舊成員在雲端的建檔人/付款人轉給承接者，確保外鍵與權限平順移交 (Admin 服務權杖執行)
-        await supabaseAdmin
-          .from('transactions')
-          .update({ creator_id: finalTransferToId })
-          .eq('ledger_id', currentLedger.id)
-          .eq('creator_id', id);
+        // 1. 優先嘗試零金鑰安全預存程序 secure_remove_member (SECURITY DEFINER 原子化移交交易、清理成員與裝置)
+        let rpcOk = false;
+        try {
+          const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_remove_member', {
+            p_ledger_id: currentLedger.id,
+            p_user_id: id,
+            p_transfer_to_id: finalTransferToId,
+            p_operator_id: currentUser?.id,
+            p_admin_pin: adminPin || undefined,
+          });
+          if (!rpcErr && rpcRes && rpcRes.success !== false) {
+            rpcOk = true;
+          }
+        } catch {}
 
-        await supabaseAdmin
-          .from('transactions')
-          .update({ paid_by: finalTransferToId })
-          .eq('ledger_id', currentLedger.id)
-          .eq('paid_by', id);
+        if (!rpcOk) {
+          // 2. 雙軌服務權杖穿透保底
+          await supabaseAdmin
+            .from('transactions')
+            .update({ creator_id: finalTransferToId })
+            .eq('ledger_id', currentLedger.id)
+            .eq('creator_id', id);
 
-        // 2. 清除該成員在此帳本的 ledger_members 紀錄
-        await supabaseAdmin
-          .from('ledger_members')
-          .delete()
-          .eq('ledger_id', currentLedger.id)
-          .eq('user_id', id);
+          await supabaseAdmin
+            .from('transactions')
+            .update({ paid_by: finalTransferToId })
+            .eq('ledger_id', currentLedger.id)
+            .eq('paid_by', id);
 
-        // 3. 清除該成員在此帳本登記的連線裝置紀錄
-        await supabaseAdmin
-          .from('member_devices')
-          .delete()
-          .eq('ledger_id', currentLedger.id)
-          .eq('member_id', id);
+          await supabaseAdmin
+            .from('ledger_members')
+            .delete()
+            .eq('ledger_id', currentLedger.id)
+            .eq('user_id', id);
+
+          await supabaseAdmin
+            .from('member_devices')
+            .delete()
+            .eq('ledger_id', currentLedger.id)
+            .eq('member_id', id);
+        }
       } catch (err) {
         console.warn('雲端刪除成員失敗:', err);
       }
