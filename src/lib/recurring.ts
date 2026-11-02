@@ -236,42 +236,103 @@ export interface RollingBillDueInfo {
 }
 
 /**
+ * 計算指定規則在特定月份期別 (periodDate) 的到期資訊與徽章
+ * 保證期別標籤、期別 Key 與扣款日 100% 精準對齊，徹底杜絕月份與按鈕動作脫鉤
+ */
+export const getBillDueInfoForPeriod = (
+  rule: RecurringRule,
+  periodDate = new Date(),
+  referenceDate = new Date()
+): RollingBillDueInfo => {
+  const ref = new Date(referenceDate);
+  const todayMidnight = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 0, 0, 0, 0);
+
+  const dueDate = getBillDueDate(rule, periodDate);
+  const diffMs = dueDate.getTime() - todayMidnight.getTime();
+  const daysRemaining = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const pKey = getCurrentPeriodKey(rule, periodDate);
+  const pLabel = getBillPeriodLabel(rule, periodDate);
+  const dueYmd = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`;
+
+  const isPaid = isBillPaidForCurrentPeriod(rule, periodDate);
+  const isOverdue = !isPaid && daysRemaining < 0;
+  const isToday = !isPaid && daysRemaining === 0;
+  const isUpcomingWithin7Days = !isPaid && daysRemaining > 0 && daysRemaining <= 7;
+
+  let badgeText = isPaid ? '已繳清' : '';
+  let badgeColor = isPaid ? '#10B981' : '#94A3B8';
+  let badgeBg = isPaid ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.15)';
+
+  if (!isPaid) {
+    if (isOverdue) {
+      const absOverdue = Math.max(1, Math.abs(daysRemaining));
+      badgeText = absOverdue === 1 ? '逾期 1 天' : `逾期 ${absOverdue} 天`;
+      badgeColor = '#EF4444';
+      badgeBg = 'rgba(239, 68, 68, 0.15)';
+    } else if (isToday) {
+      badgeText = '今日扣款';
+      badgeColor = '#F59E0B';
+      badgeBg = 'rgba(245, 158, 11, 0.15)';
+    } else if (daysRemaining === 1) {
+      badgeText = '明日扣款';
+      badgeColor = '#3B82F6';
+      badgeBg = 'rgba(59, 130, 246, 0.15)';
+    } else if (isUpcomingWithin7Days) {
+      badgeText = `${daysRemaining} 天後`;
+      badgeColor = '#06B6D4';
+      badgeBg = 'rgba(6, 182, 212, 0.15)';
+    } else {
+      badgeText = `${dueDate.getMonth() + 1}/${dueDate.getDate()}`;
+    }
+  }
+
+  return {
+    rule,
+    periodKey: pKey,
+    periodLabel: pLabel,
+    dueDate,
+    dueYmd,
+    daysRemaining,
+    isPaid,
+    isOverdue,
+    isToday,
+    isUpcomingWithin7Days,
+    badgeText,
+    badgeColor,
+    badgeBg,
+  };
+};
+
+/**
  * 計算指定規則在當前時間點的滾動到期資訊 (自動檢查最近未繳期別，並跨月向前預告未來 N 天扣款)
  */
 export const getRollingBillDueInfo = (rule: RecurringRule, referenceDate = new Date()): RollingBillDueInfo => {
   const ref = new Date(referenceDate);
   const todayMidnight = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 0, 0, 0, 0);
 
-  // 1. 先往前檢查上一期是否未繳且已逾期 (最多往前推 2 個月)
+  // 1. 先往前檢查上一期是否未繳且已逾期 (防呆：不可早於規則建立日，且逾期超過 30 天之歷史期別不納入滾動視窗)
   for (let offset = 2; offset >= 1; offset--) {
     const prevDate = new Date(ref.getFullYear(), ref.getMonth() - offset, 1);
     const pYear = prevDate.getFullYear();
     const pMonth = prevDate.getMonth() + 1;
     if (isBillDueInMonth(rule, pYear, pMonth)) {
+      const dueDate = getBillDueDate(rule, prevDate);
+      if (rule.created_at) {
+        const createdTime = new Date(rule.created_at).getTime();
+        // 扣款日早於規則建立日超過 1 天，代表是過去歷史期別，不視為未繳逾期
+        if (dueDate.getTime() < createdTime - 24 * 60 * 60 * 1000) {
+          continue;
+        }
+      }
+      const diffMs = dueDate.getTime() - todayMidnight.getTime();
+      const daysRemaining = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      // 若已逾期超過 30 天，屬於深層歷史期別，應由使用者在各月份視圖手動補核，不納入當前滾動預告
+      if (daysRemaining < -30) {
+        continue;
+      }
       const isPaid = isBillPaidForCurrentPeriod(rule, prevDate);
       if (!isPaid) {
-        const dueDate = getBillDueDate(rule, prevDate);
-        const diffMs = dueDate.getTime() - todayMidnight.getTime();
-        const daysRemaining = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-        const pKey = getCurrentPeriodKey(rule, prevDate);
-        const pLabel = getBillPeriodLabel(rule, prevDate);
-        const dueYmd = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`;
-        const absOverdue = Math.max(1, Math.abs(daysRemaining));
-        return {
-          rule,
-          periodKey: pKey,
-          periodLabel: pLabel,
-          dueDate,
-          dueYmd,
-          daysRemaining,
-          isPaid: false,
-          isOverdue: true,
-          isToday: false,
-          isUpcomingWithin7Days: false,
-          badgeText: absOverdue === 1 ? '逾期 1 天' : `逾期 ${absOverdue} 天`,
-          badgeColor: '#EF4444',
-          badgeBg: 'rgba(239, 68, 68, 0.15)',
-        };
+        return getBillDueInfoForPeriod(rule, prevDate, ref);
       }
     }
   }
@@ -284,57 +345,7 @@ export const getRollingBillDueInfo = (rule: RecurringRule, referenceDate = new D
   if (isDueInCurrent) {
     const isPaidInCurrent = isBillPaidForCurrentPeriod(rule, ref);
     if (!isPaidInCurrent) {
-      const dueDate = getBillDueDate(rule, ref);
-      const diffMs = dueDate.getTime() - todayMidnight.getTime();
-      const daysRemaining = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-      const pKey = getCurrentPeriodKey(rule, ref);
-      const pLabel = getBillPeriodLabel(rule, ref);
-      const dueYmd = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`;
-
-      const isOverdue = daysRemaining < 0;
-      const isToday = daysRemaining === 0;
-      const isUpcomingWithin7Days = daysRemaining > 0 && daysRemaining <= 7;
-
-      let badgeText = '';
-      let badgeColor = '#94A3B8';
-      let badgeBg = 'rgba(148, 163, 184, 0.15)';
-
-      if (isOverdue) {
-        const absOverdue = Math.max(1, Math.abs(daysRemaining));
-        badgeText = absOverdue === 1 ? '逾期 1 天' : `逾期 ${absOverdue} 天`;
-        badgeColor = '#EF4444';
-        badgeBg = 'rgba(239, 68, 68, 0.15)';
-      } else if (isToday) {
-        badgeText = '今日扣款';
-        badgeColor = '#F59E0B';
-        badgeBg = 'rgba(245, 158, 11, 0.15)';
-      } else if (daysRemaining === 1) {
-        badgeText = '明日扣款';
-        badgeColor = '#3B82F6';
-        badgeBg = 'rgba(59, 130, 246, 0.15)';
-      } else if (isUpcomingWithin7Days) {
-        badgeText = `${daysRemaining} 天後`;
-        badgeColor = '#06B6D4';
-        badgeBg = 'rgba(6, 182, 212, 0.15)';
-      } else {
-        badgeText = `${dueDate.getMonth() + 1}/${dueDate.getDate()}`;
-      }
-
-      return {
-        rule,
-        periodKey: pKey,
-        periodLabel: pLabel,
-        dueDate,
-        dueYmd,
-        daysRemaining,
-        isPaid: false,
-        isOverdue,
-        isToday,
-        isUpcomingWithin7Days,
-        badgeText,
-        badgeColor,
-        badgeBg,
-      };
+      return getBillDueInfoForPeriod(rule, ref, ref);
     }
   }
 
@@ -345,79 +356,14 @@ export const getRollingBillDueInfo = (rule: RecurringRule, referenceDate = new D
     const nMonth = nextDate.getMonth() + 1;
     if (isBillDueInMonth(rule, nYear, nMonth)) {
       const isPaid = isBillPaidForCurrentPeriod(rule, nextDate);
-      const dueDate = getBillDueDate(rule, nextDate);
-      const diffMs = dueDate.getTime() - todayMidnight.getTime();
-      const daysRemaining = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-      const pKey = getCurrentPeriodKey(rule, nextDate);
-      const pLabel = getBillPeriodLabel(rule, nextDate);
-      const dueYmd = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`;
-
-      const isOverdue = !isPaid && daysRemaining < 0;
-      const isToday = !isPaid && daysRemaining === 0;
-      const isUpcomingWithin7Days = !isPaid && daysRemaining > 0 && daysRemaining <= 7;
-
-      let badgeText = isPaid ? '已繳清' : '';
-      let badgeColor = isPaid ? '#10B981' : '#94A3B8';
-      let badgeBg = isPaid ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.15)';
-
       if (!isPaid) {
-        if (isOverdue) {
-          const absOverdue = Math.max(1, Math.abs(daysRemaining));
-          badgeText = absOverdue === 1 ? '逾期 1 天' : `逾期 ${absOverdue} 天`;
-          badgeColor = '#EF4444';
-          badgeBg = 'rgba(239, 68, 68, 0.15)';
-        } else if (isToday) {
-          badgeText = '今日扣款';
-          badgeColor = '#F59E0B';
-          badgeBg = 'rgba(245, 158, 11, 0.15)';
-        } else if (daysRemaining === 1) {
-          badgeText = '明日扣款';
-          badgeColor = '#3B82F6';
-          badgeBg = 'rgba(59, 130, 246, 0.15)';
-        } else if (isUpcomingWithin7Days) {
-          badgeText = `${daysRemaining} 天後`;
-          badgeColor = '#06B6D4';
-          badgeBg = 'rgba(6, 182, 212, 0.15)';
-        } else {
-          badgeText = `${dueDate.getMonth() + 1}/${dueDate.getDate()}`;
-        }
+        return getBillDueInfoForPeriod(rule, nextDate, ref);
       }
-
-      return {
-        rule,
-        periodKey: pKey,
-        periodLabel: pLabel,
-        dueDate,
-        dueYmd,
-        daysRemaining,
-        isPaid,
-        isOverdue,
-        isToday,
-        isUpcomingWithin7Days,
-        badgeText,
-        badgeColor,
-        badgeBg,
-      };
     }
   }
 
-  // 兜底退回
-  const fallbackDate = getBillDueDate(rule, ref);
-  return {
-    rule,
-    periodKey: getCurrentPeriodKey(rule, ref),
-    periodLabel: getBillPeriodLabel(rule, ref),
-    dueDate: fallbackDate,
-    dueYmd: `${fallbackDate.getFullYear()}-${String(fallbackDate.getMonth() + 1).padStart(2, '0')}-${String(fallbackDate.getDate()).padStart(2, '0')}`,
-    daysRemaining: 0,
-    isPaid: true,
-    isOverdue: false,
-    isToday: false,
-    isUpcomingWithin7Days: false,
-    badgeText: '已繳清',
-    badgeColor: '#10B981',
-    badgeBg: 'rgba(16, 185, 129, 0.15)',
-  };
+  // 兜底退回當月狀態
+  return getBillDueInfoForPeriod(rule, ref, ref);
 };
 
 /**

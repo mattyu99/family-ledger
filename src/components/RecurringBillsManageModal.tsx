@@ -32,6 +32,7 @@ import {
   getInstallmentInfo,
   getRollingPendingBills,
   getRollingBillDueInfo,
+  getBillDueInfoForPeriod,
   RollingBillDueInfo,
 } from '../lib/recurring';
 import { getCategoryIcon } from '../lib/icons';
@@ -519,7 +520,8 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
         pendingRuleIds.add(rule.id);
         pDateMap.set(rule.id, selectedDate);
         if (isCurrentMonth) {
-          dInfoMap.set(rule.id, getRollingBillDueInfo(rule, now));
+          // 精準計算當前選定月份 (selectedDate) 的到期狀態，絕不跨期錯置為歷史期別
+          dInfoMap.set(rule.id, getBillDueInfoForPeriod(rule, selectedDate, now));
         }
       }
     });
@@ -579,7 +581,8 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
       showAlert('純瀏覽模式', '全家一覽僅供查看待繳狀態；若需核對或記帳，請切換至「我的」視角。');
       return;
     }
-    const pDate = billPeriodDate || selectedDate;
+    const dInfo = dueInfoMap.get(rule.id);
+    const pDate = billPeriodDate || dInfo?.dueDate || selectedDate;
     setTargetPeriodDate(pDate);
     setTargetRuleForAmount(rule);
     const defaultVal = rule.default_amount > 0 ? String(rule.default_amount) : '';
@@ -587,7 +590,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     setInputPaidBy(rule.paid_by || currentUser.id);
     setInputPaymentMethod(rule.payment_method);
     setInputAccountId(rule.account_id);
-    const periodLabel = getBillPeriodLabel(rule, pDate);
+    const periodLabel = dInfo?.periodLabel || getBillPeriodLabel(rule, pDate);
     setInputNote(`[${rule.name}] ${periodLabel}`);
 
     // 使用者指定：預設以「今天」為優先！
@@ -644,13 +647,14 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
       showAlert('純瀏覽模式', '全家一覽僅供查看待繳狀態；若需核對或略過，請切換至「我的」視角。');
       return;
     }
-    const pDate = billPeriodDate || selectedDate;
-    const periodLabel = getBillPeriodLabel(rule, pDate);
+    const dInfo = dueInfoMap.get(rule.id);
+    const pDate = billPeriodDate || dInfo?.dueDate || selectedDate;
+    const periodLabel = dInfo?.periodLabel || getBillPeriodLabel(rule, pDate);
     showConfirm(
       '略過本期帳單',
       `確定略過「${rule.name}」在 ${periodLabel} 的帳單？\n(略過後本期將不再提示，亦不會寫入收支紀錄)`,
       async () => {
-        const periodKey = getCurrentPeriodKey(rule, pDate);
+        const periodKey = dInfo?.periodKey || getCurrentPeriodKey(rule, pDate);
         await skipRecurringBill(rule.id, periodKey);
         showAlert('已略過', `已標記「${rule.name}」本期略過。`);
       }
