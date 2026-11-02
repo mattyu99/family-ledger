@@ -475,16 +475,18 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             disabled={isCheckingUpdate}
             activeOpacity={0.7}
           >
-            <Text style={styles.topCheckUpdateBtnText}>
+            <Text style={styles.topCheckUpdateBtnText} numberOfLines={1}>
               {isCheckingUpdate ? '⏳ 檢查中' : '🔄 檢查更新'}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.topChangelogBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
-            onPress={onOpenChangelogModal}
+            style={[styles.topGuideBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
+            onPress={onOpenProductGuideModal}
             activeOpacity={0.7}
           >
-            <Text style={[styles.topChangelogBtnText, { color: colors.text.primary }]}>📜 歷程</Text>
+            <Text style={[styles.topGuideBtnText, { color: colors.text.primary }]} numberOfLines={1}>
+              📖 操作指南
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -2023,10 +2025,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexShrink: 0,
   },
   topCheckUpdateBtn: {
     backgroundColor: '#F43F5E',
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     paddingVertical: 6,
     borderRadius: 10,
   },
@@ -2038,13 +2041,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  topChangelogBtn: {
+  topGuideBtn: {
     paddingHorizontal: 8,
     paddingVertical: 6,
     borderRadius: 10,
     borderWidth: 1,
   },
-  topChangelogBtnText: {
+  topGuideBtnText: {
     fontSize: 12,
     fontWeight: '600',
   },
