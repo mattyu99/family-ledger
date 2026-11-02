@@ -1,4 +1,4 @@
-const { withAndroidManifest, withDangerousMod } = require('@expo/config-plugins');
+const { withAndroidManifest, withDangerousMod, withMainActivity } = require('@expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
@@ -7,9 +7,11 @@ const path = require('path');
  * 包含：
  * 1. 2x2 極速發票與記帳小工具 (QuickActionsWidget)
  * 2. 4x2 今日生活待辦與快捷複合看板小工具 (MemoTodayWidget)
+ * 3. 離開 App 回桌面 0 秒秒級自動強刷 (MainActivity.onPause Broadcast)
+ * 4. 桌面小工具右上角 🔄 即時手動重新整理按鈕 (PendingIntent Broadcast)
  */
 function withAndroidWidgets(config) {
-  // 1. 修改 AndroidManifest.xml 註冊 Receiver
+  // 1. 修改 AndroidManifest.xml 註冊 Receiver 與自訂廣播 Action
   config = withAndroidManifest(config, async (config) => {
     const mainApplication = config.modResults.manifest.application[0];
     if (!mainApplication.receiver) {
@@ -18,14 +20,28 @@ function withAndroidWidgets(config) {
 
     const packageName = config.android?.package || 'com.mattyu.familyledger';
 
+    const addActionToReceiver = (receiver, actionName) => {
+      if (!receiver['intent-filter']) receiver['intent-filter'] = [];
+      let filter = receiver['intent-filter'][0];
+      if (!filter) {
+        filter = { action: [] };
+        receiver['intent-filter'].push(filter);
+      }
+      if (!filter.action) filter.action = [];
+      const exists = filter.action.some((a) => a.$['android:name'] === actionName);
+      if (!exists) {
+        filter.action.push({ $: { 'android:name': actionName } });
+      }
+    };
+
     // 註冊 2x2 快捷按鈕小工具
     const quickActionsReceiverName = `${packageName}.QuickActionsWidgetProvider`;
-    const hasQuickActions = mainApplication.receiver.some(
+    let quickReceiver = mainApplication.receiver.find(
       (r) => r.$['android:name'] === quickActionsReceiverName || r.$['android:name'] === '.QuickActionsWidgetProvider'
     );
 
-    if (!hasQuickActions) {
-      mainApplication.receiver.push({
+    if (!quickReceiver) {
+      quickReceiver = {
         $: {
           'android:name': '.QuickActionsWidgetProvider',
           'android:exported': 'true',
@@ -34,11 +50,8 @@ function withAndroidWidgets(config) {
         'intent-filter': [
           {
             action: [
-              {
-                $: {
-                  'android:name': 'android.appwidget.action.APPWIDGET_UPDATE',
-                },
-              },
+              { $: { 'android:name': 'android.appwidget.action.APPWIDGET_UPDATE' } },
+              { $: { 'android:name': 'com.mattyu.familyledger.ACTION_UPDATE_WIDGETS' } },
             ],
           },
         ],
@@ -50,17 +63,21 @@ function withAndroidWidgets(config) {
             },
           },
         ],
-      });
+      };
+      mainApplication.receiver.push(quickReceiver);
+    } else {
+      addActionToReceiver(quickReceiver, 'android.appwidget.action.APPWIDGET_UPDATE');
+      addActionToReceiver(quickReceiver, 'com.mattyu.familyledger.ACTION_UPDATE_WIDGETS');
     }
 
     // 註冊 4x2 今日生活待辦小工具
     const memoTodayReceiverName = `${packageName}.MemoTodayWidgetProvider`;
-    const hasMemoToday = mainApplication.receiver.some(
+    let memoReceiver = mainApplication.receiver.find(
       (r) => r.$['android:name'] === memoTodayReceiverName || r.$['android:name'] === '.MemoTodayWidgetProvider'
     );
 
-    if (!hasMemoToday) {
-      mainApplication.receiver.push({
+    if (!memoReceiver) {
+      memoReceiver = {
         $: {
           'android:name': '.MemoTodayWidgetProvider',
           'android:exported': 'true',
@@ -69,11 +86,9 @@ function withAndroidWidgets(config) {
         'intent-filter': [
           {
             action: [
-              {
-                $: {
-                  'android:name': 'android.appwidget.action.APPWIDGET_UPDATE',
-                },
-              },
+              { $: { 'android:name': 'android.appwidget.action.APPWIDGET_UPDATE' } },
+              { $: { 'android:name': 'com.mattyu.familyledger.ACTION_UPDATE_WIDGETS' } },
+              { $: { 'android:name': 'com.mattyu.familyledger.ACTION_REFRESH_MEMO' } },
             ],
           },
         ],
@@ -85,9 +100,52 @@ function withAndroidWidgets(config) {
             },
           },
         ],
-      });
+      };
+      mainApplication.receiver.push(memoReceiver);
+    } else {
+      addActionToReceiver(memoReceiver, 'android.appwidget.action.APPWIDGET_UPDATE');
+      addActionToReceiver(memoReceiver, 'com.mattyu.familyledger.ACTION_UPDATE_WIDGETS');
+      addActionToReceiver(memoReceiver, 'com.mattyu.familyledger.ACTION_REFRESH_MEMO');
     }
 
+    return config;
+  });
+
+  // 2. 修改 MainActivity 注入 onPause 生命週期廣播（離開 App 回到桌面時即刻強制刷新小工具）
+  config = withMainActivity(config, async (config) => {
+    let contents = config.modResults.contents;
+    const language = config.modResults.language;
+
+    if (!contents.includes('ACTION_UPDATE_WIDGETS')) {
+      const isKotlin = language === 'kt';
+      const onPauseCode = isKotlin
+        ? `
+    override fun onPause() {
+        super.onPause()
+        try {
+            val intent = android.content.Intent("com.mattyu.familyledger.ACTION_UPDATE_WIDGETS")
+            intent.setPackage(packageName)
+            sendBroadcast(intent)
+        } catch (_: Exception) {}
+    }
+`
+        : `
+    @Override
+    protected void onPause() {
+        super.onPause();
+        try {
+            android.content.Intent intent = new android.content.Intent("com.mattyu.familyledger.ACTION_UPDATE_WIDGETS");
+            intent.setPackage(getPackageName());
+            sendBroadcast(intent);
+        } catch (Exception ignored) {}
+    }
+`;
+      const lastBraceIndex = contents.lastIndexOf('}');
+      if (lastBraceIndex !== -1) {
+        contents = contents.slice(0, lastBraceIndex) + onPauseCode + '\n' + contents.slice(lastBraceIndex);
+      }
+      config.modResults.contents = contents;
+    }
     return config;
   });
 
@@ -296,6 +354,15 @@ function withAndroidWidgets(config) {
             android:text="測試記帳本 🍟"
             android:textColor="#94A3B8"
             android:textSize="10sp" />
+        <TextView
+            android:id="@+id/btn_memo_refresh"
+            android:layout_width="26dp"
+            android:layout_height="22dp"
+            android:gravity="center"
+            android:text="🔄"
+            android:textSize="11sp"
+            android:layout_marginStart="4dp"
+            android:padding="2dp" />
     </LinearLayout>
 
     <LinearLayout
@@ -461,6 +528,14 @@ function withAndroidWidgets(config) {
             android:text="甜心記帳本 🍟"
             android:textColor="#94A3B8"
             android:textSize="10sp" />
+        <TextView
+            android:layout_width="26dp"
+            android:layout_height="22dp"
+            android:gravity="center"
+            android:text="🔄"
+            android:textSize="11sp"
+            android:layout_marginStart="4dp"
+            android:padding="2dp" />
     </LinearLayout>
 
     <LinearLayout
@@ -655,6 +730,25 @@ import java.io.File;
 public class QuickActionsWidgetProvider extends AppWidgetProvider {
 
     @Override
+    public void onReceive(Context context, Intent intent) {
+        super.onReceive(context, intent);
+        String action = intent != null ? intent.getAction() : null;
+        if ("com.mattyu.familyledger.ACTION_UPDATE_WIDGETS".equals(action)) {
+            try {
+                AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
+                android.content.ComponentName thisAppWidget = new android.content.ComponentName(context, QuickActionsWidgetProvider.class);
+                int[] appWidgetIds = appWidgetManager.getAppWidgetIds(thisAppWidget);
+                if (appWidgetIds != null && appWidgetIds.length > 0) {
+                    for (int appWidgetId : appWidgetIds) {
+                        updateAppWidget(context, appWidgetManager, appWidgetId);
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
         for (int appWidgetId : appWidgetIds) {
             updateAppWidget(context, appWidgetManager, appWidgetId);
@@ -731,6 +825,26 @@ import org.json.JSONObject;
 import java.io.File;
 
 public class MemoTodayWidgetProvider extends AppWidgetProvider {
+
+    @Override
+    public void onReceive(Context context, Intent intent) {
+        super.onReceive(context, intent);
+        String action = intent != null ? intent.getAction() : null;
+        if ("com.mattyu.familyledger.ACTION_UPDATE_WIDGETS".equals(action) ||
+            "com.mattyu.familyledger.ACTION_REFRESH_MEMO".equals(action)) {
+            try {
+                AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
+                android.content.ComponentName thisAppWidget = new android.content.ComponentName(context, MemoTodayWidgetProvider.class);
+                int[] appWidgetIds = appWidgetManager.getAppWidgetIds(thisAppWidget);
+                if (appWidgetIds != null && appWidgetIds.length > 0) {
+                    for (int appWidgetId : appWidgetIds) {
+                        updateAppWidget(context, appWidgetManager, appWidgetId);
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+    }
 
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
@@ -864,6 +978,17 @@ public class MemoTodayWidgetProvider extends AppWidgetProvider {
         } else {
             views.setViewVisibility(R.id.memo_row_3, View.GONE);
         }
+
+        // 綁定右上角 🔄 手動刷新按鈕 (發送廣播直達 Provider 本身，免開 App 即刻重繪)
+        Intent refreshIntent = new Intent(context, MemoTodayWidgetProvider.class);
+        refreshIntent.setAction("com.mattyu.familyledger.ACTION_REFRESH_MEMO");
+        PendingIntent refreshPendingIntent = PendingIntent.getBroadcast(
+            context,
+            301,
+            refreshIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+        views.setOnClickPendingIntent(R.id.btn_memo_refresh, refreshPendingIntent);
 
         // 綁定按鈕動作
         setupClick(context, views, R.id.btn_memo_add_expense, "familyledger://quick-action?mode=expense", 201);
