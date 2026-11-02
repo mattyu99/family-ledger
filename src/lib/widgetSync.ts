@@ -78,7 +78,10 @@ export function extractWidgetSnapshot(
     const parsed = parseMemoNote(item.note);
     const reminderDate = item.reminder_date || decoded.reminderDate;
     const isOverdue = Boolean(reminderDate && reminderDate < todayYmd);
-    const assigneeName = item.paid_by ? memberMap.get(item.paid_by) : undefined;
+    // 只有當備忘明確設定為「個人專屬待辦」(reminder_target === 'personal') 時，才標註責任人姓名；
+    // 若為「全家待辦」(reminder_target !== 'personal') 則為全家人共同事項，不附掛建立人/記錄者姓名
+    const isPersonal = item.reminder_target === 'personal';
+    const assigneeName = isPersonal && item.paid_by ? memberMap.get(item.paid_by) : undefined;
 
     // 清理內文：剔除 Markdown 待辦清單方框符號（如 - [ ] / - [x] / * [ ]）並整理換行
     let cleanContent = (parsed.cleanContent || '')
