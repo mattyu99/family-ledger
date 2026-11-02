@@ -44,7 +44,8 @@ export interface WidgetSnapshotData {
 export function extractWidgetSnapshot(
   currentLedger?: Ledger | null,
   transactions: Transaction[] = [],
-  members: any[] = []
+  members: any[] = [],
+  currentUserId?: string
 ): WidgetSnapshotData {
   const ledgerName = currentLedger?.name || '家庭記帳本';
   const ledgerId = currentLedger?.id || '';
@@ -60,7 +61,16 @@ export function extractWidgetSnapshot(
     }
   });
 
-  const activeMemos = transactions.filter(t => t.type === 'memo' && !t.is_settled);
+  // 待辦分流與隱私純化：
+  // 1. 全家待辦 (reminder_target !== 'personal')：全體家庭成員桌面皆可檢視
+  // 2. 個人專屬待辦 (reminder_target === 'personal')：僅當前登入者本人之項目才顯示於本機小工具，其他家人的個人待辦予以隱藏，嚴格對齊訊息推播提醒
+  const activeMemos = transactions.filter(t => {
+    if (t.type !== 'memo' || t.is_settled) return false;
+    if (t.reminder_target === 'personal' && currentUserId && t.paid_by && t.paid_by !== currentUserId) {
+      return false;
+    }
+    return true;
+  });
 
   // 篩選與排序：今日與逾期待辦最優先，其次為未到期待辦與日常雜記
   const sortedMemos = [...activeMemos].sort((a, b) => {
@@ -205,9 +215,10 @@ export async function getWidgetSnapshot(): Promise<WidgetSnapshotData | null> {
 export async function syncWidgetData(
   currentLedger?: Ledger | null,
   transactions: Transaction[] = [],
-  members: any[] = []
+  members: any[] = [],
+  currentUserId?: string
 ): Promise<WidgetSnapshotData> {
-  const snapshot = extractWidgetSnapshot(currentLedger, transactions, members);
+  const snapshot = extractWidgetSnapshot(currentLedger, transactions, members, currentUserId);
   await saveWidgetSnapshot(snapshot);
   return snapshot;
 }

@@ -506,12 +506,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [members]);
 
   // 自動將最新待辦、收支與帳本資訊同步至桌面小工具快照 (Widget Snapshot)
+  // 傳入 currentUser.id 確保小工具與訊息推播提醒完全對齊：僅呈現全家待辦與當前登入者本人的個人專屬待辦
   useEffect(() => {
     if (!currentLedger?.id) return;
-    syncWidgetData(currentLedger, transactions, members).catch(err => {
+    syncWidgetData(currentLedger, transactions, members, currentUser?.id).catch(err => {
       console.warn('[WidgetSync] 背景同步快照失敗:', err);
     });
-  }, [transactions, currentLedger, members]);
+  }, [transactions, currentLedger, members, currentUser?.id]);
 
   // 跨裝置靜默推播喚醒監聽：當收到其他成員發布的待辦同步通知時，在背景自動更新小工具快照
   useEffect(() => {
@@ -521,7 +522,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const data = notification.request.content.data;
         if (data && (data.type === 'widget_sync' || data.type === 'memo_added' || data.type === 'memo_completed' || data.type === 'memo_updated')) {
           if (currentLedger?.id) {
-            syncWidgetData(currentLedger, transactionsRef.current, membersRef.current).catch(() => {});
+            syncWidgetData(currentLedger, transactionsRef.current, membersRef.current, currentUserRef.current?.id).catch(() => {});
           }
         }
       });

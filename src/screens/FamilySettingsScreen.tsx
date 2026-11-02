@@ -194,7 +194,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
   const handleManualSyncWidget = async () => {
     setIsSyncingWidget(true);
     try {
-      const fresh = await syncWidgetData(currentLedger, transactions, members);
+      const fresh = await syncWidgetData(currentLedger, transactions, members, currentUser?.id);
       setWidgetSnapshot(fresh);
       const nowTime = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       setWidgetSyncMessage(`已於 ${nowTime} 完成同步 ✓`);
