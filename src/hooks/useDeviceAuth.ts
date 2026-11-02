@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { Platform, Linking } from 'react-native';
+import React, { useState, useCallback, useEffect } from 'react';
+import { Platform, Linking, AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Profile, MemberDevice, Ledger } from '../types/database';
 import { getDeviceId, getDeviceName, getDevicePlatform } from '../lib/device';
@@ -7,6 +7,7 @@ import { getExpoPushTokenSafely } from '../lib/pushDispatcher';
 import { APP_FULL_VERSION } from '../constants/version';
 import { safeAlert } from '../lib/ledgerUtils';
 import { STORAGE_KEYS, DEMO_LEDGER_ID } from '../constants/ledgerDefaults';
+import { checkBiometricsCapability, authenticateWithBiometrics } from '../lib/biometrics';
 // supabaseAdmin removed for zero-token architecture
 
 export interface UseDeviceAuthProps {
@@ -78,9 +79,81 @@ export function useDeviceAuth({
     return { success: true };
   }, [currentLedger, adminPin]);
 
+  // 🛡️ 現代化生物辨識管理員提權：僅限雲端核准之管理員，經指紋/Face ID 本人驗證後秒開特權
+  const enableAdminModeWithBiometrics = useCallback(async (): Promise<{ success: boolean; fallbackToPin?: boolean; message?: string }> => {
+    // 1. 嚴格權限檢查：當前成員是否在該帳本名冊中具備管理員資格
+    if (!isOwner) {
+      return {
+        success: false,
+        message: '您在此帳本為一般家庭成員，無管理員特權。\n若需調整權限，請由帳本建立者在成員設定中為您開啟。',
+      };
+    }
+
+    // 2. 檢測裝置硬體與生物辨識/鎖屏狀態（若不支援硬體或未錄入，提供安全碼降級備援）
+    const cap = await checkBiometricsCapability();
+    if (!cap.isSupported) {
+      return {
+        success: false,
+        fallbackToPin: true,
+        message: '本裝置未配備生物辨識硬體，已為您切換為應急安全碼驗證！',
+      };
+    }
+
+    if (!cap.isEnrolled) {
+      return {
+        success: false,
+        fallbackToPin: true,
+        message: '您的手機尚未設定螢幕鎖定或生物辨識，請使用帳本應急安全碼驗證！',
+      };
+    }
+
+    // 3. 喚起生物辨識或手機鎖屏密碼驗證
+    const res = await authenticateWithBiometrics(
+      `請驗證 ${cap.biometryType} 以啟用家庭公帳管理員模式`,
+      '使用手機鎖屏密碼驗證'
+    );
+
+    if (res.success) {
+      setIsAdminMode(true);
+      return { success: true };
+    }
+
+    return {
+      success: false,
+      message: res.error || '身分驗證未通過，無法啟用管理員模式',
+    };
+  }, [isOwner]);
+
   const disableAdminMode = useCallback(() => {
     setIsAdminMode(false);
   }, []);
+
+  // 🛡️ 管理員模式自動逾期鎖定機制 (選項 A：10 分鐘無操作或跳出 App 即自動退回日常成員模式)
+  useEffect(() => {
+    if (!isAdminMode) return;
+
+    // 10 分鐘自動降級計時器
+    const timeoutId = setTimeout(() => {
+      setIsAdminMode(false);
+      triggerLiveToast({
+        title: '🔒 管理員模式已逾期',
+        message: '已自動切回日常成員模式保護安全',
+        createdAt: Date.now(),
+      });
+    }, 10 * 60 * 1000);
+
+    // 跳出 App (進入背景) 即刻自動退回日常模式
+    const sub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      if (nextState === 'background' || nextState === 'inactive') {
+        setIsAdminMode(false);
+      }
+    });
+
+    return () => {
+      clearTimeout(timeoutId);
+      sub.remove();
+    };
+  }, [isAdminMode, triggerLiveToast]);
 
   const updateAdminPin = useCallback(async (newPin: string): Promise<boolean> => {
     const clean = newPin.trim();
@@ -796,6 +869,7 @@ export function useDeviceAuth({
     isAdminMode,
     setIsAdminMode,
     enableAdminMode,
+    enableAdminModeWithBiometrics,
     disableAdminMode,
     previewMember,
     setPreviewMember,

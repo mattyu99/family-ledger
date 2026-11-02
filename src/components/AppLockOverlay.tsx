@@ -40,7 +40,7 @@ export const AppLockOverlay: React.FC = () => {
       setShowPinInput(false);
       forceUnlockApp();
     } else {
-      showAlert('PIN 碼錯誤', '輸入之管理員安全碼不相符，請重新輸入！');
+      showAlert('PIN 碼錯誤', '輸入之安全碼不相符，請重新輸入！');
       setPinCode('');
     }
   };
@@ -84,8 +84,8 @@ export const AppLockOverlay: React.FC = () => {
             </View>
           ) : (
             <View style={styles.pinContainer}>
-              <Text style={[styles.pinPrompt, { color: colors.text.secondary }]} allowFontScaling={false}>
-                請輸入 4 碼管理員安全 PIN 碼：
+              <Text style={[styles.pinPrompt, { color: colors.text.secondary }]}>
+                請輸入 4 碼解鎖安全 PIN 碼：
               </Text>
               <TextInput
                 style={[

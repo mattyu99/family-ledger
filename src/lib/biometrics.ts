@@ -89,7 +89,7 @@ export const checkBiometricsCapability = async (): Promise<BiometricsCapability>
 export const authenticateWithBiometrics = async (
   promptMessage = '請驗證身分以檢視家庭財務隱私',
   fallbackLabel = '使用手機密碼驗證'
-): Promise<{ success: boolean; error?: string }> => {
+): Promise<{ success: boolean; hardwareUnavailable?: boolean; error?: string }> => {
   if (Platform.OS === 'web') {
     return { success: true };
   }
@@ -97,12 +97,22 @@ export const authenticateWithBiometrics = async (
   const nativeAuth = getNativeLocalAuth();
   if (!nativeAuth || typeof nativeAuth.authenticateAsync !== 'function') {
     return {
-      success: false,
-      error: '當前 APK 尚未編譯生物辨識原生模組，請使用 PIN 碼',
+      success: true,
+      hardwareUnavailable: true,
     };
   }
 
   try {
+    const hasHardware = typeof nativeAuth.hasHardwareAsync === 'function' ? await nativeAuth.hasHardwareAsync() : false;
+    const isEnrolled = typeof nativeAuth.isEnrolledAsync === 'function' ? await nativeAuth.isEnrolledAsync() : false;
+
+    if (!hasHardware || !isEnrolled) {
+      return {
+        success: true,
+        hardwareUnavailable: true,
+      };
+    }
+
     const result = await nativeAuth.authenticateAsync({
       promptMessage,
       fallbackLabel,
@@ -112,7 +122,7 @@ export const authenticateWithBiometrics = async (
 
     return {
       success: Boolean(result?.success),
-      error: result?.success ? undefined : result?.error,
+      error: result?.success ? undefined : (result?.error || '驗證未通過'),
     };
   } catch (err: any) {
     console.warn('[Biometrics] 驗證過程發生例外:', err);

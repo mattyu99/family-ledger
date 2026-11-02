@@ -327,6 +327,7 @@ interface LedgerContextType {
   isAdminMode: boolean;
   setIsAdminMode: (enabled: boolean) => void;
   enableAdminMode: (pin: string) => { success: boolean; message?: string };
+  enableAdminModeWithBiometrics: () => Promise<{ success: boolean; fallbackToPin?: boolean; message?: string }>;
   disableAdminMode: () => void;
   isAdminUnlocked: boolean;
   setIsAdminUnlocked: (unlocked: boolean) => void;
@@ -720,6 +721,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     isAdminMode,
     setIsAdminMode,
     enableAdminMode,
+    enableAdminModeWithBiometrics,
     disableAdminMode,
     previewMember,
     setPreviewMember,
@@ -2011,7 +2013,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (parsedUser && parsedUser.display_name) {
           setCurrentUser(parsedUser);
         }
-      } else if (targetLedger.userDisplayName) {
+      } else if (targetLedger.userDisplayName && currentUser?.display_name && targetLedger.userDisplayName.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase()) {
         setCurrentUser(prev => ({
           ...prev,
           display_name: targetLedger.userDisplayName!,
@@ -2376,28 +2378,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const isCreator = targetLedger.created_by === authUserId;
       const myDisplayName = (myMemberRow?.profiles as any)?.display_name;
 
-      // 尋找此裝置對應的成員：
-      // 1. 優先查本地為該帳本記憶之專屬成員 (${STORAGE_KEYS.CURRENT_USER}_${targetLedger.id})
-      // 2. 其次比對 authUserId 或去重名冊中同名之主要成員
-      // 3. 預設名冊首位
+      // 尋找此裝置對應的成員（按安全信賴等級由高至低嚴格比對）：
+      let isUnclaimedMember = false;
+
       const savedLedgerUserStr = await AsyncStorage.getItem(`${STORAGE_KEYS.CURRENT_USER}_${targetLedger.id}`);
       let targetSavedUser: Profile | null = null;
       if (savedLedgerUserStr) {
         try { targetSavedUser = JSON.parse(savedLedgerUserStr); } catch {}
       }
 
-      // 尋找此裝置對應的成員：
-      // 1. 優先查本地為該帳本記憶之專屬成員 (${STORAGE_KEYS.CURRENT_USER}_${targetLedger.id})
-      if (targetSavedUser) {
-        canonicalMe = dedupedMembers.find(
-          m => (isValidUUID(targetSavedUser?.id) && m.id === targetSavedUser?.id) ||
-               (targetSavedUser?.display_name && (m.display_name || '').trim().toLowerCase() === targetSavedUser.display_name.trim().toLowerCase())
-        );
-      }
-
-      // 2. 若尚未找到且使用者具備已綁定之 Google 信箱，優先在此帳本名冊中尋找綁定同信箱的受保護身分（例如在幸福家庭公帳中為「倉鼠」，在其他帳本中為「智爸」）
+      // 1. 最高信賴度：此裝置已登入 Google 帳號，且此帳本名冊中有綁定相同 Google 信箱的成員
       const userGoogleEmail = currentUser?.auth_email || targetSavedUser?.auth_email;
-      if (!canonicalMe && userGoogleEmail) {
+      if (userGoogleEmail) {
         canonicalMe = dedupedMembers.find(
           m => (m.auth_email || '').trim().toLowerCase() === userGoogleEmail.trim().toLowerCase() &&
                (!m.avatar_url || (!m.avatar_url.startsWith('http://') && !m.avatar_url.startsWith('https://')))
@@ -2406,57 +2398,99 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         );
       }
 
-      // 3. 若為建立者，對齊建立者 Profile (防止舊版本受污染的本地快取將創建者誤導至其他成員)
+      // 2. 次高信賴度：本機雲端 Session (authUserId) 為該帳本建立者，或在 ledger_members 中有直接綁定紀錄
       if (!canonicalMe && isCreator) {
         canonicalMe = dedupedMembers.find(m => m.id === authUserId);
       }
-
-      if (!canonicalMe) {
+      if (!canonicalMe && authUserId) {
         canonicalMe = dedupedMembers.find(
-          m => m.id === authUserId || (myDisplayName && (m.display_name || '').trim().toLowerCase() === myDisplayName.trim().toLowerCase())
+          m => m.id === authUserId || (myMemberRow && myMemberRow.user_id === m.id)
         );
       }
 
+      // 3. 本地記憶且與本機當前暱稱相同，或已通過身分鎖定比對之快取
+      if (!canonicalMe && targetSavedUser) {
+        const matched = dedupedMembers.find(
+          m => (isValidUUID(targetSavedUser?.id) && m.id === targetSavedUser?.id) ||
+               (targetSavedUser?.display_name && (m.display_name || '').trim().toLowerCase() === targetSavedUser.display_name.trim().toLowerCase())
+        );
+        // 🛡️ 安全防禦：如果本地記憶的成員是管理員 (owner/admin)，但本機既非 creator 也無 Google 信箱相符，
+        // 且此快取名稱與本機原本使用的稱謂不同（例如本機是「智爸」，快取卻被舊版 bug 寫成「洋洋」），
+        // 則判定為非法/受污染的快取，堅決拒絕繼承！
+        if (matched) {
+          const isTargetAdmin = matched.role === 'owner' || matched.role === 'admin' || targetLedger.created_by === matched.id;
+          const nameMatchesCurrent = currentUser?.display_name && (matched.display_name || '').trim().toLowerCase() === currentUser.display_name.trim().toLowerCase();
+          if (isTargetAdmin && !nameMatchesCurrent && !userGoogleEmail && !isCreator) {
+            console.warn(`[Security] 阻斷非法的管理員快取繼承: ${matched.display_name}`);
+          } else {
+            canonicalMe = matched;
+          }
+        }
+      }
+
+      // 4. 稱謂相符比對：若當前手機的 currentUser.display_name 在這個帳本的名冊中剛好存在同名成員 (例如在多本公帳都叫智爸)
+      if (!canonicalMe && currentUser?.display_name) {
+        const curName = (currentUser.display_name || '').trim().toLowerCase();
+        canonicalMe = dedupedMembers.find(
+          m => (m.display_name || '').trim().toLowerCase() === curName
+        );
+      }
+
+      // 🛡️ 安全核心防線：若以上嚴格比對皆未匹配，絕對嚴禁自動退回名冊首位（dedupedMembers[0]）！
+      // 否則會造成切換帳本時擅自冒用其他成員、甚至無痛繼承管理員特權的重大資安漏洞。
       if (!canonicalMe) {
-        canonicalMe = dedupedMembers[0];
+        isUnclaimedMember = true;
+        // 以當前手機的原稱謂（例如「智爸」）保持本機身分，角色一律為一般成員（訪客），絕不賦予管理員權限
+        canonicalMe = {
+          id: authUserId || generateUUID(),
+          display_name: currentUser?.display_name || '訪客',
+          avatar_url: currentUser?.avatar_url || '👤',
+          role: 'member',
+          is_locked: false,
+        };
       }
 
       // 跨裝置管理員身分統一辨識：
-      // 1. 本裝置為建立者 (isCreator)
-      // 2. 建立者的稱謂與本成員相同 (isCreatorByName，多裝置匿名帳號對齊)
-      // 3. 去重後的統一成員 (canonicalMe) 具備 owner/admin 權限 (例如在 Web 端已恢復權限)
-      // 4. 雲端名冊中存在同名紀錄且具備 owner/admin/created_by
       const creatorRow = activeMemberRows?.find((r: any) => r.user_id === targetLedger.created_by);
       const creatorName = ((creatorRow?.profiles as any)?.display_name || '').trim().toLowerCase();
-      const myName = (targetSavedUser?.display_name || myDisplayName || canonicalMe?.display_name || '').trim().toLowerCase();
-      const isCreatorByName = Boolean(creatorName && myName && creatorName === myName);
+      const myName = (canonicalMe?.display_name || '').trim().toLowerCase();
+      const isCreatorByName = !isUnclaimedMember && Boolean(creatorName && myName && creatorName === myName && isCreator);
 
-      const hasAdminByName = activeMemberRows?.some((r: any) => {
+      // 🛡️ 嚴格防止提權：未認領身分絕不可視為建立者
+      const isMeCreator = isCreator || isCreatorByName;
+
+      const myRow = !isUnclaimedMember
+        ? activeMemberRows?.find((r: any) => r.user_id === authUserId || (canonicalMe && r.user_id === canonicalMe.id))
+        : null;
+
+      const hasAdminByName = !isUnclaimedMember && activeMemberRows?.some((r: any) => {
         const rName = ((r.profiles as any)?.display_name || '').trim().toLowerCase();
         return (r.role === 'owner' || r.role === 'admin' || r.user_id === targetLedger.created_by) && rName && rName === myName;
       });
 
-      const isMeCreator = isCreator || isCreatorByName || (canonicalMe ? targetLedger.created_by === canonicalMe.id : false);
-      const myRow = activeMemberRows?.find((r: any) => r.user_id === authUserId || (canonicalMe && r.user_id === canonicalMe.id));
-      const isMeAdmin = isMeCreator || (canonicalMe ? (canonicalMe.role === 'owner' || canonicalMe.role === 'admin') : false) || Boolean(hasAdminByName);
+      const isMeAdmin = !isUnclaimedMember && (
+        isMeCreator ||
+        (canonicalMe ? (canonicalMe.role === 'owner' || canonicalMe.role === 'admin') : false) ||
+        Boolean(hasAdminByName)
+      );
 
-      let role: 'owner' | 'admin' | 'member' = isMeAdmin
-        ? 'owner'
-        : ((myRow?.role as 'owner' | 'admin' | 'member') || (canonicalMe?.role as any) || 'member');
+      let role: 'owner' | 'admin' | 'member' = isMeAdmin ? 'owner' : 'member';
 
       // 0 管理員自癒保護：若雲端帳本全體成員皆無任何管理員 (0 admin)，且本機曾記錄為管理員，自動救援恢復為 owner
-      const hasAnyAdminInLedger = dedupedMembers.some(m => m.role === 'owner' || m.role === 'admin' || targetLedger.created_by === m.id);
-      const savedLocalRole = await AsyncStorage.getItem(STORAGE_KEYS.USER_ROLE);
-      if (!hasAnyAdminInLedger && (savedLocalRole === 'owner' || savedLocalRole === 'admin')) {
-        role = 'owner';
+      if (!isUnclaimedMember) {
+        const hasAnyAdminInLedger = dedupedMembers.some(m => m.role === 'owner' || m.role === 'admin' || targetLedger.created_by === m.id);
+        const savedLocalRole = await AsyncStorage.getItem(STORAGE_KEYS.USER_ROLE);
+        if (!hasAnyAdminInLedger && (savedLocalRole === 'owner' || savedLocalRole === 'admin')) {
+          role = 'owner';
+        }
       }
 
-      // 若確認身分為管理員，但本機裝置在雲端的 ledger_members 紀錄仍為 member，自動同步升級為 owner (多裝置權限永久對齊)
-      if (role === 'owner' && myMemberRow && myMemberRow.role !== 'owner' && isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+      // 若未認領訪客，嚴禁發送 Supabase 提權更新
+      if (!isUnclaimedMember && role === 'owner' && myMemberRow && myMemberRow.role !== 'owner' && isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
         supabase.from('ledger_members').update({ role: 'owner' }).eq('ledger_id', targetLedger.id).eq('user_id', authUserId).then();
       }
 
-      if (canonicalMe && role === 'owner') {
+      if (canonicalMe && role === 'owner' && !isUnclaimedMember) {
         canonicalMe.role = 'owner';
         dedupedMembers = dedupedMembers.map(m => m.id === canonicalMe?.id || ((m.display_name || '').trim().toLowerCase() === myName) ? { ...m, role: 'owner' as const } : m);
         setMembers(dedupedMembers);
@@ -2471,16 +2505,30 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const activeMe = canonicalMe;
         setCurrentUser(activeMe);
         await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(activeMe));
-        await AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${targetLedger.id}`, JSON.stringify(activeMe));
+        // 關鍵：未認領身分絕不寫入該帳本專屬記憶快取！避免將未認領狀態或冒用狀態固化
+        if (!isUnclaimedMember) {
+          await AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${targetLedger.id}`, JSON.stringify(activeMe));
+        } else {
+          // 清除該帳本可能殘留的受污染快取
+          await AsyncStorage.removeItem(`${STORAGE_KEYS.CURRENT_USER}_${targetLedger.id}`);
+        }
         setLedgers(prev => prev.map(l => l.id === targetLedger.id ? {
           ...l,
-          userDisplayName: activeMe.display_name,
-          userAvatar: activeMe.avatar_url,
+          userDisplayName: isUnclaimedMember ? undefined : activeMe.display_name,
+          userAvatar: isUnclaimedMember ? undefined : activeMe.avatar_url,
+          userRole: role,
         } : l));
       }
 
+      if (isUnclaimedMember) {
+        safeAlert(
+          '未認領公帳身分提示',
+          `您已進入「${targetLedger.name}」。\n\n您在此帳本尚未建立或認領專屬成員身分，目前以「${canonicalMe.display_name}（訪客）」身分瀏覽。\n\n如需代表特定成員記帳或恢復管理員權限，請至「家庭設定」選擇身分認領或輸入安全 PIN 碼。`
+        );
+      }
+
       // 若身為建立者但雲端成員身分被誤設為 member，自動在雲端校正回 owner
-      if (isMeCreator && myRow && myRow.role !== 'owner' && isConfigured) {
+      if (!isUnclaimedMember && isMeCreator && myRow && myRow.role !== 'owner' && isConfigured) {
         supabase
           .from('ledger_members')
           .update({ role: 'owner' })
@@ -5981,7 +6029,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         if (targetUser && targetUser.display_name) {
           setCurrentUser(targetUser);
-        } else if (targetLedger?.userDisplayName) {
+        } else if (targetLedger?.userDisplayName && currentUser?.display_name && targetLedger.userDisplayName.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase()) {
           setCurrentUser(prev => ({
             ...prev,
             display_name: targetLedger!.userDisplayName!,
@@ -8244,6 +8292,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         isAdminMode,
         setIsAdminMode,
         enableAdminMode,
+        enableAdminModeWithBiometrics,
         disableAdminMode,
         isAdminUnlocked: isAdminMode,
         setIsAdminUnlocked: setIsAdminMode,

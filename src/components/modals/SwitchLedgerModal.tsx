@@ -103,18 +103,27 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
           const userStr = await AsyncStorage.getItem(`@family_ledger_current_user_${l.id}`);
           if (userStr) {
             const u = JSON.parse(userStr);
+            // 🛡️ 安全防護：若快取的成員名稱與當前手機使用者名稱完全不同，且為管理員身分，不盲目信賴
             if (u.display_name) {
-              map[l.id] = { displayName: u.display_name, avatarUrl: u.avatar_url };
-              continue;
+              const nameMatches = currentUser?.display_name && u.display_name.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase();
+              const hasMatchingEmail = currentUser?.auth_email && u.auth_email && u.auth_email.trim().toLowerCase() === currentUser.auth_email.trim().toLowerCase();
+              if (nameMatches || hasMatchingEmail || !currentUser?.display_name) {
+                map[l.id] = { displayName: u.display_name, avatarUrl: u.avatar_url };
+                continue;
+              }
             }
           }
           const membersStr = await AsyncStorage.getItem(`@family_ledger_members_${l.id}`);
           if (membersStr) {
             const mems = JSON.parse(membersStr);
             if (Array.isArray(mems) && mems.length > 0) {
-              const adminMem = mems.find((m: any) => m.role === 'owner' || m.role === 'admin');
-              if (adminMem && (l.userRole === 'owner' || l.userRole === 'admin')) {
-                map[l.id] = { displayName: adminMem.display_name, avatarUrl: adminMem.avatar_url };
+              // 🛡️ 嚴格安全比對：僅當名冊中真正存在與此手機 Google 信箱或當前稱謂相符之成員時才顯示，絕不擅自抓取首位管理員冒名頂替！
+              const matchedMem = mems.find((m: any) =>
+                (currentUser?.auth_email && m.auth_email && m.auth_email.trim().toLowerCase() === currentUser.auth_email.trim().toLowerCase()) ||
+                (currentUser?.display_name && m.display_name && m.display_name.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase())
+              );
+              if (matchedMem) {
+                map[l.id] = { displayName: matchedMem.display_name, avatarUrl: matchedMem.avatar_url };
                 continue;
               }
             }
@@ -413,10 +422,15 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
                 <Text style={styles.label}>📚 您已加入的帳本清單 (點擊可切換)</Text>
                 {ledgers.map((l) => {
                   const isCurrent = l.id === currentLedger.id;
-                  const isAdmin = l.userRole === 'owner' || l.userRole === 'admin';
                   const userInfo = ledgerUserMap[l.id];
-                  const userDisplayName = l.userDisplayName || userInfo?.displayName || (isCurrent ? currentUser.display_name : '');
-                  const userAvatar = l.userAvatar || userInfo?.avatarUrl || (isCurrent ? currentUser.avatar_url : '');
+                  const isBound = Boolean(isCurrent || (userInfo && userInfo.displayName));
+                  const userDisplayName = isCurrent
+                    ? currentUser.display_name
+                    : (userInfo?.displayName || (l.id === currentLedger.id ? l.userDisplayName : ''));
+                  const userAvatar = isCurrent
+                    ? currentUser.avatar_url
+                    : (userInfo?.avatarUrl || (l.id === currentLedger.id ? l.userAvatar : ''));
+                  const isAdmin = isBound && (l.userRole === 'owner' || l.userRole === 'admin');
                   const txCount = ledgerTxCountMap[l.id];
 
                   return (
@@ -433,9 +447,13 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
                         activeOpacity={isCurrent ? 1 : 0.7}
                         onPress={() => {
                           if (isCurrent) return;
+                          const targetUserMsg = isBound && userDisplayName
+                            ? `切換後您在此帳本的稱謂為：${userAvatar ? `${userAvatar} ` : ''}${userDisplayName}`
+                            : `※ 您在此帳本中尚未建立或認領專屬成員身分，切換後將以「${currentUser.display_name || '訪客'}」訪客身分進入。`;
+
                           showConfirm(
                             '切換家庭公帳',
-                            `確定要切換至「${l.name}」嗎？${userDisplayName ? `\n\n切換後您在此帳本的稱謂為：${userAvatar ? `${userAvatar} ` : ''}${userDisplayName}` : ''}`,
+                            `確定要切換至「${l.name}」嗎？\n\n${targetUserMsg}`,
                             async () => {
                               await switchLedgerById(l.id);
                               onClose();
@@ -499,20 +517,27 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
 
                         {/* 第二列：身分 + 稱謂 + 交易總筆數（全寬度單行呈現） */}
                         <View style={styles.ledgerSubRow}>
-                          <View style={[styles.roleBadge, isAdmin ? styles.roleBadgeAdmin : styles.roleBadgeMember]}>
-                            <Text style={[styles.roleBadgeText, isAdmin ? styles.roleBadgeTextAdmin : styles.roleBadgeTextMember]}>
-                              {isAdmin ? '👑 管理員' : '👤 成員'}
+                          <View style={[styles.roleBadge, !isBound ? styles.roleBadgeGuest : (isAdmin ? styles.roleBadgeAdmin : styles.roleBadgeMember)]}>
+                            <Text style={[styles.roleBadgeText, !isBound ? styles.roleBadgeTextGuest : (isAdmin ? styles.roleBadgeTextAdmin : styles.roleBadgeTextMember)]}>
+                              {!isBound ? '⚠️ 訪客 (未認領)' : (isAdmin ? '👑 管理員' : '👤 成員')}
                             </Text>
                           </View>
 
-                          {userDisplayName ? (
+                          {isBound && userDisplayName ? (
                             <>
                               <Text style={styles.subRowBullet}>•</Text>
                               <Text style={styles.userTitleText} numberOfLines={1}>
                                 {userAvatar ? `${userAvatar} ` : ''}{userDisplayName}
                               </Text>
                             </>
-                          ) : null}
+                          ) : (
+                            <>
+                              <Text style={styles.subRowBullet}>•</Text>
+                              <Text style={[styles.userTitleText, { color: isDark ? '#9CA3AF' : '#6B7280', fontStyle: 'italic' }]}>
+                                尚未綁定專屬成員
+                              </Text>
+                            </>
+                          )}
 
                           <Text style={styles.subRowBullet}>•</Text>
                           <Text style={styles.txCountText}>
@@ -873,6 +898,9 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     roleBadgeMember: {
       backgroundColor: isDark ? colors.background.card : '#F3F4F6',
     },
+    roleBadgeGuest: {
+      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2',
+    },
     roleBadgeText: {
       fontSize: 11,
       fontWeight: '700',
@@ -882,6 +910,9 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     },
     roleBadgeTextMember: {
       color: colors.text.secondary,
+    },
+    roleBadgeTextGuest: {
+      color: isDark ? '#FCA5A5' : '#DC2626',
     },
     subRowBullet: {
       fontSize: 10,

@@ -117,6 +117,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     realIsOwner,
     isAdminMode,
     disableAdminMode,
+    enableAdminModeWithBiometrics,
     memberDevices,
     currentDeviceId,
     getMemberById,
@@ -358,6 +359,26 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
         disableAdminMode();
       }
     );
+  };
+
+  // 🛡️ 驗證指紋/生物辨識切換為管理員模式 (Web 端或無硬體自動降級使用安全碼彈窗)
+  const handleSwitchToAdminMode = async () => {
+    if (Platform.OS === 'web') {
+      onOpenAdminModeModal();
+      return;
+    }
+    const res = await enableAdminModeWithBiometrics();
+    if (res.success) {
+      showAlert(
+        '👑 管理員模式已啟用',
+        '您已成功切換為管理員模式！\n管理特權已解除隱藏，可自由維護帳本與成員。\n\n※ 為保護安全，若 10 分鐘無操作或跳出 App 將自動鎖定退回日常模式。'
+      );
+    } else if (res.fallbackToPin) {
+      showAlert('啟用安全碼驗證', res.message || '請輸入帳本應急救援安全碼');
+      onOpenAdminModeModal();
+    } else {
+      showAlert('無法切換為管理員', res.message || '身分驗證失敗');
+    }
   };
 
   // 取得成員連線裝置清單
@@ -612,7 +633,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           })}
         </View>
 
-        {/* 若此手機目前不是管理員，提供 PIN 碼驗證升級入口 */}
+        {/* 若此手機目前不是管理員，提供狀態說明（若帳本已有管理員，杜絕自行輸入 8888 提權之漏洞） */}
         {!realIsOwner && (
           <View style={[
             styles.claimAdminBanner,
@@ -634,19 +655,21 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                 !members.some(m => m.role === 'owner' || m.role === 'admin') && { color: isDark ? '#FCA5A5' : '#991B1B' }
               ]}>
                 {!members.some(m => m.role === 'owner' || m.role === 'admin')
-                  ? '請點擊右側輸入管理員 PIN 碼（預設 8888），即可立即恢復並將您設為管理員！'
-                  : '若需恢復管理員權限，可輸入 4 位數 PIN 碼立即取回/升級為管理員'}
+                  ? '帳本處於異常無管理員狀態，請點擊右側輸入應急安全碼恢復管理員！'
+                  : '若需管理帳本與成員，請由現任管理員在成員卡片中將您設為共同管理員。'}
               </Text>
             </View>
-            <TouchableOpacity
-              style={[
-                styles.claimAdminBannerBtn,
-                !members.some(m => m.role === 'owner' || m.role === 'admin') && { backgroundColor: '#DC2626' }
-              ]}
-              onPress={onOpenClaimAdminModal}
-            >
-              <Text style={styles.claimAdminBannerBtnText}>🔐 升為管理員</Text>
-            </TouchableOpacity>
+            {!members.some(m => m.role === 'owner' || m.role === 'admin') && (
+              <TouchableOpacity
+                style={[
+                  styles.claimAdminBannerBtn,
+                  { backgroundColor: '#DC2626' }
+                ]}
+                onPress={onOpenClaimAdminModal}
+              >
+                <Text style={styles.claimAdminBannerBtnText}>救援管理員</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </View>
@@ -728,13 +751,13 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             </View>
           )}
 
-          {/* 管理員安全 PIN 碼管理 (僅 Owner 可見) */}
+          {/* 帳本應急救援安全碼 (僅 Owner 可見) */}
           {isOwner && (
             <View style={[styles.pinSectionWrapper, { borderTopColor: colors.border.default }]}>
               <View style={styles.pinHeaderRow}>
-                <Text style={[styles.pinHeaderTitle, { color: colors.text.primary }]}>🔐 管理員安全 PIN 碼</Text>
+                <Text style={[styles.pinHeaderTitle, { color: colors.text.primary }]}>🚨 帳本應急救援安全碼</Text>
                 <Text style={[styles.pinHeaderDesc, { color: colors.text.secondary }]}>
-                  換手機或新電腦以「管理員」身分認領時需輸入此碼，防範他人冒充
+                  僅於帳本發生異常、全體管理員皆不在線時供緊急救援使用。平時管理員請使用指紋/Face ID 或 Google 帳號管理。
                 </Text>
               </View>
 
@@ -1901,8 +1924,8 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
               </Text>
               <Text style={[styles.sudoCardDesc, { color: colors.text.secondary }]}>
                 {isAdminMode
-                  ? '已解除管理專屬按鈕限制，可自由維護帳本、管理成員與資料庫備份。完成後建議切回日常成員模式。'
-                  : '管理員專屬按鈕已自動隱藏，日常記帳更安心防誤觸。需要管理時請輸入 PIN 碼切換。'}
+                  ? '已解除管理專屬按鈕限制，可自由維護帳本、管理成員與資料庫備份。10 分鐘無操作或跳出 App 將自動鎖定。'
+                  : '管理員專屬按鈕已自動隱藏，日常記帳更安心防誤觸。點擊右側按鈕進行生物辨識即可切換。'}
               </Text>
             </View>
           </View>
@@ -1920,11 +1943,11 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             ) : (
               <TouchableOpacity
                 style={[styles.sudoCardBtn, styles.sudoCardBtnUnlock, { flex: 1 }]}
-                onPress={onOpenAdminModeModal}
+                onPress={handleSwitchToAdminMode}
                 activeOpacity={0.7}
               >
                 <Text style={[styles.sudoCardBtnText, styles.sudoCardBtnTextUnlock]}>
-                  🔐 輸入 PIN 碼切換為管理員模式
+                  {Platform.OS === 'web' ? '🔐 輸入安全碼切換為管理員模式' : '🔐 驗證指紋切換為管理員模式'}
                 </Text>
               </TouchableOpacity>
             )}

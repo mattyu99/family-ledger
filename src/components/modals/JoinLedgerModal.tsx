@@ -115,10 +115,10 @@ export const JoinLedgerModal: React.FC<JoinLedgerModalProps> = ({
   const handleClaimJoin = async () => {
     if (!selectedClaimMember) return;
     const isClaimingAdmin = selectedClaimMember.role === 'owner' || selectedClaimMember.role === 'admin';
-    if (isClaimingAdmin && !adminPinInput.trim()) {
+    if (isClaimingAdmin && !selectedClaimMember.is_locked) {
       showAlert(
-        '請輸入管理員 PIN 碼',
-        '此身分具備管理員特權，請輸入 4 位數安全 PIN 碼（預設 8888）。\n\n若您是一般家庭成員，請直接點選其他成員或建立新身分。'
+        '管理員身分受保護',
+        `「${selectedClaimMember.display_name}」為管理員身分，不開放透過一般邀請碼直接認領。\n\n請切換至上方「建立新成員」以一般成員加入，加入後再由現任管理員為您開啟共同管理權限；若您是換新手機，請使用「以 Google 帳號認領恢復」。`
       );
       return;
     }
@@ -285,22 +285,13 @@ export const JoinLedgerModal: React.FC<JoinLedgerModalProps> = ({
                 {selectedClaimMember && (selectedClaimMember.role === 'owner' || selectedClaimMember.role === 'admin') && !selectedClaimMember.is_locked && (
                   <View style={styles.adminPinPromptBox}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                      <Text style={{ fontSize: 16, marginRight: 6 }}>🔐</Text>
-                      <Text style={styles.adminPinPromptTitle}>管理員身分安全驗證</Text>
+                      <Text style={{ fontSize: 16, marginRight: 6 }}>🔒</Text>
+                      <Text style={styles.adminPinPromptTitle}>管理員身分受保護</Text>
                     </View>
                     <Text style={styles.adminPinPromptDesc}>
-                      「{selectedClaimMember.display_name}」具備管理員權限，請輸入 4 位數安全 PIN 碼（預設為 8888）：
+                      「{selectedClaimMember.display_name}」具備管理員權限。為杜絕他人冒名頂替，管理員身分不開放以邀請碼直接認領。
+                      {'\n\n'}請切換至上方「建立新成員」以一般成員加入，加入後再由現任管理員為您開啟共同管理權限；若您是換新手機，請於首頁使用「以 Google 帳號認領恢復」。
                     </Text>
-                    <TextInput
-                      style={styles.adminPinInput}
-                      placeholder="請輸入管理員 PIN 碼 (預設 8888)"
-                      placeholderTextColor={isDark ? colors.text.muted : '#9CA3AF'}
-                      value={adminPinInput}
-                      onChangeText={setAdminPinInput}
-                      keyboardType="number-pad"
-                      maxLength={8}
-                      secureTextEntry
-                    />
                   </View>
                 )}
 
@@ -331,13 +322,18 @@ export const JoinLedgerModal: React.FC<JoinLedgerModalProps> = ({
 
                 {!selectedClaimMember?.is_locked && (
                   <TouchableOpacity
-                    style={[styles.submitBtn, (!selectedClaimMember || isJoining) && { opacity: 0.6 }]}
-                    disabled={!selectedClaimMember || isJoining}
+                    style={[
+                      styles.submitBtn,
+                      (!selectedClaimMember || isJoining || Boolean(selectedClaimMember.role === 'owner' || selectedClaimMember.role === 'admin')) && { opacity: 0.6 }
+                    ]}
+                    disabled={!selectedClaimMember || isJoining || Boolean(selectedClaimMember.role === 'owner' || selectedClaimMember.role === 'admin')}
                     onPress={handleClaimJoin}
                   >
                     <Text style={styles.submitBtnText}>
                       {isJoining
                         ? '正在認領並進入...'
+                        : selectedClaimMember && (selectedClaimMember.role === 'owner' || selectedClaimMember.role === 'admin')
+                        ? `🔒 管理員身分受保護 (不可直接認領)`
                         : selectedClaimMember
                         ? `🚀 以「${selectedClaimMember.display_name}」身分進入帳本`
                         : '請先點選上方的身分'}

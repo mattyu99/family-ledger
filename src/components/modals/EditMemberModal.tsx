@@ -17,6 +17,7 @@ import { AvatarPicker } from '../AvatarPicker';
 import { MemberAvatar } from '../MemberAvatar';
 import { showAlert, showConfirm } from '../../lib/alert';
 import { getDevicePlatformIcon, formatDeviceRelativeTime } from '../../lib/device';
+import { authenticateWithBiometrics } from '../../lib/biometrics';
 
 export interface EditMemberModalProps {
   visible: boolean;
@@ -59,6 +60,7 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
     startMemberPreview,
     startCurrentMemberPreview,
     exitMemberPreview,
+    switchCurrentUser,
   } = useLedger();
 
   const [nameInput, setNameInput] = useState('');
@@ -487,14 +489,14 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
               </View>
             )}
 
-            {/* 角色預覽與測試視角：僅管理員且對象非自己時可使用 */}
+            {/* 角色預覽與身分切換：僅管理員且對象非自己時可使用 */}
             {realIsOwner && !isCurrent && (
               <View style={styles.modalMemberAdminSection}>
                 <View style={styles.memberSectionDivider} />
 
-                <Text style={styles.formLabel}>👀 測試與角色體驗</Text>
+                <Text style={styles.formLabel}>👀 測試與身分管理</Text>
                 <Text style={styles.modalSubHint}>
-                  您可以暫時切換為「{targetMember.display_name}」的視角，測試各項功能對一般成員的影響。測試中隨時可在頂部橫幅一鍵切回管理員。
+                  您可以暫時切換為「{targetMember.display_name}」的視角測試功能，或正式將本機身分切換為此成員。
                 </Text>
                 <TouchableOpacity
                   style={styles.modalPreviewBtn}
@@ -508,6 +510,29 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
                   }}
                 >
                   <Text style={styles.modalPreviewBtnText}>👀 以此成員視角預覽 (測試功能)</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.modalPreviewBtn, { marginTop: 8, backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF', borderColor: isDark ? '#6366F1' : '#C7D2FE' }]}
+                  onPress={() => {
+                    showConfirm(
+                      '切換本機身分',
+                      `確定要將本機在此帳本的身分切換為「${targetMember.display_name}」嗎？\n\n切換後，此手機記帳付款人與生活待辦將對齊「${targetMember.display_name}」。`,
+                      async () => {
+                        const res = await switchCurrentUser(targetMember);
+                        if (res.success) {
+                          onClose();
+                          showAlert('切換成功', `本機身分已成功切換為「${targetMember.display_name}」！`);
+                        } else {
+                          showAlert('切換失敗', res.message || '無法切換身分');
+                        }
+                      }
+                    );
+                  }}
+                >
+                  <Text style={[styles.modalPreviewBtnText, { color: isDark ? '#A5B4FC' : '#4338CA' }]}>
+                    📱 將本機身分切換為此成員
+                  </Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -534,6 +559,11 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
                         '取消管理員權限',
                         `確定要將「${targetMember.display_name}」降為一般成員嗎？`,
                         async () => {
+                          const auth = await authenticateWithBiometrics('請驗證指紋以變更管理員權限');
+                          if (!auth.success) {
+                            showAlert('驗證未通過', auth.error || '生物辨識驗證未通過，無法變更權限');
+                            return;
+                          }
                           await updateMemberRole(targetMember.id, 'member');
                           onClose();
                           showAlert('更新成功', `已將「${targetMember.display_name}」降為一般成員。`);
@@ -544,6 +574,11 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
                         '設為共同管理員',
                         `確定要將「${targetMember.display_name}」設為這本帳本的共同管理員嗎？\n成為管理員後，該成員也可以刪除成員並管理家庭邀請碼。`,
                         async () => {
+                          const auth = await authenticateWithBiometrics('請驗證指紋以指派共同管理員');
+                          if (!auth.success) {
+                            showAlert('驗證未通過', auth.error || '生物辨識驗證未通過，無法指派共同管理員');
+                            return;
+                          }
                           await updateMemberRole(targetMember.id, 'owner');
                           onClose();
                           showAlert('設定成功', `已將「${targetMember.display_name}」設為共同管理員！`);
