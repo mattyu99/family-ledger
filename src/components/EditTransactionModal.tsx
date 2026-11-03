@@ -1554,11 +1554,19 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   </View>
                 )}
 
-                {/* 💳 連動支出紀錄區塊 (辦妥時顯示) */}
+                {/* 💳 連動紀錄區塊 (辦妥時顯示) */}
                 {isSettled && (
                   <View style={styles.linkedExpenseContainer}>
                     <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>
-                      {linkedExpense?.type === 'income' ? '💵 連動收入紀錄' : linkedExpense?.type === 'transfer' ? '⇄ 連動轉帳紀錄' : linkedExpense?.type === 'memo' ? '📝 連動接力待辦' : '💳 連動支出紀錄'}
+                      {linkedExpense
+                        ? (linkedExpense.type === 'income'
+                          ? '💵 連動收入紀錄'
+                          : linkedExpense.type === 'transfer'
+                          ? '⇄ 連動轉帳紀錄'
+                          : linkedExpense.type === 'memo'
+                          ? '📝 連動接力待辦'
+                          : '💳 連動支出紀錄')
+                        : '💰 連動記帳 / 轉帳 / 接力待辦'}
                     </Text>
                     {linkedExpense ? (
                       <View style={styles.linkedExpenseCard}>
@@ -1635,11 +1643,11 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                           onPress={handleLinkExpensePress}
                           activeOpacity={0.8}
                         >
-                          <Text style={styles.linkExpenseBtnText}>
-                            💳 連動記一筆支出 (將此採買計入公帳)
+                          <Text style={styles.linkExpenseBtnText} maxFontSizeMultiplier={1.15}>
+                            💰 連動記帳 / 轉帳 / 接力待辦
                           </Text>
-                          <Text style={styles.linkExpenseBtnDesc}>
-                            自動預填此待辦內容，完成後雙向綁定紀錄
+                          <Text style={styles.linkExpenseBtnDesc} maxFontSizeMultiplier={1.08}>
+                            支援支出、收入、轉帳發零用錢或接續下一則待辦，雙向綁定紀錄
                           </Text>
                         </TouchableOpacity>
                       )
