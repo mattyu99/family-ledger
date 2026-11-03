@@ -1,0 +1,63 @@
+name: Automated Quality & E2E Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Run Unit, RPC & Playwright E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: TypeScript Typecheck
+        run: npx tsc --noEmit
+
+      - name: Expo Lint Check
+        run: npx expo lint
+
+      - name: Run Core Logic Unit Tests (Jest)
+        run: npm run test:unit
+
+      - name: Run Supabase RPC Security Integration Tests
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || 'https://babpppaxzszieropeouh.supabase.co' }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_nxHZUg651sBAJ387bZgZIQ_GuEfpAuZ' }}
+          LEDGER_ID: ${{ secrets.LEDGER_ID || 'ab10fe7e-d0d8-4bc9-b338-24620d26d924' }}
+        run: npm run test:rpc
+
+      - name: Build Web Bundle
+        run: npm run build:web
+
+      - name: Verify Web Bundle Output Integrity
+        run: node scripts/test-web-build.mjs
+
+      - name: Install Playwright Browsers & OS Dependencies
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright Web E2E Tests
+        run: npx playwright test
+
+      - name: Upload Playwright Test Report Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14

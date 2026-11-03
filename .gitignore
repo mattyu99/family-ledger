@@ -44,3 +44,8 @@ yarn-error.*
 # local data & backup files
 *.csv
 *_backup.json
+
+# test outputs
+playwright-report/
+test-results/
+
