@@ -53,26 +53,26 @@ const GUIDE_ITEMS: GuideItem[] = [
   },
   {
     icon: '📋',
-    title: '3. 待辦採買清單怎麼連動公帳？',
-    tag: '一鍵省時',
+    title: '3. 待辦採買與全模式連動入帳',
+    tag: '全模式連動',
     tagBg: '#DCFCE7',
     tagColor: '#166534',
     steps: [
-      '在待辦清單中採買完成後，直接點擊該待辦項目的勾選圓圈。',
-      '彈出確認視窗，可直接選擇「連動記帳至公帳」，自動帶入品項名稱與預估金額。',
-      '無需重複手動鍵入，一邊採買、一邊打勾、一邊完成家庭記帳！',
+      '在待辦清單中採買或差事辦妥後，直接點擊該待辦項目的勾選圓圈。',
+      '彈出辦妥確認視窗，可直接選擇「💰 連動記帳入帳」，支援支出、收入、轉帳發零用錢或接力待辦。',
+      '自動帶入品項名稱與預填內容，儲存後雙向智慧綁定，卡片自適應彩色膠囊跳轉！',
     ],
   },
   {
     icon: '🚌',
-    title: '4. 悠遊卡儲值加值',
+    title: '4. 悠遊卡儲值加值與累加鍵',
     tag: '動態出資',
     tagBg: '#FEF3C7',
     tagColor: '#92400E',
     steps: [
-      '在首頁帳戶專區點開悠遊卡，點「＋加值」；無論超商現金加值，或是用悠遊付 App 靠卡加值，皆可如實記錄出資管道。',
-      '自由選擇加值出資方式（悠遊付、街口支付、銀行轉帳或信用卡）。',
-      '系統自動扣抵出資管道並增加悠遊卡可用餘額，對帳絕無差額。',
+      '在首頁帳戶專區點開悠遊卡，點「＋加值」；超商現金加值或悠遊付 App 靠卡加值皆可如實記錄。',
+      '支援 +$100 ~ +$1000 快捷金額多重累加計算與一鍵「清除」歸零鍵。',
+      '自由選擇加值出資方式（現金、悠遊付、街口、銀行轉帳或信用卡），自動扣抵出資並增加卡片可用餘額。',
     ],
   },
   {
@@ -100,38 +100,39 @@ const GUIDE_ITEMS: GuideItem[] = [
   },
   {
     icon: '💡',
-    title: '7. 水電瓦斯固定帳單怎麼管理？',
-    tag: '週期扣款',
+    title: '7. 水電瓦斯固定帳單與 7 天滾動預告',
+    tag: '滾動預警',
     tagBg: '#CCFBF1',
     tagColor: '#115E59',
     steps: [
-      '進入「帳單支付」或「家庭設定」➔「固定週期帳單」。',
-      '建立單月/雙月繳的水電、瓦斯、電信、房租或訂閱費，支援到期日前自動提醒。',
-      '收到繳費單時，點選待繳清單中的「一鍵確認入帳」即刻入帳。',
+      '進入「帳單支付」➔「⚙️ 管理規則」，建立單月/雙月繳的水電、瓦斯、電信、房租或訂閱費。',
+      '系統首創滾動未來 7 天時間軸，唯有進入扣款前 7 天或逾期才會適時預警，平日絕無虛驚紅點。',
+      '收到繳費單時，點選待繳清單中的「一鍵確認入帳」即刻轉為公帳支出並自動推進下一期。',
     ],
   },
   {
     icon: '🛡️',
-    title: '8. 備份與安全 PIN 碼',
-    tag: '隱私守護',
+    title: '8. 6 大全要素封存備份與安全 PIN 碼',
+    tag: '資料自主',
     tagBg: '#FFE4E6',
     tagColor: '#9F1239',
     steps: [
-      '「家庭設定」提供 6 大要素全量備份，隨時將帳本資料匯出存檔或換機還原。',
+      '「家庭設定」提供明細、成員、分類、卡片、週期與付款方式 6 大要素全量封存匯出。',
+      '支援安全合併還原（依 ID 自動去重，絕不覆蓋最新帳目）與全覆蓋還原。',
       '具備 4 位數安全 PIN 碼保護機制（預設 8888），防止誤刪重要家庭名冊或敏感帳本。',
     ],
   },
   {
     icon: '🧾',
-    title: '9. 發票雙碼掃描、防重複防呆與全自動對獎',
+    title: '9. 發票雙碼掃描、防重複與對獎中心',
     tag: '智慧對獎',
     tagBg: '#FEF3C7',
     tagColor: '#B45309',
     steps: [
-      '記帳時點擊「📷 掃描發票」，將鏡頭同時對準電子發票左右雙 QR Code，秒速自動帶入號碼、金額、日期、店家與長商品明細。',
-      '具備全帳本「發票重複防呆」偵測：無論掃描、截圖或手動輸入，若全家人已記過相同發票立即顯示警示並於儲存時跳出防呆提醒，避免重複記帳與重複對獎。',
-      '開獎號碼全自動同步：逢開獎日系統 100% 全自動連線財政部抓取最新中獎號碼並快取至本機，打開 App 即刻自動比對全量歷史發票！',
-      '明細卡片即時亮起中獎徽章，篩選列提供「發票對獎中心」查看期別獎號與「一鍵兌領入帳」！',
+      '記帳時點擊「📷 掃描發票」，對準電子發票左右雙 QR Code，秒速帶入號碼、金額、店家與長商品明細。',
+      '全帳本重複發票即時防呆警告，杜絕夫妻家人重複記同張發票與重複兌獎。',
+      '開獎日 100% 全自動同步財政部官方中獎號碼，自動比對全量發票並標註彩色中獎徽章。',
+      '「發票對獎中心」支援「全部 / 我的」視角秒切、期別拖曳回溯與「一鍵兌領入帳」！',
     ],
   },
   {
@@ -194,6 +195,30 @@ const GUIDE_ITEMS: GuideItem[] = [
       '每日 21:30 LINE 收支日報同步附帶待辦提醒與帳單標籤，全家群組溫馨提醒。',
     ],
   },
+  {
+    icon: '📱',
+    title: '15. Android 桌面 3D 快捷與 4 則待辦小工具',
+    tag: '桌面小工具',
+    tagBg: '#E0F2FE',
+    tagColor: '#0369A1',
+    steps: [
+      '支援 2x2 快捷記帳大圖示小工具（記支出、掃發票、記收入、隨手記），3D 立體黏土質感滿版無留白。',
+      '支援 4x2 生活手帳待辦小工具，桌面常駐 4 則最急生活備忘，點選任一則一秒直達 App 辦妥確認彈窗。',
+      '小工具右上角附帶專屬「🔄」手動刷新鈕，且 App 內任何更新返回桌面皆會秒級自動重繪。',
+    ],
+  },
+  {
+    icon: '🔤',
+    title: '16. 全域字型自訂與長輩大字模式',
+    tag: '長輩模式',
+    tagBg: '#F3E8FF',
+    tagColor: '#6B21A8',
+    steps: [
+      '前往「家庭設定」➔「字型大小調整」，提供精簡、標準、舒適放大與特大長輩模式四檔字級切換。',
+      '支援「跟隨手機系統字體設定」，全介面具備智慧防爆字排版微調，長輩閱讀清晰舒適。',
+      '海量歷史帳目支援游標式極速載入，滑動時浮現位置小藥丸，點開返回維持 6 秒高光聚焦藍框！',
+    ],
+  },
 ];
 
 export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, onClose }) => {
@@ -201,6 +226,19 @@ export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, o
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const handleOpenBrochure = async () => {
     const url = 'https://mattyu99.github.io/family-ledger/product_brochure.html';
+    if (Platform.OS === 'web') {
+      window.open(url, '_blank');
+    } else {
+      try {
+        await Linking.openURL(url);
+      } catch {
+        // fallback ignore
+      }
+    }
+  };
+
+  const handleOpenManual = async () => {
+    const url = 'https://github.com/mattyu99/family-ledger/blob/main/USER_MANUAL.md';
     if (Platform.OS === 'web') {
       window.open(url, '_blank');
     } else {
@@ -226,7 +264,7 @@ export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, o
             <View style={{ flex: 1 }}>
               <Text style={styles.title}>📖 產品介紹與操作指南</Text>
               <Text style={styles.subtitle}>
-                甜心記帳本 • 9 大日常操作速查手冊
+                甜心記帳本 • 16 大家庭生活與理財操作速查
               </Text>
             </View>
             <TouchableOpacity
@@ -255,10 +293,10 @@ export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, o
               </Text>
             </View>
 
-            {/* 8 大常用操作指引 */}
+            {/* 16 大常用操作指引 */}
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>📌 8 大日常操作速查</Text>
-              <Text style={styles.sectionDesc}>點選下方項目快速熟悉功能</Text>
+              <Text style={styles.sectionTitle}>📌 16 大家庭日常操作速查</Text>
+              <Text style={styles.sectionDesc}>點選下方項目快速熟悉各項貼心功能</Text>
             </View>
 
             {GUIDE_ITEMS.map((item) => (
@@ -284,24 +322,46 @@ export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, o
               </View>
             ))}
 
-            {/* 線上完整型錄推廣卡片 */}
+            {/* 官方完整手冊推廣卡片 */}
             <TouchableOpacity
               style={styles.brochureCard}
-              onPress={handleOpenBrochure}
+              onPress={handleOpenManual}
               activeOpacity={0.8}
             >
               <View style={styles.brochureLeft}>
                 <View style={styles.brochureIconWrap}>
-                  <Text style={styles.brochureIcon}>🌐</Text>
+                  <Text style={styles.brochureIcon}>📖</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.brochureTitle}>閱讀完整產品介紹與功能型錄</Text>
+                  <Text style={styles.brochureTitle}>查閱官方完整使用者手冊 (User Manual)</Text>
                   <Text style={styles.brochureSubtitle}>
-                    包含 6 大核心價值主張、系統三層架構與即時協同特色（網頁版）
+                    包含 10 大核心章節、情境操作流程圖、桌面小工具與新手 FAQ（線上版）
                   </Text>
                 </View>
               </View>
               <View style={styles.brochureActionBadge}>
+                <Text style={styles.brochureActionText}>線上閱讀 ›</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* 官方線上規格型錄 */}
+            <TouchableOpacity
+              style={[styles.brochureCard, { marginTop: 8 }]}
+              onPress={handleOpenBrochure}
+              activeOpacity={0.8}
+            >
+              <View style={styles.brochureLeft}>
+                <View style={[styles.brochureIconWrap, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#D1FAE5' }]}>
+                  <Text style={styles.brochureIcon}>🌐</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.brochureTitle, { color: isDark ? '#6EE7B7' : '#047857' }]}>瀏覽產品型錄與功能規格書</Text>
+                  <Text style={[styles.brochureSubtitle, { color: isDark ? '#34D399' : '#059669' }]}>
+                    官方網頁版產品展示、四大架構亮點與完整規格（Web 版）
+                  </Text>
+                </View>
+              </View>
+              <View style={[styles.brochureActionBadge, { backgroundColor: '#059669' }]}>
                 <Text style={styles.brochureActionText}>開啟網頁 ›</Text>
               </View>
             </TouchableOpacity>
@@ -311,10 +371,10 @@ export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, o
           <View style={styles.footerRow}>
             <TouchableOpacity
               style={styles.brochureFooterBtn}
-              onPress={handleOpenBrochure}
+              onPress={handleOpenManual}
               activeOpacity={0.8}
             >
-              <Text style={styles.brochureFooterBtnText}>🌐 線上完整型錄</Text>
+              <Text style={styles.brochureFooterBtnText}>📖 完整使用者手冊</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
