@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.13';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.13 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 1;
+export const APP_BUILD_REVISION = 2;
 
 // 完整版本字串 (例如 "1.0.13.1")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.13',
     date: '2026-11-03',
-    title: '全域資產卡片跨身分歸戶、小工具文字截斷修正與待辦 4 則同步 (v1.0.13.0 ~ v1.0.13.1)',
+    title: '全域資產卡片跨身分歸戶、小工具文字修正與加值累加計算 (v1.0.13.0 ~ v1.0.13.2)',
     highlights: [
+      '🚌 悠遊卡加值金額全面對齊累加計算模式 (v1.0.13.2)：+$100 ~ +$1000 膠囊支援多重累加計算，並附帶一鍵「清除」歸零鈕，全 App 快捷金額操作體驗 100% 統一。',
       '💎 全域資產看板與卡片管理別名穿透 (v1.0.13.1)：全面接軌 getMemberById 中央別名映射，徹底修復 Google 身分認領/解綁後歷史卡片被隱藏之 ID 斷層問題。',
       '💳 跨模組 6 大卡片與帳單對齊 (v1.0.13.1)：同步修復個人財務淨值、管理帳戶、信用卡對帳、悠遊卡、固定帳單及排程提醒之歸屬判定，82 項自動化測試全數通過。',
       '📐 2x2 快捷按鈕文字截斷徹底修正 (v1.0.13.0)：微調外層內距與 40dp 3D 大圖，並關閉字型預設垂直內距 (includeFontPadding=false)，文字上移 5dp 絕不切字。',

@@ -288,10 +288,15 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
     }
   };
 
+  const handleQuickAddAmount = (addVal: number) => {
+    const cur = parseFloat(customAmount) || 0;
+    setCustomAmount(String(cur + addVal));
+  };
+
   const handleOpenTopUp = (acc: PaymentAccount) => {
     setActiveModalAccount(acc);
     setModalMode('topup');
-    setCustomAmount('500');
+    setCustomAmount('');
     setTopUpPaymentMethod('cash');
     setTopUpAccountId('');
     setShowAllSubAccounts(false);
@@ -567,14 +572,26 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                     {[100, 200, 500, 1000].map(val => (
                       <TouchableOpacity
                         key={val}
-                        style={[styles.presetChip, customAmount === String(val) && styles.presetChipActive]}
-                        onPress={() => setCustomAmount(String(val))}
+                        style={styles.presetChip}
+                        onPress={() => handleQuickAddAmount(val)}
+                        activeOpacity={0.7}
                       >
-                        <Text style={[styles.presetChipText, customAmount === String(val) && styles.presetChipTextActive]}>
+                        <Text style={styles.presetChipText}>
                           +${val}
                         </Text>
                       </TouchableOpacity>
                     ))}
+                    {!!customAmount && parseFloat(customAmount) > 0 && (
+                      <TouchableOpacity
+                        style={[styles.presetChip, styles.presetChipClear]}
+                        onPress={() => setCustomAmount('')}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.presetChipClearText}>
+                          清除
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                   <View style={styles.amountInputRow}>
                     <Text style={styles.currencySymbol}>$</Text>
@@ -583,10 +600,19 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                       value={customAmount}
                       onChangeText={setCustomAmount}
                       keyboardType="numeric"
-                      placeholder="輸入自訂加值金額"
+                      placeholder="0"
+                      placeholderTextColor={isDark ? '#6B7280' : '#9CA3AF'}
                       returnKeyType="done"
                       onSubmitEditing={Keyboard.dismiss}
                     />
+                    {!!customAmount && parseFloat(customAmount) > 0 && (
+                      <TouchableOpacity
+                        onPress={() => setCustomAmount('')}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={styles.inputClearIcon}>✕</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
 
                   {/* 出資付款人 */}
@@ -1156,6 +1182,21 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   presetChipTextActive: {
     color: isDark ? '#38BDF8' : '#0284C7',
     fontWeight: '700',
+  },
+  presetChipClear: {
+    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2',
+    borderColor: isDark ? 'rgba(239, 68, 68, 0.4)' : '#FCA5A5',
+  },
+  presetChipClearText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: isDark ? '#F87171' : '#DC2626',
+  },
+  inputClearIcon: {
+    fontSize: 14,
+    color: colors.text.muted,
+    paddingHorizontal: 4,
+    fontWeight: '600',
   },
   amountInputRow: {
     flexDirection: 'row',
