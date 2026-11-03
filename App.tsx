@@ -23,7 +23,7 @@ import { PrivacyProvider, usePrivacy } from './src/context/PrivacyContext';
 import { setupQuickActions, parseQuickAction, parseQuickActionUrl, QuickActionKind } from './src/lib/quickActions';
 import { showAlert, showConfirm } from './src/lib/alert';
 import { parseMemoNote } from './src/lib/memo';
-import { isBillDueInMonth, isBillPaidForCurrentPeriod } from './src/lib/recurring';
+import { getRollingPendingBills } from './src/lib/recurring';
 import { Transaction, Profile } from './src/types';
 
 // Screens
@@ -516,17 +516,13 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // 本期待繳帳單筆數 (到期需手動確認記帳之項目)
+  // 本期待繳帳單筆數 (支援滾動未來 7 天時間軸與已逾期項目，與 BillsScreen 100% 同步)
   const pendingRecurringBillsCount = useMemo(() => {
     const now = new Date();
-    const currYear = now.getFullYear();
-    const currMonth = now.getMonth() + 1;
-    return (recurringRules || []).filter(rule => {
-      if (rule.ledger_id && currentLedger?.id && rule.ledger_id !== currentLedger.id) return false;
-      if (!rule.is_active) return false;
-      if (!isBillDueInMonth(rule, currYear, currMonth)) return false;
-      return !isBillPaidForCurrentPeriod(rule, now);
-    }).length;
+    const scopedRules = (recurringRules || []).filter(
+      r => (!r.ledger_id || r.ledger_id === currentLedger?.id) && r.is_active
+    );
+    return getRollingPendingBills(scopedRules, now, 7).length;
   }, [recurringRules, currentLedger?.id]);
 
   // 開啟成員編輯
