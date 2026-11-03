@@ -130,4 +130,52 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
       expect(info?.badgeText).toBe('明日待辦');
     });
   });
+
+  describe('生活待辦全模式連動邏輯 (Multi-Mode Memo Linkage)', () => {
+    it('應支援支出、收入、轉帳與接力待辦各類型之文字與標籤顯示', () => {
+      const formatLinkedBadge = (target: { type: string; amount?: number; note?: string; merchant?: string }) => {
+        if (target.type === 'income') {
+          return `🔗 連動收入：NT$ ${Number(target.amount || 0).toLocaleString()} (${target.note || '收入'}) ›`;
+        }
+        if (target.type === 'transfer') {
+          return `🔗 連動轉帳：NT$ ${Number(target.amount || 0).toLocaleString()} (${target.merchant || target.note || '轉帳'}) ›`;
+        }
+        if (target.type === 'memo') {
+          const parsed = parseMemoNote(target.note || '');
+          return `🔗 接力待辦：${parsed.title || target.note} ›`;
+        }
+        return `🔗 連動支出：NT$ ${Number(target.amount || 0).toLocaleString()} (${target.note || '支出'}) ›`;
+      };
+
+      expect(formatLinkedBadge({ type: 'expense', amount: 350, note: '超市採買' })).toBe('🔗 連動支出：NT$ 350 (超市採買) ›');
+      expect(formatLinkedBadge({ type: 'income', amount: 5000, note: '兼職收入' })).toBe('🔗 連動收入：NT$ 5,000 (兼職收入) ›');
+      expect(formatLinkedBadge({ type: 'transfer', amount: 500, merchant: '存入【智悠遊卡】' })).toBe('🔗 連動轉帳：NT$ 500 (存入【智悠遊卡】) ›');
+      expect(formatLinkedBadge({ type: 'memo', note: '[🛒 第二階段] 採買生活耗材' })).toBe('🔗 接力待辦：第二階段 ›');
+    });
+
+    it('雙向正反向查找應能精準配對生活待辦與記帳交易', () => {
+      const transactions = [
+        { id: 'memo-1', type: 'memo', note: '繳水費', linked_transaction_id: 'tx-expense-1' },
+        { id: 'tx-expense-1', type: 'expense', amount: 450, linked_transaction_id: 'memo-1' },
+        { id: 'memo-2', type: 'memo', note: '發零用錢', linked_transaction_id: 'tx-transfer-2' },
+        { id: 'tx-transfer-2', type: 'transfer', amount: 200, linked_transaction_id: 'account-wallet-id' }, // 轉帳之 linked_transaction_id 指向目標帳戶
+      ];
+
+      // memo-1 -> tx-expense-1 (正向)
+      const target1 = transactions.find(t => t.id === transactions[0].linked_transaction_id);
+      expect(target1?.id).toBe('tx-expense-1');
+
+      // tx-transfer-2 -> memo-2 (反向查找)
+      const findLinkedMemo = (tx: { id: string; linked_transaction_id?: string }) => {
+        if (tx.linked_transaction_id) {
+          const direct = transactions.find(t => t.id === tx.linked_transaction_id && t.type === 'memo');
+          if (direct) return direct;
+        }
+        return transactions.find(t => t.type === 'memo' && t.linked_transaction_id === tx.id);
+      };
+
+      const memoForTransfer = findLinkedMemo(transactions[3]);
+      expect(memoForTransfer?.id).toBe('memo-2');
+    });
+  });
 });

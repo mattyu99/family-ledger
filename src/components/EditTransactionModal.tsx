@@ -57,6 +57,7 @@ import {
   handleChecklistInput,
   formatMemoCompletedTime,
   decodeMemoMerchantTag,
+  parseMemoNote,
 } from '../lib/memo';
 import {
   CalendarSystem,
@@ -767,17 +768,21 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     return false;
   }, [transaction, currentUser, canEdit, isReadOnly, currentLedger?.is_read_only]);
 
-  // 取得生活記事關聯之支出項目
+  // 取得生活記事關聯之明細項目 (支援支出、收入、轉帳與接力待辦)
   const linkedExpense = React.useMemo(() => {
     if (!linkedTxId) return undefined;
-    return transactions.find(t => t.id === linkedTxId && t.type !== 'memo');
+    return transactions.find(t => t.id === linkedTxId);
   }, [linkedTxId, transactions]);
 
-  // 取得支出項目關聯之生活記事項目
+  // 取得支出/收入/轉帳項目關聯之生活記事項目（支援雙向正反向查找）
   const linkedMemoTx = React.useMemo(() => {
-    if (!transaction?.linked_transaction_id) return undefined;
-    return transactions.find(t => t.id === transaction.linked_transaction_id && t.type === 'memo');
-  }, [transaction?.linked_transaction_id, transactions]);
+    if (!transaction) return undefined;
+    if (transaction.linked_transaction_id) {
+      const directMemo = transactions.find(t => t.id === transaction.linked_transaction_id && t.type === 'memo');
+      if (directMemo) return directMemo;
+    }
+    return transactions.find(t => t.type === 'memo' && t.linked_transaction_id === transaction.id);
+  }, [transaction, transactions]);
 
   // 內部轉帳專屬：取得轉入存入目標卡片 (若為加值/轉帳至儲值卡)
   const targetLinkedAccount = React.useMemo(() => {
@@ -1552,20 +1557,37 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 {/* 💳 連動支出紀錄區塊 (辦妥時顯示) */}
                 {isSettled && (
                   <View style={styles.linkedExpenseContainer}>
-                    <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>💳 連動支出紀錄</Text>
+                    <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>
+                      {linkedExpense?.type === 'income' ? '💵 連動收入紀錄' : linkedExpense?.type === 'transfer' ? '⇄ 連動轉帳紀錄' : linkedExpense?.type === 'memo' ? '📝 連動接力待辦' : '💳 連動支出紀錄'}
+                    </Text>
                     {linkedExpense ? (
                       <View style={styles.linkedExpenseCard}>
                         <View style={styles.linkedExpenseHeader}>
                           <View style={styles.linkedExpenseInfo}>
                             <Text style={styles.linkedExpenseTitle} numberOfLines={1}>
-                              {linkedExpense.merchant || linkedExpense.category?.name || '支出記帳'}
+                              {linkedExpense.type === 'memo'
+                                ? (parseMemoNote(linkedExpense.note).title || linkedExpense.note)
+                                : (linkedExpense.merchant || linkedExpense.category?.name || (linkedExpense.type === 'income' ? '收入記帳' : linkedExpense.type === 'transfer' ? '轉帳記錄' : '支出記帳'))}
                             </Text>
                             <Text style={styles.linkedExpenseSubtitle} numberOfLines={1}>
-                              {linkedExpense.payment_account?.name || linkedExpense.payment_method || '現金'} · {getMemberById(linkedExpense.paid_by)?.display_name || '成員'} 付款
+                              {linkedExpense.type === 'memo'
+                                ? `生活待辦 · ${getMemberById(linkedExpense.paid_by)?.display_name || '成員'} 記錄`
+                                : `${linkedExpense.payment_account?.name || linkedExpense.payment_method || '現金'} · ${getMemberById(linkedExpense.paid_by)?.display_name || '成員'} ${linkedExpense.type === 'income' ? '收款' : '付款'}`}
                             </Text>
                           </View>
-                          <Text style={styles.linkedExpenseAmount}>
-                            - NT$ {Number(linkedExpense.amount).toLocaleString('zh-TW')}
+                          <Text style={[
+                            styles.linkedExpenseAmount,
+                            linkedExpense.type === 'income' && { color: isDark ? '#34D399' : '#059669' },
+                            linkedExpense.type === 'transfer' && { color: isDark ? '#818CF8' : '#4F46E5' },
+                            linkedExpense.type === 'memo' && { color: isDark ? '#A78BFA' : '#7C3AED', fontSize: 13 },
+                          ]}>
+                            {linkedExpense.type === 'income'
+                              ? `+ NT$ ${Number(linkedExpense.amount).toLocaleString('zh-TW')}`
+                              : linkedExpense.type === 'transfer'
+                              ? `⇄ NT$ ${Number(linkedExpense.amount).toLocaleString('zh-TW')}`
+                              : linkedExpense.type === 'memo'
+                              ? '接力待辦'
+                              : `- NT$ ${Number(linkedExpense.amount).toLocaleString('zh-TW')}`}
                           </Text>
                         </View>
                         <View style={styles.linkedExpenseActions}>
@@ -1574,7 +1596,9 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                             onPress={() => onOpenLinkedExpense?.(linkedExpense)}
                             activeOpacity={0.7}
                           >
-                            <Text style={styles.linkedExpenseActionBtnText}>查看 / 編輯記帳明細 ›</Text>
+                            <Text style={styles.linkedExpenseActionBtnText}>
+                              {linkedExpense.type === 'memo' ? '查看接力待辦明細 ›' : '查看 / 編輯記帳明細 ›'}
+                            </Text>
                           </TouchableOpacity>
                           {(canEdit || canEditCompletion) && (
                             <TouchableOpacity

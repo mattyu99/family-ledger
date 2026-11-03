@@ -259,10 +259,10 @@ export const MemoCompletionModal: React.FC<MemoCompletionModalProps> = ({
               >
                 <View style={styles.btnTextCol}>
                   <Text style={styles.linkExpenseBtnTitle} maxFontSizeMultiplier={1.15}>
-                    💳 連動記一筆支出 (將此採買計入公帳)
+                    💰 連動記帳 / 轉帳 / 接力待辦
                   </Text>
                   <Text style={styles.linkExpenseBtnDesc} maxFontSizeMultiplier={1.06}>
-                    自動帶入辦妥人與標題，儲存後雙向綁定紀錄
+                    支援支出、收入、轉帳發零用錢或接續下一則待辦，雙向綁定紀錄
                   </Text>
                 </View>
                 <Text style={styles.linkExpenseBtnArrow}>›</Text>

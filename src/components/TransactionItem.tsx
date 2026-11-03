@@ -76,7 +76,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
       ? (checklistData.completedCount / checklistData.totalCount) * 100
       : 0;
     const completer = transaction.completed_by ? getMemberById(transaction.completed_by) : undefined;
-    const linkedExpense = transaction.linked_transaction_id ? transactions.find(t => t.id === transaction.linked_transaction_id && t.type !== 'memo') : undefined;
+    const linkedTarget = transaction.linked_transaction_id ? transactions.find(t => t.id === transaction.linked_transaction_id) : undefined;
 
     // 正文超連結自動識別與點擊開啟支援
     const renderContentWithLinks = (content: string, isCompleted: boolean) => {
@@ -351,17 +351,37 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
           </View>
         )}
 
-        {isCompleted && !!linkedExpense && (
+        {isCompleted && !!linkedTarget && (
           <TouchableOpacity
-            style={styles.memoLinkedExpenseBadge}
+            style={[
+              styles.memoLinkedExpenseBadge,
+              linkedTarget.type === 'income' && { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5', borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#A7F3D0' },
+              linkedTarget.type === 'transfer' && { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF', borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE' },
+              linkedTarget.type === 'memo' && { backgroundColor: isDark ? 'rgba(168, 85, 247, 0.15)' : '#F5F3FF', borderColor: isDark ? 'rgba(168, 85, 247, 0.35)' : '#DDD6FE' },
+            ]}
             activeOpacity={0.7}
             onPress={(e) => {
               e.stopPropagation?.();
-              onPress?.(linkedExpense);
+              onPress?.(linkedTarget);
             }}
           >
-            <Text style={styles.memoLinkedExpenseBadgeText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              🔗 連動支出：NT$ {Number(linkedExpense.amount).toLocaleString()} ({linkedExpense.note || '支出'}) ›
+            <Text
+              style={[
+                styles.memoLinkedExpenseBadgeText,
+                linkedTarget.type === 'income' && { color: isDark ? '#6EE7B7' : '#059669' },
+                linkedTarget.type === 'transfer' && { color: isDark ? '#A5B4FC' : '#4F46E5' },
+                linkedTarget.type === 'memo' && { color: isDark ? '#C4B5FD' : '#7C3AED' },
+              ]}
+              allowFontScaling={false}
+              maxFontSizeMultiplier={1.08}
+            >
+              {linkedTarget.type === 'income'
+                ? `🔗 連動收入：NT$ ${Number(linkedTarget.amount).toLocaleString()} (${linkedTarget.note || '收入'}) ›`
+                : linkedTarget.type === 'transfer'
+                ? `🔗 連動轉帳：NT$ ${Number(linkedTarget.amount).toLocaleString()} (${linkedTarget.merchant || linkedTarget.note || '轉帳'}) ›`
+                : linkedTarget.type === 'memo'
+                ? `🔗 接力待辦：${parseMemoNote(linkedTarget.note).title || linkedTarget.note} ›`
+                : `🔗 連動支出：NT$ ${Number(linkedTarget.amount).toLocaleString()} (${linkedTarget.note || '支出'}) ›`}
             </Text>
           </TouchableOpacity>
         )}
@@ -383,7 +403,10 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
     );
   }
 
-  const linkedMemo = transaction.linked_transaction_id ? transactions.find(t => t.id === transaction.linked_transaction_id && t.type === 'memo') : undefined;
+  const linkedMemo = transaction.linked_transaction_id
+    ? (transactions.find(t => t.id === transaction.linked_transaction_id && t.type === 'memo')
+       || transactions.find(t => t.type === 'memo' && t.linked_transaction_id === transaction.id))
+    : transactions.find(t => t.type === 'memo' && t.linked_transaction_id === transaction.id);
   const parsedDiscount = isExpense ? parseExpenseDiscount(transaction.note) : null;
   const rawNote = parsedDiscount?.hasDiscount
     ? parsedDiscount.cleanNote || `${parsedDiscount.discountLabel}折抵消費`

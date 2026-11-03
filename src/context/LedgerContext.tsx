@@ -172,6 +172,7 @@ interface LedgerContextType {
     accountId?: string;
     transacted_at?: string;
     note?: string;
+    linked_transaction_id?: string;
   }) => Promise<{ success: boolean; error?: string; parentTxId?: string; kidTxId?: string; transferTxId?: string }>;
   paymentAccounts: PaymentAccount[];
   addPaymentAccount: (account: Omit<PaymentAccount, 'id' | 'ledger_id' | 'created_at'>) => Promise<PaymentAccount>;
@@ -400,7 +401,7 @@ interface LedgerContextType {
     payerId?: string;
     transactedAt?: string;
     note?: string;
-  }) => Promise<{ success: boolean; error?: string }>;
+  }) => Promise<{ success: boolean; error?: string; transactionId?: string }>;
   getNetWorthSummary: (targetMemberId?: string) => {
     totalAssets: number;
     totalLiabilities: number;
@@ -6668,6 +6669,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     accountId?: string;
     transacted_at?: string;
     note?: string;
+    linked_transaction_id?: string;
   }): Promise<{ success: boolean; error?: string; parentTxId?: string; kidTxId?: string; transferTxId?: string }> => {
     if (currentLedger.is_read_only) {
       return { success: false, error: '此帳本已開啟唯讀封存保護，無法進行轉帳或零用錢發放' };
@@ -6751,6 +6753,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       is_reconciled: false,
       note: transferNote,
       transacted_at: parentTransactedAt,
+      linked_transaction_id: data.linked_transaction_id,
       is_settled: true,
       created_at: new Date().toISOString(),
     };
@@ -6771,6 +6774,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       is_reconciled: false,
       note: parentNote,
       transacted_at: parentTransactedAt,
+      linked_transaction_id: data.linked_transaction_id,
       is_settled: false,
       created_at: new Date().toISOString(),
     };

@@ -983,7 +983,17 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         return;
       }
 
+      if (linkedMemoId && res.transactionId) {
+        await updateTransaction(linkedMemoId, {
+          linked_transaction_id: res.transactionId,
+          is_settled: true,
+          completed_by: paidBy || currentUser.id,
+          ...(linkedCompletionNote ? { completion_note: linkedCompletionNote } : {}),
+        });
+      }
+
       safeAlert('🎉 轉帳成功！', '已完成資金調撥與各帳戶餘額更新！此筆內部資金流動不計入公帳總支出。');
+      onSuccess?.(res.transactionId);
       onClose();
     } finally {
       setIsSubmitting(false);
@@ -1028,11 +1038,22 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         accountId: selectedAccountId || undefined,
         transacted_at,
         note: note.trim() || undefined,
+        linked_transaction_id: linkedMemoId || undefined,
       });
 
       if (!res.success) {
         safeAlert('撥發失敗', res.error || '發放零用錢時發生錯誤');
         return;
+      }
+
+      const linkedTxId = res.transferTxId || res.parentTxId;
+      if (linkedMemoId && linkedTxId) {
+        await updateTransaction(linkedMemoId, {
+          linked_transaction_id: linkedTxId,
+          is_settled: true,
+          completed_by: payer.id,
+          ...(linkedCompletionNote ? { completion_note: linkedCompletionNote } : {}),
+        });
       }
 
       if (allowanceMode === 'transfer') {
@@ -1053,6 +1074,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       setPaymentMethod('cash');
       setSelectedAccountId('');
       setSelectedDate(new Date());
+      onSuccess?.(linkedTxId);
       onClose();
     } catch (err: any) {
       safeAlert('撥發失敗', err?.message || '發放零用錢時發生錯誤');
@@ -1079,7 +1101,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       txDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
       const transacted_at = txDate.toISOString();
 
-      await addTransaction({
+      const createdTxId = await addTransaction({
         amount: 0,
         type: 'memo',
         category_id: defaultMemoCat?.id || categories[0]?.id,
@@ -1089,8 +1111,18 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         reminder_calendar: memoReminderDate ? memoReminderCalendar : undefined,
         reminder_repeat: memoReminderDate ? memoReminderRepeat : undefined,
         reminder_target: memoReminderDate ? memoReminderTarget : undefined,
+        linked_transaction_id: linkedMemoId || undefined,
         transacted_at,
       });
+
+      if (linkedMemoId && createdTxId) {
+        await updateTransaction(linkedMemoId, {
+          linked_transaction_id: createdTxId,
+          is_settled: true,
+          completed_by: targetPayer,
+          ...(linkedCompletionNote ? { completion_note: linkedCompletionNote } : {}),
+        });
+      }
 
       setAmount('');
       setMerchant('');
@@ -1100,6 +1132,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       setMemoReminderRepeat('once');
       setMemoReminderTarget('family');
       setSelectedDate(new Date());
+      onSuccess?.(createdTxId);
       onClose();
     } catch (err: any) {
       safeAlert('儲存失敗', err?.message || '儲存生活記事時發生錯誤');
@@ -1349,7 +1382,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             {!!linkedMemoId && (
               <View style={styles.linkedMemoBanner}>
                 <Text style={styles.linkedMemoBannerText} maxFontSizeMultiplier={1.08}>
-                  🔗 連動生活待辦採買：儲存時將自動為該記事打勾辦妥
+                  🔗 連動生活待辦：儲存時將自動為該待辦打勾辦妥並雙向綁定
                   {linkedCompletionNote ? `（回報：${linkedCompletionNote}）` : ''}
                 </Text>
               </View>

@@ -379,8 +379,8 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                 const date = new Date(item.transacted_at);
                 const dateFormatted = `${date.getMonth() + 1}/${date.getDate()}`;
 
-                const linkedExpense = item.linked_transaction_id
-                  ? transactions.find(t => t.id === item.linked_transaction_id && t.type !== 'memo')
+                const linkedTx = item.linked_transaction_id
+                  ? transactions.find(t => t.id === item.linked_transaction_id)
                   : undefined;
 
                 return (
@@ -556,18 +556,37 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                       </View>
                     )}
 
-                    {/* 連動支出卡片 */}
-                    {isCompleted && !!linkedExpense && (
+                    {/* 連動明細卡片 (支援支出、收入、轉帳與接力待辦) */}
+                    {isCompleted && !!linkedTx && (
                       <TouchableOpacity
-                        style={styles.itemLinkedExpenseBadge}
+                        style={[
+                          styles.itemLinkedExpenseBadge,
+                          linkedTx.type === 'income' && { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5', borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#A7F3D0' },
+                          linkedTx.type === 'transfer' && { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF', borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE' },
+                          linkedTx.type === 'memo' && { backgroundColor: isDark ? 'rgba(168, 85, 247, 0.15)' : '#F5F3FF', borderColor: isDark ? 'rgba(168, 85, 247, 0.35)' : '#DDD6FE' },
+                        ]}
                         activeOpacity={0.7}
                         onPress={(e) => {
                           e.stopPropagation?.();
-                          onEditMemo(linkedExpense);
+                          onEditMemo(linkedTx);
                         }}
                       >
-                        <Text style={styles.itemLinkedExpenseBadgeText} maxFontSizeMultiplier={1.08}>
-                          🔗 連動支出：NT$ {Number(linkedExpense.amount).toLocaleString()} ({linkedExpense.note || '支出'}) ›
+                        <Text
+                          style={[
+                            styles.itemLinkedExpenseBadgeText,
+                            linkedTx.type === 'income' && { color: isDark ? '#6EE7B7' : '#059669' },
+                            linkedTx.type === 'transfer' && { color: isDark ? '#A5B4FC' : '#4F46E5' },
+                            linkedTx.type === 'memo' && { color: isDark ? '#C4B5FD' : '#7C3AED' },
+                          ]}
+                          maxFontSizeMultiplier={1.08}
+                        >
+                          {linkedTx.type === 'income'
+                            ? `🔗 連動收入：NT$ ${Number(linkedTx.amount).toLocaleString()} (${linkedTx.note || '收入'}) ›`
+                            : linkedTx.type === 'transfer'
+                            ? `🔗 連動轉帳：NT$ ${Number(linkedTx.amount).toLocaleString()} (${linkedTx.merchant || linkedTx.note || '轉帳'}) ›`
+                            : linkedTx.type === 'memo'
+                            ? `🔗 接力待辦：${parseMemoNote(linkedTx.note).title || linkedTx.note} ›`
+                            : `🔗 連動支出：NT$ ${Number(linkedTx.amount).toLocaleString()} (${linkedTx.note || '支出'}) ›`}
                         </Text>
                       </TouchableOpacity>
                     )}

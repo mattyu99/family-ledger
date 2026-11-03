@@ -721,7 +721,7 @@ export function usePaymentAccounts({
     payerId?: string;
     transactedAt?: string;
     note?: string;
-  }): Promise<{ success: boolean; error?: string }> => {
+  }): Promise<{ success: boolean; error?: string; transactionId?: string }> => {
     const { fromAccountId, toAccountId, amount, fee = 0, payerId, transactedAt, note } = params;
 
     if (!fromAccountId || !toAccountId) {
@@ -784,7 +784,7 @@ export function usePaymentAccounts({
       const transferCat = categories.find(c => c.name.includes('轉帳') || c.name.includes('金融') || c.name.includes('交通') || c.name.includes('其他'))
         || categories[0];
 
-      await addTransaction({
+      const createdTxId = await addTransaction({
         amount,
         type: 'transfer',
         category_id: transferCat?.id || categories[0]?.id,
@@ -812,7 +812,7 @@ export function usePaymentAccounts({
         });
       }
 
-      return { success: true };
+      return { success: true, transactionId: createdTxId };
     } catch (err: any) {
       console.warn('執行帳戶轉帳失敗:', err);
       return { success: false, error: err?.message || '執行轉帳時發生錯誤' };
