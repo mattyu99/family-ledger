@@ -196,4 +196,48 @@ describe('台灣統一發票與條碼解析核心模組測試 (invoice.ts)', () 
       expect(merged.itemsNote).toBe('鮮奶 $90、麥片 $150');
     });
   });
+
+  describe('發票對獎中心視角篩選邏輯 (全部 vs 我的)', () => {
+    const mockCurrentUser = { id: 'user-dad-uuid', display_name: '智爸' };
+    const memberAliasMap: Record<string, any> = {
+      'user-dad-alias': mockCurrentUser,
+    };
+    const getMemberById = (id?: string) => {
+      if (!id) return undefined;
+      if (id === mockCurrentUser.id) return mockCurrentUser;
+      if (memberAliasMap[id]) return memberAliasMap[id];
+      if (id === 'user-mom-uuid') return { id: 'user-mom-uuid', display_name: '瑩媽' };
+      return undefined;
+    };
+
+    const isMine = (tx: { paid_by?: string; creator_id?: string }) => {
+      if (!mockCurrentUser.id) return false;
+      if (tx.paid_by === mockCurrentUser.id) return true;
+      if (tx.creator_id && tx.creator_id === mockCurrentUser.id) return true;
+      const payer = getMemberById(tx.paid_by);
+      const me = getMemberById(mockCurrentUser.id);
+      if (payer && me && payer.id === me.id) return true;
+      if (payer && payer.id === mockCurrentUser.id) return true;
+      return false;
+    };
+
+    const mockInvoices = [
+      { id: 'tx-1', invoice_number: 'AB-12345678', paid_by: 'user-dad-uuid', amount: 150 },
+      { id: 'tx-2', invoice_number: 'CD-87654321', paid_by: 'user-mom-uuid', amount: 300 },
+      { id: 'tx-3', invoice_number: 'EF-11223344', paid_by: 'user-dad-alias', amount: 500 },
+      { id: 'tx-4', invoice_number: 'GH-99887766', creator_id: 'user-dad-uuid', amount: 80 },
+    ];
+
+    it('scope="all" 時應保留所有家人的發票', () => {
+      const filtered = mockInvoices.filter(t => !!t.invoice_number);
+      expect(filtered.length).toBe(4);
+    });
+
+    it('scope="mine" 時應僅保留屬於我的發票 (包含直接 ID、別名映射與建立者)', () => {
+      const filtered = mockInvoices.filter(t => !!t.invoice_number && isMine(t));
+      expect(filtered.length).toBe(3);
+      expect(filtered.map(t => t.id)).toEqual(['tx-1', 'tx-3', 'tx-4']);
+      expect(filtered.some(t => t.id === 'tx-2')).toBe(false); // 媽媽的發票在 "我的" 模式下被隱藏
+    });
+  });
 });

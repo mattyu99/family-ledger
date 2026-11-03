@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  Dimensions,
+  Platform,
 } from 'react-native';
 import { Text } from './common/Text';
 
@@ -21,20 +21,25 @@ import {
 import { getInvoicePeriodKey, formatInvoiceNumber } from '../lib/invoice';
 import { Transaction } from '../types/database';
 
+export type InvoiceScope = 'all' | 'mine';
+
 interface InvoiceLotteryModalProps {
   visible: boolean;
   onClose: () => void;
   initialPeriodKey?: string;
+  initialScope?: InvoiceScope;
   onSelectTransaction?: (transaction: Transaction) => void;
 }
 
-// 記住使用者上次選看的發票雙月期別，在來回查看記帳明細時無縫維持當前期別
+// 記住使用者上次選看的發票雙月期別與視角，在來回查看記帳明細時無縫維持
 let lastViewedPeriodKey: string | undefined = undefined;
+let lastViewedScope: InvoiceScope = 'all';
 
 export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
   visible,
   onClose,
   initialPeriodKey,
+  initialScope,
   onSelectTransaction,
 }) => {
   const { isDark, colors } = useTheme();
@@ -109,14 +114,50 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
     return availablePeriods.find(p => p.periodKey === selectedPeriodKey) || availablePeriods[0];
   }, [availablePeriods, selectedPeriodKey]);
 
-  // 篩選屬於當前選定期別的所有交易發票
+  // 視角篩選狀態 (支援「全部家人」與「我的發票」切換)
+  const [scopeFilter, setScopeFilter] = useState<InvoiceScope>(() => {
+    return initialScope || lastViewedScope || 'all';
+  });
+
+  const scrollRef = React.useRef<ScrollView>(null);
+
+  // 判定發票是否屬於當前登入者 (透過付款人 ID 與中央別名映射比對)
+  const isMine = React.useCallback(
+    (tx: Transaction) => {
+      if (!currentUser?.id) return false;
+      if (tx.paid_by === currentUser.id) return true;
+      if (tx.creator_id && tx.creator_id === currentUser.id) return true;
+      const payer = getMemberById(tx.paid_by);
+      const me = getMemberById(currentUser.id);
+      if (payer && me && payer.id === me.id) return true;
+      if (payer && payer.id === currentUser.id) return true;
+      return false;
+    },
+    [currentUser, getMemberById]
+  );
+
+  const handleScopeChange = (newScope: InvoiceScope) => {
+    lastViewedScope = newScope;
+    setScopeFilter(newScope);
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  };
+
+  const handleClose = () => {
+    lastViewedScope = 'all';
+    setScopeFilter('all');
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    onClose();
+  };
+
+  // 篩選屬於當前選定期別的所有交易發票 (支援「全部」與「我的」家人視角切換)
   const periodTransactions = useMemo(() => {
     return transactions.filter(t => {
       if (!t.invoice_number) return false;
+      if (scopeFilter === 'mine' && !isMine(t)) return false;
       const pKey = t.transacted_at ? getInvoicePeriodKey(t.transacted_at).periodKey : (t.invoice_period || getInvoicePeriodKey(new Date()).periodKey);
       return pKey === selectedPeriodKey;
     });
-  }, [transactions, selectedPeriodKey]);
+  }, [transactions, selectedPeriodKey, scopeFilter, isMine]);
 
   // 即時計算各發票的中獎判定（整合最新同步之獎號）
   const evaluatedTransactions = useMemo(() => {
@@ -168,31 +209,56 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
   const drawData = selectedPeriodObj?.draw;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
       <View style={styles.overlay}>
         <View style={styles.modalBox}>
           {/* Header */}
           <View style={styles.headerRow}>
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={styles.headerTitle}>🧾 統一發票對獎中心</Text>
+            <View style={{ flex: 1, marginRight: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <Text style={styles.headerTitle} maxFontSizeMultiplier={1.15}>🧾 統一發票對獎中心</Text>
                 {stats.wonCount > 0 && (
                   <View style={styles.headerWonBadge}>
-                    <Text style={styles.headerWonBadgeText}>中獎 {stats.wonCount} 張</Text>
+                    <Text style={styles.headerWonBadgeText} maxFontSizeMultiplier={1.08}>
+                      {scopeFilter === 'mine' ? '我中獎' : '中獎'} {stats.wonCount} 張
+                    </Text>
                   </View>
                 )}
               </View>
-              <Text style={styles.headerSub}>自動核對家庭消費發票 · 一鍵兌領獎金入帳</Text>
-              <View style={styles.syncRow}>
-                <View style={[styles.syncDot, isSyncing && styles.syncDotLoading]} />
-                <Text style={styles.syncStatusText}>
-                  {isSyncing ? '正在連線同步財政部最新開獎號碼...' : '官方開獎號碼全自動即時同步'}
-                </Text>
-              </View>
+              <Text style={styles.headerSub} maxFontSizeMultiplier={1.08}>
+                {scopeFilter === 'mine' ? '專屬個人發票對獎 · 一鍵兌領獎金入帳' : '自動核對家庭消費發票 · 一鍵兌領獎金入帳'}
+              </Text>
             </View>
-            <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Text style={styles.closeBtnText}>✕</Text>
+            <TouchableOpacity style={styles.closeBtn} onPress={handleClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={styles.closeBtnText} maxFontSizeMultiplier={1.15}>✕</Text>
             </TouchableOpacity>
+          </View>
+
+          {/* 視角切換開關與同步狀態列 (同 MemoTodoModal 樣式) */}
+          <View style={styles.scopeBarRow}>
+            <View style={styles.syncRow}>
+              <View style={[styles.syncDot, isSyncing && styles.syncDotLoading]} />
+              <Text style={styles.syncStatusText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
+                {isSyncing ? '正在連線同步財政部最新開獎號碼...' : '官方開獎號碼全自動即時同步'}
+              </Text>
+            </View>
+
+            <View style={styles.scopeSwitchContainer}>
+              <TouchableOpacity
+                style={[styles.scopeTab, scopeFilter === 'all' && styles.scopeTabActive]}
+                onPress={() => handleScopeChange('all')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.scopeTabText, scopeFilter === 'all' && styles.scopeTabTextActive]} maxFontSizeMultiplier={1.08}>全部</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.scopeTab, scopeFilter === 'mine' && styles.scopeTabActive]}
+                onPress={() => handleScopeChange('mine')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.scopeTabText, scopeFilter === 'mine' && styles.scopeTabTextActive]} maxFontSizeMultiplier={1.08}>我的</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* 期別選擇軌道 */}
@@ -225,24 +291,32 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
             </ScrollView>
           </View>
 
-          <ScrollView style={styles.scrollBody} showsVerticalScrollIndicator={false}>
+          <ScrollView ref={scrollRef} style={styles.scrollBody} showsVerticalScrollIndicator={false}>
             {/* 中獎概況統計橫幅 */}
             <View style={[styles.statsBanner, stats.wonCount > 0 && styles.statsBannerWon]}>
               <View style={styles.statsCol}>
-                <Text style={styles.statsLabel}>本期發票</Text>
-                <Text style={styles.statsValue}>{stats.totalCount} <Text style={styles.statsUnit}>張</Text></Text>
+                <Text style={styles.statsLabel} maxFontSizeMultiplier={1.08}>
+                  {scopeFilter === 'mine' ? '我的發票' : '本期發票'}
+                </Text>
+                <Text style={styles.statsValue} maxFontSizeMultiplier={1.15}>
+                  {stats.totalCount} <Text style={styles.statsUnit}>張</Text>
+                </Text>
               </View>
               <View style={styles.statsDivider} />
               <View style={styles.statsCol}>
-                <Text style={styles.statsLabel}>幸運中獎</Text>
-                <Text style={[styles.statsValue, stats.wonCount > 0 ? styles.wonValue : null]}>
+                <Text style={styles.statsLabel} maxFontSizeMultiplier={1.08}>
+                  {scopeFilter === 'mine' ? '我中獎' : '幸運中獎'}
+                </Text>
+                <Text style={[styles.statsValue, stats.wonCount > 0 ? styles.wonValue : null]} maxFontSizeMultiplier={1.15}>
                   {stats.wonCount} <Text style={styles.statsUnit}>張</Text>
                 </Text>
               </View>
               <View style={styles.statsDivider} />
               <View style={styles.statsCol}>
-                <Text style={styles.statsLabel}>中獎總金額</Text>
-                <Text style={[styles.statsValue, stats.totalPrize > 0 ? styles.wonValue : null]}>
+                <Text style={styles.statsLabel} maxFontSizeMultiplier={1.08}>
+                  {scopeFilter === 'mine' ? '我的中獎金額' : '中獎總金額'}
+                </Text>
+                <Text style={[styles.statsValue, stats.totalPrize > 0 ? styles.wonValue : null]} maxFontSizeMultiplier={1.15}>
                   ${stats.totalPrize.toLocaleString()}
                 </Text>
               </View>
@@ -305,21 +379,31 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
 
             {/* 發票明細清單 */}
             <View style={styles.listSectionHeader}>
-              <Text style={styles.listSectionTitle}>📋 本期記錄之發票 ({evaluatedTransactions.length})</Text>
-              <Text style={styles.listSectionHint}>點擊任一發票可查看或編輯記帳明細 ›</Text>
+              <Text style={styles.listSectionTitle} maxFontSizeMultiplier={1.15}>
+                {scopeFilter === 'mine' ? '📋 我的發票明細' : '📋 本期記錄之發票'} ({evaluatedTransactions.length})
+              </Text>
+              <Text style={styles.listSectionHint} maxFontSizeMultiplier={1.08}>點擊任一發票可查看或編輯記帳明細 ›</Text>
             </View>
 
             {evaluatedTransactions.length === 0 ? (
               <View style={styles.emptyBox}>
                 <Text style={styles.emptyIcon}>🧾</Text>
-                <Text style={styles.emptyTitle}>此期別尚無發票記錄</Text>
-                <Text style={styles.emptySub}>
-                  在日常記帳時，輸入發票號碼或直接「掃描發票 QR Code」，開獎後即可享受全自動對獎！
+                <Text style={styles.emptyTitle} maxFontSizeMultiplier={1.15}>
+                  {scopeFilter === 'mine' ? '您在此期別尚無發票記錄' : '此期別尚無發票記錄'}
+                </Text>
+                <Text style={styles.emptySub} maxFontSizeMultiplier={1.08}>
+                  {scopeFilter === 'mine'
+                    ? '切換至「全部」可查看全家人記錄之發票，或在記帳時輸入發票號碼即可全自動對獎！'
+                    : '在日常記帳時，輸入發票號碼或直接「掃描發票 QR Code」，開獎後即可享受全自動對獎！'}
                 </Text>
               </View>
             ) : (
               evaluatedTransactions.map(tx => {
                 const payer = getMemberById(tx.paid_by) || currentUser;
+                const isMe = isMine(tx);
+                const payerName = payer
+                  ? `${payer.display_name}${isMe && !payer.display_name.includes('我') ? ' (我)' : ''}`
+                  : '成員';
                 const isWon = tx.isWon;
                 const isClaimed = tx.isClaimed;
                 const isMissed = tx.isMissed;
@@ -380,8 +464,8 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
                         <Text style={styles.invoiceMerchantText} numberOfLines={1}>
                           {tx.merchant || tx.category?.name || '一般消費'}
                         </Text>
-                        <Text style={styles.invoiceMetaText}>
-                          {payer.avatar_url || '👤'} {payer.display_name} • 消費 NT$ {tx.amount.toLocaleString()}
+                        <Text style={styles.invoiceMetaText} maxFontSizeMultiplier={1.08}>
+                          {payer?.avatar_url || '👤'} {payerName} • 消費 NT$ {tx.amount.toLocaleString()}
                         </Text>
                       </View>
 
@@ -432,12 +516,10 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingTop: 18,
-    paddingBottom: 14,
+    paddingBottom: 8,
     backgroundColor: colors.background.modal,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: isDark ? colors.border.default : '#F1F5F9',
   },
   headerTitle: {
     fontSize: 18,
@@ -462,11 +544,58 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     color: colors.text.muted,
     marginTop: 2,
   },
+  scopeBarRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+    paddingTop: 2,
+    backgroundColor: colors.background.modal,
+    borderBottomWidth: 1,
+    borderBottomColor: isDark ? colors.border.default : '#F1F5F9',
+  },
+  scopeSwitchContainer: {
+    flexDirection: 'row',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
+    borderRadius: 8,
+    padding: 2,
+    borderWidth: 1,
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
+  },
+  scopeTab: {
+    paddingHorizontal: 10,
+    paddingVertical: 3.5,
+    borderRadius: 6,
+  },
+  scopeTabActive: {
+    backgroundColor: isDark ? '#4F46E5' : '#FFFFFF',
+    ...(Platform.OS === 'ios'
+      ? {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.15,
+          shadowRadius: 2,
+        }
+      : {
+          elevation: 1,
+        }),
+  },
+  scopeTabText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: colors.text.muted,
+  },
+  scopeTabTextActive: {
+    color: isDark ? '#FFFFFF' : '#4F46E5',
+    fontWeight: '700',
+  },
   syncRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    marginTop: 4,
+    flex: 1,
+    marginRight: 10,
   },
   syncDot: {
     width: 7,
