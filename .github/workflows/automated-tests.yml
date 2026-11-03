@@ -39,7 +39,7 @@ jobs:
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || 'https://babpppaxzszieropeouh.supabase.co' }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_nxHZUg651sBAJ387bZgZIQ_GuEfpAuZ' }}
-          LEDGER_ID: ${{ secrets.LEDGER_ID || 'ab10fe7e-d0d8-4bc9-b338-24620d26d924' }}
+          TEST_LEDGER_ID: '00000000-0000-4000-8000-000000000000'
         run: npm run test:rpc
 
       - name: Build Web Bundle

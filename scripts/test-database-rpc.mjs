@@ -25,7 +25,18 @@ if (!process.env.SUPABASE_URL && !process.env.EXPO_PUBLIC_SUPABASE_URL) {
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
-const TARGET_LEDGER_ID = process.env.LEDGER_ID || 'ab10fe7e-d0d8-4bc9-b338-24620d26d924';
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+// 專屬 CI/CD 自動化測試沙盒帳本 (絕不使用使用者生產/正式帳本)
+const SANDBOX_LEDGER_ID = process.env.TEST_LEDGER_ID || '00000000-0000-4000-8000-000000000000';
+const TARGET_LEDGER_ID = SANDBOX_LEDGER_ID;
+
+// 安全守門防護：若發現指向生產帳本，強制中斷防污染
+const PRODUCTION_LEDGER_ID = 'ab10fe7e-d0d8-4bc9-b338-24620d26d924';
+if (TARGET_LEDGER_ID === PRODUCTION_LEDGER_ID) {
+  console.error('🚫 安全防護觸發：嚴禁在正式使用者帳本上執行自動化 RPC 測試！已強制終止。');
+  process.exit(1);
+}
 
 if (!SUPABASE_URL || !ANON_KEY) {
   console.error('❌ 錯誤：未找到 Supabase URL 或 ANON_KEY 環境變數');
@@ -39,11 +50,25 @@ const anonClient = createClient(SUPABASE_URL, ANON_KEY, {
   realtime: { transport: DummyWS },
 });
 
+// 管理金鑰客戶端（僅用於沙盒帳本初始化與測試完畢後 100% 清理 Teardown）
+const serviceClient = SERVICE_ROLE_KEY ? createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+  auth: { persistSession: false },
+  realtime: { transport: DummyWS },
+}) : null;
+
 async function runRpcTests() {
   console.log('====================================================');
   console.log('🛡️  開始執行 Supabase 零金鑰架構 (Zero-Token) 預存程序自動測試');
+  console.log(`📌 測試專用隔離沙盒帳本 ID: ${TARGET_LEDGER_ID}`);
   console.log('====================================================\n');
   let hasFailed = false;
+
+  // 啟動前清空沙盒帳本殘餘測試明細 (確保絕對純淨)
+  if (serviceClient) {
+    try {
+      await serviceClient.from('transactions').delete().eq('ledger_id', TARGET_LEDGER_ID);
+    } catch {}
+  }
 
   // ----------------------------------------------------------------------------
   // 測試 1：未登入匿名訪客透過 secure_batch_add_transactions 安全直通記帳
@@ -83,7 +108,11 @@ async function runRpcTests() {
       console.log('   ✅ 測試 1 通過: 免登入訪客成功透過預存程序寫入交易 (Zero-Token Fast Path 正常運作)');
       // 清理測試資料 (Teardown)
       try {
-        await anonClient.from('transactions').delete().eq('id', testTxId);
+        if (serviceClient) {
+          await serviceClient.from('transactions').delete().eq('id', testTxId);
+        } else {
+          await anonClient.from('transactions').delete().eq('id', testTxId);
+        }
       } catch {}
     }
   } catch (e) {
@@ -159,6 +188,13 @@ async function runRpcTests() {
   } catch (e) {
     console.error('   ❌ 測試 4 拋出例外:', e);
     hasFailed = true;
+  }
+
+  // 測試完成後確保沙盒無殘留
+  if (serviceClient) {
+    try {
+      await serviceClient.from('transactions').delete().eq('ledger_id', TARGET_LEDGER_ID);
+    } catch {}
   }
 
   console.log('\n====================================================');
