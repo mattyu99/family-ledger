@@ -36,6 +36,7 @@ import { Transaction, TransactionType, PaymentMethod } from '../types/database';
 import {
   PAYMENT_METHOD_OPTIONS,
   DEFAULT_PAYMENT_METHODS,
+  formatPaymentLabel,
   sortAccountsByUser,
   filterAccountsForUser,
   DISCOUNT_PRESET_LABELS,
@@ -1578,9 +1579,24 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                                 : (linkedExpense.merchant || linkedExpense.category?.name || (linkedExpense.type === 'income' ? '收入記帳' : linkedExpense.type === 'transfer' ? '轉帳記錄' : '支出記帳'))}
                             </Text>
                             <Text style={styles.linkedExpenseSubtitle} numberOfLines={1}>
-                              {linkedExpense.type === 'memo'
-                                ? `生活待辦 · ${getMemberById(linkedExpense.paid_by)?.display_name || '成員'} 記錄`
-                                : `${linkedExpense.payment_account?.name || linkedExpense.payment_method || '現金'} · ${getMemberById(linkedExpense.paid_by)?.display_name || '成員'} ${linkedExpense.type === 'income' ? '收款' : '付款'}`}
+                              {(() => {
+                                if (linkedExpense.type === 'memo') {
+                                  return `生活待辦 · ${getMemberById(linkedExpense.paid_by)?.display_name || '成員'} 記錄`;
+                                }
+                                const payLabel = formatPaymentLabel(
+                                  linkedExpense.payment_method,
+                                  linkedExpense.payment_account || (linkedExpense.account_id ? getAccountById?.(linkedExpense.account_id) : undefined),
+                                  paymentMethods
+                                ).text;
+                                const memberName = getMemberById(linkedExpense.paid_by)?.display_name || '成員';
+                                if (linkedExpense.type === 'transfer') {
+                                  return `${payLabel} · ${memberName} 轉帳`;
+                                }
+                                if (linkedExpense.type === 'income') {
+                                  return `${payLabel} · ${memberName} 收款`;
+                                }
+                                return `${payLabel} · ${memberName} 付款`;
+                              })()}
                             </Text>
                           </View>
                           <Text style={[
