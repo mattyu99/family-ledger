@@ -1,32 +1,91 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 
-test.describe('家庭記帳本 Web 端自動化 E2E 測試', () => {
-  test('首頁正常載入並呈現核心導航與標籤', async ({ page }) => {
+// 注入已登入公帳本機快取輔助函式
+async function injectActiveLedgerState(page: Page) {
+  await page.addInitScript(() => {
+    const mockLedger = {
+      id: 'ab10fe7e-d0d8-4bc9-b338-24620d26d924',
+      name: '幸福小窩家庭公帳',
+      description: '全家人日常採買與生活開銷',
+      currency: 'TWD',
+      created_by: '11111111-1111-4000-8000-000000000001',
+      created_at: new Date().toISOString(),
+    };
+    const mockUser = {
+      id: '11111111-1111-4000-8000-000000000001',
+      display_name: '爸爸 (測試)',
+      avatar_url: '👨',
+      role: 'admin',
+      ledger_id: mockLedger.id,
+    };
+    const mockMembers = [
+      mockUser,
+      {
+        id: '22222222-2222-4000-8000-000000000002',
+        display_name: '媽媽 (測試)',
+        avatar_url: '👩',
+        role: 'member',
+        ledger_id: mockLedger.id,
+      },
+    ];
+    window.localStorage.setItem('@family_ledger_current', JSON.stringify(mockLedger));
+    window.localStorage.setItem('@family_ledger_current_user', JSON.stringify(mockUser));
+    window.localStorage.setItem(`@family_ledger_current_user_${mockLedger.id}`, JSON.stringify(mockUser));
+    window.localStorage.setItem('@family_ledger_members', JSON.stringify(mockMembers));
+    window.localStorage.setItem('@family_ledger_has_joined', 'true');
+    window.localStorage.setItem('@family_ledger_invite_code', 'FAM-8823');
+    window.localStorage.setItem('@family_ledger_transactions', JSON.stringify([]));
+  });
+}
+
+test.describe('家庭記帳本 Web 端：冷啟動訪客引導體驗', () => {
+  test('冷啟動訪客引導畫面正常載入，能呈現建立帳本與加入選項', async ({ page }) => {
     await page.goto('/family-ledger/');
     await expect(page).toHaveTitle(/甜心記帳本/);
 
-    // 驗證底部四個核心分頁導航標籤存在且可視
-    await expect(page.getByText('明細').first()).toBeVisible();
-    await expect(page.getByText('統計').first()).toBeVisible();
-    await expect(page.getByText('帳單支付').first()).toBeVisible();
-    await expect(page.getByText('家庭設定').first()).toBeVisible();
+    // 驗證未加入帳本時的迎賓引導介面
+    await expect(page.getByText('跨裝置即時同步').first()).toBeVisible();
+    await expect(page.getByText(/建立新的家庭公帳|我是發起人/).first()).toBeVisible();
+    await expect(page.getByText(/輸入邀請碼加入現有帳本|我是家人/).first()).toBeVisible();
+    await expect(page.getByText(/Google 帳號/).first()).toBeVisible();
+
+    // 點擊「我是發起人」開啟建立公帳彈窗
+    await page.getByText(/建立新的家庭公帳|我是發起人/).first().click();
+    await expect(page.getByText(/帳本名稱|建立新/i).first()).toBeVisible();
+  });
+});
+
+test.describe('家庭記帳本 Web 端：核心分頁導航與操作流', () => {
+  test.beforeEach(async ({ page }) => {
+    await injectActiveLedgerState(page);
+  });
+
+  test('進入主畫面並呈現底部四個核心分頁導航', async ({ page }) => {
+    await page.goto('/family-ledger/');
+    await expect(page).toHaveTitle(/甜心記帳本/);
+
+    // 驗證底部四個核心分頁標籤存在且可視
+    await expect(page.getByText('明細', { exact: true }).last()).toBeVisible();
+    await expect(page.getByText('統計', { exact: true }).last()).toBeVisible();
+    await expect(page.getByText('帳單支付', { exact: true }).last()).toBeVisible();
+    await expect(page.getByText('家庭設定', { exact: true }).last()).toBeVisible();
   });
 
   test('分頁切換：點擊「統計」分頁能順利渲染統計畫面', async ({ page }) => {
     await page.goto('/family-ledger/');
-    await page.getByText('統計').first().click();
-    await expect(page.getByText(/統計|收支|支出|結算/i).first()).toBeVisible();
+    await page.getByText('統計', { exact: true }).last().click();
+    await expect(page.getByText(/本月|統計|收支/i).first()).toBeVisible();
   });
 
-  test('分頁切換：點擊「帳單支付」分頁能呈現週期帳單與信用卡', async ({ page }) => {
+  test('分頁切換：點擊「帳單支付」分頁能呈現帳單與資產概況', async ({ page }) => {
     await page.goto('/family-ledger/');
-    await page.getByText('帳單支付').first().click();
-    await expect(page.getByText(/帳單|支付|週期|信用卡/i).first()).toBeVisible();
+    await page.getByText('帳單支付', { exact: true }).last().click();
+    await expect(page.getByText(/帳單與支付資產|定期扣款|分期攤提/).first()).toBeVisible();
   });
 
-  test('分頁切換：點擊「家庭設定」能呈現備份、成員與字型自訂選項', async ({ page }) => {
+  test('分頁切換：點擊「家庭設定」能呈現公帳版本與設定選項', async ({ page }) => {
     await page.goto('/family-ledger/');
-    await page.getByText('家庭設定').first().click();
-    await expect(page.getByText(/字體|備份|成員|家庭/i).first()).toBeVisible();
+    await page.getByText('家庭設定', { exact: true }).last().click();
+    await expect(page.getByText(/甜心記帳本|字體大小|家庭成員/).first()).toBeVisible();
   });
 });

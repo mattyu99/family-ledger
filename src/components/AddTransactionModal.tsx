@@ -16,24 +16,13 @@ import { Text, TextInput } from './common/Text';
 
 import { HorizontalScrollView } from './HorizontalScrollView';
 
-const safeAlert = (title: string, message: string) => {
-  if (Platform.OS === 'web') {
-    if (typeof window !== 'undefined') window.alert(`${title}\n\n${message}`);
-  } else {
-    Alert.alert(title, message);
-  }
-};
-
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import { TransactionType, PaymentMethod } from '../types/database';
 import {
-  PAYMENT_METHOD_OPTIONS,
   DEFAULT_PAYMENT_METHODS,
-  sortAccountsByUser,
   filterAccountsForUser,
-  DISCOUNT_PRESET_LABELS,
   getRecommendedDiscountLabel,
   formatExpenseNoteWithDiscount,
   getSmartDiscountLabels,
@@ -73,6 +62,14 @@ import { DatePickerModal } from './DatePickerModal';
 import { InvoiceScannerModal } from './InvoiceScannerModal';
 import { ImageViewerModal } from './ImageViewerModal';
 import { uploadReceiptPhoto } from '../lib/receiptStorage';
+
+const safeAlert = (title: string, message: string) => {
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined') window.alert(`${title}\n\n${message}`);
+  } else {
+    Alert.alert(title, message);
+  }
+};
 
 let ImagePickerModule: any = null;
 try {

@@ -39,11 +39,16 @@ const server = http.createServer((req, res) => {
       res.end('Error loading ' + reqPath);
       return;
     }
-    res.writeHead(200, { 'Content-Type': contentType });
+    res.writeHead(200, {
+      'Content-Type': contentType,
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-cache',
+    });
     res.end(content);
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`Web server running at http://localhost:${PORT}/family-ledger/`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Web server running at http://127.0.0.1:${PORT}/family-ledger/`);
 });
+

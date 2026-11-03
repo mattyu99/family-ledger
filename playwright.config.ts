@@ -10,7 +10,7 @@ export default defineConfig({
   workers: 1,
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
   use: {
-    baseURL: 'http://localhost:8081/family-ledger',
+    baseURL: 'http://127.0.0.1:8081',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -26,8 +26,11 @@ export default defineConfig({
   ],
   webServer: {
     command: 'node scripts/serve-web.mjs',
-    url: 'http://localhost:8081/family-ledger/',
+    url: 'http://127.0.0.1:8081/family-ledger/',
     reuseExistingServer: !process.env.CI,
-    timeout: 15000,
+    timeout: 30000,
+    stdout: 'pipe',
+    stderr: 'pipe',
   },
 });
+
