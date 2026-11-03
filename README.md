@@ -1,4 +1,4 @@
-# 💖 甜心記帳本 (Sweetheart Family Ledger) v1.0.10
+# 💖 甜心記帳本 (Sweetheart Family Ledger) v1.0.11
 
 一套基於 **React Native + Expo SDK 57** 與 **Supabase PostgreSQL Realtime** 打造的跨平台家庭共同記帳系統。  
 支援 **Android 原生 App（APK）、電腦網頁版（Web）與手機瀏覽器（PWA）** 多端併行，具備**多人協同記帳、即時雙向同步、離線隨身記帳、生活手帳記事、固定與分期帳單追蹤、Google 帳號一鍵綁定與身分電子鎖、4 位數安全防護、6 大全要素資料備份**與**雲端 OTA 熱更新**功能。
@@ -114,9 +114,9 @@
     - **原生模組安全載入機制**：全面改用動態探測載入（`requireOptionalNativeModule`），在尚未重新編譯 APK 之舊用戶端自動平滑降級為 PIN 碼模式，徹底杜絕 OTA 黑屏現象。
     - **全域根層安全邊界**：於應用程式最外層掛載 `<RootErrorBoundary>`，攔截任何未預期例外執行緒，呈現友善提示與一鍵恢復按鈕，維持全 App 堅如磐石的穩定度。
 24. **📱 原生 Android 桌面小工具 (Home Screen AppWidgets) 與快捷直達**：
-    - **2x2 極速捷徑 (QuickActionsWidget)**：提供「💸 記支出、📷 掃發票、💰 記收入、📝 隨手記」四大高頻動作，桌面 0 毫秒極速直達對應表單。
-    - **4x2 今日生活待辦 (MemoTodayWidget)**：桌面直讀本機 SQLite 快照，即時檢視今日與逾期待辦細項，隨時掌握家庭任務。
-    - **自適應雙層佈局與智慧清洗**：自動清洗 Markdown 待辦標記，保留完整備忘內文；自適應防擠壓排版杜絕按鈕溢出。
+    - **2x2 3D 黏土極速捷徑 (QuickActionsWidget)**：全面升級 32dp 立體 3D 黏土圖標（「💸 記支出、📷 掃發票、💰 記收入、📝 記事待辦」），桌面 0 毫秒極速直達對應表單。
+    - **4x2 今日生活待辦 (MemoTodayWidget)**：微調內距與間距擴充為 4 則生活備忘，直讀本機 SQLite 快照，隨時掌握家庭任務與點擊直達手帳總覽。
+    - **自適應雙層佈局與智慧清洗**：自動清洗 Markdown 待辦標記保留內文，自帶右上角「🔄」手動刷新與 Home 鍵秒級廣播重繪。
 25. **🔔 跨裝置即時推播與桌面小工具背景靜默喚醒同步 (Silent Push)**：
     - **推播分發引擎 (`pushDispatcher`)**：家人新增、辦妥、修改或刪除待辦時，自動過濾本機發送者，向同公帳其他家人手機發送通知。
     - **靜默背景喚醒 (`_contentAvailable: true`)**：推播在背景喚醒手機作業系統 1 秒鐘，自動執行快照同步並即時刷新桌面小工具，跨裝置零時差。
@@ -125,34 +125,54 @@
     - **PostgreSQL 核心預存程序 (SECURITY DEFINER RPC)**：明細、卡片餘額、分類、週期規則等核心異動全線改採資料庫內部預存程序安全穿透 RLS，兼顧極致安全與穩定可用。
 27. **⚡ 主頁下拉刷新極速並行化管線 (RTT < 300ms)**：
     - 打破 15 次循序排隊網路請求，將帳本主檔、分類、成員名冊、付款卡片、交易明細等 9 大核心查詢全面打包為 `Promise.all` 單一並發管線，下拉轉圈耗時自 15 秒驟降至 0.8 秒以內。
+28. **🛡️ 管理員生物辨識提權與零信任身分防護**：
+    - 管理員日常提權支援原生指紋 / Face ID / 系統鎖屏碼秒開，10 分鐘無操作自動逾期退回日常模式，杜絕全公帳共用密碼。
+    - 拔除退回名冊首位安全漏洞，未認領身分嚴格以訪客模式安全瀏覽；新成員邀請加入全面採主管理員審核指派制。
+29. **⚡ 毫秒級游標式分頁 (Keyset Pagination)**：
+    - 重構 25,000+ 筆海量歷史明細同步為毫秒級游標式分頁 (`WHERE transacted_at <= cursor`)，12 秒無感全量同步 25,980 筆紀錄，零逾時、零中斷。
+30. **🧪 全自動化三層測試金字塔 (Testing Pyramid & CI/CD Pipeline)**：
+    - **第一層 核心邏輯單元測試 (Jest)**：78 題單元測試覆蓋發票 QR Code 解析、防重複記帳演算法、帳本餘額計算、循環帳單規則與桌面小工具快照清洗。
+    - **第二層 資料庫預存程序安全整合測試 (Supabase RPC)**：4 題關鍵安全測試驗證 Zero-Token 架構下的帳本資料隔離、未登入提權防護與邀請碼安全機制。
+    - **第三層 網頁端端到端測試 (Playwright E2E & Web Bundle)**：Playwright 跨瀏覽器自動化測試模擬記帳與生活待辦流暢度，秒級通過；自動驗證靜態 Web Bundle 打包產物完整性。
+    - **行動端真機走查與 GitHub Actions CI**：提供 Maestro 黑盒自動化 YAML 腳本與 Firebase Test Lab 雲端真機測試指令，搭配 GitHub Actions CI 全自動品質守門。
 
 ---
 
 ## 📋 歷次功能演進與重大更新記錄 (Changelog)
 
-### 🚀 v1.0.10 (當前最新版本: v1.0.10.6)
-* **🔤 APP 內全域字型大小自訂與長輩友善模式**：全新打造 FontSizeProvider 與 Typography 統一管線，支援「精簡 (90%)、標準 (100%)、舒適放大 (112%)、特大長輩 (125%)」四檔位自訂，提供即時排版預覽與跟隨手機系統字體開關。
-* **🔄 生活記事待辦支援「每週重複」提醒**：記事週期選項新增「每週重複」晶片，辦妥本週事項自動推算 +7 天生成下週同天未辦妥事項，支援國農雙曆法展示與推播排程自動接力續排。
-* **📱 原生 Android 桌面小工具 (Home Screen AppWidgets)**：全新打造 withAndroidWidgets Config Plugin，深度注入 2x2 快捷按鈕 (QuickActionsWidget) 與 4x2 今日待辦 (MemoTodayWidget) 原生佈局 XML 與 Java Provider，支援由 SQLite 本機快照直讀渲染，免開 App 即時掌握待辦與一鍵記帳。
-* **🎨 桌面小工具選擇器 (Widget Picker) 原生擬真預覽**：全面採用 Android 12+ previewLayout 原生規範，注入 2x2 快捷按鈕與 4x2 生活待辦擬真展示版面，徹底根除白底九宮格空白。
-* **📂 提醒中心卡片清單摺疊收合**：信用卡帳單排程與生活待辦提醒清單改採一鍵展開/收合設計，預設折疊精簡，大幅瘦身設定頁長度。
-* **🔔 記事提醒清除與排程自癒修復**：修復編輯已設提醒記事時，改為「不設提醒」儲存後仍殘留提醒標記之缺陷，徹底清除雲端、本機快照與推播排程。
-* **🏷️ 桌面小工具公帳名稱動態連動與逾期/日期提示**：2x2 快捷按鈕小工具自動直讀並顯示當前切換之公帳名稱；4x2 今日待辦小工具完整呈現「已逾期」與指派人日期徽章，對齊 In-App 預覽體驗。
-* **🔔 跨裝置即時推播與背景靜默喚醒同步**：資料庫 member_devices 補齊 push_token 登記，建立 pushDispatcher 跨裝置推播分發引擎；家人新增或辦妥待辦時自動發送 _contentAvailable: true 靜默推播，背景喚醒手機作業系統 0 延遲刷新桌面小工具。
-* **📋 待辦智慧內文解析與快照排版優化**：widgetSync 自動清洗 Markdown 方框標記（- [ ] / - [x]），智慧提取真實活動與採買內文；修復家庭設定頁標題過長擠壓按鈕之問題，改採自適應雙層防擠壓排版。
-* **🛡️ 企業級零金鑰架構 (Zero-Token Architecture)**：前端客戶端徹底拔除所有 service_role 最高服務權杖與混淆碼，全線改採 PostgreSQL SECURITY DEFINER 核心預存程序 (RPC) 與標準公開 anon_key，達成零信任企業級安全防禦。
-* **⚡ 主頁下拉刷新極速並行化重構 (RTT < 300ms)**：打破 15 次循序排隊網路瀑布，將 9 大核心查詢全面打包為 Promise.all 單一並發請求，轉圈耗時自 15 秒驟降至 0.8 秒以內。
-* **📦 全新 Android 原生 APK 編譯發布**：打包 VersionCode 5 原生二進位獨立安裝檔，完整收錄原生桌面小工具、挑選器擬真預覽、推播喚醒與零金鑰極速架構。
+### 🚀 v1.0.11 (當前最新版本: v1.0.11.0 / Android versionCode 8)
+* **🎨 桌面小工具 3D 黏土圖標**：2x2 快捷按鈕全面升級 32dp 立體黏土圖標（記支出、掃發票、記收入、記待辦），視覺與桌面捷徑完美統一。
+* **📋 桌面生活待辦擴充至 4 則**：4x2 待辦小工具微調內距與間距，在不改變小工具尺寸下由 3 則擴充至 4 則生活備忘。
+* **🧪 單元測試金字塔 (Jest)**：建立 78 項核心單元測試，覆蓋發票解析、重複記帳演算法、帳本餘額計算與小工具快照清洗。
+* **🛡️ 資料庫預存程序安全整合測試**：建立 Supabase RPC 整合測試，驗證零金鑰架構下的帳本資料隔離與安全預存機制。
+* **🌐 網頁端端到端測試 (Playwright)**：Playwright 模擬完整記帳與生活待辦流程秒級通過，自動驗證 Web Bundle 產物完整性。
+* **📱 行動端真機自動化腳本**：新增 Maestro 黑盒自動化 YAML 腳本與 Firebase Test Lab 雲端真機測試指令。
+* **🚀 GitHub Actions CI/CD 品質守門**：整合型別檢查、Expo Lint、單元測試、RPC 整合與 Playwright 自動化測試流水線。
+* **📦 全新 Android 原生 APK (VersionCode 8)**：升級原生二進位代碼，支援最新 XML 佈局、Java 綁定與 Drawable 資源。
+
+---
+
+### 📦 v1.0.10 (v1.0.10.0 ~ v1.0.10.19 / Android versionCode 7)
+* **🛡️ 管理員生物辨識提權**：支援原生指紋、Face ID 與鎖屏碼秒開提權，10 分鐘無操作自動退回日常模式，杜絕全家共用密碼。
+* **🔒 零信任身分與訪客防護**：拔除退回名冊首位漏洞，未認領身分嚴格以訪客瀏覽；邀請加入改採主管理員審核指派制。
+* **⚡ 毫秒級游標式分頁同步**：海量歷史明細重構為游標式分頁 (WHERE transacted_at <= cursor)，25,000+ 筆明細極速同步零逾時。
+* **📋 桌面待辦點擊直達與手動刷新**：點擊待辦直達生活手帳總覽；新增右上角「🔄」手動刷新與 Home 鍵秒級廣播重繪。
+* **🔒 待辦隱私分流與姓名校正**：桌面小工具對齊推播僅顯示全家共同與個人專屬待辦；修復全家待辦誤附姓名問題。
+* **⚡ 週期帳單期別與歷史防呆**：修復水電瓦斯雙月繳卡片期別脫鉤；加入建立日期與 30 天歷史邊界防呆杜絕遠古誤判。
+* **🎨 頂部卡片防重疊佈局優化**：重構頂部資訊卡排版釋放寬度防重疊；新增「📖 操作指南」常駐速查手冊。
+* **🗓️ 未來 7 天滾動預告平鋪時間軸**：自動向前推算 7 天即將扣款與到期項目，以「逾期 ➔ 今日 ➔ 明日 ➔ 未來 7 天」平鋪展示。
+* **🔤 全域字型自訂與長輩模式**：支援精簡、標準、舒適放大、特大四檔字型調整，並支援跟隨手機系統字體。
+* **🔄 生活記事待辦每週重複提醒**：新增每週固定日重複排程，辦妥自動接續下週同日，相容國曆與農曆曆法。
 
 ---
 
 ### 📦 v1.0.9 (v1.0.9.0 ~ v1.0.9.33)
-* **🛡️ 零服務權杖架構 (Zero-Token Architecture)**：前端客戶端徹底拔除 service_role 最高服務權杖，全線改採 PostgreSQL 14 大核心預存程序 (SECURITY DEFINER RPC) 穿透 RLS，達成企業級零信任安全防禦。
-* **⚡ 下拉刷新極速並行化管線 (RTT < 300ms)**：將帳本主檔、自訂分類、家庭名冊、付款卡片、交易明細等 9 大核心查詢全面打包為 Promise.all 單一並行請求，耗時自 15 秒驟降至 0.8 秒以內。
-* **📱 桌面小工具快照中樞與 Android 原生插件**：建立 widgetSync 快照引擎與 withAndroidWidgets 原生插件，支援 2x2 快捷按鈕與 4x2 今日待辦桌面小工具直讀本機快照。
-* **🔔 跨裝置即時推播與背景喚醒同步**：member_devices 擴充 push_token 登記並建立 pushDispatcher，家人新增或辦妥待辦時自動發送靜默推播喚醒背景更新桌面小工具。
-* **📝 生活備忘智慧解析與辦妥排序優化**：自動清洗 Markdown 方框標記完整保留備忘細項，已辦妥清單改以 completed_at 辦妥時間降序置頂，生活手帳體驗全面升級。
-* **🛡️ 雙軌穿透容錯、離線自癒與快照防擠壓**：完善支付卡片載入防禦與離線待補傳隊列出列自癒，重構小工具預覽為自適應雙層標題徹底根除按鈕溢出。
+* **🛡️ 零服務權杖架構 (Zero-Token)**：前端徹底拔除最高服務權杖，全線改採 PostgreSQL 14 大核心預存程序 (RPC) 穿透防護。
+* **⚡ 下拉刷新極速並行化管線**：9 大核心查詢打包 Promise.all 單一並發請求，下拉轉圈耗時自 15 秒驟降至 0.8 秒以內。
+* **📱 Android 原生桌面小工具**：全新打造 withAndroidWidgets 外掛，支援 2x2 快捷按鈕與 4x2 今日待辦桌面小工具。
+* **🎨 小工具選擇器原生擬真預覽**：引入 Android 12+ previewLayout 規範，注入原生卡片預覽版面徹底根除空白。
+* **🔔 跨裝置即時推播與背景喚醒**：member_devices 登記推播 Token，家人記帳或辦妥待辦時自動喚醒背景更新桌面小工具。
+* **📝 生活手帳智慧解析與排序優化**：自動清洗 Markdown 標記保留備忘細項，已辦妥清單依辦妥時間降序置頂。
 
 ---
 
@@ -236,13 +256,23 @@
 ```text
 family-ledger/
 ├── App.tsx                     # 根元件 (全域 RootErrorBoundary、隱私鎖 AppLockOverlay、4大導航分頁)
-├── app.json                    # Expo 與 Android 原生配置 (套件名稱、圖示、原生外掛、版本 v1.0.9)
+├── app.json                    # Expo 與 Android 原生配置 (套件名稱、圖示、原生外掛、版本 v1.0.11 / versionCode 8)
 ├── eas.json                    # Expo EAS Build 雲端打包與 EAS Update 頻道設定
-├── package.json                # 專案相依性與 npm 快速建置腳本 (v1.0.9)
+├── package.json                # 專案相依性與 npm 快速建置腳本 (v1.0.11)
+├── playwright.config.ts        # Playwright Web E2E 測試配置檔
+├── plugins/
+│   └── withAndroidWidgets.js   # Expo Config Plugin：Android 2x2 / 4x2 桌面小工具原生注入插件
 ├── supabase_schema.sql         # Supabase PostgreSQL 完整資料表結構、RLS 安全策略、RPC 儲存程序
 ├── supabase/
-│   └── functions/
-│       └── gemini-ocr/         # Supabase Edge Function (Gemini API 金鑰雲端安全封存與發票辨識)
+│   ├── functions/
+│   │   └── gemini-ocr/         # Supabase Edge Function (Gemini API 金鑰雲端安全封存與發票辨識)
+│   └── tests/
+│       └── rpc-security.test.mjs# Phase 1.5 Supabase RPC 預存程序安全穿透與資料隔離測試
+├── e2e/
+│   ├── web/
+│   │   └── app-flows.spec.ts   # Phase 2 Playwright 網頁 E2E 整合測試 (記帳/待辦全流程)
+│   └── mobile/
+│       └── accounting-flow.yaml# Phase 3 Maestro 原生行動端黑盒自動化測試腳本
 ├── src/
 │   ├── types/
 │   │   ├── database.ts         # TypeScript 資料庫與核心實體型別定義 (TransactionType 支援 memo)
@@ -260,9 +290,17 @@ family-ledger/
 │   │   ├── usePaymentAccounts.ts # 銀行帳戶、悠遊卡、信用卡待繳負債與財務淨值試算 Hook
 │   │   └── useRecurringRules.ts# 週期扣款、固定帳單排程、信用卡分期進度追蹤 Hook
 │   ├── lib/
+│   │   ├── __tests__/          # Phase 1 Jest 核心單元測試套件 (78/78 全數通過)
+│   │   │   ├── invoice.test.ts # 發票雙碼 QR Code 解析、77 碼格式驗證測試
+│   │   │   ├── lottery.test.ts # 官方發票開獎期別與中獎比對測試
+│   │   │   ├── recurring.test.ts# 週期帳單固定扣款與防呆邊界測試
+│   │   │   ├── memo.test.ts    # 記事標籤提取、超連結轉換與待辦排程測試
+│   │   │   ├── widgetSync.test.ts# 桌面小工具 SQLite 快照清洗與 4 則待辦提取測試
+│   │   │   └── lunar.test.ts   # 農曆與台灣節慶祭祀運算測試
 │   │   ├── supabase.ts         # Supabase 連線客戶端與連線狀態檢查
 │   │   ├── biometrics.ts       # 原生生物辨識 (Face ID / 指紋) 安全探測與優雅降級
 │   │   ├── quickActions.ts     # 手機桌面長按 Quick Actions 捷徑選單與 Deep Linking 處理
+│   │   ├── widgetSync.ts       # 桌面小工具本機快照寫入與資料清洗中樞
 │   │   ├── billingNotifications.ts # 信用卡出帳日與繳款日前智慧本機推播
 │   │   ├── geminiInvoice.ts    # Gemini 多模態發票收據結構化辨識與 Edge Function 整合
 │   │   ├── memo.ts             # 記事標籤解析、超連結跳轉與記事到期智慧推播
@@ -303,10 +341,15 @@ family-ledger/
 │       └── colors.ts              # 甜心粉暖色系調色盤與主題色彩變數
 ├── .github/
 │   └── workflows/
+│       ├── automated-tests.yml        # CI/CD：TypeScript 型別 + Lint + Jest + RPC + Playwright 測試
 │       └── daily-report-keepalive.yml # GitHub Actions 每日定時防休眠與 LINE 日報排程
 ├── scripts/
-│   └── daily-report.mjs          # 每日收支計算、Supabase 保活與 LINE Flex 卡片生成腳本
-└── assets/                       # 甜心記帳本 3D 黏土風圖示、自適應啟動圖與 Favicon
+│   ├── daily-report.mjs          # 每日收支計算、Supabase 保活與 LINE Flex 卡片生成腳本
+│   ├── serve-web.mjs             # Playwright E2E 本機靜態網頁伺服器
+│   ├── test-web-build.mjs        # Web Bundle 打包產物完整性檢查腳本
+│   ├── run-maestro.sh            # Maestro 原生行動端 E2E 測試執行腳本
+│   └── run-firebase-test-lab.sh  # Firebase Test Lab 雲端真機農場自動化測試腳本
+└── assets/                       # 甜心記帳本 3D 黏土風圖示、自適應啟動圖、桌面小工具 Drawable 資源
 ```
 
 ---
@@ -401,18 +444,63 @@ npm run update:android -- --message "版本更新備註"
 ```
 家人手機下次打開 App 時就會自動無感套用最新畫面。
 
+### 5. 🧪 自動化測試金字塔與品質驗證 (Automated Testing Pyramid)
+
+甜心記帳本導入了嚴謹的三層自動化測試架構與 GitHub Actions 守門機制，確保跨平台、離線優先與資料安全零死角：
+
+```bash
+# 🔹 第一層：核心邏輯單元測試 (Jest)
+# 涵蓋發票 QR Code 解析、防重複記帳、帳本餘額計算、循環帳單防呆、小工具快照清洗 (78/78 全數通過)
+npm run test:unit
+
+# 🔹 第二層：資料庫預存程序安全整合測試 (Supabase RPC)
+# 驗證 Zero-Token 架構下的帳本資料隔離、未登入提權防護與邀請碼唯一性機制 (4/4 全數通過)
+npm run test:rpc
+
+# 🔹 第三層 A：Web Bundle 打包產物完整性檢查
+# 驗證 Expo Web 靜態匯出、index.html 入口與 JS Bundle 完整產出
+npm run test:web
+
+# 🔹 第三層 B：Playwright 網頁端端到端 E2E 測試
+# 跨 Chromium 瀏覽器全自動走查收支記帳、待辦打勾辦妥與連動支出全流程 (秒級通過)
+npm run test:e2e:web
+
+# 🚀 一鍵執行上述完整品質守門測試套件 (Unit + RPC + Web Build + Playwright)
+npm run test:all
+
+# 📱 行動端真機黑盒自動化測試 (Maestro)
+# 需已連接 Android 模擬器或實機 (adb devices 可見)
+./scripts/run-maestro.sh
+
+# ☁️ Firebase Test Lab 雲端真機農場自動化測試
+# 一鍵上傳 APK 至 Google 雲端多機型真機矩陣執行 Robo 自動走查與 Crash 監控
+./scripts/run-firebase-test-lab.sh <APK檔案路徑>
+```
+
+#### GitHub Actions 全自動 CI 流水線 (`.github/workflows/automated-tests.yml`)
+每當代碼推送到 `main` 分支或提交 Pull Request 時，GitHub Actions 會自動於 Ubuntu 雲端環境執行：
+1. **TypeScript 靜態型別檢查** (`npx tsc --noEmit`)
+2. **Expo Lint 零警告代碼風格守門** (`npx expo lint`)
+3. **Jest 核心單元測試** (`npm run test:unit`)
+4. **Supabase RPC 預存程序安全測試** (`npm run test:rpc`)
+5. **Web Bundle 產物建置與完整性驗證** (`npm run test:web`)
+6. **Playwright 跨瀏覽器 E2E 端到端測試** (`npm run test:e2e:web`)
+7. **測試報告 Artifact 自動上傳封存**
+
 ---
 
 ## 🏷️ 版本號更新規範（語意化版本 SemVer）
 
 本系統遵循 `主版本 (Major) . 次版本 (Minor) . 修訂號 (Patch)` 格式：
 
-* **修訂號 (Patch，例如 `1.0.6` ➜ `1.0.7`)**：用於修正 Bug、介面微調、效能優化與備份功能擴展。
-* **次版本 (Minor，例如 `1.0.7` ➜ `1.1.0`)**：新增全新大功能模組（如自訂預算警示），原有功能相容。
+* **修訂號 (Patch，例如 `1.0.10` ➜ `1.0.11`)**：用於修正 Bug、介面微調、效能優化與備份功能擴展。
+* **次版本 (Minor，例如 `1.0.11` ➜ `1.1.0`)**：新增全新大功能模組（如自訂預算警示），原有功能相容。
 * **主版本 (Major，例如 `1.x.x` ➜ `2.0.0`)**：重大架構改版或底層資料表重構。
 
 ### 如何前進版本號？
-只要打開 **`app.json`** 與 **`package.json`**，將 `"version"` 修改為新版本號（如 `"1.0.8"`），App 介面卡片將**自動連動顯示**新版本號！
+1. 打開 **`app.json`** 與 **`package.json`**，將 `"version"` 修改為新版本號（如 `"1.0.11"`），並將 Android `"versionCode"` 加 1。
+2. 打開 **`src/constants/version.ts`**，更新 `APP_BASE_VERSION`、重置 `APP_BUILD_REVISION = 0`，並於 `CHANGELOG_HISTORY` 頂部加入精簡重點條目。
+3. App 介面頂部卡片與更新日誌將**自動連動顯示**新版本號與歷史紀錄！
 
 ---
 

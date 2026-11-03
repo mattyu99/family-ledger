@@ -234,16 +234,16 @@ flowchart TD
 * **後端與即時同步**：Supabase PostgreSQL + Realtime Broadcast & CDC (雙軌即時通知) + Supabase Edge Functions (`gemini-ocr` 雲端 AI 發票辨識)
 * **雲端 CI/CD 與自動化**：
   * **EAS Build & EAS Update**：Expo Application Services 雲端二進位建置與 OTA 無感熱更新
-  * **GitHub Pages**：電腦網頁版自動靜態部署
-  * **GitHub Actions**：每日 21:30 定時收支運算、LINE Flex Message 推播與 Supabase 永不休眠保活
+  * **三層自動化測試金字塔**：Jest 單元測試 + Supabase RPC 安全測試 + Playwright 網頁 E2E + Maestro 原生行動走查
+  * **GitHub Actions CI/CD**：全自動化型別檢查、代碼風格守門、端到端測試、每日 LINE Flex 日報與 Supabase 永不休眠保活
 
 ---
 
 ## 🚀 快速開始與版本資訊
 
 ### 📌 目前最新發布版本
-* **主版本號**：`v1.0.9`
-* **完整建置版本號**：`v1.0.9.0` (Build 0)
+* **主版本號**：`v1.0.11` (Android versionCode 8)
+* **完整建置版本號**：`v1.0.11.0` (Build 0)
 * **網頁體驗版網址**：[https://mattyu99.github.io/family-ledger/](https://mattyu99.github.io/family-ledger/)
 
 ### 📱 取得與安裝
