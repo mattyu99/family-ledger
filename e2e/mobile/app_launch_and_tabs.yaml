@@ -19,3 +19,4 @@ appId: com.mattyu.familyledger
 # 切換回「明細」分頁
 - tapOn: "明細"
 - assertVisible: "＋"
+

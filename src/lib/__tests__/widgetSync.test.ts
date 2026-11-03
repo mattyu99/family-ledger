@@ -125,4 +125,17 @@ describe('Android 桌面小工具快照萃取與待辦隱私分流測試 (widget
     expect(familyItem?.content).not.toContain('- [ ]');
     expect(familyItem?.content).toContain('全脂鮮奶');
   });
+
+  it('桌面小工具快照最多可支援並萃取前 4 筆待辦事項', () => {
+    const fourMemos: Transaction[] = [
+      { id: '1', ledger_id: 'l1', type: 'memo', amount: 0, creator_id: 'u1', paid_by: 'u1', reminder_target: 'family', reminder_date: '2026-11-01', note: '待辦1', category_id: 'c', transacted_at: '2026-11-01', created_at: '2026-11-01', is_settled: false },
+      { id: '2', ledger_id: 'l1', type: 'memo', amount: 0, creator_id: 'u1', paid_by: 'u1', reminder_target: 'family', reminder_date: '2026-11-02', note: '待辦2', category_id: 'c', transacted_at: '2026-11-01', created_at: '2026-11-01', is_settled: false },
+      { id: '3', ledger_id: 'l1', type: 'memo', amount: 0, creator_id: 'u1', paid_by: 'u1', reminder_target: 'family', reminder_date: '2026-11-03', note: '待辦3', category_id: 'c', transacted_at: '2026-11-01', created_at: '2026-11-01', is_settled: false },
+      { id: '4', ledger_id: 'l1', type: 'memo', amount: 0, creator_id: 'u1', paid_by: 'u1', reminder_target: 'family', reminder_date: '2026-11-04', note: '待辦4', category_id: 'c', transacted_at: '2026-11-01', created_at: '2026-11-01', is_settled: false },
+      { id: '5', ledger_id: 'l1', type: 'memo', amount: 0, creator_id: 'u1', paid_by: 'u1', reminder_target: 'family', reminder_date: '2026-11-05', note: '待辦5', category_id: 'c', transacted_at: '2026-11-01', created_at: '2026-11-01', is_settled: false },
+    ];
+    const snapshot = extractWidgetSnapshot(mockLedger, fourMemos, mockMembers, 'u1');
+    expect(snapshot.pendingMemos.length).toBe(4);
+    expect(snapshot.pendingMemos.map(m => m.rawTitle)).toEqual(['待辦1', '待辦2', '待辦3', '待辦4']);
+  });
 });

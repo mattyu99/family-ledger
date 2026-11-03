@@ -193,7 +193,23 @@ function withAndroidWidgets(config) {
 </shape>`;
       fs.writeFileSync(path.join(drawableDir, 'widget_btn_bg.xml'), bgBtnXml, 'utf8');
 
-      // 2.2 注入 2x2 快捷按鈕小工具佈局 (widget_quick_actions.xml)
+      // 2.1.1 複製 3D 黏土風格捷徑圖片至 Android 原生 drawable 目錄
+      const shortcutsSourceDir = path.join(projectRoot, 'assets', 'shortcuts');
+      const shortcutImages = [
+        'shortcut_expense.png',
+        'shortcut_scan.png',
+        'shortcut_income.png',
+        'shortcut_memo.png',
+      ];
+      shortcutImages.forEach((imgFile) => {
+        const srcPath = path.join(shortcutsSourceDir, imgFile);
+        const destPath = path.join(drawableDir, imgFile);
+        if (fs.existsSync(srcPath)) {
+          fs.copyFileSync(srcPath, destPath);
+        }
+      });
+
+      // 2.2 注入 2x2 快捷按鈕小工具佈局 (widget_quick_actions.xml，採用 32dp 3D 黏土立體圖標)
       const quickActionsLayoutXml = `<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -230,14 +246,16 @@ function withAndroidWidgets(config) {
             android:orientation="vertical"
             android:gravity="center"
             android:layout_marginEnd="3dp">
+            <ImageView
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:src="@drawable/shortcut_expense"
+                android:scaleType="fitCenter"
+                android:contentDescription="記支出" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="💸"
-                android:textSize="20sp" />
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
                 android:text="記支出"
                 android:textColor="#F1F5F9"
                 android:textSize="11sp"
@@ -253,14 +271,16 @@ function withAndroidWidgets(config) {
             android:orientation="vertical"
             android:gravity="center"
             android:layout_marginStart="3dp">
+            <ImageView
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:src="@drawable/shortcut_scan"
+                android:scaleType="fitCenter"
+                android:contentDescription="掃發票" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="📷"
-                android:textSize="20sp" />
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
                 android:text="掃發票"
                 android:textColor="#F1F5F9"
                 android:textSize="11sp"
@@ -283,14 +303,16 @@ function withAndroidWidgets(config) {
             android:orientation="vertical"
             android:gravity="center"
             android:layout_marginEnd="3dp">
+            <ImageView
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:src="@drawable/shortcut_income"
+                android:scaleType="fitCenter"
+                android:contentDescription="記收入" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="💰"
-                android:textSize="20sp" />
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
                 android:text="記收入"
                 android:textColor="#F1F5F9"
                 android:textSize="11sp"
@@ -306,14 +328,16 @@ function withAndroidWidgets(config) {
             android:orientation="vertical"
             android:gravity="center"
             android:layout_marginStart="3dp">
+            <ImageView
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:src="@drawable/shortcut_memo"
+                android:scaleType="fitCenter"
+                android:contentDescription="隨手記" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="📝"
-                android:textSize="20sp" />
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
                 android:text="隨手記"
                 android:textColor="#F1F5F9"
                 android:textSize="11sp"
@@ -323,21 +347,21 @@ function withAndroidWidgets(config) {
 </LinearLayout>`;
       fs.writeFileSync(path.join(layoutDir, 'widget_quick_actions.xml'), quickActionsLayoutXml, 'utf8');
 
-      // 2.3 注入 4x2 今日待辦小工具佈局 (widget_memo_today.xml)
+      // 2.3 注入 4x2 今日待辦小工具佈局 (widget_memo_today.xml，支援 4 條待辦事項)
       const memoTodayLayoutXml = `<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="@drawable/widget_card_bg"
-    android:padding="12dp">
+    android:padding="9dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:layout_marginBottom="6dp">
+        android:layout_marginBottom="4dp">
         <TextView
             android:id="@+id/memo_widget_title"
             android:layout_width="0dp"
@@ -378,7 +402,7 @@ function withAndroidWidgets(config) {
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:layout_marginBottom="4dp">
+            android:layout_marginBottom="2.5dp">
             <TextView
                 android:id="@+id/memo_item_1"
                 android:layout_width="0dp"
@@ -405,7 +429,7 @@ function withAndroidWidgets(config) {
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:layout_marginBottom="4dp"
+            android:layout_marginBottom="2.5dp"
             android:visibility="gone">
             <TextView
                 android:id="@+id/memo_item_2"
@@ -433,6 +457,7 @@ function withAndroidWidgets(config) {
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
+            android:layout_marginBottom="2.5dp"
             android:visibility="gone">
             <TextView
                 android:id="@+id/memo_item_3"
@@ -453,18 +478,45 @@ function withAndroidWidgets(config) {
                 android:textStyle="bold"
                 android:layout_marginStart="6dp" />
         </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/memo_row_4"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:visibility="gone">
+            <TextView
+                android:id="@+id/memo_item_4"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text=""
+                android:textColor="#CBD5E1"
+                android:textSize="11sp"
+                android:singleLine="true"
+                android:ellipsize="end" />
+            <TextView
+                android:id="@+id/memo_badge_4"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#F87171"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:layout_marginStart="6dp" />
+        </LinearLayout>
     </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:layout_marginTop="6dp">
+        android:layout_marginTop="5dp">
 
         <TextView
             android:id="@+id/btn_memo_add_expense"
             android:layout_width="0dp"
-            android:layout_height="28dp"
+            android:layout_height="26dp"
             android:layout_weight="1"
             android:background="@drawable/widget_btn_bg"
             android:gravity="center"
@@ -476,7 +528,7 @@ function withAndroidWidgets(config) {
         <TextView
             android:id="@+id/btn_memo_scan"
             android:layout_width="0dp"
-            android:layout_height="28dp"
+            android:layout_height="26dp"
             android:layout_weight="1"
             android:background="@drawable/widget_btn_bg"
             android:gravity="center"
@@ -488,7 +540,7 @@ function withAndroidWidgets(config) {
         <TextView
             android:id="@+id/btn_memo_view_all"
             android:layout_width="0dp"
-            android:layout_height="28dp"
+            android:layout_height="26dp"
             android:layout_weight="1"
             android:background="@drawable/widget_btn_bg"
             android:gravity="center"
@@ -499,21 +551,21 @@ function withAndroidWidgets(config) {
 </LinearLayout>`;
       fs.writeFileSync(path.join(layoutDir, 'widget_memo_today.xml'), memoTodayLayoutXml, 'utf8');
 
-      // 2.3.1 注入 4x2 今日待辦小工具預覽版面 (widget_memo_today_preview.xml，供 Android 12+ 啟動器 Widget Picker 展示)
+      // 2.3.1 注入 4x2 今日待辦小工具預覽版面 (widget_memo_today_preview.xml，供 Android 12+ 啟動器 Widget Picker 展示 4 條待辦)
       const memoTodayPreviewLayoutXml = `<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="@drawable/widget_card_bg"
-    android:padding="12dp">
+    android:padding="9dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:layout_marginBottom="6dp">
+        android:layout_marginBottom="4dp">
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
@@ -550,7 +602,7 @@ function withAndroidWidgets(config) {
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:layout_marginBottom="4dp">
+            android:layout_marginBottom="2.5dp">
             <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -575,12 +627,12 @@ function withAndroidWidgets(config) {
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:layout_marginBottom="4dp">
+            android:layout_marginBottom="2.5dp">
             <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="⚠️ 洋領鮮奶"
+                android:text="⚠️ 買全脂鮮奶"
                 android:textColor="#E2E8F0"
                 android:textSize="11sp"
                 android:singleLine="true"
@@ -599,7 +651,8 @@ function withAndroidWidgets(config) {
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:gravity="center_vertical"
+            android:layout_marginBottom="2.5dp">
             <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -618,17 +671,41 @@ function withAndroidWidgets(config) {
                 android:textStyle="bold"
                 android:layout_marginStart="6dp" />
         </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="⭕ 週末全家大掃除"
+                android:textColor="#E2E8F0"
+                android:textSize="11sp"
+                android:singleLine="true"
+                android:ellipsize="end" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="11-15"
+                android:textColor="#94A3B8"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:layout_marginStart="6dp" />
+        </LinearLayout>
     </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:layout_marginTop="6dp">
+        android:layout_marginTop="5dp">
 
         <TextView
             android:layout_width="0dp"
-            android:layout_height="28dp"
+            android:layout_height="26dp"
             android:layout_weight="1"
             android:background="@drawable/widget_btn_bg"
             android:gravity="center"
@@ -639,7 +716,7 @@ function withAndroidWidgets(config) {
 
         <TextView
             android:layout_width="0dp"
-            android:layout_height="28dp"
+            android:layout_height="26dp"
             android:layout_weight="1"
             android:background="@drawable/widget_btn_bg"
             android:gravity="center"
@@ -650,7 +727,7 @@ function withAndroidWidgets(config) {
 
         <TextView
             android:layout_width="0dp"
-            android:layout_height="28dp"
+            android:layout_height="26dp"
             android:layout_weight="1"
             android:background="@drawable/widget_btn_bg"
             android:gravity="center"
@@ -861,6 +938,7 @@ public class MemoTodayWidgetProvider extends AppWidgetProvider {
         String title1 = null, badge1 = null; int color1 = 0xFF94A3B8;
         String title2 = null, badge2 = null; int color2 = 0xFF94A3B8;
         String title3 = null, badge3 = null; int color3 = 0xFF94A3B8;
+        String title4 = null, badge4 = null; int color4 = 0xFF94A3B8;
 
         try {
             File dbFile = context.getDatabasePath("RKStorage");
@@ -936,6 +1014,26 @@ public class MemoTodayWidgetProvider extends AppWidgetProvider {
                                     color3 = 0xFF94A3B8;
                                 }
                             }
+                            if (memos.length() > 3) {
+                                JSONObject m = memos.getJSONObject(3);
+                                boolean isOverdue = m.optBoolean("isOverdue", false);
+                                String cleanTitle = m.has("rawTitle") ? m.getString("rawTitle") : m.optString("title", "");
+                                title4 = (isOverdue ? "⚠️ " : "⭕ ") + cleanTitle;
+                                String date = m.optString("reminderDate", "");
+                                String assignee = m.optString("assigneeName", "");
+                                if (isOverdue) {
+                                    badge4 = "已逾期";
+                                    color4 = 0xFFF87171;
+                                } else if (!date.isEmpty()) {
+                                    badge4 = date.length() >= 5 ? date.substring(date.length() - 5) : date;
+                                    if (!assignee.isEmpty()) badge4 += " · " + assignee;
+                                    color4 = 0xFF94A3B8;
+                                } else {
+                                    badge4 = "日常";
+                                    if (!assignee.isEmpty()) badge4 += " · " + assignee;
+                                    color4 = 0xFF94A3B8;
+                                }
+                            }
                         }
                     }
                     cursor.close();
@@ -979,6 +1077,16 @@ public class MemoTodayWidgetProvider extends AppWidgetProvider {
             views.setViewVisibility(R.id.memo_row_3, View.GONE);
         }
 
+        if (title4 != null) {
+            views.setTextViewText(R.id.memo_item_4, title4);
+            views.setTextViewText(R.id.memo_badge_4, badge4 != null ? badge4 : "");
+            views.setTextColor(R.id.memo_badge_4, color4);
+            views.setViewVisibility(R.id.memo_badge_4, badge4 != null ? View.VISIBLE : View.GONE);
+            views.setViewVisibility(R.id.memo_row_4, View.VISIBLE);
+        } else {
+            views.setViewVisibility(R.id.memo_row_4, View.GONE);
+        }
+
         // 綁定右上角 🔄 手動刷新按鈕 (發送廣播直達 Provider 本身，免開 App 即刻重繪)
         Intent refreshIntent = new Intent(context, MemoTodayWidgetProvider.class);
         refreshIntent.setAction("com.mattyu.familyledger.ACTION_REFRESH_MEMO");
@@ -1001,6 +1109,9 @@ public class MemoTodayWidgetProvider extends AppWidgetProvider {
         setupClick(context, views, R.id.memo_row_3, "familyledger://quick-action?mode=todo", 217);
         setupClick(context, views, R.id.memo_item_3, "familyledger://quick-action?mode=todo", 218);
         setupClick(context, views, R.id.memo_badge_3, "familyledger://quick-action?mode=todo", 219);
+        setupClick(context, views, R.id.memo_row_4, "familyledger://quick-action?mode=todo", 220);
+        setupClick(context, views, R.id.memo_item_4, "familyledger://quick-action?mode=todo", 221);
+        setupClick(context, views, R.id.memo_badge_4, "familyledger://quick-action?mode=todo", 222);
 
         // 綁定按鈕動作
         setupClick(context, views, R.id.btn_memo_add_expense, "familyledger://quick-action?mode=expense", 201);

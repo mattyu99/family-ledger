@@ -41,3 +41,4 @@ maestro test e2e/mobile/daily_accounting_flow.yaml
 
 echo "----------------------------------------------------"
 echo "🎉 所有 Maestro 原生移動端測試流程全數通過！"
+

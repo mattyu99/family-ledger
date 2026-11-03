@@ -15,3 +15,4 @@ appId: com.mattyu.familyledger
 
 # 驗證返回主畫面
 - assertVisible: "甜心記帳本"
+

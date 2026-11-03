@@ -33,3 +33,4 @@ gcloud firebase test android run \
   --max-steps 100
 
 echo "🎉 Firebase Test Lab 雲端真機測試完成！"
+

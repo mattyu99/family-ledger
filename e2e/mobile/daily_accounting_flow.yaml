@@ -24,3 +24,4 @@ appId: com.mattyu.familyledger
 # 驗證回到明細清單並看到新增的交易
 - assertVisible: "全聯採買蔬果"
 - assertVisible: "250"
+
