@@ -1,0 +1,26 @@
+appId: com.mattyu.familyledger
+---
+# 流程 4：日常手動記帳完整走訪
+- launchApp
+- assertVisible: "甜心記帳本"
+
+# 點擊右下角浮動按鈕 (FAB)
+- tapOn: "＋"
+
+# 驗證彈出記帳表單
+- assertVisible: "NT$"
+
+# 填寫金額
+- tapOn: "0"
+- inputText: "250"
+
+# 填寫備註
+- tapOn: "例如：好市多牛肉、加滿油、水電費..."
+- inputText: "全聯採買蔬果"
+
+# 儲存記帳
+- tapOn: "儲存記帳"
+
+# 驗證回到明細清單並看到新增的交易
+- assertVisible: "全聯採買蔬果"
+- assertVisible: "250"

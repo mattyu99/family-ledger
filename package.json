@@ -46,6 +46,8 @@
     "test:rpc": "node scripts/test-database-rpc.mjs",
     "test:web": "node scripts/test-web-build.mjs",
     "test:e2e:web": "playwright test",
+    "test:mobile": "bash scripts/run-maestro.sh",
+    "test:ftl": "bash scripts/run-firebase-test-lab.sh",
     "test:all": "npm run test:unit && npm run test:rpc && npm run test:web"
   },
   "private": true

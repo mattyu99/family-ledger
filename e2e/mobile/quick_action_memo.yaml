@@ -1,0 +1,17 @@
+appId: com.mattyu.familyledger
+---
+# 流程 3：測試 Android 桌面快捷動作 / 深度連結直接喚醒生活記事
+- openLink: "familyledger://quick-action?mode=memo"
+
+# 驗證直達生活記事視窗
+- assertVisible: "📌 儲存生活記事"
+
+# 輸入記事內容
+- tapOn: "記錄今天的事情、靈感、採買備忘或家庭待辦..."
+- inputText: "買鮮奶與衛生紙"
+
+# 點擊儲存生活記事
+- tapOn: "📌 儲存生活記事"
+
+# 驗證返回主畫面
+- assertVisible: "甜心記帳本"

@@ -1,0 +1,18 @@
+appId: com.mattyu.familyledger
+---
+# 流程 2：測試 Android 桌面快捷動作 / 深度連結直接喚醒記帳
+- openLink: "familyledger://quick-action?mode=expense"
+
+# 驗證直達記帳視窗
+- assertVisible: "NT$"
+- assertVisible: "儲存記帳"
+
+# 輸入金額
+- tapOn: "0"
+- inputText: "168"
+
+# 儲存記帳
+- tapOn: "儲存記帳"
+
+# 驗證回到明細清單並看到新增的交易
+- assertVisible: "168"

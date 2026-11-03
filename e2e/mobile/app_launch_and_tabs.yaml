@@ -1,0 +1,21 @@
+appId: com.mattyu.familyledger
+---
+# 流程 1：啟動 App 並驗證四大核心分頁切換
+- launchApp
+- assertVisible: "甜心記帳本"
+
+# 切換至「統計」分頁
+- tapOn: "統計"
+- assertVisible: ".*(統計|收支|本月|支出).*"
+
+# 切換至「帳單支付」分頁
+- tapOn: "帳單支付"
+- assertVisible: ".*(帳單與支付資產|定期扣款|分期攤提).*"
+
+# 切換至「家庭設定」分頁
+- tapOn: "家庭設定"
+- assertVisible: ".*(甜心記帳本|家庭成員|字體大小).*"
+
+# 切換回「明細」分頁
+- tapOn: "明細"
+- assertVisible: "＋"

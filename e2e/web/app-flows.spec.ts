@@ -35,6 +35,13 @@ async function injectActiveLedgerState(page: Page) {
     window.localStorage.setItem('@family_ledger_has_joined', 'true');
     window.localStorage.setItem('@family_ledger_invite_code', 'FAM-8823');
     window.localStorage.setItem('@family_ledger_transactions', JSON.stringify([]));
+    window.localStorage.setItem('@family_ledger_categories', JSON.stringify([
+      { id: '30000000-0000-4000-8000-000000000001', name: '餐飲伙食', icon: '🍲', color: '#EF4444', type: 'expense', sort_order: 1 },
+      { id: '30000000-0000-4000-8000-000000000002', name: '生鮮超市', icon: '🛒', color: '#F59E0B', type: 'expense', sort_order: 2 },
+    ]));
+    window.localStorage.setItem('@family_ledger_payment_methods', JSON.stringify([
+      { id: 'cash', name: '現金', icon: '💵', type: 'cash', is_active: true },
+    ]));
   });
 }
 
@@ -69,6 +76,30 @@ test.describe('家庭記帳本 Web 端：核心分頁導航與操作流', () => 
     await expect(page.getByText('統計', { exact: true }).last()).toBeVisible();
     await expect(page.getByText('帳單支付', { exact: true }).last()).toBeVisible();
     await expect(page.getByText('家庭設定', { exact: true }).last()).toBeVisible();
+  });
+
+  test('記帳操作流程：點擊「＋」浮動按鈕，填寫金額與備註並成功儲存', async ({ page }) => {
+    await page.goto('/family-ledger/');
+
+    // 點擊記帳浮動按鈕 (FAB)
+    await page.getByText('＋', { exact: true }).click();
+
+    // 驗證記帳彈窗開啟並輸入金額
+    const amountInput = page.getByPlaceholder('0').first();
+    await expect(amountInput).toBeVisible();
+    await amountInput.fill('168');
+
+    // 輸入備註
+    const noteInput = page.getByPlaceholder(/好市多牛肉|加滿油/).first();
+    await expect(noteInput).toBeVisible();
+    await noteInput.fill('自動化測試便當');
+
+    // 點擊「儲存記帳」按鈕
+    await page.getByText('儲存記帳', { exact: true }).click();
+
+    // 驗證明細清單中成功出現該筆記帳紀錄與金額
+    await expect(page.getByText('自動化測試便當').first()).toBeVisible();
+    await expect(page.getByText(/168/).first()).toBeVisible();
   });
 
   test('分頁切換：點擊「統計」分頁能順利渲染統計畫面', async ({ page }) => {
