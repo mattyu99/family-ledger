@@ -256,7 +256,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
     (memberId?: string | null) => {
       if (!memberId || !currentUser) return false;
       if (memberId === currentUser.id) return true;
-      const member = members.find(m => m.id === memberId);
+      const member = getMemberById ? getMemberById(memberId) : members.find(m => m.id === memberId);
       if (member) {
         if (member.id === currentUser.id) return true;
         if (
@@ -269,7 +269,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
       }
       return false;
     },
-    [currentUser, members]
+    [currentUser, members, getMemberById]
   );
 
   // 判斷某個付款人/持卡人 ID 是否對應指定目標成員 (支援 ID 或別名比對)
@@ -277,8 +277,8 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
     (userId?: string | null, targetId?: string) => {
       if (!userId || !targetId) return false;
       if (userId === targetId) return true;
-      const targetM = members.find(m => m.id === targetId);
-      const payerM = members.find(m => m.id === userId);
+      const targetM = getMemberById ? getMemberById(targetId) : members.find(m => m.id === targetId);
+      const payerM = getMemberById ? getMemberById(userId) : members.find(m => m.id === userId);
       if (targetM && payerM) {
         if (targetM.id === payerM.id) return true;
         if (
@@ -291,7 +291,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
       }
       return false;
     },
-    [members]
+    [members, getMemberById]
   );
 
   const targetMemberObj = useMemo(() => {
@@ -485,16 +485,29 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
       if (accountType === 'credit_card') {
         const isCardMatch =
           t.account_id === currentCard.id ||
-          (t.payment_method === 'credit_card' && !t.account_id && t.paid_by === currentCard.user_id);
+          (t.payment_method === 'credit_card' &&
+            !t.account_id &&
+            (t.paid_by === currentCard.user_id ||
+              (getMemberById &&
+                currentCard.user_id &&
+                getMemberById(t.paid_by)?.display_name &&
+                getMemberById(t.paid_by)?.display_name === getMemberById(currentCard.user_id)?.display_name)));
         if (!isCardMatch) return false;
       } else {
         // 悠遊卡模式：
         // 1. 刷卡消費扣款
+        const isPayerMatch =
+          t.paid_by === currentCard.user_id ||
+          (getMemberById &&
+            currentCard.user_id &&
+            getMemberById(t.paid_by)?.display_name &&
+            getMemberById(t.paid_by)?.display_name === getMemberById(currentCard.user_id)?.display_name);
+
         const isCardSpend =
           t.account_id === currentCard.id ||
           (t.payment_method === 'stored_value' &&
             !t.account_id &&
-            t.paid_by === currentCard.user_id &&
+            isPayerMatch &&
             (!t.note || !paymentAccounts.some(a => a.id !== currentCard.id && a.type === 'stored_value' && t.note?.includes(a.name))));
         // 2. 加值存入
         const isCardTopUp = isTopUpTransaction(t, currentCard, paymentAccounts);

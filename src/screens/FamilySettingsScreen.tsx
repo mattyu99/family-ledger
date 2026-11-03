@@ -211,11 +211,16 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     return (paymentAccounts || []).filter(acc => {
       if (acc.type !== 'credit_card') return false;
       if (currentUser?.id && acc.user_id) {
-        return acc.user_id === currentUser.id;
+        if (acc.user_id === currentUser.id) return true;
+        const owner = getMemberById ? getMemberById(acc.user_id) : undefined;
+        if (owner?.display_name && currentUser.display_name && owner.display_name === currentUser.display_name) {
+          return true;
+        }
+        return false;
       }
       return true;
     });
-  }, [paymentAccounts, currentUser?.id]);
+  }, [paymentAccounts, currentUser?.id, currentUser?.display_name, getMemberById]);
 
   // 僅篩選出本機實際會推播提醒的待辦記事：
   // 1. 僅保留今天與未來尚未過期的排程（reminder_date >= todayYmd；已逾期之提醒不屬於未來推播排程）
@@ -227,14 +232,19 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
         if (t.type !== 'memo' || t.is_settled || !t.reminder_date) return false;
         // 排除已逾期的提醒（只保留今天與未來即將推播的排程）
         if (t.reminder_date < todayYmd) return false;
-        // 個人專屬待辦分流純化：若非全家公用，僅列出指派給自己的項目
-        if (t.reminder_target === 'personal' && currentUser?.id && t.paid_by && t.paid_by !== currentUser.id) {
-          return false;
+        // 個人專屬待辦分流純化：若非全家公用，僅列出指派給自己的項目 (支援別名穿透對齊)
+        if (t.reminder_target === 'personal' && currentUser?.id && t.paid_by) {
+          if (t.paid_by !== currentUser.id) {
+            const assignee = getMemberById ? getMemberById(t.paid_by) : undefined;
+            if (!assignee?.display_name || !currentUser.display_name || assignee.display_name !== currentUser.display_name) {
+              return false;
+            }
+          }
         }
         return true;
       })
       .sort((a, b) => (a.reminder_date || '').localeCompare(b.reminder_date || ''));
-  }, [transactions, currentUser?.id]);
+  }, [transactions, currentUser?.id, currentUser?.display_name, getMemberById]);
 
   const handleToggleBillingNotice = async () => {
     const nextState = !billingNoticeEnabled;
@@ -256,14 +266,14 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     await setBillingNotificationsEnabled(nextState);
     if (nextState) {
       setIsSchedulingNotice(true);
-      const count = await scheduleBillingReminderNotifications(paymentAccounts, transactions, currentUser?.id);
+      const count = await scheduleBillingReminderNotifications(paymentAccounts, transactions, currentUser?.id, getMemberById);
       setIsSchedulingNotice(false);
       showAlert(
         '🔔 信用卡個人提醒已開啟',
         `已成功為您本人持有的信用卡排程 ${count} 則結帳與繳款到期提醒！\n（其他家庭成員之卡片將不干擾本機）\n\n・出帳日隔天 09:30：帳單出帳提醒\n・繳款到期前 3 天 09:30：待繳金額與防違約金提醒`
       );
     } else {
-      await scheduleBillingReminderNotifications(paymentAccounts, transactions, currentUser?.id);
+      await scheduleBillingReminderNotifications(paymentAccounts, transactions, currentUser?.id, getMemberById);
       showAlert('信用卡提醒已關閉', '已取消所有信用卡本機排程提醒。');
     }
   };
@@ -273,7 +283,12 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       showAlert('平台提示', 'Web 網頁端不支援發送系統本機通知，請在 iOS / Android 手機 App 測試。');
       return;
     }
-    const sampleCard = creditCards.find(c => c.user_id === currentUser?.id) || creditCards[0];
+    const sampleCard =
+      creditCards.find(
+        c =>
+          c.user_id === currentUser?.id ||
+          (currentUser?.display_name && getMemberById && getMemberById(c.user_id)?.display_name === currentUser.display_name)
+      ) || creditCards[0];
     const cardName = sampleCard ? sampleCard.name : '玉山信用卡';
     const amount = sampleCard ? calculateCardOutstandingAmount(sampleCard.id, transactions) || 12800 : 12800;
 
@@ -938,7 +953,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                         <Text style={[styles.cardScheduleName, { color: colors.text.primary }]} numberOfLines={1}>
                           {card.name}
                         </Text>
-                        {card.user_id === currentUser?.id ? (
+                        {card.user_id === currentUser?.id || (currentUser?.display_name && getMemberById && getMemberById(card.user_id)?.display_name === currentUser.display_name) ? (
                           <View style={[styles.cardholderBadge, { backgroundColor: isDark ? '#1E3A8A' : '#EFF6FF' }]}>
                             <Text style={[styles.cardholderBadgeText, { color: isDark ? '#93C5FD' : '#2563EB' }]}>
                               📱 本人卡片 (本機提醒)

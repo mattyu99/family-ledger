@@ -28,6 +28,7 @@ export interface UsePaymentAccountsProps {
   addTransaction: (data: any) => Promise<string>;
   isConfigured: boolean;
   supabase: any;
+  getMemberById?: (id?: string) => Profile | undefined;
 }
 
 export function usePaymentAccounts({
@@ -43,6 +44,7 @@ export function usePaymentAccounts({
   addTransaction,
   isConfigured,
   supabase,
+  getMemberById,
 }: UsePaymentAccountsProps) {
   const [paymentAccounts, setPaymentAccounts] = useState<PaymentAccount[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<CustomPaymentMethod[]>(DEFAULT_PAYMENT_METHODS);
@@ -60,8 +62,8 @@ export function usePaymentAccounts({
   }, [currentLedger?.id]);
 
   const isAccountBound = useCallback(
-    (userId?: string | null) => isAccountBoundToUser(userId, effectiveCurrentUser || currentUser, members),
-    [effectiveCurrentUser, currentUser, members]
+    (userId?: string | null) => isAccountBoundToUser(userId, effectiveCurrentUser || currentUser, members, getMemberById),
+    [effectiveCurrentUser, currentUser, members, getMemberById]
   );
 
   // 新增付款帳戶 / 信用卡 / 儲值卡
@@ -644,7 +646,7 @@ export function usePaymentAccounts({
           : members.find(m => m.id === targetMemberId) || (currentUser?.id === targetMemberId ? currentUser : undefined);
 
       const isAccountBelonging = (acc: PaymentAccount) =>
-        isAccountBelongingToMember(acc, targetMemberId, targetMember, currentUser, members);
+        isAccountBelongingToMember(acc, targetMemberId, targetMember, currentUser, members, getMemberById);
 
       const banks = paymentAccounts.filter(a => a.type === 'bank' && isAccountBelonging(a));
       const cash = paymentAccounts.filter(a => a.type === 'cash' && isAccountBelonging(a));
@@ -662,7 +664,13 @@ export function usePaymentAccounts({
             t =>
               t.type === 'expense' &&
               (t.account_id === card.id ||
-                (t.payment_method === 'credit_card' && !t.account_id && t.paid_by === card.user_id)) &&
+                (t.payment_method === 'credit_card' &&
+                  !t.account_id &&
+                  (t.paid_by === card.user_id ||
+                    (getMemberById &&
+                      card.user_id &&
+                      getMemberById(t.paid_by)?.display_name &&
+                      getMemberById(t.paid_by)?.display_name === getMemberById(card.user_id)?.display_name)))) &&
               !t.is_reconciled
           )
           .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
@@ -701,7 +709,7 @@ export function usePaymentAccounts({
         },
       };
     },
-    [paymentAccounts, transactions, members, currentUser]
+    [paymentAccounts, transactions, members, currentUser, getMemberById]
   );
 
   // 帳戶互轉、提款與繳卡費核心方法

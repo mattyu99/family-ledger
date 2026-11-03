@@ -22,7 +22,7 @@ export const NetWorthWidget: React.FC<NetWorthWidgetProps> = ({
   onOpenAccountsManageModal,
   filterMemberId,
 }) => {
-  const { getNetWorthSummary, members, currentUser } = useLedger();
+  const { getNetWorthSummary, members, currentUser, getMemberById } = useLedger();
   const { isPrivacyMaskActive, togglePrivacyMask } = usePrivacy();
   const { isDark, colors } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
@@ -41,7 +41,7 @@ export const NetWorthWidget: React.FC<NetWorthWidgetProps> = ({
   const targetMember = useMemo(() => {
     if (isAll) return undefined;
     return (
-      members.find(m => m.id === filterMemberId) ||
+      (getMemberById ? getMemberById(filterMemberId) : members.find(m => m.id === filterMemberId)) ||
       (currentUser?.id === filterMemberId ? currentUser : undefined)
     );
   }, [isAll, members, currentUser, filterMemberId]);

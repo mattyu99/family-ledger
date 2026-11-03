@@ -129,7 +129,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     (paidById?: string | null) => {
       if (!paidById || !currentUser) return false;
       if (paidById === currentUser.id) return true;
-      const member = members.find(m => m.id === paidById);
+      const member = getMemberById ? getMemberById(paidById) : members.find(m => m.id === paidById);
       if (member) {
         if (member.id === currentUser.id) return true;
         if (
@@ -142,7 +142,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
       }
       return false;
     },
-    [currentUser, members]
+    [currentUser, members, getMemberById]
   );
 
   // 判斷某個付款人 ID 是否對應指定目標成員 (支援 ID 或別名比對)
@@ -150,8 +150,8 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     (paidById?: string | null, targetId?: string) => {
       if (!paidById || !targetId) return false;
       if (paidById === targetId) return true;
-      const targetM = members.find(m => m.id === targetId);
-      const payerM = members.find(m => m.id === paidById);
+      const targetM = getMemberById ? getMemberById(targetId) : members.find(m => m.id === targetId);
+      const payerM = getMemberById ? getMemberById(paidById) : members.find(m => m.id === paidById);
       if (targetM && payerM) {
         if (targetM.id === payerM.id) return true;
         if (
@@ -164,7 +164,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
       }
       return false;
     },
-    [members]
+    [members, getMemberById]
   );
 
   // 目標成員物件與是否鎖定為非本人視角

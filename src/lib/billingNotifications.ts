@@ -208,7 +208,8 @@ export const calculateCardScheduleDates = (
 export const scheduleBillingReminderNotifications = async (
   paymentAccounts: PaymentAccount[],
   transactions: Transaction[],
-  currentUserId?: string
+  currentUserId?: string,
+  getMemberById?: (id?: string) => Profile | undefined
 ): Promise<number> => {
   if (!isNotificationSupported()) return 0;
 
@@ -225,11 +226,20 @@ export const scheduleBillingReminderNotifications = async (
     // 清空舊信用卡排程
     await cancelBillingScheduledNotifications();
 
-    // 個人化持卡人過濾：若卡片已指派持卡人且傳入 currentUserId，僅排程屬於本人的卡片；未指派持卡人之公用卡則全體排程
+    // 個人化持卡人過濾：若卡片已指派持卡人且傳入 currentUserId，僅排程屬於本人的卡片；未指派持卡人之公用卡則全體排程 (支援中央別名穿透)
     const creditCards = paymentAccounts.filter(acc => {
       if (acc.type !== 'credit_card') return false;
       if (currentUserId && acc.user_id) {
-        return acc.user_id === currentUserId;
+        if (acc.user_id === currentUserId) return true;
+        if (
+          getMemberById &&
+          getMemberById(acc.user_id)?.display_name &&
+          getMemberById(currentUserId)?.display_name &&
+          getMemberById(acc.user_id)?.display_name === getMemberById(currentUserId)?.display_name
+        ) {
+          return true;
+        }
+        return false;
       }
       return true;
     });

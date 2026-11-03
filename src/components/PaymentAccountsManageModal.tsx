@@ -47,7 +47,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
 }) => {
   const { isDark, colors } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-  const { paymentAccounts, addPaymentAccount, updatePaymentAccount, deletePaymentAccount, restoreDefaultAccounts, members, currentUser, isOwner } = useLedger();
+  const { paymentAccounts, addPaymentAccount, updatePaymentAccount, deletePaymentAccount, restoreDefaultAccounts, members, currentUser, isOwner, getMemberById } = useLedger();
 
   const showAlert = (title: string, message: string) => {
     if (Platform.OS === 'web') {
@@ -145,7 +145,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     (memberId?: string | null) => {
       if (!memberId || !currentUser) return false;
       if (memberId === currentUser.id) return true;
-      const member = members.find(m => m.id === memberId);
+      const member = getMemberById ? getMemberById(memberId) : members.find(m => m.id === memberId);
       if (member) {
         if (member.id === currentUser.id) return true;
         if (
@@ -158,7 +158,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
       }
       return false;
     },
-    [currentUser, members]
+    [currentUser, members, getMemberById]
   );
 
   const filteredPaymentAccounts = useMemo(() => {
@@ -219,7 +219,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
       showAlert('純瀏覽模式', '在全家一覽中僅供查看；如需編輯您的卡片，請切換至「我的」視角進行管理。');
       return;
     }
-    const matchedMember = acc.user_id && members.find(m => m.id === acc.user_id);
+    const matchedMember = acc.user_id && (getMemberById ? getMemberById(acc.user_id) : members.find(m => m.id === acc.user_id));
     const myMember = members.find(m => isMatchedToCurrentUser(m.id));
     if (acc.type === 'stored_value' || acc.type === 'credit_card' || acc.type === 'bank' || acc.type === 'cash') {
       setActiveTab(acc.type);
@@ -773,7 +773,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     </View>
                   ) : (
                     creditCards.map(card => {
-                      const cardholder = members.find(m => m.id === card.user_id);
+                      const cardholder = card.user_id ? (getMemberById ? getMemberById(card.user_id) : members.find(m => m.id === card.user_id)) : null;
                       const isMyCard = isMatchedToCurrentUser(card.user_id);
                       const canEditCard = isOwner || (scope === 'my' && isMyCard);
                       return (
@@ -838,7 +838,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     </View>
                   ) : (
                     storedValueCards.map(card => {
-                      const cardholder = members.find(m => m.id === card.user_id);
+                      const cardholder = card.user_id ? (getMemberById ? getMemberById(card.user_id) : members.find(m => m.id === card.user_id)) : null;
                       const isMyCard = isMatchedToCurrentUser(card.user_id);
                       const canEditCard = isOwner || (scope === 'my' && isMyCard);
                       return (
@@ -906,7 +906,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     </View>
                   ) : (
                     bankAccounts.map(acc => {
-                      const holder = members.find(m => m.id === acc.user_id);
+                      const holder = acc.user_id ? (getMemberById ? getMemberById(acc.user_id) : members.find(m => m.id === acc.user_id)) : null;
                       const isMyAccount = isMatchedToCurrentUser(acc.user_id);
                       const canEditAccount = isOwner || (scope === 'my' && isMyAccount);
                       return (
@@ -971,7 +971,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     </View>
                   ) : (
                     cashAccounts.map(acc => {
-                      const holder = members.find(m => m.id === acc.user_id);
+                      const holder = acc.user_id ? (getMemberById ? getMemberById(acc.user_id) : members.find(m => m.id === acc.user_id)) : null;
                       const isMyAccount = isMatchedToCurrentUser(acc.user_id);
                       const canEditAccount = isOwner || (scope === 'my' && isMyAccount);
                       return (

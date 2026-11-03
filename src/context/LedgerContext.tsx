@@ -805,6 +805,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     addTransaction: async (data) => addTransactionRef.current(data),
     isConfigured,
     supabase,
+    getMemberById,
   });
 
   // 3. 固定收支與週期扣款規則模組

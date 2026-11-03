@@ -297,11 +297,12 @@ export const mergePaymentMethods = (
 export const isAccountBoundToUser = (
   userId?: string | null,
   currentUser?: Profile | null,
-  members: Profile[] = []
+  members: Profile[] = [],
+  getMemberById?: (id?: string) => Profile | undefined
 ): boolean => {
   if (!userId || !currentUser) return false;
   if (userId === currentUser.id) return true;
-  const member = members.find(m => m.id === userId);
+  const member = getMemberById ? getMemberById(userId) : members.find(m => m.id === userId);
   if (member) {
     if (member.id === currentUser.id) return true;
     if (

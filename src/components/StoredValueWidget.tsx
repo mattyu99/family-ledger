@@ -16,7 +16,7 @@ import { PaymentAccount, PaymentMethod, CustomPaymentMethod } from '../types/dat
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
-import { sortAccountsByUser, DEFAULT_PAYMENT_METHODS } from '../lib/payment';
+import { sortAccountsByUser, DEFAULT_PAYMENT_METHODS, isAccountBelongingToMember } from '../lib/payment';
 import { HorizontalScrollView } from './HorizontalScrollView';
 
 interface StoredValueWidgetProps {
@@ -44,14 +44,12 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
   const storedValueCards = React.useMemo(() => {
     let cards = paymentAccounts.filter(a => a.type === 'stored_value');
     if (filterMemberId && filterMemberId !== 'all') {
-      cards = cards.filter(a => {
-        if (a.user_id === filterMemberId) return true;
-        if (!a.user_id && targetFilteredMember && a.name.includes(targetFilteredMember.display_name)) return true;
-        return false;
-      });
+      cards = cards.filter(a =>
+        isAccountBelongingToMember(a, filterMemberId, targetFilteredMember, currentUser, members, getMemberById)
+      );
     }
     return sortAccountsByUser(cards, currentUser?.id);
-  }, [paymentAccounts, currentUser, filterMemberId, targetFilteredMember]);
+  }, [paymentAccounts, currentUser, filterMemberId, targetFilteredMember, members, getMemberById]);
 
   const scrollRef = React.useRef<ScrollView | null>(null);
 
@@ -74,7 +72,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
     (userId?: string | null) => {
       if (!userId || !currentUser) return false;
       if (userId === currentUser.id) return true;
-      const member = members.find(m => m.id === userId);
+      const member = getMemberById ? getMemberById(userId) : members.find(m => m.id === userId);
       if (member) {
         if (member.id === currentUser.id) return true;
         if (
@@ -87,7 +85,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
       }
       return false;
     },
-    [currentUser, members]
+    [currentUser, members, getMemberById]
   );
 
   const [activeModalAccount, setActiveModalAccount] = useState<PaymentAccount | null>(null);

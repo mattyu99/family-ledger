@@ -190,7 +190,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
       if (!paidById || !targetId) return false;
       if (paidById === targetId) return true;
       const mem = getMemberById(paidById);
-      const targetM = members.find(m => m.id === targetId);
+      const targetM = getMemberById(targetId);
       if (mem && targetM && mem.display_name === targetM.display_name) return true;
       return false;
     };

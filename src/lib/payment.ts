@@ -554,14 +554,15 @@ export const filterAccountsForUser = (
 };
 
 /**
- * 判斷指定支付帳戶/卡片是否歸屬於特定成員 (支援 ID 比對、名稱包含、成員別名比對與單成員帳本容錯)
+ * 判斷指定支付帳戶/卡片是否歸屬於特定成員 (支援 ID 比對、名稱包含、中央別名穿透反查與單成員帳本容錯)
  */
 export const isAccountBelongingToMember = (
   account: PaymentAccount,
   targetMemberId?: string,
   targetMember?: Profile,
   currentUser?: Profile,
-  members: Profile[] = []
+  members: Profile[] = [],
+  getMemberById?: (id?: string) => Profile | undefined
 ): boolean => {
   if (!targetMemberId || targetMemberId === 'all') return true;
 
@@ -570,19 +571,29 @@ export const isAccountBelongingToMember = (
     return true;
   }
 
+  // 取得目標成員物件 (優先以 getMemberById 反查)
+  const target = targetMember || (getMemberById ? getMemberById(targetMemberId) : members.find(m => m.id === targetMemberId));
+
+  // 取得卡片持有人物件 (優先透過中央別名穿透器 getMemberById 反查歷史/Google ID，回退 members.find)
+  const owner = account.user_id
+    ? (getMemberById ? getMemberById(account.user_id) : members.find(m => m.id === account.user_id))
+    : undefined;
+
+  // 1.5 卡片持有人 ID 與目標成員或其代表身分吻合
+  if (owner) {
+    if (owner.id === targetMemberId) return true;
+    if (target && owner.id === target.id) return true;
+  }
+
   // 2. 目標成員名冊與名稱比對
-  const target = targetMember || members.find(m => m.id === targetMemberId);
   if (target) {
     if (account.user_id === target.id) return true;
-    if (account.user_id) {
-      const owner = members.find(m => m.id === account.user_id);
-      if (
-        owner?.display_name &&
-        target.display_name &&
-        owner.display_name.trim().toLowerCase() === target.display_name.trim().toLowerCase()
-      ) {
-        return true;
-      }
+    if (
+      owner?.display_name &&
+      target.display_name &&
+      owner.display_name.trim().toLowerCase() === target.display_name.trim().toLowerCase()
+    ) {
+      return true;
     }
     if (!account.user_id && target.display_name && account.name.includes(target.display_name)) {
       return true;
@@ -596,10 +607,10 @@ export const isAccountBelongingToMember = (
 
   if (isMe && currentUser) {
     if (account.user_id === currentUser.id) return true;
-    if (account.user_id) {
-      const owner = members.find(m => m.id === account.user_id);
+    if (owner) {
+      if (owner.id === currentUser.id) return true;
       if (
-        owner?.display_name &&
+        owner.display_name &&
         currentUser.display_name &&
         owner.display_name.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase()
       ) {

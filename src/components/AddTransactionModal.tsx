@@ -726,14 +726,21 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     const isSv = mObj ? (mObj.type === 'stored_value' || mObj.id === 'stored_value') : method === 'stored_value';
     const isBank = mObj ? (mObj.type === 'bank' || mObj.id === 'transfer') : method === 'transfer';
 
+    const isUserAccount = (accUserId?: string | null) => {
+      if (!accUserId || !paidBy) return false;
+      if (accUserId === paidBy) return true;
+      if (getMemberById && getMemberById(accUserId)?.display_name === getMemberById(paidBy)?.display_name) return true;
+      return false;
+    };
+
     if (isCc) {
-      const userCard = creditCards.find(c => c.user_id === paidBy) || creditCards[0];
+      const userCard = creditCards.find(c => isUserAccount(c.user_id)) || creditCards[0];
       if (userCard) setSelectedAccountId(userCard.id);
     } else if (isSv) {
-      const userCard = storedValueCards.find(c => c.user_id === paidBy) || storedValueCards[0];
+      const userCard = storedValueCards.find(c => isUserAccount(c.user_id)) || storedValueCards[0];
       if (userCard) setSelectedAccountId(userCard.id);
     } else if (isBank) {
-      const userBank = bankAccounts.find(a => a.user_id === paidBy) || bankAccounts[0];
+      const userBank = bankAccounts.find(a => isUserAccount(a.user_id)) || bankAccounts[0];
       if (userBank) setSelectedAccountId(userBank.id);
     } else {
       setSelectedAccountId('');
