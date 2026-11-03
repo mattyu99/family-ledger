@@ -1230,10 +1230,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             </Text>
           )}
 
-          {/* 待辦事項清單預覽 */}
+          {/* 待辦事項清單預覽 (顯示 4 條與 4x2 桌面小工具 1:1 對齊) */}
           {widgetSnapshot?.pendingMemos && widgetSnapshot.pendingMemos.length > 0 ? (
             <View style={{ gap: 6, marginBottom: 8 }}>
-              {widgetSnapshot.pendingMemos.slice(0, 3).map((memo, idx) => (
+              {widgetSnapshot.pendingMemos.slice(0, 4).map((memo, idx) => (
                 <TouchableOpacity
                   key={memo.id || idx}
                   activeOpacity={0.7}

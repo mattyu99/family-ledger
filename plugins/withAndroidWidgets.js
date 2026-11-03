@@ -218,14 +218,14 @@ function withAndroidWidgets(config) {
         }
       });
 
-      // 2.2 注入 2x2 快捷按鈕小工具佈局 (widget_quick_actions.xml，採用 45dp 滿版去留白 3D 立體圖標 + 緊湊底部文字)
+      // 2.2 注入 2x2 快捷按鈕小工具佈局 (widget_quick_actions.xml，採用 40dp 滿版去留白 3D 立體圖標 + 向上微調緊湊底部文字避免截字)
       const quickActionsLayoutXml = `<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="@drawable/widget_card_bg"
-    android:padding="10dp">
+    android:padding="8dp">
 
     <TextView
         android:id="@+id/quick_widget_badge"
@@ -237,14 +237,14 @@ function withAndroidWidgets(config) {
         android:textStyle="bold"
         android:singleLine="true"
         android:ellipsize="end"
-        android:layout_marginBottom="6dp" />
+        android:layout_marginBottom="4dp" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:orientation="horizontal"
-        android:layout_marginBottom="5dp">
+        android:layout_marginBottom="3dp">
 
         <LinearLayout
             android:id="@+id/btn_expense"
@@ -254,23 +254,26 @@ function withAndroidWidgets(config) {
             android:background="@drawable/widget_btn_bg"
             android:orientation="vertical"
             android:gravity="center_horizontal"
-            android:paddingTop="2dp"
-            android:paddingBottom="2dp"
+            android:paddingTop="1dp"
+            android:paddingBottom="1dp"
             android:layout_marginEnd="2.5dp">
             <ImageView
-                android:layout_width="45dp"
-                android:layout_height="45dp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
                 android:src="@drawable/widget_icon_expense"
                 android:scaleType="fitCenter"
                 android:contentDescription="記支出" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="1dp"
+                android:layout_marginTop="0dp"
                 android:text="記支出"
                 android:textColor="#F1F5F9"
-                android:textSize="10.5sp"
-                android:textStyle="bold" />
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:includeFontPadding="false"
+                android:singleLine="true"
+                android:ellipsize="end" />
         </LinearLayout>
 
         <LinearLayout
@@ -281,23 +284,26 @@ function withAndroidWidgets(config) {
             android:background="@drawable/widget_btn_bg"
             android:orientation="vertical"
             android:gravity="center_horizontal"
-            android:paddingTop="2dp"
-            android:paddingBottom="2dp"
+            android:paddingTop="1dp"
+            android:paddingBottom="1dp"
             android:layout_marginStart="2.5dp">
             <ImageView
-                android:layout_width="45dp"
-                android:layout_height="45dp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
                 android:src="@drawable/widget_icon_scan"
                 android:scaleType="fitCenter"
                 android:contentDescription="掃發票" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="1dp"
+                android:layout_marginTop="0dp"
                 android:text="掃發票"
                 android:textColor="#F1F5F9"
-                android:textSize="10.5sp"
-                android:textStyle="bold" />
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:includeFontPadding="false"
+                android:singleLine="true"
+                android:ellipsize="end" />
         </LinearLayout>
     </LinearLayout>
 
@@ -315,23 +321,26 @@ function withAndroidWidgets(config) {
             android:background="@drawable/widget_btn_bg"
             android:orientation="vertical"
             android:gravity="center_horizontal"
-            android:paddingTop="2dp"
-            android:paddingBottom="2dp"
+            android:paddingTop="1dp"
+            android:paddingBottom="1dp"
             android:layout_marginEnd="2.5dp">
             <ImageView
-                android:layout_width="45dp"
-                android:layout_height="45dp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
                 android:src="@drawable/widget_icon_income"
                 android:scaleType="fitCenter"
                 android:contentDescription="記收入" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="1dp"
+                android:layout_marginTop="0dp"
                 android:text="記收入"
                 android:textColor="#F1F5F9"
-                android:textSize="10.5sp"
-                android:textStyle="bold" />
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:includeFontPadding="false"
+                android:singleLine="true"
+                android:ellipsize="end" />
         </LinearLayout>
 
         <LinearLayout
@@ -342,23 +351,26 @@ function withAndroidWidgets(config) {
             android:background="@drawable/widget_btn_bg"
             android:orientation="vertical"
             android:gravity="center_horizontal"
-            android:paddingTop="2dp"
-            android:paddingBottom="2dp"
+            android:paddingTop="1dp"
+            android:paddingBottom="1dp"
             android:layout_marginStart="2.5dp">
             <ImageView
-                android:layout_width="45dp"
-                android:layout_height="45dp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
                 android:src="@drawable/widget_icon_memo"
                 android:scaleType="fitCenter"
                 android:contentDescription="隨手記" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="1dp"
+                android:layout_marginTop="0dp"
                 android:text="隨手記"
                 android:textColor="#F1F5F9"
-                android:textSize="10.5sp"
-                android:textStyle="bold" />
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:includeFontPadding="false"
+                android:singleLine="true"
+                android:ellipsize="end" />
         </LinearLayout>
     </LinearLayout>
 </LinearLayout>`;

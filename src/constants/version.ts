@@ -1,13 +1,13 @@
 import appConfig from '../../app.json';
 
-// 主版本號（來自 app.json，例如 1.0.12）
-export const APP_BASE_VERSION = appConfig.expo.version || '1.0.12';
+// 主版本號（來自 app.json，例如 1.0.13）
+export const APP_BASE_VERSION = appConfig.expo.version || '1.0.13';
 
 // 小版號 / 建置修訂版號 (Build Revision)
-// 代表自 v1.0.12 正式發布以來，歷次功能更新與修訂的累計版次
+// 代表自 v1.0.13 正式發布以來，歷次功能更新與修訂的累計版次
 export const APP_BUILD_REVISION = 0;
 
-// 完整版本字串 (例如 "1.0.12.0")
+// 完整版本字串 (例如 "1.0.13.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,15 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.13',
+    date: '2026-11-03',
+    title: '2x2 桌面小工具文字截斷修正與待辦快照 4 則同步對齊 (v1.0.13.0)',
+    highlights: [
+      '📐 2x2 快捷按鈕文字截斷徹底修正：微調外層內距與 40dp 3D 大圖，並關閉字型預設垂直內距 (includeFontPadding=false)，文字上移 5dp 絕不切字。',
+      '📋 家庭設定待辦快照 4 則 1:1 同步：修復 App 內桌面小工具快照預覽僅顯示 3 則待辦之差異，與桌面 4x2 小工具 4 則備忘完全同步一致。',
+    ],
+  },
   {
     version: '1.0.12',
     date: '2026-11-03',
