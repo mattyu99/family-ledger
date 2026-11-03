@@ -193,30 +193,39 @@ function withAndroidWidgets(config) {
 </shape>`;
       fs.writeFileSync(path.join(drawableDir, 'widget_btn_bg.xml'), bgBtnXml, 'utf8');
 
-      // 2.1.1 複製 3D 黏土風格捷徑圖片至 Android 原生 drawable 目錄
-      const shortcutsSourceDir = path.join(projectRoot, 'assets', 'shortcuts');
-      const shortcutImages = [
-        'shortcut_expense.png',
-        'shortcut_scan.png',
-        'shortcut_income.png',
-        'shortcut_memo.png',
+      // 2.1.1 複製切除留白之 3D 黏土小工具專屬圖片至 Android 原生 drawable 目錄
+      // 注意：使用 widget_icon_* 專屬命名，徹底避免與系統桌面捷徑 (shortcut_*) 發生資源名稱衝突 (Name Shadowing)
+      const widgetsSourceDir = path.join(projectRoot, 'assets', 'widgets');
+      const widgetImages = [
+        'widget_icon_expense.png',
+        'widget_icon_scan.png',
+        'widget_icon_income.png',
+        'widget_icon_memo.png',
       ];
-      shortcutImages.forEach((imgFile) => {
-        const srcPath = path.join(shortcutsSourceDir, imgFile);
+      widgetImages.forEach((imgFile) => {
+        const srcPath = path.join(widgetsSourceDir, imgFile);
         const destPath = path.join(drawableDir, imgFile);
         if (fs.existsSync(srcPath)) {
           fs.copyFileSync(srcPath, destPath);
         }
       });
 
-      // 2.2 注入 2x2 快捷按鈕小工具佈局 (widget_quick_actions.xml，採用 32dp 3D 黏土立體圖標)
+      // 同步清理 drawable 目錄可能殘留之 shortcut_*.png，確保 expo-quick-actions 能正確 Fallback 回 mipmap 自適應全尺寸大圖標
+      ['shortcut_expense.png', 'shortcut_scan.png', 'shortcut_income.png', 'shortcut_memo.png'].forEach((oldFile) => {
+        const oldPath = path.join(drawableDir, oldFile);
+        if (fs.existsSync(oldPath)) {
+          try { fs.unlinkSync(oldPath); } catch (e) {}
+        }
+      });
+
+      // 2.2 注入 2x2 快捷按鈕小工具佈局 (widget_quick_actions.xml，採用 45dp 滿版去留白 3D 立體圖標 + 緊湊底部文字)
       const quickActionsLayoutXml = `<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="@drawable/widget_card_bg"
-    android:padding="12dp">
+    android:padding="10dp">
 
     <TextView
         android:id="@+id/quick_widget_badge"
@@ -228,14 +237,14 @@ function withAndroidWidgets(config) {
         android:textStyle="bold"
         android:singleLine="true"
         android:ellipsize="end"
-        android:layout_marginBottom="8dp" />
+        android:layout_marginBottom="6dp" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:orientation="horizontal"
-        android:layout_marginBottom="6dp">
+        android:layout_marginBottom="5dp">
 
         <LinearLayout
             android:id="@+id/btn_expense"
@@ -244,21 +253,23 @@ function withAndroidWidgets(config) {
             android:layout_weight="1"
             android:background="@drawable/widget_btn_bg"
             android:orientation="vertical"
-            android:gravity="center"
-            android:layout_marginEnd="3dp">
+            android:gravity="center_horizontal"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:layout_marginEnd="2.5dp">
             <ImageView
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:src="@drawable/shortcut_expense"
+                android:layout_width="45dp"
+                android:layout_height="45dp"
+                android:src="@drawable/widget_icon_expense"
                 android:scaleType="fitCenter"
                 android:contentDescription="記支出" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
+                android:layout_marginTop="1dp"
                 android:text="記支出"
                 android:textColor="#F1F5F9"
-                android:textSize="11sp"
+                android:textSize="10.5sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
@@ -269,21 +280,23 @@ function withAndroidWidgets(config) {
             android:layout_weight="1"
             android:background="@drawable/widget_btn_bg"
             android:orientation="vertical"
-            android:gravity="center"
-            android:layout_marginStart="3dp">
+            android:gravity="center_horizontal"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:layout_marginStart="2.5dp">
             <ImageView
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:src="@drawable/shortcut_scan"
+                android:layout_width="45dp"
+                android:layout_height="45dp"
+                android:src="@drawable/widget_icon_scan"
                 android:scaleType="fitCenter"
                 android:contentDescription="掃發票" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
+                android:layout_marginTop="1dp"
                 android:text="掃發票"
                 android:textColor="#F1F5F9"
-                android:textSize="11sp"
+                android:textSize="10.5sp"
                 android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>
@@ -301,21 +314,23 @@ function withAndroidWidgets(config) {
             android:layout_weight="1"
             android:background="@drawable/widget_btn_bg"
             android:orientation="vertical"
-            android:gravity="center"
-            android:layout_marginEnd="3dp">
+            android:gravity="center_horizontal"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:layout_marginEnd="2.5dp">
             <ImageView
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:src="@drawable/shortcut_income"
+                android:layout_width="45dp"
+                android:layout_height="45dp"
+                android:src="@drawable/widget_icon_income"
                 android:scaleType="fitCenter"
                 android:contentDescription="記收入" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
+                android:layout_marginTop="1dp"
                 android:text="記收入"
                 android:textColor="#F1F5F9"
-                android:textSize="11sp"
+                android:textSize="10.5sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
@@ -326,21 +341,23 @@ function withAndroidWidgets(config) {
             android:layout_weight="1"
             android:background="@drawable/widget_btn_bg"
             android:orientation="vertical"
-            android:gravity="center"
-            android:layout_marginStart="3dp">
+            android:gravity="center_horizontal"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:layout_marginStart="2.5dp">
             <ImageView
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:src="@drawable/shortcut_memo"
+                android:layout_width="45dp"
+                android:layout_height="45dp"
+                android:src="@drawable/widget_icon_memo"
                 android:scaleType="fitCenter"
                 android:contentDescription="隨手記" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
+                android:layout_marginTop="1dp"
                 android:text="隨手記"
                 android:textColor="#F1F5F9"
-                android:textSize="11sp"
+                android:textSize="10.5sp"
                 android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>

@@ -1,13 +1,13 @@
 import appConfig from '../../app.json';
 
-// 主版本號（來自 app.json，例如 1.0.11）
-export const APP_BASE_VERSION = appConfig.expo.version || '1.0.11';
+// 主版本號（來自 app.json，例如 1.0.12）
+export const APP_BASE_VERSION = appConfig.expo.version || '1.0.12';
 
 // 小版號 / 建置修訂版號 (Build Revision)
-// 代表自 v1.0.11 正式發布以來，歷次功能更新與修訂的累計版次
+// 代表自 v1.0.12 正式發布以來，歷次功能更新與修訂的累計版次
 export const APP_BUILD_REVISION = 0;
 
-// 完整版本字串 (例如 "1.0.11.0")
+// 完整版本字串 (例如 "1.0.12.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,16 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.12',
+    date: '2026-11-03',
+    title: '桌面小工具 3D 大圖示實感優化與捷徑圖標衝突修復 (v1.0.12.0)',
+    highlights: [
+      '🎨 桌面小工具 45dp 滿版立體大圖標：全面剔除 3D 圖檔 55% 虛空留白，圖示實質視覺面積暴增 2.5 倍，細節纖毫畢現。',
+      '📐 上移微調與底部文字零重疊：小工具圖標採用頂部微調貼齊，底部預留獨立標籤空間，文字與圖案 100% 互不遮擋。',
+      '⚡ 桌面捷徑自適應大圖示衝突修復：將小工具資源隔離更名為 widget_icon_*，徹底根除與快捷捷徑之命名覆蓋，恢復滿版大圖標。',
+    ],
+  },
   {
     version: '1.0.11',
     date: '2026-11-03',

@@ -242,8 +242,8 @@ flowchart TD
 ## 🚀 快速開始與版本資訊
 
 ### 📌 目前最新發布版本
-* **主版本號**：`v1.0.11` (Android versionCode 8)
-* **完整建置版本號**：`v1.0.11.0` (Build 0)
+* **主版本號**：`v1.0.12` (Android versionCode 9)
+* **完整建置版本號**：`v1.0.12.0` (Build 0)
 * **網頁體驗版網址**：[https://mattyu99.github.io/family-ledger/](https://mattyu99.github.io/family-ledger/)
 
 ### 📱 取得與安裝
