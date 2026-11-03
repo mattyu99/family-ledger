@@ -1,13 +1,13 @@
 import appConfig from '../../app.json';
 
-// 主版本號（來自 app.json，例如 1.0.10）
-export const APP_BASE_VERSION = appConfig.expo.version || '1.0.10';
+// 主版本號（來自 app.json，例如 1.0.11）
+export const APP_BASE_VERSION = appConfig.expo.version || '1.0.11';
 
 // 小版號 / 建置修訂版號 (Build Revision)
-// 代表自 v1.0.10 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 19;
+// 代表自 v1.0.11 正式發布以來，歷次功能更新與修訂的累計版次
+export const APP_BUILD_REVISION = 0;
 
-// 完整版本字串 (例如 "1.0.10.19")
+// 完整版本字串 (例如 "1.0.11.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -18,6 +18,21 @@ export interface ChangelogItem {
 }
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
+  {
+    version: '1.0.11',
+    date: '2026-11-03',
+    title: '全新 1.0.11 正式版：3D 黏土風格桌面小工具、4 則生活待辦緊湊擴充、全自動化三層測試金字塔與 CI/CD 管線 (v1.0.11.0)',
+    highlights: [
+      '🎨 桌面小工具 3D 黏土圖標升級：2x2「極速記帳與捷徑」小工具全面告別純文字 Emoji，升級為 32dp 精緻 3D 黏土立體圖標（💸 記支出、📷 掃發票、💰 記收入、📝 記事待辦），與手機快捷選單視覺風格 100% 統一。',
+      '📋 桌面今日待辦小工具 4 條生活記事擴充：4x2 待辦小工具採用緊湊微調佈局（卡片內距 9dp、項目間距 2.5dp、按鈕高度 26dp），在維持小工具尺寸完全不變的前提下，由 3 條擴充為 4 條生活待辦，大幅提升桌面資訊密度。',
+      '🧪 第一層核心單元測試 (Jest Unit Tests)：建置 78 項單元測試全數通過，覆蓋發票 QR Code 解析、防重複記帳演算法、帳本餘額計算、循環帳單規則與桌面小工具快照清洗。',
+      '🛡️ 第二層資料庫預存程序安全整合測試 (Supabase RPC Tests)：4 項關鍵安全測試驗證 Zero-Token 架構下的帳本資料隔離、未登入提權防護與邀請碼安全機制。',
+      '🌐 第三層網頁端端到端整合測試 (Playwright E2E & Web Bundle)：Playwright 跨瀏覽器自動化測試模擬記帳與生活待辦流暢度，秒級通過；自動驗證靜態 Web Bundle 打包產物完整性。',
+      '📱 原生行動端端到端自動化腳本 (Maestro & Firebase Test Lab)：新增 Maestro 黑盒自動化 YAML 腳本與 Firebase Test Lab 雲端真機測試整合指令，支援 Android/iOS 雙平台實機走查。',
+      '🚀 GitHub Actions CI/CD 自動化品質守門管線：整合 TypeScript 靜態型別檢查、Expo Lint 零警告守門、Jest 單元測試、Supabase RPC 安全測試、Web Bundle 建置與 Playwright E2E 自動化流水線。',
+      '📦 全新 Android 原生 APK 編譯發布 (VersionCode 8)：升級原生底層二進位代碼，同步更新 XML 佈局、Java RemoteViews 綁定邏輯與 Drawable 靜態資源。',
+    ],
+  },
   {
     version: '1.0.10',
     date: '2026-11-02',
