@@ -20,6 +20,7 @@ import {
 } from '../lib/lottery';
 import { getInvoicePeriodKey, formatInvoiceNumber } from '../lib/invoice';
 import { Transaction } from '../types/database';
+import { HorizontalScrollView } from './HorizontalScrollView';
 
 export type InvoiceScope = 'all' | 'mine';
 
@@ -261,9 +262,9 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
             </View>
           </View>
 
-          {/* 期別選擇軌道 */}
+          {/* 期別選擇軌道 (使用跨平台 HorizontalScrollView，完美支援網頁端滑鼠滾輪與按住拖曳) */}
           <View style={styles.periodScrollContainer}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.periodRow}>
+            <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.periodRow}>
               {availablePeriods.map(p => {
                 const isSelected = p.periodKey === selectedPeriodKey;
                 const isDrawn = !!p.draw;
@@ -288,7 +289,7 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
                   </TouchableOpacity>
                 );
               })}
-            </ScrollView>
+            </HorizontalScrollView>
           </View>
 
           <ScrollView ref={scrollRef} style={styles.scrollBody} showsVerticalScrollIndicator={false}>
