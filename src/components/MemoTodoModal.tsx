@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Modal,
@@ -8,6 +8,7 @@ import {
   Dimensions,
   Platform,
   Linking,
+  Animated,
 } from 'react-native';
 import { Text } from './common/Text';
 
@@ -45,6 +46,31 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
   const [activeTab, setActiveTab] = useState<TodoTab>('all');
   const [scopeFilter, setScopeFilter] = useState<TodoScope>('all');
   const scrollRef = useRef<ScrollView>(null);
+
+  // 剛才查看高光聚焦錨點（記住最後點開編輯的記事項目，保留 6 秒溫和高光藍框與標籤）
+  const [lastViewedMemoId, setLastViewedMemoId] = useState<string | null>(null);
+  const lastViewedMemoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 浮動捲動進度小藥丸（滾動時浮現、靜止 1.2 秒自動平滑淡出）
+  const [scrollPillText, setScrollPillText] = useState<string>('');
+  const [scrollPillOpacity] = useState(() => new Animated.Value(0));
+  const scrollPillTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (lastViewedMemoId) {
+      if (lastViewedMemoTimer.current) clearTimeout(lastViewedMemoTimer.current);
+      lastViewedMemoTimer.current = setTimeout(() => {
+        setLastViewedMemoId(null);
+      }, 6000);
+    }
+  }, [lastViewedMemoId]);
+
+  useEffect(() => {
+    return () => {
+      if (lastViewedMemoTimer.current) clearTimeout(lastViewedMemoTimer.current);
+      if (scrollPillTimer.current) clearTimeout(scrollPillTimer.current);
+    };
+  }, []);
 
   // 切換分頁時捲動位置即時歸零置頂
   const handleTabChange = (newTab: TodoTab) => {
@@ -344,6 +370,43 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
             style={styles.listArea}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
+            scrollEventThrottle={100}
+            onScroll={({ nativeEvent }) => {
+              const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+              const total = displayList.length;
+              if (total > 3) {
+                const scrollable = contentSize.height - layoutMeasurement.height;
+                if (scrollable > 0) {
+                  const ratio = Math.max(0, Math.min(1, contentOffset.y / scrollable));
+                  const currentIndex = Math.min(total, Math.max(1, Math.round(ratio * (total - 1)) + 1));
+                  const currentItem = displayList[currentIndex - 1];
+                  const dateStr = currentItem?.transacted_at ? currentItem.transacted_at.split('T')[0].slice(5) : '';
+
+                  const pillText = dateStr
+                    ? `第 ${currentIndex} / ${total} 則 · ${dateStr}`
+                    : `第 ${currentIndex} / ${total} 則 (${Math.round(ratio * 100)}%)`;
+
+                  setScrollPillText(pillText);
+
+                  Animated.timing(scrollPillOpacity, {
+                    toValue: 1,
+                    duration: 150,
+                    useNativeDriver: true,
+                  }).start();
+
+                  if (scrollPillTimer.current) {
+                    clearTimeout(scrollPillTimer.current);
+                  }
+                  scrollPillTimer.current = setTimeout(() => {
+                    Animated.timing(scrollPillOpacity, {
+                      toValue: 0,
+                      duration: 350,
+                      useNativeDriver: true,
+                    }).start();
+                  }, 1200);
+                }
+              }
+            }}
           >
             {displayList.length === 0 ? (
               <View style={styles.emptyContainer}>
@@ -361,13 +424,14 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                 </Text>
                 <Text style={styles.emptyDesc} maxFontSizeMultiplier={1.08}>
                   {activeTab === 'completed'
-                    ? '待辦完成後點擊勾勾，即會自動歸檔於此處'
+                    ? '待辦完成後點擊勾搞，即會自動歸檔於此處'
                     : '隨時點選下方「新增生活記事」記錄家庭大小事'}
                 </Text>
               </View>
             ) : (
               displayList.map((item) => {
                 const isCompleted = !!item.is_settled;
+                const isLastViewed = item.id === lastViewedMemoId;
                 const memoData = parseMemoNote(item.note);
                 const checklistData = parseMemoChecklist(memoData.cleanContent);
                 const checklistProgressPercent = checklistData.totalCount > 0
@@ -386,9 +450,14 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                 return (
                   <TouchableOpacity
                     key={item.id}
-                    style={[styles.itemCard, isCompleted && styles.itemCardCompleted]}
+                    style={[
+                      styles.itemCard,
+                      isCompleted && styles.itemCardCompleted,
+                      isLastViewed && styles.itemCardLastViewed,
+                    ]}
                     activeOpacity={0.7}
                     onPress={() => {
+                      setLastViewedMemoId(item.id);
                       onEditMemo(item);
                     }}
                   >
@@ -427,20 +496,29 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                         </Text>
                       </View>
 
-                      {/* 右側：已辦妥徽章 或 提醒對象膠囊 (全家 / 個人·某某) */}
-                      {isCompleted ? (
-                        <View style={styles.completedBadge}>
-                          <Text style={styles.completedBadgeText} maxFontSizeMultiplier={1.08}>
-                            ✓ {completer?.display_name ? `${completer.display_name} 辦妥` : '已辦妥'}
-                          </Text>
-                        </View>
-                      ) : (
-                        <View style={[styles.scopeBadge, item.reminder_target === 'personal' ? styles.scopeBadgePersonal : styles.scopeBadgeFamily]}>
-                          <Text style={[styles.scopeBadgeText, item.reminder_target === 'personal' ? styles.scopeBadgeTextPersonal : styles.scopeBadgeTextFamily]} maxFontSizeMultiplier={1.08}>
-                            {item.reminder_target === 'personal' ? `👤 個人${payer?.display_name ? `·${payer.display_name}` : ''}` : '🌐 全家'}
-                          </Text>
-                        </View>
-                      )}
+                      {/* 右側：剛才查看高光標籤 + 已辦妥徽章 或 提醒對象膠囊 (全家 / 個人·某某) */}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {isLastViewed && (
+                          <View style={[styles.lastViewedBadge, isDark && styles.lastViewedBadgeDark]}>
+                            <Text style={[styles.lastViewedBadgeText, isDark && styles.lastViewedBadgeTextDark]} maxFontSizeMultiplier={1.08}>
+                              👁️ 剛才查看
+                            </Text>
+                          </View>
+                        )}
+                        {isCompleted ? (
+                          <View style={styles.completedBadge}>
+                            <Text style={styles.completedBadgeText} maxFontSizeMultiplier={1.08}>
+                              ✓ {completer?.display_name ? `${completer.display_name} 辦妥` : '已辦妥'}
+                            </Text>
+                          </View>
+                        ) : (
+                          <View style={[styles.scopeBadge, item.reminder_target === 'personal' ? styles.scopeBadgePersonal : styles.scopeBadgeFamily]}>
+                            <Text style={[styles.scopeBadgeText, item.reminder_target === 'personal' ? styles.scopeBadgeTextPersonal : styles.scopeBadgeTextFamily]} maxFontSizeMultiplier={1.08}>
+                              {item.reminder_target === 'personal' ? `👤 個人${payer?.display_name ? `·${payer.display_name}` : ''}` : '🌐 全家'}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
                     </View>
 
                     {checklistData.isChecklist ? (
@@ -568,6 +646,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                         activeOpacity={0.7}
                         onPress={(e) => {
                           e.stopPropagation?.();
+                          setLastViewedMemoId(linkedTx.id);
                           onEditMemo(linkedTx);
                         }}
                       >
@@ -610,6 +689,21 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
               })
             )}
           </ScrollView>
+
+          {/* 浮動捲動進度小藥丸 (滾動時浮現、停留 1.2 秒自動平滑淡出) */}
+          {!!scrollPillText && (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.scrollProgressPill,
+                { opacity: scrollPillOpacity },
+              ]}
+            >
+              <Text style={styles.scrollProgressPillText} maxFontSizeMultiplier={1.08}>
+                📍 {scrollPillText}
+              </Text>
+            </Animated.View>
+          )}
 
           {/* 底部按鈕區 */}
           <View style={styles.footerRow}>
@@ -831,6 +925,35 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     borderColor: isDark ? colors.border.default : '#E2E8F0',
     borderLeftColor: '#10B981',
     opacity: 0.88,
+  },
+  itemCardLastViewed: {
+    borderColor: '#38BDF8',
+    borderWidth: 2,
+    shadowColor: '#0284C7',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  lastViewedBadge: {
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+  },
+  lastViewedBadgeDark: {
+    backgroundColor: 'rgba(2, 132, 199, 0.25)',
+    borderColor: 'rgba(56, 189, 248, 0.5)',
+  },
+  lastViewedBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  lastViewedBadgeTextDark: {
+    color: '#38BDF8',
   },
   itemHeaderRow: {
     flexDirection: 'row',
@@ -1151,5 +1274,28 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 11.5,
     fontWeight: '700',
     color: isDark ? '#34D399' : '#059669',
+  },
+  scrollProgressPill: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 95 : 75,
+    alignSelf: 'center',
+    backgroundColor: isDark ? 'rgba(15, 23, 42, 0.92)' : 'rgba(30, 41, 59, 0.9)',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(99, 102, 241, 0.4)' : 'rgba(255, 255, 255, 0.3)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 6,
+    zIndex: 999,
+  },
+  scrollProgressPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
   },
 });

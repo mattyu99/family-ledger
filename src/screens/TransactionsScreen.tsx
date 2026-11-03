@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   TouchableOpacity,
@@ -7,7 +7,8 @@ import {
   Keyboard,
   Platform,
   StyleSheet,
-  } from 'react-native';
+  Animated,
+} from 'react-native';
 import { Text, TextInput } from '../components/common/Text';
 
 import { useLedger } from '../context/LedgerContext';
@@ -101,6 +102,31 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
   const [isReminderDismissed, setIsReminderDismissed] = useState(false);
   const [isAssetSectionExpanded, setIsAssetSectionExpanded] = useState(false);
+
+  // 剛才查看之高光錨點紀錄（自動維持 6 秒讓使用者退回列表時瞬間鎖定焦點）
+  const [lastViewedTxId, setLastViewedTxId] = useState<string | null>(null);
+  const lastViewedTxTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 浮動捲動進度小藥丸（滾動時浮現、靜止 1.2 秒自動平滑淡出）
+  const [scrollPillText, setScrollPillText] = useState<string>('');
+  const [scrollPillOpacity] = useState(() => new Animated.Value(0));
+  const scrollPillTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (lastViewedTxId) {
+      if (lastViewedTxTimer.current) clearTimeout(lastViewedTxTimer.current);
+      lastViewedTxTimer.current = setTimeout(() => {
+        setLastViewedTxId(null);
+      }, 6000);
+    }
+  }, [lastViewedTxId]);
+
+  useEffect(() => {
+    return () => {
+      if (lastViewedTxTimer.current) clearTimeout(lastViewedTxTimer.current);
+      if (scrollPillTimer.current) clearTimeout(scrollPillTimer.current);
+    };
+  }, []);
 
   // 當前與可選月份計算
   const currentMonthYm = useMemo(() => {
@@ -471,37 +497,73 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
   };
 
   return (
-    <ScrollView
-      ref={activeScrollRef}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
-      contentContainerStyle={[
-        styles.scrollPadding,
-        keyboardOffset > 0 && { paddingBottom: keyboardOffset + 90 },
-      ]}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={handleRefresh}
-          colors={['#4F46E5']}
-          tintColor="#4F46E5"
-        />
-      }
-      onScroll={({ nativeEvent }) => {
-        const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
-        const paddingToBottom = 160;
-        if (
-          layoutMeasurement.height + contentOffset.y >=
-          contentSize.height - paddingToBottom
-        ) {
-          if (displayCount < filteredTransactions.length) {
-            setDisplayCount(prev => Math.min(prev + PAGE_SIZE, filteredTransactions.length));
-          }
+    <View style={styles.screenContainer}>
+      <ScrollView
+        ref={activeScrollRef}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        contentContainerStyle={[
+          styles.scrollPadding,
+          keyboardOffset > 0 && { paddingBottom: keyboardOffset + 90 },
+        ]}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            colors={['#4F46E5']}
+            tintColor="#4F46E5"
+          />
         }
-      }}
-      scrollEventThrottle={200}
-    >
+        onScroll={({ nativeEvent }) => {
+          const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+          const paddingToBottom = 160;
+          if (
+            layoutMeasurement.height + contentOffset.y >=
+            contentSize.height - paddingToBottom
+          ) {
+            if (displayCount < filteredTransactions.length) {
+              setDisplayCount(prev => Math.min(prev + PAGE_SIZE, filteredTransactions.length));
+            }
+          }
+
+          // 浮動捲動進度小藥丸計算
+          const total = displayedTransactions.length;
+          if (total > 3) {
+            const scrollable = contentSize.height - layoutMeasurement.height;
+            if (scrollable > 0) {
+              const ratio = Math.max(0, Math.min(1, contentOffset.y / scrollable));
+              const currentIndex = Math.min(total, Math.max(1, Math.round(ratio * (total - 1)) + 1));
+              const currentItem = displayedTransactions[currentIndex - 1];
+              const dateStr = currentItem?.transacted_at ? currentItem.transacted_at.split('T')[0].slice(5) : '';
+
+              const pillText = dateStr
+                ? `第 ${currentIndex} / ${total} 筆 · ${dateStr}`
+                : `第 ${currentIndex} / ${total} 筆 (${Math.round(ratio * 100)}%)`;
+
+              setScrollPillText(pillText);
+
+              Animated.timing(scrollPillOpacity, {
+                toValue: 1,
+                duration: 150,
+                useNativeDriver: true,
+              }).start();
+
+              if (scrollPillTimer.current) {
+                clearTimeout(scrollPillTimer.current);
+              }
+              scrollPillTimer.current = setTimeout(() => {
+                Animated.timing(scrollPillOpacity, {
+                  toValue: 0,
+                  duration: 350,
+                  useNativeDriver: true,
+                }).start();
+              }, 1200);
+            }
+          }
+        }}
+        scrollEventThrottle={100}
+      >
       {/* 定期備份提醒橫幅 */}
       {showBackupBanner && (
         <View style={styles.backupReminderBanner}>
@@ -1332,8 +1394,15 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
               key={item.id}
               transaction={item}
               viewingMemberId={filterMemberId}
-              onPress={tx => onOpenEditTransaction(tx)}
-              onCompleteMemo={tx => onOpenMemoCompletion(tx)}
+              isLastViewed={item.id === lastViewedTxId}
+              onPress={tx => {
+                setLastViewedTxId(tx.id);
+                onOpenEditTransaction(tx);
+              }}
+              onCompleteMemo={tx => {
+                setLastViewedTxId(tx.id);
+                onOpenMemoCompletion(tx);
+              }}
               onViewImage={(url, title) => onViewImage(url, title || '消費收據 / 保固憑證')}
             />
           ))}
@@ -1374,11 +1443,53 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         </>
       )}
     </ScrollView>
+
+    {/* 浮動捲動進度小藥丸 (滾動時浮現、停留 1.2 秒自動平滑淡出) */}
+    {!!scrollPillText && (
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.scrollProgressPill,
+          { opacity: scrollPillOpacity },
+        ]}
+      >
+        <Text style={styles.scrollProgressPillText} maxFontSizeMultiplier={1.08}>
+          📍 {scrollPillText}
+        </Text>
+      </Animated.View>
+    )}
+  </View>
   );
 };
 
 const getStyles = (isDark: boolean, colors: ThemeColors) =>
   StyleSheet.create({
+    screenContainer: {
+      flex: 1,
+    },
+    scrollProgressPill: {
+      position: 'absolute',
+      bottom: 25,
+      alignSelf: 'center',
+      backgroundColor: isDark ? 'rgba(15, 23, 42, 0.92)' : 'rgba(30, 41, 59, 0.9)',
+      paddingHorizontal: 14,
+      paddingVertical: 6,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(99, 102, 241, 0.4)' : 'rgba(255, 255, 255, 0.3)',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 6,
+      elevation: 6,
+      zIndex: 999,
+    },
+    scrollProgressPillText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: '#FFFFFF',
+      letterSpacing: 0.3,
+    },
     scrollPadding: {
       padding: 16,
       paddingBottom: 90,

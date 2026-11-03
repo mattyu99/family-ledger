@@ -14,6 +14,7 @@ import { stripInvoiceTag } from '../lib/invoice';
 interface TransactionItemProps {
   transaction: Transaction;
   viewingMemberId?: string;
+  isLastViewed?: boolean;
   onPress?: (transaction: Transaction) => void;
   onCompleteMemo?: (transaction: Transaction) => void;
   onViewImage?: (imageUrl: string, title?: string) => void;
@@ -22,6 +23,7 @@ interface TransactionItemProps {
 export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
   transaction,
   viewingMemberId,
+  isLastViewed,
   onPress,
   onCompleteMemo,
   onViewImage,
@@ -115,6 +117,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
             borderColor: isCompleted ? colors.border.default : '#78350F',
             borderLeftColor: isCompleted ? colors.status.income : '#F59E0B',
           },
+          isLastViewed && styles.memoCardLastViewed,
         ]}
         onPress={() => onPress?.(transaction)}
       >
@@ -159,6 +162,13 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
             >
               {memoData.title}
             </Text>
+            {isLastViewed && (
+              <View style={[styles.lastViewedBadge, isDark && styles.lastViewedBadgeDark]}>
+                <Text style={[styles.lastViewedBadgeText, isDark && styles.lastViewedBadgeTextDark]} maxFontSizeMultiplier={1.08}>
+                  👁️ 剛才查看
+                </Text>
+              </View>
+            )}
             {isCompleted ? (
               <View style={styles.memoCompletedBadge}>
                 <Text style={styles.memoCompletedBadgeText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
@@ -424,6 +434,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
           borderWidth: 1,
           shadowOpacity: 0.15,
         },
+        isLastViewed && styles.cardLastViewed,
       ]}
       onPress={() => onPress?.(transaction)}
     >
@@ -531,6 +542,13 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
               <View style={[styles.expenseLinkedMemoTag, isDark && { backgroundColor: 'rgba(245, 158, 11, 0.18)', borderColor: 'rgba(245, 158, 11, 0.4)' }]}>
                 <Text style={[styles.expenseLinkedMemoTagText, isDark && { color: '#FCD34D' }]} numberOfLines={1} maxFontSizeMultiplier={1.08}>
                   📋 連動待辦
+                </Text>
+              </View>
+            )}
+            {isLastViewed && (
+              <View style={[styles.lastViewedBadge, isDark && styles.lastViewedBadgeDark]}>
+                <Text style={[styles.lastViewedBadgeText, isDark && styles.lastViewedBadgeTextDark]} maxFontSizeMultiplier={1.08}>
+                  👁️ 剛才查看
                 </Text>
               </View>
             )}
@@ -1217,5 +1235,45 @@ const styles = StyleSheet.create({
   invoiceBadgeTextClaimed: {
     color: '#047857',
     fontWeight: '700',
+  },
+  lastViewedBadge: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#93C5FD',
+    alignSelf: 'center',
+    marginLeft: 6,
+  },
+  lastViewedBadgeDark: {
+    backgroundColor: 'rgba(14, 165, 233, 0.2)',
+    borderColor: 'rgba(56, 189, 248, 0.5)',
+  },
+  lastViewedBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  lastViewedBadgeTextDark: {
+    color: '#38BDF8',
+  },
+  cardLastViewed: {
+    borderColor: '#0284C7',
+    borderWidth: 2,
+    shadowColor: '#0284C7',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  memoCardLastViewed: {
+    borderColor: '#0284C7',
+    borderWidth: 2,
+    shadowColor: '#0284C7',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 4,
   },
 });
