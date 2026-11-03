@@ -1,13 +1,13 @@
 import appConfig from '../../app.json';
 
-// 主版本號（來自 app.json，例如 1.0.14）
-export const APP_BASE_VERSION = appConfig.expo.version || '1.0.14';
+// 主版本號（來自 app.json，例如 1.0.13）
+export const APP_BASE_VERSION = appConfig.expo.version || '1.0.13';
 
 // 小版號 / 建置修訂版號 (Build Revision)
-// 代表自 v1.0.14 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 0;
+// 代表自 v1.0.13 正式發布以來，歷次功能更新與修訂的累計版次
+export const APP_BUILD_REVISION = 1;
 
-// 完整版本字串 (例如 "1.0.14.0")
+// 完整版本字串 (例如 "1.0.13.1")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -19,9 +19,9 @@ export interface ChangelogItem {
 
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
-    version: '1.0.14',
+    version: '1.0.13.1',
     date: '2026-11-03',
-    title: '全域資產卡片別名穿透相容與跨身分歸戶對齊 (v1.0.14.0)',
+    title: '全域資產卡片別名穿透相容與跨身分歸戶對齊 (v1.0.13.1)',
     highlights: [
       '💎 全域資產看板與卡片管理別名穿透：全面接軌 getMemberById 中央別名映射，徹底修復 Google 身分認領/解綁後歷史卡片被隱藏之 ID 斷層問題。',
       '💳 跨模組 6 大卡片與帳單對齊：同步修復個人財務淨值、管理帳戶、信用卡對帳、悠遊卡、固定帳單及排程提醒之歸屬判定，82 項自動化測試全數通過。',
