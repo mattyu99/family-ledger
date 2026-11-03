@@ -243,3 +243,4 @@ GRANT EXECUTE ON FUNCTION public.secure_remove_member(UUID, UUID, UUID, UUID, TE
 INSERT INTO public.schema_migrations (version, description)
 VALUES ('20261102_secure_ledger_and_invites_rpc', '零金鑰架構加固：補齊帳本管理、邀請碼與成員維護之 SECURITY DEFINER 預存程序')
 ON CONFLICT (version) DO UPDATE SET applied_at = NOW();
+

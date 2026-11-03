@@ -20,10 +20,13 @@
     "react-native-web": "^0.21.2"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/react": "~19.2.2",
     "eslint": "^9.39.5",
     "eslint-config-expo": "~57.0.2",
     "gh-pages": "^6.3.0",
+    "jest": "^30.5.2",
+    "ts-jest": "^29.4.15",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -36,7 +39,11 @@
     "build:android": "npx eas-cli@latest build -p android --profile preview",
     "update:android": "CI=1 npx eas-cli@latest update --channel preview --environment preview",
     "report:daily": "node scripts/daily-report.mjs",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "test": "jest",
+    "test:unit": "jest src/lib/__tests__",
+    "test:rpc": "node scripts/test-database-rpc.mjs",
+    "test:all": "npm run test:unit && npm run test:rpc"
   },
   "private": true
 }
