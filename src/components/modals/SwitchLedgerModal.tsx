@@ -16,6 +16,7 @@ import { useLedger } from '../../context/LedgerContext';
 import { useTheme } from '../../theme/ThemeContext';
 import { ThemeColors } from '../../theme/colors';
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY, isConfigured } from '../../lib/supabase';
+import { isDemoLedgerId } from '../../constants/sweethomeDemo';
 // statementStorage helper removed
 
 const showAlert = (title: string, message: string) => {
@@ -79,6 +80,7 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
   const [switchCodeInput, setSwitchCodeInput] = useState('');
   const [isJoining, setIsJoining] = useState(false);
   const [isSyncingLedgers, setIsSyncingLedgers] = useState(false);
+  const hasJoinedDemo = React.useMemo(() => ledgers.some(l => isDemoLedgerId(l.id)), [ledgers]);
 
   // 當彈窗打開時：若已登入 Google，自動於背景檢查並拉取最新公帳名冊（單次觸發，絕不重複迴圈）
   useEffect(() => {
@@ -259,8 +261,8 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
     };
   }, [visible, ledgers, currentLedger.id, transactions.length]);
 
-  const handleSwitchLedgerByCode = async () => {
-    const cleanCode = switchCodeInput.trim();
+  const handleSwitchLedgerByCode = async (overrideCode?: string) => {
+    const cleanCode = (overrideCode || switchCodeInput).trim();
     if (!cleanCode) {
       showAlert('請輸入邀請碼', '請輸入目標帳本的邀請碼或完整邀請連結');
       return;
@@ -479,6 +481,11 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
                                 <Text style={styles.currentBadgeText}>使用中 ✓</Text>
                               </View>
                             )}
+                            {isDemoLedgerId(l.id) && (
+                              <View style={styles.demoBadge}>
+                                <Text style={styles.demoBadgeText}>🎮 示範體驗</Text>
+                              </View>
+                            )}
                             {!isCurrent && (unreadLedgerMap[l.id] || 0) > 0 && (
                               <View style={styles.unreadBadge}>
                                 <Text style={styles.unreadBadgeText}>
@@ -634,6 +641,24 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
                   <View style={styles.dividerLine} />
                 </View>
               </View>
+            )}
+
+            {!hasJoinedDemo && (
+              <TouchableOpacity
+                style={styles.demoEntryBtn}
+                activeOpacity={0.8}
+                disabled={isJoining}
+                onPress={() => {
+                  setSwitchCodeInput('SWEETHOME');
+                  handleSwitchLedgerByCode('SWEETHOME');
+                }}
+              >
+                <Text style={styles.demoEntryBtnIcon}>🌟</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.demoEntryBtnTitle}>免等邀請！一鍵帶入「SWEETHOME」試玩展示帳本</Text>
+                  <Text style={styles.demoEntryBtnSub}>擬真 4 口家庭生活收支、中獎發票、水電單與 6 大新手任務</Text>
+                </View>
+              </TouchableOpacity>
             )}
 
             <Text style={styles.hint}>
@@ -869,6 +894,44 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontSize: 10,
       fontWeight: '700',
       color: isDark ? '#A5B4FC' : '#4F46E5',
+    },
+    demoBadge: {
+      backgroundColor: isDark ? 'rgba(236, 72, 153, 0.2)' : '#FDF2F8',
+      borderColor: isDark ? '#F472B6' : '#FBCFE8',
+      borderWidth: 1,
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: 6,
+    },
+    demoBadgeText: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: isDark ? '#F472B6' : '#DB2777',
+    },
+    demoEntryBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: isDark ? 'rgba(236, 72, 153, 0.15)' : '#FDF2F8',
+      borderColor: isDark ? 'rgba(244, 114, 182, 0.4)' : '#FBCFE8',
+      borderWidth: 1.5,
+      borderRadius: 14,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      marginBottom: 14,
+      gap: 10,
+    },
+    demoEntryBtnIcon: {
+      fontSize: 22,
+    },
+    demoEntryBtnTitle: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: isDark ? '#F472B6' : '#BE185D',
+      marginBottom: 2,
+    },
+    demoEntryBtnSub: {
+      fontSize: 11,
+      color: isDark ? '#9CA3AF' : '#6B7280',
     },
     leaveMiniBtn: {
       paddingHorizontal: 8,
