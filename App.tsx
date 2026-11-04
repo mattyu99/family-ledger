@@ -72,6 +72,7 @@ import { CloudLedgerManagerModal } from './src/components/CloudLedgerManagerModa
 import { ImageViewerModal } from './src/components/ImageViewerModal';
 import { LiveToastBanner } from './src/components/LiveToastBanner';
 import { AppLockOverlay } from './src/components/AppLockOverlay';
+import { DemoQuestBanner } from './src/components/DemoQuestBanner';
 
 // 全域文字防禦包裝
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
@@ -142,6 +143,8 @@ const AppContent: React.FC = () => {
     totalPendingOfflineCount,
     isProcessingQueue,
     processOfflineQueue,
+    isDemoLedger,
+    resetDemoLedger,
   } = useLedger();
 
   // 分頁狀態
@@ -735,12 +738,17 @@ const AppContent: React.FC = () => {
           <TouchableOpacity
             style={[
               styles.syncBadge,
-              pendingOfflineCount > 0
+              isDemoLedger
+                ? {
+                    backgroundColor: isDark ? 'rgba(147, 51, 234, 0.18)' : '#F3E8FF',
+                    borderColor: isDark ? '#7E22CE' : '#D8B4FE',
+                  }
+                : pendingOfflineCount > 0
                 ? styles.syncOfflinePending
                 : isCloudSynced
                 ? styles.syncOnline
                 : styles.syncLocal,
-              isDark && {
+              isDark && !isDemoLedger && {
                 backgroundColor:
                   pendingOfflineCount > 0
                     ? 'rgba(239, 68, 68, 0.15)'
@@ -756,6 +764,13 @@ const AppContent: React.FC = () => {
               },
             ]}
             onPress={async () => {
+              if (isDemoLedger) {
+                showAlert(
+                  '🎮 本機體驗中',
+                  '您目前正在「SWEETHOME 展示帳本」！\n\n所有新增、修改與對獎操作均保留在您的這支手機上試玩，不會同步到雲端或影響他人，請放心隨意體驗！'
+                );
+                return;
+              }
               if (pendingOfflineCount > 0) {
                 await processOfflineQueue();
               }
@@ -764,7 +779,9 @@ const AppContent: React.FC = () => {
             activeOpacity={0.7}
           >
             <Text style={styles.syncDot}>
-              {historySyncProgress || isRefreshing || isProcessingQueue
+              {isDemoLedger
+                ? '🎮'
+                : historySyncProgress || isRefreshing || isProcessingQueue
                 ? '🔄'
                 : pendingOfflineCount > 0
                 ? '📴'
@@ -775,12 +792,15 @@ const AppContent: React.FC = () => {
             <Text
               style={[
                 styles.syncText,
-                pendingOfflineCount > 0 && { color: isDark ? '#FCA5A5' : '#B91C1C' },
-                isDark && pendingOfflineCount === 0 && { color: colors.text.secondary },
+                isDemoLedger && { color: isDark ? '#E9D5FF' : '#7E22CE', fontWeight: '700' },
+                !isDemoLedger && pendingOfflineCount > 0 && { color: isDark ? '#FCA5A5' : '#B91C1C' },
+                !isDemoLedger && isDark && pendingOfflineCount === 0 && { color: colors.text.secondary },
               ]}
               maxFontSizeMultiplier={1.2}
             >
-              {historySyncProgress
+              {isDemoLedger
+                ? '本機體驗中'
+                : historySyncProgress
                 ? '歷史同步中...'
                 : isRefreshing || isProcessingQueue
                 ? '同步補傳中...'
@@ -834,6 +854,30 @@ const AppContent: React.FC = () => {
 
       {/* 主頁籤內容 */}
       <View style={{ flex: 1 }}>
+        {/* 🎮 體驗帳本專屬新手任務探索橫幅 */}
+        {isDemoLedger && (
+          <DemoQuestBanner
+            isDark={isDark}
+            onEditName={() => handleStartEditMember(currentUser)}
+            onAddExpense={() => {
+              setModalMode('expense');
+              setModalRecipientId(undefined);
+              setModalAutoOpenScanner(false);
+              setModalVisible(true);
+            }}
+            onOpenLottery={() => setInvoiceLotteryModalVisible(true)}
+            onOpenBills={() => {
+              setRecurringModalScope('all');
+              setRecurringModalInitialTab('rules');
+              setRecurringModalVisible(true);
+            }}
+            onOpenReconciliation={() => openReconcileModalForCurrentFilter('credit_card')}
+            onOpenMemos={() => setMemoTodoModalVisible(true)}
+            onCreateLedger={() => setCreateLedgerModalVisible(true)}
+            onResetDemo={() => resetDemoLedger()}
+          />
+        )}
+
         {activeTab === 'transactions' && (
           <TransactionsScreen
             filterMonth={filterMonth}
@@ -902,12 +946,39 @@ const AppContent: React.FC = () => {
               setModalVisible(true);
             }}
             onTriggerQuickAction={dispatchQuickAction}
-            onOpenAddMemberModal={() => setAddMemberModalVisible(true)}
+            onOpenAddMemberModal={() => {
+              if (isDemoLedger) {
+                showAlert(
+                  '🔒 管理員專屬功能',
+                  '在甜心記帳本中，只有「家庭創建者（管理員）」可以邀請或管理家庭成員，確保家庭財務資料不被誤刪或外洩。\n\n當您建立自己的正式帳本時，您就是最高管理員喔！'
+                );
+                return;
+              }
+              setAddMemberModalVisible(true);
+            }}
             onOpenEditMemberModal={handleStartEditMember}
             onOpenClaimAdminModal={() => setClaimAdminModalVisible(true)}
             onOpenEditLedgerModal={() => setEditLedgerModalVisible(true)}
-            onOpenCustomCodeModal={() => setCustomCodeModalVisible(true)}
-            onOpenChangePinModal={() => setChangePinModalVisible(true)}
+            onOpenCustomCodeModal={() => {
+              if (isDemoLedger) {
+                showAlert(
+                  '🔒 管理員專屬功能',
+                  '在正式帳本中，家長管理員可以自訂家庭專屬的英文邀請代碼（例如 SWEETHOME、MYFAMILY）。\n\n建立屬於您自己的家庭帳本時，就能自由設定囉！'
+                );
+                return;
+              }
+              setCustomCodeModalVisible(true);
+            }}
+            onOpenChangePinModal={() => {
+              if (isDemoLedger) {
+                showAlert(
+                  '🔒 管理員專屬功能',
+                  '管理員 4 位數安全 PIN 碼用於保護預算修改與敏感操作。在示範帳本中鎖定保護。\n\n建立正式帳本時即可自行設定專屬 PIN 碼！'
+                );
+                return;
+              }
+              setChangePinModalVisible(true);
+            }}
             onOpenSwitchLedgerModal={() => setSwitchLedgerModalVisible(true)}
             onOpenBudgetManageModal={() => {
               setBudgetManageModalTab('family');
@@ -965,6 +1036,22 @@ const AppContent: React.FC = () => {
             <Text style={styles.fabText}>＋</Text>
           </TouchableOpacity>
         )
+      )}
+
+      {/* 🌟 SWEETHOME 體驗帳本專屬轉換橫幅 */}
+      {isDemoLedger && (
+        <View style={[styles.demoBottomBar, isDark && styles.demoBottomBarDark]}>
+          <Text style={[styles.demoBottomBarText, isDark && styles.demoBottomBarTextDark]}>
+            🌟 正在體驗 SWEETHOME 展示帳本
+          </Text>
+          <TouchableOpacity
+            style={styles.demoBottomBarBtn}
+            onPress={() => setCreateLedgerModalVisible(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.demoBottomBarBtnText}>＋ 建立我的專屬帳本</Text>
+          </TouchableOpacity>
+        </View>
       )}
 
       {/* 底部導航頁籤 */}
@@ -1709,6 +1796,39 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '300',
     lineHeight: 32,
+  },
+  demoBottomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: '#FAF5FF',
+    borderTopWidth: 1,
+    borderTopColor: '#E9D5FF',
+  },
+  demoBottomBarDark: {
+    backgroundColor: '#261C3B',
+    borderTopColor: '#4C1D95',
+  },
+  demoBottomBarText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#7E22CE',
+  },
+  demoBottomBarTextDark: {
+    color: '#D8B4FE',
+  },
+  demoBottomBarBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: '#9333EA',
+  },
+  demoBottomBarBtnText: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   bottomNav: {
     flexDirection: 'row',

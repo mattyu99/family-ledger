@@ -43,6 +43,20 @@ import {
   isValidUUID,
 } from '../constants/ledgerDefaults';
 
+import {
+  SWEETHOME_LEDGER_ID,
+  SWEETHOME_INVITE_CODE,
+  SWEETHOME_MEMBERS,
+  SWEETHOME_ACCOUNTS,
+  getSweethomeInitialTransactions,
+  getSweethomeRecurringRules,
+} from '../constants/sweethomeDemo';
+
+// 判斷是否為示範體驗帳本 (包含舊 DEMO 與新 SWEETHOME)
+export const isDemoLedgerId = (id?: string | null): boolean => {
+  return id === DEMO_LEDGER_ID || id === SWEETHOME_LEDGER_ID;
+};
+
 // 無狀態純工具函式已模組化抽離至 src/lib/ledgerUtils.ts
 import {
   safeAlert,
@@ -424,6 +438,8 @@ interface LedgerContextType {
   isProcessingQueue: boolean;
   processOfflineQueue: () => Promise<{ success: boolean; syncedCount: number; failedCount: number }>;
   refreshLedgerList: () => Promise<{ success: boolean; count: number; message?: string }>;
+  isDemoLedger: boolean;
+  resetDemoLedger: () => Promise<void>;
 }
 
 const LedgerContext = createContext<LedgerContextType | null>(null);
@@ -3519,6 +3535,43 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch (e: any) {
       console.warn('刷新公帳清單失敗:', e);
       return { success: false, count: 0, message: e?.message };
+    }
+  };
+
+  // 判定當前帳本是否為體驗沙盒帳本
+  const isDemoLedger = isDemoLedgerId(currentLedger?.id);
+
+  // 一鍵還原 SWEETHOME 體驗帳本至標準初始母本
+  const resetDemoLedger = async () => {
+    try {
+      const demoTxs = getSweethomeInitialTransactions().map(hydrateTransactionWithInvoice);
+      const demoAccounts = SWEETHOME_ACCOUNTS;
+      const demoRules = getSweethomeRecurringRules();
+
+      setTransactions(demoTxs);
+      setPaymentAccounts(demoAccounts);
+      setRecurringRules(demoRules);
+      setMembers(SWEETHOME_MEMBERS);
+      setCurrentUser(SWEETHOME_MEMBERS[0]);
+
+      // 同步更新本機快取
+      await persistTransactionsCache(demoTxs, SWEETHOME_LEDGER_ID);
+      await AsyncStorage.setItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${SWEETHOME_LEDGER_ID}`, JSON.stringify(demoAccounts));
+      await AsyncStorage.setItem(`${STORAGE_KEYS.RECURRING_RULES}_${SWEETHOME_LEDGER_ID}`, JSON.stringify(demoRules));
+      await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${SWEETHOME_LEDGER_ID}`, JSON.stringify(SWEETHOME_MEMBERS));
+      await AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${SWEETHOME_LEDGER_ID}`, JSON.stringify(SWEETHOME_MEMBERS[0]));
+
+      triggerLiveToast({
+        id: `reset-demo-${Date.now()}`,
+        type: 'complete',
+        actorName: '示範帳本',
+        avatar: '🔄',
+        title: '示範資料已還原！',
+        message: 'SWEETHOME 已恢復至初始乾淨的 28 筆家庭紀錄。',
+        createdAt: Date.now(),
+      });
+    } catch (e) {
+      console.warn('還原示範資料失敗:', e);
     }
   };
 
@@ -8555,6 +8608,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         isProcessingQueue,
         processOfflineQueue,
         refreshLedgerList,
+        isDemoLedger,
+        resetDemoLedger,
       }}
     >
       {children}

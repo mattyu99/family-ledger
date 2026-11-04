@@ -215,7 +215,7 @@ export const JoinLedgerModal: React.FC<JoinLedgerModalProps> = ({
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
                   <TextInput
                     style={[styles.input, { flex: 1, marginBottom: 0 }]}
-                    placeholder="例如：FAM-8823 或貼上連結"
+                    placeholder="例如：FAM-8823、SWEETHOME"
                     placeholderTextColor={isDark ? colors.text.muted : '#9CA3AF'}
                     value={joinCodeInput}
                     onChangeText={setJoinCodeInput}
@@ -231,6 +231,20 @@ export const JoinLedgerModal: React.FC<JoinLedgerModalProps> = ({
                     </Text>
                   </TouchableOpacity>
                 </View>
+
+                {/* 🌟 體驗示範帳本快捷膠囊 */}
+                <TouchableOpacity
+                  style={styles.demoFillCapsule}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    setJoinCodeInput('SWEETHOME');
+                    fetchInvitePreview('SWEETHOME');
+                  }}
+                >
+                  <Text style={styles.demoFillCapsuleText}>
+                    🌟 免等邀請！一鍵帶入「SWEETHOME」試玩展示帳本
+                  </Text>
+                </TouchableOpacity>
               </View>
             )}
 
@@ -481,6 +495,22 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       color: '#FFFFFF',
       fontWeight: '700',
       fontSize: 14,
+    },
+    demoFillCapsule: {
+      marginTop: 10,
+      paddingVertical: 9,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+      backgroundColor: isDark ? 'rgba(147, 51, 234, 0.15)' : '#F3E8FF',
+      borderWidth: 1,
+      borderColor: isDark ? '#7E22CE' : '#D8B4FE',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    demoFillCapsuleText: {
+      fontSize: 12.5,
+      fontWeight: '700',
+      color: isDark ? '#E9D5FF' : '#7E22CE',
     },
     invitePreviewHeader: {
       flexDirection: 'row',
