@@ -1461,37 +1461,23 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
               )}
 
               {/* 工具列 */}
-              <View style={styles.rulesActionToolbar}>
-                {canManage && (
+              {canManage && (
+                <View style={styles.rulesActionToolbar}>
                   <TouchableOpacity
                     style={styles.addCustomRuleButton}
                     onPress={() => handleOpenRuleModal()}
                   >
                     <Text style={styles.addCustomRuleButtonText}>+ 新增規則</Text>
                   </TouchableOpacity>
-                )}
 
-                {canManage && (
                   <TouchableOpacity
                     style={styles.importPresetButton}
                     onPress={() => setPresetModalVisible(true)}
                   >
                     <Text style={styles.importPresetButtonText}>📋 常用範本</Text>
                   </TouchableOpacity>
-                )}
-
-                <TouchableOpacity
-                  style={styles.vaultToolbarButton}
-                  onPress={() => {
-                    setVaultFilterRuleId('');
-                    setShowStatementVault(true);
-                  }}
-                >
-                  <Text style={styles.vaultToolbarButtonText}>
-                    📂 帳單庫{statements.length > 0 ? ` (${statements.length})` : ''}
-                  </Text>
-                </TouchableOpacity>
-              </View>
+                </View>
+              )}
 
               <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
                 {scopedRules.length === 0 ? (
