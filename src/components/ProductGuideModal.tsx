@@ -224,18 +224,6 @@ const GUIDE_ITEMS: GuideItem[] = [
 export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, onClose }) => {
   const { isDark, colors } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-  const handleOpenBrochure = async () => {
-    const url = 'https://mattyu99.github.io/family-ledger/product_brochure.html';
-    if (Platform.OS === 'web') {
-      window.open(url, '_blank');
-    } else {
-      try {
-        await Linking.openURL(url);
-      } catch {
-        // fallback ignore
-      }
-    }
-  };
 
   const handleOpenManual = async () => {
     const url = 'https://mattyu99.github.io/family-ledger/manual.html';
@@ -335,34 +323,12 @@ export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, o
                 <View style={{ flex: 1 }}>
                   <Text style={styles.brochureTitle}>查閱官方完整使用者手冊 (User Manual)</Text>
                   <Text style={styles.brochureSubtitle}>
-                    包含 10 大核心章節、情境操作流程圖、桌面小工具與新手 FAQ（線上版）
+                    包含 10 大核心章節、情境操作流程圖、桌面小工具與新手 FAQ（線上純淨版）
                   </Text>
                 </View>
               </View>
               <View style={styles.brochureActionBadge}>
                 <Text style={styles.brochureActionText}>線上閱讀 ›</Text>
-              </View>
-            </TouchableOpacity>
-
-            {/* 官方線上規格型錄 */}
-            <TouchableOpacity
-              style={[styles.brochureCard, { marginTop: 8 }]}
-              onPress={handleOpenBrochure}
-              activeOpacity={0.8}
-            >
-              <View style={styles.brochureLeft}>
-                <View style={[styles.brochureIconWrap, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#D1FAE5' }]}>
-                  <Text style={styles.brochureIcon}>🌐</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.brochureTitle, { color: isDark ? '#6EE7B7' : '#047857' }]}>瀏覽產品型錄與功能規格書</Text>
-                  <Text style={[styles.brochureSubtitle, { color: isDark ? '#34D399' : '#059669' }]}>
-                    官方網頁版產品展示、四大架構亮點與完整規格（Web 版）
-                  </Text>
-                </View>
-              </View>
-              <View style={[styles.brochureActionBadge, { backgroundColor: '#059669' }]}>
-                <Text style={styles.brochureActionText}>開啟網頁 ›</Text>
               </View>
             </TouchableOpacity>
           </ScrollView>
