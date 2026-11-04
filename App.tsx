@@ -146,6 +146,7 @@ const AppContent: React.FC = () => {
     processOfflineQueue,
     isDemoLedger,
     resetDemoLedger,
+    switchCurrentUser,
   } = useLedger();
 
   // 分頁狀態
@@ -860,6 +861,19 @@ const AppContent: React.FC = () => {
         {isDemoLedger && (
           <DemoQuestBanner
             isDark={isDark}
+            currentUser={currentUser}
+            members={members}
+            onSwitchMember={async (m) => {
+              const res = await switchCurrentUser(m);
+              if (res.success) {
+                showAlert(
+                  `👀 已切換為「${m.display_name}」視角！`,
+                  `・首頁記帳付款人已預設帶入「${m.display_name}」\n・支付卡片與扣繳帳單已自動對齊\n\n💡 提醒：在真實家庭中每位家人各自使用獨立手機，無法跨成員切換，個人隱私 100% 受保護！`
+                );
+              } else {
+                showAlert('切換失敗', res.message || '無法切換身分');
+              }
+            }}
             onEditName={() => handleStartEditMember(currentUser)}
             onAddExpense={() => {
               setModalMode('expense');

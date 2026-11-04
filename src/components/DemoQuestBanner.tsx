@@ -9,9 +9,14 @@ import {
   Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Profile } from '../types/database';
+import { SWEETHOME_MEMBERS } from '../constants/sweethomeDemo';
 
 export interface DemoQuestBannerProps {
   isDark: boolean;
+  currentUser?: Profile;
+  members?: Profile[];
+  onSwitchMember?: (member: Profile) => void;
   onEditName: () => void;
   onAddExpense: () => void;
   onOpenLottery: () => void;
@@ -35,6 +40,9 @@ interface QuestItem {
 
 export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
   isDark,
+  currentUser,
+  members,
+  onSwitchMember,
   onEditName,
   onAddExpense,
   onOpenLottery,
@@ -48,6 +56,18 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
   const [hasShownCelebration, setHasShownCelebration] = useState(false);
+
+  // 示範家庭成員名單（嚴格鎖定 4 位示範成員，支援改名連動，杜絕第 5 人）
+  const activeMembersList = (() => {
+    if (members && members.length > 0) {
+      const filtered = SWEETHOME_MEMBERS.map(sm => {
+        const found = members.find(m => m.id === sm.id);
+        return found ? { ...sm, display_name: found.display_name, avatar_url: found.avatar_url || sm.avatar_url } : sm;
+      });
+      return filtered;
+    }
+    return SWEETHOME_MEMBERS;
+  })();
 
   // 讀取已完成任務清單
   useEffect(() => {
@@ -196,9 +216,81 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
         <View style={[styles.progressBar, { width: `${progressPercent}%` }]} />
       </View>
 
-      {/* 展開之任務清單 */}
+      {/* 展開之任務清單與視角切換器 */}
       {!isCollapsed && (
         <View style={styles.questsList}>
+          {/* 👤 體驗版專屬視角切換器 */}
+          <View style={[styles.switcherCard, isDark && styles.switcherCardDark]}>
+            <View style={styles.switcherHeaderRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={[styles.switcherHeaderTitle, isDark && styles.textDark]}>
+                  👤 切換體驗成員視角
+                </Text>
+                <View style={styles.switcherExclusiveTag}>
+                  <Text style={styles.switcherExclusiveTagText}>體驗版專屬</Text>
+                </View>
+              </View>
+              <Text style={[styles.switcherCurrentLabel, isDark && styles.textMutedDark]}>
+                目前：{currentUser?.display_name || activeMembersList[0]?.display_name}
+              </Text>
+            </View>
+
+            {/* 成員膠囊清單 */}
+            <View style={styles.memberChipsRow}>
+              {activeMembersList.map((m) => {
+                const isCurrent = currentUser?.id === m.id || (!currentUser?.id && m.id === activeMembersList[0]?.id);
+                return (
+                  <TouchableOpacity
+                    key={m.id}
+                    style={[
+                      styles.memberChip,
+                      isDark && styles.memberChipDark,
+                      isCurrent && styles.memberChipActive,
+                    ]}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      if (isCurrent) return;
+                      onSwitchMember?.(m);
+                    }}
+                  >
+                    <Text style={styles.memberChipAvatar}>{m.avatar_url || '👤'}</Text>
+                    <Text
+                      style={[
+                        styles.memberChipName,
+                        isDark && styles.textDark,
+                        isCurrent && styles.memberChipNameActive,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {m.display_name}
+                    </Text>
+                    {isCurrent && (
+                      <View style={styles.chipCurrentDot}>
+                        <Text style={styles.chipCurrentDotText}>我</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* 💡 甜心記帳本「公私分明」核心哲學解說卡 */}
+            <View style={[styles.philosophyBox, isDark && styles.philosophyBoxDark]}>
+              <View style={styles.philosophyHeaderRow}>
+                <Text style={{ fontSize: 13, marginRight: 4 }}>💡</Text>
+                <Text style={[styles.philosophyTitle, isDark && styles.philosophyTitleDark]}>
+                  甜心記帳本「公私分明」核心理念：
+                </Text>
+              </View>
+              <Text style={[styles.philosophyItemText, isDark && styles.philosophyItemTextDark]}>
+                • <Text style={{ fontWeight: '700' }}>全家公帳 0 秒即時同步</Text>：全家人在各自手機記錄的每一筆開銷、共享採買清單、水電繳費狀態，全家隨時即時看見、協同管理！
+              </Text>
+              <Text style={[styles.philosophyItemText, isDark && styles.philosophyItemTextDark, { marginTop: 4 }]}>
+                • <Text style={{ fontWeight: '700' }}>個人隱私嚴格保護</Text>：真實環境中每位家人各自用獨立手機，無法跨成員切換身分，個人私房信用卡與帳戶額度 100% 互不干擾、安全獨立！
+              </Text>
+            </View>
+          </View>
+
           {quests.map((q) => {
             const isDone = completedQuestIds.includes(q.id);
             return (
@@ -399,6 +491,126 @@ const styles = StyleSheet.create({
   questsList: {
     gap: 8,
     marginTop: 4,
+  },
+  switcherCard: {
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E9D5FF',
+    marginBottom: 4,
+  },
+  switcherCardDark: {
+    backgroundColor: '#1E152D',
+    borderColor: '#4C1D95',
+  },
+  switcherHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  switcherHeaderTitle: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  switcherExclusiveTag: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: '#EDE9FE',
+  },
+  switcherExclusiveTagText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#7C3AED',
+  },
+  switcherCurrentLabel: {
+    fontSize: 11.5,
+    color: '#6B7280',
+    fontWeight: '600',
+  },
+  memberChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  memberChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+    backgroundColor: '#FAF5FF',
+    borderWidth: 1,
+    borderColor: '#E9D5FF',
+    gap: 5,
+  },
+  memberChipDark: {
+    backgroundColor: '#2D154D',
+    borderColor: '#4C1D95',
+  },
+  memberChipActive: {
+    backgroundColor: '#9333EA',
+    borderColor: '#7E22CE',
+  },
+  memberChipAvatar: {
+    fontSize: 14,
+  },
+  memberChipName: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#374151',
+  },
+  memberChipNameActive: {
+    color: '#FFFFFF',
+  },
+  chipCurrentDot: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  chipCurrentDotText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  philosophyBox: {
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: '#F5F3FF',
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+  },
+  philosophyBoxDark: {
+    backgroundColor: '#170E28',
+    borderColor: '#3B1F6E',
+  },
+  philosophyHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  philosophyTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#6D28D9',
+  },
+  philosophyTitleDark: {
+    color: '#C4B5FD',
+  },
+  philosophyItemText: {
+    fontSize: 11.5,
+    color: '#4B5563',
+    lineHeight: 16.5,
+  },
+  philosophyItemTextDark: {
+    color: '#9CA3AF',
   },
   questCard: {
     flexDirection: 'row',

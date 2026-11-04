@@ -7,6 +7,7 @@ import { getExpoPushTokenSafely } from '../lib/pushDispatcher';
 import { APP_FULL_VERSION } from '../constants/version';
 import { safeAlert } from '../lib/ledgerUtils';
 import { STORAGE_KEYS, DEMO_LEDGER_ID } from '../constants/ledgerDefaults';
+import { isDemoLedgerId } from '../constants/sweethomeDemo';
 import { checkBiometricsCapability, authenticateWithBiometrics } from '../lib/biometrics';
 // supabaseAdmin removed for zero-token architecture
 
@@ -651,18 +652,19 @@ export function useDeviceAuth({
 
   const switchCurrentUser = useCallback(async (member: Profile, inputPin?: string): Promise<{ success: boolean; message?: string }> => {
     try {
+      const isDemo = isDemoLedgerId(currentLedger?.id);
       const isMemberCreator = currentLedger.created_by === member.id;
       const targetIsAdmin = isMemberCreator || member.role === 'owner' || member.role === 'admin';
       const currentIsAdmin = userRole === 'owner' || userRole === 'admin';
 
-      if (member.is_locked && (!currentUser.auth_email || currentUser.auth_email.toLowerCase() !== (member.auth_email || '').toLowerCase())) {
+      if (!isDemo && member.is_locked && (!currentUser.auth_email || currentUser.auth_email.toLowerCase() !== (member.auth_email || '').toLowerCase())) {
         return {
           success: false,
           message: `「${member.display_name}」身分已受 Google 帳號（${member.auth_email || '受保護'}）鎖定。請於設定頁使用「以 Google 帳號認領身分」以完成切換。`
         };
       }
 
-      if (!currentIsAdmin && targetIsAdmin) {
+      if (!isDemo && !currentIsAdmin && targetIsAdmin) {
         const clean = (inputPin || '').trim();
         const expected = ((currentLedger as any)?.admin_pin || adminPin || '8888').trim();
         if (!clean || clean !== expected) {
@@ -671,7 +673,7 @@ export function useDeviceAuth({
       }
 
       const resolvedRole: 'owner' | 'admin' | 'member' =
-        isMemberCreator ? 'owner' : (member.role === 'owner' || member.role === 'admin' ? member.role : 'member');
+        isDemo ? 'member' : (isMemberCreator ? 'owner' : (member.role === 'owner' || member.role === 'admin' ? member.role : 'member'));
       const updatedUser: Profile = { ...member, role: resolvedRole };
 
       setCurrentUser(updatedUser);

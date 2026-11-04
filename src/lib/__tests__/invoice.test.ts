@@ -297,5 +297,29 @@ describe('台灣統一發票與條碼解析核心模組測試 (invoice.ts)', () 
       expect(hydrated.invoice_status).toBe('pending');
       expect(hydrated.invoice_prize_amount).toBe(0);
     });
+
+    it('SWEETHOME 示範帳本應包含 4 位家庭成員（智爸、瑩媽、洋洋、豆豆）之完整收支與生活資料', () => {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { SWEETHOME_MEMBERS, SWEETHOME_ACCOUNTS } = require('../../constants/sweethomeDemo');
+      const txs = getSweethomeInitialTransactions();
+
+      expect(txs.length).toBe(30);
+
+      // 4 位成員皆有交易紀錄
+      SWEETHOME_MEMBERS.forEach((m: any) => {
+        const memberTxs = txs.filter((t: any) => t.paid_by === m.id);
+        expect(memberTxs.length).toBeGreaterThan(0);
+      });
+
+      // 豆豆專屬帳戶與生活交易檢驗
+      const doudouAccount = SWEETHOME_ACCOUNTS.find((a: any) => a.user_id === SWEETHOME_MEMBERS[3].id);
+      expect(doudouAccount).toBeDefined();
+      expect(doudouAccount.name).toBe('豆豆存錢筒');
+
+      const doudouTxs = txs.filter((t: any) => t.paid_by === SWEETHOME_MEMBERS[3].id);
+      expect(doudouTxs.length).toBe(3); // 文具王國粉蠟筆、阿公獎勵金、小美冰淇淋
+      expect(doudouTxs.some((t: any) => t.type === 'income')).toBe(true);
+      expect(doudouTxs.some((t: any) => t.type === 'expense')).toBe(true);
+    });
   });
 });

@@ -2016,7 +2016,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     };
 
-    const cloudQueriesPromise = (isConfigured && targetLedger.id !== DEMO_LEDGER_ID)
+    const cloudQueriesPromise = (isConfigured && targetLedger.id !== DEMO_LEDGER_ID && !isDemoLedgerId(targetLedger.id))
       ? Promise.all([
           safeQuery(supabase.from('ledgers').select('*').eq('id', targetLedger.id).maybeSingle()),
           safeQuery(supabase.from('ledger_invites').select('invite_code').eq('ledger_id', targetLedger.id).order('created_at', { ascending: false }).limit(1)),
@@ -2335,7 +2335,24 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     let loadedMembers: Profile[] = [];
-    if (activeMemberRows && activeMemberRows.length > 0) {
+    if (isDemoLedgerId(targetLedger.id)) {
+      // 示範體驗沙盒：成員名冊永遠嚴格鎖定為 SWEETHOME 4 位成員，杜絕任何外部第 5 人
+      let demoMembers = [...SWEETHOME_MEMBERS];
+      try {
+        const localSavedMembersStr = await AsyncStorage.getItem(`${STORAGE_KEYS.MEMBERS}_${targetLedger.id}`);
+        if (localSavedMembersStr) {
+          const parsed: Profile[] = JSON.parse(localSavedMembersStr);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            // 保留示範成員的自訂暱稱，但嚴格限定只保留 ID 屬於 SWEETHOME_MEMBERS 的 4 人
+            demoMembers = demoMembers.map(dm => {
+              const matched = parsed.find(p => p.id === dm.id);
+              return matched ? { ...dm, display_name: matched.display_name, avatar_url: matched.avatar_url || dm.avatar_url } : dm;
+            });
+          }
+        }
+      } catch {}
+      loadedMembers = demoMembers;
+    } else if (activeMemberRows && activeMemberRows.length > 0) {
       loadedMembers = activeMemberRows
         .map((r: any) => {
           if (!r.profiles) return null;
@@ -2351,7 +2368,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     // 若雲端已有成員，以雲端為準；離線時僅在本地記憶體中載入快取，絕不盲目向雲端 insert 避免跨帳本身分污染
-    if (loadedMembers.length === 0 && targetLedger.id !== DEMO_LEDGER_ID) {
+    if (!isDemoLedgerId(targetLedger.id) && loadedMembers.length === 0 && targetLedger.id !== DEMO_LEDGER_ID) {
       const localSavedMembersStr = await AsyncStorage.getItem(`${STORAGE_KEYS.MEMBERS}_${targetLedger.id}`);
       if (localSavedMembersStr) {
         try {
@@ -2477,9 +2494,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         );
       }
 
-      // 🛡️ 安全核心防線：若以上嚴格比對皆未匹配，絕對嚴禁自動退回名冊首位（dedupedMembers[0]）！
-      // 否則會造成切換帳本時擅自冒用其他成員、甚至無痛繼承管理員特權的重大資安漏洞。
-      if (!canonicalMe) {
+      if (isDemoLedgerId(targetLedger.id)) {
+        // 示範體驗沙盒：檢查本地記憶的角色是否為這 4 位成員之一
+        if (targetSavedUser && dedupedMembers.some(m => m.id === targetSavedUser?.id)) {
+          canonicalMe = dedupedMembers.find(m => m.id === targetSavedUser?.id);
+        } else {
+          // 否則自動對齊為示範主角智爸 (爸爸)
+          canonicalMe = dedupedMembers[0];
+        }
+        isUnclaimedMember = false;
+      } else if (!canonicalMe) {
+        // 🛡️ 安全核心防線：若以上嚴格比對皆未匹配，絕對嚴禁自動退回名冊首位（dedupedMembers[0]）！
+        // 否則會造成切換帳本時擅自冒用其他成員、甚至無痛繼承管理員特權的重大資安漏洞。
         isUnclaimedMember = true;
         // 以當前手機的原稱謂（例如「智爸」）保持本機身分，角色一律為一般成員（訪客），絕不賦予管理員權限
         canonicalMe = {
@@ -2515,7 +2541,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         Boolean(hasAdminByName)
       );
 
-      let role: 'owner' | 'admin' | 'member' = isMeAdmin ? 'owner' : 'member';
+      let role: 'owner' | 'admin' | 'member' = isDemoLedgerId(targetLedger.id) ? 'member' : (isMeAdmin ? 'owner' : 'member');
 
       // 0 管理員自癒保護：若雲端帳本全體成員皆無任何管理員 (0 admin)，且本機曾記錄為管理員，自動救援恢復為 owner
       if (!isUnclaimedMember) {
@@ -2564,7 +2590,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (isUnclaimedMember) {
         safeAlert(
           '未認領公帳身分提示',
-          `您已進入「${targetLedger.name}」。\n\n您在此帳本尚未建立或認領專屬成員身分，目前以「${canonicalMe.display_name}（訪客）」身分瀏覽。\n\n如需代表特定成員記帳或恢復管理員權限，請至「家庭設定」選擇身分認領或輸入安全 PIN 碼。`
+          `您已進入「${targetLedger.name}」。\n\n您在此帳本尚未建立或認領專屬成員身分，目前以「${canonicalMe?.display_name || '訪客'}（訪客）」身分瀏覽。\n\n如需代表特定成員記帳或恢復管理員權限，請至「家庭設定」選擇身分認領或輸入安全 PIN 碼。`
         );
       }
 
@@ -3591,7 +3617,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         actorName: '示範帳本',
         avatar: '🔄',
         title: '示範資料已還原！',
-        message: 'SWEETHOME 已恢復至初始乾淨的 28 筆家庭紀錄。',
+        message: 'SWEETHOME 已恢復至初始乾淨的 30 筆家庭紀錄。',
         createdAt: Date.now(),
       });
     } catch (e) {
