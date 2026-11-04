@@ -36,7 +36,12 @@ Docs: https://docs.expo.dev/eas/index.md
 
 ## Rules
 
-- **每次 Commit 必須遞增小版號**：只要有任何程式碼變更或 commit，務必將 `src/constants/version.ts` 中的 `APP_BUILD_REVISION` 加 1（例如 11 ➔ 12），並同步更新相關文件版號字串（`README.md`、`PRODUCT_BROCHURE.md`、`public/manual.html`、`public/product_brochure.html`）。更新歷程（`CHANGELOG_HISTORY`）可視情況新加一條或與前面項目整合（若為前項功能延伸）。
+- **每次 Commit 必須遞增小版號**：只要有任何程式碼變更或 commit，務必將 `src/constants/version.ts` 中的 `APP_BUILD_REVISION` 加 1（例如 13 ➔ 14），並同步更新相關文件版號字串（`README.md`、`PRODUCT_BROCHURE.md`、`public/manual.html`、`public/product_brochure.html`、`scripts/eas-update.mjs`）。
+- **更新歷程（CHANGELOG）維護鐵律（面向使用者）**：
+  1. **禁止標註小版號 .yy**：更新歷程項目一律掛在主版本號（例如 `1.0.13`）下，**禁止在條目標題或內文標註 `1.0.xx.yy` 或小版號標籤**（不需一一列出小版本）。
+  2. **同主題合併為一**：相同或相近主題的項目必須積極整合成單一項目，保持簡明（簡單 1~2 行描述），避免瑣碎流水帳。
+  3. **通俗易懂、嚴禁工程術語**：更新歷程是給一般使用者閱讀的，嚴禁出現專業/底層程式術語（例如 `includeFontPadding=false`、`HorizontalScrollView`、`getMemberById`、`RPC`、`Zero-Token` 等），一律使用親切、清晰的日常繁體中文描述功能與好處。
+- **純討論與詢問絕不擅自改 Code**：若使用者僅為功能諮詢或詢問操作邏輯，嚴禁無故修改程式碼，以文字清晰解答為優先。
 - If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
 - Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
 - Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
