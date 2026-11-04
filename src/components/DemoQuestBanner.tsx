@@ -6,11 +6,12 @@ import {
   TouchableOpacity,
   Modal,
   Linking,
-  Alert,
+  ScrollView,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Profile } from '../types/database';
 import { SWEETHOME_MEMBERS } from '../constants/sweethomeDemo';
+import { showConfirm } from '../lib/alert';
 
 export interface DemoQuestBannerProps {
   isDark: boolean;
@@ -77,6 +78,10 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
           const parsed = JSON.parse(val);
           if (Array.isArray(parsed)) {
             setCompletedQuestIds(parsed);
+            // 若 6 項任務皆已通關，預設自動折疊收合，避免畫面過長遮擋內容
+            if (parsed.length >= 6) {
+              setIsCollapsed(true);
+            }
           }
         } catch {
           // ignore
@@ -162,22 +167,16 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
   };
 
   const handleConfirmReset = () => {
-    Alert.alert(
+    showConfirm(
       '還原 SWEETHOME 初始狀態',
       '確定要重置示範資料嗎？您剛才在本機測試輸入的紀錄將被清除，並重新還原為乾淨的標準示範帳本。',
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '確定還原',
-          style: 'destructive',
-          onPress: async () => {
-            await AsyncStorage.removeItem(STORAGE_KEY_QUESTS);
-            setCompletedQuestIds([]);
-            setHasShownCelebration(false);
-            onResetDemo();
-          },
-        },
-      ]
+      async () => {
+        await AsyncStorage.removeItem(STORAGE_KEY_QUESTS);
+        setCompletedQuestIds([]);
+        setHasShownCelebration(false);
+        setIsCollapsed(false);
+        onResetDemo();
+      }
     );
   };
 
@@ -216,9 +215,14 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
         <View style={[styles.progressBar, { width: `${progressPercent}%` }]} />
       </View>
 
-      {/* 展開之任務清單與視角切換器 */}
+      {/* 展開之任務清單與視角切換器 (加入內部滾動保護與高度限制) */}
       {!isCollapsed && (
-        <View style={styles.questsList}>
+        <ScrollView
+          style={styles.questsScrollContainer}
+          contentContainerStyle={styles.questsList}
+          nestedScrollEnabled={true}
+          showsVerticalScrollIndicator={true}
+        >
           {/* 👤 體驗版專屬視角切換器 */}
           <View style={[styles.switcherCard, isDark && styles.switcherCardDark]}>
             <View style={styles.switcherHeaderRow}>
@@ -344,7 +348,7 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
               <Text style={styles.manualLink}>📖 翻閱官方使用者手冊</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </ScrollView>
       )}
 
       {/* 通關慶祝賀卡彈窗 */}
@@ -488,9 +492,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#9333EA',
     borderRadius: 3,
   },
+  questsScrollContainer: {
+    maxHeight: 420,
+  },
   questsList: {
     gap: 8,
     marginTop: 4,
+    paddingBottom: 6,
   },
   switcherCard: {
     padding: 12,

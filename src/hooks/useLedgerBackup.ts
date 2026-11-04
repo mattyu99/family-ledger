@@ -12,7 +12,8 @@ import {
 } from '../types/database';
 import { generateUUID } from '../lib/uuid';
 import { APP_FULL_VERSION } from '../constants/version';
-import { STORAGE_KEYS, DEMO_LEDGER_ID, isValidUUID } from '../constants/ledgerDefaults';
+import { STORAGE_KEYS, isValidUUID } from '../constants/ledgerDefaults';
+import { isDemoLedgerId } from '../constants/sweethomeDemo';
 import { hydrateTransactionWithInvoice, deduplicateMembers, buildMemberAliasMap } from '../lib/ledgerUtils';
 import {
   StatementFile,
@@ -295,7 +296,7 @@ export function useLedgerBackup({
         return { success: false, message: '備份檔中缺少交易明細資料 (transactions)' };
       }
 
-      const isRealCloud = isConfigured && currentLedger?.id && currentLedger.id !== DEMO_LEDGER_ID;
+      const isRealCloud = isConfigured && currentLedger?.id && !isDemoLedgerId(currentLedger.id);
 
       // 若備份檔標記此帳本為唯讀封存 (is_read_only)，自動同步啟用唯讀保護
       if (backup.ledger?.is_read_only) {

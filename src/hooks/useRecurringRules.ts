@@ -10,7 +10,8 @@ import {
 } from '../lib/recurring';
 import { generateUUID } from '../lib/uuid';
 import { safeAlert } from '../lib/ledgerUtils';
-import { STORAGE_KEYS, DEMO_LEDGER_ID, DEMO_RECURRING_RULES } from '../constants/ledgerDefaults';
+import { STORAGE_KEYS, DEMO_RECURRING_RULES } from '../constants/ledgerDefaults';
+import { isDemoLedgerId } from '../constants/sweethomeDemo';
 
 export interface UseRecurringRulesProps {
   currentLedger: Ledger;
@@ -61,7 +62,7 @@ export function useRecurringRules({
     setRecurringRules(updated);
     await saveRecurringRulesToStorage(updated, currentLedger.id);
 
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
       try {
         const { error } = await supabase.from('recurring_rules').insert(newRule);
         if (error) {
@@ -93,7 +94,7 @@ export function useRecurringRules({
     setRecurringRules(updated);
     await saveRecurringRulesToStorage(updated, currentLedger.id);
 
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
       try {
         const updatePayload = {
           ...data,
@@ -120,7 +121,7 @@ export function useRecurringRules({
     setRecurringRules(updated);
     await saveRecurringRulesToStorage(updated, currentLedger.id);
 
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
       try {
         const { data: delRows, error } = await supabase.from('recurring_rules').delete().eq('id', id).select('id');
         const rowsAffected = delRows ? delRows.length : 0;
@@ -205,7 +206,7 @@ export function useRecurringRules({
     setRecurringRules(updated);
     await saveRecurringRulesToStorage(updated, currentLedger.id);
 
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
       try {
         const payload = {
           last_recorded_period: nextPeriodStr,
@@ -268,7 +269,7 @@ export function useRecurringRules({
     setRecurringRules(updated);
     await saveRecurringRulesToStorage(updated, currentLedger.id);
 
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
       try {
         const payload = {
           last_recorded_period: nextPeriodStr,
@@ -314,7 +315,7 @@ export function useRecurringRules({
     setRecurringRules(defaultRules);
     await saveRecurringRulesToStorage(defaultRules, currentLedger.id);
 
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
       try {
         await supabase.from('recurring_rules').insert(defaultRules);
       } catch {}

@@ -12,7 +12,8 @@ import {
 import { generateUUID } from '../lib/uuid';
 import { safeAlert, isAccountBoundToUser } from '../lib/ledgerUtils';
 import { isAccountBelongingToMember, DEFAULT_PAYMENT_METHODS, KNOWN_PAYMENT_METHOD_UUIDS } from '../lib/payment';
-import { STORAGE_KEYS, DEMO_LEDGER_ID, DEFAULT_CATEGORIES } from '../constants/ledgerDefaults';
+import { STORAGE_KEYS, DEFAULT_CATEGORIES } from '../constants/ledgerDefaults';
+import { isDemoLedgerId } from '../constants/sweethomeDemo';
 // supabaseAdmin removed for zero-token security
 
 export interface UsePaymentAccountsProps {
@@ -89,7 +90,7 @@ export function usePaymentAccounts({
       AsyncStorage.setItem(`${STORAGE_KEYS.ACCOUNTS_INITIALIZED}_${currentLedger.id}`, 'true').catch(() => {});
     }
 
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
       try {
         const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_add_payment_account', {
           p_account: newAcc,
@@ -127,7 +128,7 @@ export function usePaymentAccounts({
       AsyncStorage.setItem(`${STORAGE_KEYS.ACCOUNTS_INITIALIZED}_${currentLedger.id}`, 'true').catch(() => {});
     }
 
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
       try {
         const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_update_payment_account', {
           p_account_id: id,
@@ -177,7 +178,7 @@ export function usePaymentAccounts({
       }
     }
 
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
       try {
         const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_delete_payment_account', {
           p_account_id: id,
@@ -272,7 +273,7 @@ export function usePaymentAccounts({
         const updated = [...paymentAccounts, ...toInsert];
         setPaymentAccounts(updated);
         await savePaymentAccountsToStorage(updated);
-        if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+        if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
           try {
             for (const acc of toInsert) {
               await supabase.rpc('secure_add_payment_account', { p_account: acc });
@@ -322,7 +323,7 @@ export function usePaymentAccounts({
     setPaymentMethods(updated);
     await savePaymentMethodsToStorage(updated);
 
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
       try {
         const methodPayload = {
           id: newId,
@@ -366,7 +367,7 @@ export function usePaymentAccounts({
     setPaymentMethods(updated);
     await savePaymentMethodsToStorage(updated);
 
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
       try {
         const updatePayload: any = { updated_at: new Date().toISOString() };
         if (data.name !== undefined) updatePayload.name = data.name;
@@ -402,7 +403,7 @@ export function usePaymentAccounts({
     setPaymentMethods(updated);
     await savePaymentMethodsToStorage(updated);
 
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
       try {
         await supabase
           .from('payment_methods')
@@ -457,7 +458,7 @@ export function usePaymentAccounts({
 
   // 雙軌雲端同步卡片帳戶餘額 (優先呼叫 SECURITY DEFINER RPC，無需 service_role 金鑰即可安全更新)
   const syncAccountBalanceToCloud = useCallback(async (accountId: string, balance: number) => {
-    if (!isConfigured || currentLedger.id === DEMO_LEDGER_ID || !accountId || accountId.startsWith('50000000')) return;
+    if (!isConfigured || isDemoLedgerId(currentLedger.id) || !accountId || accountId.startsWith('50000000')) return;
     const payload = { balance, updated_at: new Date().toISOString() };
     try {
       const { data, error } = await supabase
@@ -590,7 +591,7 @@ export function usePaymentAccounts({
       setTransactions(updated);
       await saveTransactionsToStorage(updated);
 
-      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
         try {
           const { data: recRows, error: recErr } = await supabase
             .from('transactions')
@@ -758,7 +759,7 @@ export function usePaymentAccounts({
       setPaymentAccounts(updatedAccounts);
       await savePaymentAccountsToStorage(updatedAccounts);
 
-      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
         if (!fromAccountId.startsWith('50000000')) {
           syncAccountBalanceToCloud(fromAccountId, fromNewBal);
         }

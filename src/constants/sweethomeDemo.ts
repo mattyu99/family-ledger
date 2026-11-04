@@ -1,6 +1,7 @@
 import { Category, Profile, Ledger, RecurringRule, Transaction, PaymentAccount } from '../types/database';
 import { getInvoicePeriodKey, getLatestDrawnPeriodKey } from '../lib/invoice';
 import { getOfficialLotteryDraws } from '../lib/lottery';
+import { DEMO_LEDGER_ID } from './ledgerDefaults';
 
 export const SWEETHOME_LEDGER_ID = 'ee100000-0000-4000-8000-000000000001';
 export const SWEETHOME_INVITE_CODE = 'SWEETHOME';
@@ -8,7 +9,12 @@ export const SWEETHOME_INVITE_CODE = 'SWEETHOME';
 // 判斷是否為示範體驗帳本 (包含舊 DEMO 與新 SWEETHOME)
 export const isDemoLedgerId = (id?: string | null): boolean => {
   if (!id) return false;
-  return id === 'demo-ledger-id' || id === SWEETHOME_LEDGER_ID || id.toLowerCase().includes('sweethome');
+  return (
+    id === 'demo-ledger-id' ||
+    id === DEMO_LEDGER_ID ||
+    id === SWEETHOME_LEDGER_ID ||
+    id.toLowerCase().includes('sweethome')
+  );
 };
 
 export const SWEETHOME_MEMBERS: Profile[] = [

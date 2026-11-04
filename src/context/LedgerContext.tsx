@@ -1051,7 +1051,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (savedLedger) {
           try {
             const parsed = JSON.parse(savedLedger);
-            if (isValidUUID(parsed.id) && parsed.id !== DEMO_LEDGER_ID) {
+            if (isValidUUID(parsed.id) && !isDemoLedgerId(parsed.id)) {
               setLedgers([parsed]);
               setCurrentLedger(parsed);
               // 只要本機存有真實帳本快取，自動修復任何舊版殘留的 'false' 標記，100% 保持已加入狀態
@@ -1838,7 +1838,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             if (accRows && accRows.length > 0) {
               freshAccounts = accRows;
-            } else if (ledgerId !== DEMO_LEDGER_ID) {
+            } else if (!isDemoLedgerId(ledgerId)) {
               const token = getStorageServiceToken();
               const res = await fetch(`${SUPABASE_URL}/rest/v1/payment_accounts?ledger_id=eq.${ledgerId}&select=*&order=sort_order.asc`, {
                 headers: { apikey: token, Authorization: `Bearer ${token}` },
@@ -1929,7 +1929,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             if (ruleRows && ruleRows.length > 0) {
               rulesList = ruleRows;
-            } else if (ledgerId !== DEMO_LEDGER_ID) {
+            } else if (!isDemoLedgerId(ledgerId)) {
               const token = getStorageServiceToken();
               const res = await fetch(`${SUPABASE_URL}/rest/v1/recurring_rules?ledger_id=eq.${ledgerId}&select=*&order=created_at.desc`, {
                 headers: { apikey: token, Authorization: `Bearer ${token}` },
@@ -2016,7 +2016,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     };
 
-    const cloudQueriesPromise = (isConfigured && targetLedger.id !== DEMO_LEDGER_ID && !isDemoLedgerId(targetLedger.id))
+    const cloudQueriesPromise = (isConfigured && !isDemoLedgerId(targetLedger.id))
       ? Promise.all([
           safeQuery(supabase.from('ledgers').select('*').eq('id', targetLedger.id).maybeSingle()),
           safeQuery(supabase.from('ledger_invites').select('invite_code').eq('ledger_id', targetLedger.id).order('created_at', { ascending: false }).limit(1)),
@@ -2205,7 +2205,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const fallbackCode = 'FAM-' + (targetLedger.id ? targetLedger.id.replace(/-/g, '').slice(0, 4).toUpperCase() : '8823');
       setInviteCode(fallbackCode);
       AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, fallbackCode).catch(() => {});
-      if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+      if (isConfigured && !isDemoLedgerId(targetLedger.id)) {
         supabase.from('ledger_invites').upsert({
           ledger_id: targetLedger.id,
           invite_code: fallbackCode,
@@ -2219,7 +2219,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     let activeCatRows: Category[] = (!catRes?.error && catRes?.data && catRes.data.length > 0) ? catRes.data : [];
 
     // 服務權杖穿透雙軌韌性備援：若客戶端因 RLS 權限受限拉取為 0 筆，無縫啟用服務權杖穿透拉取
-    if (activeCatRows.length === 0 && targetLedger.id !== DEMO_LEDGER_ID) {
+    if (activeCatRows.length === 0 && !isDemoLedgerId(targetLedger.id)) {
       try {
         const token = getStorageServiceToken();
         const res = await fetch(
@@ -2245,7 +2245,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (activeCatRows.length > 0) {
       let finalCats = [...activeCatRows];
       const hasAllowance = finalCats.some(c => c.type === 'income' && (c.name.includes('零用') || c.name === '零用錢'));
-      if (!hasAllowance && isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+      if (!hasAllowance && isConfigured && !isDemoLedgerId(targetLedger.id)) {
         const allowanceCat = {
           id: generateUUID(),
           ledger_id: targetLedger.id,
@@ -2267,7 +2267,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       const hasBonusRebate = finalCats.some(c => c.type === 'income' && (c.name === '獎金回饋' || c.name.includes('獎金') || c.name.includes('回饋')));
-      if (!hasBonusRebate && isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+      if (!hasBonusRebate && isConfigured && !isDemoLedgerId(targetLedger.id)) {
         const bonusCat = {
           id: generateUUID(),
           ledger_id: targetLedger.id,
@@ -2311,7 +2311,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const memErr = memberRes?.error;
     let activeMemberRows = (!memErr && memberRows && memberRows.length > 0) ? memberRows : [];
 
-    if (activeMemberRows.length === 0 && targetLedger.id !== DEMO_LEDGER_ID) {
+    if (activeMemberRows.length === 0 && !isDemoLedgerId(targetLedger.id)) {
       try {
         const token = getStorageServiceToken();
         const res = await fetch(
@@ -2368,7 +2368,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     // 若雲端已有成員，以雲端為準；離線時僅在本地記憶體中載入快取，絕不盲目向雲端 insert 避免跨帳本身分污染
-    if (!isDemoLedgerId(targetLedger.id) && loadedMembers.length === 0 && targetLedger.id !== DEMO_LEDGER_ID) {
+    if (!isDemoLedgerId(targetLedger.id) && loadedMembers.length === 0) {
       const localSavedMembersStr = await AsyncStorage.getItem(`${STORAGE_KEYS.MEMBERS}_${targetLedger.id}`);
       if (localSavedMembersStr) {
         try {
@@ -2402,7 +2402,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     let canonicalMe: Profile | undefined = undefined;
 
     // 雲端幽靈成員自動自癒清理：若名冊中已存在具名自訂成員，但雲端仍殘留未命名的預設「家庭成員」假人，自動自雲端抹除
-    if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID && dedupedMembers.length > 0) {
+    if (isConfigured && !isDemoLedgerId(targetLedger.id) && dedupedMembers.length > 0) {
       const ghostRows = activeMemberRows.filter((r: any) =>
         r.profiles &&
         ((r.profiles.display_name || '').trim() === '家庭成員' || (r.profiles.display_name || '').trim() === '') &&
@@ -2428,7 +2428,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     // 🛡️ 示範成員防污染自癒防護：若在真實帳本中偵測到由示範帳本誤寫入之示範成員稱謂（例如「豆豆 (妹妹)」、「智爸 (爸爸)」），且該帳本已有正常自訂名冊，自動自真實帳本清理剔除
-    if (isConfigured && !isDemoLedgerId(targetLedger.id) && targetLedger.id !== DEMO_LEDGER_ID && activeMemberRows && activeMemberRows.length > 0) {
+    if (isConfigured && !isDemoLedgerId(targetLedger.id) && activeMemberRows && activeMemberRows.length > 0) {
       const demoLeakRows = activeMemberRows.filter((r: any) =>
         r.profiles &&
         r.user_id !== targetLedger.created_by &&
@@ -2583,7 +2583,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       // 若未認領訪客，嚴禁發送 Supabase 提權更新
-      if (!isUnclaimedMember && role === 'owner' && myMemberRow && myMemberRow.role !== 'owner' && isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+      if (!isUnclaimedMember && role === 'owner' && myMemberRow && myMemberRow.role !== 'owner' && isConfigured && !isDemoLedgerId(targetLedger.id)) {
         supabase.from('ledger_members').update({ role: 'owner' }).eq('ledger_id', targetLedger.id).eq('user_id', authUserId).then();
       }
 
@@ -2740,7 +2740,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     let cloudTotalCount: number | null = null;
     let firstChunk: any[] = [];
 
-    if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && !isDemoLedgerId(targetLedger.id)) {
       if (!txRes?.error && txRes?.data && txRes.data.length > 0) {
         firstChunk = txRes.data;
         cloudTotalCount = txRes.count ?? null;
@@ -2848,7 +2848,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     // 自動校正雲端 Supabase 中的歷史付款人 ID（背景執行）
-    if (healList.length > 0 && targetLedger.id !== DEMO_LEDGER_ID && isConfigured) {
+    if (healList.length > 0 && !isDemoLedgerId(targetLedger.id) && isConfigured) {
       Promise.all(
         healList.map(item =>
           supabase.from('transactions').update({ paid_by: item.paid_by }).eq('id', item.id)
@@ -2860,7 +2860,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // 檢查本地是否有離線建立、尚未成功送至雲端的交易（僅補同步真正標記為 _isPendingSync 的離線新明細，絕不復活已被刪除的舊交易）
     const localSavedTxStr = await AsyncStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
-    if (localSavedTxStr && targetLedger.id !== DEMO_LEDGER_ID) {
+    if (localSavedTxStr && !isDemoLedgerId(targetLedger.id)) {
       try {
         const localTxList: Transaction[] = JSON.parse(localSavedTxStr);
         const unsyncedTx = localTxList.filter(
@@ -2929,7 +2929,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     // 雲端查詢失敗或無資料時的 Local-First 保底：絕不將本機快取的交易明細覆蓋成空陣列（嚴格限定屬於目標帳本之明細）
-    if (finalTx.length === 0 && targetLedger.id !== DEMO_LEDGER_ID) {
+    if (finalTx.length === 0 && !isDemoLedgerId(targetLedger.id)) {
       if (localCachedTransactions.length > 0) {
         finalTx = localCachedTransactions.filter(t => t && t.ledger_id === targetLedger.id);
       } else {
@@ -2958,7 +2958,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const targetLedgerId = targetLedger.id;
     const needsHistoricalSync = Boolean(
       isConfigured &&
-      targetLedgerId !== DEMO_LEDGER_ID &&
+      !isDemoLedgerId(targetLedgerId) &&
       ((cloudTotalCount !== null && cloudTotalCount > finalTx.length) || (cloudTotalCount === null && firstChunk.length === 1000))
     );
 
@@ -3108,7 +3108,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         ? accountRows
         : [];
 
-      if (loadedCloudAccounts.length === 0 && targetLedger.id !== DEMO_LEDGER_ID) {
+      if (loadedCloudAccounts.length === 0 && !isDemoLedgerId(targetLedger.id)) {
         try {
           const token = getStorageServiceToken();
           const res = await fetch(
@@ -3131,7 +3131,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
-      if (targetLedger.id === DEMO_LEDGER_ID) {
+      if (targetLedger.id === SWEETHOME_LEDGER_ID) {
+        const savedDemo = (await AsyncStorage.getItem(ledgerSpecificKey)) || (await AsyncStorage.getItem(STORAGE_KEYS.PAYMENT_ACCOUNTS));
+        if (savedDemo) {
+          try { setPaymentAccounts(JSON.parse(savedDemo)); } catch {}
+        } else {
+          setPaymentAccounts(SWEETHOME_ACCOUNTS);
+        }
+      } else if (targetLedger.id === DEMO_LEDGER_ID) {
         const savedDemo = (await AsyncStorage.getItem(ledgerSpecificKey)) || (await AsyncStorage.getItem(STORAGE_KEYS.PAYMENT_ACCOUNTS));
         if (savedDemo) {
           try { setPaymentAccounts(JSON.parse(savedDemo)); } catch {}
@@ -3267,7 +3274,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       let cloudMethods: any[] = (!methodRes?.error && Array.isArray(methodRes?.data) && methodRes.data.length > 0) ? methodRes.data : [];
       let cloudFetchSuccess = Boolean(!methodRes?.error && methodRes?.data);
 
-      if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+      if (isConfigured && !isDemoLedgerId(targetLedger.id)) {
 
         // 服務權杖穿透雙軌韌性備援：若客戶端因 RLS 權限受限拉取為 0 筆，無縫啟用服務權杖穿透拉取
         if (cloudMethods.length === 0) {
@@ -3368,7 +3375,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       let loadedRules: RecurringRule[] = [];
 
       // 1. 若有雲端資料表支援，優先自雲端取得該帳本之週期規則
-      if (isConfigured && targetLedger.id !== DEMO_LEDGER_ID) {
+      if (isConfigured && !isDemoLedgerId(targetLedger.id)) {
         const cloudRules = ruleRes?.data;
         const cloudErr = ruleRes?.error;
         if (!cloudErr && Array.isArray(cloudRules) && cloudRules.length > 0) {
@@ -3849,7 +3856,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (savedLedgerStr) {
           try {
             const parsed = JSON.parse(savedLedgerStr);
-            if (isValidUUID(parsed?.id) && parsed.id !== DEMO_LEDGER_ID) {
+            if (isValidUUID(parsed?.id) && !isDemoLedgerId(parsed.id)) {
               savedLedgerId = parsed.id;
             }
           } catch {}
@@ -4032,7 +4039,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             if (!foundLedger && savedLedgerStr) {
               try {
                 const cl = JSON.parse(savedLedgerStr);
-                if (cl && isValidUUID(cl.id) && cl.id !== DEMO_LEDGER_ID) {
+                if (cl && isValidUUID(cl.id) && !isDemoLedgerId(cl.id)) {
                   foundLedger = cl;
                 }
               } catch {}
@@ -4212,7 +4219,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (savedLedgerStr) {
             try {
               const cachedLedger = JSON.parse(savedLedgerStr);
-              if (cachedLedger && isValidUUID(cachedLedger.id) && cachedLedger.id !== DEMO_LEDGER_ID) {
+              if (cachedLedger && isValidUUID(cachedLedger.id) && !isDemoLedgerId(cachedLedger.id)) {
                 console.log('雲端未查詢到即時名冊，但本機具備有效帳本快取：維持本地離線優先狀態，絕不踢出帳本');
                 setLedgers([cachedLedger]);
                 setCurrentLedger(cachedLedger);
@@ -4369,7 +4376,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // 雙軌雲端同步卡片帳戶餘額 (優先呼叫 SECURITY DEFINER RPC，無需 service_role 金鑰即可安全更新)
   const syncAccountBalanceToCloud = async (accountId: string, balance: number, targetLedgerId?: string) => {
     const lid = targetLedgerId || currentLedger?.id;
-    if (!isConfigured || lid === DEMO_LEDGER_ID || !accountId || accountId.startsWith('50000000')) return;
+    if (!isConfigured || isDemoLedgerId(lid) || !accountId || accountId.startsWith('50000000')) return;
     const payload = { balance, updated_at: new Date().toISOString() };
     try {
       const { data, error } = await supabase
@@ -4413,7 +4420,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     for (const item of queue) {
       const targetLedgerId = item.ledgerId || currentLedger?.id;
-      if (!targetLedgerId || targetLedgerId === DEMO_LEDGER_ID) {
+      if (!targetLedgerId || isDemoLedgerId(targetLedgerId)) {
         // 示範帳本之離線異動不向雲端上傳，直接出列
         await dequeueOfflineMutation(item.id);
         continue;
@@ -4715,7 +4722,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // 手動 / 前景重新整理當前帳本完整資料
   const refreshLedger = async () => {
-    if (isConfigured && currentLedger && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && currentLedger && !isDemoLedgerId(currentLedger.id)) {
       try {
         // 離線佇列掛載 3 秒超時防護，即使離線網路抖動亦絕不卡死下拉轉圈
         await Promise.race([
@@ -4743,7 +4750,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     message?: string;
   }> => {
     try {
-      if (!isConfigured || !currentLedger?.id || currentLedger.id === DEMO_LEDGER_ID) {
+      if (!isConfigured || !currentLedger?.id || isDemoLedgerId(currentLedger.id)) {
         return { success: false, txCount: 0, memberCount: 0, accountCount: 0, message: '目前為離線或示範模式，無需重新同步' };
       }
 
@@ -4826,7 +4833,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           console.warn('檢查待處理授權碼失敗:', e);
         }
 
-        if (currentLedger && currentLedger.id !== DEMO_LEDGER_ID) {
+        if (currentLedger && !isDemoLedgerId(currentLedger.id)) {
           refreshLedger();
         }
       }
@@ -5062,7 +5069,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (!ledgerList || ledgerList.length <= 1) return;
 
       const otherLedgers = ledgerList.filter(
-        l => l.id !== activeId && isValidUUID(l.id) && l.id !== DEMO_LEDGER_ID
+        l => l.id !== activeId && isValidUUID(l.id) && !isDemoLedgerId(l.id)
       );
       if (otherLedgers.length === 0) return;
 
@@ -5151,7 +5158,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       const otherLedgers = ledgers.filter(
-        l => l.id !== currentLedger.id && isValidUUID(l.id) && l.id !== DEMO_LEDGER_ID
+        l => l.id !== currentLedger.id && isValidUUID(l.id) && !isDemoLedgerId(l.id)
       );
       if (otherLedgers.length === 0) return;
 
@@ -5402,7 +5409,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(updatedCur));
       }
 
-      if (isConfigured && ledgerId !== DEMO_LEDGER_ID) {
+      if (isConfigured && !isDemoLedgerId(ledgerId)) {
         try {
           const currentDesc = target.description || '';
           let newDesc = currentDesc;
@@ -5449,7 +5456,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateAllowNewMembers = async (allowed: boolean, targetLedgerId?: string): Promise<{ success: boolean; message?: string }> => {
     try {
       const targetId = targetLedgerId || currentLedger.id;
-      if (targetId === DEMO_LEDGER_ID) {
+      if (isDemoLedgerId(targetId)) {
         if (targetId === currentLedger.id) {
           const updated = { ...currentLedger, allow_new_members: allowed };
           setCurrentLedger(updated);
@@ -5524,7 +5531,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setLedgers(prev => prev.map(l => (l.id === currentLedger.id ? { ...l, name: clean } : l)));
     await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(updatedLedger));
 
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
       try {
         // 1. 優先嘗試零金鑰安全預存程序 secure_update_ledger (徹底杜絕未登入管理員更新 0 筆之靜默失敗)
         let rpcOk = false;
@@ -6023,7 +6030,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const regenerateInviteCode = async (): Promise<string> => {
     const newCode = 'FAM-' + Math.floor(1000 + Math.random() * 9000);
 
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const uid = session?.user?.id || currentUser.id;
@@ -6070,7 +6077,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return false;
     }
 
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const uid = session?.user?.id || currentUser.id;
@@ -6159,7 +6166,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // 離開當前帳本 (回到冷啟動首頁，並從雲端解除成員綁定)
   const leaveCurrentLedger = async () => {
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const myAuthId = session?.user?.id;
@@ -6304,7 +6311,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const leaveLedgerById = async (targetLedgerId: string) => {
     try {
       let authUserId: string | undefined;
-      if (isConfigured && targetLedgerId !== DEMO_LEDGER_ID) {
+      if (isConfigured && !isDemoLedgerId(targetLedgerId)) {
         const { data: { session } } = await supabase.auth.getSession();
         authUserId = session?.user?.id;
         const userIdsToRemove = Array.from(new Set([authUserId, currentUser?.id].filter(Boolean) as string[]));
@@ -6572,7 +6579,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return updated;
       });
 
-      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID && !data.account_id.startsWith('50000000')) {
+      if (isConfigured && !isDemoLedgerId(currentLedger.id) && !data.account_id.startsWith('50000000')) {
         const targetAcc = paymentAccounts.find(a => a.id === data.account_id);
         const newBal = finalNewBalance !== undefined ? finalNewBalance : (targetAcc ? Number((targetAcc.balance + delta).toFixed(2)) : undefined);
         if (newBal !== undefined) {
@@ -6582,7 +6589,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     // 樂觀更新本地畫面（預先標記 _isPendingSync，確保在收到雲端成功回執前若重新整理頁面絕不遺失）
-    const isOnlinePublishing = isConfigured && isCloudSynced && newTx.ledger_id !== DEMO_LEDGER_ID;
+    const isOnlinePublishing = isConfigured && isCloudSynced && !isDemoLedgerId(newTx.ledger_id);
     (newTx as any)._isPendingSync = true;
     const currentTxList = transactionsRef.current && transactionsRef.current.length > 0 ? transactionsRef.current : transactions;
     const updated = [newTx, ...currentTxList.filter(t => t.id !== newTx.id)];
@@ -6765,7 +6772,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           payload: { tx: cleanTransactionForSync(newTx, validCreatorId, currentLedger.id) },
         }).catch(() => {});
       }
-    } else if (currentLedger.id !== DEMO_LEDGER_ID) {
+    } else if (!isDemoLedgerId(currentLedger.id)) {
       // 處於離線狀態或未配置即時發布時，排入本機離線隊列
       enqueueOfflineMutation({
         type: 'insert_transaction',
@@ -6775,7 +6782,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     // 若為生活待辦記事，向同公帳其他成員之裝置發送跨裝置即時推播 (含背景喚醒同步小工具)
-    if (newTx.type === 'memo' && isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (newTx.type === 'memo' && isConfigured && !isDemoLedgerId(currentLedger.id)) {
       const parsedMemo = parseMemoNote(newTx.note);
       sendFamilyPushNotification({
         ledgerId: currentLedger.id,
@@ -6945,7 +6952,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return updated;
       });
 
-      if (isConfigured && validLedgerId !== DEMO_LEDGER_ID && !data.accountId.startsWith('50000000')) {
+      if (isConfigured && !isDemoLedgerId(validLedgerId) && !data.accountId.startsWith('50000000')) {
         const targetAcc = paymentAccounts.find(a => a.id === data.accountId);
         const newBal = finalNewBalance !== undefined ? finalNewBalance : (targetAcc ? Number((targetAcc.balance - data.amount).toFixed(2)) : undefined);
         if (newBal !== undefined) {
@@ -6957,7 +6964,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const createdTxs = isTransferMode ? [transferTx] : [parentTx, kidTx];
 
     // 樂觀更新本地畫面
-    const isOnlinePublishing = isConfigured && isCloudSynced && validLedgerId !== DEMO_LEDGER_ID;
+    const isOnlinePublishing = isConfigured && isCloudSynced && !isDemoLedgerId(validLedgerId);
     createdTxs.forEach(t => {
       (t as any)._isPendingSync = true;
     });
@@ -7137,7 +7144,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           return updated;
         });
 
-        if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID && !targetTx.account_id.startsWith('50000000')) {
+        if (isConfigured && !isDemoLedgerId(currentLedger.id) && !targetTx.account_id.startsWith('50000000')) {
           const targetAcc = paymentAccounts.find(a => a.id === targetTx.account_id);
           const newBal = finalNewBalance !== undefined ? finalNewBalance : (targetAcc ? Number((targetAcc.balance + delta).toFixed(2)) : undefined);
           if (newBal !== undefined) {
@@ -7160,7 +7167,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             savePaymentAccountsToStorage(updated).catch(() => {});
             return updated;
           });
-          if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID && !targetTx.account_id.startsWith('50000000')) {
+          if (isConfigured && !isDemoLedgerId(currentLedger.id) && !targetTx.account_id.startsWith('50000000')) {
             const targetAcc = paymentAccounts.find(a => a.id === targetTx.account_id);
             const newBal = finalNewBalance !== undefined ? finalNewBalance : (targetAcc ? Number((targetAcc.balance + delta).toFixed(2)) : undefined);
             if (newBal !== undefined) {
@@ -7189,7 +7196,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             savePaymentAccountsToStorage(updated).catch(() => {});
             return updated;
           });
-          if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID && !targetAcc.id.startsWith('50000000')) {
+          if (isConfigured && !isDemoLedgerId(currentLedger.id) && !targetAcc.id.startsWith('50000000')) {
             const newBal = finalNewBalance !== undefined ? finalNewBalance : Number((targetAcc.balance + delta).toFixed(2));
             syncAccountBalanceToCloud(targetAcc.id, newBal);
           }
@@ -7239,7 +7246,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     // 4. 雲端同步刪除 (優先透過資料庫 SECURITY DEFINER RPC 安全刪除，完全無需 service_role 金鑰即可穿透防死而復生)
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
       try {
         let deletedOk = false;
         try {
@@ -7317,7 +7324,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           payload: { id },
         }).catch(() => {});
       }
-    } else if (currentLedger.id !== DEMO_LEDGER_ID) {
+    } else if (!isDemoLedgerId(currentLedger.id)) {
       enqueueOfflineMutation({
         type: 'delete_transaction',
         ledgerId: currentLedger.id,
@@ -7326,7 +7333,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     // 若刪除生活待辦記事，通知其他家人小工具背景同步刷新
-    if (targetTx?.type === 'memo' && isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (targetTx?.type === 'memo' && isConfigured && !isDemoLedgerId(currentLedger.id)) {
       sendFamilyPushNotification({
         ledgerId: currentLedger.id,
         senderName: currentUser.display_name || '家庭成員',
@@ -7524,7 +7531,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
       }
 
-      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID && affectedAccIds.size > 0) {
+      if (isConfigured && !isDemoLedgerId(currentLedger.id) && affectedAccIds.size > 0) {
         affectedAccIds.forEach(accId => {
           if (!accId.startsWith('50000000')) {
             const found = nextAccounts.find(a => a.id === accId) || paymentAccounts.find(a => a.id === accId);
@@ -7660,7 +7667,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
       }
 
-      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
         const updatePayload: any = {};
         if (data.amount !== undefined) updatePayload.amount = isTargetMemo ? 0 : data.amount;
         if (data.type !== undefined) updatePayload.type = data.type;
@@ -7925,7 +7932,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } catch (err) {}
       }
 
-      if (!isCloudSynced && currentLedger.id !== DEMO_LEDGER_ID) {
+      if (!isCloudSynced && !isDemoLedgerId(currentLedger.id)) {
         enqueueOfflineMutation({
           type: 'update_transaction',
           ledgerId: currentLedger.id,
@@ -7934,7 +7941,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       // 若為生活待辦記事，向同公帳其他成員之裝置發送跨裝置即時推播 (含背景喚醒同步小工具)
-      if (isTargetMemo && isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      if (isTargetMemo && isConfigured && !isDemoLedgerId(currentLedger.id)) {
         const updaterName = currentUser?.display_name || '家庭成員';
         const parsedMemo = parseMemoNote(data.note !== undefined ? data.note : (targetTx?.note || ''));
         const memoTitle = parsedMemo.title || '生活備忘';
@@ -8158,7 +8165,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       avatar_url: avatar,
     };
 
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
       try {
         const { data: rpcRes, error: rpcErr } = await supabase.rpc('add_family_member', {
           target_ledger_id: currentLedger.id,
@@ -8235,7 +8242,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${currentLedger.id}`, JSON.stringify(updated));
 
     // 2. 雲端同步更新 (Supabase profiles 表，Admin 服務權杖穿透保底)
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
       try {
         await supabaseAdmin
           .from('profiles')
@@ -8377,7 +8384,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await AsyncStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(updated));
       await AsyncStorage.setItem(`${STORAGE_KEYS.CATEGORIES}_${currentLedger.id}`, JSON.stringify(updated));
 
-      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
         const catPayload = {
           id: newCat.id,
           ledger_id: currentLedger.id,
@@ -8436,7 +8443,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         );
       }
 
-      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
         const updatePayload: any = {};
         if (data.name !== undefined) updatePayload.name = data.name.trim();
         if (data.icon !== undefined) updatePayload.icon = data.icon.trim();
@@ -8503,7 +8510,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         )
       );
 
-      if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+      if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
         let { data: delRows, error } = await supabase.from('categories').delete().eq('id', id).select('id');
         const rowsAffected = delRows ? delRows.length : 0;
         if (error || rowsAffected === 0) {
