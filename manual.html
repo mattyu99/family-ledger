@@ -6,8 +6,6 @@
   <title>💖 甜心記帳本 官方使用者手冊 (Official User Manual)</title>
   <meta name="description" content="甜心記帳本官方完整使用者手冊：涵蓋 10 大核心章節、家庭情境操作流程、零用錢發放、雙碼發票自動對獎、生活手帳全模式連動、雙軌資產對帳、Android 桌面小工具與新手常見問題 FAQ。" />
   <link rel="icon" href="./favicon.ico" />
-  <!-- Mermaid.js for beautiful diagrams -->
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
   <style>
     :root {
       --primary: #E11D48;
@@ -141,17 +139,6 @@
       background: var(--bg);
       border-color: var(--primary);
       color: var(--primary);
-    }
-
-    .nav-btn-primary {
-      background: var(--primary);
-      color: #FFFFFF;
-      border-color: var(--primary);
-    }
-
-    .nav-btn-primary:hover {
-      background: var(--primary-dark);
-      color: #FFFFFF;
     }
 
     .theme-toggle-btn {
@@ -315,6 +302,7 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      flex-wrap: wrap;
     }
 
     h2 .badge {
@@ -342,7 +330,6 @@
       line-height: 1.75;
     }
 
-    /* 步驟列表 */
     ol, ul {
       margin-left: 24px;
       margin-bottom: 16px;
@@ -359,7 +346,6 @@
       color: var(--text-main);
     }
 
-    /* 提示膠囊 */
     .tip-box {
       background: var(--accent-light);
       border-left: 4px solid var(--accent);
@@ -391,7 +377,6 @@
       color: var(--warning);
     }
 
-    /* 快捷鍵 / 程式碼小框 */
     code {
       background: var(--code-bg);
       color: var(--primary-dark);
@@ -400,18 +385,6 @@
       font-size: 13.5px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       border: 1px solid var(--border);
-    }
-
-    /* 流程圖外框 */
-    .mermaid-container {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 24px 16px;
-      margin: 20px 0;
-      display: flex;
-      justify-content: center;
-      overflow-x: auto;
     }
 
     /* 表格樣式 */
@@ -445,7 +418,7 @@
       background: var(--primary-subtle);
     }
 
-    /* FAQ 摺疊或問答卡 */
+    /* FAQ 卡片 */
     .faq-item {
       background: var(--bg);
       border: 1px solid var(--border);
@@ -496,7 +469,6 @@
       transform: translateY(-3px);
     }
 
-    /* 頁尾 */
     .manual-footer {
       text-align: center;
       margin-top: 50px;
@@ -513,7 +485,417 @@
       margin-bottom: 10px;
     }
 
-    /* 響應式排版 */
+    /* ============================================================
+       全響應式視覺卡片流與架構圖 (徹底取代字體極小之縮圖)
+       ============================================================ */
+
+    /* 1. 第一章：4 步開箱卡片流 */
+    .step-flow-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin: 22px 0 28px 0;
+    }
+
+    .step-flow-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px 16px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transition: all 0.2s;
+    }
+
+    .step-flow-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--primary);
+      box-shadow: 0 4px 14px rgba(225, 29, 72, 0.1);
+    }
+
+    .step-flow-badge {
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      font-size: 11px;
+      font-weight: 800;
+      padding: 3px 10px;
+      border-radius: 999px;
+      margin-bottom: 10px;
+    }
+
+    .step-flow-icon {
+      font-size: 32px;
+      margin-bottom: 8px;
+    }
+
+    .step-flow-title {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--text-main);
+      margin-bottom: 6px;
+    }
+
+    .step-flow-desc {
+      font-size: 13px;
+      color: var(--text-sub);
+      line-height: 1.5;
+    }
+
+    /* 2. 第三章：5 大發票對獎自動化管線 */
+    .pipeline-container {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px 20px;
+      margin: 22px 0 30px 0;
+    }
+
+    .pipeline-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .pipeline-title {
+      font-size: 17px;
+      font-weight: 800;
+      color: var(--primary-dark);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .pipeline-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .pipeline-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+    }
+
+    .pipeline-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 16px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      transition: all 0.2s;
+    }
+
+    .pipeline-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+
+    .pipeline-card.highlight {
+      border-color: var(--success);
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.15);
+    }
+
+    .pipeline-step-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      font-size: 13px;
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+
+    .pipeline-card.highlight .pipeline-step-pill {
+      background: var(--success-light);
+      color: var(--success);
+    }
+
+    .pipeline-card-icon {
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+
+    .pipeline-card-title {
+      font-size: 15px;
+      font-weight: 800;
+      color: var(--text-main);
+      margin-bottom: 6px;
+      line-height: 1.4;
+    }
+
+    .pipeline-card-desc {
+      font-size: 13px;
+      color: var(--text-sub);
+      line-height: 1.55;
+      flex: 1;
+    }
+
+    .pipeline-tag {
+      margin-top: 12px;
+      font-size: 11.5px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: var(--accent-light);
+      color: var(--accent);
+      display: inline-block;
+      align-self: flex-start;
+    }
+
+    .pipeline-card.highlight .pipeline-tag {
+      background: var(--success-light);
+      color: var(--success);
+    }
+
+    /* 3. 第六章：資產負債淨值試算架構卡片 */
+    .formula-container {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr auto 1.2fr;
+      align-items: center;
+      gap: 14px;
+      margin: 22px 0 30px 0;
+    }
+
+    .formula-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+    }
+
+    .formula-assets {
+      border-left: 4px solid var(--success);
+    }
+
+    .formula-liabilities {
+      border-left: 4px solid var(--primary);
+    }
+
+    .formula-networth {
+      border-left: 4px solid var(--accent);
+      box-shadow: 0 4px 16px rgba(37, 99, 235, 0.1);
+    }
+
+    .formula-card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--text-main);
+      margin-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+
+    .formula-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .formula-list li {
+      font-size: 13.5px;
+      color: var(--text-sub);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+
+    .formula-operator {
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    .formula-desc {
+      font-size: 13.5px;
+      color: var(--text-sub);
+      line-height: 1.55;
+      margin-bottom: 10px;
+    }
+
+    .formula-badge {
+      display: inline-block;
+      background: var(--accent-light);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 6px;
+    }
+
+    /* 4. 第八章：小工具雙旗艦對照 */
+    .widget-showcase-grid {
+      display: grid;
+      grid-template-columns: 1fr 1.3fr;
+      gap: 16px;
+      margin: 22px 0 30px 0;
+    }
+
+    .widget-card-mockup {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 22px 20px;
+    }
+
+    .widget-mockup-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .widget-pill {
+      font-size: 14px;
+      font-weight: 800;
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      padding: 3px 12px;
+      border-radius: 999px;
+    }
+
+    .widget-pill.blue {
+      background: var(--accent-light);
+      color: var(--accent);
+    }
+
+    .widget-sub {
+      font-size: 12.5px;
+      color: var(--text-muted);
+    }
+
+    .widget-2x2-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .w-btn {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 12px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .w-btn:hover {
+      transform: translateY(-2px);
+      border-color: var(--primary);
+    }
+
+    .w-icon {
+      font-size: 26px;
+    }
+
+    .w-label {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .widget-4x2-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .w-memo-row {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 11px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .w-memo-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      font-size: 13.5px;
+      color: var(--text-main);
+    }
+
+    .w-chk {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      color: transparent;
+    }
+
+    .w-chk.done {
+      background: var(--success);
+      border-color: var(--success);
+      color: white;
+    }
+
+    .w-memo-tag {
+      font-size: 11.5px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+
+    .tag-red {
+      background: var(--primary-light);
+      color: var(--primary-dark);
+    }
+    .tag-amber {
+      background: var(--warning-light);
+      color: var(--warning);
+    }
+    .tag-green {
+      background: var(--success-light);
+      color: var(--success);
+    }
+    .tag-gray {
+      background: var(--code-bg);
+      color: var(--text-muted);
+    }
+
+    .widget-footer-note {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* 響應式排版 (手機版平滑轉換為單欄大字體) */
     @media (max-width: 768px) {
       .content-card {
         padding: 24px 16px;
@@ -533,6 +915,30 @@
       }
 
       .toc-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .step-flow-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+
+      .pipeline-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+
+      .formula-container {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+
+      .formula-operator {
+        font-size: 22px;
+        margin: -4px 0;
+      }
+
+      .widget-showcase-grid {
         grid-template-columns: 1fr;
       }
     }
@@ -583,7 +989,7 @@
 
       <!-- 標題與引言 -->
       <header class="manual-header">
-        <div class="version-tag">最新發布版本 v1.0.13.10 · 官方使用指南</div>
+        <div class="version-tag">最新發布版本 v1.0.13.10 · 官方使用手冊</div>
         <h1>💖 甜心記帳本 官方使用者手冊</h1>
         <div class="tagline">打造溫暖、透明、無壓力的現代家庭共同記帳與生活手帳協同生活</div>
         
@@ -649,16 +1055,34 @@
           <span>🚀 第一章：5 分鐘快速上手指南（新手開箱）</span>
           <span class="badge">快速入門</span>
         </h2>
-        <p>歡迎來到甜心記帳本！本系統支援 <strong>Android 原生 App</strong> 與 <strong>電腦/手機瀏覽器網頁版</strong>。初次使用只要完成簡單的 3 個步驟，全家人就能即時連線協同記帳。</p>
+        <p>歡迎來到甜心記帳本！本系統支援 <strong>Android 原生 App</strong> 與 <strong>電腦/手機瀏覽器網頁版</strong>。初次使用只要完成簡單的 4 個步驟，全家人就能即時連線協同記帳。</p>
 
-        <div class="mermaid-container">
-          <pre class="mermaid">
-flowchart LR
-    A["👑 發起人<br>建立新帳本"] --> B["📢 產生專屬邀請碼<br>(例如: SWEETHOME)"]
-    B --> C["👨‍👩‍👧‍👦 家人輸入邀請碼<br>申請加入"]
-    C --> D["🛡️ 管理員審核指派<br>選擇家庭稱謂"]
-    D --> E["🎉 全家即時連線<br>一人記帳全家同步"]
-          </pre>
+        <!-- 4 步開箱卡片流 -->
+        <div class="step-flow-grid">
+          <div class="step-flow-card">
+            <span class="step-flow-badge">步驟 1</span>
+            <div class="step-flow-icon">👑</div>
+            <div class="step-flow-title">建立新帳本</div>
+            <div class="step-flow-desc">發起人點選「切換帳本」➔「建立新帳本」，設定專屬名稱。</div>
+          </div>
+          <div class="step-flow-card">
+            <span class="step-flow-badge">步驟 2</span>
+            <div class="step-flow-icon">📢</div>
+            <div class="step-flow-title">產生專屬邀請碼</div>
+            <div class="step-flow-desc">系統自動產生 8 碼大寫英數邀請碼（如 SWEETHOME），一鍵轉傳 LINE。</div>
+          </div>
+          <div class="step-flow-card">
+            <span class="step-flow-badge">步驟 3</span>
+            <div class="step-flow-icon">👨‍👩‍👧‍👦</div>
+            <div class="step-flow-title">家人輸入申請</div>
+            <div class="step-flow-desc">家人手機開啟 App 或網頁版，點選「加入現有帳本」貼上邀請碼。</div>
+          </div>
+          <div class="step-flow-card">
+            <span class="step-flow-badge">步驟 4</span>
+            <div class="step-flow-icon">🎉</div>
+            <div class="step-flow-title">認領身分與連線</div>
+            <div class="step-flow-desc">挑選角色、稱謂與 3D 大頭貼，一人記帳全家秒級自動同步！</div>
+          </div>
         </div>
 
         <h3>1.1 建立新的家庭帳本與專屬邀請碼</h3>
@@ -761,22 +1185,53 @@ flowchart LR
         </h2>
         <p>告別傳統逐張手動對獎與手動鍵入長串明細的痛苦，甜心記帳本提供全套電子發票自動化管線。</p>
 
-        <div class="mermaid-container">
-          <pre class="mermaid">
-sequenceDiagram
-    autonumber
-    actor 使用者
-    participant 相機 as 📷 雙碼相機
-    participant 系統 as 💖 記帳本
-    participant 財政部 as 🏛️ 財政部 API
-    使用者->>相機: 對準發票左右雙 QR Code
-    相機->>系統: 秒速解碼號碼、日期、店家與商品明細
-    系統->>系統: 全帳本重複發票防呆檢核
-    財政部-->>系統: 逢開獎日自動連線同步中獎獎號
-    系統->>使用者: 自動標註中獎徽章 (🎉 中獎 $1,000)
-    使用者->>系統: 點擊「一鍵兌領入帳」
-    系統->>系統: 自動轉為收入入帳至指定錢包
-          </pre>
+        <!-- 5 大發票對獎自動化管線 -->
+        <div class="pipeline-container">
+          <div class="pipeline-header">
+            <span class="pipeline-title">⚡ 電子發票全自動化對獎管線 (5 大智慧流程)</span>
+            <span class="pipeline-subtitle">拍照即剖析 · 官方即時同步 · 一鍵兌領入帳</span>
+          </div>
+          <div class="pipeline-grid">
+            <div class="pipeline-card">
+              <span class="pipeline-step-pill">1</span>
+              <div class="pipeline-card-icon">📷</div>
+              <div class="pipeline-card-title">相機秒掃雙碼</div>
+              <div class="pipeline-card-desc">同時對準發票左右兩個 QR Code，0.2 秒極速感應捕捉。</div>
+              <span class="pipeline-tag">相機即時解碼</span>
+            </div>
+
+            <div class="pipeline-card">
+              <span class="pipeline-step-pill">2</span>
+              <div class="pipeline-card-icon">⚡</div>
+              <div class="pipeline-card-title">號碼與明細提取</div>
+              <div class="pipeline-card-desc">秒速帶入期別、號碼、金額與店家，商品清單自動收納至備註。</div>
+              <span class="pipeline-tag">自動結構化剖析</span>
+            </div>
+
+            <div class="pipeline-card">
+              <span class="pipeline-step-pill">3</span>
+              <div class="pipeline-card-icon">🛡️</div>
+              <div class="pipeline-card-title">全帳本重複防呆</div>
+              <div class="pipeline-card-desc">若家人已記過相同發票，系統畫面立即亮紅警示，徹底防杜重複。</div>
+              <span class="pipeline-tag">雲端即時防呆</span>
+            </div>
+
+            <div class="pipeline-card">
+              <span class="pipeline-step-pill">4</span>
+              <div class="pipeline-card-icon">🏛️</div>
+              <div class="pipeline-card-title">開獎日自動連線</div>
+              <div class="pipeline-card-desc">每逢單月 25 日自動同步財政部中獎獎號，全量發票毫秒級對獎。</div>
+              <span class="pipeline-tag">官方即時同步</span>
+            </div>
+
+            <div class="pipeline-card highlight">
+              <span class="pipeline-step-pill">5</span>
+              <div class="pipeline-card-icon">🎉</div>
+              <div class="pipeline-card-title">中獎一鍵兌領</div>
+              <div class="pipeline-card-desc">卡片自動亮起中獎徽章，點擊一鍵入帳，獎金自動匯入錢包公帳！</div>
+              <span class="pipeline-tag">獎金自動入帳</span>
+            </div>
+          </div>
         </div>
 
         <h3>3.1 雙 QR Code 相機極速掃描與明細提取</h3>
@@ -910,21 +1365,45 @@ sequenceDiagram
         </h2>
         <p>真正清楚的家庭理財，必須隨時掌握資產與負債的即時淨值。</p>
 
-        <div class="mermaid-container">
-          <pre class="mermaid">
-flowchart TD
-    subgraph Assets ["🏦 家庭總資產"]
-        A1["💰 現金皮夾"]
-        A2["🏦 銀行帳戶"]
-        A3["🚌 悠遊卡/儲值卡"]
-    end
-    subgraph Liabilities ["💳 家庭總負債"]
-        L1["💳 信用卡未結消費"]
-        L2["📑 本期待繳帳單款項"]
-    end
-    Assets -. 扣除 .-> NetWorth["💎 即時財務淨值 (Net Worth)"]
-    Liabilities -. 扣除 .-> NetWorth
-          </pre>
+        <!-- 資產負債淨值試算公式卡片 -->
+        <div class="formula-container">
+          <div class="formula-card formula-assets">
+            <div class="formula-card-header">
+              <span>🏦</span>
+              <span>家庭總資產</span>
+            </div>
+            <ul class="formula-list">
+              <li>💰 <strong>現金皮夾</strong>：公費零用金、個人現金</li>
+              <li>🏦 <strong>銀行帳戶</strong>：活存、薪轉戶可用餘額</li>
+              <li>🚌 <strong>票證儲值卡</strong>：悠遊卡、一卡通餘額</li>
+            </ul>
+          </div>
+
+          <div class="formula-operator">−</div>
+
+          <div class="formula-card formula-liabilities">
+            <div class="formula-card-header">
+              <span>💳</span>
+              <span>家庭總負債</span>
+            </div>
+            <ul class="formula-list">
+              <li>💳 <strong>信用卡未結消費</strong>：當期已刷待結金額</li>
+              <li>📑 <strong>本期待繳帳單</strong>：水電、房租、分期待繳</li>
+            </ul>
+          </div>
+
+          <div class="formula-operator">=</div>
+
+          <div class="formula-card formula-networth">
+            <div class="formula-card-header">
+              <span>💎</span>
+              <span>即時財務淨值</span>
+            </div>
+            <div class="formula-desc">
+              資產扣除負債後的真實淨額！支援小眼睛星號遮罩與 Face ID / 指紋一鍵秒解。
+            </div>
+            <span class="formula-badge">支援個人淨值 / 家庭淨值秒切</span>
+          </div>
         </div>
 
         <h3>6.1 四大資產型態與即時財務淨值試算</h3>
@@ -989,23 +1468,73 @@ flowchart TD
         </h2>
         <p>無需解鎖進入 App，手機桌面上就能隨時掌握待辦與一秒記帳！</p>
 
-        <div class="mermaid-container">
-          <pre class="mermaid">
-flowchart TD
-    subgraph W1 ["📱 2x2 快捷記帳小工具"]
-        direction LR
-        B1["💰 記支出"] --- B2["📷 掃發票"]
-        B3["💵 記收入"] --- B4["📝 隨手記"]
-    end
-    subgraph W2 ["📋 4x2 生活待辦小工具"]
-        direction TB
-        T1["頂部標題列：最新生活備忘 · 🔄 手動刷新"]
-        T2["待辦項目 1：[✓] 超市買鮮乳 (智爸)"]
-        T3["待辦項目 2：[ ] 繳水費帳單 (今日到期)"]
-        T4["待辦項目 3：[ ] 露營帳篷檢查 (還有3天)"]
-        T5["待辦項目 4：[ ] 換濾水器濾芯 (日常雜記)"]
-    end
-          </pre>
+        <!-- Android 桌面小工具雙旗艦對照 -->
+        <div class="widget-showcase-grid">
+          <!-- 2x2 快捷記帳 -->
+          <div class="widget-card-mockup">
+            <div class="widget-mockup-header">
+              <span class="widget-pill">2x2 快捷記帳大圖示</span>
+              <span class="widget-sub">3D 黏土質感滿版</span>
+            </div>
+            <div class="widget-2x2-grid">
+              <div class="w-btn">
+                <span class="w-icon">💰</span>
+                <span class="w-label">記支出</span>
+              </div>
+              <div class="w-btn">
+                <span class="w-icon">📷</span>
+                <span class="w-label">掃發票</span>
+              </div>
+              <div class="w-btn">
+                <span class="w-icon">💵</span>
+                <span class="w-label">記收入</span>
+              </div>
+              <div class="w-btn">
+                <span class="w-icon">📝</span>
+                <span class="w-label">隨手記</span>
+              </div>
+            </div>
+            <div class="widget-footer-note">桌面點選任意大圖標，零等待直達對應彈窗！</div>
+          </div>
+
+          <!-- 4x2 生活待辦 -->
+          <div class="widget-card-mockup">
+            <div class="widget-mockup-header">
+              <span class="widget-pill blue">4x2 生活手帳待辦</span>
+              <span class="widget-sub">4 則最新 · 🔄 刷新</span>
+            </div>
+            <div class="widget-4x2-list">
+              <div class="w-memo-row">
+                <div class="w-memo-left">
+                  <span class="w-chk done">✓</span>
+                  <span style="text-decoration: line-through; opacity: 0.6;">超市採買鮮乳、雞蛋</span>
+                </div>
+                <span class="w-memo-tag tag-green">辦妥</span>
+              </div>
+              <div class="w-memo-row">
+                <div class="w-memo-left">
+                  <span class="w-chk">○</span>
+                  <span>繳納電費帳單 $1,840</span>
+                </div>
+                <span class="w-memo-tag tag-red">今日到期</span>
+              </div>
+              <div class="w-memo-row">
+                <div class="w-memo-left">
+                  <span class="w-chk">○</span>
+                  <span>露營帳篷與卡式爐檢查</span>
+                </div>
+                <span class="w-memo-tag tag-amber">還有 3 天</span>
+              </div>
+              <div class="w-memo-row">
+                <div class="w-memo-left">
+                  <span class="w-chk">○</span>
+                  <span>客廳飲水機濾芯更換</span>
+                </div>
+                <span class="w-memo-tag tag-gray">生活備忘</span>
+              </div>
+            </div>
+            <div class="widget-footer-note">桌面點擊待辦項目直通辦妥確認彈窗，返回桌面自動重繪！</div>
+          </div>
         </div>
 
         <h3>8.1 2x2 快捷記帳大圖示小工具（記支出/掃發票/記收入/記待辦）</h3>
@@ -1100,19 +1629,6 @@ flowchart TD
   <button id="backToTop" class="back-to-top" title="回到頂部" aria-label="回到頂部">↑</button>
 
   <script>
-    // 初始化 Mermaid
-    mermaid.initialize({
-      startOnLoad: true,
-      theme: 'neutral',
-      themeVariables: {
-        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        primaryColor: '#FFE4E6',
-        primaryBorderColor: '#E11D48',
-        primaryTextColor: '#9F1239',
-        lineColor: '#64748B'
-      }
-    });
-
     // 深淺色模式切換
     const themeToggleBtn = document.getElementById('themeToggle');
     const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
