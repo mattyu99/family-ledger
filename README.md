@@ -3,7 +3,7 @@
 一套基於 **React Native + Expo SDK 57** 與 **Supabase PostgreSQL Realtime** 打造的跨平台家庭共同記帳系統。  
 支援 **Android 原生 App（APK）、電腦網頁版（Web）與手機瀏覽器（PWA）** 多端併行，具備**多人協同記帳、即時雙向同步、離線隨身記帳、生活手帳記事、固定與分期帳單追蹤、Google 帳號一鍵綁定與身分電子鎖、4 位數安全防護、6 大全要素資料備份**與**雲端 OTA 熱更新**功能。
 
-> 📖 **官方完整指南**：請參閱全新編撰發布的 [《甜心記帳本官方使用者手冊 (USER_MANUAL.md)》](./USER_MANUAL.md)，涵蓋 10 大核心章節、家庭情境操作流程圖、桌面小工具與新手常見問答 (FAQ)。
+> 📖 **官方完整指南**：請參閱全新編撰發布的 [《甜心記帳本官方使用者手冊 (線上純淨網頁版)》](https://mattyu99.github.io/family-ledger/manual.html)（亦可於本儲存庫查閱原始 Markdown [USER_MANUAL.md](./USER_MANUAL.md)），涵蓋 10 大核心章節、家庭情境操作流程圖、桌面小工具與新手常見問答 (FAQ)。
 
 ---
 

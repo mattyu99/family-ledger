@@ -245,7 +245,7 @@ flowchart TD
 * **主版本號**：`v1.0.13` (Android versionCode 10)
 * **完整建置版本號**：`v1.0.13.10` (Build 10)
 * **網頁體驗版網址**：[https://mattyu99.github.io/family-ledger/](https://mattyu99.github.io/family-ledger/)
-* **官方使用者手冊**：[《甜心記帳本官方使用者手冊 (USER_MANUAL.md)》](./USER_MANUAL.md)
+* **官方使用者手冊**：[《甜心記帳本官方使用者手冊 (線上純淨網頁版)》](https://mattyu99.github.io/family-ledger/manual.html) | [Markdown 原始檔](./USER_MANUAL.md)
 
 ### 📱 取得與安裝
 1. **電腦網頁版**：直接開啟上述網址即可開始使用，免安裝免註冊，內建示範資料可立即體驗。

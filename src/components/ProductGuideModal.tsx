@@ -238,7 +238,7 @@ export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, o
   };
 
   const handleOpenManual = async () => {
-    const url = 'https://github.com/mattyu99/family-ledger/blob/main/USER_MANUAL.md';
+    const url = 'https://mattyu99.github.io/family-ledger/manual.html';
     if (Platform.OS === 'web') {
       window.open(url, '_blank');
     } else {
