@@ -3,6 +3,12 @@ import { Category, Profile, Ledger, RecurringRule, Transaction, PaymentAccount }
 export const SWEETHOME_LEDGER_ID = 'ee100000-0000-4000-8000-000000000001';
 export const SWEETHOME_INVITE_CODE = 'SWEETHOME';
 
+// 判斷是否為示範體驗帳本 (包含舊 DEMO 與新 SWEETHOME)
+export const isDemoLedgerId = (id?: string | null): boolean => {
+  if (!id) return false;
+  return id === 'demo-ledger-id' || id === SWEETHOME_LEDGER_ID || id.toLowerCase().includes('sweethome');
+};
+
 export const SWEETHOME_MEMBERS: Profile[] = [
   { id: 'ee200000-0000-4000-8000-000000000001', display_name: '智爸 (爸爸)', avatar_url: '👨', role: 'member' },
   { id: 'ee200000-0000-4000-8000-000000000002', display_name: '瑩媽 (媽媽)', avatar_url: '👩', role: 'member' },

@@ -50,12 +50,11 @@ import {
   SWEETHOME_ACCOUNTS,
   getSweethomeInitialTransactions,
   getSweethomeRecurringRules,
+  isDemoLedgerId,
 } from '../constants/sweethomeDemo';
 
 // 判斷是否為示範體驗帳本 (包含舊 DEMO 與新 SWEETHOME)
-export const isDemoLedgerId = (id?: string | null): boolean => {
-  return id === DEMO_LEDGER_ID || id === SWEETHOME_LEDGER_ID;
-};
+export { isDemoLedgerId };
 
 // 無狀態純工具函式已模組化抽離至 src/lib/ledgerUtils.ts
 import {

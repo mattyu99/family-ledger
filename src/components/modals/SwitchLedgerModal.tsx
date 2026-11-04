@@ -80,7 +80,10 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
   const [switchCodeInput, setSwitchCodeInput] = useState('');
   const [isJoining, setIsJoining] = useState(false);
   const [isSyncingLedgers, setIsSyncingLedgers] = useState(false);
-  const hasJoinedDemo = React.useMemo(() => ledgers.some(l => isDemoLedgerId(l.id)), [ledgers]);
+  const hasJoinedDemo = React.useMemo(() => {
+    if (!Array.isArray(ledgers)) return false;
+    return ledgers.some(l => l && isDemoLedgerId(l.id));
+  }, [ledgers]);
 
   // 當彈窗打開時：若已登入 Google，自動於背景檢查並拉取最新公帳名冊（單次觸發，絕不重複迴圈）
   useEffect(() => {
@@ -262,7 +265,8 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
   }, [visible, ledgers, currentLedger.id, transactions.length]);
 
   const handleSwitchLedgerByCode = async (overrideCode?: string) => {
-    const cleanCode = (overrideCode || switchCodeInput).trim();
+    const targetCode = typeof overrideCode === 'string' ? overrideCode : switchCodeInput;
+    const cleanCode = targetCode.trim();
     if (!cleanCode) {
       showAlert('請輸入邀請碼', '請輸入目標帳本的邀請碼或完整邀請連結');
       return;
@@ -678,7 +682,7 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
             <TouchableOpacity
               style={styles.submitBtn}
               disabled={isJoining}
-              onPress={handleSwitchLedgerByCode}
+              onPress={() => handleSwitchLedgerByCode()}
             >
               <Text style={styles.submitBtnText}>
                 {isJoining ? '正在驗證並加入...' : '確認加入並切換'}

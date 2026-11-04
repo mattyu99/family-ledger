@@ -1405,6 +1405,10 @@ class RootErrorBoundary extends React.Component<{ children: React.ReactNode }, E
   }
 
   handleRestart = () => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.location.reload();
+      return;
+    }
     this.setState({ hasError: false, error: null });
   };
 
@@ -1417,9 +1421,14 @@ class RootErrorBoundary extends React.Component<{ children: React.ReactNode }, E
             <RNText style={{ fontSize: 18, fontWeight: '700', color: '#F8FAFC', marginBottom: 8, textAlign: 'center' }}>
               甜心記帳本 安全啟動防護
             </RNText>
-            <RNText style={{ fontSize: 13, color: '#94A3B8', marginBottom: 20, textAlign: 'center', lineHeight: 20 }}>
+            <RNText style={{ fontSize: 13, color: '#94A3B8', marginBottom: 12, textAlign: 'center', lineHeight: 20 }}>
               應用程式偵測到載入異常，已自動啟動防護機制，點擊下方按鈕即可重新進入。
             </RNText>
+            {Boolean(this.state.error?.message) && (
+              <RNText style={{ fontSize: 11, color: '#F87171', marginBottom: 16, textAlign: 'center', backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: 8, borderRadius: 8, width: '100%' }}>
+                {this.state.error?.message}
+              </RNText>
+            )}
             <TouchableOpacity
               onPress={this.handleRestart}
               style={{ backgroundColor: '#6366F1', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 10, width: '100%', alignItems: 'center' }}
