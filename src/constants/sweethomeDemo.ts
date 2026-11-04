@@ -130,6 +130,9 @@ export const SWEETHOME_ACCOUNTS: PaymentAccount[] = [
 export const getSweethomeInitialTransactions = (): Transaction[] => {
   const now = new Date();
   const txBaseTime = now.getTime();
+  const todayYmd = now.toISOString().split('T')[0];
+  const nextWeekDate = new Date(txBaseTime + 7 * 86400000);
+  const nextWeekYmd = nextWeekDate.toISOString().split('T')[0];
   const currPeriodKey = getInvoicePeriodKey(now).periodKey;
   const latestDrawn = getLatestDrawnPeriodKey(now);
 
@@ -599,7 +602,8 @@ export const getSweethomeInitialTransactions = (): Transaction[] => {
       category_id: SWEETHOME_CATEGORIES[12].id,
       note: '[🛒 採買清單] 週末新竹五峰露營裝備與採買\n- [x] 防蚊液與草本貼片 (瑩媽已買)\n- [x] 洋洋最愛的烤棉花糖 (洋洋已買)\n- [ ] 頂級雪花牛排 2 盒\n- [ ] 金色三麥精釀啤酒 6 罐\n- [ ] 買鮮奶\n- [ ] 瓦斯爐卡式瓦斯罐 3 罐',
       transacted_at: new Date(txBaseTime - 3600000 * 5).toISOString(),
-      is_settled: true,
+      reminder_date: todayYmd,
+      is_settled: false,
       is_reconciled: false,
       created_at: new Date(txBaseTime - 3600000 * 5).toISOString(),
     },
@@ -614,7 +618,8 @@ export const getSweethomeInitialTransactions = (): Transaction[] => {
       category_id: SWEETHOME_CATEGORIES[12].id,
       note: '[🎒 學校親子] 下週四豆豆幼稚園家長座談會\n時間：週四晚上 19:00～20:30\n地點：大白兔班教室\n提醒：智爸下班順路接豆豆，瑩媽負責帶簽到資料。',
       transacted_at: new Date(txBaseTime - 3600000 * 10).toISOString(),
-      is_settled: true,
+      reminder_date: nextWeekYmd,
+      is_settled: false,
       is_reconciled: false,
       created_at: new Date(txBaseTime - 3600000 * 10).toISOString(),
     },
@@ -629,7 +634,7 @@ export const getSweethomeInitialTransactions = (): Transaction[] => {
       category_id: SWEETHOME_CATEGORIES[12].id,
       note: '[💡 靈感筆記] 甜心記帳本體驗小秘訣 (歡迎試玩！)\n- [x] 點擊頂部任務條，把「智爸」換成您自己的名字！\n- [x] 點擊發票對獎，看那張中了 200 元的幸運發票。\n- [ ] 試著新增一筆咖啡消費，體驗極速記帳手感。\n- [ ] 試玩所有變更僅存於本機，隨時可一鍵還原！',
       transacted_at: new Date(txBaseTime - 3600000 * 20).toISOString(),
-      is_settled: true,
+      is_settled: false,
       is_reconciled: false,
       created_at: new Date(txBaseTime - 3600000 * 20).toISOString(),
     },
@@ -674,8 +679,14 @@ export const getSweethomeRecurringRules = (): RecurringRule[] => {
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth();
-  const powerDueDate = new Date(now.getTime() + 3 * 86400000).toISOString().split('T')[0];
-  const netDueDate = new Date(now.getTime() + 7 * 86400000).toISOString().split('T')[0];
+  const powerDueDateObj = new Date(now.getTime() + 3 * 86400000);
+  const powerDueDay = powerDueDateObj.getDate();
+  const powerDueMonth = powerDueDateObj.getMonth() + 1;
+  // 雙月出帳判定：若 3 天後為單數月則設為 1，雙數月則設為 2，確保該帳單精準列入當期待繳
+  const powerStartMonth: 1 | 2 = powerDueMonth % 2 === 1 ? 1 : 2;
+
+  const netDueDateObj = new Date(now.getTime() + 7 * 86400000);
+  const netDueDay = netDueDateObj.getDate();
 
   // 動態推算分期首期年月：設定為當前月份前 2 個月，使當月剛好進入「第 3/12 期」
   const instStartDate = new Date(year, month - 2, 1);
@@ -693,9 +704,10 @@ export const getSweethomeRecurringRules = (): RecurringRule[] => {
       category_id: SWEETHOME_CATEGORIES[2].id,
       account_id: SWEETHOME_ACCOUNTS[1].id,
       frequency: 'bimonthly',
-      due_day: parseInt(powerDueDate.split('-')[2], 10),
+      bimonthly_start_month: powerStartMonth,
+      due_day: powerDueDay,
       is_active: true,
-      amount_type: 'variable',
+      amount_type: 'fixed',
       created_at: now.toISOString(),
       updated_at: now.toISOString(),
     },
@@ -710,7 +722,7 @@ export const getSweethomeRecurringRules = (): RecurringRule[] => {
       category_id: SWEETHOME_CATEGORIES[8].id,
       account_id: SWEETHOME_ACCOUNTS[2].id,
       frequency: 'monthly',
-      due_day: parseInt(netDueDate.split('-')[2], 10),
+      due_day: netDueDay,
       is_active: true,
       amount_type: 'fixed',
       created_at: now.toISOString(),

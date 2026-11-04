@@ -38,6 +38,7 @@ import {
 import { getCategoryIcon } from '../lib/icons';
 import { DatePickerModal } from './DatePickerModal';
 import { DEFAULT_PAYMENT_METHODS } from '../lib/payment';
+import { isDemoLedgerId } from '../constants/sweethomeDemo';
 import {
   StatementFile,
   loadCachedRecurringStatements,
@@ -186,8 +187,9 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     return true;
   }, [targetMemberObj, currentUser]);
 
-  // 權限判定：帳本管理員隨時可管理；一般家庭成員在「我的」視角下可自主管理個人規則與帳單；查閱其他成員時唯讀防呆
-  const canManage = isOwner || (scope === 'my' && !isTargetingOtherMember);
+  // 權限判定：示範帳本全視角開放試玩；帳本管理員隨時可管理；一般家庭成員在「我的」視角下可自主管理個人規則與帳單；查閱其他成員時唯讀防呆
+  const isDemo = isDemoLedgerId(currentLedger?.id);
+  const canManage = isDemo || isOwner || (scope === 'my' && !isTargetingOtherMember);
 
   // 依當前帳本嚴格過濾週期規則，且在指定視角下嚴格過濾扣繳項目
   const scopedRules = useMemo(() => {
@@ -1509,7 +1511,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                     const payer = getMemberById(rule.paid_by);
                     const isFixed = rule.amount_type === 'fixed';
                     const instInfo = rule.is_installment ? getInstallmentInfo(rule, new Date()) : null;
-                    const canEditRule = isOwner || (scope === 'my' && isRuleBoundToCurrentUser(rule.paid_by));
+                    const canEditRule = isDemo || isOwner || (scope === 'my' && isRuleBoundToCurrentUser(rule.paid_by));
 
                     return (
                       <View

@@ -137,7 +137,7 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
       id: 'quest_bill',
       tag: '⏰ 任務 4',
       title: '查看 3 天後電費帳單',
-      desc: '台電電費即將扣款，點擊「確認繳費」自動入帳',
+      desc: '台電電費即將扣款，點擊「確認記帳」自動入帳',
       actionText: '銷帳單',
       action: () => handleQuestAction('quest_bill', onOpenBills),
     },

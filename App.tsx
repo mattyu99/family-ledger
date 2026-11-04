@@ -887,7 +887,7 @@ const AppContent: React.FC = () => {
             }}
             onOpenBills={() => {
               setRecurringModalScope('all');
-              setRecurringModalInitialTab('rules');
+              setRecurringModalInitialTab('pending');
               setRecurringModalVisible(true);
             }}
             onOpenReconciliation={() => openReconcileModalForCurrentFilter('credit_card')}
