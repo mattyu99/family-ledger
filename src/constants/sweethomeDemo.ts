@@ -1,5 +1,6 @@
 import { Category, Profile, Ledger, RecurringRule, Transaction, PaymentAccount } from '../types/database';
-import { getInvoicePeriodKey } from '../lib/invoice';
+import { getInvoicePeriodKey, getLatestDrawnPeriodKey } from '../lib/invoice';
+import { getOfficialLotteryDraws } from '../lib/lottery';
 
 export const SWEETHOME_LEDGER_ID = 'ee100000-0000-4000-8000-000000000001';
 export const SWEETHOME_INVITE_CODE = 'SWEETHOME';
@@ -124,6 +125,21 @@ export const getSweethomeInitialTransactions = (): Transaction[] => {
   const now = new Date();
   const txBaseTime = now.getTime();
   const currPeriodKey = getInvoicePeriodKey(now).periodKey;
+  const latestDrawn = getLatestDrawnPeriodKey(now);
+
+  // 取得最新已開獎期別之官方獎號，動態提取頭獎末三碼（六獎 200 元中獎組）
+  const draws = getOfficialLotteryDraws();
+  const drawData = draws[latestDrawn.periodKey];
+  const firstPrize = drawData?.firstPrizes?.[0] || '54348835';
+  const winningLast3 = firstPrize.slice(-3);
+  const winningInvoiceNumber = `HQ-74291${winningLast3}`;
+
+  // 動態推算該中獎發票之消費日期：設定於該已開獎雙月期第二個月 15 日，確保真實處於兌領效期內
+  const [dYearStr, dMonthStr] = latestDrawn.periodKey.split('-');
+  const dYear = parseInt(dYearStr, 10);
+  const dMonth = parseInt(dMonthStr, 10);
+  const wonTransactedDate = new Date(dYear, dMonth - 1, 15, 8, 30);
+
   return [
     {
       id: 'ee400000-0000-4000-8000-000000000001',
@@ -136,17 +152,17 @@ export const getSweethomeInitialTransactions = (): Transaction[] => {
       category_id: SWEETHOME_CATEGORIES[0].id,
       payment_method: 'cash',
       account_id: SWEETHOME_ACCOUNTS[0].id,
-      invoice_number: 'HQ-74291168',
-      invoice_period: currPeriodKey,
+      invoice_number: winningInvoiceNumber,
+      invoice_period: latestDrawn.periodKey,
       invoice_random_code: '8888',
       invoice_status: 'won',
       invoice_prize_amount: 200,
       invoice_prize_name: '六獎',
-      note: `☕ 大杯美式咖啡＋鮪魚蛋沙拉三明治 [🧾 HQ-74291168|${currPeriodKey}|8888|won|200|六獎]`,
-      transacted_at: new Date(txBaseTime - 3600000 * 2).toISOString(),
+      note: `☕ 大杯美式咖啡＋鮪魚蛋沙拉三明治 [🧾 ${winningInvoiceNumber}|${latestDrawn.periodKey}|8888|won|200|六獎]`,
+      transacted_at: wonTransactedDate.toISOString(),
       is_settled: true,
       is_reconciled: false,
-      created_at: new Date(txBaseTime - 3600000 * 2).toISOString(),
+      created_at: wonTransactedDate.toISOString(),
     },
     {
       id: 'ee400000-0000-4000-8000-000000000002',

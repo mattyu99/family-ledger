@@ -73,6 +73,7 @@ import { ImageViewerModal } from './src/components/ImageViewerModal';
 import { LiveToastBanner } from './src/components/LiveToastBanner';
 import { AppLockOverlay } from './src/components/AppLockOverlay';
 import { DemoQuestBanner } from './src/components/DemoQuestBanner';
+import { getLatestDrawnPeriodKey } from './src/lib/invoice';
 
 // 全域文字防禦包裝
 const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
@@ -477,6 +478,7 @@ const AppContent: React.FC = () => {
 
   // 發票對獎
   const [invoiceLotteryModalVisible, setInvoiceLotteryModalVisible] = useState(false);
+  const [invoiceLotteryTargetPeriod, setInvoiceLotteryTargetPeriod] = useState<string | undefined>(undefined);
 
   // 檢查更新狀態
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
@@ -865,7 +867,10 @@ const AppContent: React.FC = () => {
               setModalAutoOpenScanner(false);
               setModalVisible(true);
             }}
-            onOpenLottery={() => setInvoiceLotteryModalVisible(true)}
+            onOpenLottery={() => {
+              setInvoiceLotteryTargetPeriod(getLatestDrawnPeriodKey().periodKey);
+              setInvoiceLotteryModalVisible(true);
+            }}
             onOpenBills={() => {
               setRecurringModalScope('all');
               setRecurringModalInitialTab('rules');
@@ -903,7 +908,10 @@ const AppContent: React.FC = () => {
               setRecurringModalVisible(true);
             }}
             onOpenMemoTodoModal={() => setMemoTodoModalVisible(true)}
-            onOpenInvoiceLotteryModal={() => setInvoiceLotteryModalVisible(true)}
+            onOpenInvoiceLotteryModal={() => {
+              setInvoiceLotteryTargetPeriod(undefined);
+              setInvoiceLotteryModalVisible(true);
+            }}
             onOpenReconcileModal={openReconcileModalForCurrentFilter}
             onOpenExportModal={(tab) => {
               setExportModalTab(tab);
@@ -1177,13 +1185,16 @@ const AppContent: React.FC = () => {
 
       <InvoiceLotteryModal
         visible={invoiceLotteryModalVisible}
+        initialPeriodKey={invoiceLotteryTargetPeriod}
         onClose={() => {
           returnToInvoiceLotteryRef.current = false;
           setInvoiceLotteryModalVisible(false);
+          setInvoiceLotteryTargetPeriod(undefined);
         }}
         onSelectTransaction={(tx) => {
           returnToInvoiceLotteryRef.current = true;
           setInvoiceLotteryModalVisible(false);
+          setInvoiceLotteryTargetPeriod(undefined);
           setEditingTransaction(tx);
         }}
       />

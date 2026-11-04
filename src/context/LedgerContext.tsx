@@ -2080,7 +2080,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (savedTxStr) {
           const parsed = JSON.parse(savedTxStr);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            const matching = parsed.filter((t: any) => t && t.ledger_id === targetLedger.id);
+            let matching = parsed.filter((t: any) => t && t.ledger_id === targetLedger.id);
+            if (targetLedger.id === SWEETHOME_LEDGER_ID) {
+              const freshFirstTx = getSweethomeInitialTransactions()[0];
+              const idx = matching.findIndex((t: any) => t.id === freshFirstTx.id);
+              if (idx !== -1 && matching[idx].invoice_status !== 'claimed' && matching[idx].invoice_period !== freshFirstTx.invoice_period) {
+                matching[idx] = { ...matching[idx], ...freshFirstTx };
+              }
+            }
             if (matching.length > 0) {
               hasLocalCache = true;
               const hydratedMatching = matching.map(hydrateTransactionWithInvoice);

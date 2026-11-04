@@ -72,20 +72,10 @@ export const hydrateTransactionWithInvoice = (t: any): Transaction => {
           prizeName = undefined;
         }
       } else {
-        // 若該期尚未正式開獎，但發票明細本身已明確標記為中獎（例如示範體驗帳本中獎預設、自訂獎項等），予以完整保留
-        if (invoiceStatus !== 'won') {
-          invoiceStatus = 'pending';
-          prizeAmount = 0;
-          prizeName = undefined;
-        }
+        invoiceStatus = 'pending';
+        prizeAmount = 0;
+        prizeName = undefined;
       }
-    }
-
-    // 確保 SWEETHOME 體驗帳本專屬的 7-11 咖啡發票必定呈現六獎 200 元中獎（若尚未兌領）
-    if (t.id === 'ee400000-0000-4000-8000-000000000001' && invoiceStatus !== 'claimed') {
-      invoiceStatus = 'won';
-      prizeAmount = 200;
-      prizeName = '六獎';
     }
 
     return {

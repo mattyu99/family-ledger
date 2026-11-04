@@ -2,6 +2,7 @@ import {
   isValidInvoiceNumber,
   formatInvoiceNumber,
   getInvoicePeriodKey,
+  getLatestDrawnPeriodKey,
   lookupMerchantByTaxId,
   encodeInvoiceTag,
   decodeInvoiceTag,
@@ -241,36 +242,60 @@ describe('台灣統一發票與條碼解析核心模組測試 (invoice.ts)', () 
     });
   });
 
+  describe('最新已開獎期別推算 (getLatestDrawnPeriodKey)', () => {
+    it('11月4日尚未開獎時，最新已開獎應為 7-8月期 (2026-08)', () => {
+      const res = getLatestDrawnPeriodKey('2026-11-04');
+      expect(res.periodKey).toBe('2026-08');
+      expect(res.periodLabel).toBe('115年 07-08月期');
+    });
+
+    it('11月26日已開獎時，最新已開獎應前進為 9-10月期 (2026-10)', () => {
+      const res = getLatestDrawnPeriodKey('2026-11-26');
+      expect(res.periodKey).toBe('2026-10');
+      expect(res.periodLabel).toBe('115年 09-10月期');
+    });
+
+    it('12月10日（雙數月）最新已開獎應為 9-10月期 (2026-10)', () => {
+      const res = getLatestDrawnPeriodKey('2026-12-10');
+      expect(res.periodKey).toBe('2026-10');
+      expect(res.periodLabel).toBe('115年 09-10月期');
+    });
+
+    it('隔年1月10日尚未開獎時，最新已開獎應為前一年 9-10月期 (2026-10)', () => {
+      const res = getLatestDrawnPeriodKey('2027-01-10');
+      expect(res.periodKey).toBe('2026-10');
+    });
+
+    it('隔年1月26日已開獎時，最新已開獎應為前一年 11-12月期 (2026-12)', () => {
+      const res = getLatestDrawnPeriodKey('2027-01-26');
+      expect(res.periodKey).toBe('2026-12');
+      expect(res.periodLabel).toBe('115年 11-12月期');
+    });
+  });
+
   describe('發票對獎裝飾函式中獎狀態保留 (hydrateTransactionWithInvoice)', () => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { hydrateTransactionWithInvoice } = require('../ledgerUtils');
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { getSweethomeInitialTransactions } = require('../../constants/sweethomeDemo');
 
-    it('SWEETHOME 官方體驗帳本第一筆 7-11 咖啡發票應必定維持六獎 200 元中獎狀態', () => {
+    it('SWEETHOME 官方體驗帳本第一筆 7-11 咖啡發票應動態落於已開獎期別並命中六獎 200 元', () => {
       const txs = getSweethomeInitialTransactions();
       const firstTx = txs[0];
       const hydrated = hydrateTransactionWithInvoice(firstTx);
 
-      expect(hydrated.invoice_number).toBe('HQ-74291168');
       expect(hydrated.invoice_status).toBe('won');
       expect(hydrated.invoice_prize_amount).toBe(200);
       expect(hydrated.invoice_prize_name).toBe('六獎');
     });
 
-    it('在未開獎期別下，自訂已中獎的發票不得被強制覆寫為 pending 或歸零', () => {
-      const customWonTx = {
-        id: 'custom-tx-won',
-        invoice_number: 'AB-99887766',
-        transacted_at: new Date().toISOString(),
-        invoice_status: 'won',
-        invoice_prize_amount: 1000,
-        invoice_prize_name: '五獎',
-      };
-      const hydrated = hydrateTransactionWithInvoice(customWonTx);
-      expect(hydrated.invoice_status).toBe('won');
-      expect(hydrated.invoice_prize_amount).toBe(1000);
-      expect(hydrated.invoice_prize_name).toBe('五獎');
+    it('SWEETHOME 當期日常發票（如 Costco）應如實呈現待開獎 (pending)', () => {
+      const txs = getSweethomeInitialTransactions();
+      const costcoTx = txs[1];
+      const hydrated = hydrateTransactionWithInvoice(costcoTx);
+
+      expect(hydrated.invoice_status).toBe('pending');
+      expect(hydrated.invoice_prize_amount).toBe(0);
     });
   });
 });

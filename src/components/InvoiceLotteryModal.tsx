@@ -54,6 +54,9 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
   // 彈窗開啟時自動背景聯網向財政部/CDN同步最新期號
   useEffect(() => {
     if (visible) {
+      if (initialPeriodKey) {
+        setSelectedPeriodKey(initialPeriodKey);
+      }
       setDrawsMap({ ...getOfficialLotteryDraws() });
       setIsSyncing(true);
       syncLotteryDrawsAsync()

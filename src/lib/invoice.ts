@@ -873,6 +873,66 @@ export const getInvoicePeriodKey = (dateInput: Date | string): { periodKey: stri
 };
 
 /**
+ * 取得指定日期當下已開獎的最新一期期別代碼 (例如：2026-11-04 應回傳 "2026-08")
+ * 依據台灣統一發票每逢單數月 25 日下午開獎規則精確計算
+ */
+export const getLatestDrawnPeriodKey = (dateInput: Date | string = new Date()): { periodKey: string; periodLabel: string } => {
+  let d: Date;
+  if (typeof dateInput === 'string') {
+    const match = dateInput.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    if (match) {
+      d = new Date(parseInt(match[1], 10), parseInt(match[2], 10) - 1, parseInt(match[3], 10));
+    } else {
+      d = new Date(dateInput);
+    }
+  } else {
+    d = dateInput;
+  }
+
+  if (isNaN(d.getTime())) d = new Date();
+
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1; // 1~12
+  const day = d.getDate();
+
+  // 每逢單數月份 25 日開獎（開出前兩個月份之雙月期別）
+  const isAfterDrawDay = day >= 25;
+
+  let drawnYear = year;
+  let drawnEndMonth: number;
+
+  if (month % 2 === 1) {
+    // 單數月份 (1, 3, 5, 7, 9, 11)
+    if (isAfterDrawDay) {
+      // 例如 11/25 開出 9-10 月期 (10)
+      drawnEndMonth = month - 1;
+    } else {
+      // 例如 11/4 尚未開獎，最新為 7-8 月期 (8)
+      drawnEndMonth = month - 3;
+    }
+  } else {
+    // 雙數月份 (2, 4, 6, 8, 10, 12)
+    // 雙數月份無開獎，最新開獎為上個月（單數月）25 日開出之期別
+    // 例如 12 月份，最新已開獎為 11/25 開出的 9-10 月期 (10)
+    drawnEndMonth = month - 2;
+  }
+
+  // 若計算跨越至前一年期別（例如 1 月開獎或未開獎時）
+  if (drawnEndMonth <= 0) {
+    drawnEndMonth += 12;
+    drawnYear -= 1;
+  }
+
+  const rocYear = drawnYear - 1911;
+  const mm = String(drawnEndMonth).padStart(2, '0');
+  const periodStartMonth = String(drawnEndMonth - 1).padStart(2, '0');
+  const periodKey = `${drawnYear}-${mm}`;
+  const periodLabel = `${rocYear}年 ${periodStartMonth}-${mm}月期`;
+
+  return { periodKey, periodLabel };
+};
+
+/**
  * 解析台灣電子發票左側 QR Code 規範字串 (長度至少 77 碼)
  *
  * 欄位結構 (長度固定)：
