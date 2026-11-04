@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>💖 甜心記帳本 官方使用者手冊 (Official User Manual)</title>
+  <meta name="description" content="甜心記帳本官方完整使用者手冊：涵蓋 10 大核心章節、家庭情境操作流程、零用錢發放、雙碼發票自動對獎、生活手帳全模式連動、雙軌資產對帳、Android 桌面小工具與新手常見問題 FAQ。" />
+  <link rel="icon" href="./favicon.ico" />
+  <!-- Mermaid.js for beautiful diagrams -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --primary: #E11D48;
+      --primary-light: #FFE4E6;
+      --primary-dark: #9F1239;
+      --primary-subtle: #FFF1F2;
+      --accent: #2563EB;
+      --accent-light: #EFF6FF;
+      --accent-dark: #1D4ED8;
+      --success: #10B981;
+      --success-light: #ECFDF5;
+      --warning: #F59E0B;
+      --warning-light: #FEF3C7;
+      --purple: #8B5CF6;
+      --purple-light: #F5F3FF;
+      --bg: #F8FAFC;
+      --card-bg: #FFFFFF;
+      --text-main: #0F172A;
+      --text-sub: #475569;
+      --text-muted: #64748B;
+      --border: #E2E8F0;
+      --code-bg: #F1F5F9;
+      --shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+    }
+
+    [data-theme="dark"] {
+      --primary: #FB7185;
+      --primary-light: rgba(225, 29, 72, 0.2);
+      --primary-dark: #FDA4AF;
+      --primary-subtle: rgba(225, 29, 72, 0.12);
+      --accent: #60A5FA;
+      --accent-light: rgba(37, 99, 235, 0.2);
+      --accent-dark: #93C5FD;
+      --success: #34D399;
+      --success-light: rgba(16, 185, 129, 0.2);
+      --warning: #FBBF24;
+      --warning-light: rgba(245, 158, 11, 0.2);
+      --purple: #A78BFA;
+      --purple-light: rgba(139, 92, 246, 0.2);
+      --bg: #0F172A;
+      --card-bg: #1E293B;
+      --text-main: #F8FAFC;
+      --text-sub: #CBD5E1;
+      --text-muted: #94A3B8;
+      --border: #334155;
+      --code-bg: #0B1120;
+      --shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Microsoft JhengHei", sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      line-height: 1.7;
+      transition: background-color 0.25s, color 0.25s;
+    }
+
+    /* 頂部導航列 */
+    .top-nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--card-bg);
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+      backdrop-filter: blur(8px);
+    }
+
+    .nav-inner {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      color: var(--text-main);
+      font-size: 17px;
+      font-weight: 800;
+    }
+
+    .brand-badge {
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .nav-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 13.5px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--card-bg);
+      color: var(--text-main);
+    }
+
+    .nav-btn:hover {
+      background: var(--bg);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    .nav-btn-primary {
+      background: var(--primary);
+      color: #FFFFFF;
+      border-color: var(--primary);
+    }
+
+    .nav-btn-primary:hover {
+      background: var(--primary-dark);
+      color: #FFFFFF;
+    }
+
+    .theme-toggle-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      background: var(--card-bg);
+      color: var(--text-main);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      transition: all 0.2s;
+    }
+
+    .theme-toggle-btn:hover {
+      border-color: var(--primary);
+      transform: scale(1.05);
+    }
+
+    /* 主要容器 */
+    .container {
+      max-width: 1080px;
+      margin: 28px auto 60px auto;
+      padding: 0 16px;
+    }
+
+    .content-card {
+      background: var(--card-bg);
+      border-radius: 20px;
+      padding: 44px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+    }
+
+    /* 頂部標題 */
+    .manual-header {
+      text-align: center;
+      padding-bottom: 32px;
+      border-bottom: 2px dashed var(--primary-light);
+      margin-bottom: 36px;
+    }
+
+    .version-tag {
+      display: inline-block;
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      font-size: 13px;
+      font-weight: 800;
+      padding: 4px 16px;
+      border-radius: 999px;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      font-size: 34px;
+      color: var(--primary-dark);
+      margin-bottom: 10px;
+      letter-spacing: -0.5px;
+    }
+
+    .tagline {
+      font-size: 18px;
+      color: var(--text-sub);
+      font-weight: 500;
+      margin-bottom: 18px;
+    }
+
+    .quote-box {
+      background: var(--primary-subtle);
+      border-left: 4px solid var(--primary);
+      padding: 14px 22px;
+      border-radius: 0 12px 12px 0;
+      color: var(--primary-dark);
+      font-size: 15px;
+      font-weight: 600;
+      margin: 16px auto 0 auto;
+      text-align: left;
+      line-height: 1.6;
+    }
+
+    /* 目錄快捷索引 */
+    .toc-container {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 44px;
+    }
+
+    .toc-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+    }
+
+    .toc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+      gap: 12px;
+    }
+
+    .toc-item {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      padding: 12px 16px;
+      border-radius: 10px;
+      text-decoration: none;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: all 0.2s;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .toc-item:hover {
+      border-color: var(--primary);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(225, 29, 72, 0.12);
+      color: var(--primary);
+    }
+
+    .toc-item span.toc-num {
+      color: var(--primary);
+      font-weight: 800;
+      margin-right: 6px;
+    }
+
+    .toc-item span.toc-arrow {
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    /* 章節樣式 */
+    .chapter-section {
+      margin-top: 50px;
+      padding-top: 36px;
+      border-top: 1px solid var(--border);
+    }
+
+    .chapter-section:first-of-type {
+      margin-top: 20px;
+      padding-top: 0;
+      border-top: none;
+    }
+
+    h2 {
+      font-size: 24px;
+      color: var(--text-main);
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    h2 .badge {
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      padding: 3px 10px;
+      border-radius: 6px;
+    }
+
+    h3 {
+      font-size: 18px;
+      color: var(--primary-dark);
+      margin: 26px 0 12px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    p {
+      margin-bottom: 14px;
+      color: var(--text-sub);
+      font-size: 15px;
+      line-height: 1.75;
+    }
+
+    /* 步驟列表 */
+    ol, ul {
+      margin-left: 24px;
+      margin-bottom: 16px;
+      color: var(--text-sub);
+      font-size: 15px;
+    }
+
+    li {
+      margin-bottom: 8px;
+      line-height: 1.65;
+    }
+
+    strong {
+      color: var(--text-main);
+    }
+
+    /* 提示膠囊 */
+    .tip-box {
+      background: var(--accent-light);
+      border-left: 4px solid var(--accent);
+      padding: 14px 18px;
+      border-radius: 0 10px 10px 0;
+      margin: 16px 0;
+      font-size: 14.5px;
+      color: var(--text-main);
+      line-height: 1.6;
+    }
+
+    .tip-box strong {
+      color: var(--accent);
+    }
+
+    .tip-success {
+      background: var(--success-light);
+      border-left-color: var(--success);
+    }
+    .tip-success strong {
+      color: var(--success);
+    }
+
+    .tip-warning {
+      background: var(--warning-light);
+      border-left-color: var(--warning);
+    }
+    .tip-warning strong {
+      color: var(--warning);
+    }
+
+    /* 快捷鍵 / 程式碼小框 */
+    code {
+      background: var(--code-bg);
+      color: var(--primary-dark);
+      padding: 2px 7px;
+      border-radius: 6px;
+      font-size: 13.5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      border: 1px solid var(--border);
+    }
+
+    /* 流程圖外框 */
+    .mermaid-container {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px 16px;
+      margin: 20px 0;
+      display: flex;
+      justify-content: center;
+      overflow-x: auto;
+    }
+
+    /* 表格樣式 */
+    .table-wrapper {
+      overflow-x: auto;
+      margin: 18px 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14.5px;
+    }
+
+    th {
+      background: var(--bg);
+      color: var(--text-main);
+      padding: 12px 16px;
+      text-align: left;
+      font-weight: 700;
+      border-bottom: 2px solid var(--border);
+    }
+
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-sub);
+    }
+
+    tr:hover td {
+      background: var(--primary-subtle);
+    }
+
+    /* FAQ 摺疊或問答卡 */
+    .faq-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 22px;
+      margin-bottom: 14px;
+    }
+
+    .faq-q {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--primary-dark);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .faq-a {
+      font-size: 14.5px;
+      color: var(--text-sub);
+      line-height: 1.65;
+    }
+
+    /* 回到頂部按鈕 */
+    .back-to-top {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: white;
+      border: none;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      box-shadow: 0 4px 12px rgba(225, 29, 72, 0.3);
+      transition: all 0.2s;
+      z-index: 99;
+    }
+
+    .back-to-top:hover {
+      background: var(--primary-dark);
+      transform: translateY(-3px);
+    }
+
+    /* 頁尾 */
+    .manual-footer {
+      text-align: center;
+      margin-top: 50px;
+      padding-top: 30px;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 13.5px;
+    }
+
+    .footer-quote {
+      font-size: 15px;
+      color: var(--primary-dark);
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    /* 響應式排版 */
+    @media (max-width: 768px) {
+      .content-card {
+        padding: 24px 16px;
+        border-radius: 14px;
+      }
+
+      h1 {
+        font-size: 26px;
+      }
+
+      .tagline {
+        font-size: 15px;
+      }
+
+      .nav-actions .nav-btn-text {
+        display: none;
+      }
+
+      .toc-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media print {
+      .top-nav, .back-to-top, .theme-toggle-btn {
+        display: none !important;
+      }
+      .content-card {
+        box-shadow: none;
+        border: none;
+        padding: 0;
+      }
+      body {
+        background: white;
+        color: black;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 頂部獨立乾淨導覽列 -->
+  <header class="top-nav">
+    <div class="nav-inner">
+      <a href="#" class="brand">
+        <span>💖 甜心記帳本</span>
+        <span class="brand-badge">Official Manual</span>
+      </a>
+      <div class="nav-actions">
+        <a href="./index.html" class="nav-btn">
+          <span>📱</span>
+          <span class="nav-btn-text">體驗版 App</span>
+        </a>
+        <a href="./product_brochure.html" class="nav-btn">
+          <span>🌐</span>
+          <span class="nav-btn-text">產品型錄</span>
+        </a>
+        <button id="themeToggle" class="theme-toggle-btn" title="切換深淺模式" aria-label="切換深淺模式">
+          🌙
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <article class="content-card">
+
+      <!-- 標題與引言 -->
+      <header class="manual-header">
+        <div class="version-tag">最新發布版本 v1.0.13.10 · 官方使用指南</div>
+        <h1>💖 甜心記帳本 官方使用者手冊</h1>
+        <div class="tagline">打造溫暖、透明、無壓力的現代家庭共同記帳與生活手帳協同生活</div>
+        
+        <div class="quote-box">
+          📖 <strong>「記帳不是為了斤斤計較與對帳討債，而是全家人共同守護生活的美好儀式。」</strong><br />
+          本手冊專為全體家庭成員量身編撰。無論您是第一次接觸共同記帳的新手，還是希望精通進階資產對帳與桌面小工具的家庭管理員，都能在此找到最清晰、最貼心的操作引導。
+        </div>
+      </header>
+
+      <!-- 目錄快速導覽 (10 大章節) -->
+      <nav class="toc-container">
+        <div class="toc-title">
+          <span>📑</span>
+          <span>十大家庭核心章節快速跳轉導覽</span>
+        </div>
+        <div class="toc-grid">
+          <a href="#ch1" class="toc-item">
+            <div><span class="toc-num">01.</span> 5 分鐘快速上手開箱</div>
+            <span class="toc-arrow">›</span>
+          </a>
+          <a href="#ch2" class="toc-item">
+            <div><span class="toc-num">02.</span> 日常智慧多元記帳</div>
+            <span class="toc-arrow">›</span>
+          </a>
+          <a href="#ch3" class="toc-item">
+            <div><span class="toc-num">03.</span> 雙碼發票與對獎中心</div>
+            <span class="toc-arrow">›</span>
+          </a>
+          <a href="#ch4" class="toc-item">
+            <div><span class="toc-num">04.</span> 生活手帳與全模式連動</div>
+            <span class="toc-arrow">›</span>
+          </a>
+          <a href="#ch5" class="toc-item">
+            <div><span class="toc-num">05.</span> 固定週期帳單與分期</div>
+            <span class="toc-arrow">›</span>
+          </a>
+          <a href="#ch6" class="toc-item">
+            <div><span class="toc-num">06.</span> 四大資產看板與雙軌對帳</div>
+            <span class="toc-arrow">›</span>
+          </a>
+          <a href="#ch7" class="toc-item">
+            <div><span class="toc-num">07.</span> 雙視角預算與財務報表</div>
+            <span class="toc-arrow">›</span>
+          </a>
+          <a href="#ch8" class="toc-item">
+            <div><span class="toc-num">08.</span> Android 桌面 3D 小工具</div>
+            <span class="toc-arrow">›</span>
+          </a>
+          <a href="#ch9" class="toc-item">
+            <div><span class="toc-num">09.</span> 身分權限與 6 大要素備份</div>
+            <span class="toc-arrow">›</span>
+          </a>
+          <a href="#ch10" class="toc-item">
+            <div><span class="toc-num">10.</span> 家庭常見問題解答 FAQ</div>
+            <span class="toc-arrow">›</span>
+          </a>
+        </div>
+      </nav>
+
+      <!-- 第一章 -->
+      <section id="ch1" class="chapter-section">
+        <h2>
+          <span>🚀 第一章：5 分鐘快速上手指南（新手開箱）</span>
+          <span class="badge">快速入門</span>
+        </h2>
+        <p>歡迎來到甜心記帳本！本系統支援 <strong>Android 原生 App</strong> 與 <strong>電腦/手機瀏覽器網頁版</strong>。初次使用只要完成簡單的 3 個步驟，全家人就能即時連線協同記帳。</p>
+
+        <div class="mermaid-container">
+          <pre class="mermaid">
+flowchart LR
+    A["👑 發起人<br>建立新帳本"] --> B["📢 產生專屬邀請碼<br>(例如: SWEETHOME)"]
+    B --> C["👨‍👩‍👧‍👦 家人輸入邀請碼<br>申請加入"]
+    C --> D["🛡️ 管理員審核指派<br>選擇家庭稱謂"]
+    D --> E["🎉 全家即時連線<br>一人記帳全家同步"]
+          </pre>
+        </div>
+
+        <h3>1.1 建立新的家庭帳本與專屬邀請碼</h3>
+        <ol>
+          <li>開啟 App 或網頁版，點選首頁右上角的 <strong>「切換帳本 ▾」</strong> ➔ 選擇 <strong>「＋ 建立新帳本」</strong>。</li>
+          <li>輸入溫馨的帳本名稱（例如：<code>幸福一家人</code>、<code>2026 日本家庭旅遊</code>）。</li>
+          <li>系統會自動為您產生一組 <strong>8 碼大寫英數字專屬邀請碼</strong>（例如：<code>SWEETHOME</code>）。</li>
+          <li>點選「複製邀請碼」，傳送至家庭 LINE 群組即可開始邀請家人。</li>
+        </ol>
+
+        <h3>1.2 家人如何加入現有帳本</h3>
+        <ol>
+          <li>家人打開手機 App 或點開網頁版連結。</li>
+          <li>點選 <strong>「加入現有帳本」</strong>。</li>
+          <li>貼上發起人分享的 8 碼邀請碼，點擊「確認加入」。</li>
+          <li>系統會提示「已送出加入申請，等待管理員審核」。</li>
+        </ol>
+
+        <h3>1.3 挑選家庭角色、頭貼與自訂稱謂</h3>
+        <ol>
+          <li>建立帳本時，系統已貼心預設常用家庭角色（爸爸、媽媽、大寶、二寶）。</li>
+          <li>前往 <strong>「家庭設定」➔「成員名冊」</strong>：
+            <ul>
+              <li>點擊成員卡片可更換為立體可愛的 <strong>3D 黏土大頭貼</strong>（共有 20+ 款風格頭像）。</li>
+              <li>點擊稱謂可自由修改暱稱（例如：<code>智爸</code>、<code>瑩媽</code>、<code>洋洋</code>、<code>豆豆</code>）。</li>
+            </ul>
+          </li>
+        </ol>
+
+        <h3>1.4 身分認領與 Google 帳號綁定鎖</h3>
+        <p>為了保護家庭帳本資料安全，避免手機借他人使用時被誤認領身分：</p>
+        <div class="tip-box tip-success">
+          <strong>💡 貼心提醒：</strong>家人在成員名冊中找到自己名字點擊「認領此身分」後，強烈建議點選 <strong>「🔒 綁定 Google 帳號」</strong>。綁定後該成員身分即與您的信箱永久鎖定；換手機或重灌 App 時只需登入同一個 Google 帳號即可瞬間自動認領歸戶，他人無法冒用！
+        </div>
+      </section>
+
+      <!-- 第二章 -->
+      <section id="ch2" class="chapter-section">
+        <h2>
+          <span>💳 第二章：日常智慧記帳與多元記錄模式</span>
+          <span class="badge">核心功能</span>
+        </h2>
+        <p>記帳應該像聊天打字一樣輕鬆自然。甜心記帳本提供直覺的記帳彈窗與智慧聯想功能。</p>
+
+        <h3>2.1 日常收支極速記錄（支出 / 收入 / 轉帳）</h3>
+        <p>點擊螢幕中央下方顯眼的 <strong>「＋」黃色懸浮按鈕</strong>，即刻呼叫記帳視窗：</p>
+        <ul>
+          <li><strong>💳 支出</strong>：日常採買、餐飲、交通開銷（預設記錄於公帳）。</li>
+          <li><strong>💵 收入</strong>：薪水、獎金、投資收益、中獎發票兌領。</li>
+          <li><strong>⇄ 內部轉帳</strong>：銀行帳戶提款、悠遊卡儲值加值、家人私帳與公帳調撥（<strong>不重複計算為家庭總支出</strong>）。</li>
+          <li><strong>📝 隨手記事</strong>：$0 生活備忘，詳見第四章。</li>
+        </ul>
+
+        <h3>2.2 金額快捷鍵與累加計算技巧</h3>
+        <p>在輸入金額時，無需切換手機計算機：</p>
+        <div class="tip-box">
+          <strong>計算技巧：</strong>點擊鍵盤上方的快捷金額膠囊 <code>+$100</code>、<code>+$500</code>、<code>+$1000</code> 可進行<strong>連續累加</strong>！例如點兩次 <code>+$500</code> 加上一次 <code>+$100</code>，金額自動累加至 <code>1100</code>；點擊左側「清除」鍵即可一鍵歸零重新輸入。
+        </div>
+
+        <h3>2.3 精準時間微調與「設為現在」快捷鍵</h3>
+        <ul>
+          <li>若在早上記昨晚的宵夜，點擊時間欄位可自由微調發生的 <strong>時 : 分</strong>。</li>
+          <li>若是剛當下發生的開銷，點擊 <strong>「🕒 設為現在」</strong> 即可自動填入當前最新時分秒。</li>
+          <li>儲存後系統會自動依真實時間毫秒級精準排序，時序井然有序。</li>
+        </ul>
+
+        <h3>2.4 常用店家記憶與自訂分類推薦</h3>
+        <p>輸入店家名稱時（例如輸入「全」），下方自動浮現常去店家膠囊（<code>[全聯福利中心]</code>、<code>[全家便利商店]</code>），點擊後自動連動預選消費分類（如「生鮮超市」或「餐飲伙食」），省去手動分類步驟。</p>
+
+        <h3>2.5 憑證拍照存證與長發票圖片預覽</h3>
+        <p>點擊相機圖示 <strong>「📷 拍照憑證」</strong>，可拍攝紙本發票收據、小白單或維修保固卡存檔。在明細列表中點擊「📷 憑證」徽章即可全螢幕預覽高清照片，支援長條發票手勢縮放檢視。</p>
+
+        <h3>2.6 🎁 孩子零用錢雙向平衡發放</h3>
+        <p>全台首創<strong>「雙向平衡零用錢模型」</strong>：</p>
+        <ol>
+          <li>點擊記帳視窗頂部的 <strong>「🎁 撥零用錢」</strong>。</li>
+          <li>選擇「出資家長」（如：智爸）與「受款孩子」（如：洋洋），輸入發放金額。</li>
+          <li><strong>儲存後系統自動完成雙向平衡</strong>：
+            <ul>
+              <li>爸媽記一筆公帳「教育育兒 / 零用錢支出」；</li>
+              <li>孩子名下的零用錢錢包自動增加正向可用額度；</li>
+              <li>全家公帳維持完美平衡，不生借貸壓力！</li>
+            </ul>
+          </li>
+        </ol>
+
+        <h3>2.7 捲動進度浮動小藥丸與「剛才查看」高光錨點</h3>
+        <p>當家庭歷史帳目累積達數百筆時：</p>
+        <ul>
+          <li><strong>浮動捲動小藥丸</strong>：當手指上下滾動明細時，畫面底部中央會浮現半透明質感膠囊（例如：<code>📍 第 42 / 120 筆 · 10/15</code>），提示當前瀏覽進度；手指停止滾動 1.2 秒後平滑自動淡出。</li>
+          <li><strong>剛才查看高光錨點</strong>：點開任一筆明細查看或修改返回後，該卡片會維持 6 秒溫和高光藍框與 <strong><code>👁️ 剛才查看</code></strong> 徽章，讓您瞬間找回剛才閱讀的錨點！</li>
+        </ul>
+      </section>
+
+      <!-- 第三章 -->
+      <section id="ch3" class="chapter-section">
+        <h2>
+          <span>🧾 第三章：電子發票掃描與全自動對獎中心</span>
+          <span class="badge">智慧對獎</span>
+        </h2>
+        <p>告別傳統逐張手動對獎與手動鍵入長串明細的痛苦，甜心記帳本提供全套電子發票自動化管線。</p>
+
+        <div class="mermaid-container">
+          <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    actor 使用者
+    participant 相機 as 📷 雙碼相機
+    participant 系統 as 💖 記帳本
+    participant 財政部 as 🏛️ 財政部 API
+    使用者->>相機: 對準發票左右雙 QR Code
+    相機->>系統: 秒速解碼號碼、日期、店家與商品明細
+    系統->>系統: 全帳本重複發票防呆檢核
+    財政部-->>系統: 逢開獎日自動連線同步中獎獎號
+    系統->>使用者: 自動標註中獎徽章 (🎉 中獎 $1,000)
+    使用者->>系統: 點擊「一鍵兌領入帳」
+    系統->>系統: 自動轉為收入入帳至指定錢包
+          </pre>
+        </div>
+
+        <h3>3.1 雙 QR Code 相機極速掃描與明細提取</h3>
+        <p>在記帳彈窗點選 <strong>「📷 掃描發票」</strong>，將鏡頭同時對準電子發票上的<strong>左側與右側兩個 QR Code</strong>。逼一聲秒速帶入發票期別、號碼、消費金額、店家，並將右側所載之<strong>長串購買品項完整解析收納至明細備註</strong>中！</p>
+
+        <h3>3.2 全帳本防重複記帳防呆警告</h3>
+        <p>家人之間常發生「老公買菜記了一次，老婆拿發票又記了一次」的重複狀況。系統內建即時防重複檢測：只要有任何成員記錄過相同期別與號碼之發票，畫面立即亮起紅色警示並彈出防呆提示，杜絕重複記帳。</p>
+
+        <h3>3.3 官方開獎號碼全自動即時同步機制</h3>
+        <p>每逢單月 25 日開獎日，系統在背景全自動與財政部印刷廠連線，同步抓取最新一期中獎號碼並快取至本機。打開 App 即可對全量發票進行毫秒級對獎，中獎卡片即時亮起粉彩色徽章（如：<code>🎉 中獎 $200 (六獎)</code>）。</p>
+
+        <h3>3.4 發票對獎中心：「全部 / 我的」視角秒切與期別選擇</h3>
+        <ul>
+          <li><strong>「全部 / 我的」視角切換</strong>：切換至「我的」即時過濾僅呈現自己名下的發票張數與中獎獎金；切換至「全部」統整全家成員共同戰果！</li>
+          <li><strong>期別軌道橫向滾動</strong>：支援手機手勢滑動與電腦滑鼠滾輪拖曳，輕鬆回溯查閱歷史各期開獎號碼。</li>
+        </ul>
+
+        <h3>3.5 中獎發票「一鍵兌領入帳」流程</h3>
+        <p>在對獎中心找到中獎的發票，點擊 <strong>「一鍵兌領入帳」</strong>，系統會自動建立一筆「發票中獎收入」，並將發票狀態標記為 <code>✅ 已兌領</code>，獎金即時匯入家庭公帳或指定成員的個人錢包！</p>
+      </section>
+
+      <!-- 第四章 -->
+      <section id="ch4" class="chapter-section">
+        <h2>
+          <span>📝 第四章：生活手帳、備忘待辦與全模式連動</span>
+          <span class="badge">生活協同</span>
+        </h2>
+        <p>家庭生活不僅是柴米油鹽的金錢收支，更是無數生活雜事與清單的默契分工。</p>
+
+        <h3>4.1 生活手帳手記模式（$0 記錄生活不干擾財務）</h3>
+        <p>點擊記帳彈窗頂部的 <strong><code>[ 📝 記事 ]</code></strong> 頁籤，金額自動鎖定為 <strong>$0</strong>，可用於記錄採買備忘、居家清潔排程、孩子打疫苗日期或重要待辦。系統嚴格將其排除於財務報表，絕不影響月支出或總收入。</p>
+
+        <h3>4.2 生活常用範本一鍵套用（採買、露營、出國）</h3>
+        <p>在記事編輯器中點擊常用範本按鈕，一鍵帶入格式化清單：</p>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>範本名稱</th>
+                <th>適用情境</th>
+                <th>內建項目範例</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>✈️ <strong>出國必備行李</strong></td>
+                <td>家庭海外旅遊、出差行前盤點</td>
+                <td>護照簽證、外幣網卡、充電轉接頭、隨身常備藥品</td>
+              </tr>
+              <tr>
+                <td>🛒 <strong>超市生活採買</strong></td>
+                <td>日常補貨、全聯家樂福超市採購</td>
+                <td>鮮乳豆漿、生鮮雞蛋、衛生紙、洗衣精、當季蔬菜</td>
+              </tr>
+              <tr>
+                <td>🏕️ <strong>親子戶外露營</strong></td>
+                <td>假日露營、戶外野炊</td>
+                <td>帳篷營釘、防蚊液、瓦斯爐具、睡袋睡墊、夜間照明</td>
+              </tr>
+              <tr>
+                <td>🎒 <strong>開學學用品準備</strong></td>
+                <td>新學期開學、幼兒園入學準備</td>
+                <td>文具姓名貼、便當盒水壺、室內鞋、潔牙用具</td>
+              </tr>
+              <tr>
+                <td>🧹 <strong>居家生活大掃除</strong></td>
+                <td>週末大掃除、年終歲末掃除</td>
+                <td>客廳沙發拍打除塵、抽油煙機濾網去油、衛浴水垢刷洗</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>4.3 待辦檢核清單與進度條即時核對</h3>
+        <p>記事內容中使用方括號 <code>[ ]</code> 或點擊「＋ 待辦方框」，即可生成互動打勾項目。在總覽中直接點擊方格 <code>[✓]</code>，彩色進度條會動態計算完成度（例如：<code>3/5 (60%)</code>）。當項目全數核對完成時，畫面會貼心引導完成歸檔。</p>
+
+        <h3>4.4 國曆與農曆多重排程提醒（單次、每週、每月循環）</h3>
+        <p>支援國曆（太陽曆）與農曆（陰曆，適合初一十五拜拜、長輩農曆生日）。支援單次、每日、每週固定日與每月循環提醒，辦妥後系統自動為您推算下一期排程！</p>
+
+        <h3>4.5 待辦打勾辦妥確認與留言氣泡</h3>
+        <p>採買或差事辦妥時點擊待辦左側圓形勾勾，彈出 <strong>「辦妥確認彈窗 (MemoCompletionModal)」</strong>。可選擇實際是由誰辦妥、填寫補充說明並點選快捷情境標籤（如：<code>+ 已在全聯買齊</code>、<code>+ 發票已留存</code>）。辦妥後卡片生成溫暖的綠色留言氣泡！</p>
+
+        <h3>4.6 辦妥全模式連動（支出 / 收入 / 轉帳發零用錢 / 接力待辦）</h3>
+        <p>採買完要記帳無需切換彈窗重複打字！在辦妥彈窗中點選 <strong>「💰 連動記帳入帳」</strong>：</p>
+        <ul>
+          <li><strong>連動支出</strong>：自動將採買品項帶入支出記帳，金額自動計入公帳。</li>
+          <li><strong>連動收入</strong>：若是替公帳請款或代收款，可一鍵轉為收入記錄。</li>
+          <li><strong>連動轉帳</strong>：如「發放孩子成績獎學金」，直接切換連動轉帳發零用錢。</li>
+          <li><strong>連動接力待辦</strong>：如「出國準備第 1 階段辦妥」，直接接續連動至下一階段待辦清單。</li>
+        </ul>
+      </section>
+
+      <!-- 第五章 -->
+      <section id="ch5" class="chapter-section">
+        <h2>
+          <span>🗓️ 第五章：固定週期帳單與信用卡分期管理</span>
+          <span class="badge">帳單管理</span>
+        </h2>
+        <p>家庭每月固定的水電、瓦斯、電信、房租與定期訂閱，是開銷管理的大宗。</p>
+
+        <h3>5.1 水電瓦斯房租電信排程建立（單月 / 雙月 / 季繳）</h3>
+        <p>進入底部導航 <strong>「💳 帳單支付」</strong> ➔ 點擊 <strong>「⚙️ 管理規則」</strong>：</p>
+        <ul>
+          <li><strong>每月固定</strong>：房租、管理費、手機月租、寬頻網路、串流訂閱。</li>
+          <li><strong>雙月繳</strong>：電費、水費、天然瓦斯（支援設定單月出帳或雙月出帳）。</li>
+          <li><strong>季繳 / 半年 / 年繳</strong>：汽機車牌照燃料稅、商業保險、長照險。</li>
+        </ul>
+
+        <h3>5.2 滾動未來 7 天時間軸與到期預警</h3>
+        <div class="tip-box tip-success">
+          <strong>🔔 告別虛驚紅點：</strong>系統首創<strong>「滾動未來 7 天平鋪時間軸」</strong>（依緊急度排序：已逾期 ➔ 今日扣款 ➔ 明日預告 ➔ 未來 7 天內即將扣款）。唯有在進入扣款日前 7 天內，底部導航「帳單支付」才會適時亮起紅色提醒點，平日絕無未到期的無謂虛驚紅點干擾！
+        </div>
+
+        <h3>5.3 收到繳費單「一鍵確認入帳」操作</h3>
+        <ol>
+          <li>收到紙本帳單或銀行扣款簡訊時，點開「帳單支付」頂部的 <strong>「🔔 待核對」</strong>。</li>
+          <li>點擊該筆待繳項目的 <strong>「一鍵確認入帳」</strong>。</li>
+          <li>彈出記帳視窗確認實際出帳金額（變動金額可微調），點擊儲存。</li>
+          <li>系統自動轉為公帳支出，該期帳單標記完成並自動推進至下一期！</li>
+        </ol>
+
+        <h3>5.4 信用卡 3~36 期分期付款追蹤與視覺進度條</h3>
+        <p>購買大型家電或手機使用分期付款時，記帳可選擇分期付款，支援 <strong>3 ~ 36 期</strong> 攤提設定。系統自動產生視覺進度條（如：<code>第 3/12 期 · 已繳 $15,000 / 總額 $60,000</code>），清楚掌握每月固定負擔何時結束。</p>
+      </section>
+
+      <!-- 第六章 -->
+      <section id="ch6" class="chapter-section">
+        <h2>
+          <span>💎 第六章：四大資產看板、小眼睛與雙軌對帳</span>
+          <span class="badge">資產淨值</span>
+        </h2>
+        <p>真正清楚的家庭理財，必須隨時掌握資產與負債的即時淨值。</p>
+
+        <div class="mermaid-container">
+          <pre class="mermaid">
+flowchart TD
+    subgraph Assets ["🏦 家庭總資產"]
+        A1["💰 現金皮夾"]
+        A2["🏦 銀行帳戶"]
+        A3["🚌 悠遊卡/儲值卡"]
+    end
+    subgraph Liabilities ["💳 家庭總負債"]
+        L1["💳 信用卡未結消費"]
+        L2["📑 本期待繳帳單款項"]
+    end
+    Assets -. 扣除 .-> NetWorth["💎 即時財務淨值 (Net Worth)"]
+    Liabilities -. 扣除 .-> NetWorth
+          </pre>
+        </div>
+
+        <h3>6.1 四大資產型態與即時財務淨值試算</h3>
+        <p>首頁上方設有專屬「資產看板」，全要素整合：</p>
+        <ul>
+          <li><strong>現金</strong>：家庭公費零用金、個人錢包現金。</li>
+          <li><strong>銀行帳戶</strong>：常用扣款銀行活存、薪轉帳戶。</li>
+          <li><strong>儲值票證</strong>：全家人的悠遊卡、一卡通、市民卡餘額。</li>
+          <li><strong>信用卡待繳負債</strong>：全家所有信用卡當期已刷尚未結帳之金額。</li>
+        </ul>
+        <p>系統即時動態運算：<code>資產總額 - 信用卡待繳 = 即時財務淨值</code>。</p>
+
+        <h3>6.2 「個人淨值」vs「家庭淨值」視角切換</h3>
+        <p>頂部成員篩選為特定成員（如：智爸）時，看板僅展示智爸負責的帳戶與信用卡，試算<strong>「個人財務淨值」</strong>；切換至「全部成員」時，統整全家人資產帳戶，呈現全家共同的<strong>「家庭財務淨值」</strong>。</p>
+
+        <h3>6.3 小眼睛星號遮罩與 Face ID / 指紋秒開解鎖</h3>
+        <p>出門在捷運或超商開 App 記帳，擔心金額被路人看見？看板金額預設啟用星號遮罩（<code>NT$ ••••••</code>）。點擊小眼睛圖示，只需輕觸手機指紋辨識或臉部 Face ID，金額以平滑淡入動畫解鎖展示真實數字，兼顧極致安全與優雅便利！</p>
+
+        <h3>6.4 信用卡結帳日週期對帳與一鍵繳款</h3>
+        <p>在「帳單支付」點選 <strong>「📊 對帳 ➔ 信用卡」</strong>，系統精確依每張卡的 <strong>「每月結帳日」</strong> 劃分週期（例如 15 號結帳，帳期即為 9/16 ~ 10/15）。每筆消費提供核對打勾方框，繳款日點選「一鍵繳款」自指定銀行扣款並自動歸零該期待繳負債。</p>
+
+        <h3>6.5 悠遊卡 / 一卡通專屬 ID 排他對帳與加值動態出資</h3>
+        <p>各張卡片（如：<code>洋手環</code>、<code>豆國小卡</code>）獨立維護明細與即時餘額。加值時點選「＋ 加值」，支援 <code>+$100</code> ~ <code>+$1000</code> 累加按鈕，自由選擇由誰出資（智爸現金、瑩媽信用卡、全支付等），系統自動扣抵出資管道並增加卡片餘額！</p>
+      </section>
+
+      <!-- 第七章 -->
+      <section id="ch7" class="chapter-section">
+        <h2>
+          <span>🎯 第七章：雙視角預算控管與多維財務報表</span>
+          <span class="badge">預算分析</span>
+        </h2>
+        <p>管好家庭財務的關鍵，在於事前的預算規劃與事後的直觀檢討。</p>
+
+        <h3>7.1 家庭公帳總預算與 80% 警戒超支門檻</h3>
+        <p>管理員可設定家庭每月公帳總預算（例如：<code>NT$ 80,000</code>）。首頁與統計頁面具備動態彩色進度條：</p>
+        <ul>
+          <li><strong>綠色</strong>：安全區間（&lt; 80%）；</li>
+          <li><strong>橙色</strong>：警戒超支提醒（80% ~ 100%）；</li>
+          <li><strong>紅色</strong>：預算超支警報（&gt; 100%）。</li>
+        </ul>
+
+        <h3>7.2 成員個人開銷額度自主配置（一人調整全家連動）</h3>
+        <p>每位成員可在自己手機上自主設定「個人開銷額度」（例如孩子月開銷額度 $3,000）。透過 WebSocket 秒級雲端同步，成員在自己手機調整個人額度，全體家庭裝置秒級連動更新，資訊同步零時差。</p>
+
+        <h3>7.3 四大財務核心 KPI 指標解析</h3>
+        <ol>
+          <li><strong>總支出</strong>：當月全家所有生活公帳支出總和。</li>
+          <li><strong>總收入</strong>：當月全家總收入（薪水、獎金、中獎等）。</li>
+          <li><strong>當月結餘</strong>：總收入減去總支出後的淨儲蓄。</li>
+          <li><strong>日均消費</strong>：當月平均每日花費，快速檢視消費節奏是否過快。</li>
+        </ol>
+
+        <h3>7.4 類別支出排行佔比與跨月收支走勢圖</h3>
+        <p>長條圖由大到小排序伙食、超市、水電、娛樂等支出佔比；圓餅圖清晰呈現爸爸、媽媽各自為家庭公帳支出的比例；點擊月份標籤可任意回溯查看過去歷史各月的收支趨勢對比。</p>
+      </section>
+
+      <!-- 第八章 -->
+      <section id="ch8" class="chapter-section">
+        <h2>
+          <span>📱 第八章：Android 手機桌面小工具 (Widgets) 專題</span>
+          <span class="badge">桌面快捷</span>
+        </h2>
+        <p>無需解鎖進入 App，手機桌面上就能隨時掌握待辦與一秒記帳！</p>
+
+        <div class="mermaid-container">
+          <pre class="mermaid">
+flowchart TD
+    subgraph W1 ["📱 2x2 快捷記帳小工具"]
+        direction LR
+        B1["💰 記支出"] --- B2["📷 掃發票"]
+        B3["💵 記收入"] --- B4["📝 隨手記"]
+    end
+    subgraph W2 ["📋 4x2 生活待辦小工具"]
+        direction TB
+        T1["頂部標題列：最新生活備忘 · 🔄 手動刷新"]
+        T2["待辦項目 1：[✓] 超市買鮮乳 (智爸)"]
+        T3["待辦項目 2：[ ] 繳水費帳單 (今日到期)"]
+        T4["待辦項目 3：[ ] 露營帳篷檢查 (還有3天)"]
+        T5["待辦項目 4：[ ] 換濾水器濾芯 (日常雜記)"]
+    end
+          </pre>
+        </div>
+
+        <h3>8.1 2x2 快捷記帳大圖示小工具（記支出/掃發票/記收入/記待辦）</h3>
+        <p>滿版 3D 立體黏土圖標精心剔除留白，圖示面積放大 2.5 倍：</p>
+        <ul>
+          <li>點擊「記支出」➔ 直通支出記帳彈窗；</li>
+          <li>點擊「掃發票」➔ 零等待秒開相機掃描 QR Code；</li>
+          <li>點擊「記收入」➔ 直通收入記帳；</li>
+          <li>點擊「記待辦」➔ 直通生活備忘手帳。</li>
+        </ul>
+
+        <h3>8.2 4x2 生活手帳待辦小工具（4 則備忘、打勾直達、即時重繪）</h3>
+        <ul>
+          <li><strong>桌面常駐 4 則最新待辦</strong>：自動過濾呈現當前最緊急的今日待辦、逾期待辦與近期待辦。</li>
+          <li><strong>打勾直達 App</strong>：在桌面小工具點選任一則待辦，一鍵秒開 App 並直達該待辦的辦妥確認彈窗！</li>
+          <li><strong>🔄 手動刷新鈕</strong>：右上角附帶專屬刷新按鈕，點擊立刻自雲端拉取最新資料。</li>
+          <li><strong>Home 鍵廣播重繪</strong>：每次在 App 內新增或修改待辦退出回到桌面時，系統自動發送廣播秒級同步重繪。</li>
+        </ul>
+
+        <h3>8.3 桌面長按 Quick Actions 快捷捷徑選單</h3>
+        <p>長按手機桌面上的「甜心記帳本」App 圖示，彈出系統級快捷選單：<code>記支出</code>、<code>記收入</code>、<code>掃描發票</code>、<code>隨手記事</code>。支援 iOS 捷徑（Shortcuts）與 Siri 語音呼叫直通記帳。</p>
+      </section>
+
+      <!-- 第九章 -->
+      <section id="ch9" class="chapter-section">
+        <h2>
+          <span>🛡️ 第九章：帳號身分、權限防護與資料備份</span>
+          <span class="badge">安全防護</span>
+        </h2>
+        <p>家庭財務資料極其珍貴，甜心記帳本導入企業級零信任安全防禦體系。</p>
+
+        <h3>9.1 管理員生物辨識提權（10 分鐘自動降級，免記 PIN 碼）</h3>
+        <p>管理員修改敏感設定時，只需通過 <strong>Face ID / 指紋辨識</strong> 或手機原生鎖屏碼即可秒速完成提權。提權後 10 分鐘若無任何管理員操作，系統自動退回日常模式，杜絕他人借用手機時亂改設定。</p>
+
+        <h3>9.2 訪客模式與零信任安全架構</h3>
+        <p>任何未經主管理員審核指派的裝置或設備，僅能以「訪客模式」唯讀瀏覽公開公帳，<strong>嚴格禁止修改、偽冒代記或刪除任何家庭明細</strong>。</p>
+
+        <h3>9.3 6 大全要素封存備份與安全合併還原</h3>
+        <p>前往「家庭設定」➔「資料備份與還原」：</p>
+        <ul>
+          <li><strong>全要素 6 大領域完整封存</strong>：歷史明細、成員名冊、記帳分類、支付卡片帳戶、固定週期規則與常用付款方式。</li>
+          <li><strong>安全合併還原</strong>：支援將備份檔案與現有資料進行智慧合併（自動依 ID 去重），換手機或匯入歷史資料絕不遺失任何一筆帳目。</li>
+        </ul>
+
+        <h3>9.4 LINE 群組每日 Flex 圖文收支日報卡片</h3>
+        <p>系統支援整合 GitHub Actions 定時自動化。每晚固定時間向家庭 LINE 群組推播精美設計的 Flex 圖文卡片日報（今日花費、出資成員、待辦提醒與帳單預告），兼具 Supabase 雲端資料庫每日自動保活機制。</p>
+      </section>
+
+      <!-- 第十章 -->
+      <section id="ch10" class="chapter-section">
+        <h2>
+          <span>❓ 第十章：家庭常見問題解答 (FAQ)</span>
+          <span class="badge">問答集</span>
+        </h2>
+
+        <div class="faq-item">
+          <div class="faq-q">Ｑ1：全家一起用，手機換機後資料會不見嗎？</div>
+          <div class="faq-a"><strong>不會！</strong> 甜心記帳本採用 Supabase 雲端即時資料庫架構。只要新手機輸入相同的家庭邀請碼（若有綁定 Google 帳號則直接登入 Google），所有歷史明細、分類與卡片餘額將於數秒內全量自動同步還原。</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">Ｑ2：家裡長輩覺得字體太小、看不清楚怎麼辦？</div>
+          <div class="faq-a">請前往 <strong>「家庭設定」➔「字型大小調整」</strong>！系統提供四檔字級選擇（精簡、標準、舒適放大、特大長輩模式），並支援「跟隨手機系統字體設定」，排版具備防爆字微調，長輩使用清晰又舒適。</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">Ｑ3：在地下室或賣場收訊差（無網路）時可以記帳嗎？</div>
+          <div class="faq-a"><strong>完全可以！</strong> 系統具備完整的「離線優先 (Local-First)」架構。在無網路環境下可照常新增明細、打勾待辦；待手機重新連上網路時，系統會在背景自動補推同步至雲端，記帳永不中斷。</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">Ｑ4：如果不小心誤刪了某筆重要的生活記事或收支明細，救得回來嗎？</div>
+          <div class="faq-a">建議平時養成在「家庭設定」➔「匯出備份」的良好習慣（系統具備 7/14/30 天自動提醒）。若有定期匯出 JSON 備份檔，隨時可透過「安全合併還原」一鍵復原遺失的項目。</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">Ｑ5：如何避免家裡小孩亂動家庭設定或公帳總預算？</div>
+          <div class="faq-a">系統具備嚴格的權限分級制：只有「主管理員」與「被授權的管理員」能調整公帳總預算與家庭帳本設定；一般成員僅具備記錄個人收支與檢視權限，且管理員操作需要通過生物辨識提權保護。</div>
+        </div>
+      </section>
+
+      <!-- 頁尾 -->
+      <footer class="manual-footer">
+        <div class="footer-quote">💖 甜心記帳本 —— 讓每一筆柴米油鹽的日常，都化作守護家庭溫暖的足跡。</div>
+        <div>Sweetheart Family Ledger · Copyright &copy; 2026 · All Rights Reserved.</div>
+      </footer>
+
+    </article>
+  </main>
+
+  <!-- 回到頂部按鈕 -->
+  <button id="backToTop" class="back-to-top" title="回到頂部" aria-label="回到頂部">↑</button>
+
+  <script>
+    // 初始化 Mermaid
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'neutral',
+      themeVariables: {
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        primaryColor: '#FFE4E6',
+        primaryBorderColor: '#E11D48',
+        primaryTextColor: '#9F1239',
+        lineColor: '#64748B'
+      }
+    });
+
+    // 深淺色模式切換
+    const themeToggleBtn = document.getElementById('themeToggle');
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    let currentTheme = localStorage.getItem('family_ledger_theme') || (prefersDark ? 'dark' : 'light');
+
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      themeToggleBtn.textContent = theme === 'dark' ? '☀️' : '🌙';
+      localStorage.setItem('family_ledger_theme', theme);
+    }
+
+    applyTheme(currentTheme);
+
+    themeToggleBtn.addEventListener('click', () => {
+      currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      applyTheme(currentTheme);
+    });
+
+    // 回到頂部按鈕
+    const backToTopBtn = document.getElementById('backToTop');
+    window.addEventListener('scroll', () => {
+      if (window.scrollY > 400) {
+        backToTopBtn.style.display = 'flex';
+      } else {
+        backToTopBtn.style.display = 'none';
+      }
+    });
+
+    backToTopBtn.addEventListener('click', () => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  </script>
+</body>
+</html>
