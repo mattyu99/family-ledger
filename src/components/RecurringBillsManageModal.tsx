@@ -457,23 +457,30 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     : formPaymentMethod === 'stored_value';
 
   const formIsBankTransfer = currentFormMethodObj
-    ? (currentFormMethodObj.type === 'bank' || currentFormMethodObj.id === 'transfer')
-    : formPaymentMethod === 'transfer';
+    ? (currentFormMethodObj.type === 'bank' || currentFormMethodObj.id === 'transfer' || currentFormMethodObj.id === 'bank_transfer')
+    : (formPaymentMethod === 'transfer' || formPaymentMethod === 'bank_transfer');
 
   const getRulePaymentBadge = (methodId: PaymentMethod, accountId?: string) => {
     const list = paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS;
-    const methodObj = list.find(m => m.id === methodId);
+    const isTransfer = methodId === 'transfer' || methodId === 'bank_transfer';
+    const isCreditCard = methodId === 'credit_card';
+    const isCash = methodId === 'cash';
+    const isStoredValue = methodId === 'stored_value';
+    const methodObj = list.find(m => m.id === methodId || (isTransfer && (m.id === 'transfer' || m.id === 'bank_transfer')));
     const acc = accountId ? getAccountById(accountId) : undefined;
-    const methodName = methodObj?.name || (methodId === 'credit_card' ? '信用卡' : methodId === 'transfer' ? '銀行轉帳' : methodId === 'cash' ? '現金' : methodId);
-    const methodIcon = methodObj?.icon || (methodId === 'transfer' ? '🏦' : methodId === 'cash' ? '💵' : '💳');
+    const methodName = methodObj?.name || (isCreditCard ? '信用卡' : isTransfer ? '銀行轉帳' : isCash ? '現金' : isStoredValue ? '悠遊卡/儲值卡' : methodId);
+    const methodIcon = methodObj?.icon || (isTransfer ? '🏦' : isCash ? '💵' : isStoredValue ? '🚌' : '💳');
 
     if (acc) {
       const lastDigits = acc.last_four_digits ? ` (*${acc.last_four_digits})` : '';
-      if (methodId === 'credit_card') {
+      if (isCreditCard || acc.type === 'credit_card') {
         return `💳 ${acc.name}${lastDigits}`;
       }
-      if (methodId === 'transfer') {
+      if (isTransfer || acc.type === 'bank') {
         return `🏦 ${acc.name}${lastDigits}`;
+      }
+      if (isStoredValue || acc.type === 'stored_value') {
+        return `🚌 ${acc.name}${lastDigits}`;
       }
       return `${methodIcon} ${methodName} (${acc.name})`;
     }

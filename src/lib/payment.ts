@@ -376,7 +376,7 @@ export const formatPaymentLabel = (
   customMethods?: CustomPaymentMethod[]
 ): { icon: string; text: string; color: string } => {
   const allMethods = customMethods && customMethods.length > 0 ? customMethods : DEFAULT_PAYMENT_METHODS;
-  const normalizedId = (paymentMethod && KNOWN_PAYMENT_METHOD_UUIDS[paymentMethod]) || paymentMethod;
+  const normalizedId = (paymentMethod && KNOWN_PAYMENT_METHOD_UUIDS[paymentMethod]) || (paymentMethod === 'bank_transfer' ? 'transfer' : paymentMethod);
   const currentMethod = allMethods.find(m => m.id === paymentMethod || m.id === normalizedId);
 
   if (account) {
@@ -452,6 +452,7 @@ export const formatPaymentLabel = (
     case 'stored_value':
       return { icon: '🚌', text: '悠遊卡', color: '#0284C7' };
     case 'transfer':
+    case 'bank_transfer':
       return { icon: '🏦', text: '轉帳', color: '#8B5CF6' };
     case 'cash':
       return { icon: '💵', text: '現金', color: '#10B981' };
