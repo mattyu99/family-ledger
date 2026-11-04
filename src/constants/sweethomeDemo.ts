@@ -613,8 +613,14 @@ export const getSweethomeInitialTransactions = (): Transaction[] => {
 
 export const getSweethomeRecurringRules = (): RecurringRule[] => {
   const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
   const powerDueDate = new Date(now.getTime() + 3 * 86400000).toISOString().split('T')[0];
   const netDueDate = new Date(now.getTime() + 7 * 86400000).toISOString().split('T')[0];
+
+  // 動態推算分期首期年月：設定為當前月份前 2 個月，使當月剛好進入「第 3/12 期」
+  const instStartDate = new Date(year, month - 2, 1);
+  const instStartPeriod = `${instStartDate.getFullYear()}-${String(instStartDate.getMonth() + 1).padStart(2, '0')}`;
 
   return [
     {
@@ -682,6 +688,28 @@ export const getSweethomeRecurringRules = (): RecurringRule[] => {
       due_day: 18,
       is_active: true,
       amount_type: 'fixed',
+      created_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    },
+    {
+      id: 'ee600000-0000-4000-8000-000000000005',
+      ledger_id: SWEETHOME_LEDGER_ID,
+      name: 'Dyson 智慧涼暖空氣清淨機 (12 期)',
+      default_amount: 2890,
+      merchant: 'Dyson 官方直營',
+      paid_by: SWEETHOME_MEMBERS[0].id,
+      payment_method: 'credit_card',
+      category_id: SWEETHOME_CATEGORIES[8].id,
+      account_id: SWEETHOME_ACCOUNTS[2].id,
+      frequency: 'monthly',
+      due_day: 15,
+      is_active: true,
+      amount_type: 'fixed',
+      is_installment: true,
+      total_installments: 12,
+      current_installment: 3,
+      installment_start_period: instStartPeriod,
+      note: '客廳清淨冷暖氣機，每期 NT$ 2,890 (共 12 期，國泰世華 CUBE 卡自動分期扣繳)',
       created_at: now.toISOString(),
       updated_at: now.toISOString(),
     },

@@ -1173,12 +1173,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const parsed = JSON.parse(savedRecurringStr);
             if (Array.isArray(parsed)) {
               // 雙重保證：過濾掉非此帳本之規則
-              const validRules = parsed.filter((r: any) => r.ledger_id === ledgerId);
+              let validRules = parsed.filter((r: any) => r.ledger_id === ledgerId);
+              if (ledgerId === SWEETHOME_LEDGER_ID && !validRules.some((r: any) => r.is_installment)) {
+                validRules = getSweethomeRecurringRules();
+                await AsyncStorage.setItem(`${STORAGE_KEYS.RECURRING_RULES}_${SWEETHOME_LEDGER_ID}`, JSON.stringify(validRules));
+              }
               setRecurringRules(validRules);
             }
           } catch {}
         } else if (ledgerId === DEMO_LEDGER_ID || !ledgerId) {
           setRecurringRules(DEMO_RECURRING_RULES);
+        } else if (ledgerId === SWEETHOME_LEDGER_ID) {
+          const freshDemoRules = getSweethomeRecurringRules();
+          setRecurringRules(freshDemoRules);
+          await AsyncStorage.setItem(`${STORAGE_KEYS.RECURRING_RULES}_${SWEETHOME_LEDGER_ID}`, JSON.stringify(freshDemoRules));
         } else {
           setRecurringRules([]);
         }
@@ -2099,11 +2107,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (cachedRulesStr) {
         const parsed = JSON.parse(cachedRulesStr);
         if (Array.isArray(parsed)) {
-          const valid = parsed.filter((r: any) => r.ledger_id === targetLedger.id);
+          let valid = parsed.filter((r: any) => r.ledger_id === targetLedger.id);
+          if (targetLedger.id === SWEETHOME_LEDGER_ID && !valid.some((r: any) => r.is_installment)) {
+            valid = getSweethomeRecurringRules();
+            await AsyncStorage.setItem(`${STORAGE_KEYS.RECURRING_RULES}_${SWEETHOME_LEDGER_ID}`, JSON.stringify(valid));
+          }
           if (valid.length > 0) {
             setRecurringRules(valid);
           }
         }
+      } else if (targetLedger.id === SWEETHOME_LEDGER_ID) {
+        const freshDemoRules = getSweethomeRecurringRules();
+        setRecurringRules(freshDemoRules);
+        await AsyncStorage.setItem(`${STORAGE_KEYS.RECURRING_RULES}_${SWEETHOME_LEDGER_ID}`, JSON.stringify(freshDemoRules));
       }
     } catch {}
     await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(targetLedger));
@@ -3333,8 +3349,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
-      // 3. 若為 DEMO 帳本且從無規則紀錄，提供預設示範規則；真實帳本則維持空白（使用者自訂或點擊預設導入）
-      if (loadedRules.length === 0 && targetLedger.id === DEMO_LEDGER_ID) {
+      // 3. 若為 DEMO/SWEETHOME 帳本且從無規則紀錄或缺少示範分期，提供預設示範規則；真實帳本則維持空白（使用者自訂或點擊預設導入）
+      if (targetLedger.id === SWEETHOME_LEDGER_ID && (loadedRules.length === 0 || !loadedRules.some(r => r.is_installment))) {
+        loadedRules = getSweethomeRecurringRules();
+      } else if (loadedRules.length === 0 && targetLedger.id === DEMO_LEDGER_ID) {
         loadedRules = DEMO_RECURRING_RULES;
       }
 

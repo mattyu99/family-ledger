@@ -166,4 +166,27 @@ describe('週期性帳單、分期與滾動推算核心模組 (recurring.ts)', (
       expect(info.daysRemaining).toBeLessThan(0);
     });
   });
+
+  describe('SWEETHOME 官方示範帳本分期付款示範檢驗', () => {
+    it('應包含 5 筆示範週期規則且包含一筆 12 期家電分期付款規則', () => {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { getSweethomeRecurringRules } = require('../../constants/sweethomeDemo');
+      const rules = getSweethomeRecurringRules();
+      expect(rules).toHaveLength(5);
+
+      const installmentRule = rules.find((r: RecurringRule) => r.is_installment);
+      expect(installmentRule).toBeDefined();
+      expect(installmentRule?.name).toContain('Dyson');
+      expect(installmentRule?.total_installments).toBe(12);
+      expect(installmentRule?.payment_method).toBe('credit_card');
+
+      const info = getInstallmentInfo(installmentRule!, new Date());
+      expect(info).not.toBeNull();
+      expect(info?.currentInstallmentNumber).toBe(3);
+      expect(info?.labelText).toBe('第 3/12 期');
+      expect(info?.totalInstallments).toBe(12);
+      expect(info?.remainingInstallments).toBe(10);
+      expect(info?.progressPercent).toBe(17);
+    });
+  });
 });
