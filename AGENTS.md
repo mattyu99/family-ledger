@@ -36,6 +36,7 @@ Docs: https://docs.expo.dev/eas/index.md
 
 ## Rules
 
+- **每次 Commit 必須遞增小版號**：只要有任何程式碼變更或 commit，務必將 `src/constants/version.ts` 中的 `APP_BUILD_REVISION` 加 1（例如 11 ➔ 12），並同步更新相關文件版號字串（`README.md`、`PRODUCT_BROCHURE.md`、`public/manual.html`、`public/product_brochure.html`）。更新歷程（`CHANGELOG_HISTORY`）可視情況新加一條或與前面項目整合（若為前項功能延伸）。
 - If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
 - Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
 - Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
