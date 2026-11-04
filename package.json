@@ -36,7 +36,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "build:web": "expo export -p web",
-    "deploy:web": "HOME=/tmp expo export -p web && (cp -r public/* dist/ 2>/dev/null || true) && touch dist/.nojekyll && cp dist/index.html dist/404.html && npx gh-pages -d dist --dotfiles",
+    "deploy:web": "(HOME=/tmp expo export -p web) && (cp -r public/* dist/ 2>/dev/null || true) && touch dist/.nojekyll && cp dist/index.html dist/404.html && npx gh-pages -d dist --dotfiles",
     "build:android": "npx eas-cli@latest build -p android --profile preview",
     "update:android": "node scripts/eas-update.mjs",
     "report:daily": "node scripts/daily-report.mjs",
