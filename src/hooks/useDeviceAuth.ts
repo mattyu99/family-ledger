@@ -7,7 +7,7 @@ import { getExpoPushTokenSafely } from '../lib/pushDispatcher';
 import { APP_FULL_VERSION } from '../constants/version';
 import { safeAlert } from '../lib/ledgerUtils';
 import { STORAGE_KEYS, DEMO_LEDGER_ID } from '../constants/ledgerDefaults';
-import { isDemoLedgerId } from '../constants/sweethomeDemo';
+import { isDemoLedgerId, SWEETHOME_MEMBERS } from '../constants/sweethomeDemo';
 import { checkBiometricsCapability, authenticateWithBiometrics } from '../lib/biometrics';
 // supabaseAdmin removed for zero-token architecture
 
@@ -167,7 +167,7 @@ export function useDeviceAuth({
     if (currentLedger?.id) {
       await AsyncStorage.setItem(`${STORAGE_KEYS.ADMIN_PIN}_${currentLedger.id}`, clean);
     }
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID && !isDemoLedgerId(currentLedger.id)) {
       try {
         await supabase.rpc('secure_set_admin_pin', {
           p_ledger_id: currentLedger.id,
@@ -182,7 +182,7 @@ export function useDeviceAuth({
 
   const fetchMemberDevices = useCallback(async (targetLedgerId?: string, targetMemberId?: string) => {
     const lId = targetLedgerId || currentLedger.id;
-    if (!lId || lId === DEMO_LEDGER_ID) return;
+    if (!lId || lId === DEMO_LEDGER_ID || isDemoLedgerId(lId)) return;
 
     const devId = await getDeviceId();
     setCurrentDeviceId(devId);
@@ -267,7 +267,7 @@ export function useDeviceAuth({
         return next;
       });
 
-      if (isConfigured && lId !== DEMO_LEDGER_ID) {
+      if (isConfigured && lId !== DEMO_LEDGER_ID && !isDemoLedgerId(lId)) {
         try {
           let { error: upsertErr } = await supabase.from('member_devices').upsert({
             ledger_id: lId,
@@ -320,7 +320,7 @@ export function useDeviceAuth({
   const removeDevice = useCallback(async (targetDeviceId: string): Promise<boolean> => {
     try {
       const lId = currentLedger.id;
-      if (isConfigured && lId !== DEMO_LEDGER_ID) {
+      if (isConfigured && lId !== DEMO_LEDGER_ID && !isDemoLedgerId(lId)) {
         try {
           await supabase
             .from('member_devices')
@@ -673,7 +673,9 @@ export function useDeviceAuth({
       }
 
       const resolvedRole: 'owner' | 'admin' | 'member' =
-        isDemo ? 'member' : (isMemberCreator ? 'owner' : (member.role === 'owner' || member.role === 'admin' ? member.role : 'member'));
+        isDemo
+          ? (member.id === SWEETHOME_MEMBERS[0].id ? 'owner' : 'member')
+          : (isMemberCreator ? 'owner' : (member.role === 'owner' || member.role === 'admin' ? member.role : 'member'));
       const updatedUser: Profile = { ...member, role: resolvedRole };
 
       setCurrentUser(updatedUser);
@@ -743,7 +745,7 @@ export function useDeviceAuth({
       await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, newRole);
     }
 
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID && !isDemoLedgerId(currentLedger.id)) {
       try {
         let rpcSuccess = false;
         try {
@@ -798,7 +800,7 @@ export function useDeviceAuth({
     await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updatedMembers));
     await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${currentLedger.id}`, JSON.stringify(updatedMembers));
 
-    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID) {
+    if (isConfigured && currentLedger.id !== DEMO_LEDGER_ID && !isDemoLedgerId(currentLedger.id)) {
       try {
         if (currentUser.display_name && currentUser.display_name !== '家庭成員') {
           await supabase.from('profiles').upsert({

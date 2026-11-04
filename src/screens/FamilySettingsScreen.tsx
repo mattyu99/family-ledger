@@ -144,6 +144,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     isProcessingQueue,
     processOfflineQueue,
     resetLocalCacheAndResync,
+    isDemoLedger,
   } = useLedger();
 
   const {
@@ -628,7 +629,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                   <View style={styles.memberLockedBadge}>
                     <Text style={styles.memberLockedBadgeText}>🔒 已保護</Text>
                   </View>
-                ) : isCurrent ? (
+                ) : (isCurrent && !isDemoLedger) ? (
                   <View style={[styles.memberLockedBadge, { backgroundColor: isDark ? '#78350F33' : '#FEF3C7', borderColor: isDark ? '#B45309' : '#FDE68A' }]}>
                     <Text style={[styles.memberLockedBadgeText, { color: isDark ? '#FBBF24' : '#B45309' }]}>⚠️ 訪客</Text>
                   </View>

@@ -12,7 +12,7 @@ export const isDemoLedgerId = (id?: string | null): boolean => {
 };
 
 export const SWEETHOME_MEMBERS: Profile[] = [
-  { id: 'ee200000-0000-4000-8000-000000000001', display_name: '智爸 (爸爸)', avatar_url: '👨', role: 'member' },
+  { id: 'ee200000-0000-4000-8000-000000000001', display_name: '智爸 (爸爸)', avatar_url: '👨', role: 'owner' },
   { id: 'ee200000-0000-4000-8000-000000000002', display_name: '瑩媽 (媽媽)', avatar_url: '👩', role: 'member' },
   { id: 'ee200000-0000-4000-8000-000000000003', display_name: '洋洋 (哥哥)', avatar_url: '👦', role: 'member' },
   { id: 'ee200000-0000-4000-8000-000000000004', display_name: '豆豆 (妹妹)', avatar_url: '👧', role: 'member' },

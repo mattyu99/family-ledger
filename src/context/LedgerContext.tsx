@@ -2427,6 +2427,36 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
 
+    // 🛡️ 示範成員防污染自癒防護：若在真實帳本中偵測到由示範帳本誤寫入之示範成員稱謂（例如「豆豆 (妹妹)」、「智爸 (爸爸)」），且該帳本已有正常自訂名冊，自動自真實帳本清理剔除
+    if (isConfigured && !isDemoLedgerId(targetLedger.id) && targetLedger.id !== DEMO_LEDGER_ID && activeMemberRows && activeMemberRows.length > 0) {
+      const demoLeakRows = activeMemberRows.filter((r: any) =>
+        r.profiles &&
+        r.user_id !== targetLedger.created_by &&
+        (
+          SWEETHOME_MEMBERS.some(sm => sm.id === r.user_id) ||
+          ((r.profiles.display_name || '').trim() === '豆豆 (妹妹)' && dedupedMembers.some(m => (m.display_name || '').trim() === '豆豆')) ||
+          ((r.profiles.display_name || '').trim() === '洋洋 (哥哥)' && dedupedMembers.some(m => (m.display_name || '').trim() === '洋洋')) ||
+          ((r.profiles.display_name || '').trim() === '瑩媽 (媽媽)' && dedupedMembers.some(m => (m.display_name || '').trim() === '瑩媽'))
+        )
+      );
+      if (demoLeakRows.length > 0) {
+        for (const leak of demoLeakRows) {
+          supabase
+            .from('ledger_members')
+            .delete()
+            .eq('ledger_id', targetLedger.id)
+            .eq('user_id', leak.user_id)
+            .then(
+              () => console.log(`[自癒] 已自真實帳本清理受污染之示範成員: ${leak.user_id}`),
+              (err: any) => console.warn('[自癒] 清理污染成員失敗:', err)
+            );
+        }
+        loadedMembers = loadedMembers.filter(lm => !demoLeakRows.some((dl: any) => dl.user_id === lm.id));
+        dedupedMembers = deduplicateMembers(loadedMembers);
+        aliasMap = buildMemberAliasMap(dedupedMembers, loadedMembers);
+      }
+    }
+
     if (dedupedMembers.length > 0) {
       setMembers(dedupedMembers);
       await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(dedupedMembers));
