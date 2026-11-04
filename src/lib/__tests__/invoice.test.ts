@@ -240,4 +240,37 @@ describe('台灣統一發票與條碼解析核心模組測試 (invoice.ts)', () 
       expect(filtered.some(t => t.id === 'tx-2')).toBe(false); // 媽媽的發票在 "我的" 模式下被隱藏
     });
   });
+
+  describe('發票對獎裝飾函式中獎狀態保留 (hydrateTransactionWithInvoice)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { hydrateTransactionWithInvoice } = require('../ledgerUtils');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getSweethomeInitialTransactions } = require('../../constants/sweethomeDemo');
+
+    it('SWEETHOME 官方體驗帳本第一筆 7-11 咖啡發票應必定維持六獎 200 元中獎狀態', () => {
+      const txs = getSweethomeInitialTransactions();
+      const firstTx = txs[0];
+      const hydrated = hydrateTransactionWithInvoice(firstTx);
+
+      expect(hydrated.invoice_number).toBe('HQ-74291168');
+      expect(hydrated.invoice_status).toBe('won');
+      expect(hydrated.invoice_prize_amount).toBe(200);
+      expect(hydrated.invoice_prize_name).toBe('六獎');
+    });
+
+    it('在未開獎期別下，自訂已中獎的發票不得被強制覆寫為 pending 或歸零', () => {
+      const customWonTx = {
+        id: 'custom-tx-won',
+        invoice_number: 'AB-99887766',
+        transacted_at: new Date().toISOString(),
+        invoice_status: 'won',
+        invoice_prize_amount: 1000,
+        invoice_prize_name: '五獎',
+      };
+      const hydrated = hydrateTransactionWithInvoice(customWonTx);
+      expect(hydrated.invoice_status).toBe('won');
+      expect(hydrated.invoice_prize_amount).toBe(1000);
+      expect(hydrated.invoice_prize_name).toBe('五獎');
+    });
+  });
 });

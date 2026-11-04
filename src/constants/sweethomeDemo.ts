@@ -1,4 +1,5 @@
 import { Category, Profile, Ledger, RecurringRule, Transaction, PaymentAccount } from '../types/database';
+import { getInvoicePeriodKey } from '../lib/invoice';
 
 export const SWEETHOME_LEDGER_ID = 'ee100000-0000-4000-8000-000000000001';
 export const SWEETHOME_INVITE_CODE = 'SWEETHOME';
@@ -120,7 +121,9 @@ export const SWEETHOME_ACCOUNTS: PaymentAccount[] = [
 ];
 
 export const getSweethomeInitialTransactions = (): Transaction[] => {
-  const txBaseTime = Date.now();
+  const now = new Date();
+  const txBaseTime = now.getTime();
+  const currPeriodKey = getInvoicePeriodKey(now).periodKey;
   return [
     {
       id: 'ee400000-0000-4000-8000-000000000001',
@@ -134,12 +137,12 @@ export const getSweethomeInitialTransactions = (): Transaction[] => {
       payment_method: 'cash',
       account_id: SWEETHOME_ACCOUNTS[0].id,
       invoice_number: 'HQ-74291168',
-      invoice_period: '11309',
+      invoice_period: currPeriodKey,
       invoice_random_code: '8888',
       invoice_status: 'won',
       invoice_prize_amount: 200,
       invoice_prize_name: '六獎',
-      note: '☕ 大杯美式咖啡＋鮪魚蛋沙拉三明治 [🧾 HQ-74291168|11309|8888|won|200|六獎]',
+      note: `☕ 大杯美式咖啡＋鮪魚蛋沙拉三明治 [🧾 HQ-74291168|${currPeriodKey}|8888|won|200|六獎]`,
       transacted_at: new Date(txBaseTime - 3600000 * 2).toISOString(),
       is_settled: true,
       is_reconciled: false,
@@ -157,9 +160,9 @@ export const getSweethomeInitialTransactions = (): Transaction[] => {
       payment_method: 'credit_card',
       account_id: SWEETHOME_ACCOUNTS[2].id,
       invoice_number: 'HQ-89214532',
-      invoice_period: '11309',
+      invoice_period: currPeriodKey,
       invoice_status: 'pending',
-      note: '全脂鮮奶 2 瓶、牛排牛肉片、三層厚抽取衛生紙 [🧾 HQ-89214532|11309|1234|pending|0|]',
+      note: `全脂鮮奶 2 瓶、牛排牛肉片、三層厚抽取衛生紙 [🧾 HQ-89214532|${currPeriodKey}|1234|pending|0|]`,
       transacted_at: new Date(txBaseTime - 3600000 * 26).toISOString(),
       is_settled: false,
       is_reconciled: false,
@@ -177,9 +180,9 @@ export const getSweethomeInitialTransactions = (): Transaction[] => {
       payment_method: 'credit_card',
       account_id: SWEETHOME_ACCOUNTS[3].id,
       invoice_number: 'HQ-55124098',
-      invoice_period: '11309',
+      invoice_period: currPeriodKey,
       invoice_status: 'pending',
-      note: '晚餐食材：產銷履歷有機高麗菜、去骨雞胸肉、雞蛋、豆腐 [🧾 HQ-55124098|11309|5678|pending|0|]',
+      note: `晚餐食材：產銷履歷有機高麗菜、去骨雞胸肉、雞蛋、豆腐 [🧾 HQ-55124098|${currPeriodKey}|5678|pending|0|]`,
       transacted_at: new Date(txBaseTime - 3600000 * 30).toISOString(),
       is_settled: false,
       is_reconciled: false,
@@ -197,9 +200,9 @@ export const getSweethomeInitialTransactions = (): Transaction[] => {
       payment_method: 'credit_card',
       account_id: SWEETHOME_ACCOUNTS[2].id,
       invoice_number: 'HQ-67812903',
-      invoice_period: '11309',
+      invoice_period: currPeriodKey,
       invoice_status: 'pending',
-      note: '家庭休旅車 95 無鉛汽油加滿 [🧾 HQ-67812903|11309|9999|pending|0|]',
+      note: `家庭休旅車 95 無鉛汽油加滿 [🧾 HQ-67812903|${currPeriodKey}|9999|pending|0|]`,
       transacted_at: new Date(txBaseTime - 3600000 * 48).toISOString(),
       is_settled: false,
       is_reconciled: true,

@@ -24,6 +24,7 @@ import { isTransferToMember } from '../lib/payment';
 import { getRollingPendingBills } from '../lib/recurring';
 import { getLocalDateYmd, parseMemoNote, getRollingMemoDueInfo } from '../lib/memo';
 import { checkInvoiceWinning } from '../lib/lottery';
+import { getInvoicePeriodKey } from '../lib/invoice';
 
 const PAGE_SIZE = 40;
 
@@ -466,8 +467,13 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
     let wonCount = 0;
     transactions.forEach(t => {
       if (t.invoice_number) {
-        const res = checkInvoiceWinning(t.invoice_number, t.transacted_at);
-        if (res.isWon) wonCount++;
+        if (t.invoice_status === 'won') {
+          wonCount++;
+        } else if (t.invoice_status !== 'claimed') {
+          const pk = t.transacted_at ? getInvoicePeriodKey(t.transacted_at).periodKey : (t.invoice_period || '');
+          const res = checkInvoiceWinning(t.invoice_number, pk);
+          if (res.isWon) wonCount++;
+        }
       }
     });
     return { wonCount };
