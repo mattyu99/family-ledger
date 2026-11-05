@@ -37,6 +37,8 @@ import {
   formatFileSize,
   isImageStatement,
   buildMobileUploadBridgeUrl,
+  getStatementForCardCycle,
+  getStatementCycleSetForCard,
 } from '../lib/statementStorage';
 import { getCategoryIcon } from '../lib/icons';
 import { HorizontalScrollView } from './HorizontalScrollView';
@@ -447,25 +449,17 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
     return billingCycles.find(c => c.key === selectedCycleKey) || billingCycles[0];
   }, [billingCycles, selectedCycleKey]);
 
-  // 當前卡片已上傳電子帳單之週期集合（供月份標籤顯示 📎 圖示）
+  // 當前卡片已上傳電子帳單之週期集合（支援同發卡機構多卡自動鏡射，供月份標籤顯示 📎 圖示）
   const cardStatementCycleSet = useMemo(() => {
-    const set = new Set<string>();
-    if (!currentCard) return set;
-    statements.forEach(s => {
-      if (s.cardId === currentCard.id) {
-        set.add(s.cycleKey);
-      }
-    });
-    return set;
-  }, [statements, currentCard]);
+    if (!currentCard) return new Set<string>();
+    return getStatementCycleSetForCard(statements, currentCard.id, paymentAccounts);
+  }, [statements, currentCard, paymentAccounts]);
 
-  // 當前卡片 + 當前週期的電子帳單檔案
+  // 當前卡片 + 當前週期的電子帳單檔案（支援同發卡機構多卡自動鏡射共享）
   const currentStatement = useMemo(() => {
     if (!currentCard || !currentCycle) return null;
-    return (
-      statements.find(s => s.cardId === currentCard.id && s.cycleKey === currentCycle.key) || null
-    );
-  }, [statements, currentCard, currentCycle]);
+    return getStatementForCardCycle(statements, currentCard.id, currentCycle.key, paymentAccounts);
+  }, [statements, currentCard, currentCycle, paymentAccounts]);
 
   // 計算全部電子帳單已使用的 Supabase Storage 總容量
   const totalStorageBytes = useMemo(() => {
@@ -645,11 +639,16 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
       showAlert('權限不足', '此卡片屬於其他家庭成員，僅持卡人或帳本管理員可刪除帳單');
       return;
     }
+    const isShared = stmt.isShared;
     const cardObj = creditCards.find(c => c.id === stmt.cardId);
     const cardLabel = cardObj ? cardObj.name : '信用卡';
+    const deletePrompt = isShared
+      ? `此帳單是由同銀行的【${stmt.sharedFromCardName || cardLabel}】共享之聯合帳單。\n\n若刪除「${stmt.originalName}」，同銀行的所有關聯卡片皆將不再顯示此帳單，並立即釋放雲端空間。確定要徹底刪除嗎？`
+      : `確定要刪除【${cardLabel} · ${stmt.cycleKey}】的電子帳單「${stmt.originalName}」（${formatFileSize(stmt.size)}）嗎？\n\n刪除後將立即釋放雲端 Storage 空間。`;
+
     showConfirm(
       '刪除電子帳單',
-      `確定要刪除【${cardLabel} · ${stmt.cycleKey}】的電子帳單「${stmt.originalName}」（${formatFileSize(stmt.size)}）嗎？\n\n刪除後將立即釋放雲端 Storage 空間。`,
+      deletePrompt,
       async () => {
         try {
           setUploadingStatement(true);
@@ -1255,11 +1254,22 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                               {isImageStatement(currentStatement) ? '🖼️' : '📄'}
                             </Text>
                             <View style={{ flex: 1 }}>
-                              <Text style={styles.attachedStmtTitle} numberOfLines={1}>
-                                {currentStatement.originalName}
-                              </Text>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Text style={styles.attachedStmtTitle} numberOfLines={1}>
+                                  {currentStatement.originalName}
+                                </Text>
+                                {currentStatement.isShared && (
+                                  <View style={{ backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, borderWidth: 1, borderColor: isDark ? 'rgba(59, 130, 246, 0.4)' : '#BFDBFE' }}>
+                                    <Text style={{ fontSize: 10, fontWeight: '700', color: isDark ? '#93C5FD' : '#1D4ED8' }}>
+                                      🏛️ {currentStatement.issuerName || '同銀行'}共享
+                                    </Text>
+                                  </View>
+                                )}
+                              </View>
                               <Text style={styles.attachedStmtMeta}>
-                                點擊查看電子帳單 · {formatFileSize(currentStatement.size)}
+                                {currentStatement.isShared
+                                  ? `同戶共用帳單 (由 ${currentStatement.sharedFromCardName || '姊妹卡'} 提供) · ${formatFileSize(currentStatement.size)}`
+                                  : `點擊查看電子帳單 · ${formatFileSize(currentStatement.size)}`}
                               </Text>
                             </View>
                           </TouchableOpacity>

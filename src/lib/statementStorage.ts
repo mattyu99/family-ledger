@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SUPABASE_URL, SUPABASE_ANON_KEY, supabase } from './supabase';
+import { PaymentAccount } from '../types/database';
+import { detectIssuerBank, getSiblingCardIdsInGroup } from './bankIssuer';
 
 export const STATEMENT_BUCKET = 'statements';
 
@@ -17,6 +19,11 @@ export interface StatementFile {
   size: number;          // 檔案大小 (Bytes)
   createdAt: string;     // 上傳時間 ISO 字串
   publicUrl: string;     // 公開檢視連結
+  // 同發卡機構歸戶鏡射共享欄位
+  isShared?: boolean;           // 是否為同銀行姊妹卡共享之帳單
+  sharedFromCardId?: string;    // 實際存放在 Storage 之來源卡片 ID
+  sharedFromCardName?: string;  // 來源卡片名稱（例如 "國泰世華 CUBE 卡"）
+  issuerName?: string;          // 發卡機構名稱（例如 "國泰世華"）
 }
 
 export type CreditCardStatementFile = StatementFile;
@@ -539,5 +546,88 @@ export const buildMobileUploadBridgeUrl = (params: {
   if (params.uploadSub) q.push(`uploadSub=${encodeURIComponent(params.uploadSub)}`);
   return `https://mattyu99.github.io/family-ledger/upload-statement.html?${q.join('&')}`;
 };
+
+/**
+ * 依據卡片與週期取得電子帳單（支援同發卡機構多卡智慧鏡射共享）
+ * 1. 優先取該卡片自身直接上傳之帳單
+ * 2. 若該卡自身未上傳，自動查詢同持卡人、同發卡機構且同結帳日之姊妹卡片已上傳之帳單
+ * 3. 鏡射返回並註記 isShared: true、sharedFromCardName 與 issuerName
+ */
+export const getStatementForCardCycle = (
+  statements: StatementFile[],
+  cardId: string,
+  cycleKey: string,
+  allAccounts: PaymentAccount[] = []
+): StatementFile | null => {
+  if (!cardId || !cycleKey || !statements || statements.length === 0) return null;
+
+  // 1. 優先精確比對自身直接上傳
+  const direct = statements.find(s => s.cardId === cardId && s.cycleKey === cycleKey);
+  if (direct) return direct;
+
+  // 2. 智慧鏡射：查詢同銀行歸戶之姊妹卡片
+  if (!allAccounts || allAccounts.length === 0) return null;
+  const targetCard = allAccounts.find(a => a.id === cardId);
+  if (!targetCard || targetCard.type !== 'credit_card') return null;
+
+  const siblingIds = getSiblingCardIdsInGroup(cardId, allAccounts);
+  const otherSiblingIds = siblingIds.filter(id => id !== cardId);
+  if (otherSiblingIds.length === 0) return null;
+
+  for (const sibId of otherSiblingIds) {
+    const sibStmt = statements.find(s => s.cardId === sibId && s.cycleKey === cycleKey);
+    if (sibStmt) {
+      const sourceCard = allAccounts.find(a => a.id === sibId);
+      const issuer = detectIssuerBank(targetCard.name, targetCard.issuer_bank);
+      return {
+        ...sibStmt,
+        isShared: true,
+        sharedFromCardId: sibId,
+        sharedFromCardName: sourceCard?.name || '同銀行信用卡',
+        issuerName: issuer?.shortName || '發卡銀行',
+      };
+    }
+  }
+
+  return null;
+};
+
+/**
+ * 取得指定卡片已存在電子帳單之週期集合（支援同發卡機構多卡自動鏡射，用於週期標籤顯示 📎 圖示）
+ */
+export const getStatementCycleSetForCard = (
+  statements: StatementFile[],
+  cardId: string,
+  allAccounts: PaymentAccount[] = []
+): Set<string> => {
+  const set = new Set<string>();
+  if (!cardId || !statements) return set;
+
+  // 1. 先加入自身直接上傳之週期
+  statements.forEach(s => {
+    if (s.cardId === cardId && s.cycleKey) {
+      set.add(s.cycleKey);
+    }
+  });
+
+  // 2. 智慧鏡射同銀行姊妹卡已上傳之週期
+  if (allAccounts && allAccounts.length > 0) {
+    const targetCard = allAccounts.find(a => a.id === cardId);
+    if (targetCard && targetCard.type === 'credit_card') {
+      const siblingIds = getSiblingCardIdsInGroup(cardId, allAccounts);
+      const otherSiblingIds = siblingIds.filter(id => id !== cardId);
+      if (otherSiblingIds.length > 0) {
+        statements.forEach(s => {
+          if (otherSiblingIds.includes(s.cardId) && s.cycleKey) {
+            set.add(s.cycleKey);
+          }
+        });
+      }
+    }
+  }
+
+  return set;
+};
+
 
 

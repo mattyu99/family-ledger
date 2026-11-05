@@ -6,6 +6,19 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   clear: jest.fn(() => Promise.resolve()),
 }));
 
+// Mock react-native-url-polyfill for Node.js test environment
+jest.mock('react-native-url-polyfill/auto', () => ({}));
+
+// Mock global WebSocket for Supabase realtime in Node.js test environment
+if (typeof global.WebSocket === 'undefined') {
+  global.WebSocket = class MockWebSocket {
+    addEventListener() {}
+    removeEventListener() {}
+    send() {}
+    close() {}
+  };
+}
+
 // Mock react-native Platform & NativeModules
 jest.mock('react-native', () => ({
   Platform: {
