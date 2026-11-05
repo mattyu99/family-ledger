@@ -44,19 +44,19 @@ serve(async (req) => {
 
     const cleanBase64 = base64Data.replace(/^data:image\/[a-zA-Z]+;base64,/, "").trim();
 
-    const prompt = `你是一個專業的台灣統一發票、傳統收銀機發票與收據光學辨識專家。請從這張發票或收據圖片中精確提取以下資訊，並只以乾淨的 JSON 格式回傳：
+    const prompt = `你是一個專業的台灣統一發票、傳統二聯式收銀機發票與收據光學辨識專家。請從這張發票或收據圖片中精確提取以下資訊，並只以乾淨的 JSON 格式回傳：
 {
-  "invoiceNumber": "發票號碼，必須為 2 碼大寫英文字軌 + 8 碼數字，例如 EE21608064，若發票上無字軌號碼則填 null",
+  "invoiceNumber": "發票號碼，必須為 2 碼大寫英文字軌 + 8 碼數字，例如 EF21608064，若發票上無字軌號碼則填 null",
   "invoiceDate": "開立日期，格式為 YYYY-MM-DD，若發票上標示為民國年（例如 115年10月14日）請自動轉換為西元年（如 2026-10-14），若完全無法辨識日期則填 null",
-  "totalAmount": "總計、合計、實收金額或現盈，純整數數字，例如 440，若無則填 null",
-  "merchantName": "店家名稱、開立單位或營業人名稱；若無明確店名但有地址（如 桃園市中壢區實踐路225之1號），可填入該地址，若皆無則填 null",
+  "totalAmount": "總計、合計、應收金額、實收金額或現盈，純整數數字，例如 440，若無則填 null",
+  "merchantName": "店家名稱、商號、品牌招牌或營業人名稱（例如 米老鼠牛排館、國際企業有限公司，優先提取最上方最顯眼的店名）；若無明確店名但有地址（如 桃園市中壢區實踐路227號1樓），可填入該地址，若皆無則填 null",
   "itemsSummary": "購買的商品品名、數量與單價/小計簡述，多項以頓號分隔，若無品項明細則填 null"
 }`;
 
-    // 優先使用 Google 最新支援的輕量視覺模型 gemini-3.5-flash-lite，遇例外自動依序回退備援
+    // 優先使用 Google 最新支援的輕量視覺模型 gemini-3.1-flash-lite / gemini-3.5-flash-lite，遇例外自動依序回退備援
     const candidateModels = [
-      "gemini-3.5-flash-lite",
       "gemini-3.1-flash-lite",
+      "gemini-3.5-flash-lite",
       "gemini-3.5-flash",
       "gemini-3.8-flash",
     ];
