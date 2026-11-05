@@ -30,6 +30,7 @@ interface InvoiceLotteryModalProps {
   initialPeriodKey?: string;
   initialScope?: InvoiceScope;
   onSelectTransaction?: (transaction: Transaction) => void;
+  onOpenCloudInvoiceSync?: () => void;
 }
 
 // 記住使用者上次選看的發票雙月期別與視角，在來回查看記帳明細時無縫維持
@@ -42,6 +43,7 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
   initialPeriodKey,
   initialScope,
   onSelectTransaction,
+  onOpenCloudInvoiceSync,
 }) => {
   const { isDark, colors } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
@@ -245,6 +247,15 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
               <Text style={styles.syncStatusText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                 {isSyncing ? '正在連線同步財政部最新開獎號碼...' : '官方開獎號碼全自動即時同步'}
               </Text>
+              {onOpenCloudInvoiceSync && (
+                <TouchableOpacity
+                  style={styles.cloudSyncChip}
+                  onPress={onOpenCloudInvoiceSync}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.cloudSyncChipText}>☁️ 載具同步</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             <View style={styles.scopeSwitchContainer}>
@@ -614,6 +625,20 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 11,
     color: isDark ? '#34D399' : '#059669',
     fontWeight: '500',
+  },
+  cloudSyncChip: {
+    marginLeft: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: isDark ? 'rgba(14, 165, 233, 0.2)' : '#E0F2FE',
+    borderWidth: 0.5,
+    borderColor: '#38BDF8',
+  },
+  cloudSyncChipText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: isDark ? '#38BDF8' : '#0284C7',
   },
   closeBtn: {
     width: 32,

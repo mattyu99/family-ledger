@@ -1217,6 +1217,7 @@ const AppContent: React.FC = () => {
           setInvoiceLotteryTargetPeriod(undefined);
           setEditingTransaction(tx);
         }}
+        onOpenCloudInvoiceSync={() => setCloudInvoiceModalVisible(true)}
       />
 
       <CloudInvoiceSyncModal
