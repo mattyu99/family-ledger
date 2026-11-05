@@ -253,9 +253,9 @@ function withAndroidWidgets(config) {
             android:layout_weight="1"
             android:background="@drawable/widget_btn_bg"
             android:orientation="vertical"
-            android:gravity="center_horizontal"
-            android:paddingTop="1dp"
-            android:paddingBottom="1dp"
+            android:gravity="center"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
             android:layout_marginEnd="2.5dp">
             <ImageView
                 android:layout_width="40dp"
@@ -266,7 +266,7 @@ function withAndroidWidgets(config) {
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="0dp"
+                android:layout_marginTop="1dp"
                 android:text="記支出"
                 android:textColor="#F1F5F9"
                 android:textSize="10sp"
@@ -283,9 +283,9 @@ function withAndroidWidgets(config) {
             android:layout_weight="1"
             android:background="@drawable/widget_btn_bg"
             android:orientation="vertical"
-            android:gravity="center_horizontal"
-            android:paddingTop="1dp"
-            android:paddingBottom="1dp"
+            android:gravity="center"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
             android:layout_marginStart="2.5dp">
             <ImageView
                 android:layout_width="40dp"
@@ -296,7 +296,7 @@ function withAndroidWidgets(config) {
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="0dp"
+                android:layout_marginTop="1dp"
                 android:text="掃發票"
                 android:textColor="#F1F5F9"
                 android:textSize="10sp"
@@ -320,9 +320,9 @@ function withAndroidWidgets(config) {
             android:layout_weight="1"
             android:background="@drawable/widget_btn_bg"
             android:orientation="vertical"
-            android:gravity="center_horizontal"
-            android:paddingTop="1dp"
-            android:paddingBottom="1dp"
+            android:gravity="center"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
             android:layout_marginEnd="2.5dp">
             <ImageView
                 android:layout_width="40dp"
@@ -333,7 +333,7 @@ function withAndroidWidgets(config) {
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="0dp"
+                android:layout_marginTop="1dp"
                 android:text="記收入"
                 android:textColor="#F1F5F9"
                 android:textSize="10sp"
@@ -350,9 +350,9 @@ function withAndroidWidgets(config) {
             android:layout_weight="1"
             android:background="@drawable/widget_btn_bg"
             android:orientation="vertical"
-            android:gravity="center_horizontal"
-            android:paddingTop="1dp"
-            android:paddingBottom="1dp"
+            android:gravity="center"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
             android:layout_marginStart="2.5dp">
             <ImageView
                 android:layout_width="40dp"
@@ -363,7 +363,7 @@ function withAndroidWidgets(config) {
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="0dp"
+                android:layout_marginTop="1dp"
                 android:text="隨手記"
                 android:textColor="#F1F5F9"
                 android:textSize="10sp"
