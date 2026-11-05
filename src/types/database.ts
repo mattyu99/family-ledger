@@ -228,6 +228,7 @@ export interface CloudInvoiceItem {
   sellerTaxId?: string; // 賣方統編 (8碼)
   amount: number; // 發票總金額
   carrierType?: string; // 載具類別代碼 (例如 "1K0001" 悠遊卡, "2G0001" 信用卡, "3J0002" 手機條碼)
+  carrierName?: string; // 載具名稱 (例如 "手機條碼", "悠遊卡", "一卡通", "信用卡", "跨境電商電子郵件載具")
   carrierNo?: string; // 載具顯碼或卡號 (悠遊卡16碼或信用卡末4碼)
   randomCode?: string; // 4 碼防偽隨機碼
   items?: {

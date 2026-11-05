@@ -10,6 +10,7 @@ import {
   Linking,
   ActivityIndicator,
   TextInput,
+  Clipboard,
 } from 'react-native';
 import { Text } from './common/Text';
 import { useTheme } from '../theme/ThemeContext';
@@ -17,8 +18,10 @@ import { useLedger } from '../context/LedgerContext';
 import {
   processCloudInvoicesSync,
   generateMockCloudInvoices,
+  parseMofInvoiceCsv,
   SyncProcessResult,
 } from '../lib/cloudInvoiceSync';
+import { CloudInvoiceItem } from '../types/database';
 
 interface CloudInvoiceSyncModalProps {
   visible: boolean;
@@ -39,11 +42,27 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
     categories,
     updateTransaction,
     addTransaction,
+    addPaymentAccount,
     getMemberById,
   } = useLedger();
 
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isExecutingImport, setIsExecutingImport] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncProcessResult | null>(null);
+  const [parsedInvoices, setParsedInvoices] = useState<CloudInvoiceItem[] | null>(null);
+  const [rawCsvText, setRawCsvText] = useState('');
+  const [showRawTextInput, setShowRawTextInput] = useState(false);
+  const [statusBanner, setStatusBanner] = useState<{
+    type: 'success' | 'error' | 'info';
+    message: string;
+  } | null>(null);
+  const [quickBindCarrier, setQuickBindCarrier] = useState<{
+    carrierNo: string;
+    carrierName?: string;
+    invoiceCount: number;
+    totalAmount: number;
+  } | null>(null);
+
   const [mobileBarcode, setMobileBarcode] = useState('/ABC+123');
   const [isEditingBarcode, setIsEditingBarcode] = useState(false);
 
@@ -62,13 +81,216 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
     });
   }, [paymentAccounts, getMemberById]);
 
+  // 解析 CSV 核心邏輯
+  const handleProcessCsvText = (text: string, sourceLabel: string = '檔案') => {
+    if (!text || !text.trim()) {
+      setStatusBanner({
+        type: 'error',
+        message: '發票內容為空，請確認已選取或貼上正確的發票資料。',
+      });
+      return;
+    }
+
+    try {
+      const invoices = parseMofInvoiceCsv(text);
+      if (invoices.length === 0) {
+        setStatusBanner({
+          type: 'error',
+          message: '未偵測到有效發票紀錄，請確認檔案格式是否包含 M|發票主檔 與 D|明細。',
+        });
+        return;
+      }
+
+      setParsedInvoices(invoices);
+      setRawCsvText(text);
+
+      const defaultCategory = categories.find(c => c.type === 'expense') || categories[0];
+      const defaultPayerId = currentUser?.id || members[0]?.id || '';
+      const ledgerId = currentLedger?.id || '';
+
+      const preview = processCloudInvoicesSync(
+        invoices,
+        transactions,
+        paymentAccounts,
+        members,
+        defaultPayerId,
+        ledgerId,
+        defaultCategory?.id || ''
+      );
+
+      setSyncResult(preview);
+      setStatusBanner({
+        type: 'success',
+        message: `✅ 已自【${sourceLabel}】成功解析 ${preview.stats.totalInvoices} 筆發票，總額 NT$ ${preview.stats.totalAmount.toLocaleString()}！請檢視分流預覽並確認匯入。`,
+      });
+    } catch (err: any) {
+      setStatusBanner({
+        type: 'error',
+        message: `解析失敗：${err.message || '檔案格式錯誤'}`,
+      });
+    }
+  };
+
+  // Web 端檔案選擇事件處理
+  const handleWebCsvFileSelect = (event: any) => {
+    const file = event.target?.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const text = e.target?.result as string;
+      if (text) {
+        handleProcessCsvText(text, file.name);
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+    event.target.value = '';
+  };
+
+  // 點選檔案選取按鈕（跨平台分流）
+  const handleFileSelectBtnPress = () => {
+    if (Platform.OS === 'web') {
+      if (typeof document !== 'undefined') {
+        const el = document.getElementById('mof-csv-file-input');
+        el?.click();
+      }
+    } else {
+      Alert.alert(
+        '📂 手機端讀取發票 CSV 指引',
+        '在手機上匯入最簡便的方式：\n\n1. 請於信箱中開啟財政部通知信之附件 CSV 檔並「全選複製」\n2. 回到此處點擊「📋 讀取剪貼簿貼上 CSV」\n\n系統將自動秒速辨識並完成卡號分流！',
+        [
+          { text: '關閉', style: 'cancel' },
+          { text: '📋 立即讀取剪貼簿', onPress: () => handlePasteClipboard() },
+        ]
+      );
+    }
+  };
+
+  // 從系統剪貼簿讀取
+  const handlePasteClipboard = async () => {
+    try {
+      let text = '';
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
+        text = await navigator.clipboard.readText();
+      } else if (Clipboard && typeof Clipboard.getString === 'function') {
+        text = await Clipboard.getString();
+      }
+
+      if (text && text.trim()) {
+        handleProcessCsvText(text.trim(), '剪貼簿');
+      } else {
+        setStatusBanner({
+          type: 'info',
+          message: '剪貼簿中無內容，請先開啟財政部發票 CSV 檔案複製內容後再點擊貼上。',
+        });
+      }
+    } catch {
+      setStatusBanner({
+        type: 'info',
+        message: '無法自動讀取剪貼簿，可點擊「✍️ 手動貼上」展開文字框直接貼上。',
+      });
+    }
+  };
+
+  // 執行正式匯入寫入帳本資料庫
+  const handleExecuteImport = async () => {
+    if (!syncResult) return;
+    setIsExecutingImport(true);
+
+    try {
+      let updatedCount = 0;
+      let newCount = 0;
+
+      // 1. 執行更新媒合成功的既有手動交易 (排除已完全同步過無變更者)
+      for (const item of syncResult.updatedTransactions) {
+        if (!item.isAlreadySynced) {
+          await updateTransaction(item.transactionId, item.updates);
+          updatedCount++;
+        }
+      }
+
+      // 2. 執行新增全新雲端發票
+      for (const item of syncResult.newTransactions) {
+        await addTransaction({
+          amount: item.data.amount,
+          type: 'expense',
+          category_id: item.data.category_id,
+          paid_by: item.data.paid_by,
+          merchant: item.data.merchant,
+          payment_method: item.data.payment_method,
+          account_id: item.data.account_id,
+          note: item.data.note,
+          invoice_number: item.data.invoice_number,
+          invoice_random_code: item.data.invoice_random_code,
+          transacted_at: item.data.transacted_at,
+          invoice_sync_status: 'cloud_imported',
+          cloud_synced_at: item.data.cloud_synced_at,
+          cloud_carrier_name: item.data.cloud_carrier_name,
+          invoice_items: item.data.invoice_items,
+        });
+        newCount++;
+      }
+
+      setStatusBanner({
+        type: 'success',
+        message: `🎉 匯入完成！成功補齊 ${updatedCount} 筆手動帳目，依卡號自動新增 ${newCount} 筆雲端支出！`,
+      });
+      setParsedInvoices(null);
+    } catch (err: any) {
+      setStatusBanner({
+        type: 'error',
+        message: `匯入時發生錯誤：${err.message || '請稍候重試'}`,
+      });
+    } finally {
+      setIsExecutingImport(false);
+    }
+  };
+
+  // 快速建卡指定家庭成員
+  const handleQuickAddCardConfirm = async (memberId: string) => {
+    if (!quickBindCarrier) return;
+    const { carrierNo, carrierName } = quickBindCarrier;
+    const member = getMemberById(memberId);
+    const memberName = member?.display_name || '家庭成員';
+
+    const isStored =
+      carrierName?.includes('悠遊') ||
+      carrierName?.includes('一卡通') ||
+      /^\d{10,16}$/.test(carrierNo);
+
+    try {
+      await addPaymentAccount({
+        name: `${memberName}的${carrierName || (isStored ? '悠遊/一卡通' : '信用卡')}`,
+        type: isStored ? 'stored_value' : 'credit_card',
+        user_id: memberId,
+        card_number: carrierNo,
+        last_four_digits: carrierNo.slice(-4),
+        balance: 0,
+        icon: isStored ? '🚌' : '💳',
+        sort_order: paymentAccounts.length,
+      });
+
+      setQuickBindCarrier(null);
+
+      // 若已有解析之 CSV 內容，立即以最新卡片對照重算分流預覽
+      if (rawCsvText) {
+        handleProcessCsvText(rawCsvText, '已登記新卡重新比對');
+      }
+
+      Alert.alert(
+        '🎉 卡片登記成功',
+        `已成功建立「${memberName}的${carrierName || '卡片'}」，對應發票已自動重新歸屬給【${memberName}】！`
+      );
+    } catch (err: any) {
+      Alert.alert('建卡失敗', err.message || '發生未知錯誤');
+    }
+  };
+
   // 執行雲端發票智慧同步（展示與測試模式）
   const handleRunSync = async () => {
     setIsSyncing(true);
     setSyncResult(null);
 
     try {
-      // 模擬半秒鐘雲端連線查詢
       await new Promise(resolve => setTimeout(resolve, 800));
 
       const mockInvoices = generateMockCloudInvoices(paymentAccounts);
@@ -86,12 +308,12 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
         defaultCategory?.id || ''
       );
 
-      // 1. 執行更新媒合成功的既有手動交易
       for (const item of result.updatedTransactions) {
-        await updateTransaction(item.transactionId, item.updates);
+        if (!item.isAlreadySynced) {
+          await updateTransaction(item.transactionId, item.updates);
+        }
       }
 
-      // 2. 執行新增未媒合的全新發票
       for (const item of result.newTransactions) {
         await addTransaction({
           amount: item.data.amount,
@@ -122,7 +344,7 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
 
   // 開啟財政部官方平台申請
   const handleOpenMofWebsite = () => {
-    Linking.openURL('https://www.einvoice.nat.gov.tw/APCONSUMER/BTC501W/');
+    Linking.openURL('https://www.einvoice.nat.gov.tw/');
   };
 
   if (!visible) return null;
@@ -136,6 +358,17 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
             { backgroundColor: isDark ? colors.background.card : '#FFFFFF' },
           ]}
         >
+          {/* Web 端隱藏原生檔案選取器 */}
+          {Platform.OS === 'web' && (
+            <input
+              id="mof-csv-file-input"
+              type="file"
+              accept=".csv,text/csv,text/plain"
+              style={{ display: 'none' }}
+              onChange={handleWebCsvFileSelect}
+            />
+          )}
+
           {/* 標題欄 */}
           <View style={styles.headerRow}>
             <View style={{ flex: 1 }}>
@@ -143,7 +376,7 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                 ☁️ 財政部雲端發票智慧同步
               </Text>
               <Text style={[styles.headerSubtitle, { color: colors.text.secondary }]}>
-                集中管理手機條碼 · 依悠遊卡/信用卡自動分流家庭成員
+                消費發票 CSV 匯入 · 依悠遊卡/信用卡自動分流家庭成員
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
@@ -152,13 +385,293 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
           </View>
 
           <ScrollView style={styles.bodyScroll} showsVerticalScrollIndicator={false}>
+            {/* 狀態提示橫幅 */}
+            {statusBanner && (
+              <View
+                style={[
+                  styles.statusBannerBox,
+                  {
+                    backgroundColor:
+                      statusBanner.type === 'success'
+                        ? isDark
+                          ? 'rgba(16, 185, 129, 0.2)'
+                          : '#ECFDF5'
+                        : statusBanner.type === 'error'
+                        ? isDark
+                          ? 'rgba(239, 68, 68, 0.2)'
+                          : '#FEF2F2'
+                        : isDark
+                        ? 'rgba(14, 165, 233, 0.2)'
+                        : '#F0F9FF',
+                    borderColor:
+                      statusBanner.type === 'success'
+                        ? '#10B981'
+                        : statusBanner.type === 'error'
+                        ? '#EF4444'
+                        : '#0284C7',
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.statusBannerText,
+                    {
+                      color:
+                        statusBanner.type === 'success'
+                          ? '#065F46'
+                          : statusBanner.type === 'error'
+                          ? '#991B1B'
+                          : '#0369A1',
+                    },
+                  ]}
+                >
+                  {statusBanner.message}
+                </Text>
+              </View>
+            )}
+
+            {/* 1. 核心發票 CSV 檔案匯入專區 */}
+            <View
+              style={[
+                styles.csvImportHeroCard,
+                {
+                  backgroundColor: isDark ? 'rgba(14, 165, 233, 0.12)' : '#F0F9FF',
+                  borderColor: isDark ? 'rgba(56, 189, 248, 0.35)' : '#BAE6FD',
+                },
+              ]}
+            >
+              <View style={styles.heroHeaderRow}>
+                <Text style={styles.heroTitle}>📂 匯入官方 Email 發票 CSV 檔案</Text>
+                <View style={styles.heroBadge}>
+                  <Text style={styles.heroBadgeText}>最推薦</Text>
+                </View>
+              </View>
+              <Text style={styles.heroDesc}>
+                每月初財政部寄送的「消費發票彙整通知」CSV 附件，匯入後系統自動解析商品細項，並依卡號分流家庭成員！
+              </Text>
+
+              {/* 匯入動作按鈕列 */}
+              <View style={styles.actionBtnRow}>
+                <TouchableOpacity
+                  style={[styles.primaryActionBtn, { flex: 1.1 }]}
+                  onPress={handleFileSelectBtnPress}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.primaryActionBtnText}>📂 選擇發票 CSV 檔</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.secondaryActionBtn, { flex: 1 }]}
+                  onPress={handlePasteClipboard}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.secondaryActionBtnText}>📋 讀取剪貼簿貼上</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.textInputToggleBtn}
+                  onPress={() => setShowRawTextInput(!showRawTextInput)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.textInputToggleBtnText}>
+                    {showRawTextInput ? '收合文字框' : '✍️ 手動貼上'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* 手動文字輸入區塊（可收合） */}
+              {showRawTextInput && (
+                <View style={styles.rawInputBox}>
+                  <TextInput
+                    style={[
+                      styles.rawTextInput,
+                      {
+                        backgroundColor: isDark ? colors.background.input : '#FFFFFF',
+                        color: colors.text.primary,
+                        borderColor: isDark ? colors.border.default : '#CBD5E1',
+                      },
+                    ]}
+                    multiline
+                    numberOfLines={5}
+                    value={rawCsvText}
+                    onChangeText={setRawCsvText}
+                    placeholder="在此貼上財政部 CSV 內容 (包含 M| 與 D| 表頭)..."
+                    placeholderTextColor="#94A3B8"
+                  />
+                  <TouchableOpacity
+                    style={styles.parseRawBtn}
+                    onPress={() => handleProcessCsvText(rawCsvText, '手動貼上')}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.parseRawBtnText}>🔍 開始解析發票內容</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+
+            {/* 2. 發票解析即時預覽與確認區塊 */}
+            {parsedInvoices && syncResult && (
+              <View
+                style={[
+                  styles.previewSectionBox,
+                  {
+                    backgroundColor: isDark ? colors.background.cardSubtle : '#FFFFFF',
+                    borderColor: '#10B981',
+                  },
+                ]}
+              >
+                <View style={styles.previewHeaderRow}>
+                  <Text style={styles.previewTitle}>📊 發票分流預覽報告</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setParsedInvoices(null);
+                      setSyncResult(null);
+                      setRawCsvText('');
+                    }}
+                  >
+                    <Text style={styles.clearPreviewBtnText}>清除重新選取</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* 數據總覽 */}
+                <View style={styles.statsSummaryGrid}>
+                  <View style={styles.statsSummaryCol}>
+                    <Text style={styles.statsSummaryLabel}>發票張數</Text>
+                    <Text style={styles.statsSummaryVal}>{syncResult.stats.totalInvoices} 張</Text>
+                  </View>
+                  <View style={styles.statsSummaryCol}>
+                    <Text style={styles.statsSummaryLabel}>總計消費額</Text>
+                    <Text style={[styles.statsSummaryVal, { color: '#0284C7' }]}>
+                      NT$ {syncResult.stats.totalAmount.toLocaleString()}
+                    </Text>
+                  </View>
+                  <View style={styles.statsSummaryCol}>
+                    <Text style={styles.statsSummaryLabel}>自動分流</Text>
+                    <Text style={[styles.statsSummaryVal, { color: '#10B981' }]}>
+                      {syncResult.stats.newCount} 筆
+                    </Text>
+                  </View>
+                  <View style={styles.statsSummaryCol}>
+                    <Text style={styles.statsSummaryLabel}>補齊手動記帳</Text>
+                    <Text style={[styles.statsSummaryVal, { color: '#F59E0B' }]}>
+                      {syncResult.stats.updatedCount} 筆
+                    </Text>
+                  </View>
+                </View>
+
+                {syncResult.stats.alreadySyncedCount > 0 && (
+                  <View style={styles.alreadySyncedNote}>
+                    <Text style={styles.alreadySyncedNoteText}>
+                      🛡️ 系統已自動辨識並略過 {syncResult.stats.alreadySyncedCount} 筆過去已匯入過的相同發票，絕不重複記帳！
+                    </Text>
+                  </View>
+                )}
+
+                {/* 3. 未登記載具提示與 1 鍵建卡 */}
+                {syncResult.unregisteredCarriers.length > 0 && (
+                  <View style={styles.unregWarningBox}>
+                    <Text style={styles.unregWarningTitle}>💡 偵測到尚未建立卡片的載具</Text>
+                    <Text style={styles.unregWarningDesc}>
+                      以下卡片已有消費發票，目前暫歸為主要管理者。您可以點擊「➕ 登記此卡」快速指定持卡人：
+                    </Text>
+                    {syncResult.unregisteredCarriers.map(unreg => (
+                      <View key={unreg.carrierNo} style={styles.unregCarrierRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.unregCarrierName}>
+                            {unreg.carrierName || '卡片載具'}
+                          </Text>
+                          <Text style={styles.unregCarrierNo}>
+                            卡號：{unreg.carrierNo}（共 {unreg.invoiceCount} 筆，NT$ {unreg.totalAmount.toLocaleString()}）
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.quickAddCardBtn}
+                          onPress={() => setQuickBindCarrier(unreg)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={styles.quickAddCardBtnText}>➕ 登記此卡</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* 發票前數筆明細預覽 */}
+                <Text style={styles.invoicePreviewListTitle}>
+                  📝 匯入明細預覽（前 4 筆示範）：
+                </Text>
+                {parsedInvoices.slice(0, 4).map(inv => {
+                  const itemsSummary =
+                    inv.items && inv.items.length > 0
+                      ? inv.items.map(i => `${i.name} ($${i.amount})`).join('、')
+                      : '無明細清單';
+                  return (
+                    <View
+                      key={inv.invoiceNumber}
+                      style={[
+                        styles.previewInvoiceItem,
+                        {
+                          backgroundColor: isDark ? colors.background.input : '#F8FAFC',
+                          borderColor: isDark ? colors.border.default : '#E2E8F0',
+                        },
+                      ]}
+                    >
+                      <View style={styles.previewInvoiceTopRow}>
+                        <Text style={[styles.previewInvoiceMerchant, { color: colors.text.primary }]}>
+                          {inv.sellerName || '商店'}
+                        </Text>
+                        <Text style={styles.previewInvoiceAmount}>
+                          NT$ {inv.amount.toLocaleString()}
+                        </Text>
+                      </View>
+                      <View style={styles.previewInvoiceMetaRow}>
+                        <Text style={styles.previewInvoiceDate}>
+                          📅 {inv.invoiceDate} · 發票 {inv.invoiceNumber}
+                        </Text>
+                        <View style={styles.previewCarrierBadge}>
+                          <Text style={styles.previewCarrierBadgeText}>
+                            {inv.carrierName || (inv.carrierNo?.startsWith('/') ? '手機條碼' : '卡片載具')}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text
+                        style={[styles.previewInvoiceItems, { color: colors.text.secondary }]}
+                        numberOfLines={1}
+                      >
+                        🛒 {itemsSummary}
+                      </Text>
+                    </View>
+                  );
+                })}
+
+                {/* 確認執行匯入按鈕 */}
+                <TouchableOpacity
+                  style={[styles.confirmImportBtn, isExecutingImport && { opacity: 0.7 }]}
+                  onPress={handleExecuteImport}
+                  disabled={isExecutingImport}
+                  activeOpacity={0.85}
+                >
+                  {isExecutingImport ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <ActivityIndicator color="#FFFFFF" size="small" />
+                      <Text style={styles.confirmImportBtnText}>正在同步寫入帳本資料庫...</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.confirmImportBtnText}>
+                      ✅ 確認匯入並同步至帳本 (共 {syncResult.stats.newCount + syncResult.stats.updatedCount} 筆更新)
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+
             {/* 手機條碼總戶頭區塊 */}
             <View
               style={[
                 styles.barcodeCard,
                 {
-                  backgroundColor: isDark ? 'rgba(14, 165, 233, 0.12)' : '#F0F9FF',
-                  borderColor: isDark ? 'rgba(56, 189, 248, 0.3)' : '#BAE6FD',
+                  backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
+                  borderColor: isDark ? colors.border.default : '#E2E8F0',
                 },
               ]}
             >
@@ -199,23 +712,23 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                 </View>
               )}
               <Text style={styles.barcodeHintText}>
-                全家人可將悠遊卡與信用卡歸戶至此手機條碼，雲端發票將自動依卡號精準歸戶！
+                全家人將悠遊卡與信用卡歸戶至此手機條碼，官方 Email 發票檔將自動依卡號精準分流！
               </Text>
             </View>
 
             {/* 卡片智慧分流對照表 */}
             <View style={styles.sectionBox}>
               <Text style={[styles.sectionTitle, { color: colors.text.primary }]}>
-                💳 卡片與家庭成員對應表
+                💳 現有卡片與家庭成員對應表
               </Text>
               <Text style={[styles.sectionDesc, { color: colors.text.secondary }]}>
-                雲端發票進來時，系統會自動根據卡號判定這筆消費是誰付的款：
+                發票匯入時，系統會自動根據載具卡號判定這筆消費是誰付的款：
               </Text>
 
               {cardMappings.length === 0 ? (
                 <Text style={styles.emptyCardHint}>目前尚未建立任何卡片，可至「設定」新增。</Text>
               ) : (
-                cardMappings.map(({ account, ownerName, cardDisplay, isConfigured }) => (
+                cardMappings.map(({ account, ownerName, cardDisplay }) => (
                   <View
                     key={account.id}
                     style={[
@@ -247,11 +760,39 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
               )}
             </View>
 
-            {/* 同步模擬測試按鈕 */}
+            {/* 官方 Email 發票通知設定指引 */}
+            <View
+              style={[
+                styles.emailGuideBox,
+                {
+                  backgroundColor: isDark ? 'rgba(245, 158, 11, 0.1)' : '#FFFBEB',
+                  borderColor: isDark ? 'rgba(245, 158, 11, 0.3)' : '#FDE68A',
+                },
+              ]}
+            >
+              <Text style={styles.emailGuideTitle}>
+                📧 如何開啟財政部每月/每期發票自動寄送？
+              </Text>
+              <Text style={styles.emailGuideText}>
+                1. 登入「財政部電子發票整合服務平台」➔ 進入「手機條碼專區」。{'\n'}
+                2. 展開「通知設定」➔「寄送消費資訊」。{'\n'}
+                3. 勾選「每月寄送」或「每期寄送」（建議勾選每期寄送，一次涵蓋雙月完整發票）。{'\n'}
+                4. 收到官方寄達的 Email 附件 CSV 後，直接匯入此處即可！
+              </Text>
+              <TouchableOpacity
+                style={styles.openMofBtn}
+                onPress={handleOpenMofWebsite}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.openMofBtnText}>🔗 前往財政部電子發票平台設定 ➔</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* 同步模擬測試按鈕 (保留供測試與演示) */}
             <View style={styles.actionCard}>
-              <Text style={styles.actionCardTitle}>⚡ 模擬雲端發票自動比對</Text>
+              <Text style={styles.actionCardTitle}>⚡ 模擬雲端發票自動比對測試</Text>
               <Text style={styles.actionCardDesc}>
-                立即模擬自財政部雲端抓取 3 筆最新發票（包含悠遊卡咖啡、全聯買菜、中油加油），自動測試比對引擎：
+                無 CSV 檔案時，亦可立即模擬抓取 3 筆測試發票（含悠遊卡咖啡、全聯買菜、中油加油）驗證比對引擎：
               </Text>
 
               <TouchableOpacity
@@ -263,73 +804,71 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                 {isSyncing ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <ActivityIndicator color="#FFFFFF" size="small" />
-                    <Text style={styles.runSyncBtnText}>正在自雲端抓取並執行智慧比對...</Text>
+                    <Text style={styles.runSyncBtnText}>正在執行智慧比對測試...</Text>
                   </View>
                 ) : (
-                  <Text style={styles.runSyncBtnText}>🚀 立即執行模擬雲端同步測試</Text>
+                  <Text style={styles.runSyncBtnText}>🚀 執行模擬雲端同步測試</Text>
                 )}
-              </TouchableOpacity>
-
-              {/* 同步結果報表 */}
-              {syncResult && (
-                <View
-                  style={[
-                    styles.resultCard,
-                    {
-                      backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5',
-                      borderColor: '#10B981',
-                    },
-                  ]}
-                >
-                  <Text style={styles.resultTitle}>🎉 智慧同步完成！</Text>
-                  <Text style={styles.resultSummary}>
-                    共解析 {syncResult.stats.totalInvoices} 筆雲端發票（總額 NT${' '}
-                    {syncResult.stats.totalAmount.toLocaleString()}）
-                  </Text>
-                  <View style={styles.resultDetailRow}>
-                    <Text style={styles.resultDetailItem}>
-                      • 自動補齊既有手動帳目：{syncResult.stats.updatedCount} 筆
-                    </Text>
-                    <Text style={styles.resultDetailItem}>
-                      • 依卡號自動分流新發票：{syncResult.stats.newCount} 筆
-                    </Text>
-                  </View>
-                  <Text style={styles.resultHint}>
-                    ✨ 提示：您可以返回主畫面或明細頁，查看亮起「☁️ 雲端發票」天空藍徽章與「✨ 剛更新」標記的交易！
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            {/* 官方 API 申請指南 */}
-            <View
-              style={[
-                styles.guideBox,
-                {
-                  backgroundColor: isDark ? colors.background.cardSubtle : '#F9FAFB',
-                  borderColor: isDark ? colors.border.default : '#E5E7EB',
-                },
-              ]}
-            >
-              <Text style={[styles.guideTitle, { color: colors.text.primary }]}>
-                📖 如何申請財政部官方正式 API？
-              </Text>
-              <Text style={[styles.guideStepText, { color: colors.text.secondary }]}>
-                1. 登入「財政部電子發票整合服務平台」。{'\n'}
-                2. 進入「營業人/開發者專區」申請「API 授權金鑰」。{'\n'}
-                3. 通過後將取得專屬的 AppID 與 API Key。{'\n'}
-                4. 填入系統環境變數即可正式上線 24 小時全自動同步！
-              </Text>
-
-              <TouchableOpacity
-                style={styles.openMofBtn}
-                onPress={handleOpenMofWebsite}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.openMofBtnText}>🔗 前往財政部電子發票平台申請 ➔</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
+
+          {/* 快速建卡指定家庭成員彈跳視窗 */}
+          {quickBindCarrier && (
+            <View style={styles.quickBindOverlay}>
+              <View
+                style={[
+                  styles.quickBindCard,
+                  { backgroundColor: isDark ? colors.background.card : '#FFFFFF' },
+                ]}
+              >
+                <Text style={[styles.quickBindTitle, { color: colors.text.primary }]}>
+                  💳 登記新卡片並指定成員
+                </Text>
+                <Text style={[styles.quickBindDesc, { color: colors.text.secondary }]}>
+                  載具名稱：{quickBindCarrier.carrierName || '卡片載具'}{'\n'}
+                  卡片號碼：{quickBindCarrier.carrierNo}{'\n'}
+                  消費筆數：共 {quickBindCarrier.invoiceCount} 筆，NT$ {quickBindCarrier.totalAmount.toLocaleString()}{'\n\n'}
+                  請選擇這張卡片平常是哪位家庭成員在使用的：
+                </Text>
+
+                <ScrollView style={{ maxHeight: 220, marginVertical: 8 }}>
+                  {members.map(member => (
+                    <TouchableOpacity
+                      key={member.id}
+                      style={[
+                        styles.quickBindMemberItem,
+                        { borderColor: isDark ? colors.border.default : '#E2E8F0' },
+                      ]}
+                      onPress={() => handleQuickAddCardConfirm(member.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{ fontSize: 20, marginRight: 10 }}>👤</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.quickBindMemberName, { color: colors.text.primary }]}>
+                          {member.display_name}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: colors.text.secondary }}>
+                          {member.role === 'owner' ? '👑 帳本管理員' : '家庭成員'}
+                        </Text>
+                      </View>
+                      <Text style={{ color: '#0284C7', fontWeight: '700', fontSize: 13 }}>
+                        指定此成員 ➔
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <TouchableOpacity
+                  style={styles.quickBindCancelBtn}
+                  onPress={() => setQuickBindCarrier(null)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ color: colors.text.secondary, fontWeight: '600' }}>取消</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </View>
       </View>
     </Modal>
@@ -343,7 +882,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    maxHeight: '90%',
+    maxHeight: '92%',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingTop: 16,
@@ -371,6 +910,292 @@ const styles = StyleSheet.create({
   bodyScroll: {
     paddingHorizontal: 16,
     paddingTop: 14,
+  },
+  statusBannerBox: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 14,
+  },
+  statusBannerText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
+  csvImportHeroCard: {
+    borderWidth: 1.5,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 16,
+  },
+  heroHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  heroTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0369A1',
+  },
+  heroBadge: {
+    backgroundColor: '#0284C7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  heroBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  heroDesc: {
+    fontSize: 12.5,
+    color: '#0C4A6E',
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  actionBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  primaryActionBtn: {
+    backgroundColor: '#0284C7',
+    borderRadius: 9,
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  secondaryActionBtn: {
+    backgroundColor: '#E0F2FE',
+    borderWidth: 1,
+    borderColor: '#7DD3FC',
+    borderRadius: 9,
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryActionBtnText: {
+    color: '#0369A1',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  textInputToggleBtn: {
+    paddingVertical: 11,
+    paddingHorizontal: 8,
+  },
+  textInputToggleBtnText: {
+    color: '#0284C7',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  rawInputBox: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#BAE6FD',
+  },
+  rawTextInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    textAlignVertical: 'top',
+    height: 100,
+  },
+  parseRawBtn: {
+    backgroundColor: '#0369A1',
+    borderRadius: 8,
+    paddingVertical: 9,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  parseRawBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  previewSectionBox: {
+    borderWidth: 1.5,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+  },
+  previewHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  previewTitle: {
+    fontSize: 14.5,
+    fontWeight: '800',
+    color: '#065F46',
+  },
+  clearPreviewBtnText: {
+    fontSize: 12,
+    color: '#EF4444',
+    fontWeight: '600',
+  },
+  statsSummaryGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#ECFDF5',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+  },
+  statsSummaryCol: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statsSummaryLabel: {
+    fontSize: 11,
+    color: '#047857',
+    marginBottom: 2,
+  },
+  statsSummaryVal: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#065F46',
+  },
+  alreadySyncedNote: {
+    backgroundColor: '#F0FDF4',
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 12,
+    borderWidth: 0.5,
+    borderColor: '#86EFAC',
+  },
+  alreadySyncedNoteText: {
+    fontSize: 11.5,
+    color: '#15803D',
+    lineHeight: 16,
+  },
+  unregWarningBox: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+  },
+  unregWarningTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#B45309',
+    marginBottom: 4,
+  },
+  unregWarningDesc: {
+    fontSize: 11.5,
+    color: '#92400E',
+    lineHeight: 16,
+    marginBottom: 8,
+  },
+  unregCarrierRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 0.5,
+    borderColor: '#FCD34D',
+    marginBottom: 6,
+  },
+  unregCarrierName: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  unregCarrierNo: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  quickAddCardBtn: {
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  quickAddCardBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  invoicePreviewListTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+    marginBottom: 8,
+  },
+  previewInvoiceItem: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 6,
+  },
+  previewInvoiceTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  previewInvoiceMerchant: {
+    fontSize: 13,
+    fontWeight: '700',
+    flex: 1,
+    marginRight: 8,
+  },
+  previewInvoiceAmount: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0284C7',
+  },
+  previewInvoiceMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginVertical: 4,
+  },
+  previewInvoiceDate: {
+    fontSize: 11,
+    color: '#64748B',
+  },
+  previewCarrierBadge: {
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  previewCarrierBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: '#0369A1',
+  },
+  previewInvoiceItems: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  confirmImportBtn: {
+    backgroundColor: '#10B981',
+    borderRadius: 10,
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+  },
+  confirmImportBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
   },
   barcodeCard: {
     borderWidth: 1,
@@ -429,7 +1254,7 @@ const styles = StyleSheet.create({
   },
   barcodeHintText: {
     fontSize: 11.5,
-    color: '#0C4A6E',
+    color: '#64748B',
     marginTop: 4,
     lineHeight: 16,
   },
@@ -489,13 +1314,31 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontStyle: 'italic',
   },
+  emailGuideBox: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  emailGuideTitle: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: '#92400E',
+    marginBottom: 6,
+  },
+  emailGuideText: {
+    fontSize: 12,
+    color: '#78350F',
+    lineHeight: 18,
+    marginBottom: 8,
+  },
   actionCard: {
     backgroundColor: '#F8FAFC',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
     padding: 14,
-    marginBottom: 16,
+    marginBottom: 20,
   },
   actionCardTitle: {
     fontSize: 14,
@@ -521,63 +1364,61 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     fontWeight: '700',
   },
-  resultCard: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-    marginTop: 12,
-  },
-  resultTitle: {
-    fontSize: 13.5,
-    fontWeight: '700',
-    color: '#065F46',
-    marginBottom: 2,
-  },
-  resultSummary: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#047857',
-    marginBottom: 6,
-  },
-  resultDetailRow: {
-    marginVertical: 4,
-    gap: 2,
-  },
-  resultDetailItem: {
-    fontSize: 12,
-    color: '#065F46',
-  },
-  resultHint: {
-    fontSize: 11,
-    color: '#047857',
-    marginTop: 6,
-    lineHeight: 15,
-  },
-  guideBox: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 24,
-  },
-  guideTitle: {
-    fontSize: 13.5,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  guideStepText: {
-    fontSize: 12,
-    lineHeight: 18,
-    marginBottom: 10,
-  },
   openMofBtn: {
     alignSelf: 'flex-start',
-    paddingVertical: 5,
-    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
   openMofBtnText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#0284C7',
+    color: '#B45309',
+  },
+  quickBindOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    zIndex: 999,
+  },
+  quickBindCard: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  quickBindTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  quickBindDesc: {
+    fontSize: 12.5,
+    lineHeight: 18,
+  },
+  quickBindMemberItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderWidth: 1,
+    borderRadius: 10,
+    marginBottom: 8,
+  },
+  quickBindMemberName: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  quickBindCancelBtn: {
+    alignItems: 'center',
+    paddingVertical: 10,
+    marginTop: 6,
   },
 });
-
