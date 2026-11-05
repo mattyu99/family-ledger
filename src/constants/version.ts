@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.14';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.14 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 0;
+export const APP_BUILD_REVISION = 1;
 
 // 完整版本字串 (例如 "1.0.14.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -21,7 +21,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.14',
     date: '2026-11-05',
-    title: '信用卡同銀行多卡歸戶對帳、歷期帳單存摺與桌面小工具排版優化全面上線',
+    title: '信用卡同銀行多卡歸戶對帳、歷期帳單存摺與發票拍照智慧辨識全面升級',
     highlights: [
       '🏛️ 信用卡同銀行多卡歸戶：自動辨識同銀行多張卡片，一張電子帳單即可全卡共享，省去重複上傳困擾。',
       '💳 銀行全卡合併對帳模式：支援單卡與全卡一鍵切換，即時計算全卡應繳總額，並清楚標註每筆消費來源卡片。',
@@ -29,6 +29,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
       '🏷️ 卡片管理支援發卡機構：輸入卡名自動智慧推薦發卡銀行，並提供熱門銀行快捷標籤與發卡行專屬徽章。',
       '📱 行動支付標籤智慧解析：全面優化電子支付與專屬錢包標籤顯示（如加油大利PAY），消費管道清晰易辨。',
       '🎨 桌面小工具圖文置中對齊：微調 2x2 快捷按鈕圖文垂直置中，大幅改善偏上現象，上下留白勻稱美觀。',
+      '📸 發票拍照 AI 辨識全面升級：升級最新智慧辨識核心並強化拍照快照穩定機制，傳統長條發票秒速辨識不再卡頓。',
     ],
   },
   {

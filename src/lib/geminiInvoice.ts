@@ -122,9 +122,13 @@ export const recognizeInvoiceWithGemini = async (
   // 1. 若 Supabase 已配置，優先嘗試透過後端 Edge Function 代理辨識 (完全隱藏 Gemini API 金鑰)
   if (isConfigured) {
     try {
-      const { data: edgeData, error: edgeError } = await supabase.functions.invoke('gemini-ocr', {
+      const edgePromise = supabase.functions.invoke('gemini-ocr', {
         body: { base64Data: cleanBase64, mimeType },
       });
+      const timeoutPromise = new Promise<{ data: null; error: { message: string } }>((resolve) =>
+        setTimeout(() => resolve({ data: null, error: { message: 'Edge Function 請求逾時' } }), 4000)
+      );
+      const { data: edgeData, error: edgeError } = await Promise.race([edgePromise, timeoutPromise]);
 
       if (!edgeError && edgeData) {
         const transformed = transformGeminiResultToInvoice(edgeData);
@@ -146,22 +150,27 @@ export const recognizeInvoiceWithGemini = async (
     return null;
   }
 
-  const prompt = `你是一個專業的台灣統一發票與收據光學辨識專家。請從這張發票圖片中精確提取以下資訊，並只以乾淨的 JSON 格式回傳：
+  const prompt = `你是一個專業的台灣統一發票、傳統收銀機發票與收據光學辨識專家。請從這張發票或收據圖片中精確提取以下資訊，並只以乾淨的 JSON 格式回傳：
 {
-  "invoiceNumber": "發票號碼，必須為 2 碼大寫英文字軌 + 8 碼數字，例如 EF67886270，若發票上無字軌號碼則填 null",
-  "invoiceDate": "開立日期，格式為 YYYY-MM-DD，若發票上標示為民國年（例如 115年9月26日）請自動轉換為西元年（如 2026-09-26），若完全無法辨識日期則填 null",
-  "totalAmount": "總計、合計或實收金額，純整數數字，例如 4310，若無則填 null",
-  "merchantName": "店家、開立單位或營業人名稱，例如 九族文化村，若無則填 null",
-  "itemsSummary": "購買的商品品名、數量與單價/小計簡述，多項以頓號分隔，例如 門票 $4160、小客車 $150，若無則填 null"
+  "invoiceNumber": "發票號碼，必須為 2 碼大寫英文字軌 + 8 碼數字，例如 EE21608064，若發票上無字軌號碼則填 null",
+  "invoiceDate": "開立日期，格式為 YYYY-MM-DD，若發票上標示為民國年（例如 115年10月14日）請自動轉換為西元年（如 2026-10-14），若完全無法辨識日期則填 null",
+  "totalAmount": "總計、合計、實收金額或現盈，純整數數字，例如 440，若無則填 null",
+  "merchantName": "店家名稱、開立單位或營業人名稱；若無明確店名但有地址（如 桃園市中壢區實踐路225之1號），可填入該地址，若皆無則填 null",
+  "itemsSummary": "購買的商品品名、數量與單價/小計簡述，多項以頓號分隔，若無品項明細則填 null"
 }`;
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  // 優先使用 gemini-2.5-flash，遇例外則自動回退至 gemini-1.5-flash
-  const candidateModels = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+  // 優先使用 Google 最新支援的輕量視覺模型 gemini-3.5-flash-lite，遇例外自動依序回退備援
+  const candidateModels = [
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-3.5-flash',
+    'gemini-3.8-flash',
+  ];
 
   for (const model of candidateModels) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+
     try {
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY.trim()}`;
       const response = await fetch(endpoint, {
@@ -189,6 +198,8 @@ export const recognizeInvoiceWithGemini = async (
         }),
       });
 
+      clearTimeout(timer);
+
       if (!response.ok) {
         const errJson = await response.json().catch(() => null);
         console.warn(`[GeminiInvoice] 模型 ${model} 請求失敗 (${response.status}):`, errJson?.error?.message);
@@ -211,21 +222,19 @@ export const recognizeInvoiceWithGemini = async (
         }
       }
 
-      clearTimeout(timer);
-
       const transformed = transformGeminiResultToInvoice(parsedAI);
       if (transformed) {
         return transformed;
       }
     } catch (err: any) {
+      clearTimeout(timer);
       if (err.name === 'AbortError') {
         console.warn(`[GeminiInvoice] 模型 ${model} 請求逾時`);
-        break;
+        continue;
       }
       console.warn(`[GeminiInvoice] 模型 ${model} 執行例外:`, err);
     }
   }
 
-  clearTimeout(timer);
   return null;
 };

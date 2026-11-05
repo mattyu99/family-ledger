@@ -207,7 +207,7 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
 
   // 即時掃描處理 (支援單畫面雙碼無縫融合與傳統長條發票一維條碼)
   const handleBarcodeScanned = ({ data }: { data: string }) => {
-    if (scanned || !data) return;
+    if (scanned || processingImage || !data) return;
     const parsed = parseTaiwanInvoiceQRCode(data, taxIdMerchantMap);
     if (!parsed) return;
 
@@ -294,29 +294,34 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
     if (processingImage) return;
     setProcessingImage(true);
     setErrorMessage(null);
-    setStatusMessage('🤖 正在透過 Google AI 智慧辨識紙本發票...');
+    setStatusMessage('🤖 正在擷取發票影像...');
 
     try {
       let base64Data: string | undefined = undefined;
 
-      // 1. 優先使用原生 CameraView 快照 (速度最快，無需跳轉)
+      // 1. 優先使用原生 CameraView 快照 (速度最快，包裝 3.5 秒超時避免底層原生管線掛起)
       if (cameraRef.current && typeof cameraRef.current.takePictureAsync === 'function') {
         try {
-          const photo = await cameraRef.current.takePictureAsync({
-            quality: 0.85,
+          const capturePromise = cameraRef.current.takePictureAsync({
+            quality: 0.65,
             base64: true,
-            skipProcessing: false,
+            skipProcessing: true,
           });
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('原生相機快照逾時')), 3500)
+          );
+          const photo = await Promise.race([capturePromise, timeoutPromise]);
           base64Data = photo?.base64;
         } catch (camErr) {
-          console.warn('[CameraView] 快照失敗，嘗試回退相機模組:', camErr);
+          console.warn('[CameraView] 快照失敗或逾時，嘗試回退系統相機模組:', camErr);
         }
       }
 
       // 2. 若快照未能取得 base64，回退調用 ImagePicker 之原生相機拍攝
       if (!base64Data && ImagePickerModule && typeof ImagePickerModule.launchCameraAsync === 'function') {
+        setStatusMessage('🤖 正在開啟相機進行拍照...');
         const result = await ImagePickerModule.launchCameraAsync({
-          quality: 0.85,
+          quality: 0.65,
           base64: true,
           allowsEditing: false,
         });
@@ -331,6 +336,7 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
         return;
       }
 
+      setStatusMessage('🤖 影像已就緒，Google AI 正在辨識發票...');
       const aiParsed = await recognizeInvoiceWithGemini(base64Data, 'image/jpeg');
       if (aiParsed) {
         finishWithResult(aiParsed);
@@ -510,7 +516,7 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
                 barcodeScannerSettings={{
                   barcodeTypes: ['qr', 'code39', 'code128', 'code93', 'codabar'],
                 }}
-                onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
+                onBarcodeScanned={scanned || processingImage ? undefined : handleBarcodeScanned}
               />
             )}
 
