@@ -97,8 +97,8 @@ export function usePaymentAccounts({
         });
         if (rpcErr || (rpcRes && rpcRes.success === false)) {
           let { error: insErr } = await supabase.from('payment_accounts').insert(newAcc);
-          if (insErr && (insErr.code === '42703' || insErr.message?.includes('card_number'))) {
-            const { card_number: _, ...fallbackAcc } = newAcc;
+          if (insErr && (insErr.code === '42703' || insErr.message?.includes('card_number') || insErr.message?.includes('issuer_bank'))) {
+            const { card_number: _c, issuer_bank: _i, ...fallbackAcc } = newAcc;
             await supabase.from('payment_accounts').insert(fallbackAcc);
           }
         }
@@ -136,8 +136,8 @@ export function usePaymentAccounts({
         });
         if (rpcErr || (rpcRes && rpcRes.success === false)) {
           let { error: updErr } = await supabase.from('payment_accounts').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id);
-          if (updErr && (updErr.code === '42703' || updErr.message?.includes('card_number'))) {
-            const { card_number: _, ...fallbackData } = data;
+          if (updErr && (updErr.code === '42703' || updErr.message?.includes('card_number') || updErr.message?.includes('issuer_bank'))) {
+            const { card_number: _c, issuer_bank: _i, ...fallbackData } = data;
             await supabase.from('payment_accounts').update({ ...fallbackData, updated_at: new Date().toISOString() }).eq('id', id);
           }
         }

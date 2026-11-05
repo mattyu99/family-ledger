@@ -18,6 +18,7 @@ import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import { sortAccountsByUser } from '../lib/payment';
+import { detectIssuerBank } from '../lib/bankIssuer';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -30,6 +31,21 @@ const COLOR_PALETTE = [
   '#EC4899', // 甜心粉
   '#8B5CF6', // 紫色
   '#D97706', // 琥珀金
+];
+
+const POPULAR_ISSUER_BANKS = [
+  '台北富邦',
+  '國泰世華',
+  '中國信託',
+  '玉山銀行',
+  '台新銀行',
+  '聯邦銀行',
+  '永豐銀行',
+  '星展銀行',
+  '渣打銀行',
+  '第一銀行',
+  '華南銀行',
+  '兆豐銀行',
 ];
 
 interface PaymentAccountsManageModalProps {
@@ -113,11 +129,12 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     };
   }, []);
 
-  const handleInputFocus = (field: 'name' | 'lastFour' | 'cycleDate' | 'balance' | 'cardNumber') => {
+  const handleInputFocus = (field: 'name' | 'lastFour' | 'cycleDate' | 'balance' | 'cardNumber' | 'issuerBank') => {
     const scrollMap: Record<string, number> = {
       name: 0,
-      lastFour: 110,
-      cycleDate: 190,
+      issuerBank: 80,
+      lastFour: 150,
+      cycleDate: 230,
       balance: 140,
       cardNumber: 180,
     };
@@ -139,6 +156,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   const [formCycleDate, setFormCycleDate] = useState<string>('15');
   const [formBalance, setFormBalance] = useState<string>('0');
   const [formColor, setFormColor] = useState<string>(COLOR_PALETTE[0]);
+  const [formIssuerBank, setFormIssuerBank] = useState<string>('');
+  const [isManualIssuer, setIsManualIssuer] = useState<boolean>(false);
 
   // 判斷某個綁定成員 ID 是否對應當前本機使用者 (支援 ID 直接比對、名稱別名比對與名冊連動)
   const isMatchedToCurrentUser = useCallback(
@@ -199,7 +218,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     setIsEditing(true);
     setEditingId(null);
     setFormType(type);
-    setFormName(type === 'credit_card' ? '富邦 Costco 卡' : type === 'bank' ? '玉山銀行 薪轉戶' : type === 'cash' ? '現金皮夾' : '悠遊卡');
+    const defaultName = type === 'credit_card' ? '富邦 Costco 卡' : type === 'bank' ? '玉山銀行 薪轉戶' : type === 'cash' ? '現金皮夾' : '悠遊卡';
+    setFormName(defaultName);
     const myMember = members.find(m => isMatchedToCurrentUser(m.id));
     setFormUserId(myMember ? myMember.id : (currentUser?.id || ''));
     setFormLastFour('');
@@ -207,6 +227,9 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     setFormCycleDate('15');
     setFormBalance('0');
     setFormColor(type === 'credit_card' ? COLOR_PALETTE[0] : type === 'bank' ? COLOR_PALETTE[6] : type === 'cash' ? COLOR_PALETTE[2] : COLOR_PALETTE[4]);
+    setIsManualIssuer(false);
+    const autoDetected = type === 'credit_card' ? detectIssuerBank(defaultName) : null;
+    setFormIssuerBank(autoDetected ? autoDetected.shortName : '');
   };
 
   const handleOpenEdit = (acc: PaymentAccount) => {
@@ -234,6 +257,19 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     setFormCycleDate(String(acc.billing_cycle_date || 15));
     setFormBalance(String(acc.balance || 0));
     setFormColor(acc.color || (acc.type === 'bank' ? COLOR_PALETTE[6] : COLOR_PALETTE[0]));
+    const detected = acc.type === 'credit_card' ? detectIssuerBank(acc.name, acc.issuer_bank) : null;
+    setIsManualIssuer(!!acc.issuer_bank);
+    setFormIssuerBank(acc.issuer_bank || (detected ? detected.shortName : ''));
+  };
+
+  const handleNameChange = (text: string) => {
+    setFormName(text);
+    if (formType === 'credit_card' && !isManualIssuer) {
+      const detected = detectIssuerBank(text);
+      if (detected) {
+        setFormIssuerBank(detected.shortName);
+      }
+    }
   };
 
   const handleSaveForm = async () => {
@@ -254,6 +290,9 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
       ? (cleanCardNumber ? (cleanCardNumber.length > 4 ? cleanCardNumber.slice(-4) : cleanCardNumber) : (cleanLastFour || undefined))
       : (cleanLastFour || undefined);
 
+    const cleanIssuerBank = formIssuerBank.trim();
+    const finalIssuerBank = formType === 'credit_card' ? (cleanIssuerBank || undefined) : undefined;
+
     const cycleNum = parseInt(formCycleDate, 10);
     const validCycle = isNaN(cycleNum) ? 15 : Math.max(1, Math.min(31, cycleNum));
     const balanceNum = parseFloat(formBalance) || 0;
@@ -269,6 +308,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
         last_four_digits: finalLastFour,
         card_number: finalCardNumber,
         billing_cycle_date: formType === 'credit_card' ? validCycle : undefined,
+        issuer_bank: finalIssuerBank,
         balance: formType === 'stored_value' ? balanceNum : 0,
         color: formColor,
       });
@@ -280,6 +320,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
         last_four_digits: finalLastFour,
         card_number: finalCardNumber,
         billing_cycle_date: formType === 'credit_card' ? validCycle : undefined,
+        issuer_bank: finalIssuerBank,
         balance: formType === 'stored_value' ? balanceNum : 0,
         color: formColor,
         icon: formType === 'credit_card' ? '💳' : formType === 'bank' ? '🏦' : '🚌',
@@ -532,7 +573,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
               <TextInput
                 style={styles.textInput}
                 value={formName}
-                onChangeText={setFormName}
+                onChangeText={handleNameChange}
                 placeholder={
                   formType === 'credit_card'
                     ? '例如：富邦 Costco 聯名卡'
@@ -584,6 +625,64 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
 
               {formType === 'credit_card' ? (
                 <>
+                  {/* 發卡機構 (用於同銀行多卡歸戶對帳) */}
+                  <View style={styles.issuerHeaderRow}>
+                    <Text style={styles.fieldLabel}>🏛️ 發卡機構 (選填，用於同銀行多卡歸戶對帳)</Text>
+                    {!!formIssuerBank && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          setFormIssuerBank('');
+                          setIsManualIssuer(true);
+                        }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={styles.clearIssuerText}>✕ 清除</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* 常用發卡銀行快捷標籤滑軌 */}
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.quickBankRow}
+                  >
+                    {POPULAR_ISSUER_BANKS.map(bank => {
+                      const isSelected = formIssuerBank === bank;
+                      return (
+                        <TouchableOpacity
+                          key={bank}
+                          style={[styles.quickBankChip, isSelected && styles.quickBankChipActive]}
+                          onPress={() => {
+                            setFormIssuerBank(isSelected ? '' : bank);
+                            setIsManualIssuer(true);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.quickBankText, isSelected && styles.quickBankTextActive]}>
+                            {isSelected ? `✓ ${bank}` : bank}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+
+                  {/* 自訂或微調發卡機構名稱 */}
+                  <TextInput
+                    style={styles.textInput}
+                    value={formIssuerBank}
+                    onChangeText={text => {
+                      setFormIssuerBank(text);
+                      setIsManualIssuer(true);
+                    }}
+                    placeholder="例如：國泰世華、台北富邦、樂天、新光..."
+                    onFocus={() => handleInputFocus('issuerBank')}
+                    returnKeyType="next"
+                  />
+                  <Text style={styles.fieldHint}>
+                    💡 設定發卡機構後，同銀行名下多張信用卡在對帳時會自動合併歸戶，上傳一張電子帳單即可全卡自動對齊！
+                  </Text>
+
                   {/* 末四碼 */}
                   <Text style={styles.fieldLabel}>卡片末四碼 (選填，方便對帳辨識)</Text>
                   <TextInput
@@ -776,6 +875,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                       const cardholder = card.user_id ? (getMemberById ? getMemberById(card.user_id) : members.find(m => m.id === card.user_id)) : null;
                       const isMyCard = isMatchedToCurrentUser(card.user_id);
                       const canEditCard = isOwner || (scope === 'my' && isMyCard);
+                      const detected = detectIssuerBank(card.name, card.issuer_bank);
+                      const issuerDisplay = card.issuer_bank || (detected ? detected.shortName : null);
                       return (
                         <View key={card.id} style={[styles.cardItemRow, { borderLeftColor: card.color || '#3B82F6' }]}>
                           <View style={styles.cardInfoCol}>
@@ -784,6 +885,11 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                               {!!card.last_four_digits && (
                                 <View style={styles.tagBadge}>
                                   <Text style={styles.tagBadgeText}>*{card.last_four_digits}</Text>
+                                </View>
+                              )}
+                              {!!issuerDisplay && (
+                                <View style={styles.issuerBadge}>
+                                  <Text style={styles.issuerBadgeText}>🏛️ {issuerDisplay}</Text>
                                 </View>
                               )}
                             </View>
@@ -1424,5 +1530,56 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 12,
     color: colors.text.muted,
     fontWeight: '600',
+  },
+  issuerHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 6,
+  },
+  clearIssuerText: {
+    fontSize: 11,
+    color: isDark ? '#F87171' : '#EF4444',
+    fontWeight: '600',
+  },
+  quickBankRow: {
+    paddingVertical: 4,
+    gap: 6,
+    marginBottom: 8,
+  },
+  quickBankChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
+  },
+  quickBankChipActive: {
+    borderColor: '#4F46E5',
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF',
+  },
+  quickBankText: {
+    fontSize: 11.5,
+    color: colors.text.secondary,
+    fontWeight: '500',
+  },
+  quickBankTextActive: {
+    color: isDark ? '#818CF8' : '#4F46E5',
+    fontWeight: '700',
+  },
+  issuerBadge: {
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(99, 102, 241, 0.3)' : '#C7D2FE',
+  },
+  issuerBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: isDark ? '#818CF8' : '#4F46E5',
   },
 });
