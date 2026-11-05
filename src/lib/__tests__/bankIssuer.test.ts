@@ -178,11 +178,23 @@ describe('💳 信用卡發卡機構歸戶辨識演算法 (bankIssuer.test.ts)',
     });
 
     it('findIssuerGroupForCard 與 getSiblingCardIdsInGroup 能精確查獲同銀行卡片清單', () => {
+      const group = findIssuerGroupForCard('cathay-1', testAccounts);
+      expect(group).toBeDefined();
+      expect(group?.issuer.shortName).toBe('國泰世華');
+      expect(group?.isMultiCard).toBe(true);
+      expect(group?.cards.map(c => c.id)).toEqual(['cathay-1', 'cathay-2']);
+
       const siblings = getSiblingCardIdsInGroup('cathay-1', testAccounts);
       expect(siblings).toEqual(['cathay-1', 'cathay-2']);
 
+      const singleGroup = findIssuerGroupForCard('fubon-1', testAccounts);
+      expect(singleGroup?.isMultiCard).toBe(false);
+
       const singleSiblings = getSiblingCardIdsInGroup('fubon-1', testAccounts);
       expect(singleSiblings).toEqual(['fubon-1']);
+
+      const notFoundGroup = findIssuerGroupForCard('non-exist', testAccounts);
+      expect(notFoundGroup).toBeNull();
 
       const notFoundSiblings = getSiblingCardIdsInGroup('non-exist', testAccounts);
       expect(notFoundSiblings).toEqual(['non-exist']);

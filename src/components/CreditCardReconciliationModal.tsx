@@ -42,6 +42,10 @@ import {
 } from '../lib/statementStorage';
 import { getCategoryIcon } from '../lib/icons';
 import { HorizontalScrollView } from './HorizontalScrollView';
+import {
+  findIssuerGroupForCard,
+  CreditCardIssuerGroup,
+} from '../lib/bankIssuer';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -173,6 +177,8 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
   const [accountType, setAccountType] = useState<'credit_card' | 'stored_value'>('credit_card');
   const [selectedCardId, setSelectedCardId] = useState<string>('');
   const [selectedCycleKey, setSelectedCycleKey] = useState<string>('');
+  // 🏛️ 發卡機構多卡歸戶對帳檢視模式：'single' (單卡明細) ⇄ 'combined' (全行多卡合併)
+  const [reconcileViewMode, setReconcileViewMode] = useState<'single' | 'combined'>('single');
   const [cycleCount, setCycleCount] = useState<number>(6);
 
   // 📎 電子帳單雲端庫狀態
@@ -433,6 +439,20 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
   const isMySelectedCard = isMatchedToCurrentUser(currentCard?.user_id);
   const canManageCurrentCard = isOwner || (!isTargetingOtherMember && isMySelectedCard);
 
+  // 當前信用卡所屬之發卡機構歸戶群組（例如「國泰世華 15 號結帳」）
+  const currentIssuerGroup: CreditCardIssuerGroup | null = useMemo(() => {
+    if (!currentCard || accountType !== 'credit_card') return null;
+    return findIssuerGroupForCard(currentCard.id, paymentAccounts);
+  }, [currentCard, accountType, paymentAccounts]);
+
+  // 判斷此持卡人於同銀行同結帳日是否擁有 2 張（含）以上之信用卡
+  const hasSiblingCards = useMemo(() => {
+    return (currentIssuerGroup?.cards.length || 0) > 1;
+  }, [currentIssuerGroup]);
+
+  // 有效檢視模式（無姊妹卡時強制為 single）
+  const effectiveViewMode = hasSiblingCards ? reconcileViewMode : 'single';
+
   // 計算該卡片的帳單週期清單 (信用卡依結帳日動態計算，悠遊卡依自然月份計算)
   const billingCycles = useMemo(() => {
     if (!currentCard) return [];
@@ -471,22 +491,37 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
     return statements.filter(s => s.cardId === vaultFilterCardId);
   }, [statements, vaultFilterCardId]);
 
-  // 篩選出落入此卡片與此週期區間內的所有消費、回饋折抵與加值
+  // 篩選出落入此卡片（或同銀行全卡合併）與此週期區間內的所有消費、回饋折抵與加值
   const cycleTransactions = useMemo(() => {
     if (!currentCard || !currentCycle) return [];
     return transactions.filter(t => {
       if (t.type === 'memo') return false;
       if (accountType === 'credit_card') {
-        const isCardMatch =
-          t.account_id === currentCard.id ||
-          (t.payment_method === 'credit_card' &&
-            !t.account_id &&
-            (t.paid_by === currentCard.user_id ||
-              (getMemberById &&
-                currentCard.user_id &&
-                getMemberById(t.paid_by)?.display_name &&
-                getMemberById(t.paid_by)?.display_name === getMemberById(currentCard.user_id)?.display_name)));
-        if (!isCardMatch) return false;
+        if (effectiveViewMode === 'combined' && currentIssuerGroup) {
+          // 合併模式：同持卡人、同銀行歸戶群組內所有姊妹卡之消費與折抵
+          const siblingIds = currentIssuerGroup.cards.map(c => c.id);
+          const isCardMatch =
+            (t.account_id && siblingIds.includes(t.account_id)) ||
+            (t.payment_method === 'credit_card' &&
+              !t.account_id &&
+              (t.paid_by === currentIssuerGroup.userId ||
+                (getMemberById &&
+                  currentIssuerGroup.userId &&
+                  getMemberById(t.paid_by)?.display_name === getMemberById(currentIssuerGroup.userId)?.display_name)));
+          if (!isCardMatch) return false;
+        } else {
+          // 單卡模式：僅包含當前選定之信用卡
+          const isCardMatch =
+            t.account_id === currentCard.id ||
+            (t.payment_method === 'credit_card' &&
+              !t.account_id &&
+              (t.paid_by === currentCard.user_id ||
+                (getMemberById &&
+                  currentCard.user_id &&
+                  getMemberById(t.paid_by)?.display_name &&
+                  getMemberById(t.paid_by)?.display_name === getMemberById(currentCard.user_id)?.display_name)));
+          if (!isCardMatch) return false;
+        }
       } else {
         // 悠遊卡模式：
         // 1. 刷卡消費扣款
@@ -509,8 +544,34 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
         if (!isCardSpend && !isCardTopUp) return false;
       }
       return isDateInBillingCycle(t.transacted_at, currentCycle.startDate, currentCycle.endDate);
+    }).sort((a, b) => new Date(b.transacted_at).getTime() - new Date(a.transacted_at).getTime());
+  }, [transactions, currentCard, currentCycle, accountType, paymentAccounts, effectiveViewMode, currentIssuerGroup, getMemberById]);
+
+  // 合併模式下各張卡片的小計（消費總計 - 回饋折抵 = 應繳金額，及核對進度）
+  const cardSubtotals = useMemo(() => {
+    if (effectiveViewMode !== 'combined' || !currentIssuerGroup) return [];
+    return currentIssuerGroup.cards.map(card => {
+      const cardTxs = cycleTransactions.filter(t => {
+        if (t.account_id) return t.account_id === card.id;
+        return card.id === currentCard?.id;
+      });
+      const spendTxs = cardTxs.filter(t => t.type === 'expense' || t.type === 'transfer');
+      const rebateTxs = cardTxs.filter(t => t.type === 'income');
+      const totalSpend = spendTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+      const totalRebate = rebateTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+      const totalAmount = totalSpend - totalRebate;
+      const reconciledCount = cardTxs.filter(t => t.is_reconciled).length;
+      return {
+        card,
+        totalSpend,
+        totalRebate,
+        totalAmount,
+        totalCount: cardTxs.length,
+        reconciledCount,
+        isAllReconciled: cardTxs.length > 0 && reconciledCount === cardTxs.length,
+      };
     });
-  }, [transactions, currentCard, currentCycle, accountType, paymentAccounts]);
+  }, [effectiveViewMode, currentIssuerGroup, cycleTransactions, currentCard]);
 
   // 本期統計：支出總額、回饋折抵總額、實際應繳、加值總額、已核對筆數
   const stats = useMemo(() => {
@@ -1163,14 +1224,47 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                 )}
               </HorizontalScrollView>
 
+              {/* 同發卡機構多卡歸戶：單卡 ⇄ 全行多卡合併切換膠囊 */}
+              {isCredit && hasSiblingCards && currentIssuerGroup && (
+                <View style={styles.modeToggleWrapper}>
+                  <View style={styles.modeToggleContainer}>
+                    <TouchableOpacity
+                      style={[styles.modeToggleBtn, effectiveViewMode === 'single' && styles.modeToggleBtnActive]}
+                      onPress={() => setReconcileViewMode('single')}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.modeToggleText, effectiveViewMode === 'single' && styles.modeToggleTextActive]}>
+                        💳 單卡明細 ({currentCard.name})
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.modeToggleBtn, effectiveViewMode === 'combined' && styles.modeToggleBtnActive]}
+                      onPress={() => setReconcileViewMode('combined')}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.modeToggleText, effectiveViewMode === 'combined' && styles.modeToggleTextActive]}>
+                        🏛️ {currentIssuerGroup.issuer.shortName}全卡合併 ({currentIssuerGroup.cards.length}張)
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
               {/* 本期 / 本月對帳看板卡片 */}
               {currentCycle && currentCard && (
                 <View style={styles.summaryCard}>
                   <View style={styles.summaryTopRow}>
                     <View style={{ flex: 1, marginRight: 8 }}>
-                      <Text style={styles.summaryCycleName}>{currentCycle.cycleName}</Text>
+                      <Text style={styles.summaryCycleName}>
+                        {isCredit && effectiveViewMode === 'combined' && currentIssuerGroup
+                          ? `🏛️ ${currentIssuerGroup.issuer.shortName} · ${currentCycle.cycleName} (全行合併)`
+                          : currentCycle.cycleName}
+                      </Text>
                       <Text style={styles.summaryDateRange}>
                         {isCredit ? '帳單週期：' : '自然月份：'}{currentCycle.rangeText}
+                        {isCredit && effectiveViewMode === 'combined' && currentIssuerGroup && (
+                          ` · 包含 ${currentIssuerGroup.cards.length} 張卡片`
+                        )}
                       </Text>
                       {!isCredit && (
                         <View style={styles.currentBalancePill}>
@@ -1183,7 +1277,11 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                     {isCredit ? (
                       <View style={styles.summaryAmountBox}>
                         <Text style={styles.summaryAmountLabel}>
-                          {stats.totalRebate > 0 ? '折抵後實際應繳' : '本期累積應繳'}
+                          {effectiveViewMode === 'combined' && currentIssuerGroup
+                            ? `${currentIssuerGroup.issuer.shortName} 合併應繳總額`
+                            : stats.totalRebate > 0
+                            ? '折抵後實際應繳'
+                            : '本期累積應繳'}
                         </Text>
                         <Text style={styles.summaryAmountValue}>
                           NT$ {stats.totalAmount.toLocaleString()}
@@ -1239,6 +1337,56 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                       />
                     </View>
                   </View>
+
+                  {/* 🏛️ 合併模式下各卡應繳小計清單 */}
+                  {isCredit && effectiveViewMode === 'combined' && cardSubtotals.length > 0 && (
+                    <View style={styles.subtotalsContainer}>
+                      <Text style={styles.subtotalsTitle}>
+                        各卡應繳小計 ({cardSubtotals.length} 張)：
+                      </Text>
+                      <View style={styles.subtotalsRow}>
+                        {cardSubtotals.map(item => (
+                          <View key={item.card.id} style={styles.subtotalPill}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <Text style={styles.subtotalCardName} numberOfLines={1}>
+                                {item.card.name}
+                              </Text>
+                              {item.card.last_four_digits ? (
+                                <Text style={styles.subtotalCardDigits}>
+                                  (*{item.card.last_four_digits})
+                                </Text>
+                              ) : null}
+                            </View>
+                            <Text style={styles.subtotalAmount}>
+                              NT$ {item.totalAmount.toLocaleString()}
+                            </Text>
+                            <Text style={styles.subtotalMeta}>
+                              {item.totalCount} 筆 · {item.totalCount > 0 && item.isAllReconciled ? '✓ 全數核對' : `${item.reconciledCount}/${item.totalCount} 核對`}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+
+                  {/* 🎉 全數核對完成溫馨提示橫幅 */}
+                  {isCredit && stats.isAllReconciled && stats.totalAmount > 0 && canManageCurrentCard && (
+                    <View style={styles.reconciledSuccessBanner}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                        <Text style={{ fontSize: 16 }}>🎉</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.reconciledSuccessTitle}>
+                            {effectiveViewMode === 'combined' && currentIssuerGroup
+                              ? `${currentIssuerGroup.issuer.shortName} 全行帳單已全數核對完成！`
+                              : `${currentCard.name} 本期消費已全數核對完成！`}
+                          </Text>
+                          <Text style={styles.reconciledSuccessSubtitle}>
+                            本期實際應繳 NT$ {stats.totalAmount.toLocaleString()} · 帳目完全相符
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  )}
 
                   {/* 💳 信用卡專屬：電子帳單存取區 ＆ 刷卡回饋折抵工具列 */}
                   {isCredit && (
@@ -1515,7 +1663,9 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
               <View style={styles.txListHeader}>
                 <Text style={styles.txListTitle}>
                   {isCredit
-                    ? `本期消費與折抵明細 (${cycleTransactions.length} 筆)`
+                    ? effectiveViewMode === 'combined' && currentIssuerGroup
+                      ? `🏛️ ${currentIssuerGroup.issuer.shortName}全卡合併消費與折抵 (${cycleTransactions.length} 筆)`
+                      : `本期消費與折抵明細 (${cycleTransactions.length} 筆)`
                     : `當月收支與加值明細 (${cycleTransactions.length} 筆)`}
                 </Text>
                 <Text style={styles.txListHint}>核對無誤請點擊右側按鈕打勾 ✍️</Text>
@@ -1525,7 +1675,9 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                 <View style={styles.emptyTxBox}>
                   <Text style={styles.emptyTxText}>
                     {isCredit
-                      ? '本期帳單週期內尚無此信用卡的刷卡或折抵紀錄'
+                      ? effectiveViewMode === 'combined' && currentIssuerGroup
+                        ? `本期帳單週期內尚無【${currentIssuerGroup.issuer.shortName}】任何信用卡的刷卡或折抵紀錄`
+                        : '本期帳單週期內尚無此信用卡的刷卡或折抵紀錄'
                       : '本月份內尚無此悠遊卡的扣款或加值紀錄'}
                   </Text>
                 </View>
@@ -1563,6 +1715,17 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                       >
                         <View style={styles.txTitleRow}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 6, flexWrap: 'wrap', gap: 4 }}>
+                            {isCredit && effectiveViewMode === 'combined' && (() => {
+                              const sourceCard = paymentAccounts.find(a => a.id === tx.account_id);
+                              const cardName = sourceCard ? sourceCard.name : currentCard?.name || '信用卡';
+                              return (
+                                <View style={styles.cardOriginBadge}>
+                                  <Text style={styles.cardOriginBadgeText} numberOfLines={1}>
+                                    💳 {cardName}
+                                  </Text>
+                                </View>
+                              );
+                            })()}
                             {isTopUp && (
                               <View style={styles.topUpBadge}>
                                 <Text style={styles.topUpBadgeText}>加值</Text>
@@ -2743,5 +2906,128 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
+  },
+  // 單卡 ⇄ 全卡合併切換器
+  modeToggleWrapper: {
+    marginTop: 6,
+    marginBottom: 6,
+  },
+  modeToggleContainer: {
+    flexDirection: 'row',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
+    borderRadius: 12,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
+  },
+  modeToggleBtn: {
+    flex: 1,
+    paddingVertical: 7,
+    alignItems: 'center',
+    borderRadius: 9,
+  },
+  modeToggleBtnActive: {
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  modeToggleText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.text.muted,
+  },
+  modeToggleTextActive: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: isDark ? '#60A5FA' : '#1D4ED8',
+  },
+
+  // 合併模式各卡小計清單
+  subtotalsContainer: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+  },
+  subtotalsTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.text.secondary,
+    marginBottom: 6,
+  },
+  subtotalsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  subtotalPill: {
+    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAFC',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+  },
+  subtotalCardName: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.text.primary,
+    maxWidth: 130,
+  },
+  subtotalCardDigits: {
+    fontSize: 10,
+    color: colors.text.muted,
+  },
+  subtotalAmount: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text.primary,
+    marginTop: 2,
+  },
+  subtotalMeta: {
+    fontSize: 9.5,
+    color: colors.text.muted,
+    marginTop: 1,
+  },
+
+  // 交易明細清單中來源卡片標籤
+  cardOriginBadge: {
+    backgroundColor: isDark ? 'rgba(147, 51, 234, 0.15)' : '#F3E8FF',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(147, 51, 234, 0.35)' : '#E9D5FF',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    maxWidth: 130,
+  },
+  cardOriginBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: isDark ? '#D8B4FE' : '#7E22CE',
+  },
+
+  // 全數核對完成溫馨提示橫幅
+  reconciledSuccessBanner: {
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#A7F3D0',
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  reconciledSuccessTitle: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: isDark ? '#6EE7B7' : '#065F46',
+  },
+  reconciledSuccessSubtitle: {
+    fontSize: 11,
+    color: isDark ? '#A7F3D0' : '#047857',
+    marginTop: 2,
   },
 });
