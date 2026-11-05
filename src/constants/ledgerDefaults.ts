@@ -224,6 +224,7 @@ export const STORAGE_KEYS = {
   LEDGER_ALLOW_NEW_MEMBERS: '@family_ledger_allow_new_members',
   LEDGERS: '@family_ledger_list',
   TAX_ID_MERCHANTS: '@family_ledger_tax_id_merchants',
+  CARRIER_RULES: '@family_ledger_carrier_rules',
 };
 
 // 預設常用店家快捷建議清單（涵蓋台灣家庭最普遍的日常採買店家）

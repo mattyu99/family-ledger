@@ -238,3 +238,14 @@ export interface CloudInvoiceItem {
     amount: number;
   }[];
 }
+
+export interface CarrierRule {
+  id: string;
+  ledger_id: string;
+  carrier_no: string; // 載具代碼 (如 16729177, mattyu09@gmail.com, 201103507225)
+  carrier_name?: string; // 載具名稱 (如 【蝦皮購物】載具, 跨境電商PSN, MOMO購物)
+  user_id: string; // 歸屬成員 ID (如雅媽)
+  account_id?: string; // 選填：預設扣款卡片 (如國泰 CUBE 卡)
+  created_at: string;
+  updated_at?: string;
+}

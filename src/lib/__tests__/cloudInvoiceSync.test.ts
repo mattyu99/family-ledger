@@ -5,7 +5,7 @@ import {
   parseMofInvoiceCsv,
   processCloudInvoicesSync,
 } from '../cloudInvoiceSync';
-import { CloudInvoiceItem, PaymentAccount, Profile, Transaction } from '../../types/database';
+import { CloudInvoiceItem, PaymentAccount, Profile, Transaction, CarrierRule } from '../../types/database';
 
 describe('cloudInvoiceSync 智慧比對引擎測試', () => {
   const mockAccounts: PaymentAccount[] = [
@@ -51,6 +51,33 @@ describe('cloudInvoiceSync 智慧比對引擎測試', () => {
       expect(match).toBeDefined();
       expect(match?.id).toBe('acc_cc_mom');
       expect(match?.user_id).toBe('user_mom');
+    });
+
+    it('應能支援單一卡片帳戶綁定多組載具代碼（以逗號分隔）', () => {
+      const accountsWithTokens: PaymentAccount[] = [
+        {
+          id: 'acc_jko_dad',
+          ledger_id: 'ledger_1',
+          name: '智爸台新街口卡',
+          type: 'credit_card',
+          user_id: 'user_dad',
+          card_number: '356558hkku998127, 421378e+UI7812',
+          last_four_digits: '5566',
+          balance: 0,
+          sort_order: 3,
+          created_at: '2026-01-01',
+        },
+      ];
+
+      // 比對第一組代碼
+      const match1 = findMatchingAccount('356558hkku998127', '2G0001', accountsWithTokens);
+      expect(match1).toBeDefined();
+      expect(match1?.id).toBe('acc_jko_dad');
+
+      // 比對第二組代碼
+      const match2 = findMatchingAccount('421378e+UI7812', '2G0001', accountsWithTokens);
+      expect(match2).toBeDefined();
+      expect(match2?.id).toBe('acc_jko_dad');
     });
 
     it('若無符合卡號應回傳 undefined', () => {
@@ -268,6 +295,74 @@ describe('cloudInvoiceSync 智慧比對引擎測試', () => {
       expect(result.unregisteredCarriers[0].carrierName).toBe('一卡通');
       expect(result.unregisteredCarriers[0].invoiceCount).toBe(1);
       expect(result.unregisteredCarriers[0].totalAmount).toBe(35);
+    });
+
+    it('發票若命中載具分流規則（隱喻的第三張卡），應自動指派成員且不列入未建檔載具', () => {
+      const mockRules: CarrierRule[] = [
+        {
+          id: 'rule_shopee_mom',
+          ledger_id: 'ledger_1',
+          carrier_no: '16729177',
+          carrier_name: '【樂購蝦皮】載具',
+          user_id: 'user_mom',
+          created_at: '2026-01-01',
+          updated_at: '2026-01-01',
+        },
+        {
+          id: 'rule_psn_dad',
+          ledger_id: 'ledger_1',
+          carrier_no: 'mattyu09@gmail.com',
+          carrier_name: 'PSN跨境電商',
+          user_id: 'user_dad',
+          account_id: 'acc_cc_mom', // 假設綁定媽媽的卡扣款
+          created_at: '2026-01-01',
+          updated_at: '2026-01-01',
+        },
+      ];
+
+      const invoices: CloudInvoiceItem[] = [
+        {
+          invoiceNumber: 'SP-11112222',
+          invoiceDate: '2026-09-10',
+          sellerName: '樂購蝦皮拍賣',
+          amount: 520,
+          carrierNo: '16729177',
+          carrierName: '蝦皮購物載具',
+        },
+        {
+          invoiceNumber: 'PS-33334444',
+          invoiceDate: '2026-09-11',
+          sellerName: 'Sony Interactive Entertainment',
+          amount: 1490,
+          carrierNo: 'mattyu09@gmail.com',
+          carrierName: '跨境電商載具',
+        },
+      ];
+
+      const result = processCloudInvoicesSync(
+        invoices,
+        [],
+        mockAccounts,
+        mockMembers,
+        'user_dad', // 預設付費人是智爸
+        'ledger_1',
+        'cat_general',
+        mockRules
+      );
+
+      // 1. 蝦皮發票應指派給雅媽 (user_mom)
+      const shopeeTx = result.newTransactions.find(t => t.data.invoice_number === 'SP-11112222');
+      expect(shopeeTx).toBeDefined();
+      expect(shopeeTx?.data.paid_by).toBe('user_mom');
+
+      // 2. PSN 發票應指派給智爸 (user_dad)，且關聯指定帳戶 (acc_cc_mom)
+      const psnTx = result.newTransactions.find(t => t.data.invoice_number === 'PS-33334444');
+      expect(psnTx).toBeDefined();
+      expect(psnTx?.data.paid_by).toBe('user_dad');
+      expect(psnTx?.data.account_id).toBe('acc_cc_mom');
+
+      // 3. 兩筆發票都命中規則，未註冊載具清單應為空！
+      expect(result.unregisteredCarriers.length).toBe(0);
     });
   });
 

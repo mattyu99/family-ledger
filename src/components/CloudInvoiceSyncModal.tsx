@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -21,7 +21,12 @@ import {
   parseMofInvoiceCsv,
   SyncProcessResult,
 } from '../lib/cloudInvoiceSync';
-import { CloudInvoiceItem } from '../types/database';
+import { CloudInvoiceItem, CarrierRule } from '../types/database';
+import {
+  loadCarrierRules,
+  addOrUpdateCarrierRule,
+  removeCarrierRule,
+} from '../lib/carrierRules';
 
 interface CloudInvoiceSyncModalProps {
   visible: boolean;
@@ -43,6 +48,7 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
     updateTransaction,
     addTransaction,
     addPaymentAccount,
+    updatePaymentAccount,
     getMemberById,
   } = useLedger();
 
@@ -56,17 +62,31 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
     type: 'success' | 'error' | 'info';
     message: string;
   } | null>(null);
+
+  // 載具分流字典（隱喻的第三張卡）
+  const [carrierRules, setCarrierRules] = useState<CarrierRule[]>([]);
+  const [changingRuleTarget, setChangingRuleTarget] = useState<CarrierRule | null>(null);
+
+  // 登記未登記載具互動彈窗
   const [quickBindCarrier, setQuickBindCarrier] = useState<{
     carrierNo: string;
     carrierName?: string;
     invoiceCount: number;
     totalAmount: number;
   } | null>(null);
+  const [quickBindTab, setQuickBindTab] = useState<'rule' | 'bind_card' | 'new_card'>('rule');
 
   const [mobileBarcode, setMobileBarcode] = useState('/ABC+123');
   const [isEditingBarcode, setIsEditingBarcode] = useState(false);
 
-  // 取得現有各成員登記之卡片對應
+  // 載入當前帳本的載具分流字典
+  useEffect(() => {
+    if (visible && currentLedger?.id) {
+      loadCarrierRules(currentLedger.id).then(setCarrierRules);
+    }
+  }, [visible, currentLedger?.id]);
+
+  // 取得現有各成員登記之實體卡片對應
   const cardMappings = useMemo(() => {
     return paymentAccounts.map(acc => {
       const owner = acc.user_id ? getMemberById(acc.user_id) : undefined;
@@ -82,7 +102,11 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
   }, [paymentAccounts, getMemberById]);
 
   // 解析 CSV 核心邏輯
-  const handleProcessCsvText = (text: string, sourceLabel: string = '檔案') => {
+  const handleProcessCsvText = (
+    text: string,
+    sourceLabel: string = '檔案',
+    overrideRules?: CarrierRule[]
+  ) => {
     if (!text || !text.trim()) {
       setStatusBanner({
         type: 'error',
@@ -108,6 +132,8 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
       const defaultPayerId = currentUser?.id || members[0]?.id || '';
       const ledgerId = currentLedger?.id || '';
 
+      const activeRules = overrideRules || carrierRules;
+
       const preview = processCloudInvoicesSync(
         invoices,
         transactions,
@@ -115,7 +141,8 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
         members,
         defaultPayerId,
         ledgerId,
-        defaultCategory?.id || ''
+        defaultCategory?.id || '',
+        activeRules
       );
 
       setSyncResult(preview);
@@ -245,25 +272,88 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
     }
   };
 
-  // 快速建卡指定家庭成員
-  const handleQuickAddCardConfirm = async (memberId: string) => {
+  // 動作 1：登記為「網購與會員載具分流規則」（隱喻的第三張卡）
+  const handleCreateCarrierRule = async (memberId: string) => {
+    if (!quickBindCarrier || !currentLedger?.id) return;
+    const member = getMemberById(memberId);
+    const memberName = member?.display_name || '家庭成員';
+
+    try {
+      const newRule = await addOrUpdateCarrierRule(currentLedger.id, {
+        carrier_no: quickBindCarrier.carrierNo,
+        carrier_name: quickBindCarrier.carrierName || '網購/會員載具',
+        user_id: memberId,
+      });
+
+      const nextRules = [...carrierRules.filter(r => r.carrier_no !== newRule.carrier_no), newRule];
+      setCarrierRules(nextRules);
+      setQuickBindCarrier(null);
+
+      if (rawCsvText) {
+        handleProcessCsvText(rawCsvText, '載具分流規則已建立', nextRules);
+      }
+
+      Alert.alert(
+        '🎉 載具分流規則已建立',
+        `已成功建立「${quickBindCarrier.carrierName || '載具'}」分流規則！發票將自動歸屬給【${memberName}】，且絕不產生多餘假卡片！`
+      );
+    } catch (err: any) {
+      Alert.alert('建立失敗', err.message || '發生未知錯誤');
+    }
+  };
+
+  // 動作 2：綁定至「現有實體金融卡片」（真卡絕不重複）
+  const handleBindToExistingCard = async (accountId: string) => {
     if (!quickBindCarrier) return;
-    const { carrierNo, carrierName } = quickBindCarrier;
+    const targetAccount = paymentAccounts.find(a => a.id === accountId);
+    if (!targetAccount) return;
+
+    try {
+      const existingTokens = targetAccount.card_number
+        ? targetAccount.card_number.split(/[,;\s]+/).map(t => t.trim()).filter(Boolean)
+        : [];
+      if (!existingTokens.includes(quickBindCarrier.carrierNo.trim())) {
+        existingTokens.push(quickBindCarrier.carrierNo.trim());
+      }
+      const updatedCardNumber = existingTokens.join(', ');
+
+      await updatePaymentAccount(targetAccount.id, {
+        card_number: updatedCardNumber,
+      });
+
+      setQuickBindCarrier(null);
+
+      if (rawCsvText) {
+        handleProcessCsvText(rawCsvText, '已綁定至現有卡片');
+      }
+
+      Alert.alert(
+        '🎉 成功綁定至現有卡片',
+        `已將載具代號綁定至【${targetAccount.name}】！發票將直接對應此卡，絕不產生多餘重複卡片！`
+      );
+    } catch (err: any) {
+      Alert.alert('綁定失敗', err.message || '發生未知錯誤');
+    }
+  };
+
+  // 動作 3：建立全新實體金融卡片
+  const handleCreateNewPhysicalCard = async (memberId: string) => {
+    if (!quickBindCarrier) return;
     const member = getMemberById(memberId);
     const memberName = member?.display_name || '家庭成員';
 
     const isStored =
-      carrierName?.includes('悠遊') ||
-      carrierName?.includes('一卡通') ||
-      /^\d{10,16}$/.test(carrierNo);
+      quickBindCarrier.carrierName?.includes('悠遊') ||
+      quickBindCarrier.carrierName?.includes('一卡通') ||
+      /^\d{10,16}$/.test(quickBindCarrier.carrierNo);
 
     try {
       await addPaymentAccount({
-        name: `${memberName}的${carrierName || (isStored ? '悠遊/一卡通' : '信用卡')}`,
+        name: `${memberName}的${quickBindCarrier.carrierName || (isStored ? '悠遊/一卡通' : '信用卡')}`,
         type: isStored ? 'stored_value' : 'credit_card',
         user_id: memberId,
-        card_number: carrierNo,
-        last_four_digits: carrierNo.slice(-4),
+        card_number: quickBindCarrier.carrierNo,
+        last_four_digits: quickBindCarrier.carrierNo.slice(-4),
         balance: 0,
         icon: isStored ? '🚌' : '💳',
         sort_order: paymentAccounts.length,
@@ -271,17 +361,85 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
 
       setQuickBindCarrier(null);
 
-      // 若已有解析之 CSV 內容，立即以最新卡片對照重算分流預覽
       if (rawCsvText) {
-        handleProcessCsvText(rawCsvText, '已登記新卡重新比對');
+        handleProcessCsvText(rawCsvText, '新卡片已建立');
       }
 
       Alert.alert(
-        '🎉 卡片登記成功',
-        `已成功建立「${memberName}的${carrierName || '卡片'}」，對應發票已自動重新歸屬給【${memberName}】！`
+        '🎉 新卡片建立成功',
+        `已為【${memberName}】建立實體卡片！`
       );
     } catch (err: any) {
       Alert.alert('建卡失敗', err.message || '發生未知錯誤');
+    }
+  };
+
+  // 修改載具分流字典的歸屬成員
+  const handleChangeRuleMemberConfirm = async (newMemberId: string) => {
+    if (!changingRuleTarget || !currentLedger?.id) return;
+    const member = getMemberById(newMemberId);
+    const memberName = member?.display_name || '家庭成員';
+
+    try {
+      const updatedRule = await addOrUpdateCarrierRule(currentLedger.id, {
+        carrier_no: changingRuleTarget.carrier_no,
+        carrier_name: changingRuleTarget.carrier_name,
+        user_id: newMemberId,
+      });
+
+      const nextRules = carrierRules.map(r => (r.id === updatedRule.id ? updatedRule : r));
+      setCarrierRules(nextRules);
+      setChangingRuleTarget(null);
+
+      if (rawCsvText) {
+        handleProcessCsvText(rawCsvText, '變更歸屬成員', nextRules);
+      }
+
+      Alert.alert(
+        '✅ 歸屬人變更成功',
+        `已將「${changingRuleTarget.carrier_name || changingRuleTarget.carrier_no}」之分流歸屬改為【${memberName}】！`
+      );
+    } catch (err: any) {
+      Alert.alert('更新失敗', err.message || '發生未知錯誤');
+    }
+  };
+
+  // 刪除載具分流規則（解綁）
+  const handleDeleteCarrierRule = (rule: CarrierRule) => {
+    Alert.alert(
+      '確認解除綁定',
+      `確定要解除「${rule.carrier_name || rule.carrier_no}」的分流規則嗎？解除後相關發票將不再自動歸屬特定成員。`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '確定解除',
+          style: 'destructive',
+          onPress: async () => {
+            if (!currentLedger?.id) return;
+            const updated = await removeCarrierRule(currentLedger.id, rule.id);
+            setCarrierRules(updated);
+            if (rawCsvText) {
+              handleProcessCsvText(rawCsvText, '已解除分流規則', updated);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // 開啟未登記載具登記彈窗時自動推薦最合適模式
+  const handleOpenQuickBind = (unreg: {
+    carrierNo: string;
+    carrierName?: string;
+    invoiceCount: number;
+    totalAmount: number;
+  }) => {
+    setQuickBindCarrier(unreg);
+    const name = unreg.carrierName || '';
+    if (name.includes('悠遊') || name.includes('信用卡') || name.includes('金融卡')) {
+      setQuickBindTab('bind_card'); // 實體卡預設推薦「綁定至現有真卡」
+    } else {
+      setQuickBindTab('rule'); // 蝦皮、PSN、MOMO 預設推薦「建立分流規則」
     }
   };
 
@@ -305,7 +463,8 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
         members,
         defaultPayerId,
         ledgerId,
-        defaultCategory?.id || ''
+        defaultCategory?.id || '',
+        carrierRules
       );
 
       for (const item of result.updatedTransactions) {
@@ -376,7 +535,7 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                 ☁️ 財政部雲端發票智慧同步
               </Text>
               <Text style={[styles.headerSubtitle, { color: colors.text.secondary }]}>
-                消費發票 CSV 匯入 · 依悠遊卡/信用卡自動分流家庭成員
+                消費發票 CSV 匯入 · 依卡號與網購載具自動分流家庭成員
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
@@ -567,29 +726,29 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                   </View>
                 )}
 
-                {/* 3. 未登記載具提示與 1 鍵建卡 */}
+                {/* 3. 未登記載具提示與登記導引 */}
                 {syncResult.unregisteredCarriers.length > 0 && (
                   <View style={styles.unregWarningBox}>
-                    <Text style={styles.unregWarningTitle}>💡 偵測到尚未建立卡片的載具</Text>
+                    <Text style={styles.unregWarningTitle}>💡 偵測到尚未建立對應的載具</Text>
                     <Text style={styles.unregWarningDesc}>
-                      以下卡片已有消費發票，目前暫歸為主要管理者。您可以點擊「➕ 登記此卡」快速指定持卡人：
+                      以下載具已有發票，目前暫歸主要管理者。您可以點擊「➕ 登記」綁定現有卡片或建立網購分流規則：
                     </Text>
                     {syncResult.unregisteredCarriers.map(unreg => (
                       <View key={unreg.carrierNo} style={styles.unregCarrierRow}>
                         <View style={{ flex: 1 }}>
                           <Text style={styles.unregCarrierName}>
-                            {unreg.carrierName || '卡片載具'}
+                            {unreg.carrierName || '載具代碼'}
                           </Text>
                           <Text style={styles.unregCarrierNo}>
-                            卡號：{unreg.carrierNo}（共 {unreg.invoiceCount} 筆，NT$ {unreg.totalAmount.toLocaleString()}）
+                            代碼：{unreg.carrierNo}（共 {unreg.invoiceCount} 筆，NT$ {unreg.totalAmount.toLocaleString()}）
                           </Text>
                         </View>
                         <TouchableOpacity
                           style={styles.quickAddCardBtn}
-                          onPress={() => setQuickBindCarrier(unreg)}
+                          onPress={() => handleOpenQuickBind(unreg)}
                           activeOpacity={0.8}
                         >
-                          <Text style={styles.quickAddCardBtnText}>➕ 登記此卡</Text>
+                          <Text style={styles.quickAddCardBtnText}>➕ 登記此載具</Text>
                         </TouchableOpacity>
                       </View>
                     ))}
@@ -630,7 +789,7 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                         </Text>
                         <View style={styles.previewCarrierBadge}>
                           <Text style={styles.previewCarrierBadgeText}>
-                            {inv.carrierName || (inv.carrierNo?.startsWith('/') ? '手機條碼' : '卡片載具')}
+                            {inv.carrierName || (inv.carrierNo?.startsWith('/') ? '手機條碼' : '載具')}
                           </Text>
                         </View>
                       </View>
@@ -716,13 +875,13 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
               </Text>
             </View>
 
-            {/* 卡片智慧分流對照表 */}
+            {/* 4. 實體金融卡片載具對照（錢包裡的真卡） */}
             <View style={styles.sectionBox}>
               <Text style={[styles.sectionTitle, { color: colors.text.primary }]}>
-                💳 現有卡片與家庭成員對應表
+                💳 實體金融卡片載具對應（真金白銀）
               </Text>
               <Text style={[styles.sectionDesc, { color: colors.text.secondary }]}>
-                發票匯入時，系統會自動根據載具卡號判定這筆消費是誰付的款：
+                發票出現這些卡號時，系統會自動歸入該真實卡片與持卡人，絕不重複多建卡片：
               </Text>
 
               {cardMappings.length === 0 ? (
@@ -749,7 +908,7 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                         {account.name}
                       </Text>
                       <Text style={[styles.cardItemDetail, { color: colors.text.secondary }]}>
-                        卡號：{cardDisplay}
+                        卡號/代碼：{cardDisplay}
                       </Text>
                     </View>
                     <View style={styles.cardOwnerPill}>
@@ -757,6 +916,80 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                     </View>
                   </View>
                 ))
+              )}
+            </View>
+
+            {/* 5. 網購與會員分流字典（隱喻的第三張卡） */}
+            <View style={styles.sectionBox}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={[styles.sectionTitle, { color: colors.text.primary }]}>
+                  🛍️ 網購與會員分流字典（隱喻的第三張卡）
+                </Text>
+                <View style={styles.ruleCountBadge}>
+                  <Text style={styles.ruleCountBadgeText}>{carrierRules.length} 條規則</Text>
+                </View>
+              </View>
+              <Text style={[styles.sectionDesc, { color: colors.text.secondary }]}>
+                專門處理蝦皮、MOMO、Netflix 等非實體卡載具，只記錄歸屬成員，不污染卡片資產：
+              </Text>
+
+              {carrierRules.length === 0 ? (
+                <View style={styles.emptyRuleBox}>
+                  <Text style={styles.emptyRuleHint}>
+                    目前尚無分流規則。匯入發票時若有蝦皮、MOMO 等載具，點擊「登記」即可一鍵加入！
+                  </Text>
+                </View>
+              ) : (
+                carrierRules.map(rule => {
+                  const owner = getMemberById(rule.user_id);
+                  const ownerName = owner?.display_name || '未指定成員';
+                  return (
+                    <View
+                      key={rule.id}
+                      style={[
+                        styles.ruleItemRow,
+                        {
+                          backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
+                          borderColor: isDark ? colors.border.default : '#E2E8F0',
+                        },
+                      ]}
+                    >
+                      <View style={styles.ruleItemIconBox}>
+                        <Text style={{ fontSize: 18 }}>
+                          {rule.carrier_name?.includes('蝦皮')
+                            ? '🛍️'
+                            : rule.carrier_name?.includes('PSN') || rule.carrier_name?.includes('Netflix')
+                            ? '🎮'
+                            : '🏷️'}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.ruleItemName, { color: colors.text.primary }]}>
+                          {rule.carrier_name || '網購載具'}
+                        </Text>
+                        <Text style={[styles.ruleItemDetail, { color: colors.text.secondary }]}>
+                          代碼：{rule.carrier_no}
+                        </Text>
+                      </View>
+                      <View style={styles.ruleActionGroup}>
+                        <TouchableOpacity
+                          style={styles.ruleOwnerBadgeBtn}
+                          onPress={() => setChangingRuleTarget(rule)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={styles.ruleOwnerBadgeText}>👤【{ownerName}】 ✏️換人</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.deleteRuleBtn}
+                          onPress={() => handleDeleteCarrierRule(rule)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.deleteRuleBtnText}>🗑️</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })
               )}
             </View>
 
@@ -813,7 +1046,7 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
             </View>
           </ScrollView>
 
-          {/* 快速建卡指定家庭成員彈跳視窗 */}
+          {/* 登記新載具彈窗（三大模式：分流規則 / 綁定真卡 / 建立真卡） */}
           {quickBindCarrier && (
             <View style={styles.quickBindOverlay}>
               <View
@@ -823,37 +1056,227 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                 ]}
               >
                 <Text style={[styles.quickBindTitle, { color: colors.text.primary }]}>
-                  💳 登記新卡片並指定成員
+                  💡 登記新載具：{quickBindCarrier.carrierName || '載具代碼'}
                 </Text>
                 <Text style={[styles.quickBindDesc, { color: colors.text.secondary }]}>
-                  載具名稱：{quickBindCarrier.carrierName || '卡片載具'}{'\n'}
-                  卡片號碼：{quickBindCarrier.carrierNo}{'\n'}
-                  消費筆數：共 {quickBindCarrier.invoiceCount} 筆，NT$ {quickBindCarrier.totalAmount.toLocaleString()}{'\n\n'}
-                  請選擇這張卡片平常是哪位家庭成員在使用的：
+                  載具代碼：{quickBindCarrier.carrierNo}（共 {quickBindCarrier.invoiceCount} 筆，NT$ {quickBindCarrier.totalAmount.toLocaleString()}）
                 </Text>
 
-                <ScrollView style={{ maxHeight: 220, marginVertical: 8 }}>
+                {/* 模式切換 Tabs */}
+                <View style={styles.bindTabRow}>
+                  <TouchableOpacity
+                    style={[styles.bindTabBtn, quickBindTab === 'rule' && styles.bindTabBtnActive]}
+                    onPress={() => setQuickBindTab('rule')}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.bindTabBtnText,
+                        quickBindTab === 'rule' && styles.bindTabBtnTextActive,
+                      ]}
+                    >
+                      🛍️ 網購分流規則
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.bindTabBtn, quickBindTab === 'bind_card' && styles.bindTabBtnActive]}
+                    onPress={() => setQuickBindTab('bind_card')}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.bindTabBtnText,
+                        quickBindTab === 'bind_card' && styles.bindTabBtnTextActive,
+                      ]}
+                    >
+                      🔗 綁定現有卡片
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.bindTabBtn, quickBindTab === 'new_card' && styles.bindTabBtnActive]}
+                    onPress={() => setQuickBindTab('new_card')}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.bindTabBtnText,
+                        quickBindTab === 'new_card' && styles.bindTabBtnTextActive,
+                      ]}
+                    >
+                      ➕ 建立新卡
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* 模式 1：網購與會員載具分流規則（隱喻的第三張卡） */}
+                {quickBindTab === 'rule' && (
+                  <View style={{ marginVertical: 8 }}>
+                    <Text style={styles.tabGuideHint}>
+                      📌 適合蝦皮、MOMO、Netflix 等非金融帳戶。純粹記錄一律算哪位成員的支出，不污染卡片資產：
+                    </Text>
+                    <ScrollView style={{ maxHeight: 200 }}>
+                      {members.map(member => (
+                        <TouchableOpacity
+                          key={member.id}
+                          style={[
+                            styles.quickBindMemberItem,
+                            { borderColor: isDark ? colors.border.default : '#E2E8F0' },
+                          ]}
+                          onPress={() => handleCreateCarrierRule(member.id)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={{ fontSize: 20, marginRight: 10 }}>👤</Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.quickBindMemberName, { color: colors.text.primary }]}>
+                              {member.display_name}
+                            </Text>
+                            <Text style={{ fontSize: 11, color: colors.text.secondary }}>
+                              {member.role === 'owner' ? '👑 帳本管理員' : '家庭成員'}
+                            </Text>
+                          </View>
+                          <Text style={{ color: '#0284C7', fontWeight: '700', fontSize: 13 }}>
+                            指定給此成員 ➔
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+
+                {/* 模式 2：綁定至現有實體金融卡片（真卡絕不重複） */}
+                {quickBindTab === 'bind_card' && (
+                  <View style={{ marginVertical: 8 }}>
+                    <Text style={styles.tabGuideHint}>
+                      📌 適合台新街口卡 (356558...)、聯邦卡、悠遊卡等實體卡。直接綁入現有卡片，絕不重複建卡：
+                    </Text>
+                    <ScrollView style={{ maxHeight: 200 }}>
+                      {paymentAccounts.length === 0 ? (
+                        <Text style={{ color: colors.text.secondary, padding: 12, textAlign: 'center' }}>
+                          目前帳本尚無建立卡片，請先建立或切換至其他選項。
+                        </Text>
+                      ) : (
+                        paymentAccounts.map(account => {
+                          const owner = account.user_id ? getMemberById(account.user_id) : undefined;
+                          return (
+                            <TouchableOpacity
+                              key={account.id}
+                              style={[
+                                styles.quickBindMemberItem,
+                                { borderColor: isDark ? colors.border.default : '#E2E8F0' },
+                              ]}
+                              onPress={() => handleBindToExistingCard(account.id)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={{ fontSize: 20, marginRight: 10 }}>
+                                {account.type === 'stored_value' ? '🚌' : '💳'}
+                              </Text>
+                              <View style={{ flex: 1 }}>
+                                <Text style={[styles.quickBindMemberName, { color: colors.text.primary }]}>
+                                  {account.name}
+                                </Text>
+                                <Text style={{ fontSize: 11, color: colors.text.secondary }}>
+                                  持卡人：{owner?.display_name || '全家共用'} · {account.last_four_digits ? `末四碼 ${account.last_four_digits}` : '一般帳戶'}
+                                </Text>
+                              </View>
+                              <Text style={{ color: '#10B981', fontWeight: '700', fontSize: 13 }}>
+                                綁定至此卡 ➔
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })
+                      )}
+                    </ScrollView>
+                  </View>
+                )}
+
+                {/* 模式 3：建立全新實體卡片 */}
+                {quickBindTab === 'new_card' && (
+                  <View style={{ marginVertical: 8 }}>
+                    <Text style={styles.tabGuideHint}>
+                      📌 只有在皮夾裡真的一張全新信用卡或悠遊卡時才建立：
+                    </Text>
+                    <ScrollView style={{ maxHeight: 200 }}>
+                      {members.map(member => (
+                        <TouchableOpacity
+                          key={member.id}
+                          style={[
+                            styles.quickBindMemberItem,
+                            { borderColor: isDark ? colors.border.default : '#E2E8F0' },
+                          ]}
+                          onPress={() => handleCreateNewPhysicalCard(member.id)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={{ fontSize: 20, marginRight: 10 }}>👤</Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.quickBindMemberName, { color: colors.text.primary }]}>
+                              {member.display_name}
+                            </Text>
+                            <Text style={{ fontSize: 11, color: colors.text.secondary }}>
+                              以 {member.display_name} 名義建立新卡片
+                            </Text>
+                          </View>
+                          <Text style={{ color: '#F59E0B', fontWeight: '700', fontSize: 13 }}>
+                            建立全新卡 ➔
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={styles.quickBindCancelBtn}
+                  onPress={() => setQuickBindCarrier(null)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ color: colors.text.secondary, fontWeight: '600' }}>取消</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* 修改載具分流字典歸屬人彈窗 */}
+          {changingRuleTarget && (
+            <View style={styles.quickBindOverlay}>
+              <View
+                style={[
+                  styles.quickBindCard,
+                  { backgroundColor: isDark ? colors.background.card : '#FFFFFF' },
+                ]}
+              >
+                <Text style={[styles.quickBindTitle, { color: colors.text.primary }]}>
+                  ✏️ 修改分流歸屬人：{changingRuleTarget.carrier_name || changingRuleTarget.carrier_no}
+                </Text>
+                <Text style={[styles.quickBindDesc, { color: colors.text.secondary }]}>
+                  載具代碼：{changingRuleTarget.carrier_no}{'\n'}
+                  請選擇往後這張載具開立的發票要改算在誰的頭上：
+                </Text>
+
+                <ScrollView style={{ maxHeight: 220, marginVertical: 10 }}>
                   {members.map(member => (
                     <TouchableOpacity
                       key={member.id}
                       style={[
                         styles.quickBindMemberItem,
                         { borderColor: isDark ? colors.border.default : '#E2E8F0' },
+                        member.id === changingRuleTarget.user_id && {
+                          backgroundColor: isDark ? 'rgba(2, 132, 199, 0.2)' : '#E0F2FE',
+                          borderColor: '#0284C7',
+                        },
                       ]}
-                      onPress={() => handleQuickAddCardConfirm(member.id)}
+                      onPress={() => handleChangeRuleMemberConfirm(member.id)}
                       activeOpacity={0.7}
                     >
                       <Text style={{ fontSize: 20, marginRight: 10 }}>👤</Text>
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.quickBindMemberName, { color: colors.text.primary }]}>
-                          {member.display_name}
-                        </Text>
-                        <Text style={{ fontSize: 11, color: colors.text.secondary }}>
-                          {member.role === 'owner' ? '👑 帳本管理員' : '家庭成員'}
+                          {member.display_name} {member.id === changingRuleTarget.user_id && '（目前歸屬）'}
                         </Text>
                       </View>
                       <Text style={{ color: '#0284C7', fontWeight: '700', fontSize: 13 }}>
-                        指定此成員 ➔
+                        改歸此成員 ➔
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -861,7 +1284,7 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
 
                 <TouchableOpacity
                   style={styles.quickBindCancelBtn}
-                  onPress={() => setQuickBindCarrier(null)}
+                  onPress={() => setChangingRuleTarget(null)}
                   activeOpacity={0.7}
                 >
                   <Text style={{ color: colors.text.secondary, fontWeight: '600' }}>取消</Text>
@@ -1314,6 +1737,78 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontStyle: 'italic',
   },
+  ruleCountBadge: {
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  ruleCountBadgeText: {
+    color: '#0284C7',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  emptyRuleBox: {
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(148, 163, 184, 0.08)',
+    alignItems: 'center',
+  },
+  emptyRuleHint: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  ruleItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  ruleItemIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    backgroundColor: '#FEF3C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  ruleItemName: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  ruleItemDetail: {
+    fontSize: 11.5,
+    marginTop: 2,
+  },
+  ruleActionGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  ruleOwnerBadgeBtn: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 0.5,
+    borderColor: '#93C5FD',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  ruleOwnerBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  deleteRuleBtn: {
+    padding: 6,
+  },
+  deleteRuleBtnText: {
+    fontSize: 14,
+  },
   emailGuideBox: {
     borderWidth: 1,
     borderRadius: 12,
@@ -1379,15 +1874,15 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     zIndex: 999,
   },
   quickBindCard: {
     width: '100%',
-    maxWidth: 400,
+    maxWidth: 420,
     borderRadius: 16,
     padding: 18,
     shadowColor: '#000',
@@ -1396,13 +1891,44 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   quickBindTitle: {
-    fontSize: 16,
+    fontSize: 15.5,
     fontWeight: '800',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   quickBindDesc: {
-    fontSize: 12.5,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 16,
+    marginBottom: 10,
+  },
+  bindTabRow: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(148, 163, 184, 0.12)',
+    borderRadius: 8,
+    padding: 3,
+    marginBottom: 10,
+  },
+  bindTabBtn: {
+    flex: 1,
+    paddingVertical: 7,
+    alignItems: 'center',
+    borderRadius: 6,
+  },
+  bindTabBtnActive: {
+    backgroundColor: '#0284C7',
+  },
+  bindTabBtnText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  bindTabBtnTextActive: {
+    color: '#FFFFFF',
+  },
+  tabGuideHint: {
+    fontSize: 11.5,
+    color: '#0369A1',
+    lineHeight: 16,
+    marginBottom: 8,
   },
   quickBindMemberItem: {
     flexDirection: 'row',
@@ -1413,7 +1939,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   quickBindMemberName: {
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: '700',
   },
   quickBindCancelBtn: {

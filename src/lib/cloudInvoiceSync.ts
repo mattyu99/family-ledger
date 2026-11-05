@@ -1,4 +1,4 @@
-import { CloudInvoiceItem, PaymentAccount, Profile, Transaction } from '../types/database';
+import { CarrierRule, CloudInvoiceItem, PaymentAccount, Profile, Transaction } from '../types/database';
 
 /**
  * 清理並標準化卡號字串（去除空格、連字號、星號遮罩）
@@ -21,15 +21,18 @@ export const findMatchingAccount = (
   const cleanCarrierNo = normalizeCardNumber(carrierNo);
   if (!cleanCarrierNo) return undefined;
 
-  // 1. 若為悠遊卡載具 (1K0001) 或含有 10~16 碼純數字卡號，優先比對完整悠遊卡號
+  // 1. 若卡片帳戶登記之 card_number 包含或等於載具號碼 (支援多組卡號/代碼以逗號/分號/空格分隔)
   for (const acc of accounts) {
     if (acc.card_number) {
-      const cleanAccCard = normalizeCardNumber(acc.card_number);
+      const cardTokens = acc.card_number
+        .split(/[,;\s]+/)
+        .map(t => normalizeCardNumber(t))
+        .filter(Boolean);
       if (
-        cleanAccCard &&
-        (cleanCarrierNo === cleanAccCard ||
-          cleanCarrierNo.endsWith(cleanAccCard) ||
-          cleanAccCard.endsWith(cleanCarrierNo))
+        cardTokens.includes(cleanCarrierNo) ||
+        cardTokens.some(
+          t => cleanCarrierNo === t || cleanCarrierNo.endsWith(t) || t.endsWith(cleanCarrierNo)
+        )
       ) {
         return acc;
       }
@@ -268,7 +271,8 @@ export const processCloudInvoicesSync = (
   members: Profile[],
   defaultPayerId: string,
   ledgerId: string,
-  defaultCategoryId: string
+  defaultCategoryId: string,
+  carrierRules: CarrierRule[] = []
 ): SyncProcessResult => {
   const updatedTransactions: SyncProcessResult['updatedTransactions'] = [];
   const newTransactions: SyncProcessResult['newTransactions'] = [];
@@ -278,11 +282,31 @@ export const processCloudInvoicesSync = (
   const nowIso = new Date().toISOString();
 
   for (const inv of invoices) {
-    // 1. 卡號比對：找到所屬卡片帳戶
+    // 1. 卡號比對：優先比對真卡 (悠遊卡/信用卡載具)
     const matchedAcc = findMatchingAccount(inv.carrierNo, inv.carrierType, accounts);
 
-    // 統計未綁定卡片帳戶之載具 (排除手機條碼主號碼 /...)
-    if (!matchedAcc && inv.carrierNo && !inv.carrierNo.startsWith('/')) {
+    // 2. 比對載具分流字典（隱喻的第三張卡，如蝦皮 16729177、PSN/Netflix mattyu09@gmail.com）
+    let matchedCarrierRule: CarrierRule | undefined;
+    if (!matchedAcc && inv.carrierNo) {
+      const targetCarrierNo = inv.carrierNo.trim().toLowerCase();
+      const cleanInvNo = normalizeCardNumber(inv.carrierNo);
+      matchedCarrierRule = carrierRules.find(r => {
+        const cleanRuleNo = normalizeCardNumber(r.carrier_no);
+        return (
+          cleanRuleNo === cleanInvNo ||
+          r.carrier_no.trim().toLowerCase() === targetCarrierNo
+        );
+      });
+    }
+
+    // 若比對到載具規則且指定了扣款帳戶，關聯該卡片帳戶
+    const ruleDefaultAcc = matchedCarrierRule?.account_id
+      ? accounts.find(a => a.id === matchedCarrierRule?.account_id)
+      : undefined;
+    const effectiveAcc = matchedAcc || ruleDefaultAcc;
+
+    // 統計未綁定卡片帳戶且未建立分流規則之載具 (排除手機條碼主號碼 /...)
+    if (!matchedAcc && !matchedCarrierRule && inv.carrierNo && !inv.carrierNo.startsWith('/')) {
       const existing = unregMap.get(inv.carrierNo) || {
         carrierNo: inv.carrierNo,
         carrierName:
@@ -302,8 +326,8 @@ export const processCloudInvoicesSync = (
       unregMap.set(inv.carrierNo, existing);
     }
 
-    // 2. 在現有手動交易中尋找吻合項目
-    const matchedTx = findMatchingTransaction(inv, existingTransactions, matchedAcc, alreadyMatchedTxIds);
+    // 3. 在現有手動交易中尋找吻合項目
+    const matchedTx = findMatchingTransaction(inv, existingTransactions, effectiveAcc, alreadyMatchedTxIds);
 
     if (matchedTx) {
       // 既有交易無條件自動補齊
@@ -319,7 +343,10 @@ export const processCloudInvoicesSync = (
         invoice_random_code: inv.randomCode || matchedTx.invoice_random_code,
         invoice_sync_status: matchedTx.invoice_sync_status === 'cloud_imported' ? 'cloud_imported' : 'matched_cloud',
         cloud_synced_at: matchedTx.cloud_synced_at || nowIso,
-        cloud_carrier_name: matchedAcc?.name || (inv.carrierType === '1K0001' ? '悠遊卡載具' : '手機條碼載具'),
+        cloud_carrier_name:
+          effectiveAcc?.name ||
+          matchedCarrierRule?.carrier_name ||
+          (inv.carrierType === '1K0001' ? '悠遊卡載具' : '手機條碼載具'),
         invoice_items: inv.items && inv.items.length > 0 ? inv.items : matchedTx.invoice_items,
       };
 
@@ -329,8 +356,8 @@ export const processCloudInvoicesSync = (
       }
 
       // 若原交易未設定帳戶且已比對到卡片，自動關聯帳戶
-      if (!matchedTx.account_id && matchedAcc) {
-        updates.account_id = matchedAcc.id;
+      if (!matchedTx.account_id && effectiveAcc) {
+        updates.account_id = effectiveAcc.id;
       }
 
       updatedTransactions.push({
@@ -338,12 +365,13 @@ export const processCloudInvoicesSync = (
         original: matchedTx,
         updates,
         invoice: inv,
-        matchedAccount: matchedAcc,
+        matchedAccount: effectiveAcc,
         isAlreadySynced,
       });
     } else {
-      // 全新發票：根據卡片自動指派持卡人為付款人
-      const targetPayerId = matchedAcc?.user_id || defaultPayerId;
+      // 全新發票：優先依真卡持卡人，次依載具分流規則歸屬人，否則歸預設成員
+      const targetPayerId =
+        matchedAcc?.user_id || matchedCarrierRule?.user_id || defaultPayerId;
 
       const newTxData: Omit<Transaction, 'id' | 'created_at'> = {
         ledger_id: ledgerId,
@@ -355,23 +383,24 @@ export const processCloudInvoicesSync = (
         transacted_at: `${inv.invoiceDate}T${inv.invoiceTime || '12:00:00'}.000Z`,
         merchant: inv.sellerName,
         payment_method:
-          matchedAcc?.type === 'credit_card'
+          effectiveAcc?.type === 'credit_card'
             ? 'credit_card'
-            : matchedAcc?.type === 'stored_value'
+            : effectiveAcc?.type === 'stored_value'
             ? 'stored_value'
             : inv.carrierType === '2G0001'
             ? 'credit_card'
             : inv.carrierType === '1K0001' || inv.carrierType === '1H0001'
             ? 'stored_value'
             : 'cash',
-        account_id: matchedAcc?.id,
+        account_id: effectiveAcc?.id,
         note: inv.items && inv.items.length > 0 ? inv.items.map(i => `${i.name} x${i.quantity}`).join('、') : '',
         invoice_number: inv.invoiceNumber,
         invoice_random_code: inv.randomCode,
         invoice_sync_status: 'cloud_imported',
         cloud_synced_at: nowIso,
         cloud_carrier_name:
-          matchedAcc?.name ||
+          effectiveAcc?.name ||
+          matchedCarrierRule?.carrier_name ||
           (inv.carrierName
             ? `${inv.carrierName}`
             : inv.carrierNo?.startsWith('/')
@@ -384,7 +413,7 @@ export const processCloudInvoicesSync = (
       newTransactions.push({
         data: newTxData,
         invoice: inv,
-        matchedAccount: matchedAcc,
+        matchedAccount: effectiveAcc,
       });
     }
   }
