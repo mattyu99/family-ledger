@@ -910,8 +910,8 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
         '此悠遊卡尚未填寫完整卡號，可至「支付卡片與帳戶管理」補填。\n\n即將為您開啟悠遊卡官方歷史交易查詢系統...'
       );
     }
-    Linking.openURL('https://ezweb.easycard.com.tw/').catch(() => {
-      showAlert('無法開啟網頁', '請於瀏覽器開啟網址：https://ezweb.easycard.com.tw/');
+    Linking.openURL('https://ezweb.easycard.com.tw/search/CardSearch.php').catch(() => {
+      showAlert('無法開啟網頁', '請於瀏覽器開啟網址：https://ezweb.easycard.com.tw/search/CardSearch.php');
     });
   };
 

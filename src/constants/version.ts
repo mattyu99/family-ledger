@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.14';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.14 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 3;
+export const APP_BUILD_REVISION = 4;
 
 // 完整版本字串 (例如 "1.0.14.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -30,6 +30,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
       '📱 行動支付標籤智慧解析：全面優化電子支付與專屬錢包標籤顯示（如加油大利PAY），消費管道清晰易辨。',
       '🎨 桌面小工具圖文置中對齊：微調 2x2 快捷按鈕圖文垂直置中，大幅改善偏上現象，上下留白勻稱美觀。',
       '📸 發票拍照 AI 辨識全面升級：升級最新智慧辨識核心並強化連線機制，傳統長條發票與相簿截圖秒速精準辨識。',
+      '🚌 悠遊卡對帳直達歷史查詢：修正悠遊卡官網連結至交易明細查詢頁，一鍵複製卡號即可貼上查詢搭乘紀錄。',
     ],
   },
   {
