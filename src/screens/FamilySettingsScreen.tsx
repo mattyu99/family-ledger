@@ -78,6 +78,7 @@ interface FamilySettingsScreenProps {
   onCheckForUpdates: () => void;
   isCheckingUpdate: boolean;
   onTriggerLiveToastDemo?: () => void;
+  onOpenCloudInvoiceModal?: () => void;
 }
 
 export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
@@ -99,6 +100,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
   onCheckForUpdates,
   isCheckingUpdate,
   onTriggerLiveToastDemo,
+  onOpenCloudInvoiceModal,
 }) => {
   const { colors, isDark } = useTheme();
   const {
@@ -897,6 +899,31 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
   {/* 🔔 提醒與個人維度 */}
   {showReminderCards && (
     <>
+      {/* ☁️ 財政部雲端發票智慧同步卡片 */}
+      <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
+        <View style={styles.sectionHeaderRow}>
+          <View style={styles.sectionHeaderLeft}>
+            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              ☁️ 財政部雲端發票智慧同步
+            </Text>
+            <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              共通性載具與卡片自動分流，悠遊卡/信用卡消費自動歸屬家庭成員
+            </Text>
+          </View>
+          {onOpenCloudInvoiceModal && (
+            <TouchableOpacity
+              style={[styles.manageCategoryBtn, { backgroundColor: isDark ? 'rgba(14, 165, 233, 0.2)' : '#E0F2FE', borderColor: '#38BDF8' }]}
+              onPress={onOpenCloudInvoiceModal}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.manageCategoryBtnText, { color: isDark ? '#38BDF8' : '#0284C7' }]}>
+                ⚙️ 載具同步
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
       {/* 💳 信用卡帳單與智慧推播提醒卡片 */}
       <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
         <View style={styles.sectionHeaderRow}>

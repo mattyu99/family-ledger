@@ -138,6 +138,10 @@ interface LedgerContextType {
     invoice_prize_amount?: number;
     invoice_prize_name?: string;
     image_url?: string;
+    invoice_sync_status?: 'manual' | 'matched_cloud' | 'cloud_imported';
+    cloud_synced_at?: string;
+    invoice_items?: { name: string; quantity: number; unit_price: number; amount: number }[];
+    cloud_carrier_name?: string;
     splitWithIds?: string[];
   }) => Promise<string>;
   updateTransaction: (
@@ -163,6 +167,10 @@ interface LedgerContextType {
       invoice_status?: 'pending' | 'won' | 'missed' | 'claimed';
       invoice_prize_amount?: number;
       invoice_prize_name?: string;
+      invoice_sync_status?: 'manual' | 'matched_cloud' | 'cloud_imported';
+      cloud_synced_at?: string;
+      invoice_items?: { name: string; quantity: number; unit_price: number; amount: number }[];
+      cloud_carrier_name?: string;
       image_url?: string;
       transacted_at?: string;
       payment_method?: PaymentMethod;
@@ -6406,6 +6414,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     invoice_prize_amount?: number;
     invoice_prize_name?: string;
     image_url?: string;
+    invoice_sync_status?: 'manual' | 'matched_cloud' | 'cloud_imported';
+    cloud_synced_at?: string;
+    invoice_items?: { name: string; quantity: number; unit_price: number; amount: number }[];
+    cloud_carrier_name?: string;
     splitWithIds?: string[];
   }): Promise<string> => {
     if (currentLedger.is_read_only) {
@@ -6543,6 +6555,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       invoice_status: formattedInvoiceNumber ? invoiceStatus : undefined,
       invoice_prize_amount: formattedInvoiceNumber ? invoicePrizeAmount : undefined,
       invoice_prize_name: formattedInvoiceNumber ? invoicePrizeName : undefined,
+      invoice_sync_status: data.invoice_sync_status,
+      cloud_synced_at: data.cloud_synced_at,
+      invoice_items: data.invoice_items,
+      cloud_carrier_name: data.cloud_carrier_name,
       paid_by: validPaidBy,
       merchant: cleanMerchant,
       payment_method: data.payment_method || 'cash',
@@ -7370,6 +7386,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       invoice_status?: 'pending' | 'won' | 'missed' | 'claimed';
       invoice_prize_amount?: number;
       invoice_prize_name?: string;
+      invoice_sync_status?: 'manual' | 'matched_cloud' | 'cloud_imported';
+      cloud_synced_at?: string;
+      invoice_items?: { name: string; quantity: number; unit_price: number; amount: number }[];
+      cloud_carrier_name?: string;
       image_url?: string;
       transacted_at?: string;
       payment_method?: PaymentMethod;

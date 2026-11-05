@@ -13,6 +13,9 @@ export interface Profile {
   is_locked?: boolean;
   claim_code?: string;
   claim_code_expires_at?: string;
+  mof_barcode?: string; // 財政部手機條碼 (例如 "/ABC+123")
+  mof_sync_enabled?: boolean; // 是否啟用雲端發票自動同步
+  mof_last_synced_at?: string; // 最後同步時間戳記
 }
 
 export interface Ledger {
@@ -137,6 +140,10 @@ export interface Transaction {
   invoice_status?: 'pending' | 'won' | 'missed' | 'claimed'; // 對獎狀態：待開獎 | 已中獎 | 未中獎 | 已領獎
   invoice_prize_amount?: number; // 中獎金額 (如 200, 1000)
   invoice_prize_name?: string; // 中獎獎項 (如 "六獎", "特別獎")
+  invoice_sync_status?: 'manual' | 'matched_cloud' | 'cloud_imported'; // 發票同步來源：手動記帳 | 雲端自動媒合升級 | 雲端全新匯入
+  cloud_synced_at?: string; // 雲端同步完成時間 (ISO 8601)
+  invoice_items?: { name: string; quantity: number; unit_price: number; amount: number }[]; // 發票品項細項清單
+  cloud_carrier_name?: string; // 來源載具卡片名稱 (例如 "智市民卡 (悠遊卡)")
   image_url?: string;
   is_settled: boolean;
   created_at: string;
@@ -211,4 +218,22 @@ export interface LedgerBudget {
   category_budgets: Record<string, number>; // 各分類上限，Key 為 category_id，Value 為預算金額
   member_budgets?: Record<string, number>; // 成員個人獨立預算，Key 為 member_id，Value 為個人每月額度
   updated_at?: string;
+}
+
+export interface CloudInvoiceItem {
+  invoiceNumber: string; // 發票號碼 (例如 "EF-21608064")
+  invoiceDate: string; // 交易日期 "YYYY-MM-DD"
+  invoiceTime?: string; // 交易時間 "HH:mm:ss"
+  sellerName: string; // 營業人名稱 (例如 "全家便利商店忠孝店")
+  sellerTaxId?: string; // 賣方統編 (8碼)
+  amount: number; // 發票總金額
+  carrierType?: string; // 載具類別代碼 (例如 "1K0001" 悠遊卡, "2G0001" 信用卡, "3J0002" 手機條碼)
+  carrierNo?: string; // 載具顯碼或卡號 (悠遊卡16碼或信用卡末4碼)
+  randomCode?: string; // 4 碼防偽隨機碼
+  items?: {
+    name: string;
+    quantity: number;
+    unit_price: number;
+    amount: number;
+  }[];
 }

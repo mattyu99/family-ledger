@@ -2945,6 +2945,41 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 </View>
               )}
 
+              {/* 雲端發票自動校正與明細資訊卡 */}
+              {(transaction?.invoice_sync_status === 'matched_cloud' || transaction?.invoice_sync_status === 'cloud_imported') && (
+                <View style={styles.cloudInvoiceCard}>
+                  <View style={styles.cloudInvoiceCardHeader}>
+                    <Text style={styles.cloudInvoiceCardTitle}>☁️ 財政部雲端發票已自動校正</Text>
+                    {!!transaction.cloud_synced_at && (
+                      <Text style={styles.cloudInvoiceCardTime}>
+                        {new Date(transaction.cloud_synced_at).toLocaleDateString()} 同步
+                      </Text>
+                    )}
+                  </View>
+                  <Text style={styles.cloudInvoiceCardSubtext}>
+                    來源載具：{transaction.cloud_carrier_name || '雲端載具'} · {transaction.invoice_sync_status === 'matched_cloud' ? '已自動補齊官方號碼與明細' : '由雲端發票自動匯入'}
+                  </Text>
+                  {/* 若有商品細項，展示商品清單 */}
+                  {Array.isArray(transaction.invoice_items) && transaction.invoice_items.length > 0 && (
+                    <View style={styles.cloudInvoiceItemsBox}>
+                      <Text style={styles.cloudInvoiceItemsTitle}>📦 官方明細清單：</Text>
+                      {transaction.invoice_items.map((item, idx) => (
+                        <View key={idx} style={styles.cloudInvoiceItemRow}>
+                          <Text style={styles.cloudInvoiceItemName} numberOfLines={1}>• {item.name}</Text>
+                          <Text style={styles.cloudInvoiceItemQty}>x{item.quantity}</Text>
+                          <Text style={styles.cloudInvoiceItemPrice}>NT$ {item.amount.toLocaleString()}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  <View style={styles.cloudInvoicePreserveNotice}>
+                    <Text style={styles.cloudInvoicePreserveNoticeText}>
+                      🛡️ 系統已自動保留您手動設定之自訂分類、付款人與個人記事備註。
+                    </Text>
+                  </View>
+                </View>
+              )}
+
               {/* 發票防重複記帳即時警示橫幅 */}
               {duplicateInvoiceTx && (
                 <View style={styles.duplicateWarningBox}>
@@ -4608,6 +4643,79 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 12,
     color: colors.text.secondary,
     fontWeight: '600',
+  },
+  cloudInvoiceCard: {
+    marginTop: 10,
+    backgroundColor: isDark ? 'rgba(14, 165, 233, 0.12)' : '#F0F9FF',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(56, 189, 248, 0.4)' : '#BAE6FD',
+    borderRadius: 10,
+    padding: 10,
+  },
+  cloudInvoiceCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  cloudInvoiceCardTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: isDark ? '#38BDF8' : '#0369A1',
+  },
+  cloudInvoiceCardTime: {
+    fontSize: 11,
+    color: isDark ? '#7DD3FC' : '#0284C7',
+    fontWeight: '500',
+  },
+  cloudInvoiceCardSubtext: {
+    fontSize: 11.5,
+    color: isDark ? '#BAE6FD' : '#0C4A6E',
+    marginBottom: 6,
+  },
+  cloudInvoiceItemsBox: {
+    backgroundColor: isDark ? 'rgba(15, 23, 42, 0.6)' : '#FFFFFF',
+    borderRadius: 8,
+    padding: 8,
+    marginVertical: 5,
+    borderWidth: 0.5,
+    borderColor: isDark ? 'rgba(56, 189, 248, 0.3)' : '#E0F2FE',
+  },
+  cloudInvoiceItemsTitle: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: isDark ? '#E2E8F0' : '#334155',
+    marginBottom: 4,
+  },
+  cloudInvoiceItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 2.5,
+  },
+  cloudInvoiceItemName: {
+    flex: 1,
+    fontSize: 11.5,
+    color: isDark ? '#CBD5E1' : '#475569',
+    marginRight: 6,
+  },
+  cloudInvoiceItemQty: {
+    fontSize: 11,
+    color: isDark ? '#94A3B8' : '#64748B',
+    marginRight: 10,
+  },
+  cloudInvoiceItemPrice: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: isDark ? '#38BDF8' : '#0284C7',
+  },
+  cloudInvoicePreserveNotice: {
+    marginTop: 4,
+  },
+  cloudInvoicePreserveNoticeText: {
+    fontSize: 11,
+    color: isDark ? '#93C5FD' : '#0284C7',
+    lineHeight: 15,
   },
   invoiceStatusTextWon: {
     color: isDark ? '#FBBF24' : '#B45309',

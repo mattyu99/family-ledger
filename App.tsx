@@ -59,6 +59,7 @@ import { MemoTodoModal } from './src/components/MemoTodoModal';
 import { MemoCompletionModal } from './src/components/MemoCompletionModal';
 import { CategoryManageModal } from './src/components/CategoryManageModal';
 import { InvoiceLotteryModal } from './src/components/InvoiceLotteryModal';
+import { CloudInvoiceSyncModal } from './src/components/CloudInvoiceSyncModal';
 import { TransactionFilterModal } from './src/components/TransactionFilterModal';
 import { MonthPickerModal } from './src/components/MonthPickerModal';
 import { CreditCardReconciliationModal } from './src/components/CreditCardReconciliationModal';
@@ -480,6 +481,9 @@ const AppContent: React.FC = () => {
   // 發票對獎
   const [invoiceLotteryModalVisible, setInvoiceLotteryModalVisible] = useState(false);
   const [invoiceLotteryTargetPeriod, setInvoiceLotteryTargetPeriod] = useState<string | undefined>(undefined);
+
+  // 財政部雲端發票智慧同步
+  const [cloudInvoiceModalVisible, setCloudInvoiceModalVisible] = useState(false);
 
   // 檢查更新狀態
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
@@ -926,6 +930,7 @@ const AppContent: React.FC = () => {
               setInvoiceLotteryTargetPeriod(undefined);
               setInvoiceLotteryModalVisible(true);
             }}
+            onOpenCloudInvoiceModal={() => setCloudInvoiceModalVisible(true)}
             onOpenReconcileModal={openReconcileModalForCurrentFilter}
             onOpenExportModal={(tab) => {
               setExportModalTab(tab);
@@ -1016,6 +1021,7 @@ const AppContent: React.FC = () => {
             onOpenAdminModeModal={() => setAdminModeModalVisible(true)}
             onCheckForUpdates={handleCheckForUpdates}
             isCheckingUpdate={isCheckingUpdate}
+            onOpenCloudInvoiceModal={() => setCloudInvoiceModalVisible(true)}
             onTriggerLiveToastDemo={() => {
               triggerLiveToast({
                 id: `demo-${Date.now()}`,
@@ -1211,6 +1217,11 @@ const AppContent: React.FC = () => {
           setInvoiceLotteryTargetPeriod(undefined);
           setEditingTransaction(tx);
         }}
+      />
+
+      <CloudInvoiceSyncModal
+        visible={cloudInvoiceModalVisible}
+        onClose={() => setCloudInvoiceModalVisible(false)}
       />
 
       <TransactionFilterModal

@@ -556,9 +556,11 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
               <View
                 style={[
                   styles.invoiceBadge,
+                  (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported') && styles.invoiceBadgeCloud,
                   transaction.invoice_status === 'won' && styles.invoiceBadgeWon,
                   transaction.invoice_status === 'claimed' && styles.invoiceBadgeClaimed,
                   isDark && { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default },
+                  isDark && (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported') && { backgroundColor: 'rgba(14, 165, 233, 0.18)', borderColor: '#38BDF8' },
                   isDark && transaction.invoice_status === 'won' && { backgroundColor: 'rgba(236, 72, 153, 0.2)', borderColor: 'rgba(236, 72, 153, 0.5)' },
                   isDark && transaction.invoice_status === 'claimed' && { backgroundColor: 'rgba(16, 185, 129, 0.2)', borderColor: 'rgba(16, 185, 129, 0.5)' },
                 ]}
@@ -566,9 +568,11 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                 <Text
                   style={[
                     styles.invoiceBadgeText,
+                    (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported') && styles.invoiceBadgeTextCloud,
                     transaction.invoice_status === 'won' && styles.invoiceBadgeTextWon,
                     transaction.invoice_status === 'claimed' && styles.invoiceBadgeTextClaimed,
                     isDark && { color: colors.text.secondary },
+                    isDark && (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported') && { color: '#38BDF8' },
                     isDark && transaction.invoice_status === 'won' && { color: '#F472B6' },
                     isDark && transaction.invoice_status === 'claimed' && { color: '#34D399' },
                   ]}
@@ -579,7 +583,17 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                     ? `🎉 中獎 $${transaction.invoice_prize_amount?.toLocaleString()} (${transaction.invoice_prize_name || '中獎'})`
                     : transaction.invoice_status === 'claimed'
                     ? `✅ 已兌領 $${transaction.invoice_prize_amount?.toLocaleString()}`
+                    : (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported')
+                    ? `☁️ 雲端發票 ${transaction.invoice_number}`
                     : `🧾 ${transaction.invoice_number}`}
+                </Text>
+              </View>
+            )}
+            {/* 雲端發票 24 小時內剛同步提示 */}
+            {!!transaction.cloud_synced_at && (Date.now() - new Date(transaction.cloud_synced_at).getTime()) <= 86400000 && (
+              <View style={[styles.recentlySyncedBadge, isDark && { backgroundColor: 'rgba(234, 179, 8, 0.18)', borderColor: '#EAB308' }]}>
+                <Text style={[styles.recentlySyncedBadgeText, isDark && { color: '#FDE047' }]}>
+                  ✨ 剛更新
                 </Text>
               </View>
             )}
@@ -1222,6 +1236,29 @@ const styles = StyleSheet.create({
   invoiceBadgeClaimed: {
     backgroundColor: '#ECFDF5',
     borderColor: '#10B981',
+  },
+  invoiceBadgeCloud: {
+    backgroundColor: '#F0F9FF',
+    borderColor: '#38BDF8',
+  },
+  invoiceBadgeTextCloud: {
+    color: '#0284C7',
+    fontWeight: '700',
+  },
+  recentlySyncedBadge: {
+    backgroundColor: '#FEF9C3',
+    borderColor: '#FACC15',
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    marginRight: 4,
+    alignSelf: 'center',
+  },
+  recentlySyncedBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#A16207',
   },
   invoiceBadgeText: {
     fontSize: 11,

@@ -43,6 +43,7 @@ export interface TransactionsScreenProps {
   onOpenRecurringModal: (scope: 'all' | 'my', targetMemberId?: string, initialTab?: 'bills' | 'pending' | 'installments') => void;
   onOpenMemoTodoModal: () => void;
   onOpenInvoiceLotteryModal: () => void;
+  onOpenCloudInvoiceModal?: () => void;
   onOpenReconcileModal: (type: 'credit_card' | 'stored_value', cardId?: string) => void;
   onOpenExportModal: (tab: 'csv' | 'json' | 'attachments' | 'restore') => void;
   onViewImage: (url: string, title?: string) => void;
@@ -64,6 +65,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
   onOpenRecurringModal,
   onOpenMemoTodoModal,
   onOpenInvoiceLotteryModal,
+  onOpenCloudInvoiceModal,
   onOpenReconcileModal,
   onOpenExportModal,
   onViewImage,
@@ -1314,6 +1316,35 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
               : '發票對獎'}
           </Text>
         </TouchableOpacity>
+
+        {onOpenCloudInvoiceModal && (
+          <TouchableOpacity
+            activeOpacity={0.7}
+            style={[
+              styles.filterChip,
+              isDark && {
+                backgroundColor: colors.background.card,
+                borderColor: colors.border.default,
+              },
+              {
+                borderColor: isDark ? 'rgba(56, 189, 248, 0.4)' : '#BAE6FD',
+                backgroundColor: isDark ? 'rgba(14, 165, 233, 0.15)' : '#F0F9FF',
+              },
+            ]}
+            onPress={onOpenCloudInvoiceModal}
+          >
+            <Text style={styles.filterChipIcon}>☁️</Text>
+            <Text
+              style={[
+                styles.filterChipText,
+                { color: isDark ? '#38BDF8' : '#0284C7', fontWeight: '700' },
+              ]}
+              numberOfLines={1}
+            >
+              雲端發票
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {!!searchQuery.trim() && filterMonth !== 'all' && (
           <TouchableOpacity
