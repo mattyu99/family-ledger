@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.14';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.14 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 2;
+export const APP_BUILD_REVISION = 3;
 
 // 完整版本字串 (例如 "1.0.14.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;

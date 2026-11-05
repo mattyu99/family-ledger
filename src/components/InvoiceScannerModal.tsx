@@ -299,16 +299,16 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
     try {
       let base64Data: string | undefined = undefined;
 
-      // 1. 優先使用原生 CameraView 快照 (速度最快，包裝 3.5 秒超時避免底層原生管線掛起)
+      // 1. 優先使用原生 CameraView 快照 (品質 0.35 產出適中體積並保留 base64，包裝 4 秒超時)
       if (cameraRef.current && typeof cameraRef.current.takePictureAsync === 'function') {
         try {
           const capturePromise = cameraRef.current.takePictureAsync({
-            quality: 0.65,
+            quality: 0.35,
             base64: true,
-            skipProcessing: true,
+            skipProcessing: false,
           });
           const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('原生相機快照逾時')), 3500)
+            setTimeout(() => reject(new Error('原生相機快照逾時')), 4000)
           );
           const photo = await Promise.race([capturePromise, timeoutPromise]);
           base64Data = photo?.base64;
@@ -321,7 +321,7 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
       if (!base64Data && ImagePickerModule && typeof ImagePickerModule.launchCameraAsync === 'function') {
         setStatusMessage('🤖 正在開啟相機進行拍照...');
         const result = await ImagePickerModule.launchCameraAsync({
-          quality: 0.65,
+          quality: 0.35,
           base64: true,
           allowsEditing: false,
         });
@@ -369,7 +369,7 @@ const NativeCameraModalContent: React.FC<InvoiceScannerModalProps> = ({
       const pickerResult = await ImagePickerModule.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: false,
-        quality: 0.85,
+        quality: 0.35,
         base64: true,
       });
 

@@ -118,8 +118,10 @@ export const recognizeInvoiceWithGemini = async (
     return null;
   }
 
-  // 清理 base64 字串中可能帶有的 data:image/...;base64, 前綴
-  const cleanBase64 = base64Data.replace(/^data:image\/[a-zA-Z]+;base64,/, '').trim();
+  // 清理 base64 字串中可能帶有的 data:image/...;base64, 前綴與原生換行空白字元
+  const cleanBase64 = base64Data
+    .replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '')
+    .replace(/\s+/g, '');
   if (!cleanBase64) return null;
 
   const prompt = `你是一個專業的台灣統一發票、傳統二聯式收銀機發票與收據光學辨識專家。請從這張發票或收據圖片中精確提取以下資訊，並只以乾淨的 JSON 格式回傳：
@@ -136,13 +138,11 @@ export const recognizeInvoiceWithGemini = async (
     const candidateModels = [
       'gemini-3.1-flash-lite',
       'gemini-3.5-flash-lite',
-      'gemini-3.5-flash',
-      'gemini-3.8-flash',
     ];
 
     for (const model of candidateModels) {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 6500);
+      const timer = setTimeout(() => controller.abort(), 12000);
 
       try {
         const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY.trim()}`;
