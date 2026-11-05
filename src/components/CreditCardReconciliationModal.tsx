@@ -46,6 +46,7 @@ import {
   findIssuerGroupForCard,
   CreditCardIssuerGroup,
 } from '../lib/bankIssuer';
+import { buildPassbookEntries } from '../lib/statementPassbook';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -188,6 +189,11 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
   const [showStatementVault, setShowStatementVault] = useState<boolean>(false);
   const [vaultFilterCardId, setVaultFilterCardId] = useState<string>('');
   const [previewImageStatement, setPreviewImageStatement] = useState<CreditCardStatementFile | null>(null);
+
+  // 📜 歷史帳單存摺狀態
+  const [showPassbook, setShowPassbook] = useState<boolean>(false);
+  const [passbookBankFilter, setPassbookBankFilter] = useState<string>('');
+  const [expandedPassbookKeys, setExpandedPassbookKeys] = useState<Set<string>>(new Set());
 
   // 🎁 本期刷卡回饋折抵 / 退刷快速記帳表單狀態
   const [showRebateForm, setShowRebateForm] = useState<boolean>(false);
@@ -638,6 +644,81 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
     }
   }, [cycleTransactions, accountType, currentCard, paymentAccounts]);
 
+  // 📜 信用卡歷期帳單存摺數據計算
+  const passbookEntries = useMemo(() => {
+    if (accountType !== 'credit_card' || creditCards.length === 0) return [];
+    return buildPassbookEntries({
+      creditCards,
+      transactions,
+      statements,
+      allAccounts: paymentAccounts,
+      members,
+      getMemberById,
+      cycleCount: 12,
+    });
+  }, [accountType, creditCards, transactions, statements, paymentAccounts, members, getMemberById]);
+
+  // 存摺篩選
+  const filteredPassbookEntries = useMemo(() => {
+    if (!passbookBankFilter) return passbookEntries;
+    return passbookEntries.filter(
+      entry => entry.issuerName === passbookBankFilter || entry.issuerCode === passbookBankFilter
+    );
+  }, [passbookEntries, passbookBankFilter]);
+
+  // 存摺中出現的銀行清單（供篩選列）
+  const passbookBanks = useMemo(() => {
+    const map = new Map<string, { name: string; count: number }>();
+    passbookEntries.forEach(entry => {
+      const existing = map.get(entry.issuerName);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        map.set(entry.issuerName, { name: entry.issuerName, count: 1 });
+      }
+    });
+    return Array.from(map.values());
+  }, [passbookEntries]);
+
+  // 存摺總計看板
+  const passbookStats = useMemo(() => {
+    const totalAmount = filteredPassbookEntries.reduce((sum, e) => sum + e.totalAmount, 0);
+    const totalStatements = filteredPassbookEntries.filter(e => e.statement !== null).length;
+    const fullyReconciledCycles = filteredPassbookEntries.filter(e => e.isAllReconciled).length;
+    return {
+      totalAmount,
+      totalStatements,
+      fullyReconciledCycles,
+      totalCycles: filteredPassbookEntries.length,
+    };
+  }, [filteredPassbookEntries]);
+
+  // 展開 / 收合特定存摺卡片之子層
+  const togglePassbookExpanded = (key: string) => {
+    setExpandedPassbookKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  // 從存摺直接跳轉至特定卡片特定週期的對帳畫面
+  const handleNavigateToReconcile = (
+    cardId: string,
+    cycleKey: string,
+    mode: 'single' | 'combined' = 'combined'
+  ) => {
+    setSelectedCardId(cardId);
+    setSelectedCycleKey(cycleKey);
+    setReconcileViewMode(mode);
+    setShowPassbook(false);
+    setShowStatementVault(false);
+  };
+
   // 處理上傳電子帳單
   const handleUploadStatement = async () => {
     if (!currentCard || !currentCycle || !ledgerId) return;
@@ -869,24 +950,45 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
             </View>
 
             {isCredit && creditCards.length > 0 && (
-              <TouchableOpacity
-                style={[styles.vaultToggleBtn, showStatementVault && styles.vaultToggleBtnActive]}
-                onPress={() => {
-                  setShowStatementVault(prev => {
-                    const next = !prev;
-                    if (next) refreshStatements();
-                    return next;
-                  });
-                }}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={[styles.vaultToggleBtnText, showStatementVault && styles.vaultToggleBtnTextActive]}
-                  maxFontSizeMultiplier={1.08}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <TouchableOpacity
+                  style={[styles.vaultToggleBtn, showPassbook && styles.vaultToggleBtnActive]}
+                  onPress={() => {
+                    setShowPassbook(prev => !prev);
+                    setShowStatementVault(false);
+                  }}
+                  activeOpacity={0.7}
                 >
-                  {showStatementVault ? '← 返回對帳' : `🗂️ 帳單庫 (${statements.length})`}
-                </Text>
-              </TouchableOpacity>
+                  <Text
+                    style={[styles.vaultToggleBtnText, showPassbook && styles.vaultToggleBtnTextActive]}
+                    maxFontSizeMultiplier={1.08}
+                  >
+                    {showPassbook ? '← 返回對帳' : '📜 帳單存摺'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.vaultToggleBtn, showStatementVault && styles.vaultToggleBtnActive]}
+                  onPress={() => {
+                    setShowStatementVault(prev => {
+                      const next = !prev;
+                      if (next) {
+                        refreshStatements();
+                        setShowPassbook(false);
+                      }
+                      return next;
+                    });
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[styles.vaultToggleBtnText, showStatementVault && styles.vaultToggleBtnTextActive]}
+                    maxFontSizeMultiplier={1.08}
+                  >
+                    {showStatementVault ? '← 返回對帳' : `🗂️ 帳單庫 (${statements.length})`}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             )}
 
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -917,6 +1019,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                 setSelectedCardId('');
                 setSelectedCycleKey('');
                 setShowStatementVault(false);
+                setShowPassbook(false);
               }}
               activeOpacity={0.7}
             >
@@ -1079,6 +1182,210 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                           <Text style={styles.vaultActionDangerText}>🗑️</Text>
                         </TouchableOpacity>
                       </View>
+                    </View>
+                  );
+                })
+              )}
+              <View style={{ height: 30 }} />
+            </ScrollView>
+          ) : isCredit && showPassbook ? (
+            /* 📜 歷史帳單存摺總覽視圖 */
+            <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
+              <View style={styles.passbookBannerCard}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={styles.passbookBannerTitle}>📜 信用卡歷期帳單存摺</Text>
+                    <Text style={styles.passbookBannerSub}>
+                      依發卡機構自動歸戶彙總，完美對齊網銀與存摺扣款金額
+                    </Text>
+                  </View>
+                </View>
+
+                {/* 存摺總計四大指標看板 */}
+                <View style={styles.passbookStatsRow}>
+                  <View style={styles.passbookStatBox}>
+                    <Text style={styles.passbookStatLabel}>累計扣繳總額</Text>
+                    <Text style={styles.passbookStatVal} numberOfLines={1}>
+                      ${passbookStats.totalAmount.toLocaleString()}
+                    </Text>
+                  </View>
+                  <View style={styles.passbookStatBox}>
+                    <Text style={styles.passbookStatLabel}>帳單期數</Text>
+                    <Text style={styles.passbookStatVal}>{passbookStats.totalCycles} 期</Text>
+                  </View>
+                  <View style={styles.passbookStatBox}>
+                    <Text style={styles.passbookStatLabel}>全數核對</Text>
+                    <Text style={[styles.passbookStatVal, { color: '#10B981' }]}>
+                      {passbookStats.fullyReconciledCycles} 期
+                    </Text>
+                  </View>
+                  <View style={styles.passbookStatBox}>
+                    <Text style={styles.passbookStatLabel}>已存帳單</Text>
+                    <Text style={[styles.passbookStatVal, { color: '#3B82F6' }]}>
+                      {passbookStats.totalStatements} 份
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* 存摺發卡銀行篩選列 */}
+              <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.passbookFilterScroll}>
+                <TouchableOpacity
+                  style={[styles.passbookFilterChip, !passbookBankFilter && styles.passbookFilterChipActive]}
+                  onPress={() => setPassbookBankFilter('')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.passbookFilterChipText, !passbookBankFilter && styles.passbookFilterChipTextActive]}>
+                    全部銀行 ({passbookEntries.length})
+                  </Text>
+                </TouchableOpacity>
+                {passbookBanks.map(b => {
+                  const active = passbookBankFilter === b.name;
+                  return (
+                    <TouchableOpacity
+                      key={b.name}
+                      style={[styles.passbookFilterChip, active && styles.passbookFilterChipActive]}
+                      onPress={() => setPassbookBankFilter(active ? '' : b.name)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.passbookFilterChipText, active && styles.passbookFilterChipTextActive]}>
+                        🏛️ {b.name} ({b.count})
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </HorizontalScrollView>
+
+              {/* 存摺項目母子階層列表 */}
+              {filteredPassbookEntries.length === 0 ? (
+                <View style={styles.emptyTxBox}>
+                  <Text style={{ fontSize: 32, marginBottom: 8 }}>📜</Text>
+                  <Text style={styles.emptyTxText}>尚無此篩選條件下的歷史帳單紀錄</Text>
+                  <Text style={[styles.emptyTxText, { marginTop: 4, fontSize: 11 }]}>
+                    當信用卡有刷卡消費或上傳電子帳單時，將自動在此彙總為銀行扣款存摺！
+                  </Text>
+                </View>
+              ) : (
+                filteredPassbookEntries.map(entry => {
+                  const isExpanded = expandedPassbookKeys.has(entry.id);
+                  return (
+                    <View key={entry.id} style={styles.passbookCard}>
+                      {/* 母層卡片：銀行總額與核對狀態 */}
+                      <TouchableOpacity
+                        style={styles.passbookCardHeader}
+                        onPress={() => togglePassbookExpanded(entry.id)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.passbookHeaderLeft}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <Text style={styles.passbookBankName}>🏛️ {entry.issuerName}</Text>
+                            {!!entry.cardholderName && (
+                              <View style={styles.passbookUserBadge}>
+                                <Text style={styles.passbookUserBadgeText}>{entry.cardholderName}</Text>
+                              </View>
+                            )}
+                            {entry.isMultiCard && (
+                              <View style={styles.passbookMultiBadge}>
+                                <Text style={styles.passbookMultiBadgeText}>{entry.cards.length}張卡</Text>
+                              </View>
+                            )}
+                          </View>
+                          <Text style={styles.passbookCycleName}>
+                            {entry.cycleName} · {entry.rangeText} (每月{entry.billingCycleDate}號結帳)
+                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 }}>
+                            <View
+                              style={[
+                                styles.passbookStatusBadge,
+                                entry.isAllReconciled ? styles.passbookStatusBadgeDone : styles.passbookStatusBadgePending,
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.passbookStatusBadgeText,
+                                  entry.isAllReconciled ? styles.passbookStatusTextDone : styles.passbookStatusTextPending,
+                                ]}
+                              >
+                                {entry.isAllReconciled ? '✓ 全數核對完成' : `○ 待核對 ${entry.reconciledCount}/${entry.totalCount} 筆`}
+                              </Text>
+                            </View>
+                            {entry.statement && (
+                              <TouchableOpacity
+                                style={styles.passbookStmtMiniBtn}
+                                onPress={() => handleOpenStatement(entry.statement!)}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={styles.passbookStmtMiniText}>📎 電子帳單</Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        </View>
+
+                        <View style={styles.passbookHeaderRight}>
+                          <Text style={styles.passbookAmountLabel}>銀行應繳總額</Text>
+                          <Text style={styles.passbookAmountValue}>
+                            NT$ {entry.totalAmount.toLocaleString()}
+                          </Text>
+                          {entry.totalRebate > 0 && (
+                            <Text style={styles.passbookRebateText}>
+                              已折抵 ${entry.totalRebate.toLocaleString()}
+                            </Text>
+                          )}
+                          <Text style={styles.passbookExpandHint}>
+                            {isExpanded ? '收起各卡 ▲' : '展開小計 ▼'}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+
+                      {/* 子層明細（點擊母層展開） */}
+                      {isExpanded && (
+                        <View style={styles.passbookChildrenBox}>
+                          <Text style={styles.passbookChildrenTitle}>各卡扣繳明細：</Text>
+                          {entry.cardSubtotals.map(sub => (
+                            <View key={sub.card.id} style={styles.passbookChildRow}>
+                              <View style={{ flex: 1, marginRight: 8 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                  <Text style={styles.passbookChildCardName} numberOfLines={1}>
+                                    {sub.card.name}
+                                  </Text>
+                                  {sub.card.last_four_digits ? (
+                                    <Text style={styles.passbookChildCardDigits}>
+                                      (*{sub.card.last_four_digits})
+                                    </Text>
+                                  ) : null}
+                                </View>
+                                <Text style={styles.passbookChildMeta}>
+                                  {sub.totalCount} 筆消費 · {sub.totalCount > 0 && sub.isAllReconciled ? '✓ 全數已核對' : `已核對 ${sub.reconciledCount}/${sub.totalCount}`}
+                                </Text>
+                              </View>
+                              <View style={{ alignItems: 'flex-end', marginRight: 10 }}>
+                                <Text style={styles.passbookChildAmount}>
+                                  NT$ {sub.totalAmount.toLocaleString()}
+                                </Text>
+                              </View>
+                              <TouchableOpacity
+                                style={styles.passbookGoSingleBtn}
+                                onPress={() => handleNavigateToReconcile(sub.card.id, entry.cycleKey, 'single')}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={styles.passbookGoSingleText}>單卡對帳</Text>
+                              </TouchableOpacity>
+                            </View>
+                          ))}
+
+                          {entry.isMultiCard && (
+                            <TouchableOpacity
+                              style={styles.passbookGoCombinedBtn}
+                              onPress={() => handleNavigateToReconcile(entry.cards[0].id, entry.cycleKey, 'combined')}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={styles.passbookGoCombinedText}>
+                                🏛️ 前往此期【{entry.issuerName}】全卡合併對帳 →
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      )}
                     </View>
                   );
                 })
@@ -3029,5 +3336,256 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 11,
     color: isDark ? '#A7F3D0' : '#047857',
     marginTop: 2,
+  },
+
+  // 📜 歷史帳單存摺樣式
+  passbookBannerCard: {
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
+  },
+  passbookBannerTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text.primary,
+  },
+  passbookBannerSub: {
+    fontSize: 11,
+    color: colors.text.muted,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  passbookStatsRow: {
+    flexDirection: 'row',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+    gap: 8,
+  },
+  passbookStatBox: {
+    flex: 1,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#FFFFFF',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+  },
+  passbookStatLabel: {
+    fontSize: 10,
+    color: colors.text.muted,
+  },
+  passbookStatVal: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: colors.text.primary,
+    marginTop: 2,
+  },
+  passbookFilterScroll: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingBottom: 10,
+  },
+  passbookFilterChip: {
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
+  },
+  passbookFilterChipActive: {
+    backgroundColor: '#1D4ED8',
+    borderColor: '#1D4ED8',
+  },
+  passbookFilterChipText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: colors.text.muted,
+  },
+  passbookFilterChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  passbookCard: {
+    backgroundColor: isDark ? colors.background.cardSubtle : '#FFFFFF',
+    borderRadius: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
+    overflow: 'hidden',
+  },
+  passbookCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 12,
+  },
+  passbookHeaderLeft: {
+    flex: 1,
+    marginRight: 10,
+  },
+  passbookBankName: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: colors.text.primary,
+  },
+  passbookUserBadge: {
+    backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+  },
+  passbookUserBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: isDark ? '#93C5FD' : '#1D4ED8',
+  },
+  passbookMultiBadge: {
+    backgroundColor: isDark ? 'rgba(147, 51, 234, 0.15)' : '#F3E8FF',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+  },
+  passbookMultiBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: isDark ? '#D8B4FE' : '#7E22CE',
+  },
+  passbookCycleName: {
+    fontSize: 11,
+    color: colors.text.secondary,
+    marginTop: 4,
+  },
+  passbookStatusBadge: {
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  passbookStatusBadgeDone: {
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5',
+  },
+  passbookStatusBadgePending: {
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
+  },
+  passbookStatusBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  passbookStatusTextDone: {
+    color: isDark ? '#34D399' : '#059669',
+  },
+  passbookStatusTextPending: {
+    color: isDark ? '#FBBF24' : '#D97706',
+  },
+  passbookStmtMiniBtn: {
+    backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(59, 130, 246, 0.4)' : '#BFDBFE',
+  },
+  passbookStmtMiniText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: isDark ? '#93C5FD' : '#1D4ED8',
+  },
+  passbookHeaderRight: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  passbookAmountLabel: {
+    fontSize: 10,
+    color: colors.text.muted,
+  },
+  passbookAmountValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text.primary,
+    marginTop: 2,
+  },
+  passbookRebateText: {
+    fontSize: 9.5,
+    color: isDark ? '#34D399' : '#059669',
+    marginTop: 1,
+  },
+  passbookExpandHint: {
+    fontSize: 10,
+    color: isDark ? '#60A5FA' : '#2563EB',
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  passbookChildrenBox: {
+    backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : '#F8FAFC',
+    borderTopWidth: 1,
+    borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+    padding: 10,
+  },
+  passbookChildrenTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.text.secondary,
+    marginBottom: 6,
+  },
+  passbookChildRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#FFFFFF',
+    borderRadius: 8,
+    padding: 8,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
+  },
+  passbookChildCardName: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: colors.text.primary,
+  },
+  passbookChildCardDigits: {
+    fontSize: 10,
+    color: colors.text.muted,
+  },
+  passbookChildMeta: {
+    fontSize: 9.5,
+    color: colors.text.muted,
+    marginTop: 1,
+  },
+  passbookChildAmount: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text.primary,
+  },
+  passbookGoSingleBtn: {
+    backgroundColor: isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(59, 130, 246, 0.35)' : '#BFDBFE',
+  },
+  passbookGoSingleText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: isDark ? '#60A5FA' : '#1D4ED8',
+  },
+  passbookGoCombinedBtn: {
+    backgroundColor: isDark ? 'rgba(37, 99, 235, 0.2)' : '#DBEAFE',
+    borderRadius: 8,
+    paddingVertical: 7,
+    alignItems: 'center',
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(37, 99, 235, 0.4)' : '#93C5FD',
+  },
+  passbookGoCombinedText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: isDark ? '#93C5FD' : '#1D4ED8',
   },
 });
