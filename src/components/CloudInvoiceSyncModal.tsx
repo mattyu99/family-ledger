@@ -49,6 +49,7 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
     addTransaction,
     addPaymentAccount,
     updatePaymentAccount,
+    deletePaymentAccount,
     getMemberById,
   } = useLedger();
 
@@ -86,19 +87,21 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
     }
   }, [visible, currentLedger?.id]);
 
-  // 取得現有各成員登記之實體卡片對應
+  // 取得現有各成員登記之實體金融卡片對應（排除網購會員載具 type === 'carrier'）
   const cardMappings = useMemo(() => {
-    return paymentAccounts.map(acc => {
-      const owner = acc.user_id ? getMemberById(acc.user_id) : undefined;
-      const cardDisplay =
-        acc.card_number || (acc.last_four_digits ? `末四碼 ${acc.last_four_digits}` : '未填卡號');
-      return {
-        account: acc,
-        ownerName: owner?.display_name || '全家共用',
-        cardDisplay,
-        isConfigured: !!(acc.card_number || acc.last_four_digits),
-      };
-    });
+    return paymentAccounts
+      .filter(acc => acc.type !== 'carrier')
+      .map(acc => {
+        const owner = acc.user_id ? getMemberById(acc.user_id) : undefined;
+        const cardDisplay =
+          acc.card_number || (acc.last_four_digits ? `末四碼 ${acc.last_four_digits}` : '未填卡號');
+        return {
+          account: acc,
+          ownerName: owner?.display_name || '全家共用',
+          cardDisplay,
+          isConfigured: !!(acc.card_number || acc.last_four_digits),
+        };
+      });
   }, [paymentAccounts, getMemberById]);
 
   // 解析 CSV 核心邏輯
@@ -272,30 +275,57 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
     }
   };
 
-  // 動作 1：登記為「網購與會員載具分流規則」（隱喻的第三張卡）
+  // 彙整網購會員載具清單（優先來自 paymentAccounts 中 type === 'carrier' 的正規帳戶，並相容舊有 carrierRules）
+  const allCarrierRules = useMemo(() => {
+    const fromAccounts: CarrierRule[] = paymentAccounts
+      .filter(a => a.type === 'carrier')
+      .map(a => ({
+        id: a.id,
+        ledger_id: a.ledger_id,
+        carrier_no: a.card_number || '',
+        carrier_name: a.name,
+        user_id: a.user_id || '',
+        created_at: a.created_at,
+        updated_at: a.updated_at,
+      }));
+    const existingNos = new Set(fromAccounts.map(r => r.carrier_no.trim().toLowerCase()));
+    const legacyOnly = carrierRules.filter(r => !existingNos.has(r.carrier_no.trim().toLowerCase()));
+    return [...fromAccounts, ...legacyOnly];
+  }, [paymentAccounts, carrierRules]);
+
+  // 動作 1：登記為「網購與會員載具」（直接收納於 paymentAccounts type === 'carrier'）
   const handleCreateCarrierRule = async (memberId: string) => {
     if (!quickBindCarrier || !currentLedger?.id) return;
     const member = getMemberById(memberId);
     const memberName = member?.display_name || '家庭成員';
 
     try {
-      const newRule = await addOrUpdateCarrierRule(currentLedger.id, {
-        carrier_no: quickBindCarrier.carrierNo,
-        carrier_name: quickBindCarrier.carrierName || '網購/會員載具',
+      const defaultName =
+        quickBindCarrier.carrierName ||
+        (quickBindCarrier.carrierNo.includes('@')
+          ? '跨境電商載具'
+          : `【${memberName}】網購載具`);
+
+      await addPaymentAccount({
+        name: defaultName,
+        type: 'carrier',
         user_id: memberId,
+        card_number: quickBindCarrier.carrierNo,
+        balance: 0,
+        color: '#EC4899',
+        icon: quickBindCarrier.carrierNo.includes('@') ? '📧' : '🛍️',
+        sort_order: paymentAccounts.length + 1,
       });
 
-      const nextRules = [...carrierRules.filter(r => r.carrier_no !== newRule.carrier_no), newRule];
-      setCarrierRules(nextRules);
       setQuickBindCarrier(null);
 
       if (rawCsvText) {
-        handleProcessCsvText(rawCsvText, '載具分流規則已建立', nextRules);
+        handleProcessCsvText(rawCsvText, '載具已建立');
       }
 
       Alert.alert(
-        '🎉 載具分流規則已建立',
-        `已成功建立「${quickBindCarrier.carrierName || '載具'}」分流規則！發票將自動歸屬給【${memberName}】，且絕不產生多餘假卡片！`
+        '🎉 網購載具已建立',
+        `已成功建立「${defaultName}」！日後發票將自動歸屬給【${memberName}】，且可隨時在「卡片與資產管理」中查閱！`
       );
     } catch (err: any) {
       Alert.alert('建立失敗', err.message || '發生未知錯誤');
@@ -381,18 +411,25 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
     const memberName = member?.display_name || '家庭成員';
 
     try {
-      const updatedRule = await addOrUpdateCarrierRule(currentLedger.id, {
-        carrier_no: changingRuleTarget.carrier_no,
-        carrier_name: changingRuleTarget.carrier_name,
-        user_id: newMemberId,
-      });
+      const isAccount = paymentAccounts.some(a => a.id === changingRuleTarget.id);
+      if (isAccount) {
+        await updatePaymentAccount(changingRuleTarget.id, {
+          user_id: newMemberId,
+        });
+      } else {
+        const updatedRule = await addOrUpdateCarrierRule(currentLedger.id, {
+          carrier_no: changingRuleTarget.carrier_no,
+          carrier_name: changingRuleTarget.carrier_name,
+          user_id: newMemberId,
+        });
+        const nextRules = carrierRules.map(r => (r.id === updatedRule.id ? updatedRule : r));
+        setCarrierRules(nextRules);
+      }
 
-      const nextRules = carrierRules.map(r => (r.id === updatedRule.id ? updatedRule : r));
-      setCarrierRules(nextRules);
       setChangingRuleTarget(null);
 
       if (rawCsvText) {
-        handleProcessCsvText(rawCsvText, '變更歸屬成員', nextRules);
+        handleProcessCsvText(rawCsvText, '變更歸屬成員');
       }
 
       Alert.alert(
@@ -416,10 +453,15 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
           style: 'destructive',
           onPress: async () => {
             if (!currentLedger?.id) return;
-            const updated = await removeCarrierRule(currentLedger.id, rule.id);
-            setCarrierRules(updated);
+            const isAccount = paymentAccounts.some(a => a.id === rule.id);
+            if (isAccount) {
+              await deletePaymentAccount(rule.id);
+            } else {
+              const updated = await removeCarrierRule(currentLedger.id, rule.id);
+              setCarrierRules(updated);
+            }
             if (rawCsvText) {
-              handleProcessCsvText(rawCsvText, '已解除分流規則', updated);
+              handleProcessCsvText(rawCsvText, '已解除分流規則');
             }
           },
         },
@@ -926,21 +968,21 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                   🛍️ 網購與會員分流字典（隱喻的第三張卡）
                 </Text>
                 <View style={styles.ruleCountBadge}>
-                  <Text style={styles.ruleCountBadgeText}>{carrierRules.length} 條規則</Text>
+                  <Text style={styles.ruleCountBadgeText}>{allCarrierRules.length} 條規則</Text>
                 </View>
               </View>
               <Text style={[styles.sectionDesc, { color: colors.text.secondary }]}>
                 專門處理蝦皮、MOMO、Netflix 等非實體卡載具，只記錄歸屬成員，不污染卡片資產：
               </Text>
 
-              {carrierRules.length === 0 ? (
+              {allCarrierRules.length === 0 ? (
                 <View style={styles.emptyRuleBox}>
                   <Text style={styles.emptyRuleHint}>
                     目前尚無分流規則。匯入發票時若有蝦皮、MOMO 等載具，點擊「登記」即可一鍵加入！
                   </Text>
                 </View>
               ) : (
-                carrierRules.map(rule => {
+                allCarrierRules.map(rule => {
                   const owner = getMemberById(rule.user_id);
                   const ownerName = owner?.display_name || '未指定成員';
                   return (
@@ -1152,12 +1194,14 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                       📌 適合台新街口卡 (356558...)、聯邦卡、悠遊卡等實體卡。直接綁入現有卡片，絕不重複建卡：
                     </Text>
                     <ScrollView style={{ maxHeight: 200 }}>
-                      {paymentAccounts.length === 0 ? (
+                      {paymentAccounts.filter(a => a.type !== 'carrier').length === 0 ? (
                         <Text style={{ color: colors.text.secondary, padding: 12, textAlign: 'center' }}>
                           目前帳本尚無建立卡片，請先建立或切換至其他選項。
                         </Text>
                       ) : (
-                        paymentAccounts.map(account => {
+                        paymentAccounts
+                          .filter(a => a.type !== 'carrier')
+                          .map(account => {
                           const owner = account.user_id ? getMemberById(account.user_id) : undefined;
                           return (
                             <TouchableOpacity

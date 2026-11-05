@@ -364,6 +364,51 @@ describe('cloudInvoiceSync 智慧比對引擎測試', () => {
       // 3. 兩筆發票都命中規則，未註冊載具清單應為空！
       expect(result.unregisteredCarriers.length).toBe(0);
     });
+
+    it('發票若命中 PaymentAccount 中的網購會員載具卡 (type: carrier)，應自動分流成員且不關聯扣款帳戶', () => {
+      const accountsWithCarrier: PaymentAccount[] = [
+        ...mockAccounts,
+        {
+          id: 'acc_carrier_shopee',
+          ledger_id: 'ledger_1',
+          name: '【樂購蝦皮】載具',
+          type: 'carrier',
+          user_id: 'user_mom',
+          card_number: '16729177',
+          balance: 0,
+          sort_order: 4,
+          created_at: '2026-01-01',
+        },
+      ];
+
+      const invoices: CloudInvoiceItem[] = [
+        {
+          invoiceNumber: 'SP-88889999',
+          invoiceDate: '2026-09-12',
+          sellerName: '蝦皮購物嚴選',
+          amount: 880,
+          carrierNo: '16729177',
+          carrierName: '蝦皮會員載具',
+        },
+      ];
+
+      const result = processCloudInvoicesSync(
+        invoices,
+        [],
+        accountsWithCarrier,
+        mockMembers,
+        'user_dad',
+        'ledger_1',
+        'cat_general'
+      );
+
+      const tx = result.newTransactions.find(t => t.data.invoice_number === 'SP-88889999');
+      expect(tx).toBeDefined();
+      expect(tx?.data.paid_by).toBe('user_mom'); // 自動分流給雅媽
+      expect(tx?.data.cloud_carrier_name).toBe('【樂購蝦皮】載具');
+      expect(tx?.data.account_id).toBeUndefined(); // 網購載具不作為金融扣款帳戶
+      expect(result.unregisteredCarriers.length).toBe(0);
+    });
   });
 
   describe('parseMofInvoiceCsv 財政部官方 CSV 解析器', () => {

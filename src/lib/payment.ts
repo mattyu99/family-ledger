@@ -488,7 +488,7 @@ export const sortAccountsByUser = (
 export const filterAccountsForUser = (
   accounts: PaymentAccount[],
   options: {
-    type: 'credit_card' | 'stored_value' | 'bank' | 'other' | 'all';
+    type: 'credit_card' | 'stored_value' | 'bank' | 'carrier' | 'other' | 'all';
     currentUser?: Profile | null;
     inAdminMode?: boolean;
     selectedAccountId?: string;
@@ -506,8 +506,10 @@ export const filterAccountsForUser = (
     targetPayerId,
   } = options;
 
-  // 1. 先依帳戶類型過濾
-  const ofType = type === 'all' ? accounts : accounts.filter(a => a.type === type);
+  // 1. 先依帳戶類型過濾（'all' 模式專供記帳扣款帳戶選單，預設排除純網購載具 'carrier'）
+  const ofType = type === 'all'
+    ? accounts.filter(a => a.type !== 'carrier')
+    : accounts.filter(a => a.type === type);
   if (ofType.length === 0) return [];
 
   const preferredUser = targetPayerId || currentUser?.id;

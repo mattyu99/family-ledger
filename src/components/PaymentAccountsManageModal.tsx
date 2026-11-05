@@ -51,7 +51,7 @@ const POPULAR_ISSUER_BANKS = [
 interface PaymentAccountsManageModalProps {
   visible: boolean;
   onClose: () => void;
-  initialTab?: 'credit_card' | 'stored_value' | 'bank' | 'cash';
+  initialTab?: 'credit_card' | 'stored_value' | 'bank' | 'cash' | 'carrier';
   scope?: 'my' | 'all';
 }
 
@@ -73,7 +73,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     }
   };
 
-  const [activeTab, setActiveTab] = useState<'credit_card' | 'stored_value' | 'bank' | 'cash'>(initialTab || 'credit_card');
+  const [activeTab, setActiveTab] = useState<'credit_card' | 'stored_value' | 'bank' | 'cash' | 'carrier'>(initialTab || 'credit_card');
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
@@ -203,6 +203,10 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     () => sortAccountsByUser(filteredPaymentAccounts.filter(a => a.type === 'cash'), currentUser.id),
     [filteredPaymentAccounts, currentUser.id]
   );
+  const carrierAccounts = useMemo(
+    () => sortAccountsByUser(filteredPaymentAccounts.filter(a => a.type === 'carrier'), currentUser.id),
+    [filteredPaymentAccounts, currentUser.id]
+  );
 
   // 管理權限：在「我的」模式下每位成員均可管理自己的卡片；在「全家」模式下僅管理員可管理
   const canManage = isOwner || scope === 'my';
@@ -212,13 +216,22 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
       showAlert('權限不足', '只有帳本管理員才能在全家一覽中新增卡片與帳戶；若要新增個人卡片，請至「我的」新增。');
       return;
     }
-    if (type === 'stored_value' || type === 'credit_card' || type === 'bank' || type === 'cash') {
+    if (type === 'stored_value' || type === 'credit_card' || type === 'bank' || type === 'cash' || type === 'carrier') {
       setActiveTab(type);
     }
     setIsEditing(true);
     setEditingId(null);
     setFormType(type);
-    const defaultName = type === 'credit_card' ? '富邦 Costco 卡' : type === 'bank' ? '玉山銀行 薪轉戶' : type === 'cash' ? '現金皮夾' : '悠遊卡';
+    const defaultName =
+      type === 'credit_card'
+        ? '富邦 Costco 卡'
+        : type === 'bank'
+        ? '玉山銀行 薪轉戶'
+        : type === 'cash'
+        ? '現金皮夾'
+        : type === 'carrier'
+        ? '【樂購蝦皮】載具'
+        : '悠遊卡';
     setFormName(defaultName);
     const myMember = members.find(m => isMatchedToCurrentUser(m.id));
     setFormUserId(myMember ? myMember.id : (currentUser?.id || ''));
@@ -226,7 +239,17 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     setFormCardNumber('');
     setFormCycleDate('15');
     setFormBalance('0');
-    setFormColor(type === 'credit_card' ? COLOR_PALETTE[0] : type === 'bank' ? COLOR_PALETTE[6] : type === 'cash' ? COLOR_PALETTE[2] : COLOR_PALETTE[4]);
+    setFormColor(
+      type === 'credit_card'
+        ? COLOR_PALETTE[0]
+        : type === 'bank'
+        ? COLOR_PALETTE[6]
+        : type === 'cash'
+        ? COLOR_PALETTE[2]
+        : type === 'carrier'
+        ? COLOR_PALETTE[5]
+        : COLOR_PALETTE[4]
+    );
     setIsManualIssuer(false);
     const autoDetected = type === 'credit_card' ? detectIssuerBank(defaultName) : null;
     setFormIssuerBank(autoDetected ? autoDetected.shortName : '');
@@ -244,7 +267,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     }
     const matchedMember = acc.user_id && (getMemberById ? getMemberById(acc.user_id) : members.find(m => m.id === acc.user_id));
     const myMember = members.find(m => isMatchedToCurrentUser(m.id));
-    if (acc.type === 'stored_value' || acc.type === 'credit_card' || acc.type === 'bank' || acc.type === 'cash') {
+    if (acc.type === 'stored_value' || acc.type === 'credit_card' || acc.type === 'bank' || acc.type === 'cash' || acc.type === 'carrier') {
       setActiveTab(acc.type);
     }
     setIsEditing(true);
@@ -285,9 +308,15 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
 
     const cleanCardNumber = formCardNumber.replace(/\D/g, '').slice(0, 16);
     const cleanLastFour = formLastFour.trim();
-    const finalCardNumber = formType === 'stored_value' ? (cleanCardNumber || undefined) : undefined;
+    const finalCardNumber = formType === 'carrier'
+      ? (formCardNumber.trim() || undefined)
+      : formType === 'stored_value'
+      ? (cleanCardNumber || undefined)
+      : (formCardNumber.trim() || undefined);
     const finalLastFour = formType === 'stored_value'
       ? (cleanCardNumber ? (cleanCardNumber.length > 4 ? cleanCardNumber.slice(-4) : cleanCardNumber) : (cleanLastFour || undefined))
+      : formType === 'carrier'
+      ? undefined
       : (cleanLastFour || undefined);
 
     const cleanIssuerBank = formIssuerBank.trim();
@@ -323,12 +352,21 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
         issuer_bank: finalIssuerBank,
         balance: formType === 'stored_value' ? balanceNum : 0,
         color: formColor,
-        icon: formType === 'credit_card' ? '💳' : formType === 'bank' ? '🏦' : '🚌',
+        icon:
+          formType === 'credit_card'
+            ? '💳'
+            : formType === 'bank'
+            ? '🏦'
+            : formType === 'cash'
+            ? '💵'
+            : formType === 'carrier'
+            ? (cleanName.includes('@') || formCardNumber.includes('@') ? '📧' : '🛍️')
+            : '🚌',
         sort_order: paymentAccounts.length + 1,
       });
     }
 
-    if (formType === 'stored_value' || formType === 'credit_card' || formType === 'bank') {
+    if (formType === 'stored_value' || formType === 'credit_card' || formType === 'bank' || formType === 'cash' || formType === 'carrier') {
       setActiveTab(formType);
     }
     setIsEditing(false);
@@ -415,9 +453,17 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                       ? (canManage
                         ? (scope === 'my' ? `管理屬於「${currentUser?.display_name || '我'}」之銀行帳戶` : '設定全家的銀行帳戶與持有人，供轉帳與週期扣繳對帳')
                         : '全家一覽瀏覽模式（僅帳本管理員可新增、修改或刪除銀行帳戶）')
-                      : (canManage
-                        ? (scope === 'my' ? `管理屬於「${currentUser?.display_name || '我'}」之悠遊卡與即時餘額` : '設定全家的悠遊卡 / 儲值卡與即時餘額')
-                        : '全家一覽瀏覽模式（僅帳本管理員可新增、修改或刪除悠遊卡）')}
+                      : activeTab === 'cash'
+                        ? (canManage
+                          ? (scope === 'my' ? `管理屬於「${currentUser?.display_name || '我'}」之現金皮包` : '設定全家的現金皮包帳戶')
+                          : '全家一覽瀏覽模式（僅帳本管理員可管理現金帳戶）')
+                        : activeTab === 'carrier'
+                          ? (canManage
+                            ? (scope === 'my' ? `管理屬於「${currentUser?.display_name || '我'}」之網購載具（蝦皮、MOMO、跨境電商等）` : '設定全家的網購會員載具分流規則')
+                            : '全家一覽瀏覽模式（僅帳本管理員可管理網購載具）')
+                        : (canManage
+                          ? (scope === 'my' ? `管理屬於「${currentUser?.display_name || '我'}」之悠遊卡與即時餘額` : '設定全家的悠遊卡 / 儲值卡與即時餘額')
+                          : '全家一覽瀏覽模式（僅帳本管理員可新增、修改或刪除悠遊卡）')}
               </Text>
             </View>
             <TouchableOpacity
@@ -439,7 +485,12 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
 
           {/* 模式分頁切換 Tab */}
           {!isEditing && (
-            <View style={styles.tabBar}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tabBar}
+              style={{ flexGrow: 0, marginTop: 10, marginBottom: 4 }}
+            >
               <TouchableOpacity
                 style={[styles.tabItem, activeTab === 'credit_card' && styles.tabItemActive]}
                 onPress={() => setActiveTab('credit_card')}
@@ -475,7 +526,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                   style={[styles.tabItemText, activeTab === 'bank' && styles.tabItemTextActive]}
                   maxFontSizeMultiplier={1.12}
                 >
-                  🏦 銀行帳戶 ({bankAccounts.length})
+                  🏦 銀行 ({bankAccounts.length})
                 </Text>
               </TouchableOpacity>
 
@@ -491,7 +542,20 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                   💵 現金 ({cashAccounts.length})
                 </Text>
               </TouchableOpacity>
-            </View>
+
+              <TouchableOpacity
+                style={[styles.tabItem, activeTab === 'carrier' && styles.tabItemActive]}
+                onPress={() => setActiveTab('carrier')}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[styles.tabItemText, activeTab === 'carrier' && styles.tabItemTextActive]}
+                  maxFontSizeMultiplier={1.12}
+                >
+                  🛍️ 網購載具 ({carrierAccounts.length})
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
           )}
 
           {isEditing ? (
@@ -564,11 +628,30 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     💵 現金皮包
                   </Text>
                 </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.typeBtn, formType === 'carrier' && styles.typeBtnActive]}
+                  onPress={() => {
+                    setFormType('carrier');
+                    if (!editingId && (formName === '富邦 Costco 卡' || formName === '悠遊卡' || formName === '玉山銀行 薪轉戶' || formName === '現金皮夾')) setFormName('【樂購蝦皮】載具');
+                  }}
+                >
+                  <Text style={[styles.typeBtnText, formType === 'carrier' && styles.typeBtnTextActive]}>
+                    🛍️ 網購載具
+                  </Text>
+                </TouchableOpacity>
               </View>
 
               {/* 卡片/帳戶名稱 */}
               <Text style={styles.fieldLabel}>
-                {formType === 'credit_card' ? '卡片名稱' : formType === 'bank' ? '銀行 / 帳戶名稱' : formType === 'cash' ? '現金皮夾名稱' : '卡片名稱'}
+                {formType === 'credit_card'
+                  ? '卡片名稱'
+                  : formType === 'bank'
+                  ? '銀行 / 帳戶名稱'
+                  : formType === 'cash'
+                  ? '現金皮夾名稱'
+                  : formType === 'carrier'
+                  ? '載具 / 會員自訂名稱'
+                  : '卡片名稱'}
               </Text>
               <TextInput
                 style={styles.textInput}
@@ -581,6 +664,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     ? '例如：玉山銀行 薪轉戶、台新 Richart'
                     : formType === 'cash'
                     ? '例如：爸爸皮夾、公用零用金'
+                    : formType === 'carrier'
+                    ? '例如：【樂購蝦皮】載具、PSN 跨境電商'
                     : '例如：爸爸悠遊卡'
                 }
                 onFocus={() => handleInputFocus('name')}
@@ -589,7 +674,13 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
 
               {/* 持卡人 / 帳戶持有人 */}
               <Text style={styles.fieldLabel}>
-                {formType === 'bank' ? '帳戶持有人 / 歸屬家庭成員' : formType === 'cash' ? '皮包持有人 / 歸屬家庭成員' : '持卡人 / 歸屬家庭成員'}
+                {formType === 'bank'
+                  ? '帳戶持有人 / 歸屬家庭成員'
+                  : formType === 'cash'
+                  ? '皮包持有人 / 歸屬家庭成員'
+                  : formType === 'carrier'
+                  ? '發票預設分流歸屬家庭成員'
+                  : '持卡人 / 歸屬家庭成員'}
               </Text>
               <View style={styles.memberChipsRow}>
                 {isOwner && (
@@ -759,6 +850,24 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                   />
                   <Text style={styles.fieldHint}>
                     💡 現金皮包餘額將自動計入家庭總資產；提款時可一鍵從銀行轉出並充實此皮夾現金。
+                  </Text>
+                </>
+              ) : formType === 'carrier' ? (
+                <>
+                  {/* 網購/會員載具代碼 */}
+                  <Text style={styles.fieldLabel}>載具代碼 / 會員代碼 / Email (必填)</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={formCardNumber}
+                    onChangeText={setFormCardNumber}
+                    placeholder="例如：蝦皮 16729177、PSN mattyu09@...、MOMO 201103507225"
+                    autoCapitalize="none"
+                    onFocus={() => handleInputFocus('cardNumber')}
+                    returnKeyType="done"
+                    onSubmitEditing={Keyboard.dismiss}
+                  />
+                  <Text style={styles.fieldHint}>
+                    💡 設定後，財政部發票 CSV 匯入只要出現此代碼，系統將自動分流給指定成員，無需建立假卡！
                   </Text>
                 </>
               ) : (
@@ -1046,7 +1155,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     })
                   )}
                 </>
-              ) : (
+              ) : activeTab === 'cash' ? (
                 /* 💵 現金皮包分頁 */
                 <>
                   <View style={styles.sectionHeaderRow}>
@@ -1089,6 +1198,74 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                             <Text style={styles.cardSubText}>
                               {holder ? `${holder.avatar_url || '👤'} ${holder.display_name} · ` : '🏠 全家通用 · '}
                               目前現金：NT$ {(acc.balance || 0).toLocaleString()}
+                            </Text>
+                          </View>
+                          {canEditAccount && (
+                            <View style={styles.cardActionGroup}>
+                              <TouchableOpacity style={styles.editBtn} onPress={() => handleOpenEdit(acc)}>
+                                <Text style={styles.editText}>編輯</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity style={styles.delBtn} onPress={() => handleDelete(acc)}>
+                                <Text style={styles.delText}>刪除</Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })
+                  )}
+                </>
+              ) : (
+                /* 🛍️ 網購載具分頁 */
+                <>
+                  <View style={styles.sectionHeaderRow}>
+                    <Text style={styles.sectionTitle}>🛍️ 網購與會員載具清單 ({carrierAccounts.length})</Text>
+                    {canManage && (
+                      <TouchableOpacity
+                        style={styles.addMiniBtn}
+                        onPress={() => handleOpenAdd('carrier')}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.addMiniText}>+ 新增網購載具</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {carrierAccounts.length === 0 ? (
+                    <View style={styles.emptyStateContainer}>
+                      <Text style={styles.emptyNotice}>尚未設定網購或會員載具代碼</Text>
+                      <Text style={[styles.fieldHint, { textAlign: 'center', marginTop: 4, marginBottom: 12 }]}>
+                        設定蝦皮購物、MOMO 或跨境電商 Email 後，財政部發票匯入將自動分流給指定家庭成員！
+                      </Text>
+                      {canManage && (
+                        <TouchableOpacity
+                          style={styles.emptyAddBtn}
+                          onPress={() => handleOpenAdd('carrier')}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.emptyAddBtnText}>＋ 新增第一個網購載具</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ) : (
+                    carrierAccounts.map(acc => {
+                      const holder = acc.user_id ? (getMemberById ? getMemberById(acc.user_id) : members.find(m => m.id === acc.user_id)) : null;
+                      const isMyAccount = isMatchedToCurrentUser(acc.user_id);
+                      const canEditAccount = isOwner || (scope === 'my' && isMyAccount);
+                      return (
+                        <View key={acc.id} style={[styles.cardItemRow, { borderLeftColor: acc.color || '#EC4899' }]}>
+                          <View style={styles.cardInfoCol}>
+                            <View style={styles.cardNameRow}>
+                              <Text style={styles.cardNameText}>{acc.name}</Text>
+                              {!!acc.card_number && (
+                                <View style={[styles.tagBadge, { backgroundColor: '#FCE7F3' }]}>
+                                  <Text style={[styles.tagBadgeText, { color: '#BE185D' }]}>{acc.card_number}</Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text style={styles.cardSubText}>
+                              {holder ? `${holder.avatar_url || '👤'} ${holder.display_name} · ` : '🏠 全家通用 · '}
+                              自動分流發票
                             </Text>
                           </View>
                           {canEditAccount && (
@@ -1194,8 +1371,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     marginBottom: 4,
   },
   tabItem: {
-    flex: 1,
     paddingVertical: 7,
+    paddingHorizontal: 12,
     alignItems: 'center',
     borderRadius: 9,
   },

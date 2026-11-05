@@ -282,12 +282,12 @@ export const processCloudInvoicesSync = (
   const nowIso = new Date().toISOString();
 
   for (const inv of invoices) {
-    // 1. 卡號比對：優先比對真卡 (悠遊卡/信用卡載具)
+    // 1. 卡號比對：優先比對所有支付帳戶與載具卡（含悠遊卡、信用卡、網購會員載具 type === 'carrier'）
     const matchedAcc = findMatchingAccount(inv.carrierNo, inv.carrierType, accounts);
 
-    // 2. 比對載具分流字典（隱喻的第三張卡，如蝦皮 16729177、PSN/Netflix mattyu09@gmail.com）
+    // 2. 備援比對舊有載具分流字典（相容既有 CarrierRule）
     let matchedCarrierRule: CarrierRule | undefined;
-    if (!matchedAcc && inv.carrierNo) {
+    if (!matchedAcc && inv.carrierNo && carrierRules && carrierRules.length > 0) {
       const targetCarrierNo = inv.carrierNo.trim().toLowerCase();
       const cleanInvNo = normalizeCardNumber(inv.carrierNo);
       matchedCarrierRule = carrierRules.find(r => {
@@ -299,11 +299,11 @@ export const processCloudInvoicesSync = (
       });
     }
 
-    // 若比對到載具規則且指定了扣款帳戶，關聯該卡片帳戶
+    // 若比對到網購載具卡 (type === 'carrier')，它代表純會員分流規則，不關聯為金融扣款帳戶
     const ruleDefaultAcc = matchedCarrierRule?.account_id
       ? accounts.find(a => a.id === matchedCarrierRule?.account_id)
       : undefined;
-    const effectiveAcc = matchedAcc || ruleDefaultAcc;
+    const effectiveAcc = (matchedAcc && matchedAcc.type !== 'carrier') ? matchedAcc : ruleDefaultAcc;
 
     // 統計未綁定卡片帳戶且未建立分流規則之載具 (排除手機條碼主號碼 /...)
     if (!matchedAcc && !matchedCarrierRule && inv.carrierNo && !inv.carrierNo.startsWith('/')) {
@@ -399,6 +399,7 @@ export const processCloudInvoicesSync = (
         invoice_sync_status: 'cloud_imported',
         cloud_synced_at: nowIso,
         cloud_carrier_name:
+          matchedAcc?.name ||
           effectiveAcc?.name ||
           matchedCarrierRule?.carrier_name ||
           (inv.carrierName

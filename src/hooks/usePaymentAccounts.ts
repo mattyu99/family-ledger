@@ -96,9 +96,17 @@ export function usePaymentAccounts({
           p_account: newAcc,
         });
         if (rpcErr || (rpcRes && rpcRes.success === false)) {
-          let { error: insErr } = await supabase.from('payment_accounts').insert(newAcc);
+          const isTypeCheckErr =
+            rpcErr?.message?.includes('payment_accounts_type_check') ||
+            rpcRes?.error?.includes('payment_accounts_type_check');
+
+          const payloadAcc = (isTypeCheckErr && newAcc.type === 'carrier')
+            ? { ...newAcc, type: 'other' as const }
+            : newAcc;
+
+          let { error: insErr } = await supabase.from('payment_accounts').insert(payloadAcc);
           if (insErr && (insErr.code === '42703' || insErr.message?.includes('card_number') || insErr.message?.includes('issuer_bank'))) {
-            const { card_number: _c, issuer_bank: _i, ...fallbackAcc } = newAcc;
+            const { card_number: _c, issuer_bank: _i, ...fallbackAcc } = payloadAcc;
             await supabase.from('payment_accounts').insert(fallbackAcc);
           }
         }

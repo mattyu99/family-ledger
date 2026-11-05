@@ -92,7 +92,7 @@ export interface CustomPaymentMethod {
   created_at?: string;
 }
 
-export type AccountType = 'credit_card' | 'stored_value' | 'cash' | 'bank' | 'other';
+export type AccountType = 'credit_card' | 'stored_value' | 'cash' | 'bank' | 'carrier' | 'other';
 
 export interface PaymentAccount {
   id: string;

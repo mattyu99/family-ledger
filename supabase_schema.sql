@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS public.payment_accounts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     ledger_id UUID NOT NULL REFERENCES public.ledgers(id) ON DELETE CASCADE,
     name TEXT NOT NULL, -- 如：富邦 Costco 卡, 國泰 CUBE 卡, 爸爸悠遊卡
-    type TEXT CHECK (type IN ('credit_card', 'stored_value', 'cash', 'bank', 'other')) NOT NULL,
+    type TEXT CHECK (type IN ('credit_card', 'stored_value', 'cash', 'bank', 'carrier', 'other')) NOT NULL,
     user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL, -- 持卡人 / 歸屬成員
     last_four_digits TEXT, -- 末四碼 (如 8829)
     card_number TEXT, -- 完整卡號 (悠遊卡/一卡通 10~16 碼，供官網查帳與一鍵複製)
@@ -2112,10 +2112,16 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.secure_remove_member(UUID, UUID, UUID, UUID, TEXT) TO anon, authenticated;
 
+-- 擴充 payment_accounts 支援網購會員載具卡 ('carrier')
+ALTER TABLE public.payment_accounts DROP CONSTRAINT IF EXISTS payment_accounts_type_check;
+ALTER TABLE public.payment_accounts ADD CONSTRAINT payment_accounts_type_check 
+  CHECK (type IN ('credit_card', 'stored_value', 'cash', 'bank', 'carrier', 'other'));
+
 -- 登記版本履歷記錄
 INSERT INTO public.schema_migrations (version, description)
 VALUES 
     ('00000000_baseline_schema', '系統全量基準綱要 (Initial Schema)'),
     ('20261030_zero_token_architecture', '零金鑰安全架構、全域 RLS 放行與 14 大核心預存程序'),
-    ('20261102_secure_ledger_and_invites_rpc', '零金鑰架構加固：補齊帳本管理、邀請碼與成員維護之 SECURITY DEFINER 預存程序')
+    ('20261102_secure_ledger_and_invites_rpc', '零金鑰架構加固：補齊帳本管理、邀請碼與成員維護之 SECURITY DEFINER 預存程序'),
+    ('20261105_carrier_account_type', '擴充 payment_accounts 支援網購會員載具卡 (type: carrier)')
 ON CONFLICT (version) DO UPDATE SET applied_at = NOW();
