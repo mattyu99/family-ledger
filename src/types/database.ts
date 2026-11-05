@@ -100,6 +100,7 @@ export interface PaymentAccount {
   last_four_digits?: string; // 末四碼 (如 8829)
   card_number?: string; // 完整卡號 (悠遊卡/一卡通可填 10~16 碼，供官網查帳與一鍵複製)
   billing_cycle_date?: number; // 信用卡結帳日 (每月 1~31 號)
+  issuer_bank?: string; // 發卡銀行/機構識別（例如：國泰世華銀行、台北富邦銀行），用於同銀行歸戶與帳單共享
   balance: number; // 儲值卡/帳戶餘額 (悠遊卡使用)
   color?: string; // 卡片識別色
   icon?: string; // 卡片圖示 (如 🚌, 💳)
