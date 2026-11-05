@@ -37,7 +37,7 @@ import {
 } from '../lib/recurring';
 import { getCategoryIcon } from '../lib/icons';
 import { DatePickerModal } from './DatePickerModal';
-import { DEFAULT_PAYMENT_METHODS } from '../lib/payment';
+import { DEFAULT_PAYMENT_METHODS, KNOWN_PAYMENT_METHOD_UUIDS } from '../lib/payment';
 import { isDemoLedgerId } from '../constants/sweethomeDemo';
 import {
   StatementFile,
@@ -468,7 +468,8 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     const isCreditCard = methodId === 'credit_card';
     const isCash = methodId === 'cash';
     const isStoredValue = methodId === 'stored_value';
-    const methodObj = list.find(m => m.id === methodId || (isTransfer && (m.id === 'transfer' || m.id === 'bank_transfer')));
+    const normalizedId = (methodId && KNOWN_PAYMENT_METHOD_UUIDS[methodId]) || methodId;
+    const methodObj = list.find(m => m.id === methodId || m.id === normalizedId || (isTransfer && (m.id === 'transfer' || m.id === 'bank_transfer')));
     const acc = accountId ? getAccountById(accountId) : undefined;
     const methodName = methodObj?.name || (isCreditCard ? '信用卡' : isTransfer ? '銀行轉帳' : isCash ? '現金' : isStoredValue ? '悠遊卡/儲值卡' : methodId);
     const methodIcon = methodObj?.icon || (isTransfer ? '🏦' : isCash ? '💵' : isStoredValue ? '🚌' : '💳');

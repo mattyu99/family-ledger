@@ -27,6 +27,8 @@ import {
   isDateInBillingCycle,
   sortAccountsByUser,
   parseExpenseDiscount,
+  DEFAULT_PAYMENT_METHODS,
+  KNOWN_PAYMENT_METHOD_UUIDS,
 } from '../lib/payment';
 import {
   CreditCardStatementFile,
@@ -2049,11 +2051,31 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                               </View>
                             )}
                             {isCredit && !isRebate && !isCreditTransfer && !!tx.payment_method && tx.payment_method !== 'credit_card' && (() => {
-                              const pm = paymentMethods.find(m => m.id === tx.payment_method);
+                              const normalizedId = (tx.payment_method && KNOWN_PAYMENT_METHOD_UUIDS[tx.payment_method]) || tx.payment_method;
+                              const allMethods = paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS;
+                              const pm = allMethods.find(m => m.id === tx.payment_method || m.id === normalizedId)
+                                || DEFAULT_PAYMENT_METHODS.find(m => m.id === tx.payment_method || m.id === normalizedId);
+
+                              if (pm) {
+                                return (
+                                  <View style={[styles.payMethodTag, { borderColor: `${pm.color || '#3B82F6'}35`, backgroundColor: `${pm.color || '#3B82F6'}15` }]}>
+                                    <Text style={[styles.payMethodTagText, { color: pm.color || '#3B82F6' }]}>
+                                      {pm.icon || '📱'} {pm.name}
+                                    </Text>
+                                  </View>
+                                );
+                              }
+
+                              // 若為 UUID 格式且查無對應定義，安全隱藏以防亂碼外洩
+                              const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tx.payment_method);
+                              if (isUUID) {
+                                return null;
+                              }
+
                               return (
-                                <View style={[styles.payMethodTag, { borderColor: `${pm?.color || '#3B82F6'}35`, backgroundColor: `${pm?.color || '#3B82F6'}15` }]}>
-                                  <Text style={[styles.payMethodTagText, { color: pm?.color || '#3B82F6' }]}>
-                                    {pm?.icon || '📱'} {pm?.name || tx.payment_method}
+                                <View style={[styles.payMethodTag, { borderColor: '#3B82F635', backgroundColor: '#3B82F615' }]}>
+                                  <Text style={[styles.payMethodTagText, { color: '#3B82F6' }]}>
+                                    📱 {tx.payment_method}
                                   </Text>
                                 </View>
                               );
