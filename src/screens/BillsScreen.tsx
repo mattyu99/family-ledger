@@ -14,7 +14,7 @@ import { getCategoryIcon } from '../lib/icons';
 import { getRollingPendingBills, getRollingBillDueInfo, RollingBillDueInfo } from '../lib/recurring';
 
 export interface BillsScreenProps {
-  onOpenAccountsManageModal: () => void;
+  onOpenAccountsManageModal: (scope?: 'all' | 'my') => void;
   onOpenRecurringModal: (scope: 'all' | 'my', targetMemberId?: string, initialTab?: 'bills' | 'pending' | 'installments') => void;
   onOpenPaymentMethodsModal: () => void;
   onOpenCategoryModal: () => void;
@@ -320,7 +320,7 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.manageCategoryBtn}
-              onPress={onOpenAccountsManageModal}
+              onPress={() => onOpenAccountsManageModal(billsScope)}
             >
               <Text style={styles.manageCategoryBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                 {billsScope === 'my' || isOwner ? '⚙️ 管理' : '👀 查看'}
@@ -378,7 +378,7 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
               <View style={{ gap: 8 }}>
                 <TouchableOpacity
                   style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
-                  onPress={onOpenAccountsManageModal}
+                  onPress={() => onOpenAccountsManageModal(billsScope)}
                 >
                   <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                     ＋ 尚無綁定您的支付卡片 (點此新增)
@@ -396,7 +396,7 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
             ) : billsScope === 'my' || isOwner ? (
               <TouchableOpacity
                 style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
-                onPress={onOpenAccountsManageModal}
+                onPress={() => onOpenAccountsManageModal(billsScope)}
               >
                 <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                   {billsScope === 'my' ? '＋ 尚無綁定您的支付卡片 (點此新增)' : '＋ 新增第一張信用卡或悠遊卡'}

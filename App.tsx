@@ -464,6 +464,7 @@ const AppContent: React.FC = () => {
 
   // 帳單與支付
   const [accountsManageModalVisible, setAccountsManageModalVisible] = useState(false);
+  const [accountsManageModalScope, setAccountsManageModalScope] = useState<'all' | 'my'>('my');
   const [paymentMethodsModalVisible, setPaymentMethodsModalVisible] = useState(false);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [recurringModalVisible, setRecurringModalVisible] = useState(false);
@@ -918,7 +919,10 @@ const AppContent: React.FC = () => {
               setBudgetManageModalTab(tab || 'family');
               setBudgetManageModalVisible(true);
             }}
-            onOpenAccountsManageModal={() => setAccountsManageModalVisible(true)}
+            onOpenAccountsManageModal={(scope) => {
+              setAccountsManageModalScope(scope || 'all');
+              setAccountsManageModalVisible(true);
+            }}
             onOpenRecurringModal={(scope, targetMemberId, initialTab) => {
               setRecurringModalScope(scope);
               setRecurringModalTargetMemberId(targetMemberId);
@@ -951,7 +955,10 @@ const AppContent: React.FC = () => {
 
         {activeTab === 'bills' && (
           <BillsScreen
-            onOpenAccountsManageModal={() => setAccountsManageModalVisible(true)}
+            onOpenAccountsManageModal={(scope) => {
+              setAccountsManageModalScope(scope || 'my');
+              setAccountsManageModalVisible(true);
+            }}
             onOpenPaymentMethodsModal={() => setPaymentMethodsModalVisible(true)}
             onOpenCategoryModal={() => setCategoryModalVisible(true)}
             onOpenRecurringModal={(scope, targetMemberId, initialTab) => {
@@ -1269,7 +1276,7 @@ const AppContent: React.FC = () => {
       <PaymentAccountsManageModal
         visible={accountsManageModalVisible}
         onClose={() => setAccountsManageModalVisible(false)}
-        scope={billsScope}
+        scope={accountsManageModalScope}
       />
 
       <PaymentMethodsManageModal

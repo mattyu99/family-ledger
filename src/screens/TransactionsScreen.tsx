@@ -39,7 +39,7 @@ export interface TransactionsScreenProps {
   onOpenEditTransaction: (tx: Transaction) => void;
   onOpenMemoCompletion: (tx: Transaction) => void;
   onOpenBudgetManageModal: (tab?: 'family' | 'members') => void;
-  onOpenAccountsManageModal: () => void;
+  onOpenAccountsManageModal: (scope?: 'all' | 'my') => void;
   onOpenRecurringModal: (scope: 'all' | 'my', targetMemberId?: string, initialTab?: 'bills' | 'pending' | 'installments') => void;
   onOpenMemoTodoModal: () => void;
   onOpenInvoiceLotteryModal: () => void;
@@ -1027,7 +1027,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
             <NetWorthWidget
               filterMemberId={filterMemberId}
               onOpenTransferModal={() => onOpenModal('transfer')}
-              onOpenAccountsManageModal={onOpenAccountsManageModal}
+              onOpenAccountsManageModal={() => onOpenAccountsManageModal(filterMemberId && filterMemberId === currentUser?.id ? 'my' : 'all')}
             />
             <StoredValueWidget
               filterMemberId={filterMemberId}

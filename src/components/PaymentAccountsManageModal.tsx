@@ -437,10 +437,14 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                 {isEditing
                   ? (editingId ? '✏️ 編輯卡片設定' : '＋ 新增卡片或帳戶')
                   : activeTab === 'credit_card'
-                    ? (canManage ? (scope === 'my' ? '💳 管理我的信用卡' : '💳 管理家庭信用卡') : '💳 家庭信用卡一覽 (純瀏覽)')
+                    ? (canManage ? (scope === 'my' ? '💳 管理我的信用卡' : '💳 管理全家信用卡') : '💳 全家信用卡一覽 (純瀏覽)')
                     : activeTab === 'bank'
-                      ? (canManage ? (scope === 'my' ? '🏦 管理我的銀行帳戶' : '🏦 管理家庭銀行帳戶') : '🏦 家庭銀行帳戶一覽 (純瀏覽)')
-                      : (canManage ? (scope === 'my' ? '🚌 管理我的悠遊卡' : '🚌 管理家庭悠遊卡') : '🚌 家庭悠遊卡一覽 (純瀏覽)')}
+                      ? (canManage ? (scope === 'my' ? '🏦 管理我的銀行帳戶' : '🏦 管理全家銀行帳戶') : '🏦 全家銀行帳戶一覽 (純瀏覽)')
+                      : activeTab === 'cash'
+                        ? (canManage ? (scope === 'my' ? '💵 管理我的現金帳戶' : '💵 管理全家現金帳戶') : '💵 全家現金帳戶一覽 (純瀏覽)')
+                        : activeTab === 'carrier'
+                          ? (canManage ? (scope === 'my' ? '🛍️ 我的網購會員載具' : '🛍️ 全家網購會員載具') : '🛍️ 全家網購載具一覽 (純瀏覽)')
+                          : (canManage ? (scope === 'my' ? '🚌 管理我的悠遊卡' : '🚌 管理全家悠遊卡') : '🚌 全家悠遊卡一覽 (純瀏覽)')}
               </Text>
               <Text style={styles.subtitle} maxFontSizeMultiplier={1.15}>
                 {isEditing
