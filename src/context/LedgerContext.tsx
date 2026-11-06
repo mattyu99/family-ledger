@@ -3189,7 +3189,53 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         if (loadedCloudAccounts.length > 0) {
           // 雲端已有卡片（無論更名、新增或刪除過），以雲端為唯一真實來源，絕不自動復活預設示範卡片
-          const scopedCloudAccs = loadedCloudAccounts.filter(a => a.ledger_id === targetLedger.id);
+          let scopedCloudAccs = loadedCloudAccounts.filter(a => a.ledger_id === targetLedger.id);
+
+          // 🛡️ 卡片持有人自癒校正：修復歷史因去重或備份導入誤將個人專用卡設為 null 之異常
+          let healedAny = false;
+          scopedCloudAccs = scopedCloudAccs.map(acc => {
+            let targetUserId = acc.user_id;
+            if (targetUserId) {
+              const canonical = aliasMap[targetUserId] || dedupedMembers.find(m => m.id === targetUserId);
+              if (canonical && canonical.id !== targetUserId) {
+                healedAny = true;
+                return { ...acc, user_id: canonical.id };
+              }
+              return acc;
+            }
+            // 若 user_id 為空（且非示範家庭公帳），嘗試智慧反查
+            if (targetLedger.id !== SWEETHOME_LEDGER_ID && acc.name !== '富邦家庭公帳') {
+              // 1. 卡片名稱匹配成員稱謂（例如「瑩市民卡」-> 瑩媽、「智市民卡」-> 智爸）
+              const matchedByName = dedupedMembers.find(m => {
+                const dName = (m.display_name || '').trim();
+                if (!dName) return false;
+                return acc.name.includes(dName) || (dName.length >= 1 && acc.name.startsWith(dName[0]));
+              });
+              if (matchedByName) {
+                healedAny = true;
+                return { ...acc, user_id: matchedByName.id };
+              }
+              // 2. 伴隨卡推導（例如「富邦J悠遊卡」跟隨「富邦J卡」持有人、「U熊悠遊卡」跟隨「玉山U熊卡」持有人）
+              if (acc.name.includes('悠遊卡')) {
+                const baseName = acc.name.replace('悠遊卡', '').trim();
+                const parent = scopedCloudAccs.find(p => p.id !== acc.id && p.name.includes(baseName) && p.user_id);
+                if (parent && parent.user_id) {
+                  healedAny = true;
+                  return { ...acc, user_id: parent.user_id };
+                }
+              }
+            }
+            return acc;
+          });
+
+          if (healedAny && isConfigured && !isDemoLedgerId(targetLedger.id)) {
+            for (const acc of scopedCloudAccs) {
+              if (acc.user_id) {
+                supabase.from('payment_accounts').update({ user_id: acc.user_id, updated_at: new Date().toISOString() }).eq('id', acc.id).then();
+              }
+            }
+          }
+
           setPaymentAccounts(scopedCloudAccs);
           await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify(scopedCloudAccs));
           await AsyncStorage.setItem(ledgerSpecificKey, JSON.stringify(scopedCloudAccs));

@@ -151,4 +151,22 @@ describe('Account Member Alias Resolution Tests', () => {
       expect(res.some(a => a.id === 'card-public')).toBe(true);
     });
   });
+
+  describe('buildMemberAliasMap Prefix & Substring Matching', () => {
+    test('maps raw member "瑩" or "智" to deduped "瑩媽" or "智爸"', () => {
+      const { buildMemberAliasMap } = require('../ledgerUtils');
+      const deduped: Profile[] = [
+        { id: 'p-zhi', display_name: '智爸', role: 'owner' },
+        { id: 'p-ying', display_name: '瑩媽', role: 'member' },
+      ];
+      const rawList: Profile[] = [
+        { id: 'raw-zhi', display_name: '智', role: 'member' },
+        { id: 'raw-ying', display_name: '瑩', role: 'member' },
+      ];
+
+      const aliasMap = buildMemberAliasMap(deduped, rawList);
+      expect(aliasMap['raw-zhi'].id).toBe('p-zhi');
+      expect(aliasMap['raw-ying'].id).toBe('p-ying');
+    });
+  });
 });

@@ -195,6 +195,14 @@ export const buildMemberAliasMap = (
     let canonical = deduped.find(
       m => (m.display_name || '').trim().toLowerCase() === rawName
     );
+    if (!canonical && rawName) {
+      canonical = deduped.find(m => {
+        const dName = (m.display_name || '').trim().toLowerCase();
+        if (!dName) return false;
+        return (rawName.length >= 1 && dName.startsWith(rawName)) ||
+               (dName.length >= 1 && rawName.startsWith(dName));
+      });
+    }
     if (!canonical && rawEmail) {
       canonical = deduped.find(
         m => {
@@ -220,6 +228,14 @@ export const buildMemberAliasMap = (
       let canonical = deduped.find(
         m => (m.display_name || '').trim().toLowerCase() === pName
       );
+      if (!canonical && pName) {
+        canonical = deduped.find(m => {
+          const dName = (m.display_name || '').trim().toLowerCase();
+          if (!dName) return false;
+          return (pName.length >= 1 && dName.startsWith(pName)) ||
+                 (dName.length >= 1 && pName.startsWith(dName));
+        });
+      }
       if (!canonical && pEmail) {
         canonical = deduped.find(
           m => {

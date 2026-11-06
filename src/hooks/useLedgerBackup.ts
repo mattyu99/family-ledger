@@ -317,6 +317,7 @@ export function useLedgerBackup({
       // 1. 還原/合併 家庭成員 (Members)
       let nextMembers = [...members];
       const memberIdMap: Record<string, string> = {};
+      let activeAliasMap: Record<string, Profile> = buildMemberAliasMap(nextMembers, members);
 
       // 預設將現有成員自身的 ID 映射給自己
       nextMembers.forEach(m => {
@@ -343,10 +344,12 @@ export function useLedgerBackup({
             const nameKey = rawName.toLowerCase();
             const backupId = bm.id;
 
-            // 檢查是否與已加入清單（如 currentUser）重名或同 ID
+            // 檢查是否與已加入清單（如 currentUser）重名、同 ID 或同暱稱別名（支援「瑩」與「瑩媽」）
             const existing = newMemberList.find(
               m => (backupId && m.id === backupId) ||
-                   (m.display_name || '').trim().toLowerCase() === nameKey
+                   (m.display_name || '').trim().toLowerCase() === nameKey ||
+                   (nameKey && (m.display_name || '').trim().toLowerCase().startsWith(nameKey)) ||
+                   ((m.display_name || '').trim() && nameKey.startsWith((m.display_name || '').trim().toLowerCase()))
             );
 
             if (existing) {
@@ -385,7 +388,9 @@ export function useLedgerBackup({
 
             const existing = nextMembers.find(
               m => (backupId && m.id === backupId) ||
-                   (m.display_name || '').trim().toLowerCase() === nameKey
+                   (m.display_name || '').trim().toLowerCase() === nameKey ||
+                   (nameKey && (m.display_name || '').trim().toLowerCase().startsWith(nameKey)) ||
+                   ((m.display_name || '').trim() && nameKey.startsWith((m.display_name || '').trim().toLowerCase()))
             );
 
             if (existing) {
@@ -443,8 +448,17 @@ export function useLedgerBackup({
 
         // 重新構建成員別名映射表
         const updatedAliasMap = buildMemberAliasMap(nextMembers, nextMembers);
+        activeAliasMap = updatedAliasMap;
         setMemberAliasMap(updatedAliasMap);
         await AsyncStorage.setItem(STORAGE_KEYS.ALIAS_MAP, JSON.stringify(updatedAliasMap));
+
+        // 確保 memberIdMap 中所有對應目標均校正為去重後的倖存 Profile
+        for (const [origId, mappedId] of Object.entries(memberIdMap)) {
+          const canonical = activeAliasMap[mappedId] || nextMembers.find(m => m.id === mappedId);
+          if (canonical) {
+            memberIdMap[origId] = canonical.id;
+          }
+        }
       }
 
       // 2. 還原/合併 自訂分類
@@ -516,9 +530,29 @@ export function useLedgerBackup({
           if (ba.user_id) {
             if (memberIdMap[ba.user_id]) {
               mappedUserId = memberIdMap[ba.user_id];
+            } else if (activeAliasMap && activeAliasMap[ba.user_id]) {
+              mappedUserId = activeAliasMap[ba.user_id].id;
             } else if (!nextMembers.some(m => m.id === ba.user_id)) {
-              const matchedMember = nextMembers.find(m => m.display_name && ba.name?.includes(m.display_name));
+              // 智慧名稱與前綴反查（如「瑩市民卡」反查「瑩媽」，「智市民卡」反查「智爸」）
+              const matchedMember = nextMembers.find(m => {
+                const dName = (m.display_name || '').trim().toLowerCase();
+                const bName = (ba.name || '').trim().toLowerCase();
+                if (!dName || !bName) return false;
+                return bName.includes(dName) ||
+                       (dName.length >= 1 && bName.includes(dName[0])) ||
+                       (dName.length >= 1 && bName.startsWith(dName[0]));
+              });
               mappedUserId = matchedMember ? matchedMember.id : undefined;
+            }
+          }
+
+          // 若備份中該卡片 user_id 遺失，但既有名冊/卡片中有同名同卡號卡片且持有有效持有人，沿用既有持有人
+          if (!mappedUserId) {
+            const existingInLedger = nextAccounts.find(
+              a => a.id === ba.id || (a.name === ba.name && a.last_four_digits === ba.last_four_digits)
+            );
+            if (existingInLedger && existingInLedger.user_id) {
+              mappedUserId = existingInLedger.user_id;
             }
           }
 
@@ -562,21 +596,27 @@ export function useLedgerBackup({
         // 同步卡片至 Supabase 雲端 (若為已連線雲端帳本)
         if (isRealCloud) {
           try {
-            const accountsToSync = nextAccounts.map(acc => ({
-              id: acc.id,
-              ledger_id: currentLedger.id,
-              name: acc.name,
-              type: acc.type,
-              user_id: acc.user_id && nextMembers.some(m => m.id === acc.user_id) ? acc.user_id : null,
-              last_four_digits: acc.last_four_digits || '',
-              card_number: acc.card_number || null,
-              issuer_bank: acc.issuer_bank || null,
-              billing_cycle_date: acc.billing_cycle_date || 1,
-              balance: acc.balance || 0,
-              color: acc.color || '#3B82F6',
-              icon: acc.icon || '💳',
-              sort_order: acc.sort_order || 1,
-            }));
+            const accountsToSync = nextAccounts.map(acc => {
+              const validUserId = acc.user_id && (nextMembers.some(m => m.id === acc.user_id) || (activeAliasMap && activeAliasMap[acc.user_id]))
+                ? (activeAliasMap && activeAliasMap[acc.user_id] ? activeAliasMap[acc.user_id].id : acc.user_id)
+                : (acc.user_id || null);
+
+              return {
+                id: acc.id,
+                ledger_id: currentLedger.id,
+                name: acc.name,
+                type: acc.type,
+                user_id: validUserId,
+                last_four_digits: acc.last_four_digits || '',
+                card_number: acc.card_number || null,
+                issuer_bank: acc.issuer_bank || null,
+                billing_cycle_date: acc.billing_cycle_date || 1,
+                balance: acc.balance || 0,
+                color: acc.color || '#3B82F6',
+                icon: acc.icon || '💳',
+                sort_order: acc.sort_order || 1,
+              };
+            });
             for (const acc of accountsToSync) {
               await supabase.rpc('secure_add_payment_account', { p_account: acc });
             }
