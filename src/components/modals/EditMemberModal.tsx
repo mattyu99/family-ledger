@@ -44,7 +44,6 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
     memberDevices,
     currentDeviceId,
     isOwner,
-    realIsOwner,
     isPreviewMode,
     isGoogleAuthenticated,
     getMemberById,
@@ -465,7 +464,7 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
             )}
 
             {/* 將本機管理員自身模擬為一般成員視角 */}
-            {realIsOwner && isCurrent && !isPreviewMode && (
+            {isOwner && isCurrent && !isPreviewMode && (
               <View style={styles.modalMemberAdminSection}>
                 <View style={styles.memberSectionDivider} />
 
@@ -490,13 +489,15 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
             )}
 
             {/* 角色預覽與身分切換：僅管理員且對象非自己時可使用 */}
-            {realIsOwner && !isCurrent && (
+            {isOwner && !isCurrent && (
               <View style={styles.modalMemberAdminSection}>
                 <View style={styles.memberSectionDivider} />
 
                 <Text style={styles.formLabel}>👀 測試與身分管理</Text>
                 <Text style={styles.modalSubHint}>
-                  您可以暫時切換為「{targetMember.display_name}」的視角測試功能，或正式將本機身分切換為此成員。
+                  {targetMember.is_locked
+                    ? `您可以暫時切換為「${targetMember.display_name}」的視角測試功能。（此身分已受 Google 帳號鎖定保護，若需移轉設備請使用上方認領）`
+                    : `您可以暫時切換為「${targetMember.display_name}」的視角測試功能，或正式將本機身分切換為此成員。`}
                 </Text>
                 <TouchableOpacity
                   style={styles.modalPreviewBtn}
@@ -512,28 +513,30 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
                   <Text style={styles.modalPreviewBtnText}>👀 以此成員視角預覽 (測試功能)</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[styles.modalPreviewBtn, { marginTop: 8, backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF', borderColor: isDark ? '#6366F1' : '#C7D2FE' }]}
-                  onPress={() => {
-                    showConfirm(
-                      '切換本機身分',
-                      `確定要將本機在此帳本的身分切換為「${targetMember.display_name}」嗎？\n\n切換後，此手機記帳付款人與生活待辦將對齊「${targetMember.display_name}」。`,
-                      async () => {
-                        const res = await switchCurrentUser(targetMember);
-                        if (res.success) {
-                          onClose();
-                          showAlert('切換成功', `本機身分已成功切換為「${targetMember.display_name}」！`);
-                        } else {
-                          showAlert('切換失敗', res.message || '無法切換身分');
+                {!targetMember.is_locked && (
+                  <TouchableOpacity
+                    style={[styles.modalPreviewBtn, { marginTop: 8, backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF', borderColor: isDark ? '#6366F1' : '#C7D2FE' }]}
+                    onPress={() => {
+                      showConfirm(
+                        '切換本機身分',
+                        `確定要將本機在此帳本的身分切換為「${targetMember.display_name}」嗎？\n\n切換後，此手機記帳付款人與生活待辦將對齊「${targetMember.display_name}」。`,
+                        async () => {
+                          const res = await switchCurrentUser(targetMember);
+                          if (res.success) {
+                            onClose();
+                            showAlert('切換成功', `本機身分已成功切換為「${targetMember.display_name}」！`);
+                          } else {
+                            showAlert('切換失敗', res.message || '無法切換身分');
+                          }
                         }
-                      }
-                    );
-                  }}
-                >
-                  <Text style={[styles.modalPreviewBtnText, { color: isDark ? '#A5B4FC' : '#4338CA' }]}>
-                    📱 將本機身分切換為此成員
-                  </Text>
-                </TouchableOpacity>
+                      );
+                    }}
+                  >
+                    <Text style={[styles.modalPreviewBtnText, { color: isDark ? '#A5B4FC' : '#4338CA' }]}>
+                      📱 將本機身分切換為此成員
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
 
