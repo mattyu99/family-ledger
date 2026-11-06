@@ -285,7 +285,7 @@ interface LedgerContextType {
   allowNewMembers: boolean;
   updateAllowNewMembers: (allowed: boolean, targetLedgerId?: string) => Promise<{ success: boolean; message?: string }>;
   inviteCode: string;
-  createLedger: (name?: string, creatorName?: string, avatar?: string, isReadOnly?: boolean) => Promise<void>;
+  createLedger: (name?: string, creatorName?: string, avatar?: string, isReadOnly?: boolean) => Promise<string | void>;
   updateLedgerName: (newName: string) => Promise<boolean>;
   joinLedgerByCode: (
     codeOrUrl: string,
@@ -1056,11 +1056,24 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const savedLedger = await AsyncStorage.getItem(STORAGE_KEYS.LEDGER);
         const savedUserStr = await AsyncStorage.getItem(STORAGE_KEYS.CURRENT_USER);
 
+        const savedLedgersStr = await AsyncStorage.getItem(STORAGE_KEYS.LEDGERS);
+        if (savedLedgersStr) {
+          try {
+            const parsedList = JSON.parse(savedLedgersStr);
+            if (Array.isArray(parsedList) && parsedList.length > 0) {
+              setLedgers(parsedList);
+            }
+          } catch {}
+        }
+
         if (savedLedger) {
           try {
             const parsed = JSON.parse(savedLedger);
             if (isValidUUID(parsed.id) && !isDemoLedgerId(parsed.id)) {
-              setLedgers([parsed]);
+              setLedgers(prev => {
+                if (prev.some(l => l.id === parsed.id)) return prev;
+                return [parsed, ...prev];
+              });
               setCurrentLedger(parsed);
               // 只要本機存有真實帳本快取，自動修復任何舊版殘留的 'false' 標記，100% 保持已加入狀態
               setHasJoinedLedger(true);
@@ -3636,7 +3649,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }));
 
       if (allUserLedgers.length > 0) {
-        setLedgers(allUserLedgers);
+        setLedgers(prev => {
+          const map = new Map<string, Ledger>();
+          // 先登記本機快取的已知帳本 (防止網路同步時差導致剛建立或剛加入的帳本閃退)
+          (prev || []).forEach(l => { if (l && l.id) map.set(l.id, l); });
+          // 雲端最新權威名冊覆蓋與補充
+          allUserLedgers.forEach(l => { if (l && l.id) map.set(l.id, l); });
+          const merged = Array.from(map.values());
+          AsyncStorage.setItem(STORAGE_KEYS.LEDGERS, JSON.stringify(merged)).catch(() => {});
+          return merged;
+        });
       }
       return { success: true, count: allUserLedgers.length };
     } catch (e: any) {
@@ -5253,19 +5275,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, [ledgers, currentLedger.id, isConfigured]);
 
-  // 建立新的家庭公帳 (Owner 發起，高效雙軌穿透秒開架構)
-  const createLedger = async (name: string = '幸福家庭帳本', creatorName?: string, avatar?: string, isReadOnly: boolean = false) => {
+  // 建立新的家庭公帳 (Owner 發起，高效標準客戶端驗證秒開架構)
+  const createLedger = async (name: string = '幸福家庭帳本', creatorName?: string, avatar?: string, isReadOnly: boolean = false): Promise<string | void> => {
     try {
       let { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         const { data: anonData } = await supabase.auth.signInAnonymously();
         session = anonData?.session || null;
       }
+      const authUserId = session?.user?.id;
       const newLedgerId = generateUUID();
       const newCode = 'FAM-' + Math.floor(1000 + Math.random() * 9000);
 
-      // 為新帳本建立專屬獨立的 creatorProfileId，稱謂完全隔離
-      const creatorProfileId = generateUUID();
+      // 若有登入使用者，created_by 優先使用 authUserId 以符合 Supabase RLS (auth.uid() = created_by)
+      const creatorProfileId = authUserId || generateUUID();
       const chosenName = creatorName?.trim() || '爸爸 (我)';
       const chosenAvatar = avatar || '👨';
 
@@ -5293,70 +5316,47 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }));
 
       if (isConfigured) {
-        const token = getStorageServiceToken();
-        const headers = {
-          apikey: token,
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          Prefer: 'return=minimal',
-        };
+        // 步驟 1：建立/更新 Profile
+        await supabase.from('profiles').upsert({
+          id: creatorProfileId,
+          display_name: chosenName,
+          avatar_url: chosenAvatar,
+          auth_email: userGoogleEmail || null,
+          auth_provider: userGoogleEmail ? 'google' : null,
+          is_locked: Boolean(userGoogleEmail),
+        }, { onConflict: 'id' });
 
-        // 步驟 1：服務權杖穿透建立 Profile (確保留存雲端且不被 RLS 阻斷)
-        await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            id: creatorProfileId,
-            display_name: chosenName,
-            avatar_url: chosenAvatar,
-            auth_email: userGoogleEmail || null,
-            auth_provider: userGoogleEmail ? 'google' : null,
-            is_locked: Boolean(userGoogleEmail),
-          }),
+        // 步驟 2：透過標準 Supabase 客戶端建立 Ledger 主檔 (具備 session auth，符合 RLS check: auth.uid() = created_by)
+        const { error: lErr } = await supabase.from('ledgers').insert({
+          id: newLedger.id,
+          name: newLedger.name,
+          description: newLedger.description,
+          currency: newLedger.currency,
+          created_by: creatorProfileId,
+          admin_pin: '8888',
+          allow_new_members: true,
+          is_read_only: isReadOnly,
         });
 
-        // 步驟 2：服務權杖穿透建立 Ledger 主檔 (確保 created_by 外鍵與 RLS 100% 成功寫入)
-        await fetch(`${SUPABASE_URL}/rest/v1/ledgers`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            id: newLedger.id,
-            name: newLedger.name,
-            description: newLedger.description,
-            currency: newLedger.currency,
-            created_by: creatorProfileId,
-            admin_pin: '8888',
-            allow_new_members: true,
-            is_read_only: isReadOnly,
-          }),
-        });
+        if (lErr) {
+          console.error('建立帳本雲端主檔失敗:', lErr);
+          throw new Error('建立雲端帳本失敗: ' + (lErr.message || 'RLS 權限檢查不通過'));
+        }
 
-        // 步驟 3：並行寫入成員、邀請碼與官方預設分類（將 10 秒串列網路縮減至 1 秒內並發完成）
+        // 步驟 3：並行寫入 Owner 成員、邀請碼與預設分類
         await Promise.all([
-          fetch(`${SUPABASE_URL}/rest/v1/ledger_members`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-              ledger_id: newLedger.id,
-              user_id: creatorProfileId,
-              role: 'owner',
-            }),
+          supabase.from('ledger_members').insert({
+            ledger_id: newLedger.id,
+            user_id: creatorProfileId,
+            role: 'owner',
           }),
-          fetch(`${SUPABASE_URL}/rest/v1/ledger_invites`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-              ledger_id: newLedger.id,
-              invite_code: newCode,
-              created_by: creatorProfileId,
-              expires_at: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
-            }),
+          supabase.from('ledger_invites').insert({
+            ledger_id: newLedger.id,
+            invite_code: newCode,
+            created_by: creatorProfileId,
+            expires_at: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
           }),
-          fetch(`${SUPABASE_URL}/rest/v1/categories`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(catsToInsert),
-          }),
+          supabase.from('categories').insert(catsToInsert),
         ]);
       }
 
@@ -5411,16 +5411,29 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setCurrentLedger(newLedger);
       await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(newLedger));
 
-      setLedgers(prev => [
-        { ...newLedger, userRole: 'owner', userDisplayName: chosenName, userAvatar: chosenAvatar },
-        ...prev.filter(l => l.id !== newLedger.id),
-      ]);
+      const updatedLedgerItem = {
+        ...newLedger,
+        userRole: 'owner' as const,
+        userDisplayName: chosenName,
+        userAvatar: chosenAvatar,
+      };
+
+      setLedgers(prev => {
+        const nextList = [
+          updatedLedgerItem,
+          ...(prev || []).filter(l => l.id !== newLedger.id),
+        ];
+        AsyncStorage.setItem(STORAGE_KEYS.LEDGERS, JSON.stringify(nextList)).catch(() => {});
+        return nextList;
+      });
 
       // 背景接力建立 Realtime 訂閱，不阻擋介面響應
       setupRealtimeSubscription(newLedger.id);
+      return newLedger.id;
     } catch (err: any) {
       console.warn('建立帳本失敗:', err);
       alert('建立帳本時發生錯誤: ' + (err.message || '請檢查網路連線'));
+      throw err;
     }
   };
 
@@ -6396,6 +6409,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       const remainingLedgers = ledgers.filter(l => l.id !== targetLedgerId);
       setLedgers(remainingLedgers);
+      await AsyncStorage.setItem(STORAGE_KEYS.LEDGERS, JSON.stringify(remainingLedgers));
 
       // 若退出的是目前正在使用的帳本，自動切換至其他已加入帳本或返回首頁
       if (currentLedger.id === targetLedgerId) {

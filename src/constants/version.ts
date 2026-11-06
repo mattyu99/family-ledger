@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.14';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.14 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 11;
+export const APP_BUILD_REVISION = 12;
 
 // 完整版本字串 (例如 "1.0.14.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -39,6 +39,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
       '💳 記帳卡片選單與資產切換：記帳全面支援家庭公用卡與指定付款人，資產管理亦提供一鍵切換全家卡片與帳單。',
       '👥 成員身分切換與認領優化：家庭設定點擊任一成員即可切換本機身分，並精準匹配當前帳本專屬稱謂。',
       '🛡️ 多帳本卡片與資產嚴格隔離：全新建立之帳本啟動純淨零卡片，切換帳本自動隔離專屬卡片與固定帳單，徹底杜絕跨帳本殘留。',
+      '☁️ 全新帳本雲端同步與切換修復：修正建立新帳本時之雲端主檔寫入授權，建立後即時收錄至公帳切換清單與雲端帳本總管。',
     ],
   },
   {
