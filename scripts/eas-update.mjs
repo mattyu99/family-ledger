@@ -56,6 +56,7 @@ const result = spawnSync('npx', commandArgs, {
   env: {
     ...process.env,
     CI: '1',
+    NODE_OPTIONS: process.env.NODE_OPTIONS ? `${process.env.NODE_OPTIONS} --max-old-space-size=4096` : '--max-old-space-size=4096',
   },
 });
 
