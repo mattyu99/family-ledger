@@ -301,6 +301,8 @@ export function useLedgerBackup({
       }
 
       const isRealCloud = isConfigured && currentLedger?.id && !isDemoLedgerId(currentLedger.id);
+      // 跨帳本還原防護：若備份檔來自不同帳本，強制生成全套全新 UUID，絕不重用原帳本 ID，杜絕跨帳本碰撞覆蓋原帳本卡片與設定
+      const isCrossLedgerRestore = Boolean(backup.ledger?.id && currentLedger?.id && backup.ledger.id !== currentLedger.id);
 
       // 若備份檔標記此帳本為唯讀封存 (is_read_only)，自動同步啟用唯讀保護
       if (backup.ledger?.is_read_only) {
@@ -361,7 +363,7 @@ export function useLedgerBackup({
               }
             } else {
               const isDemoConst = backupId?.startsWith('20000000');
-              const targetId = (backupId && isValidUUID(backupId) && (!isRealCloud || !isDemoConst))
+              const targetId = (backupId && isValidUUID(backupId) && !isCrossLedgerRestore && (!isRealCloud || !isDemoConst))
                 ? backupId
                 : generateUUID();
 
@@ -399,7 +401,7 @@ export function useLedgerBackup({
               }
             } else {
               const isDemoConst = backupId?.startsWith('20000000');
-              const targetId = (backupId && isValidUUID(backupId) && (!isRealCloud || !isDemoConst))
+              const targetId = (backupId && isValidUUID(backupId) && !isCrossLedgerRestore && (!isRealCloud || !isDemoConst))
                 ? backupId
                 : generateUUID();
 
@@ -474,9 +476,13 @@ export function useLedgerBackup({
           const validBackupCats = backup.categories.filter((c: any) => c && c.name && c.id);
           if (validBackupCats.length > 0) {
             nextCategories = validBackupCats.map((bc: any) => {
-              if (bc.id) categoryIdMap[bc.id] = bc.id;
+              const isDemoConst = bc.id?.startsWith('30000000');
+              const targetId = (bc.id && isValidUUID(bc.id) && !isCrossLedgerRestore && (!isRealCloud || !isDemoConst))
+                ? bc.id
+                : generateUUID();
+              if (bc.id) categoryIdMap[bc.id] = targetId;
               return {
-                id: bc.id,
+                id: targetId,
                 name: bc.name,
                 icon: bc.icon || '📝',
                 color: bc.color || '#6B7280',
@@ -493,7 +499,7 @@ export function useLedgerBackup({
               if (bc.id) categoryIdMap[bc.id] = existing.id;
             } else {
               const isDemoConst = bc.id?.startsWith('30000000');
-              const targetId = (bc.id && isValidUUID(bc.id) && (!isRealCloud || !isDemoConst))
+              const targetId = (bc.id && isValidUUID(bc.id) && !isCrossLedgerRestore && (!isRealCloud || !isDemoConst))
                 ? bc.id
                 : generateUUID();
               const newCat = {
@@ -557,7 +563,7 @@ export function useLedgerBackup({
           }
 
           const isDemoConst = ba.id?.startsWith('50000000');
-          const targetId = (ba.id && isValidUUID(ba.id) && (!isRealCloud || !isDemoConst))
+          const targetId = (ba.id && isValidUUID(ba.id) && !isCrossLedgerRestore && (!isRealCloud || !isDemoConst))
             ? ba.id
             : generateUUID();
 
@@ -649,7 +655,7 @@ export function useLedgerBackup({
 
           return {
             ...br,
-            id: br.id || generateUUID(),
+            id: (!isCrossLedgerRestore && br.id && isValidUUID(br.id)) ? br.id : generateUUID(),
             ledger_id: currentLedger.id,
             paid_by: mappedPaidBy,
             category_id: mappedCategoryId || nextCategories[0]?.id || '',
@@ -684,7 +690,7 @@ export function useLedgerBackup({
       if (Array.isArray(backup.payment_methods) && backup.payment_methods.length > 0) {
         if (mode === 'overwrite') {
           nextPaymentMethods = backup.payment_methods.map((bm: any) => ({
-            id: bm.id,
+            id: (!isCrossLedgerRestore && bm.id && isValidUUID(bm.id)) ? bm.id : generateUUID(),
             ledger_id: currentLedger.id,
             name: bm.name,
             icon: bm.icon || '💳',
@@ -708,7 +714,7 @@ export function useLedgerBackup({
               };
             } else {
               nextPaymentMethods.push({
-                id: bm.id || generateUUID(),
+                id: (!isCrossLedgerRestore && bm.id && isValidUUID(bm.id)) ? bm.id : generateUUID(),
                 ledger_id: currentLedger.id,
                 name: bm.name,
                 icon: bm.icon || '💳',

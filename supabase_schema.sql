@@ -1716,7 +1716,8 @@ BEGIN
         color = EXCLUDED.color,
         icon = EXCLUDED.icon,
         sort_order = EXCLUDED.sort_order,
-        updated_at = NOW();
+        updated_at = NOW()
+    WHERE payment_accounts.ledger_id = EXCLUDED.ledger_id;
 
     RETURN jsonb_build_object('success', true, 'id', v_id);
 EXCEPTION WHEN OTHERS THEN
