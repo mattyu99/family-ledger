@@ -1,4 +1,4 @@
-import { isAccountBelongingToMember } from '../payment';
+import { isAccountBelongingToMember, filterAccountsForUser } from '../payment';
 import { isAccountBoundToUser } from '../ledgerUtils';
 import { PaymentAccount, Profile } from '../../types/database';
 
@@ -85,5 +85,70 @@ describe('Account Member Alias Resolution Tests', () => {
       getMemberById
     );
     expect(isBound).toBe(false);
+  });
+
+  describe('filterAccountsForUser Resilience & Payer Resolution Tests', () => {
+    const publicCreditCard: PaymentAccount = {
+      id: 'card-public',
+      ledger_id: 'ledger-test',
+      name: '通用公用卡',
+      type: 'credit_card',
+      user_id: undefined,
+      balance: 0,
+      sort_order: 2,
+      created_at: '2026-10-10T12:30:00Z',
+    };
+
+    const zhiCreditCard: PaymentAccount = {
+      id: 'card-zhi',
+      ledger_id: 'ledger-test',
+      name: '智爸永豐卡',
+      type: 'credit_card',
+      user_id: zhiProfile.id,
+      balance: 0,
+      sort_order: 3,
+      created_at: '2026-10-10T12:30:00Z',
+    };
+
+    const accounts = [yingCreditCard, publicCreditCard, zhiCreditCard];
+
+    test('filters by targetPayerId when targetPayerId is specified', () => {
+      const res = filterAccountsForUser(accounts, {
+        type: 'credit_card',
+        currentUser: yingProfileGoogle,
+        targetPayerId: zhiProfile.id,
+        getMemberById,
+      });
+      const ids = res.map(a => a.id);
+      expect(ids).toContain('card-zhi');
+      expect(ids).toContain('card-public');
+    });
+
+    test('always includes unassigned public cards for daily expense recording', () => {
+      const res = filterAccountsForUser(accounts, {
+        type: 'credit_card',
+        currentUser: yingProfileGoogle,
+        getMemberById,
+      });
+      const ids = res.map(a => a.id);
+      expect(ids).toContain('card-public');
+      expect(ids).toContain('card-1');
+    });
+
+    test('falls back to public or available cards if current user has 0 personal cards', () => {
+      const visitorUser: Profile = {
+        id: 'new-visitor-id',
+        display_name: '新成員',
+        role: 'member',
+      };
+      const res = filterAccountsForUser(accounts, {
+        type: 'credit_card',
+        currentUser: visitorUser,
+        getMemberById,
+      });
+      // Should fallback to at least public cards or existing cards so selection never blocks
+      expect(res.length).toBeGreaterThan(0);
+      expect(res.some(a => a.id === 'card-public')).toBe(true);
+    });
   });
 });

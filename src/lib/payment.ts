@@ -519,9 +519,11 @@ export const filterAccountsForUser = (
     return sortAccountsByUser(ofType, preferredUser);
   }
 
-  // 3. 非管理員模式（日常成員模式）：僅列出綁定至目前本機使用成員 (currentUser) 的帳戶
-  const currentUserId = currentUser?.id;
-  const currentDisplayName = currentUser?.display_name?.trim().toLowerCase();
+  // 3. 非管理員模式（日常成員模式）：
+  // 優先以當前交易付款人 (targetPayerId) 過濾；若未指定付款人則以本機使用成員 (currentUser) 過濾
+  const activeUserId = targetPayerId || currentUser?.id;
+  const payerProfile = (activeUserId && getMemberById) ? getMemberById(activeUserId) : null;
+  const activeDisplayName = (payerProfile?.display_name || (activeUserId === currentUser?.id ? currentUser?.display_name : ''))?.trim().toLowerCase();
 
   const filtered = ofType.filter(acc => {
     // 若此卡已被當前交易選定，保留顯示以供檢視目前狀態
@@ -529,13 +531,13 @@ export const filterAccountsForUser = (
       return true;
     }
 
+    // 未綁定特定成員的通用公用卡 (例如全家公用信用卡、悠遊卡)，任何人皆可選用
     if (!acc.user_id) {
-      // 未綁定特定成員的帳戶在日常模式下不屬於個人卡
-      return false;
+      return true;
     }
 
     // 直接 ID 吻合
-    if (currentUserId && acc.user_id === currentUserId) {
+    if (activeUserId && acc.user_id === activeUserId) {
       return true;
     }
 
@@ -543,8 +545,8 @@ export const filterAccountsForUser = (
     if (getMemberById) {
       const owner = getMemberById(acc.user_id);
       if (owner) {
-        if (currentUserId && owner.id === currentUserId) return true;
-        if (currentDisplayName && owner.display_name?.trim().toLowerCase() === currentDisplayName) {
+        if (activeUserId && owner.id === activeUserId) return true;
+        if (activeDisplayName && owner.display_name?.trim().toLowerCase() === activeDisplayName) {
           return true;
         }
       }
@@ -552,6 +554,16 @@ export const filterAccountsForUser = (
 
     return false;
   });
+
+  // 🛡️ 容錯保底：若日常模式過濾後結果為空 (例如新成員尚未綁卡、或當前身分未綁定專屬卡)，
+  // 但帳本中已存在卡片，至少提供通用公用卡或全部卡片供使用者記帳選擇，避免記帳選單空白卡死
+  if (filtered.length === 0 && ofType.length > 0) {
+    const publicCards = ofType.filter(a => !a.user_id);
+    if (publicCards.length > 0) {
+      return sortAccountsByUser(publicCards, preferredUser);
+    }
+    return sortAccountsByUser(ofType, preferredUser);
+  }
 
   return sortAccountsByUser(filtered, preferredUser);
 };

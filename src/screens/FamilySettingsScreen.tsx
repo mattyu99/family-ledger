@@ -598,10 +598,6 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                 ]}
                 activeOpacity={0.7}
                 onPress={() => {
-                  if (!canEdit) {
-                    showAlert('成員資料', `「${member.display_name}」為家庭成員。\n若需由管理員調整稱謂或權限，請先至下方切換至管理員模式。`);
-                    return;
-                  }
                   onOpenEditMemberModal(member);
                 }}
               >

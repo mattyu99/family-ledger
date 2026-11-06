@@ -477,7 +477,8 @@ export function useDeviceAuth({
         return { success: false, message: '找不到符合且受保護的 Google 身分稱謂，請確認輸入是否正確' };
       }
 
-      const matched = matchedProfiles[0] as Profile;
+      const inCurrentLedger = (matchedProfiles as any[]).find((p: any) => members.some(m => m.id === p.id));
+      const matched = (inCurrentLedger || matchedProfiles[0]) as Profile;
 
       if (!clean.includes('@') && (matched as any).claim_code_expires_at) {
         const expiresAt = new Date((matched as any).claim_code_expires_at).getTime();

@@ -246,18 +246,41 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
             );
           })}
           {displayedRecurringRules.length === 0 && (
-            <TouchableOpacity
-              style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
-              onPress={() => {
-                onOpenRecurringModal(billsScope, undefined, 'bills');
-              }}
-            >
-              <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                {billsScope === 'my'
-                  ? '＋ 尚無綁定您的定期扣款規則 (點此新增)'
-                  : '＋ 新增水電瓦斯或定期帳單規則'}
-              </Text>
-            </TouchableOpacity>
+            billsScope === 'my' && scopedRecurringRules.length > 0 ? (
+              <View style={{ gap: 8 }}>
+                <TouchableOpacity
+                  style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
+                  onPress={() => {
+                    onOpenRecurringModal(billsScope, undefined, 'bills');
+                  }}
+                >
+                  <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    ＋ 尚無綁定您的定期扣款規則 (點此新增)
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.paymentAccountPreviewChip, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.12)' : '#EEF2FF', borderColor: isDark ? '#4F46E5' : '#C7D2FE' }]}
+                  onPress={() => setBillsScope('all')}
+                >
+                  <Text style={[styles.paymentAccountPreviewText, { color: isDark ? '#A5B4FC' : '#4F46E5' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    👥 切換查看全家定期扣款規則 ({scopedRecurringRules.length})
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
+                onPress={() => {
+                  onOpenRecurringModal(billsScope, undefined, 'bills');
+                }}
+              >
+                <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                  {billsScope === 'my'
+                    ? '＋ 尚無綁定您的定期扣款規則 (點此新增)'
+                    : '＋ 新增水電瓦斯或定期帳單規則'}
+                </Text>
+              </TouchableOpacity>
+            )
           )}
         </View>
       </View>
@@ -344,7 +367,26 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
             );
           })}
           {displayedPaymentAccounts.length === 0 && (
-            billsScope === 'my' || isOwner ? (
+            billsScope === 'my' && paymentAccounts.length > 0 ? (
+              <View style={{ gap: 8 }}>
+                <TouchableOpacity
+                  style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
+                  onPress={onOpenAccountsManageModal}
+                >
+                  <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    ＋ 尚無綁定您的支付卡片 (點此新增)
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.paymentAccountPreviewChip, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.12)' : '#EEF2FF', borderColor: isDark ? '#4F46E5' : '#C7D2FE' }]}
+                  onPress={() => setBillsScope('all')}
+                >
+                  <Text style={[styles.paymentAccountPreviewText, { color: isDark ? '#A5B4FC' : '#4F46E5' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                    👥 切換查看全家卡片與帳戶 ({paymentAccounts.length})
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : billsScope === 'my' || isOwner ? (
               <TouchableOpacity
                 style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
                 onPress={onOpenAccountsManageModal}
