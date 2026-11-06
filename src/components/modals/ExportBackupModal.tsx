@@ -31,6 +31,7 @@ import {
   loadCachedStatements,
   loadCachedRecurringStatements,
 } from '../../lib/statementStorage';
+import * as DocumentPicker from 'expo-document-picker';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -250,16 +251,45 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
     event.target.value = '';
   };
 
-  const handleFileSelectBtnPress = () => {
+  const handleFileSelectBtnPress = async () => {
     if (Platform.OS === 'web') {
       if (typeof document !== 'undefined') {
         const el = document.getElementById('backup-file-input');
         el?.click();
       }
-    } else {
+      return;
+    }
+
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/json', 'text/*', '*/*'],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      let text = '';
+      if (asset.file) {
+        text = await asset.file.text();
+      } else if (asset.uri) {
+        const resp = await fetch(asset.uri);
+        text = await resp.text();
+      }
+
+      if (text && text.trim()) {
+        setRestoreJsonInput(text.trim());
+        showAlert('讀取成功', `已成功載入備份檔案「${asset.name}」！請選擇還原模式並確認還原。`);
+      } else {
+        showAlert('檔案內容空白', '選取的檔案中沒有內容，請確認檔案是否正確。');
+      }
+    } catch (err: any) {
+      console.warn('DocumentPicker 讀取失敗，降級提示操作指引:', err);
       Alert.alert(
         '📂 手機端檔案還原指引',
-        '在手機上還原最快的方式是使用剪貼簿：\n\n1. 請在手機檔案、雲端硬碟或 LINE 中開啟備份檔並「複製全部文字」\n2. 回到此處點擊「📋 讀取剪貼簿貼上」\n\n系統將自動秒速辨識並完成還原！',
+        '若手機系統未支援直接開檔，可使用剪貼簿快速還原：\n\n1. 請在手機檔案、雲端硬碟或 LINE 中開啟備份檔並「複製全部文字」\n2. 回到此處點擊「📋 讀取剪貼簿貼上」\n\n系統將自動秒速辨識並完成還原！',
         [
           { text: '關閉', style: 'cancel' },
           { text: '📋 立即讀取剪貼簿', onPress: () => handlePasteClipboard() },
@@ -666,9 +696,7 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
               <ScrollView style={styles.restoreScrollArea} showsVerticalScrollIndicator={false}>
                 <View style={styles.exportTipBox}>
                   <Text style={styles.exportTipText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    {Platform.OS === 'web'
-                      ? '💡 支援由甜心記帳本匯出的 .json 備份檔。您可點擊下方按鈕選擇本機檔案，或在文字框貼上 JSON 備份內容進行還原。'
-                      : '💡 支援由甜心記帳本匯出的 .json 備份檔。手機端推薦點擊「📋 讀取剪貼簿貼上」一秒自動帶入，亦可於文字框長按貼上。'}
+                    💡 支援由甜心記帳本匯出的 .json 備份檔。您可點擊「選擇本機 .json 備份檔案」直接讀取，或使用剪貼簿貼上備份內容進行還原。
                   </Text>
                 </View>
 
@@ -682,10 +710,10 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
                     <Text style={styles.selectFileBtnIcon}>📂</Text>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.selectFileBtnText}>
-                        {Platform.OS === 'web' ? '選擇本機 .json 備份檔案' : '選擇 .json 備份檔案 (手機操作指引)'}
+                        選擇本機 .json 備份檔案
                       </Text>
                       <Text style={styles.selectFileBtnSub}>
-                        {Platform.OS === 'web' ? '點擊自動載入並解析備份內容' : '點擊查看手機檔案匯入步驟，或使用下方剪貼簿'}
+                        點擊選取手機或電腦中的備份檔案，自動載入並解析
                       </Text>
                     </View>
                   </TouchableOpacity>
