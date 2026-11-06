@@ -212,6 +212,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
   // 僅篩選出本機實際會推播提醒的信用卡（持卡人為本人，或未設定持卡人之全家公用卡；其餘家庭成員之信用卡不用列出）
   const creditCards = useMemo(() => {
     return (paymentAccounts || []).filter(acc => {
+      if (acc.ledger_id && currentLedger?.id && acc.ledger_id !== currentLedger.id) return false;
       if (acc.type !== 'credit_card') return false;
       if (currentUser?.id && acc.user_id) {
         if (acc.user_id === currentUser.id) return true;
@@ -223,7 +224,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       }
       return true;
     });
-  }, [paymentAccounts, currentUser?.id, currentUser?.display_name, getMemberById]);
+  }, [paymentAccounts, currentLedger?.id, currentUser?.id, currentUser?.display_name, getMemberById]);
 
   // 僅篩選出本機實際會推播提醒的待辦記事：
   // 1. 僅保留今天與未來尚未過期的排程（reminder_date >= todayYmd；已逾期之提醒不屬於未來推播排程）
@@ -1571,7 +1572,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           <View style={styles.backupStatsRow}>
             <View style={styles.backupStatItem}>
               <Text style={[styles.backupStatVal, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                {paymentAccounts.length}
+                {(paymentAccounts || []).filter(a => a.ledger_id === currentLedger?.id).length}
               </Text>
               <Text style={[styles.backupStatLabel, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                 💳 支付卡片
@@ -1580,7 +1581,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             <View style={[styles.backupStatDivider, { backgroundColor: colors.border.default }]} />
             <View style={styles.backupStatItem}>
               <Text style={[styles.backupStatVal, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                {(recurringRules || []).filter(r => !r.ledger_id || r.ledger_id === currentLedger?.id).length}
+                {(recurringRules || []).filter(r => r.ledger_id === currentLedger?.id).length}
               </Text>
               <Text style={[styles.backupStatLabel, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                 🗓️ 週期/分期

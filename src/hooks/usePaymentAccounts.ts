@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   PaymentAccount,
@@ -50,12 +50,22 @@ export function usePaymentAccounts({
   const [paymentAccounts, setPaymentAccounts] = useState<PaymentAccount[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<CustomPaymentMethod[]>(DEFAULT_PAYMENT_METHODS);
 
+  // 關鍵隔離防線：當帳本切換時，自動將內部卡片狀態過濾為當前帳本，杜絕跨帳本殘留
+  useEffect(() => {
+    if (currentLedger?.id) {
+      setPaymentAccounts(prev => prev.filter(a => a.ledger_id === currentLedger.id));
+    }
+  }, [currentLedger?.id]);
+
   // 儲存付款帳戶至本地快取
   const savePaymentAccountsToStorage = useCallback(async (accounts: PaymentAccount[]) => {
     try {
-      await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify(accounts));
       if (currentLedger?.id) {
-        await AsyncStorage.setItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${currentLedger.id}`, JSON.stringify(accounts));
+        const scoped = accounts.filter(a => a.ledger_id === currentLedger.id);
+        await AsyncStorage.setItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${currentLedger.id}`, JSON.stringify(scoped));
+        await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify(scoped));
+      } else {
+        await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify(accounts));
       }
     } catch (e) {
       console.warn('儲存付款帳戶快取失敗:', e);
@@ -82,7 +92,8 @@ export function usePaymentAccounts({
       created_at: new Date().toISOString(),
       balance: accountData.balance ?? 0,
     };
-    const updated = [...paymentAccounts, newAcc];
+    const currentScoped = paymentAccounts.filter(a => a.ledger_id === currentLedger.id);
+    const updated = [...currentScoped, newAcc];
     setPaymentAccounts(updated);
     await savePaymentAccountsToStorage(updated);
 

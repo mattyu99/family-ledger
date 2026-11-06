@@ -67,10 +67,17 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
     return scopedRecurringRules.filter(r => isMatchedToCurrentUser(r.paid_by));
   }, [scopedRecurringRules, isMatchedToCurrentUser]);
 
+  // 帳單支付專屬：當前帳本有效之所有卡片帳戶
+  const scopedPaymentAccounts = useMemo(() => {
+    return (paymentAccounts || []).filter(
+      a => !a.ledger_id || a.ledger_id === currentLedger?.id
+    );
+  }, [paymentAccounts, currentLedger?.id]);
+
   // 僅綁定本機使用者之支付卡片與帳戶
   const myPaymentAccounts = useMemo(() => {
-    return (paymentAccounts || []).filter(acc => isMatchedToCurrentUser(acc.user_id));
-  }, [paymentAccounts, isMatchedToCurrentUser]);
+    return scopedPaymentAccounts.filter(acc => isMatchedToCurrentUser(acc.user_id));
+  }, [scopedPaymentAccounts, isMatchedToCurrentUser]);
 
   // 全家滾動待繳帳單 (包含已逾期與未來 7 天內即將扣款之平鋪時間軸)
   const rollingPendingBills = useMemo(() => {
@@ -86,7 +93,7 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
   const myPendingRecurringBillsCount = myRollingPendingBills.length;
 
   const displayedRecurringRules = billsScope === 'my' ? myRecurringRules : scopedRecurringRules;
-  const displayedPaymentAccounts = billsScope === 'my' ? myPaymentAccounts : paymentAccounts;
+  const displayedPaymentAccounts = billsScope === 'my' ? myPaymentAccounts : scopedPaymentAccounts;
   const activePendingBills = billsScope === 'my' ? myRollingPendingBills : rollingPendingBills;
   const activePendingBillsCount = activePendingBills.length;
 
@@ -125,7 +132,7 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
           <Text style={styles.billsHeroSummaryText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
             {billsScope === 'my'
               ? `${myPaymentAccounts.length} 帳戶 · ${myRecurringRules.length} 項定期 (本機)`
-              : `${paymentAccounts.length} 帳戶 · ${scopedRecurringRules.length} 項定期 (全家)`}
+              : `${scopedPaymentAccounts.length} 帳戶 · ${scopedRecurringRules.length} 項定期 (全家)`}
           </Text>
         </View>
       </View>
@@ -147,7 +154,7 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
           activeOpacity={0.7}
         >
           <Text style={[styles.billsScopeTabText, billsScope === 'all' && styles.billsScopeTabTextActive]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            👨‍👩‍👧‍👦 全家 ({paymentAccounts.length + scopedRecurringRules.length})
+            👨‍👩‍👧‍👦 全家 ({scopedPaymentAccounts.length + scopedRecurringRules.length})
           </Text>
         </TouchableOpacity>
       </View>
@@ -367,7 +374,7 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
             );
           })}
           {displayedPaymentAccounts.length === 0 && (
-            billsScope === 'my' && paymentAccounts.length > 0 ? (
+            billsScope === 'my' && scopedPaymentAccounts.length > 0 ? (
               <View style={{ gap: 8 }}>
                 <TouchableOpacity
                   style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
@@ -382,7 +389,7 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
                   onPress={() => setBillsScope('all')}
                 >
                   <Text style={[styles.paymentAccountPreviewText, { color: isDark ? '#A5B4FC' : '#4F46E5' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    👥 切換查看全家卡片與帳戶 ({paymentAccounts.length})
+                    👥 切換查看全家卡片與帳戶 ({scopedPaymentAccounts.length})
                   </Text>
                 </TouchableOpacity>
               </View>

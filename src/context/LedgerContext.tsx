@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import { Platform, Alert, AppState, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Transaction, Category, Ledger, Profile, TransactionType, CategoryType, PaymentMethod, PaymentAccount, AccountType, CustomPaymentMethod, RecurringRule, MemberDevice, LedgerBudget } from '../types/database';
@@ -2115,8 +2115,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
 
-    // 僅清除非當前目標帳本之規則；若為同帳本重整則保留現有快取，避免雲端載入期間「待繳」橫條短暫消失閃爍
+    // 僅清除非當前目標帳本之規則與卡片；若為同帳本重整則保留現有快取，避免雲端載入期間橫條短暫消失閃爍
     setRecurringRules(prev => prev.filter(r => r.ledger_id === targetLedger.id));
+    setPaymentAccounts(prev => prev.filter(a => a.ledger_id === targetLedger.id));
+    try {
+      const cachedAccsStr = await AsyncStorage.getItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${targetLedger.id}`);
+      if (cachedAccsStr) {
+        const parsed = JSON.parse(cachedAccsStr);
+        if (Array.isArray(parsed)) {
+          setPaymentAccounts(parsed.filter((a: any) => a.ledger_id === targetLedger.id));
+        }
+      }
+    } catch {}
     try {
       const cachedRulesStr = await AsyncStorage.getItem(`${STORAGE_KEYS.RECURRING_RULES}_${targetLedger.id}`);
       if (cachedRulesStr) {
@@ -3166,16 +3176,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         if (loadedCloudAccounts.length > 0) {
           // 雲端已有卡片（無論更名、新增或刪除過），以雲端為唯一真實來源，絕不自動復活預設示範卡片
-          setPaymentAccounts(loadedCloudAccounts);
-          await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify(loadedCloudAccounts));
-          await AsyncStorage.setItem(ledgerSpecificKey, JSON.stringify(loadedCloudAccounts));
+          const scopedCloudAccs = loadedCloudAccounts.filter(a => a.ledger_id === targetLedger.id);
+          setPaymentAccounts(scopedCloudAccs);
+          await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify(scopedCloudAccs));
+          await AsyncStorage.setItem(ledgerSpecificKey, JSON.stringify(scopedCloudAccs));
           await AsyncStorage.setItem(initKey, 'true');
         } else if (savedLedgerAccounts) {
           // 離線快取卡片：優先保全本地既有卡片資料，絕不因網路延遲或權限異常將使用者的卡片清空
           try {
             const parsed = JSON.parse(savedLedgerAccounts);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              setPaymentAccounts(parsed);
+              const scopedLocalAccs = parsed.filter((a: any) => a.ledger_id === targetLedger.id);
+              setPaymentAccounts(scopedLocalAccs);
             } else if (hasInitialized === 'true' || deletedAccountIds.length > 0) {
               setPaymentAccounts([]);
             }
@@ -5361,11 +5373,24 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await AsyncStorage.setItem(`${STORAGE_KEYS.LEDGER_READ_ONLY}_${newLedger.id}`, String(isReadOnly));
       await AsyncStorage.setItem(`${STORAGE_KEYS.LEDGER_ALLOW_NEW_MEMBERS}_${newLedger.id}`, 'true');
 
-      // 關鍵：全新帳本明細 100% 清零，並清除全域遺留快取
+      // 關鍵：全新帳本明細、卡片帳戶與週期規則 100% 清零，並清除全域遺留快取
       setTransactions([]);
       inMemoryLedgerTxCacheRef.current.set(newLedger.id, []);
       await AsyncStorage.setItem(`${STORAGE_KEYS.TRANSACTIONS}_${newLedger.id}`, '[]');
       await AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, '[]');
+
+      setPaymentAccounts([]);
+      await AsyncStorage.setItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${newLedger.id}`, '[]');
+      await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, '[]');
+      await AsyncStorage.setItem(`${STORAGE_KEYS.ACCOUNTS_INITIALIZED}_${newLedger.id}`, 'true');
+
+      setRecurringRules([]);
+      await AsyncStorage.setItem(`${STORAGE_KEYS.RECURRING_RULES}_${newLedger.id}`, '[]');
+      await AsyncStorage.setItem(STORAGE_KEYS.RECURRING_RULES, '[]');
+
+      setPaymentMethods(DEFAULT_PAYMENT_METHODS);
+      await AsyncStorage.setItem(`${STORAGE_KEYS.PAYMENT_METHODS}_${newLedger.id}`, JSON.stringify(DEFAULT_PAYMENT_METHODS));
+      await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_METHODS, JSON.stringify(DEFAULT_PAYMENT_METHODS));
 
       setCategories(catsToInsert);
       await AsyncStorage.setItem(`${STORAGE_KEYS.CATEGORIES}_${newLedger.id}`, JSON.stringify(catsToInsert));
@@ -6237,6 +6262,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       setIsAdminMode(false);
       setRecurringRules(prev => prev.filter(r => r.ledger_id === targetLedgerId));
+      setPaymentAccounts(prev => prev.filter(a => a.ledger_id === targetLedgerId));
       const { data: { session } } = await supabase.auth.getSession();
       const authUserId = session?.user?.id;
       if (!authUserId) return;
@@ -6304,6 +6330,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             if (Array.isArray(parsedMems) && parsedMems.length > 0) {
               setMembers(parsedMems);
             }
+          }
+        } catch {}
+
+        try {
+          const savedAccountsStr = await AsyncStorage.getItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${targetLedgerId}`);
+          if (savedAccountsStr) {
+            const parsedAccs = JSON.parse(savedAccountsStr);
+            if (Array.isArray(parsedAccs)) {
+              setPaymentAccounts(parsedAccs.filter(a => a.ledger_id === targetLedgerId));
+            }
+          } else {
+            setPaymentAccounts([]);
           }
         } catch {}
 
@@ -8555,6 +8593,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  // 關鍵防線：確保支付卡片與帳戶嚴格隔離於當前帳本 (杜絕切換或建立新帳本時跨帳本卡片殘留)
+  const scopedPaymentAccounts = useMemo(() => {
+    if (!currentLedger?.id) return [];
+    return (paymentAccounts || []).filter(a => a.ledger_id === currentLedger.id);
+  }, [paymentAccounts, currentLedger?.id]);
+
   // 一鍵切換本機成員身分（包含管理員 PIN 碼權限防護）
   return (
     <LedgerContext.Provider
@@ -8661,7 +8705,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updateCategory,
         deleteCategory,
         refreshLedger,
-        paymentAccounts,
+        paymentAccounts: scopedPaymentAccounts,
         addPaymentAccount,
         updatePaymentAccount,
         deletePaymentAccount,

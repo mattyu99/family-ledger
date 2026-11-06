@@ -174,20 +174,22 @@ export function useLedgerBackup({
         type: c.type,
         sort_order: c.sort_order,
       })),
-      payment_accounts: paymentAccounts.map(a => ({
-        id: a.id,
-        name: a.name,
-        type: a.type,
-        user_id: a.user_id,
-        last_four_digits: a.last_four_digits,
-        card_number: a.card_number,
-        issuer_bank: a.issuer_bank,
-        billing_cycle_date: a.billing_cycle_date,
-        balance: a.balance,
-        color: a.color,
-        icon: a.icon,
-        sort_order: a.sort_order,
-      })),
+      payment_accounts: (paymentAccounts || [])
+        .filter(a => a.ledger_id === currentLedger.id)
+        .map(a => ({
+          id: a.id,
+          name: a.name,
+          type: a.type,
+          user_id: a.user_id,
+          last_four_digits: a.last_four_digits,
+          card_number: a.card_number,
+          issuer_bank: a.issuer_bank,
+          billing_cycle_date: a.billing_cycle_date,
+          balance: a.balance,
+          color: a.color,
+          icon: a.icon,
+          sort_order: a.sort_order,
+        })),
       transactions: transactions.map(t => ({
         id: t.id,
         amount: t.amount,
@@ -501,7 +503,7 @@ export function useLedgerBackup({
       }
 
       // 3. 還原/合併 支付卡片與帳戶
-      let nextAccounts = [...paymentAccounts];
+      let nextAccounts = (paymentAccounts || []).filter(a => a.ledger_id === currentLedger.id);
       const accountIdMap: Record<string, string> = {};
 
       nextAccounts.forEach(a => {
