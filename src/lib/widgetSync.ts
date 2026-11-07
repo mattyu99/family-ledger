@@ -39,6 +39,21 @@ export interface WidgetSnapshotData {
 }
 
 /**
+ * 精簡桌面小工具頂部帳本標籤名稱：
+ * 移除括號補充說明（如 "(SWEETHOME)"）並限制長度，防止 Android RemoteViews 右側標籤過長將左側標題擠成直書多行
+ */
+export function formatWidgetLedgerName(rawName?: string | null): string {
+  const cleaned = (rawName || '家庭記帳本')
+    .replace(/\s*[(\uff08].*?[)\uff09]\s*/g, '')
+    .trim() || '家庭記帳本';
+  const chars = Array.from(cleaned);
+  if (chars.length > 8) {
+    return `${chars.slice(0, 8).join('')}…`;
+  }
+  return cleaned;
+}
+
+/**
  * 從當前帳本與明細中萃取小工具專用的輕量快照資料 (Snapshot)
  */
 export function extractWidgetSnapshot(
@@ -47,7 +62,7 @@ export function extractWidgetSnapshot(
   members: any[] = [],
   currentUserId?: string
 ): WidgetSnapshotData {
-  const ledgerName = currentLedger?.name || '家庭記帳本';
+  const ledgerName = formatWidgetLedgerName(currentLedger?.name);
   const ledgerId = currentLedger?.id || '';
   const todayYmd = getLocalDateYmd();
 

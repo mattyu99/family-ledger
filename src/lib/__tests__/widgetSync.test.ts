@@ -138,4 +138,16 @@ describe('Android 桌面小工具快照萃取與待辦隱私分流測試 (widget
     expect(snapshot.pendingMemos.length).toBe(4);
     expect(snapshot.pendingMemos.map(m => m.rawTitle)).toEqual(['待辦1', '待辦2', '待辦3', '待辦4']);
   });
+
+  it('桌面小工具帳本名稱應自動剔除括號後綴 (如 SWEETHOME)，避免擠壓小工具標題列', () => {
+    const demoLedger: Ledger = {
+      id: 'ee100000-0000-4000-8000-000000000001',
+      name: '💖 甜心示範家庭 (SWEETHOME)',
+      currency: 'TWD',
+      created_by: 'u1',
+      created_at: '2026-01-01T00:00:00.000Z',
+    };
+    const snapshot = extractWidgetSnapshot(demoLedger, mockTransactions, mockMembers, 'user-dad');
+    expect(snapshot.ledgerName).toBe('💖 甜心示範家庭');
+  });
 });

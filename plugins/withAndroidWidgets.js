@@ -399,14 +399,19 @@ function withAndroidWidgets(config) {
             android:text="📋 今日生活待辦"
             android:textColor="#F8FAFC"
             android:textSize="12sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:singleLine="true"
+            android:ellipsize="end" />
         <TextView
             android:id="@+id/memo_widget_badge"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:maxWidth="105dp"
             android:text="測試記帳本 🍟"
             android:textColor="#94A3B8"
-            android:textSize="10sp" />
+            android:textSize="10sp"
+            android:singleLine="true"
+            android:ellipsize="end" />
         <TextView
             android:id="@+id/btn_memo_refresh"
             android:layout_width="26dp"
