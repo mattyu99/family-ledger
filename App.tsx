@@ -866,6 +866,7 @@ const AppContent: React.FC = () => {
         {isDemoLedger && (
           <DemoQuestBanner
             isDark={isDark}
+            activeTab={activeTab}
             currentUser={currentUser}
             members={members}
             onSwitchMember={async (m) => {

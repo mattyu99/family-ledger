@@ -15,6 +15,7 @@ import { showConfirm } from '../lib/alert';
 
 export interface DemoQuestBannerProps {
   isDark: boolean;
+  activeTab?: string;
   currentUser?: Profile;
   members?: Profile[];
   onSwitchMember?: (member: Profile) => void;
@@ -41,6 +42,7 @@ interface QuestItem {
 
 export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
   isDark,
+  activeTab,
   currentUser,
   members,
   onSwitchMember,
@@ -55,8 +57,18 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
 }) => {
   const [completedQuestIds, setCompletedQuestIds] = useState<string[]>([]);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [prevActiveTab, setPrevActiveTab] = useState(activeTab);
   const [showCelebration, setShowCelebration] = useState(false);
   const [hasShownCelebration, setHasShownCelebration] = useState(false);
+  const [showPhilosophyModal, setShowPhilosophyModal] = useState(false);
+
+  // 切換至「統計 / 帳單支付 / 家庭設定」分頁時自動收合，避免佔據頁面空間
+  if (activeTab !== prevActiveTab) {
+    setPrevActiveTab(activeTab);
+    if (activeTab && activeTab !== 'transactions') {
+      setIsCollapsed(true);
+    }
+  }
 
   // 示範家庭成員名單（嚴格鎖定 4 位示範成員，支援改名連動，杜絕第 5 人）
   const activeMembersList = (() => {
@@ -161,6 +173,8 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
 
   const completedCount = completedQuestIds.length;
   const progressPercent = Math.round((completedCount / 6) * 100);
+  const activeMemberObj =
+    activeMembersList.find((m) => m.id === currentUser?.id) || activeMembersList[0];
 
   const handleOpenManual = () => {
     Linking.openURL('https://mattyu99.github.io/family-ledger/manual.html');
@@ -182,67 +196,88 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      {/* 頂部橫幅標題列 */}
+      {/* 頂部精簡單行標題列 */}
       <View style={styles.headerRow}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.badgeText}>🎮 示範試玩沙盒</Text>
-          <Text style={[styles.title, isDark && styles.textDark]}>
-            SWEETHOME 探索指南 ({completedCount}/6)
+        <TouchableOpacity
+          style={styles.headerLeft}
+          activeOpacity={0.7}
+          onPress={() => setIsCollapsed(!isCollapsed)}
+        >
+          <Text
+            style={[styles.title, isDark && styles.textDark]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.15}
+          >
+            🎮 探索指南 ({completedCount}/6)
           </Text>
-        </View>
+          {isCollapsed && activeMemberObj && (
+            <View style={[styles.collapsedMemberPill, isDark && styles.collapsedMemberPillDark]}>
+              <Text style={styles.collapsedMemberText} numberOfLines={1} maxFontSizeMultiplier={1.1}>
+                {activeMemberObj.avatar_url || '👤'} {activeMemberObj.display_name.replace(/\s*\(.*?\)/, '')}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
         <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={[styles.smallBtn, isDark && styles.smallBtnDark]}
+            onPress={() => setShowPhilosophyModal(true)}
+          >
+            <Text style={[styles.smallBtnText, isDark && styles.smallBtnTextDark]} maxFontSizeMultiplier={1.1}>
+              💡 理念
+            </Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.smallBtn, isDark && styles.smallBtnDark]}
             onPress={handleConfirmReset}
           >
-            <Text style={[styles.smallBtnText, isDark && styles.smallBtnTextDark]}>
-              🔄 還原初始
+            <Text style={[styles.smallBtnText, isDark && styles.smallBtnTextDark]} maxFontSizeMultiplier={1.1}>
+              🔄 還原
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.smallBtn, isDark && styles.smallBtnDark]}
             onPress={() => setIsCollapsed(!isCollapsed)}
           >
-            <Text style={[styles.smallBtnText, isDark && styles.smallBtnTextDark]}>
+            <Text style={[styles.smallBtnText, isDark && styles.smallBtnTextDark]} maxFontSizeMultiplier={1.1}>
               {isCollapsed ? '展開 ▼' : '收合 ▲'}
             </Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* 進度條 */}
-      <View style={[styles.progressTrack, isDark && styles.progressTrackDark]}>
+      {/* 超薄進度條 */}
+      <View
+        style={[
+          styles.progressTrack,
+          isDark && styles.progressTrackDark,
+          isCollapsed && { marginBottom: 0 },
+        ]}
+      >
         <View style={[styles.progressBar, { width: `${progressPercent}%` }]} />
       </View>
 
-      {/* 展開之任務清單與視角切換器 (加入內部滾動保護與高度限制) */}
+      {/* 展開之緊湊雙排佈局：單行成員切換 + 橫向滑動任務卡 */}
       {!isCollapsed && (
-        <ScrollView
-          style={styles.questsScrollContainer}
-          contentContainerStyle={styles.questsList}
-          nestedScrollEnabled={true}
-          showsVerticalScrollIndicator={true}
-        >
-          {/* 👤 體驗版專屬視角切換器 */}
-          <View style={[styles.switcherCard, isDark && styles.switcherCardDark]}>
-            <View style={styles.switcherHeaderRow}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={[styles.switcherHeaderTitle, isDark && styles.textDark]}>
-                  👤 切換體驗成員視角
-                </Text>
-                <View style={styles.switcherExclusiveTag}>
-                  <Text style={styles.switcherExclusiveTagText}>體驗版專屬</Text>
-                </View>
-              </View>
-              <Text style={[styles.switcherCurrentLabel, isDark && styles.textMutedDark]}>
-                目前：{currentUser?.display_name || activeMembersList[0]?.display_name}
-              </Text>
-            </View>
-
-            {/* 成員膠囊清單 */}
-            <View style={styles.memberChipsRow}>
+        <View style={styles.expandedContent}>
+          {/* 👤 單行成員視角切換列（橫向捲動保護，絕不換行佔高度） */}
+          <View style={[styles.switcherRow, isDark && styles.switcherRowDark]}>
+            <Text
+              style={[styles.switcherLabel, isDark && styles.textMutedDark]}
+              maxFontSizeMultiplier={1.1}
+            >
+              👤 視角
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.memberChipsScroll}
+            >
               {activeMembersList.map((m) => {
-                const isCurrent = currentUser?.id === m.id || (!currentUser?.id && m.id === activeMembersList[0]?.id);
+                const isCurrent =
+                  currentUser?.id === m.id ||
+                  (!currentUser?.id && m.id === activeMembersList[0]?.id);
                 return (
                   <TouchableOpacity
                     key={m.id}
@@ -257,7 +292,9 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
                       onSwitchMember?.(m);
                     }}
                   >
-                    <Text style={styles.memberChipAvatar}>{m.avatar_url || '👤'}</Text>
+                    <Text style={styles.memberChipAvatar} maxFontSizeMultiplier={1.1}>
+                      {m.avatar_url || '👤'}
+                    </Text>
                     <Text
                       style={[
                         styles.memberChipName,
@@ -265,91 +302,166 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
                         isCurrent && styles.memberChipNameActive,
                       ]}
                       numberOfLines={1}
+                      maxFontSizeMultiplier={1.1}
                     >
                       {m.display_name}
                     </Text>
                     {isCurrent && (
                       <View style={styles.chipCurrentDot}>
-                        <Text style={styles.chipCurrentDotText}>我</Text>
+                        <Text style={styles.chipCurrentDotText} maxFontSizeMultiplier={1}>
+                          我
+                        </Text>
                       </View>
                     )}
                   </TouchableOpacity>
                 );
               })}
-            </View>
+            </ScrollView>
+          </View>
 
-            {/* 💡 甜心記帳本「公私分明」核心哲學解說卡 */}
-            <View style={[styles.philosophyBox, isDark && styles.philosophyBoxDark]}>
-              <View style={styles.philosophyHeaderRow}>
-                <Text style={{ fontSize: 13, marginRight: 4 }}>💡</Text>
-                <Text style={[styles.philosophyTitle, isDark && styles.philosophyTitleDark]}>
-                  甜心記帳本「公私分明」核心理念：
-                </Text>
-              </View>
+          {/* 🎯 橫向滑動任務卡片列（單排高度 ~64px，徹底釋放主畫面垂直空間） */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.questsHorizontalList}
+          >
+            {quests.map((q, idx) => {
+              const isDone = completedQuestIds.includes(q.id);
+              return (
+                <View
+                  key={q.id}
+                  style={[
+                    styles.questCard,
+                    isDark && styles.questCardDark,
+                    isDone && styles.questCardDone,
+                  ]}
+                >
+                  <View style={styles.questInfo}>
+                    <View style={styles.questTagRow}>
+                      <Text style={styles.questTag} maxFontSizeMultiplier={1.1}>
+                        {q.tag}
+                      </Text>
+                      {isDone ? (
+                        <Text style={styles.doneBadge} maxFontSizeMultiplier={1.1}>
+                          ✅ 已完成
+                        </Text>
+                      ) : idx === 0 ? (
+                        <Text
+                          style={[styles.swipeHintText, isDark && styles.textMutedDark]}
+                          maxFontSizeMultiplier={1}
+                        >
+                          左右滑動 ➔
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Text
+                      style={[styles.questTitle, isDark && styles.textDark]}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={1.15}
+                    >
+                      {q.title}
+                    </Text>
+                    <Text
+                      style={[styles.questDesc, isDark && styles.textMutedDark]}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={1.1}
+                    >
+                      {q.desc}
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.actionBtn,
+                      isDone ? styles.actionBtnDone : styles.actionBtnActive,
+                    ]}
+                    onPress={q.action}
+                  >
+                    <Text
+                      style={[
+                        styles.actionBtnText,
+                        isDone ? styles.actionBtnTextDone : styles.actionBtnTextActive,
+                      ]}
+                      maxFontSizeMultiplier={1.1}
+                    >
+                      {isDone ? '再試' : `👉 ${q.actionText}`}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </ScrollView>
+
+          {/* 底部單行理念與官方手冊捷徑 */}
+          <View style={[styles.footerNoteRow, isDark && styles.footerNoteRowDark]}>
+            <TouchableOpacity
+              style={styles.footerPhilosophyBtn}
+              activeOpacity={0.7}
+              onPress={() => setShowPhilosophyModal(true)}
+            >
+              <Text
+                style={[styles.footerNote, isDark && styles.textMutedDark]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.1}
+              >
+                💡 公私分明：公帳 0 秒同步・私帳 100% 獨立隱私 (點此詳情)
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleOpenManual}>
+              <Text style={styles.manualLink} maxFontSizeMultiplier={1.1}>
+                📖 官方手冊
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* 💡 公私分明核心理念與體驗說明彈窗 */}
+      <Modal
+        visible={showPhilosophyModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPhilosophyModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.celebrationCard, isDark && styles.celebrationCardDark]}>
+            <Text style={{ fontSize: 36, marginBottom: 8 }}>💡</Text>
+            <Text style={[styles.celebrationTitle, isDark && styles.textDark]}>
+              甜心記帳本「公私分明」核心理念
+            </Text>
+            <View style={[styles.philosophyModalBox, isDark && styles.philosophyModalBoxDark]}>
               <Text style={[styles.philosophyItemText, isDark && styles.philosophyItemTextDark]}>
                 • <Text style={{ fontWeight: '700' }}>全家公帳 0 秒即時同步</Text>：全家人在各自手機記錄的每一筆開銷、共享採買清單、水電繳費狀態，全家隨時即時看見、協同管理！
               </Text>
-              <Text style={[styles.philosophyItemText, isDark && styles.philosophyItemTextDark, { marginTop: 4 }]}>
+              <Text style={[styles.philosophyItemText, isDark && styles.philosophyItemTextDark, { marginTop: 8 }]}>
                 • <Text style={{ fontWeight: '700' }}>個人隱私嚴格保護</Text>：真實環境中每位家人各自用獨立手機，無法跨成員切換身分，個人私房信用卡與帳戶額度 100% 互不干擾、安全獨立！
               </Text>
+              <Text style={[styles.philosophyItemText, isDark && styles.philosophyItemTextDark, { marginTop: 8 }]}>
+                • <Text style={{ fontWeight: '700' }}>體驗版專屬視角切換</Text>：為了讓您在一支手機體驗全家 4 人互動，本示範沙盒特別開放頂部「👤 視角」一鍵切換智爸、瑩媽、洋洋與豆豆視角。
+              </Text>
             </View>
-          </View>
 
-          {quests.map((q) => {
-            const isDone = completedQuestIds.includes(q.id);
-            return (
-              <View
-                key={q.id}
-                style={[
-                  styles.questCard,
-                  isDark && styles.questCardDark,
-                  isDone && styles.questCardDone,
-                ]}
-              >
-                <View style={styles.questInfo}>
-                  <View style={styles.questTagRow}>
-                    <Text style={styles.questTag}>{q.tag}</Text>
-                    {isDone && <Text style={styles.doneBadge}>✅ 已完成</Text>}
-                  </View>
-                  <Text style={[styles.questTitle, isDark && styles.textDark]}>
-                    {q.title}
-                  </Text>
-                  <Text style={[styles.questDesc, isDark && styles.textMutedDark]}>
-                    {q.desc}
-                  </Text>
-                </View>
+            <TouchableOpacity
+              style={styles.secondaryModalBtn}
+              onPress={() => {
+                setShowPhilosophyModal(false);
+                handleOpenManual();
+              }}
+            >
+              <Text style={styles.secondaryModalBtnText}>
+                📖 翻閱官方使用者手冊 (14 大模組規格)
+              </Text>
+            </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[
-                    styles.actionBtn,
-                    isDone ? styles.actionBtnDone : styles.actionBtnActive,
-                  ]}
-                  onPress={q.action}
-                >
-                  <Text
-                    style={[
-                      styles.actionBtnText,
-                      isDone ? styles.actionBtnTextDone : styles.actionBtnTextActive,
-                    ]}
-                  >
-                    {isDone ? '再次體驗' : `👉 ${q.actionText}`}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            );
-          })}
-
-          {/* 任務底部小連結 (方案 A) */}
-          <View style={styles.footerNoteRow}>
-            <Text style={[styles.footerNote, isDark && styles.textMutedDark]}>
-              💡 想了解 14 大模組深度規格？
-            </Text>
-            <TouchableOpacity onPress={handleOpenManual}>
-              <Text style={styles.manualLink}>📖 翻閱官方使用者手冊</Text>
+            <TouchableOpacity
+              style={styles.primaryModalBtn}
+              onPress={() => setShowPhilosophyModal(false)}
+            >
+              <Text style={styles.primaryModalBtnText}>我知道了</Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
-      )}
+        </View>
+      </Modal>
 
       {/* 通關慶祝賀卡彈窗 */}
       <Modal
@@ -410,19 +522,20 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    marginHorizontal: 14,
-    marginTop: 10,
-    marginBottom: 8,
-    padding: 14,
-    borderRadius: 16,
+    marginHorizontal: 12,
+    marginTop: 6,
+    marginBottom: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 14,
     backgroundColor: '#FAF5FF',
     borderWidth: 1,
     borderColor: '#E9D5FF',
     shadowColor: '#8B5CF6',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
   },
   containerDark: {
     backgroundColor: '#261C3B',
@@ -432,23 +545,37 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
+    gap: 6,
   },
   headerLeft: {
     flex: 1,
-  },
-  badgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#9333EA',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   title: {
-    fontSize: 15,
+    fontSize: 13.5,
     fontWeight: '800',
     color: '#1F2937',
-    marginTop: 2,
+    flexShrink: 1,
+  },
+  collapsedMemberPill: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+    backgroundColor: '#EDE9FE',
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+  },
+  collapsedMemberPillDark: {
+    backgroundColor: '#3B1F6E',
+    borderColor: '#5B21B6',
+  },
+  collapsedMemberText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#7C3AED',
   },
   textDark: {
     color: '#F9FAFB',
@@ -458,31 +585,32 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     flexDirection: 'row',
-    gap: 6,
+    alignItems: 'center',
+    gap: 4,
   },
   smallBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 3.5,
+    borderRadius: 7,
     backgroundColor: '#F3E8FF',
   },
   smallBtnDark: {
     backgroundColor: '#3B1F6E',
   },
   smallBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     color: '#7E22CE',
   },
   smallBtnTextDark: {
     color: '#D8B4FE',
   },
   progressTrack: {
-    height: 6,
+    height: 4,
     backgroundColor: '#E9D5FF',
-    borderRadius: 3,
+    borderRadius: 2,
     overflow: 'hidden',
-    marginBottom: 10,
+    marginBottom: 7,
   },
   progressTrackDark: {
     backgroundColor: '#3B1F6E',
@@ -490,73 +618,46 @@ const styles = StyleSheet.create({
   progressBar: {
     height: '100%',
     backgroundColor: '#9333EA',
-    borderRadius: 3,
+    borderRadius: 2,
   },
-  questsScrollContainer: {
-    maxHeight: 420,
+  expandedContent: {
+    gap: 6,
   },
-  questsList: {
-    gap: 8,
-    marginTop: 4,
-    paddingBottom: 6,
-  },
-  switcherCard: {
-    padding: 12,
-    borderRadius: 14,
+  switcherRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    borderRadius: 10,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E9D5FF',
-    marginBottom: 4,
+    gap: 6,
   },
-  switcherCardDark: {
+  switcherRowDark: {
     backgroundColor: '#1E152D',
     borderColor: '#4C1D95',
   },
-  switcherHeaderRow: {
+  switcherLabel: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#6D28D9',
+  },
+  memberChipsScroll: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-    flexWrap: 'wrap',
-    gap: 4,
-  },
-  switcherHeaderTitle: {
-    fontSize: 13.5,
-    fontWeight: '800',
-    color: '#111827',
-  },
-  switcherExclusiveTag: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    backgroundColor: '#EDE9FE',
-  },
-  switcherExclusiveTagText: {
-    fontSize: 10.5,
-    fontWeight: '700',
-    color: '#7C3AED',
-  },
-  switcherCurrentLabel: {
-    fontSize: 11.5,
-    color: '#6B7280',
-    fontWeight: '600',
-  },
-  memberChipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 10,
+    gap: 6,
   },
   memberChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 20,
+    paddingVertical: 3.5,
+    paddingHorizontal: 8,
+    borderRadius: 14,
     backgroundColor: '#FAF5FF',
     borderWidth: 1,
     borderColor: '#E9D5FF',
-    gap: 5,
+    gap: 4,
   },
   memberChipDark: {
     backgroundColor: '#2D154D',
@@ -567,10 +668,10 @@ const styles = StyleSheet.create({
     borderColor: '#7E22CE',
   },
   memberChipAvatar: {
-    fontSize: 14,
+    fontSize: 12,
   },
   memberChipName: {
-    fontSize: 12.5,
+    fontSize: 11.5,
     fontWeight: '700',
     color: '#374151',
   },
@@ -578,54 +679,28 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   chipCurrentDot: {
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 0.5,
+    borderRadius: 6,
     backgroundColor: 'rgba(255, 255, 255, 0.25)',
   },
   chipCurrentDotText: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: '800',
     color: '#FFFFFF',
   },
-  philosophyBox: {
-    padding: 10,
-    borderRadius: 10,
-    backgroundColor: '#F5F3FF',
-    borderWidth: 1,
-    borderColor: '#DDD6FE',
-  },
-  philosophyBoxDark: {
-    backgroundColor: '#170E28',
-    borderColor: '#3B1F6E',
-  },
-  philosophyHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  philosophyTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#6D28D9',
-  },
-  philosophyTitleDark: {
-    color: '#C4B5FD',
-  },
-  philosophyItemText: {
-    fontSize: 11.5,
-    color: '#4B5563',
-    lineHeight: 16.5,
-  },
-  philosophyItemTextDark: {
-    color: '#9CA3AF',
+  questsHorizontalList: {
+    gap: 8,
+    paddingRight: 4,
   },
   questCard: {
+    width: 245,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 10,
-    borderRadius: 12,
+    paddingVertical: 7,
+    paddingHorizontal: 9,
+    borderRadius: 11,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#F3E8FF',
@@ -639,39 +714,44 @@ const styles = StyleSheet.create({
   },
   questInfo: {
     flex: 1,
-    paddingRight: 10,
+    paddingRight: 8,
   },
   questTagRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 2,
+    justifyContent: 'space-between',
+    gap: 4,
+    marginBottom: 1,
   },
   questTag: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '700',
     color: '#8B5CF6',
   },
+  swipeHintText: {
+    fontSize: 9.5,
+    color: '#9CA3AF',
+    fontWeight: '600',
+  },
   doneBadge: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '700',
     color: '#10B981',
   },
   questTitle: {
-    fontSize: 13.5,
+    fontSize: 12.5,
     fontWeight: '700',
     color: '#111827',
   },
   questDesc: {
-    fontSize: 11.5,
+    fontSize: 10.5,
     color: '#6B7280',
-    marginTop: 2,
-    lineHeight: 16,
+    marginTop: 1,
   },
   actionBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 9,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -682,7 +762,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3E8FF',
   },
   actionBtnText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
   },
   actionBtnTextActive: {
@@ -694,23 +774,48 @@ const styles = StyleSheet.create({
   footerNoteRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 8,
-    paddingTop: 8,
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingTop: 4,
     borderTopWidth: 1,
     borderTopColor: '#F3E8FF',
   },
+  footerNoteRowDark: {
+    borderTopColor: '#3B1F6E',
+  },
+  footerPhilosophyBtn: {
+    flex: 1,
+  },
   footerNote: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#6B7280',
   },
   manualLink: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: '#9333EA',
     textDecorationLine: 'underline',
+  },
+  philosophyModalBox: {
+    width: '100%',
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: '#F5F3FF',
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+    marginBottom: 16,
+  },
+  philosophyModalBoxDark: {
+    backgroundColor: '#170E28',
+    borderColor: '#3B1F6E',
+  },
+  philosophyItemText: {
+    fontSize: 13,
+    color: '#4B5563',
+    lineHeight: 19,
+  },
+  philosophyItemTextDark: {
+    color: '#D1D5DB',
   },
   modalOverlay: {
     flex: 1,

@@ -507,7 +507,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const [hasJoinedLedger, setHasJoinedLedger] = useState<boolean>(true);
-  const [inviteCode, setInviteCode] = useState<string>('FAM-8823');
+  const [inviteCode, setInviteCode] = useState<string>(SWEETHOME_INVITE_CODE);
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
 
   // 即時 App 內通知泡泡 (In-App Toast Notification)
@@ -2229,7 +2229,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // (A) 載入或獲取邀請碼
     const inviteRows = inviteRes?.data;
-    if (inviteRows && inviteRows.length > 0 && inviteRows[0].invite_code) {
+    if (isDemoLedgerId(targetLedger.id)) {
+      const demoCode = targetLedger.id === DEMO_LEDGER_ID ? 'FAM-8823' : SWEETHOME_INVITE_CODE;
+      setInviteCode(demoCode);
+      AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, demoCode).catch(() => {});
+    } else if (inviteRows && inviteRows.length > 0 && inviteRows[0].invite_code) {
       setInviteCode(inviteRows[0].invite_code);
       AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, inviteRows[0].invite_code).catch(() => {});
     } else {
@@ -3728,9 +3732,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setRecurringRules(demoRules);
       setMembers(SWEETHOME_MEMBERS);
       setCurrentUser(SWEETHOME_MEMBERS[0]);
+      setInviteCode(SWEETHOME_INVITE_CODE);
 
       // 同步更新本機快取
       await persistTransactionsCache(demoTxs, SWEETHOME_LEDGER_ID);
+      await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, SWEETHOME_INVITE_CODE);
       await AsyncStorage.setItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${SWEETHOME_LEDGER_ID}`, JSON.stringify(demoAccounts));
       await AsyncStorage.setItem(`${STORAGE_KEYS.RECURRING_RULES}_${SWEETHOME_LEDGER_ID}`, JSON.stringify(demoRules));
       await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${SWEETHOME_LEDGER_ID}`, JSON.stringify(SWEETHOME_MEMBERS));
@@ -6238,6 +6244,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
       base = window.location.origin + window.location.pathname;
     }
+    if (currentLedger.id === SWEETHOME_LEDGER_ID || isDemoLedgerId(currentLedger.id)) {
+      return `${base}?invite=${SWEETHOME_INVITE_CODE}`;
+    }
     return `${base}?invite=${inviteCode}&join=${currentLedger.id}`;
   };
 
@@ -8733,7 +8742,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setIsAdminUnlocked: setIsAdminMode,
         unlockAdmin: enableAdminMode,
         lockAdmin: disableAdminMode,
-        inviteCode,
+        inviteCode: currentLedger.id === SWEETHOME_LEDGER_ID ? SWEETHOME_INVITE_CODE : inviteCode,
         adminPin,
         updateAdminPin,
         isReadOnly: Boolean(currentLedger.is_read_only),
