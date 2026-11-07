@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.15';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.15 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 3;
+export const APP_BUILD_REVISION = 4;
 
-// 完整版本字串 (例如 "1.0.15.3")
+// 完整版本字串 (例如 "1.0.15.4")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -24,7 +24,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
     title: '備份還原直接選檔讀取、跨帳本資料隔離、成員管理模式分流與示範沙盒輕巧改版',
     highlights: [
       '🎮 示範沙盒卡片輕巧緊湊改版：成員視角與新手任務改為單行橫向滑動並自動收合，完整釋放畫面閱讀空間。',
-      '🛡️ 示範帳本切換與小工具排版保護：修正跨帳本切換回示範帳本時之明細與卡片完整保留、固定顯示 SWEETHOME 邀請碼，並優化桌面小工具長帳本名稱防擠壓排版。',
+      '🛡️ 示範帳本切換與排版保護：修正跨帳本切換回示範帳本時之明細與卡片完整保留、固定顯示 SWEETHOME 邀請碼，並優化頂部切換按鈕與桌面小工具防遮擋排版。',
       '📂 備份還原支援本機檔案直接讀取：手機與電腦均可直接選取 .json 備份檔，免複製貼上即可一鍵自動載入還原。',
       '📦 跨帳本備份匯入全面隔離：匯入不同帳本資料時自動重新配發專屬代碼，嚴防跨帳本資料覆蓋或持卡人遺失。',
       '👥 成員資訊與管理模式精緻分流：日常成員模式安全查閱成員狀態與設備清單，解鎖管理員模式後方展開身分測試與特權控制。',

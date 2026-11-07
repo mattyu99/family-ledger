@@ -667,7 +667,7 @@ const AppContent: React.FC = () => {
 
       {/* 頂部導航列 */}
       <View style={[styles.topBar, { backgroundColor: colors.background.card, borderBottomColor: colors.border.default }]}>
-        <View style={{ flex: 1, marginRight: 8 }}>
+        <View style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
           <View style={styles.topBarSubtitleRow}>
             <Text style={[styles.ledgerSubtitle, { color: colors.text.muted }]} maxFontSizeMultiplier={1.2}>家庭共享記帳本</Text>
             {isAdminMode && (
@@ -687,14 +687,14 @@ const AppContent: React.FC = () => {
                 onPress={() => setEditLedgerModalVisible(true)}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.ledgerTitle, { color: colors.text.primary }]} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.2}>
-                  {currentLedger.name}
+                <Text style={[styles.ledgerTitle, { color: colors.text.primary }]} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.15}>
+                  {isDemoLedger ? currentLedger.name.replace(/\s*\(SWEETHOME\)/i, '') : currentLedger.name}
                 </Text>
                 <Text style={styles.ledgerEditPencil}>✏️</Text>
               </TouchableOpacity>
             ) : (
-              <Text style={[styles.ledgerTitle, { color: colors.text.primary }]} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.2}>
-                {currentLedger.name}
+              <Text style={[styles.ledgerTitle, { color: colors.text.primary }]} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.15}>
+                {isDemoLedger ? currentLedger.name.replace(/\s*\(SWEETHOME\)/i, '') : currentLedger.name}
               </Text>
             )}
 
@@ -704,7 +704,7 @@ const AppContent: React.FC = () => {
               </View>
             )}
 
-            {ledgers.length > 1 && (
+            {(ledgers.length > 1 || (isDemoLedger && ledgers.length >= 1)) && (
               <TouchableOpacity
                 style={[
                   styles.switchLedgerTopBadge,
@@ -714,7 +714,7 @@ const AppContent: React.FC = () => {
                 onPress={() => setSwitchLedgerModalVisible(true)}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.switchLedgerTopBadgeText, isDark && { color: colors.text.secondary }]}>切換 ▾</Text>
+                <Text style={[styles.switchLedgerTopBadgeText, isDark && { color: colors.text.secondary }]} maxFontSizeMultiplier={1.1}>切換 ▾</Text>
                 {hasOtherUnread && <View style={styles.topBadgeRedDot} />}
               </TouchableOpacity>
             )}
@@ -1685,26 +1685,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     marginTop: 2,
+    minWidth: 0,
   },
   ledgerTitleClickable: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    maxWidth: '70%',
+    flexShrink: 1,
+    minWidth: 0,
   },
   ledgerTitle: {
     fontSize: 18,
     fontWeight: '800',
+    flexShrink: 1,
   },
   ledgerEditPencil: {
     fontSize: 12,
     opacity: 0.6,
+    flexShrink: 0,
   },
   topBarReadOnlyBadge: {
     backgroundColor: '#F1F5F9',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
+    flexShrink: 0,
   },
   topBarReadOnlyBadgeText: {
     color: '#64748B',
@@ -1721,6 +1726,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 12,
     position: 'relative',
+    flexShrink: 0,
   },
   switchLedgerTopBadgeUnread: {
     borderColor: '#EF4444',
