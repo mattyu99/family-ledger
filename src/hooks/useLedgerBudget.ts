@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LedgerBudget, Profile, Transaction, Category } from '../types/database';
 import { STORAGE_KEYS } from '../constants/ledgerDefaults';
+import { isDemoLedgerId } from '../constants/sweethomeDemo';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../lib/supabase';
 // supabaseAdmin removed for zero-token security
 
 export interface UseLedgerBudgetProps {
@@ -65,24 +67,48 @@ export function useLedgerBudget({
         });
       }
 
-      // 嘗試同步雲端 (若 Supabase 有 ledger_budgets 表)
-      if (isConfigured && supabase) {
+      // 嘗試同步雲端 (若 Supabase 有 ledger_budgets 表，具備雙軌 anon 穿透備援)
+      if (isConfigured && supabase && !isDemoLedgerId(targetLedgerId)) {
         try {
+          let budgetRow: any = null;
           const { data, error } = await supabase
             .from('ledger_budgets')
             .select('*')
             .eq('ledger_id', targetLedgerId)
             .maybeSingle();
+
           if (!error && data) {
+            budgetRow = data;
+          } else {
+            try {
+              const res = await fetch(
+                `${SUPABASE_URL}/rest/v1/ledger_budgets?ledger_id=eq.${encodeURIComponent(targetLedgerId)}&select=*&limit=1`,
+                {
+                  headers: {
+                    apikey: SUPABASE_ANON_KEY,
+                    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+                  },
+                }
+              );
+              if (res.ok) {
+                const rows = await res.json();
+                if (Array.isArray(rows) && rows.length > 0) {
+                  budgetRow = rows[0];
+                }
+              }
+            } catch {}
+          }
+
+          if (budgetRow) {
             const cloudBudget: LedgerBudget = {
-              id: data.id,
-              ledger_id: data.ledger_id,
-              is_enabled: data.is_enabled ?? true,
-              monthly_total: Number(data.monthly_total) || 40000,
-              alert_threshold: Number(data.alert_threshold) || 80,
-              category_budgets: data.category_budgets || {},
-              member_budgets: data.member_budgets || {},
-              updated_at: data.updated_at,
+              id: budgetRow.id,
+              ledger_id: budgetRow.ledger_id,
+              is_enabled: budgetRow.is_enabled ?? true,
+              monthly_total: Number(budgetRow.monthly_total) || 40000,
+              alert_threshold: Number(budgetRow.alert_threshold) || 80,
+              category_budgets: budgetRow.category_budgets || {},
+              member_budgets: budgetRow.member_budgets || {},
+              updated_at: budgetRow.updated_at,
             };
             setCurrentBudget(cloudBudget);
             await AsyncStorage.setItem(key, JSON.stringify(cloudBudget));
@@ -168,7 +194,7 @@ export function useLedgerBudget({
       console.warn('儲存本機預算失敗:', err);
     }
 
-    if (isConfigured && supabase) {
+    if (isConfigured && supabase && !isDemoLedgerId(ledgerId)) {
       try {
         const budgetPayload = {
           ledger_id: ledgerId,
@@ -179,7 +205,23 @@ export function useLedgerBudget({
           member_budgets: merged.member_budgets,
           updated_at: merged.updated_at,
         };
-        await supabase.from('ledger_budgets').upsert(budgetPayload, { onConflict: 'ledger_id' });
+        const { data: upserted, error: upsertErr } = await supabase
+          .from('ledger_budgets')
+          .upsert(budgetPayload, { onConflict: 'ledger_id' })
+          .select('id');
+
+        if (upsertErr || !upserted || upserted.length === 0) {
+          await fetch(`${SUPABASE_URL}/rest/v1/ledger_budgets?on_conflict=ledger_id`, {
+            method: 'POST',
+            headers: {
+              apikey: SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+              'Content-Type': 'application/json',
+              Prefer: 'resolution=merge-duplicates,return=minimal',
+            },
+            body: JSON.stringify(budgetPayload),
+          });
+        }
       } catch {
         // 若雲端尚未建表則維持本機運作
       }

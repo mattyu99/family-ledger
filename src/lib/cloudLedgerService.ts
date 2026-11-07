@@ -326,12 +326,33 @@ async function fetchWebFallbackSummaries(
       );
     }
 
-    // 3. 嘗試讀取裝置表與交易表增補資訊
+    // 3. 嘗試讀取裝置表與交易表增補資訊 (具備 anon REST 備援)
     try {
-      const { data: devices } = await supabase
+      let devices: any[] | null = null;
+      const { data: clientDevs } = await supabase
         .from('member_devices')
         .select('ledger_id, last_active_at')
         .order('last_active_at', { ascending: false });
+
+      if (Array.isArray(clientDevs) && clientDevs.length > 0) {
+        devices = clientDevs;
+      } else {
+        try {
+          const res = await fetch(
+            `${SUPABASE_URL}/rest/v1/member_devices?select=ledger_id,last_active_at&order=last_active_at.desc`,
+            {
+              headers: {
+                apikey: SUPABASE_ANON_KEY,
+                Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+              },
+            }
+          );
+          if (res.ok) {
+            const anonDevs = await res.json();
+            if (Array.isArray(anonDevs)) devices = anonDevs;
+          }
+        } catch {}
+      }
 
       if (Array.isArray(devices)) {
         for (const dev of devices) {
@@ -351,9 +372,26 @@ async function fetchWebFallbackSummaries(
       }
     } catch {}
 
-    // 4. 嘗試直接查 ledgers 表（若 SQL 權限已更新開啟）
+    // 4. 嘗試直接查 ledgers 表（具備 anon REST 備援）
     try {
-      const { data: rawLedgers } = await supabase.from('ledgers').select('*');
+      let rawLedgers: any[] | null = null;
+      const { data: clientLedgers } = await supabase.from('ledgers').select('*');
+      if (Array.isArray(clientLedgers) && clientLedgers.length > 0) {
+        rawLedgers = clientLedgers;
+      } else {
+        try {
+          const res = await fetch(`${SUPABASE_URL}/rest/v1/ledgers?select=*`, {
+            headers: {
+              apikey: SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            },
+          });
+          if (res.ok) {
+            const anonLedgers = await res.json();
+            if (Array.isArray(anonLedgers)) rawLedgers = anonLedgers;
+          }
+        } catch {}
+      }
       if (Array.isArray(rawLedgers) && rawLedgers.length > 0) {
         for (const rl of rawLedgers) {
           const item = ledgerMap.get(rl.id);

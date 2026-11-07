@@ -1724,10 +1724,27 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               }
             }
 
-            const { data: memberRows } = await supabase
+            let memberRows: any[] | null = null;
+            const { data: clientMemberRows } = await supabase
               .from('ledger_members')
               .select('user_id, role, profiles(*)')
               .eq('ledger_id', ledgerId);
+
+            if (clientMemberRows && clientMemberRows.length > 0) {
+              memberRows = clientMemberRows;
+            } else if (!isDemoLedgerId(ledgerId)) {
+              try {
+                const token = getStorageServiceToken();
+                const res = await fetch(
+                  `${SUPABASE_URL}/rest/v1/ledger_members?ledger_id=eq.${encodeURIComponent(ledgerId)}&select=user_id,role,profiles(*)`,
+                  { headers: { apikey: token, Authorization: `Bearer ${token}` } }
+                );
+                if (res.ok) {
+                  const anonRows = await res.json();
+                  if (Array.isArray(anonRows) && anonRows.length > 0) memberRows = anonRows;
+                }
+              } catch {}
+            }
 
             if (memberRows && memberRows.length > 0) {
               const loadedMembers: Profile[] = memberRows
@@ -1788,10 +1805,27 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         async () => {
           // 當有成員資料（如大頭貼或暱稱）變更時，刷新成員名單
           try {
-            const { data: memberRows } = await supabase
+            let memberRows: any[] | null = null;
+            const { data: clientMemberRows } = await supabase
               .from('ledger_members')
               .select('user_id, role, profiles(*)')
               .eq('ledger_id', ledgerId);
+
+            if (clientMemberRows && clientMemberRows.length > 0) {
+              memberRows = clientMemberRows;
+            } else if (!isDemoLedgerId(ledgerId)) {
+              try {
+                const token = getStorageServiceToken();
+                const res = await fetch(
+                  `${SUPABASE_URL}/rest/v1/ledger_members?ledger_id=eq.${encodeURIComponent(ledgerId)}&select=user_id,role,profiles(*)`,
+                  { headers: { apikey: token, Authorization: `Bearer ${token}` } }
+                );
+                if (res.ok) {
+                  const anonRows = await res.json();
+                  if (Array.isArray(anonRows) && anonRows.length > 0) memberRows = anonRows;
+                }
+              } catch {}
+            }
 
             if (memberRows && memberRows.length > 0) {
               const loadedMembers: Profile[] = memberRows
@@ -1833,11 +1867,28 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         async () => {
           // 當有分類被新增、修改或刪除時，即時重整全體成員的手機分類清單
           try {
-            const { data: catRows } = await supabase
+            let catRows: Category[] = [];
+            const { data: clientCats } = await supabase
               .from('categories')
               .select('*')
               .or(`ledger_id.eq.${ledgerId},ledger_id.is.null`)
               .order('sort_order', { ascending: true });
+
+            if (clientCats && clientCats.length > 0) {
+              catRows = clientCats;
+            } else if (!isDemoLedgerId(ledgerId)) {
+              try {
+                const token = getStorageServiceToken();
+                const res = await fetch(
+                  `${SUPABASE_URL}/rest/v1/categories?or=(ledger_id.eq.${encodeURIComponent(ledgerId)},ledger_id.is.null)&select=*&order=sort_order.asc`,
+                  { headers: { apikey: token, Authorization: `Bearer ${token}` } }
+                );
+                if (res.ok) {
+                  const anonCats = await res.json();
+                  if (Array.isArray(anonCats) && anonCats.length > 0) catRows = anonCats;
+                }
+              } catch {}
+            }
 
             if (catRows && catRows.length > 0) {
               setCategories(catRows);
@@ -1901,10 +1952,27 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         async () => {
           // 當管理員新增、編輯或刪除自訂付款方式時，即時推播至全體家庭成員
           try {
-            const { data: cloudMethods } = await supabase
+            let cloudMethods: any[] | null = null;
+            const { data: clientMethods } = await supabase
               .from('payment_methods')
               .select('*')
               .eq('ledger_id', ledgerId);
+
+            if (clientMethods && clientMethods.length > 0) {
+              cloudMethods = clientMethods;
+            } else if (!isDemoLedgerId(ledgerId)) {
+              try {
+                const token = getStorageServiceToken();
+                const res = await fetch(
+                  `${SUPABASE_URL}/rest/v1/payment_methods?ledger_id=eq.${encodeURIComponent(ledgerId)}&select=*&order=sort_order.asc`,
+                  { headers: { apikey: token, Authorization: `Bearer ${token}` } }
+                );
+                if (res.ok) {
+                  const anonMethods = await res.json();
+                  if (Array.isArray(anonMethods)) cloudMethods = anonMethods;
+                }
+              } catch {}
+            }
 
             if (cloudMethods !== null) {
               const methodLedgerKey = `${STORAGE_KEYS.PAYMENT_METHODS}_${ledgerId}`;
@@ -2782,8 +2850,23 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const deletedSet = new Set(deletedList);
     deletedList.forEach(id => deletedTxIdsRef.current.add(id));
 
-    // 查詢雲端墓碑表 (Tombstone)，同步全體裝置的刪除名單
-    const cloudDeletedRows = (!deletedRes?.error && deletedRes?.data) ? deletedRes.data : [];
+    // 查詢雲端墓碑表 (Tombstone)，同步全體裝置的刪除名單 (具備雙軌 anon 穿透備援)
+    let cloudDeletedRows = (!deletedRes?.error && deletedRes?.data) ? deletedRes.data : [];
+    if (cloudDeletedRows.length === 0 && isConfigured && !isDemoLedgerId(targetLedger.id)) {
+      try {
+        const token = getStorageServiceToken();
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/deleted_transactions?ledger_id=eq.${encodeURIComponent(targetLedger.id)}&select=id&order=deleted_at.desc&limit=500`,
+          { headers: { apikey: token, Authorization: `Bearer ${token}` } }
+        );
+        if (res.ok) {
+          const anonDeleted = await res.json();
+          if (Array.isArray(anonDeleted) && anonDeleted.length > 0) {
+            cloudDeletedRows = anonDeleted;
+          }
+        }
+      } catch {}
+    }
     if (cloudDeletedRows && cloudDeletedRows.length > 0) {
       cloudDeletedRows.forEach((r: any) => {
         if (r.id) {
@@ -3725,11 +3808,31 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
-      const { data: memberLedgers } = await supabase
+      let memberLedgers: any[] | null = null;
+      const { data: clientMemberLedgers } = await supabase
         .from('ledger_members')
         .select('ledger_id, role, joined_at, ledgers(*), profiles(*)')
         .in('user_id', candidateUserIds)
         .order('joined_at', { ascending: false });
+
+      if (clientMemberLedgers && clientMemberLedgers.length > 0) {
+        memberLedgers = clientMemberLedgers;
+      }
+
+      try {
+        const token = getStorageServiceToken();
+        const inList = candidateUserIds.map(id => encodeURIComponent(id)).join(',');
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/ledger_members?user_id=in.(${inList})&select=ledger_id,role,joined_at,ledgers(*),profiles(*)&order=joined_at.desc`,
+          { headers: { apikey: token, Authorization: `Bearer ${token}` } }
+        );
+        if (res.ok) {
+          const anonMemberLedgers = await res.json();
+          if (Array.isArray(anonMemberLedgers) && (!memberLedgers || anonMemberLedgers.length >= memberLedgers.length)) {
+            memberLedgers = [...(memberLedgers || []), ...anonMemberLedgers];
+          }
+        }
+      } catch {}
 
       let validMemberLedgers = (memberLedgers || []).filter((m: any) => m.ledgers && isValidUUID(m.ledgers.id));
 
@@ -3801,10 +3904,28 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
         if (!savedName && lookupEmail) {
           try {
-            const { data: bMems } = await supabase
+            let bMems: any[] | null = null;
+            const { data: clientBMems } = await supabase
               .from('ledger_members')
               .select('profiles(id, display_name, avatar_url, auth_email)')
               .eq('ledger_id', l.id);
+
+            if (clientBMems && clientBMems.length > 0) {
+              bMems = clientBMems;
+            } else {
+              try {
+                const token = getStorageServiceToken();
+                const res = await fetch(
+                  `${SUPABASE_URL}/rest/v1/ledger_members?ledger_id=eq.${encodeURIComponent(l.id)}&select=profiles(id,display_name,avatar_url,auth_email)`,
+                  { headers: { apikey: token, Authorization: `Bearer ${token}` } }
+                );
+                if (res.ok) {
+                  const anonBMems = await res.json();
+                  if (Array.isArray(anonBMems)) bMems = anonBMems;
+                }
+              } catch {}
+            }
+
             if (bMems && bMems.length > 0) {
               const match = bMems.find((bm: any) => {
                 const bp = Array.isArray(bm.profiles) ? bm.profiles[0] : bm.profiles;
