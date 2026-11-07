@@ -46,6 +46,7 @@ import {
 import {
   SWEETHOME_LEDGER_ID,
   SWEETHOME_INVITE_CODE,
+  SWEETHOME_LEDGER,
   SWEETHOME_MEMBERS,
   SWEETHOME_ACCOUNTS,
   getSweethomeInitialTransactions,
@@ -1158,14 +1159,23 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
 
         const ledgerId = savedLedger ? JSON.parse(savedLedger)?.id : null;
-        const savedAccounts = (ledgerId && await AsyncStorage.getItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${ledgerId}`)) || await AsyncStorage.getItem(STORAGE_KEYS.PAYMENT_ACCOUNTS);
+        const savedAccounts =
+          (ledgerId && await AsyncStorage.getItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${ledgerId}`)) ||
+          (!isDemoLedgerId(ledgerId) ? await AsyncStorage.getItem(STORAGE_KEYS.PAYMENT_ACCOUNTS) : null);
         if (savedAccounts) {
           try {
             const parsed = JSON.parse(savedAccounts);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              setPaymentAccounts(parsed);
+            const matchingAccs = Array.isArray(parsed)
+              ? (ledgerId ? parsed.filter((a: any) => a && a.ledger_id === ledgerId) : parsed)
+              : [];
+            if (matchingAccs.length > 0) {
+              setPaymentAccounts(matchingAccs);
+            } else if (!ledgerId || ledgerId === SWEETHOME_LEDGER_ID) {
+              setPaymentAccounts(SWEETHOME_ACCOUNTS);
             }
           } catch {}
+        } else if (!ledgerId || ledgerId === SWEETHOME_LEDGER_ID) {
+          setPaymentAccounts(SWEETHOME_ACCOUNTS);
         }
 
         const savedMethods = (ledgerId && await AsyncStorage.getItem(`${STORAGE_KEYS.PAYMENT_METHODS}_${ledgerId}`)) || await AsyncStorage.getItem(STORAGE_KEYS.PAYMENT_METHODS);
@@ -2092,6 +2102,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const hydratedMem = matchingMem.map(hydrateTransactionWithInvoice);
         localCachedTransactions = hydratedMem;
         setTransactions(hydratedMem);
+      } else if (targetLedger.id === SWEETHOME_LEDGER_ID) {
+        const freshDemoTxs = getSweethomeInitialTransactions().map(hydrateTransactionWithInvoice);
+        hasLocalCache = true;
+        localCachedTransactions = freshDemoTxs;
+        setTransactions(freshDemoTxs);
       } else {
         setTransactions([]);
       }
@@ -2114,17 +2129,39 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               const hydratedMatching = matching.map(hydrateTransactionWithInvoice);
               localCachedTransactions = hydratedMatching;
               setTransactions(hydratedMatching);
+            } else if (targetLedger.id === SWEETHOME_LEDGER_ID) {
+              const freshDemoTxs = getSweethomeInitialTransactions().map(hydrateTransactionWithInvoice);
+              hasLocalCache = true;
+              localCachedTransactions = freshDemoTxs;
+              setTransactions(freshDemoTxs);
             } else {
               setTransactions([]);
             }
+          } else if (targetLedger.id === SWEETHOME_LEDGER_ID) {
+            const freshDemoTxs = getSweethomeInitialTransactions().map(hydrateTransactionWithInvoice);
+            hasLocalCache = true;
+            localCachedTransactions = freshDemoTxs;
+            setTransactions(freshDemoTxs);
           } else {
             setTransactions([]);
           }
+        } else if (targetLedger.id === SWEETHOME_LEDGER_ID) {
+          const freshDemoTxs = getSweethomeInitialTransactions().map(hydrateTransactionWithInvoice);
+          hasLocalCache = true;
+          localCachedTransactions = freshDemoTxs;
+          setTransactions(freshDemoTxs);
         } else {
           setTransactions([]);
         }
       } catch {
-        setTransactions([]);
+        if (targetLedger.id === SWEETHOME_LEDGER_ID) {
+          const freshDemoTxs = getSweethomeInitialTransactions().map(hydrateTransactionWithInvoice);
+          hasLocalCache = true;
+          localCachedTransactions = freshDemoTxs;
+          setTransactions(freshDemoTxs);
+        } else {
+          setTransactions([]);
+        }
       }
     }
 
@@ -2136,8 +2173,15 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (cachedAccsStr) {
         const parsed = JSON.parse(cachedAccsStr);
         if (Array.isArray(parsed)) {
-          setPaymentAccounts(parsed.filter((a: any) => a.ledger_id === targetLedger.id));
+          const matchingAccs = parsed.filter((a: any) => a && a.ledger_id === targetLedger.id);
+          if (matchingAccs.length > 0) {
+            setPaymentAccounts(matchingAccs);
+          } else if (targetLedger.id === SWEETHOME_LEDGER_ID) {
+            setPaymentAccounts(SWEETHOME_ACCOUNTS);
+          }
         }
+      } else if (targetLedger.id === SWEETHOME_LEDGER_ID) {
+        setPaymentAccounts(SWEETHOME_ACCOUNTS);
       }
     } catch {}
     try {
@@ -2963,8 +3007,22 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
 
-    // 雲端查詢失敗或無資料時的 Local-First 保底：絕不將本機快取的交易明細覆蓋成空陣列（嚴格限定屬於目標帳本之明細）
-    if (finalTx.length === 0 && !isDemoLedgerId(targetLedger.id)) {
+    // 示範體驗帳本專屬載入：優先採用該示範帳本快取，若為空則自動初始化標準示範母本，絕不被清空為 0 筆
+    if (isDemoLedgerId(targetLedger.id)) {
+      if (localCachedTransactions.length > 0) {
+        finalTx = localCachedTransactions
+          .filter(t => t && t.ledger_id === targetLedger.id)
+          .map(transformSingleTx);
+      }
+      if (finalTx.length === 0) {
+        const initialDemoRaw =
+          targetLedger.id === DEMO_LEDGER_ID
+            ? INITIAL_TRANSACTIONS
+            : getSweethomeInitialTransactions();
+        finalTx = initialDemoRaw.map(transformSingleTx);
+      }
+    } else if (finalTx.length === 0) {
+      // 雲端查詢失敗或無資料時的 Local-First 保底：絕不將本機快取的交易明細覆蓋成空陣列（嚴格限定屬於目標帳本之明細）
       if (localCachedTransactions.length > 0) {
         finalTx = localCachedTransactions.filter(t => t && t.ledger_id === targetLedger.id);
       } else {
@@ -2987,7 +3045,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setTransactions(finalTx);
     inMemoryLedgerTxCacheRef.current.set(targetLedger.id, finalTx);
     await persistTransactionsCache(finalTx, targetLedger.id);
-    setIsCloudSynced(true);
+    setIsCloudSynced(!isDemoLedgerId(targetLedger.id));
 
     // 若雲端總筆數大於目前已載入筆數 (例如 25,980 > 1,000)，啟動高效游標式接力拉取，補齊海量歷史明細 (Keyset Pagination)
     const targetLedgerId = targetLedger.id;
@@ -3167,18 +3225,38 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       if (targetLedger.id === SWEETHOME_LEDGER_ID) {
-        const savedDemo = (await AsyncStorage.getItem(ledgerSpecificKey)) || (await AsyncStorage.getItem(STORAGE_KEYS.PAYMENT_ACCOUNTS));
+        const savedDemo = await AsyncStorage.getItem(ledgerSpecificKey);
+        let validDemoAccs: PaymentAccount[] = [];
         if (savedDemo) {
-          try { setPaymentAccounts(JSON.parse(savedDemo)); } catch {}
+          try {
+            const parsed = JSON.parse(savedDemo);
+            if (Array.isArray(parsed)) {
+              validDemoAccs = parsed.filter((a: any) => a && a.ledger_id === SWEETHOME_LEDGER_ID);
+            }
+          } catch {}
+        }
+        if (validDemoAccs.length > 0) {
+          setPaymentAccounts(validDemoAccs);
         } else {
           setPaymentAccounts(SWEETHOME_ACCOUNTS);
+          await AsyncStorage.setItem(ledgerSpecificKey, JSON.stringify(SWEETHOME_ACCOUNTS));
         }
       } else if (targetLedger.id === DEMO_LEDGER_ID) {
-        const savedDemo = (await AsyncStorage.getItem(ledgerSpecificKey)) || (await AsyncStorage.getItem(STORAGE_KEYS.PAYMENT_ACCOUNTS));
+        const savedDemo = await AsyncStorage.getItem(ledgerSpecificKey);
+        let validDemoAccs: PaymentAccount[] = [];
         if (savedDemo) {
-          try { setPaymentAccounts(JSON.parse(savedDemo)); } catch {}
+          try {
+            const parsed = JSON.parse(savedDemo);
+            if (Array.isArray(parsed)) {
+              validDemoAccs = parsed.filter((a: any) => a && a.ledger_id === DEMO_LEDGER_ID);
+            }
+          } catch {}
+        }
+        if (validDemoAccs.length > 0) {
+          setPaymentAccounts(validDemoAccs);
         } else {
           setPaymentAccounts(DEMO_PAYMENT_ACCOUNTS);
+          await AsyncStorage.setItem(ledgerSpecificKey, JSON.stringify(DEMO_PAYMENT_ACCOUNTS));
         }
       } else {
         const initKey = `${STORAGE_KEYS.ACCOUNTS_INITIALIZED}_${targetLedger.id}`;
@@ -5689,6 +5767,31 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
+      // 🎮 官方示範體驗帳本 (SWEETHOME)：100% 純本機沙盒加入，絕不觸碰雲端表單
+      if (
+        code.toUpperCase() === SWEETHOME_INVITE_CODE ||
+        isDemoLedgerId(code) ||
+        isDemoLedgerId(extractedJoinId)
+      ) {
+        const demoUser = claimedMember || SWEETHOME_MEMBERS[0];
+        const demoRole: 'owner' | 'admin' | 'member' =
+          demoUser.id === SWEETHOME_MEMBERS[0].id ? 'owner' : 'member';
+        setCurrentUser(demoUser);
+        setMembers(SWEETHOME_MEMBERS);
+        setUserRole(demoRole);
+        setInviteCode(SWEETHOME_INVITE_CODE);
+        setPendingInviteCode(null);
+        setHasJoinedLedger(true);
+        await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(demoUser));
+        await AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${SWEETHOME_LEDGER_ID}`, JSON.stringify(demoUser));
+        await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, demoRole);
+        await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, SWEETHOME_INVITE_CODE);
+        await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
+        await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(SWEETHOME_LEDGER));
+        await loadLedgerData(SWEETHOME_LEDGER, demoUser.id);
+        return { success: true };
+      }
+
       let { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         const { data: anonData } = await supabase.auth.signInAnonymously();
@@ -5960,6 +6063,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       const lookupCode = code || extractedJoinId;
+
+      // 🎮 官方示範體驗帳本 (SWEETHOME)：本機即刻預覽 4 位示範成員
+      if (
+        lookupCode.toUpperCase() === SWEETHOME_INVITE_CODE ||
+        isDemoLedgerId(lookupCode) ||
+        isDemoLedgerId(extractedJoinId)
+      ) {
+        return {
+          success: true,
+          ledgerId: SWEETHOME_LEDGER_ID,
+          ledgerName: SWEETHOME_LEDGER.name,
+          members: SWEETHOME_MEMBERS,
+        };
+      }
 
       // 1. 優先嘗試 RPC 獲取預覽 (SECURITY DEFINER 供訪客查詢成員與帳本名稱)
       if (isConfigured) {
@@ -6332,14 +6449,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setRecurringRules(prev => prev.filter(r => r.ledger_id === targetLedgerId));
       setPaymentAccounts(prev => prev.filter(a => a.ledger_id === targetLedgerId));
       const { data: { session } } = await supabase.auth.getSession();
-      const authUserId = session?.user?.id;
+      const authUserId = session?.user?.id || (isDemoLedgerId(targetLedgerId) ? SWEETHOME_MEMBERS[0].id : undefined);
       if (!authUserId) return;
 
       // 優先從現有 ledgers 狀態中尋找目標帳本
-      let targetLedger = ledgers.find(l => l.id === targetLedgerId);
+      let targetLedger =
+        targetLedgerId === SWEETHOME_LEDGER_ID
+          ? SWEETHOME_LEDGER
+          : ledgers.find(l => l.id === targetLedgerId);
       let targetRole = targetLedger?.userRole || 'member';
 
-      if (!targetLedger && isConfigured) {
+      if (!targetLedger && isConfigured && !isDemoLedgerId(targetLedgerId)) {
         const { data: lData } = await supabase
           .from('ledgers')
           .select('*')
@@ -6351,10 +6471,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       if (targetLedger) {
-        const isCreator = targetLedger.created_by === authUserId;
+        const isCreator = targetLedger.created_by === authUserId || targetLedgerId === SWEETHOME_LEDGER_ID;
         if (isCreator) {
           targetRole = 'owner';
-        } else if (isConfigured) {
+        } else if (isConfigured && !isDemoLedgerId(targetLedgerId)) {
           const { data: memberRow } = await supabase
             .from('ledger_members')
             .select('role')
@@ -6382,6 +6502,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         if (targetUser && targetUser.display_name) {
           setCurrentUser(targetUser);
+        } else if (targetLedgerId === SWEETHOME_LEDGER_ID) {
+          setCurrentUser(SWEETHOME_MEMBERS[0]);
         } else if (targetLedger?.userDisplayName && currentUser?.display_name && targetLedger.userDisplayName.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase()) {
           setCurrentUser(prev => ({
             ...prev,
@@ -6398,6 +6520,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             if (Array.isArray(parsedMems) && parsedMems.length > 0) {
               setMembers(parsedMems);
             }
+          } else if (targetLedgerId === SWEETHOME_LEDGER_ID) {
+            setMembers(SWEETHOME_MEMBERS);
           }
         } catch {}
 
@@ -6405,9 +6529,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const savedAccountsStr = await AsyncStorage.getItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${targetLedgerId}`);
           if (savedAccountsStr) {
             const parsedAccs = JSON.parse(savedAccountsStr);
-            if (Array.isArray(parsedAccs)) {
-              setPaymentAccounts(parsedAccs.filter(a => a.ledger_id === targetLedgerId));
+            const matchingAccs = Array.isArray(parsedAccs) ? parsedAccs.filter(a => a && a.ledger_id === targetLedgerId) : [];
+            if (matchingAccs.length > 0) {
+              setPaymentAccounts(matchingAccs);
+            } else if (targetLedgerId === SWEETHOME_LEDGER_ID) {
+              setPaymentAccounts(SWEETHOME_ACCOUNTS);
+            } else {
+              setPaymentAccounts([]);
             }
+          } else if (targetLedgerId === SWEETHOME_LEDGER_ID) {
+            setPaymentAccounts(SWEETHOME_ACCOUNTS);
           } else {
             setPaymentAccounts([]);
           }

@@ -220,14 +220,16 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
         </TouchableOpacity>
 
         <View style={styles.headerRight}>
-          <TouchableOpacity
-            style={[styles.smallBtn, isDark && styles.smallBtnDark]}
-            onPress={() => setShowPhilosophyModal(true)}
-          >
-            <Text style={[styles.smallBtnText, isDark && styles.smallBtnTextDark]} maxFontSizeMultiplier={1.1}>
-              💡 理念
-            </Text>
-          </TouchableOpacity>
+          {!isCollapsed && (
+            <TouchableOpacity
+              style={[styles.smallBtn, isDark && styles.smallBtnDark]}
+              onPress={() => setShowPhilosophyModal(true)}
+            >
+              <Text style={[styles.smallBtnText, isDark && styles.smallBtnTextDark]} maxFontSizeMultiplier={1.1}>
+                💡 理念
+              </Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={[styles.smallBtn, isDark && styles.smallBtnDark]}
             onPress={handleConfirmReset}
