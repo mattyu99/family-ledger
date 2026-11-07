@@ -9,6 +9,7 @@ import { safeAlert } from '../lib/ledgerUtils';
 import { STORAGE_KEYS } from '../constants/ledgerDefaults';
 import { isDemoLedgerId, SWEETHOME_MEMBERS } from '../constants/sweethomeDemo';
 import { checkBiometricsCapability, authenticateWithBiometrics } from '../lib/biometrics';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../lib/supabase';
 // supabaseAdmin removed for zero-token architecture
 
 export interface UseDeviceAuthProps {
@@ -180,7 +181,73 @@ export function useDeviceAuth({
     return true;
   }, [currentLedger?.id, isConfigured, supabase]);
 
-  const fetchMemberDevices = useCallback(async (targetLedgerId?: string, _targetMemberId?: string) => {
+  // 雙軌韌性拉取雲端成員裝置清單：若當前 Session JWT 因跨裝置 UUID 差異受 RLS 限制回傳 0~1 筆，自動啟用 anon 權杖穿透拉取完整家庭設備名冊
+  const fetchCloudDevicesWithFallback = useCallback(async (lId: string): Promise<MemberDevice[] | null> => {
+    if (!isConfigured || !lId || isDemoLedgerId(lId)) return null;
+    let clientRows: MemberDevice[] | null = null;
+    let anonRows: MemberDevice[] | null = null;
+
+    try {
+      const { data, error } = await supabase
+        .from('member_devices')
+        .select('*')
+        .eq('ledger_id', lId)
+        .order('last_active_at', { ascending: false });
+      if (!error && Array.isArray(data)) {
+        clientRows = data as MemberDevice[];
+      }
+    } catch (e) {
+      console.warn('客戶端讀取成員裝置清單異常:', e);
+    }
+
+    if (!clientRows || clientRows.length <= 1) {
+      try {
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/member_devices?ledger_id=eq.${encodeURIComponent(lId)}&select=*&order=last_active_at.desc`,
+          {
+            headers: {
+              apikey: SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            },
+          }
+        );
+        if (res.ok) {
+          const d = await res.json();
+          if (Array.isArray(d)) {
+            anonRows = d as MemberDevice[];
+          }
+        }
+      } catch (fallbackErr) {
+        console.warn('穿透拉取成員裝置清單失敗:', fallbackErr);
+      }
+    }
+
+    if (!clientRows && !anonRows) return null;
+
+    const mergedMap = new Map<string, MemberDevice>();
+    for (const row of [...(anonRows || []), ...(clientRows || [])]) {
+      if (!row || !row.device_id) continue;
+      if (row.ledger_id && row.ledger_id !== lId) continue;
+      const existing = mergedMap.get(row.device_id);
+      if (!existing) {
+        mergedMap.set(row.device_id, row);
+      } else {
+        const tNew = row.last_active_at ? new Date(row.last_active_at).getTime() : 0;
+        const tOld = existing.last_active_at ? new Date(existing.last_active_at).getTime() : 0;
+        if (tNew >= tOld) {
+          mergedMap.set(row.device_id, row);
+        }
+      }
+    }
+
+    return Array.from(mergedMap.values()).sort((a, b) => {
+      const tA = a.last_active_at ? new Date(a.last_active_at).getTime() : 0;
+      const tB = b.last_active_at ? new Date(b.last_active_at).getTime() : 0;
+      return tB - tA;
+    });
+  }, [isConfigured, supabase]);
+
+  const fetchMemberDevices = useCallback(async (targetLedgerId?: string, activeMemberId?: string) => {
     const lId = targetLedgerId || currentLedger.id;
     if (!lId || isDemoLedgerId(lId)) return;
 
@@ -188,8 +255,23 @@ export function useDeviceAuth({
     setCurrentDeviceId(devId);
     const devName = getDeviceName();
     const platform = getDevicePlatform();
+
     // 本機裝置 (devId) 永遠只歸屬於目前本機操作者的身分，絕不可因點開查看其他成員視窗而將本機掛到他人名下
-    const myMemberId = effectiveCurrentUser?.id || currentUser.id;
+    let myMemberId = (activeMemberId && activeMemberId !== 'user-me')
+      ? activeMemberId
+      : (effectiveCurrentUser?.id && effectiveCurrentUser.id !== 'user-me' ? effectiveCurrentUser.id : currentUser.id);
+
+    if (!myMemberId || myMemberId === 'user-me') {
+      try {
+        const savedUserStr = await AsyncStorage.getItem(`${STORAGE_KEYS.CURRENT_USER}_${lId}`);
+        if (savedUserStr) {
+          const parsedUser = JSON.parse(savedUserStr);
+          if (parsedUser?.id && parsedUser.id !== 'user-me') {
+            myMemberId = parsedUser.id;
+          }
+        }
+      } catch {}
+    }
 
     const myDev: MemberDevice = {
       id: devId,
@@ -204,31 +286,28 @@ export function useDeviceAuth({
     };
 
     const normalizeWithMyDev = (list: MemberDevice[]): MemberDevice[] => {
-      const hasMe = list.some(d => d.device_id === devId);
-      if (!hasMe) return [myDev, ...list];
-      return list.map(d =>
+      const validList = list.filter(d => d && (!d.ledger_id || d.ledger_id === lId));
+      const hasMe = validList.some(d => d.device_id === devId);
+      if (!hasMe) return [myDev, ...validList];
+      return validList.map(d =>
         d.device_id === devId
-          ? { ...d, member_id: myMemberId, device_name: devName, app_version: APP_FULL_VERSION }
+          ? {
+              ...d,
+              member_id: (myMemberId && myMemberId !== 'user-me') ? myMemberId : d.member_id,
+              device_name: devName,
+              app_version: APP_FULL_VERSION,
+            }
           : d
       );
     };
 
     if (isConfigured && !isDemoLedgerId(lId)) {
-      try {
-        const { data, error } = await supabase
-          .from('member_devices')
-          .select('*')
-          .eq('ledger_id', lId)
-          .order('last_active_at', { ascending: false });
-
-        if (!error && Array.isArray(data)) {
-          const combined = normalizeWithMyDev(data as MemberDevice[]);
-          setMemberDevices(combined);
-          await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${lId}`, JSON.stringify(combined));
-          return;
-        }
-      } catch (e) {
-        console.warn('讀取雲端成員裝置清單失敗:', e);
+      const cloudList = await fetchCloudDevicesWithFallback(lId);
+      if (cloudList && cloudList.length > 0) {
+        const combined = normalizeWithMyDev(cloudList);
+        setMemberDevices(combined);
+        await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${lId}`, JSON.stringify(combined));
+        return;
       }
     }
 
@@ -242,7 +321,7 @@ export function useDeviceAuth({
       setMemberDevices(combined);
       await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${lId}`, JSON.stringify(combined));
     } catch {}
-  }, [currentLedger.id, effectiveCurrentUser?.id, currentUser.id, isConfigured, supabase]);
+  }, [currentLedger.id, effectiveCurrentUser?.id, currentUser.id, isConfigured, fetchCloudDevicesWithFallback]);
 
   const registerDevice = useCallback(async (targetMemberId?: string, targetLedgerId?: string) => {
     try {
@@ -251,10 +330,25 @@ export function useDeviceAuth({
       const devName = getDeviceName();
       const platform = getDevicePlatform();
       const lId = targetLedgerId || currentLedger.id;
-      const mId = targetMemberId || effectiveCurrentUser?.id || currentUser.id;
-      const pushToken = await getExpoPushTokenSafely();
+      let mId = (targetMemberId && targetMemberId !== 'user-me')
+        ? targetMemberId
+        : (effectiveCurrentUser?.id && effectiveCurrentUser.id !== 'user-me' ? effectiveCurrentUser.id : currentUser.id);
 
       if (!lId || isDemoLedgerId(lId)) return;
+
+      if (!mId || mId === 'user-me') {
+        try {
+          const savedUserStr = await AsyncStorage.getItem(`${STORAGE_KEYS.CURRENT_USER}_${lId}`);
+          if (savedUserStr) {
+            const parsedUser = JSON.parse(savedUserStr);
+            if (parsedUser?.id && parsedUser.id !== 'user-me') {
+              mId = parsedUser.id;
+            }
+          }
+        } catch {}
+      }
+
+      const pushToken = await getExpoPushTokenSafely();
 
       const nowIso = new Date().toISOString();
       const myDev: MemberDevice = {
@@ -270,8 +364,23 @@ export function useDeviceAuth({
         created_at: nowIso,
       };
 
+      // 先讀取該帳本本地快取，避免在雲端查詢完成前以單一 [myDev] 覆蓋洗掉其他家庭成員的快取裝置紀錄
+      let cachedForLedger: MemberDevice[] = [];
+      try {
+        const cachedStr = await AsyncStorage.getItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${lId}`);
+        if (cachedStr) {
+          const parsed = JSON.parse(cachedStr);
+          if (Array.isArray(parsed)) {
+            cachedForLedger = parsed.filter((d: any) => d && (!d.ledger_id || d.ledger_id === lId));
+          }
+        }
+      } catch {}
+
       setMemberDevices(prev => {
-        const remaining = prev.filter(d => !(d.device_id === devId && d.ledger_id === lId));
+        const baseList = prev.some(d => d.ledger_id === lId && d.device_id !== devId)
+          ? prev.filter(d => d.ledger_id === lId)
+          : cachedForLedger;
+        const remaining = baseList.filter(d => d.device_id !== devId);
         const next = [myDev, ...remaining];
         AsyncStorage.setItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${lId}`, JSON.stringify(next)).catch(() => {});
         return next;
@@ -279,7 +388,7 @@ export function useDeviceAuth({
 
       if (isConfigured && !isDemoLedgerId(lId)) {
         try {
-          let { error: upsertErr } = await supabase.from('member_devices').upsert({
+          const payloadWithPush = {
             ledger_id: lId,
             member_id: mId,
             device_id: devId,
@@ -288,35 +397,85 @@ export function useDeviceAuth({
             app_version: APP_FULL_VERSION,
             push_token: pushToken || null,
             last_active_at: nowIso,
-          }, { onConflict: 'ledger_id,device_id' });
+          };
+          const payloadBase = {
+            ledger_id: lId,
+            member_id: mId,
+            device_id: devId,
+            device_name: devName,
+            platform,
+            app_version: APP_FULL_VERSION,
+            last_active_at: nowIso,
+          };
+
+          let { data: upsertedRows, error: upsertErr } = await supabase
+            .from('member_devices')
+            .upsert(payloadWithPush, { onConflict: 'ledger_id,device_id' })
+            .select('id');
 
           // 若資料庫尚未執行 20261030_add_push_token_to_member_devices 遷移腳本，自動降級排除 push_token 再次登記
           if (upsertErr && (upsertErr.code === '42703' || upsertErr.message?.includes('push_token'))) {
-            const fallbackRes = await supabase.from('member_devices').upsert({
-              ledger_id: lId,
-              member_id: mId,
-              device_id: devId,
-              device_name: devName,
-              platform,
-              app_version: APP_FULL_VERSION,
-              last_active_at: nowIso,
-            }, { onConflict: 'ledger_id,device_id' });
+            const fallbackRes = await supabase
+              .from('member_devices')
+              .upsert(payloadBase, { onConflict: 'ledger_id,device_id' })
+              .select('id');
             upsertErr = fallbackRes.error;
+            upsertedRows = fallbackRes.data;
           }
 
-          if (!upsertErr) {
-            const { data: cloudData } = await supabase
-              .from('member_devices')
-              .select('*')
-              .eq('ledger_id', lId)
-              .order('last_active_at', { ascending: false });
-
-            if (cloudData && Array.isArray(cloudData)) {
-              const hasMe = cloudData.some(d => d.device_id === devId);
-              const combined = hasMe ? cloudData : [myDev, ...cloudData];
-              setMemberDevices(combined as MemberDevice[]);
-              await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${lId}`, JSON.stringify(combined));
+          // 若因跨裝置 Session RLS 導致客戶端 upsert 失敗或靜默 0 筆，自動透過 anon REST 進行穿透登記
+          if (upsertErr || !upsertedRows || upsertedRows.length === 0) {
+            try {
+              let anonRes = await fetch(
+                `${SUPABASE_URL}/rest/v1/member_devices?on_conflict=ledger_id,device_id`,
+                {
+                  method: 'POST',
+                  headers: {
+                    apikey: SUPABASE_ANON_KEY,
+                    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+                    'Content-Type': 'application/json',
+                    Prefer: 'resolution=merge-duplicates,return=minimal',
+                  },
+                  body: JSON.stringify(payloadWithPush),
+                }
+              );
+              if (!anonRes.ok) {
+                await fetch(
+                  `${SUPABASE_URL}/rest/v1/member_devices?on_conflict=ledger_id,device_id`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      apikey: SUPABASE_ANON_KEY,
+                      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+                      'Content-Type': 'application/json',
+                      Prefer: 'resolution=merge-duplicates,return=minimal',
+                    },
+                    body: JSON.stringify(payloadBase),
+                  }
+                );
+              }
+            } catch (anonUpsertErr) {
+              console.warn('穿透登記裝置心跳失敗:', anonUpsertErr);
             }
+          }
+
+          const cloudData = await fetchCloudDevicesWithFallback(lId);
+          if (cloudData && cloudData.length > 0) {
+            const hasMe = cloudData.some(d => d.device_id === devId);
+            const combined = hasMe
+              ? cloudData.map(d =>
+                  d.device_id === devId
+                    ? {
+                        ...d,
+                        member_id: (mId && mId !== 'user-me') ? mId : d.member_id,
+                        device_name: devName,
+                        app_version: APP_FULL_VERSION,
+                      }
+                    : d
+                )
+              : [myDev, ...cloudData];
+            setMemberDevices(combined as MemberDevice[]);
+            await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${lId}`, JSON.stringify(combined));
           }
         } catch (e) {
           console.warn('登記裝置心跳失敗:', e);
@@ -325,7 +484,7 @@ export function useDeviceAuth({
     } catch (err) {
       console.warn('本機登記裝置發生異常:', err);
     }
-  }, [currentLedger.id, effectiveCurrentUser?.id, currentUser.id, isConfigured, supabase]);
+  }, [currentLedger.id, effectiveCurrentUser?.id, currentUser.id, isConfigured, supabase, fetchCloudDevicesWithFallback]);
 
   const removeDevice = useCallback(async (targetDeviceId: string): Promise<boolean> => {
     try {
@@ -337,6 +496,16 @@ export function useDeviceAuth({
             .delete()
             .eq('ledger_id', lId)
             .eq('device_id', targetDeviceId);
+          await fetch(
+            `${SUPABASE_URL}/rest/v1/member_devices?ledger_id=eq.${encodeURIComponent(lId)}&device_id=eq.${encodeURIComponent(targetDeviceId)}`,
+            {
+              method: 'DELETE',
+              headers: {
+                apikey: SUPABASE_ANON_KEY,
+                Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+              },
+            }
+          );
         } catch (e) {
           console.warn('雲端刪除成員裝置失敗:', e);
         }
@@ -707,12 +876,16 @@ export function useDeviceAuth({
         userAvatar: member.avatar_url,
       } : l));
 
+      if (currentLedger?.id && !isDemoLedgerId(currentLedger.id)) {
+        registerDevice(updatedUser.id, currentLedger.id).catch(() => {});
+      }
+
       return { success: true };
     } catch (err: any) {
       console.error('switchCurrentUser 異常:', err);
       return { success: false, message: err?.message || '切換身分失敗' };
     }
-  }, [currentLedger, userRole, currentUser.auth_email, adminPin, setCurrentUser, setLedgers]);
+  }, [currentLedger, userRole, currentUser.auth_email, adminPin, setCurrentUser, setLedgers, registerDevice]);
 
   const bindDeviceToMember = useCallback(async (member: Profile) => {
     await switchCurrentUser(member);

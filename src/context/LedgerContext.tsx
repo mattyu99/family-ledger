@@ -1990,13 +1990,39 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         },
         async () => {
           try {
-            const { data: devRows } = await supabase
+            let devRows: MemberDevice[] | null = null;
+            const { data } = await supabase
               .from('member_devices')
               .select('*')
               .eq('ledger_id', ledgerId)
               .order('last_active_at', { ascending: false });
 
-            if (devRows && Array.isArray(devRows)) {
+            if (data && Array.isArray(data)) {
+              devRows = data as MemberDevice[];
+            }
+
+            if (!devRows || devRows.length <= 1) {
+              try {
+                const token = getStorageServiceToken();
+                const res = await fetch(
+                  `${SUPABASE_URL}/rest/v1/member_devices?ledger_id=eq.${encodeURIComponent(ledgerId)}&select=*&order=last_active_at.desc`,
+                  {
+                    headers: {
+                      apikey: token,
+                      Authorization: `Bearer ${token}`,
+                    },
+                  }
+                );
+                if (res.ok) {
+                  const anonRows = await res.json();
+                  if (Array.isArray(anonRows) && (!devRows || anonRows.length >= devRows.length)) {
+                    devRows = anonRows as MemberDevice[];
+                  }
+                }
+              } catch {}
+            }
+
+            if (devRows && Array.isArray(devRows) && devRows.length > 0) {
               setMemberDevices(devRows as MemberDevice[]);
               AsyncStorage.setItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${ledgerId}`, JSON.stringify(devRows)).catch(() => {});
             }
@@ -2085,6 +2111,34 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const parsedMembers = JSON.parse(savedMembersStr);
         if (Array.isArray(parsedMembers) && parsedMembers.length > 0) {
           setMembers(parsedMembers);
+        }
+      }
+    } catch {}
+
+    try {
+      const savedAliasStr = await AsyncStorage.getItem(`${STORAGE_KEYS.ALIAS_MAP}_${targetLedger.id}`);
+      if (savedAliasStr) {
+        const parsedAlias = JSON.parse(savedAliasStr);
+        if (parsedAlias && typeof parsedAlias === 'object') {
+          setMemberAliasMap(parsedAlias);
+        }
+      } else {
+        setMemberAliasMap({});
+      }
+    } catch {}
+
+    try {
+      if (isDemoLedgerId(targetLedger.id)) {
+        setMemberDevices([]);
+      } else {
+        const savedDevsStr = await AsyncStorage.getItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${targetLedger.id}`);
+        if (savedDevsStr) {
+          const parsedDevs = JSON.parse(savedDevsStr);
+          if (Array.isArray(parsedDevs)) {
+            setMemberDevices(parsedDevs.filter((d: any) => d && (!d.ledger_id || d.ledger_id === targetLedger.id)));
+          }
+        } else {
+          setMemberDevices(prev => prev.filter(d => d.ledger_id === targetLedger.id));
         }
       }
     } catch {}
@@ -2535,6 +2589,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         aliasMap = buildMemberAliasMap(dedupedMembers, loadedMembers);
       }
     }
+
+    setMemberAliasMap(aliasMap);
+    await AsyncStorage.setItem(STORAGE_KEYS.ALIAS_MAP, JSON.stringify(aliasMap));
+    await AsyncStorage.setItem(`${STORAGE_KEYS.ALIAS_MAP}_${targetLedger.id}`, JSON.stringify(aliasMap));
 
     if (dedupedMembers.length > 0) {
       setMembers(dedupedMembers);
@@ -3595,8 +3653,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // (E-4) 載入成員裝置清單並為本機自動登記心跳 (非同步背景執行，不阻塞主畫面下拉轉圈)
     try {
       const activeMemberId = canonicalMe?.id || authUserId;
-      registerDevice(activeMemberId, targetLedger.id).catch(() => {});
-      fetchMemberDevices(targetLedger.id, activeMemberId).catch(() => {});
+      registerDevice(activeMemberId, targetLedger.id)
+        .then(() => fetchMemberDevices(targetLedger.id, activeMemberId))
+        .catch(() => {});
     } catch (devErr) {
       console.warn('背景登記成員裝置失敗:', devErr);
     }
@@ -5420,7 +5479,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const chosenName = creatorName?.trim() || '爸爸 (我)';
       const chosenAvatar = avatar || '👨';
 
-      const userGoogleEmail = currentUser?.auth_email || (session?.user?.email && !session.user.email.endsWith('@family.local') ? session.user.email : null);
+      const isFromDemoUser = isDemoLedgerId(currentLedger?.id) || SWEETHOME_MEMBERS.some(sm => sm.id === currentUser?.id);
+      const userGoogleEmail = (!isFromDemoUser ? currentUser?.auth_email : undefined) || (session?.user?.email && !session.user.email.endsWith('@family.local') ? session.user.email : null);
 
       const newLedger: Ledger = {
         id: newLedgerId,
@@ -5444,15 +5504,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }));
 
       if (isConfigured) {
-        // 步驟 1：建立/更新 Profile
-        await supabase.from('profiles').upsert({
+        // 步驟 1：建立/更新 Profile (僅在明確持有 Google 信箱時帶入鎖定欄位，避免從示範模式建立新帳本時誤洗掉既有 Profile 的 Google 保護鎖)
+        const profilePayload: Record<string, any> = {
           id: creatorProfileId,
           display_name: chosenName,
           avatar_url: chosenAvatar,
-          auth_email: userGoogleEmail || null,
-          auth_provider: userGoogleEmail ? 'google' : null,
-          is_locked: Boolean(userGoogleEmail),
-        }, { onConflict: 'id' });
+        };
+        if (userGoogleEmail) {
+          profilePayload.auth_email = userGoogleEmail;
+          profilePayload.auth_provider = 'google';
+          profilePayload.is_locked = true;
+        }
+        await supabase.from('profiles').upsert(profilePayload, { onConflict: 'id' });
 
         // 步驟 2：透過標準 Supabase 客戶端建立 Ledger 主檔 (具備 session auth，符合 RLS check: auth.uid() = created_by)
         const { error: lErr } = await supabase.from('ledgers').insert({

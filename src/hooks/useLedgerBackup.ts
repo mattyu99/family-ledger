@@ -453,6 +453,9 @@ export function useLedgerBackup({
         activeAliasMap = updatedAliasMap;
         setMemberAliasMap(updatedAliasMap);
         await AsyncStorage.setItem(STORAGE_KEYS.ALIAS_MAP, JSON.stringify(updatedAliasMap));
+        if (currentLedger?.id) {
+          await AsyncStorage.setItem(`${STORAGE_KEYS.ALIAS_MAP}_${currentLedger.id}`, JSON.stringify(updatedAliasMap));
+        }
 
         // 確保 memberIdMap 中所有對應目標均校正為去重後的倖存 Profile
         for (const [origId, mappedId] of Object.entries(memberIdMap)) {
@@ -476,13 +479,19 @@ export function useLedgerBackup({
           const validBackupCats = backup.categories.filter((c: any) => c && c.name && c.id);
           if (validBackupCats.length > 0) {
             nextCategories = validBackupCats.map((bc: any) => {
+              const existingSameName = categories.find(
+                c => c.name === bc.name && (c.type || 'expense') === (bc.type || 'expense') && isValidUUID(c.id) && !c.id.startsWith('30000000')
+              );
               const isDemoConst = bc.id?.startsWith('30000000');
-              const targetId = (bc.id && isValidUUID(bc.id) && !isCrossLedgerRestore && (!isRealCloud || !isDemoConst))
-                ? bc.id
-                : generateUUID();
+              const targetId = existingSameName
+                ? existingSameName.id
+                : (bc.id && isValidUUID(bc.id) && !isCrossLedgerRestore && (!isRealCloud || !isDemoConst))
+                  ? bc.id
+                  : generateUUID();
               if (bc.id) categoryIdMap[bc.id] = targetId;
               return {
                 id: targetId,
+                ledger_id: currentLedger?.id,
                 name: bc.name,
                 icon: bc.icon || '📝',
                 color: bc.color || '#6B7280',
@@ -504,6 +513,7 @@ export function useLedgerBackup({
                 : generateUUID();
               const newCat = {
                 id: targetId,
+                ledger_id: currentLedger?.id,
                 name: bc.name,
                 icon: bc.icon || '📝',
                 color: bc.color || '#6B7280',
@@ -519,6 +529,22 @@ export function useLedgerBackup({
         await AsyncStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(nextCategories));
         if (currentLedger?.id) {
           await AsyncStorage.setItem(`${STORAGE_KEYS.CATEGORIES}_${currentLedger.id}`, JSON.stringify(nextCategories));
+        }
+        if (isRealCloud) {
+          try {
+            for (const cat of nextCategories) {
+              if (cat.id && isValidUUID(cat.id) && !cat.id.startsWith('30000000')) {
+                await supabase.rpc('secure_add_category', {
+                  p_category: {
+                    ...cat,
+                    ledger_id: currentLedger.id,
+                  },
+                });
+              }
+            }
+          } catch (catSyncErr) {
+            console.warn('雲端還原同步分類失敗:', catSyncErr);
+          }
         }
       }
 
