@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.15';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.15 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 5;
+export const APP_BUILD_REVISION = 6;
 
-// 完整版本字串 (例如 "1.0.15.5")
+// 完整版本字串 (例如 "1.0.15.6")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -30,7 +30,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
       '👥 成員資訊與設備清單精準歸屬：修正本機設備僅顯示於本人名下、不誤掛於其他家人卡片，並於解鎖管理員模式後方展開特權控制。',
       '💳 帳單支付卡片管理視角連動：修復點擊卡片查看時之個人與全家視角連動，精準對齊上方切換範圍。',
       '🪪 家庭卡片專屬歸屬智慧自癒：自動修復成員卡片與伴隨悠遊卡之持有人綁定，備份還原全面辨識稱謂別名，杜絕卡片誤判為全家通用。',
-      '🛡️ 多帳本卡片與資產嚴格隔離：全新建立之帳本啟動純淨零卡片，切換帳本自動隔離專屬卡片與固定帳單，徹底杜絕跨帳本殘留。',
+      '🛡️ 多帳本卡片與資產嚴格隔離：全新帳本啟動純淨零卡片、自動清除誤塞入之重複示範卡，切換帳本嚴格隔離專屬卡片與固定帳單。',
       '☁️ 全新帳本雲端同步與切換修復：修正建立新帳本時之雲端主檔寫入授權，建立後即時收錄至公帳切換清單與雲端帳本總管。',
     ],
   },
