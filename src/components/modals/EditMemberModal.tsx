@@ -74,7 +74,7 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
       setNameInput(targetMember.display_name || '');
       setAvatarInput(targetMember.avatar_url || '👨');
       if (currentLedger?.id) {
-        fetchMemberDevices(currentLedger.id, targetMember.id).catch(() => {});
+        fetchMemberDevices(currentLedger.id).catch(() => {});
       }
     }
   }, [visible, targetMember?.id, currentLedger?.id]);
@@ -90,8 +90,11 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
       if (d.ledger_id && currentLedger?.id && d.ledger_id !== currentLedger.id) {
         return false;
       }
+      // 本機裝置 (currentDeviceId) 永遠只屬於目前本機登入的成員 (isTargetCurrent)，絕不顯示在其他家庭成員名下
+      if (currentDeviceId && d.device_id === currentDeviceId) {
+        return isTargetCurrent;
+      }
       if (d.member_id === target.id) return true;
-      if (isTargetCurrent && d.device_id === currentDeviceId) return true;
       const devMember = getMemberById(d.member_id);
       if (devMember) {
         if (devMember.id === target.id) return true;
@@ -363,7 +366,7 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
                   style={styles.deviceRefreshSmallBtn}
                   onPress={() => {
                     if (currentLedger?.id) {
-                      fetchMemberDevices(currentLedger.id, targetMember.id).catch(() => {});
+                      fetchMemberDevices(currentLedger.id).catch(() => {});
                     }
                   }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}

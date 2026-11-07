@@ -180,7 +180,7 @@ export function useDeviceAuth({
     return true;
   }, [currentLedger?.id, isConfigured, supabase]);
 
-  const fetchMemberDevices = useCallback(async (targetLedgerId?: string, targetMemberId?: string) => {
+  const fetchMemberDevices = useCallback(async (targetLedgerId?: string, _targetMemberId?: string) => {
     const lId = targetLedgerId || currentLedger.id;
     if (!lId || isDemoLedgerId(lId)) return;
 
@@ -188,18 +188,29 @@ export function useDeviceAuth({
     setCurrentDeviceId(devId);
     const devName = getDeviceName();
     const platform = getDevicePlatform();
-    const mId = targetMemberId || effectiveCurrentUser?.id || currentUser.id;
+    // 本機裝置 (devId) 永遠只歸屬於目前本機操作者的身分，絕不可因點開查看其他成員視窗而將本機掛到他人名下
+    const myMemberId = effectiveCurrentUser?.id || currentUser.id;
 
     const myDev: MemberDevice = {
       id: devId,
       ledger_id: lId,
-      member_id: mId,
+      member_id: myMemberId,
       device_id: devId,
       device_name: devName,
       platform,
       app_version: APP_FULL_VERSION,
       last_active_at: new Date().toISOString(),
       created_at: new Date().toISOString(),
+    };
+
+    const normalizeWithMyDev = (list: MemberDevice[]): MemberDevice[] => {
+      const hasMe = list.some(d => d.device_id === devId);
+      if (!hasMe) return [myDev, ...list];
+      return list.map(d =>
+        d.device_id === devId
+          ? { ...d, member_id: myMemberId, device_name: devName, app_version: APP_FULL_VERSION }
+          : d
+      );
     };
 
     if (isConfigured && !isDemoLedgerId(lId)) {
@@ -211,9 +222,8 @@ export function useDeviceAuth({
           .order('last_active_at', { ascending: false });
 
         if (!error && Array.isArray(data)) {
-          const hasMe = data.some(d => d.device_id === devId);
-          const combined = hasMe ? data : [myDev, ...data];
-          setMemberDevices(combined as MemberDevice[]);
+          const combined = normalizeWithMyDev(data as MemberDevice[]);
+          setMemberDevices(combined);
           await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${lId}`, JSON.stringify(combined));
           return;
         }
@@ -228,9 +238,9 @@ export function useDeviceAuth({
       if (cachedStr) {
         try { cachedList = JSON.parse(cachedStr); } catch {}
       }
-      const hasMe = cachedList.some(d => d.device_id === devId);
-      const combined = hasMe ? cachedList : [myDev, ...cachedList];
+      const combined = normalizeWithMyDev(cachedList);
       setMemberDevices(combined);
+      await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBER_DEVICES}_${lId}`, JSON.stringify(combined));
     } catch {}
   }, [currentLedger.id, effectiveCurrentUser?.id, currentUser.id, isConfigured, supabase]);
 
