@@ -74,7 +74,7 @@ interface FamilySettingsScreenProps {
   onOpenCloudLedgerManager: () => void;
   onOpenProductGuideModal: () => void;
   onOpenChangelogModal: () => void;
-  onOpenAdminModeModal: () => void;
+  onOpenAdminModeModal?: () => void;
   onCheckForUpdates: () => void;
   isCheckingUpdate: boolean;
   onTriggerLiveToastDemo?: () => void;
@@ -368,37 +368,6 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     if (daysSinceLastBackup === null) return transactions.length >= 5;
     return daysSinceLastBackup >= autoBackupInterval;
   }, [autoBackupEnabled, daysSinceLastBackup, autoBackupInterval, transactions.length]);
-
-  // 切回日常成員模式
-  const handleSwitchToDailyMemberMode = () => {
-    showConfirm(
-      '切回日常成員模式',
-      '確定要切回日常成員模式嗎？\n切回後所有管理專屬按鈕將自動隱藏，讓日常記帳更安心防誤觸。',
-      () => {
-        disableAdminMode();
-      }
-    );
-  };
-
-  // 🛡️ 驗證指紋/生物辨識切換為管理員模式 (Web 端或無硬體自動降級使用安全碼彈窗)
-  const handleSwitchToAdminMode = async () => {
-    if (Platform.OS === 'web') {
-      onOpenAdminModeModal();
-      return;
-    }
-    const res = await enableAdminModeWithBiometrics();
-    if (res.success) {
-      showAlert(
-        '👑 管理員模式已啟用',
-        '您已成功切換為管理員模式！\n管理特權已解除隱藏，可自由維護帳本與成員。\n\n※ 為保護安全，若 10 分鐘無操作或跳出 App 將自動鎖定退回日常模式。'
-      );
-    } else if (res.fallbackToPin) {
-      showAlert('啟用安全碼驗證', res.message || '請輸入帳本應急救援安全碼');
-      onOpenAdminModeModal();
-    } else {
-      showAlert('無法切換為管理員', res.message || '身分驗證失敗');
-    }
-  };
 
   // 取得成員連線裝置清單
   const getDevicesForMember = (targetMember: Profile): MemberDevice[] => {
@@ -707,7 +676,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                 ? { color: isDark ? '#FBBF24' : '#B45309' }
                 : { color: isDark ? '#CBD5E1' : '#475569' },
             ]}>
-              {isOwner ? '👑 管理員' : (realIsOwner ? '🛡️ 日常模式' : '👤 一般成員')}
+              {isOwner ? '👑 管理員' : '👤 一般成員'}
             </Text>
           </View>
         </View>
@@ -1750,8 +1719,17 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
 
         <TouchableOpacity
           style={[styles.restoreEntryBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
-          onPress={() => onOpenExportModal('restore')}
-          activeOpacity={0.8}
+          onPress={() => {
+            if (!isOwner) {
+              showAlert(
+                '🔒 僅限管理員執行',
+                '回復備份具有覆蓋家庭帳本之重大影響，僅限帳本管理員執行。\n若需回復資料，請洽詢家庭管理員協助。'
+              );
+              return;
+            }
+            onOpenExportModal('restore');
+          }}
+          activeOpacity={isOwner ? 0.8 : 0.6}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
             <Text style={[styles.restoreEntryBtnText, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
@@ -1932,69 +1910,6 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           </TouchableOpacity>
         )}
       </View>
-
-      {/* 管理員日常成員模式 / 提權管理模式切換窗條 */}
-      {realIsOwner && (
-        <View
-          style={[
-            styles.sudoCard,
-            isAdminMode
-              ? {
-                  backgroundColor: isDark ? 'rgba(245, 158, 11, 0.12)' : '#FEF3C7',
-                  borderColor: isDark ? 'rgba(245, 158, 11, 0.35)' : '#F59E0B',
-                }
-              : {
-                  backgroundColor: isDark ? colors.background.modal : '#F8FAFC',
-                  borderColor: isDark ? colors.border.default : '#CBD5E1',
-                },
-            { marginTop: 12 },
-          ]}
-        >
-          <View style={styles.sudoCardLeft}>
-            <Text style={styles.sudoCardIcon}>{isAdminMode ? '👑' : '🛡️'}</Text>
-            <View style={{ flex: 1, marginRight: 8 }}>
-              <Text
-                style={[
-                  styles.sudoCardTitle,
-                  isAdminMode
-                    ? { color: isDark ? '#FBBF24' : '#B45309' }
-                    : { color: colors.text.primary },
-                ]}
-              >
-                {isAdminMode ? '目前模式：管理員模式' : '目前模式：日常成員模式'}
-              </Text>
-              <Text style={[styles.sudoCardDesc, { color: colors.text.secondary }]}>
-                {isAdminMode
-                  ? '已解除管理專屬按鈕限制，可自由維護帳本、管理成員與資料庫備份。10 分鐘無操作或跳出 App 將自動鎖定。'
-                  : '管理員專屬按鈕已自動隱藏，日常記帳更安心防誤觸。點擊右側按鈕進行生物辨識即可切換。'}
-              </Text>
-            </View>
-          </View>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            {isAdminMode ? (
-              <TouchableOpacity
-                style={[styles.sudoCardBtn, styles.sudoCardBtnLock, { flex: 1 }]}
-                onPress={handleSwitchToDailyMemberMode}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.sudoCardBtnText, styles.sudoCardBtnTextLock]}>
-                  🔒 切回日常成員模式
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={[styles.sudoCardBtn, styles.sudoCardBtnUnlock, { flex: 1 }]}
-                onPress={handleSwitchToAdminMode}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.sudoCardBtnText, styles.sudoCardBtnTextUnlock]}>
-                  {Platform.OS === 'web' ? '🔐 輸入安全碼切換為管理員模式' : '🔐 驗證指紋切換為管理員模式'}
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-      )}
     </>
   )}
 </ScrollView>

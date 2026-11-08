@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Platform, Linking, AppState, AppStateStatus } from 'react-native';
+import { Platform, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Profile, MemberDevice, Ledger } from '../types/database';
 import { getDeviceId, getDeviceName, getDevicePlatform } from '../lib/device';
@@ -46,7 +46,7 @@ export function useDeviceAuth({
   const [isDeviceBound, setIsDeviceBound] = useState<boolean>(false);
   const [userRole, setUserRole] = useState<'owner' | 'admin' | 'member'>('owner');
   const [adminPin, setAdminPin] = useState<string>('8888');
-  const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
+  const [isAdminMode, setIsAdminMode] = useState<boolean>(true);
   const [previewMember, setPreviewMember] = useState<Profile | null>(null);
   const [isGoogleAuthenticated, setIsGoogleAuthenticated] = useState<boolean>(false);
   const [googleUserEmail, setGoogleUserEmail] = useState<string | null>(null);
@@ -56,7 +56,7 @@ export function useDeviceAuth({
   const isOwner = userRole === 'owner' || userRole === 'admin';
   const effectiveIsOwner = isPreviewMode
     ? (previewMember?.role === 'owner' || previewMember?.role === 'admin')
-    : (isOwner && isAdminMode);
+    : isOwner;
   const isCurrentUserLocked = Boolean(currentUser?.is_locked);
 
   const startMemberPreview = useCallback((member: Profile) => {
@@ -129,33 +129,6 @@ export function useDeviceAuth({
   const disableAdminMode = useCallback(() => {
     setIsAdminMode(false);
   }, []);
-
-  // 🛡️ 管理員模式自動逾期鎖定機制 (選項 A：10 分鐘無操作或跳出 App 即自動退回日常成員模式)
-  useEffect(() => {
-    if (!isAdminMode) return;
-
-    // 10 分鐘自動降級計時器
-    const timeoutId = setTimeout(() => {
-      setIsAdminMode(false);
-      triggerLiveToast({
-        title: '🔒 管理員模式已逾期',
-        message: '已自動切回日常成員模式保護安全',
-        createdAt: Date.now(),
-      });
-    }, 10 * 60 * 1000);
-
-    // 跳出 App (進入背景) 即刻自動退回日常模式
-    const sub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
-      if (nextState === 'background' || nextState === 'inactive') {
-        setIsAdminMode(false);
-      }
-    });
-
-    return () => {
-      clearTimeout(timeoutId);
-      sub.remove();
-    };
-  }, [isAdminMode, triggerLiveToast]);
 
   const updateAdminPin = useCallback(async (newPin: string): Promise<boolean> => {
     const clean = newPin.trim();

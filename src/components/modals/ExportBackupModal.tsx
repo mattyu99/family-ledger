@@ -18,6 +18,7 @@ import { useTheme } from '../../theme/ThemeContext';
 import { ThemeColors } from '../../theme/colors';
 import { showAlert } from '../../lib/alert';
 import { formatLastBackupText } from '../../lib/backup';
+import { authenticateWithBiometrics } from '../../lib/biometrics';
 import {
   AttachmentStats,
   collectAttachmentStats,
@@ -39,7 +40,7 @@ export interface ExportBackupModalProps {
   visible: boolean;
   initialTab?: 'csv' | 'json' | 'attachments' | 'restore';
   onClose: () => void;
-  onOpenClaimAdmin: () => void;
+  onOpenClaimAdmin?: () => void;
 }
 
 export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
@@ -422,7 +423,7 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
 
   const handleConfirmRestore = async () => {
     if (!isOwner) {
-      showAlert('🔒 權限不足', '只有在管理員模式下才能回復帳本資料');
+      showAlert('🔒 權限不足', '只有帳本管理員才能回復帳本資料');
       return;
     }
     if (!restoreJsonInput.trim() || !parsedBackupPreview) {
@@ -431,6 +432,16 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
     }
 
     const doRestore = async () => {
+      // 🛡️ 關鍵破壞性操作即時授權：驗證生物辨識（Face ID / 指紋 / 系統鎖屏密碼）
+      const auth = await authenticateWithBiometrics(
+        '請驗證身分以執行家庭公帳資料回復',
+        '使用手機密碼驗證'
+      );
+      if (!auth.success) {
+        showAlert('驗證未通過', auth.error || '身分驗證未通過，無法執行回復操作');
+        return;
+      }
+
       setIsRestoring(true);
       try {
         const result = await restoreFromJSON(restoreJsonInput, { mode: restoreMode });
@@ -681,16 +692,6 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
                 <Text style={styles.restoreLockedDesc}>
                   回復備份將大範圍更新家庭帳本的成員名冊、卡片與歷史明細。為保護帳本資料安全，此操作僅限帳本管理員執行。
                 </Text>
-                <TouchableOpacity
-                  style={styles.claimAdminBtnMini}
-                  onPress={() => {
-                    onClose();
-                    onOpenClaimAdmin();
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.claimAdminBtnMiniText}>🔐 輸入 PIN 碼升為管理員</Text>
-                </TouchableOpacity>
               </View>
             ) : (
               <ScrollView style={styles.restoreScrollArea} showsVerticalScrollIndicator={false}>
