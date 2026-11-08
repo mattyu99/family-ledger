@@ -205,6 +205,7 @@ const AppContent: React.FC = () => {
 
   // 新增/編輯交易表單狀態
   const [modalVisible, setModalVisible] = useState(false);
+  const [modalResetKey, setModalResetKey] = useState<number>(0);
   const [modalMode, setModalMode] = useState<'expense' | 'income' | 'transfer' | 'allowance' | 'memo'>('expense');
   const [modalRecipientId, setModalRecipientId] = useState<string | undefined>(undefined);
   const [modalDefaultPayerId, setModalDefaultPayerId] = useState<string | undefined>(undefined);
@@ -230,6 +231,13 @@ const AppContent: React.FC = () => {
     setEditingTransaction(null);
     setMemoTodoModalVisible(false);
     setInvoiceLotteryModalVisible(false);
+
+    // 清空任何暫存之特定付款人與連結備註，確保桌面小工具快捷完全回歸當前本機成員
+    setModalDefaultPayerId(undefined);
+    setModalDefaultNote(undefined);
+    setModalLinkedMemoId(undefined);
+    setModalLinkedCompletionNote(undefined);
+    setModalResetKey(prev => prev + 1);
 
     if (kind === 'todo') {
       setModalVisible(false);
@@ -1139,6 +1147,7 @@ const AppContent: React.FC = () => {
         linkedCompletionNote={modalLinkedCompletionNote}
         autoOpenScanner={modalAutoOpenScanner}
         onClearAutoOpenScanner={() => setModalAutoOpenScanner(false)}
+        resetKey={modalResetKey}
         onSuccess={() => {
           setCompletingMemo(null);
           setCompletionTempNote('');
@@ -1186,7 +1195,14 @@ const AppContent: React.FC = () => {
         onClose={() => setMemoTodoModalVisible(false)}
         onEditMemo={(tx) => setEditingTransaction(tx)}
         onAddMemo={() => {
+          setMemoTodoModalVisible(false);
+          setModalDefaultPayerId(undefined);
+          setModalDefaultNote(undefined);
+          setModalLinkedMemoId(undefined);
+          setModalLinkedCompletionNote(undefined);
+          setModalResetKey(prev => prev + 1);
           setModalMode('memo');
+          setModalRecipientId(undefined);
           setModalVisible(true);
         }}
         onCompleteMemo={handleOpenMemoCompletion}

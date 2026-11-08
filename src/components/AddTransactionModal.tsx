@@ -62,6 +62,7 @@ import { DatePickerModal } from './DatePickerModal';
 import { InvoiceScannerModal } from './InvoiceScannerModal';
 import { ImageViewerModal } from './ImageViewerModal';
 import { uploadReceiptPhoto } from '../lib/receiptStorage';
+import { DEMO_USER_DAD } from '../constants/ledgerDefaults';
 
 const safeAlert = (title: string, message: string) => {
   if (Platform.OS === 'web') {
@@ -134,6 +135,7 @@ interface AddTransactionModalProps {
   linkedCompletionNote?: string;
   autoOpenScanner?: boolean;
   onClearAutoOpenScanner?: () => void;
+  resetKey?: number;
 }
 
 export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
@@ -148,6 +150,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   linkedCompletionNote,
   autoOpenScanner = false,
   onClearAutoOpenScanner,
+  resetKey,
 }) => {
   const { isDark, colors } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
@@ -645,8 +648,64 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     ? (keyboardOffset + 60)
     : 30;
 
+  // 使用者是否在本彈窗開啟期間曾手動點選切換過付款/記錄成員
+  const [hasUserManuallySelectedPayer, setHasUserManuallySelectedPayer] = useState<boolean>(false);
+
+  // 計算目前最適之本機成員
+  const resolveActiveMember = React.useCallback(
+    (targetPayerId?: string) => {
+      if (targetPayerId && members.some(m => m.id === targetPayerId)) {
+        return members.find(m => m.id === targetPayerId);
+      }
+      if (defaultPayerId && members.some(m => m.id === defaultPayerId)) {
+        return members.find(m => m.id === defaultPayerId);
+      }
+      return (
+        members.find(m => m.id === currentUser?.id) ||
+        (currentUser?.id ? getMemberById(currentUser.id) : undefined) ||
+        members.find(
+          m =>
+            (m.display_name || '').trim().toLowerCase() ===
+            (currentUser?.display_name || '').trim().toLowerCase()
+        ) ||
+        members[0]
+      );
+    },
+    [members, defaultPayerId, currentUser, getMemberById]
+  );
+
+  // 動態保證付款/記錄成員絕不為空，且優先對齊當前本機成員
+  const effectivePaidBy = useMemo(() => {
+    // 1. 若使用者已在此次開啟過程中手動選取，且選取的成員在名冊中有效，維持其手動選擇
+    if (hasUserManuallySelectedPayer && paidBy && members.some(m => m.id === paidBy)) {
+      return paidBy;
+    }
+    // 2. 若有外部指定之 defaultPayerId 且存在於名冊中，優先採用
+    if (defaultPayerId && members.some(m => m.id === defaultPayerId)) {
+      return defaultPayerId;
+    }
+    // 3. 預設優先對齊當前本機成員 (currentUser)
+    if (currentUser?.id && members.some(m => m.id === currentUser.id)) {
+      return currentUser.id;
+    }
+    // 4. 若當前 paidBy 在 members 中有效且不是初始示範假爸爸，保留
+    if (paidBy && members.some(m => m.id === paidBy) && paidBy !== DEMO_USER_DAD) {
+      return paidBy;
+    }
+    // 5. 透過稱謂比對或名冊首位作為最後防禦
+    const fallback = resolveActiveMember();
+    return fallback?.id || '';
+  }, [hasUserManuallySelectedPayer, paidBy, members, currentUser, defaultPayerId, resolveActiveMember]);
+
+  const effectiveAllowancePayer = useMemo(() => {
+    if (allowancePayerId && members.some(m => m.id === allowancePayerId)) {
+      return allowancePayerId;
+    }
+    return effectivePaidBy;
+  }, [allowancePayerId, members, effectivePaidBy]);
+
   const availableCategories = categories.filter(c => c.type === type);
-  const targetPayerId = paidBy || currentUser?.id;
+  const targetPayerId = effectivePaidBy || currentUser?.id;
   const creditCards = React.useMemo(
     () => filterAccountsForUser(paymentAccounts, {
       type: 'credit_card',
@@ -727,9 +786,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     const isBank = mObj ? (mObj.type === 'bank' || mObj.id === 'transfer') : method === 'transfer';
 
     const isUserAccount = (accUserId?: string | null) => {
-      if (!accUserId || !paidBy) return false;
-      if (accUserId === paidBy) return true;
-      if (getMemberById && getMemberById(accUserId)?.display_name === getMemberById(paidBy)?.display_name) return true;
+      const activePayer = effectivePaidBy || paidBy;
+      if (!accUserId || !activePayer) return false;
+      if (accUserId === activePayer) return true;
+      if (getMemberById && getMemberById(accUserId)?.display_name === getMemberById(activePayer)?.display_name) return true;
       return false;
     };
 
@@ -818,10 +878,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     }
     lastScannedItemsNoteRef.current = '';
 
+    setHasUserManuallySelectedPayer(false);
+
     const activeMember = (defaultPayerId && members.find(m => m.id === defaultPayerId))
-      || members.find(m => m.id === currentUser.id)
-      || getMemberById(currentUser.id)
-      || members.find(m => (m.display_name || '').trim().toLowerCase() === (currentUser.display_name || '').trim().toLowerCase())
+      || members.find(m => m.id === currentUser?.id)
+      || (currentUser?.id ? getMemberById(currentUser.id) : undefined)
+      || members.find(m => (m.display_name || '').trim().toLowerCase() === (currentUser?.display_name || '').trim().toLowerCase())
       || members[0];
     if (activeMember) {
       setPaidBy(activeMember.id);
@@ -832,7 +894,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     if (defaultRecipientId && members.some(m => m.id === defaultRecipientId)) {
       setAllowanceRecipientId(defaultRecipientId);
     } else {
-      const others = members.filter(m => m.id !== (activeMember?.id || currentUser.id));
+      const others = members.filter(m => m.id !== (activeMember?.id || currentUser?.id));
       const kid = others.find(m => m.display_name.includes('寶') || m.display_name.includes('兒') || m.display_name.includes('小') || m.display_name.includes('弟') || m.display_name.includes('妹')) || others[0];
       if (kid) {
         setAllowanceRecipientId(kid.id);
@@ -871,6 +933,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     const initialModeChanged = visible && initialMode !== prevInitialModeRef.current;
 
     if (justOpened || initialModeChanged) {
+      setHasUserManuallySelectedPayer(false);
       resetFormRef.current();
       if (autoOpenScanner) {
         setScannerModalVisible(true);
@@ -880,6 +943,20 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     prevVisibleRef.current = visible;
     prevInitialModeRef.current = initialMode;
   }, [visible, initialMode, autoOpenScanner, onClearAutoOpenScanner]);
+
+  // 監聽外部傳入之 resetKey（例如桌面小工具快捷進入、或重設要求），強制執行全新表單重設
+  const prevResetKeyRef = React.useRef(resetKey);
+  React.useEffect(() => {
+    if (resetKey !== undefined && resetKey !== prevResetKeyRef.current) {
+      prevResetKeyRef.current = resetKey;
+      setHasUserManuallySelectedPayer(false);
+      resetFormRef.current();
+      if (autoOpenScanner) {
+        setScannerModalVisible(true);
+        onClearAutoOpenScanner?.();
+      }
+    }
+  }, [resetKey, autoOpenScanner, onClearAutoOpenScanner]);
 
   // 關閉彈窗時同步清空重設表單狀態
   const handleClose = React.useCallback(() => {
@@ -973,7 +1050,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         toAccountId: transferToAccountId,
         amount: numAmount,
         fee: feeNum,
-        payerId: paidBy || currentUser.id,
+        payerId: effectivePaidBy || paidBy || currentUser?.id,
         transactedAt: txDate.toISOString(),
         note: note.trim() || undefined,
       });
@@ -987,7 +1064,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         await updateTransaction(linkedMemoId, {
           linked_transaction_id: res.transactionId,
           is_settled: true,
-          completed_by: paidBy || currentUser.id,
+          completed_by: effectivePaidBy || paidBy || currentUser?.id,
           ...(linkedCompletionNote ? { completion_note: linkedCompletionNote } : {}),
         });
       }
@@ -1009,7 +1086,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       return;
     }
 
-    const payer = members.find(m => m.id === allowancePayerId) || currentUser;
+    const payer = members.find(m => m.id === effectiveAllowancePayer) || currentUser;
     const recipient = members.find(m => m.id === allowanceRecipientId);
 
     if (!recipient) {
@@ -1092,7 +1169,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     }
 
     const defaultMemoCat = categories.find(c => c.name.includes('其他') || c.name.includes('日常')) || categories[0];
-    const targetPayer = paidBy || currentUser.id || members[0]?.id;
+    const targetPayer = effectivePaidBy || paidBy || currentUser?.id || members[0]?.id;
 
     setIsSubmitting(true);
     try {
@@ -1226,7 +1303,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
     const currentCats = categories.filter(c => c.type === type);
     const targetCategory = currentCats.find(c => c.id === selectedCategoryId) || currentCats[0];
-    const targetPayer = paidBy || currentUser.id || members[0]?.id;
+    const targetPayer = effectivePaidBy || paidBy || currentUser?.id || members[0]?.id;
 
     if (!targetCategory) {
       safeAlert('尚未選擇分類', '請先選擇記帳分類');
@@ -1895,7 +1972,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     </View>
                     <Text style={styles.memoTargetDescText} maxFontSizeMultiplier={1.05}>
                       {memoReminderTarget === 'personal'
-                        ? `💡 僅指派之負責人（${(members.find(m => m.id === paidBy) || currentUser)?.display_name || '此成員'}）的手機會在到期日收到推播。`
+                        ? `💡 僅指派之負責人（${(members.find(m => m.id === effectivePaidBy) || currentUser)?.display_name || '此成員'}）的手機會在到期日收到推播。`
                         : '💡 全體家庭成員的手機在提醒日皆會收到推播，適合家庭採買與公共待辦。'}
                     </Text>
                   </View>
@@ -1907,13 +1984,16 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 </Text>
                 <View style={styles.payerRow}>
                   {members.map(member => {
-                    const isSelected = paidBy === member.id;
+                    const isSelected = effectivePaidBy === member.id;
                     const isMe = member.id === currentUser.id || (!!currentUser.display_name && currentUser.display_name === member.display_name);
                     return (
                       <TouchableOpacity
                         key={member.id}
                         style={[styles.payerChip, isSelected && styles.payerChipActive]}
-                        onPress={() => setPaidBy(member.id)}
+                        onPress={() => {
+                          setHasUserManuallySelectedPayer(true);
+                          setPaidBy(member.id);
+                        }}
                       >
                         <Text style={styles.payerAvatar}>{member.avatar_url}</Text>
                         <Text
@@ -2201,14 +2281,16 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>出資家長 (付款支出方)</Text>
                 <View style={styles.payerRow}>
                   {members.map(member => {
-                    const isSelected = allowancePayerId === member.id;
+                    const isSelected = effectiveAllowancePayer === member.id;
                     const isMe = member.id === currentUser.id || (!!currentUser.display_name && currentUser.display_name === member.display_name);
                     return (
                       <TouchableOpacity
                         key={member.id}
                         style={[styles.payerChip, isSelected && styles.payerChipActive]}
                         onPress={() => {
+                          setHasUserManuallySelectedPayer(true);
                           setAllowancePayerId(member.id);
+                          setPaidBy(member.id);
                           if (allowanceRecipientId === member.id) {
                             const other = members.find(m => m.id !== member.id);
                             if (other) setAllowanceRecipientId(other.id);
@@ -2231,7 +2313,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 {/* 受款小孩 / 成員選擇 */}
                 <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>受款小孩 / 成員 (零用錢入帳方)</Text>
                 <View style={styles.payerRow}>
-                  {members.filter(m => m.id !== allowancePayerId).map(member => {
+                  {members.filter(m => m.id !== effectiveAllowancePayer).map(member => {
                     const isSelected = allowanceRecipientId === member.id;
                     return (
                       <TouchableOpacity
@@ -2646,13 +2728,16 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>經手成員</Text>
                 <View style={styles.payerRow}>
                   {members.map(member => {
-                    const isSelected = paidBy === member.id;
+                    const isSelected = effectivePaidBy === member.id;
                     const isMe = member.id === currentUser.id || (!!currentUser.display_name && currentUser.display_name === member.display_name);
                     return (
                       <TouchableOpacity
                         key={member.id}
                         style={[styles.payerChip, isSelected && styles.payerChipActive]}
-                        onPress={() => setPaidBy(member.id)}
+                        onPress={() => {
+                          setHasUserManuallySelectedPayer(true);
+                          setPaidBy(member.id);
+                        }}
                       >
                         <Text style={styles.payerAvatar}>{member.avatar_url}</Text>
                         <Text
@@ -2728,13 +2813,16 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>付款成員</Text>
                 <View style={styles.payerRow}>
                   {members.map(member => {
-                    const isSelected = paidBy === member.id;
+                    const isSelected = effectivePaidBy === member.id;
                     const isMe = member.id === currentUser.id || (!!currentUser.display_name && currentUser.display_name === member.display_name);
                     return (
                       <TouchableOpacity
                         key={member.id}
                         style={[styles.payerChip, isSelected && styles.payerChipActive]}
-                        onPress={() => setPaidBy(member.id)}
+                        onPress={() => {
+                          setHasUserManuallySelectedPayer(true);
+                          setPaidBy(member.id);
+                        }}
                       >
                         <Text style={styles.payerAvatar}>{member.avatar_url}</Text>
                         <Text
