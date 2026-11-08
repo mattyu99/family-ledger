@@ -7,6 +7,8 @@ export interface Profile {
   email?: string;
   display_name: string;
   avatar_url?: string;
+  custom_name?: string | null; // 帳本專屬自訂暱稱 (覆蓋 display_name)
+  custom_avatar?: string | null; // 帳本專屬自訂頭像 (覆蓋 avatar_url)
   role?: RoleType;
   auth_email?: string;
   auth_provider?: 'google' | null;
@@ -40,6 +42,8 @@ export interface LedgerMember {
   user_id: string;
   role: RoleType;
   joined_at: string;
+  custom_name?: string | null;
+  custom_avatar?: string | null;
   profile?: Profile;
 }
 

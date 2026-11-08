@@ -2146,7 +2146,22 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           safeQuery(supabase.from('ledgers').select('*').eq('id', targetLedger.id).maybeSingle()),
           safeQuery(supabase.from('ledger_invites').select('invite_code').eq('ledger_id', targetLedger.id).order('created_at', { ascending: false }).limit(1)),
           safeQuery(supabase.from('categories').select('*').or(`ledger_id.eq.${targetLedger.id},ledger_id.is.null`).order('sort_order', { ascending: true })),
-          safeQuery(supabase.from('ledger_members').select('user_id, role, profiles(*)').eq('ledger_id', targetLedger.id)),
+          safeQuery(
+            supabase
+              .from('ledger_members')
+              .select('user_id, role, custom_name, custom_avatar, profiles(*)')
+              .eq('ledger_id', targetLedger.id)
+          ).then(async (res: any) => {
+            if (res?.error && res.error.message?.includes('custom_name')) {
+              return safeQuery(
+                supabase
+                  .from('ledger_members')
+                  .select('user_id, role, profiles(*)')
+                  .eq('ledger_id', targetLedger.id)
+              );
+            }
+            return res;
+          }),
           safeQuery(supabase.from('deleted_transactions').select('id').eq('ledger_id', targetLedger.id).order('deleted_at', { ascending: false }).limit(500)),
           safeQuery(supabase.from('transactions').select('*', { count: 'exact' }).eq('ledger_id', targetLedger.id).order('transacted_at', { ascending: false }).range(0, 999)),
           safeQuery(supabase.from('payment_accounts').select('*').eq('ledger_id', targetLedger.id).order('sort_order', { ascending: true })),
@@ -2164,7 +2179,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (parsedUser && parsedUser.display_name) {
           setCurrentUser(parsedUser);
         }
-      } else if (targetLedger.userDisplayName && currentUser?.display_name && targetLedger.userDisplayName.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase()) {
+      } else if (targetLedger.userDisplayName) {
         setCurrentUser(prev => ({
           ...prev,
           display_name: targetLedger.userDisplayName!,
@@ -2558,8 +2573,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .map((r: any) => {
           if (!r.profiles) return null;
           const isThisCreator = targetLedger.created_by === r.user_id;
+          const effectiveName = (r.custom_name || '').trim() || r.profiles.display_name || '家庭成員';
+          const effectiveAvatar = (r.custom_avatar || '').trim() || r.profiles.avatar_url || '👤';
           return {
             ...r.profiles,
+            display_name: effectiveName,
+            avatar_url: effectiveAvatar,
+            custom_name: r.custom_name || null,
+            custom_avatar: r.custom_avatar || null,
             role: isThisCreator ? 'owner' : (r.role || 'member'),
           };
         })
@@ -5624,18 +5645,32 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }));
 
       if (isConfigured) {
-        // 步驟 1：建立/更新 Profile (僅在明確持有 Google 信箱時帶入鎖定欄位，避免從示範模式建立新帳本時誤洗掉既有 Profile 的 Google 保護鎖)
-        const profilePayload: Record<string, any> = {
-          id: creatorProfileId,
-          display_name: chosenName,
-          avatar_url: chosenAvatar,
-        };
-        if (userGoogleEmail) {
-          profilePayload.auth_email = userGoogleEmail;
-          profilePayload.auth_provider = 'google';
-          profilePayload.is_locked = true;
+        // 步驟 1：建立/更新 Profile (若此 Profile 已存在則不覆寫 display_name，避免污染其他帳本稱謂)
+        const { data: existingProf } = await supabase
+          .from('profiles')
+          .select('id, display_name, is_locked')
+          .eq('id', creatorProfileId)
+          .maybeSingle();
+
+        if (!existingProf) {
+          const profilePayload: Record<string, any> = {
+            id: creatorProfileId,
+            display_name: chosenName,
+            avatar_url: chosenAvatar,
+          };
+          if (userGoogleEmail) {
+            profilePayload.auth_email = userGoogleEmail;
+            profilePayload.auth_provider = 'google';
+            profilePayload.is_locked = true;
+          }
+          await supabase.from('profiles').upsert(profilePayload, { onConflict: 'id' });
+        } else if (userGoogleEmail && !existingProf.is_locked) {
+          await supabase.from('profiles').update({
+            auth_email: userGoogleEmail,
+            auth_provider: 'google',
+            is_locked: true,
+          }).eq('id', creatorProfileId);
         }
-        await supabase.from('profiles').upsert(profilePayload, { onConflict: 'id' });
 
         // 步驟 2：透過標準 Supabase 客戶端建立 Ledger 主檔 (具備 session auth，符合 RLS check: auth.uid() = created_by)
         const { error: lErr } = await supabase.from('ledgers').insert({
@@ -5654,12 +5689,24 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           throw new Error('建立雲端帳本失敗: ' + (lErr.message || 'RLS 權限檢查不通過'));
         }
 
-        // 步驟 3：並行寫入 Owner 成員、邀請碼與預設分類
+        // 步驟 3：並行寫入 Owner 成員（帶入此帳本專屬稱謂與頭像）、邀請碼與預設分類
         await Promise.all([
           supabase.from('ledger_members').insert({
             ledger_id: newLedger.id,
             user_id: creatorProfileId,
             role: 'owner',
+            custom_name: chosenName,
+            custom_avatar: chosenAvatar,
+          }).then(res => {
+            // 若雲端資料庫尚未遷移 custom_name 欄位，自動降級為標準 insert
+            if (res.error && res.error.message?.includes('custom_name')) {
+              return supabase.from('ledger_members').insert({
+                ledger_id: newLedger.id,
+                user_id: creatorProfileId,
+                role: 'owner',
+              });
+            }
+            return res;
           }),
           supabase.from('ledger_invites').insert({
             ledger_id: newLedger.id,
@@ -5710,6 +5757,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         id: creatorProfileId,
         display_name: chosenName,
         avatar_url: chosenAvatar,
+        custom_name: chosenName,
+        custom_avatar: chosenAvatar,
         role: 'owner',
         auth_email: userGoogleEmail || undefined,
         is_locked: Boolean(userGoogleEmail),
@@ -6686,7 +6735,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           setCurrentUser(targetUser);
         } else if (targetLedgerId === SWEETHOME_LEDGER_ID) {
           setCurrentUser(SWEETHOME_MEMBERS[0]);
-        } else if (targetLedger?.userDisplayName && currentUser?.display_name && targetLedger.userDisplayName.trim().toLowerCase() === currentUser.display_name.trim().toLowerCase()) {
+        } else if (targetLedger?.userDisplayName) {
           setCurrentUser(prev => ({
             ...prev,
             display_name: targetLedger!.userDisplayName!,
@@ -8661,7 +8710,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     // 1. 本地更新
-    const updated = members.map(m => (m.id === id ? { ...m, display_name: cleanName, avatar_url: avatar } : m));
+    const updated = members.map(m => (m.id === id ? { ...m, display_name: cleanName, avatar_url: avatar, custom_name: cleanName, custom_avatar: avatar } : m));
     setMembers(updated);
 
     // 若修改的是目前使用中的成員身分，同步更新 currentUser
@@ -8670,6 +8719,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         ...currentUser,
         display_name: cleanName,
         avatar_url: avatar,
+        custom_name: cleanName,
+        custom_avatar: avatar,
       };
       setCurrentUser(updatedMe);
       await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedMe));
@@ -8681,13 +8732,22 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await AsyncStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updated));
     await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${currentLedger.id}`, JSON.stringify(updated));
 
-    // 2. 雲端同步更新 (Supabase profiles 表，Admin 服務權杖穿透保底)
+    // 2. 雲端同步更新 (優先更新此帳本專屬的 custom_name，避免污染其他帳本稱謂)
     if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
       try {
-        await supabaseAdmin
-          .from('profiles')
-          .update({ display_name: cleanName, avatar_url: avatar, updated_at: new Date().toISOString() })
-          .eq('id', id);
+        const { error: lmErr } = await supabaseAdmin
+          .from('ledger_members')
+          .update({ custom_name: cleanName, custom_avatar: avatar })
+          .eq('ledger_id', currentLedger.id)
+          .eq('user_id', id);
+
+        // 若資料庫尚未遷移 custom_name 欄位，自動降級更新 profiles 全域稱謂
+        if (lmErr && lmErr.message?.includes('custom_name')) {
+          await supabaseAdmin
+            .from('profiles')
+            .update({ display_name: cleanName, avatar_url: avatar, updated_at: new Date().toISOString() })
+            .eq('id', id);
+        }
       } catch (err) {
         console.warn('雲端更新成員資料失敗:', err);
       }

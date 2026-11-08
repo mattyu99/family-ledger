@@ -170,8 +170,8 @@ function buildSummariesFromRaw(
     const prof = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
     list.push({
       userId: m.user_id,
-      displayName: prof?.display_name || '未命名',
-      avatarUrl: prof?.avatar_url || '👤',
+      displayName: (m.custom_name || '').trim() || prof?.display_name || '未命名',
+      avatarUrl: (m.custom_avatar || '').trim() || prof?.avatar_url || '👤',
       role: m.role || 'member',
       email: prof?.email,
       authEmail: prof?.auth_email,
@@ -531,7 +531,13 @@ export async function fetchCloudLedgersSummary(knownLedgers: any[] = []): Promis
 
       const [ledgersRes, membersRes, txsRes, invitesRes] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/ledgers?select=*&order=created_at.asc`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/ledger_members?select=ledger_id,user_id,role,profiles(display_name,avatar_url,email,auth_email,is_locked)`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/ledger_members?select=ledger_id,user_id,role,custom_name,custom_avatar,profiles(display_name,avatar_url,email,auth_email,is_locked)`, { headers })
+          .then(async r => {
+            if (!r.ok) {
+              return fetch(`${SUPABASE_URL}/rest/v1/ledger_members?select=ledger_id,user_id,role,profiles(display_name,avatar_url,email,auth_email,is_locked)`, { headers });
+            }
+            return r;
+          }),
         fetch(`${SUPABASE_URL}/rest/v1/transactions?select=id,ledger_id,transacted_at&order=transacted_at.desc`, { headers }),
         fetch(`${SUPABASE_URL}/rest/v1/ledger_invites?select=ledger_id,invite_code&order=created_at.desc`, { headers }),
       ]);

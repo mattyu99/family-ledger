@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.15';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.15 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 10;
+export const APP_BUILD_REVISION = 11;
 
-// 完整版本字串 (例如 "1.0.15.10")
+// 完整版本字串 (例如 "1.0.15.11")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.15',
     date: '2026-11-06 ~ 2026-11-08',
-    title: '備份還原即時生物辨識授權、成員安全鎖校準、跨帳本資料隔離與示範沙盒輕巧改版',
+    title: '備份還原即時生物辨識授權、帳本專屬獨立稱謂隔離、成員安全鎖校準與示範沙盒輕巧改版',
     highlights: [
+      '🏷️ 帳本專屬獨立稱謂隔離：各帳本支援設定專屬暱稱（如公司帳叫 Matt、家庭帳叫梅特），切換帳本各自獨立呈現，彼此絕不相互覆寫。',
       '👑 管理員即時生物辨識授權升級：移除繁瑣的日常模式切換窗條，管理身分常態生效，還原備份改由最後執行時驗證指紋，徹底解決跳出選檔中斷問題。',
       '🛡️ 雲端帳本總管與成員保護校準：徹底解除歷史誤殺過濾，新建立帳本精準繼承雲端安全鎖，杜絕名冊誤判為訪客或空帳本。',
       '🎮 示範沙盒卡片輕巧緊湊改版：成員視角與新手任務改為單行橫向滑動並自動收合，完整釋放畫面閱讀空間。',

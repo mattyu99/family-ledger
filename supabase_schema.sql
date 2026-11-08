@@ -57,8 +57,14 @@ CREATE TABLE IF NOT EXISTS public.ledger_members (
     user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     role TEXT CHECK (role IN ('owner', 'admin', 'member', 'viewer')) DEFAULT 'member' NOT NULL,
     joined_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    custom_name TEXT, -- 成員在此帳本的專屬稱謂 (為 NULL 則採用 profiles.display_name)
+    custom_avatar TEXT, -- 成員在此帳本的專屬頭像 (為 NULL 則採用 profiles.avatar_url)
     UNIQUE (ledger_id, user_id)
 );
+
+-- 支援既有資料庫向下相容擴充
+ALTER TABLE public.ledger_members ADD COLUMN IF NOT EXISTS custom_name TEXT;
+ALTER TABLE public.ledger_members ADD COLUMN IF NOT EXISTS custom_avatar TEXT;
 
 -- 4. 記帳分類表
 CREATE TABLE IF NOT EXISTS public.categories (
