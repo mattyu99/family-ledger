@@ -2577,7 +2577,6 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const validLocals = localMembers.filter(lm =>
             isValidUUID(lm.id) &&
             !lm.id.startsWith('20000000-0000-4000-8000') &&
-            lm.id !== '9b017d89-b21f-4638-b076-5a7629e2dda5' &&
             lm.id !== 'e6a2d1ec-3b2a-495f-b24e-71c2647d9a86' &&
             (lm.display_name || '').trim() !== '寶可夢'
           );
@@ -5713,6 +5712,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         avatar_url: chosenAvatar,
         role: 'owner',
         auth_email: userGoogleEmail || undefined,
+        is_locked: Boolean(userGoogleEmail),
       };
       setCurrentUser(updatedMe);
       setMembers([updatedMe]);

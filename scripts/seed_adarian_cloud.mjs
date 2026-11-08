@@ -42,7 +42,7 @@ const LEDGER_ID = backup.ledger?.id || '8f53d9f8-d4ba-4eab-a975-dff3cbafb594';
 const ZHI_PROFILE_ID = '9a24be3d-5d15-41bf-b672-e8db6d43b651'; // 智爸
 const YING_PROFILE_ID = 'a452c526-7572-482c-b6ea-b975c0c13ea5'; // 瑩媽
 const MATT_PROFILE_ID = 'b9ca1112-a865-4b7c-9629-f29cf56053f6'; // Matt Yu
-const POKEMON_PROFILE_ID = '9b017d89-b21f-4638-b076-5a7629e2dda5'; // 寶可夢
+const POKEMON_PROFILE_ID = '9b017d89-b21f-4638-b076-5a7629e2dda5'; // 爸 (歷史誤標)
 const YANG_PROFILE_ID = '1705b9ce-1485-4714-b6fd-42a5aa8baa68'; // 洋洋
 const DOU_PROFILE_ID = '8a0505f0-cdd6-4948-9cec-1926805e2e1d'; // 豆豆
 

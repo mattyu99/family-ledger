@@ -52,7 +52,6 @@ export function deduplicateCloudMembers(
   const cleanList = rawMembers
     .filter(m => {
       if (!m) return false;
-      if (m.userId === '9b017d89-b21f-4638-b076-5a7629e2dda5') return false;
       if (m.userId === 'e6a2d1ec-3b2a-495f-b24e-71c2647d9a86') return false;
       const name = (m.displayName || '').trim();
       if (name === '寶可夢') return false;

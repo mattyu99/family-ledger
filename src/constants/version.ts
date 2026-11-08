@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.15';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.15 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 9;
+export const APP_BUILD_REVISION = 10;
 
-// 完整版本字串 (例如 "1.0.15.9")
+// 完整版本字串 (例如 "1.0.15.10")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -21,9 +21,10 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.15',
     date: '2026-11-06 ~ 2026-11-08',
-    title: '備份還原即時生物辨識授權、管理員單點提權、跨帳本資料隔離與示範沙盒輕巧改版',
+    title: '備份還原即時生物辨識授權、成員安全鎖校準、跨帳本資料隔離與示範沙盒輕巧改版',
     highlights: [
       '👑 管理員即時生物辨識授權升級：移除繁瑣的日常模式切換窗條，管理身分常態生效，還原備份改由最後執行時驗證指紋，徹底解決跳出選檔中斷問題。',
+      '🛡️ 雲端帳本總管與成員保護校準：徹底解除歷史誤殺過濾，新建立帳本精準繼承雲端安全鎖，杜絕名冊誤判為訪客或空帳本。',
       '🎮 示範沙盒卡片輕巧緊湊改版：成員視角與新手任務改為單行橫向滑動並自動收合，完整釋放畫面閱讀空間。',
       '🛡️ 示範帳本切換與排版保護：修正跨帳本切換回示範帳本時之明細與卡片完整保留、固定顯示 SWEETHOME 邀請碼，並優化頂部切換按鈕與桌面小工具防遮擋排版。',
       '📂 備份還原支援本機檔案直接讀取：手機與電腦均可直接選取 .json 備份檔，免複製貼上即可一鍵自動載入還原。',

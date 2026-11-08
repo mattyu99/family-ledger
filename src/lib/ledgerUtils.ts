@@ -100,7 +100,6 @@ export const deduplicateMembers = (memberList: Profile[]): Profile[] => {
 
   // 排除殘留之訪客寶可夢與歷史幽靈成員，確保名冊永遠純淨
   const initialClean = memberList.filter(m =>
-    m.id !== '9b017d89-b21f-4638-b076-5a7629e2dda5' &&
     m.id !== 'e6a2d1ec-3b2a-495f-b24e-71c2647d9a86' &&
     (m.display_name || '').trim() !== '寶可夢'
   );
