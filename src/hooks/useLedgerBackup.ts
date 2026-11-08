@@ -9,12 +9,16 @@ import {
   TransactionType,
   RecurringRule,
   CustomPaymentMethod,
+  LedgerBudget,
+  CarrierRule,
 } from '../types/database';
 import { generateUUID } from '../lib/uuid';
 import { APP_FULL_VERSION } from '../constants/version';
 import { STORAGE_KEYS, isValidUUID } from '../constants/ledgerDefaults';
 import { isDemoLedgerId } from '../constants/sweethomeDemo';
 import { hydrateTransactionWithInvoice, deduplicateMembers, buildMemberAliasMap } from '../lib/ledgerUtils';
+import { encodeMemoMerchantTag, decodeMemoMerchantTag } from '../lib/memo';
+import { loadCarrierRules, persistCarrierRules } from '../lib/carrierRules';
 import {
   StatementFile,
   loadCachedStatements,
@@ -97,6 +101,8 @@ export function useLedgerBackup({
 
   const cachedStatementsRef = useRef<StatementFile[]>([]);
   const cachedRecurringStatementsRef = useRef<StatementFile[]>([]);
+  const cachedBudgetRef = useRef<LedgerBudget | null>(null);
+  const cachedCarrierRulesRef = useRef<CarrierRule[]>([]);
 
   useEffect(() => {
     if (!currentLedger?.id) return;
@@ -104,11 +110,17 @@ export function useLedgerBackup({
     Promise.all([
       loadCachedStatements(currentLedger.id),
       loadCachedRecurringStatements(currentLedger.id),
+      AsyncStorage.getItem(`${STORAGE_KEYS.BUDGET}_${currentLedger.id}`)
+        .then(str => (str ? JSON.parse(str) : null))
+        .catch(() => null),
+      loadCarrierRules(currentLedger.id).catch(() => []),
     ])
-      .then(([stmts, recStmts]) => {
+      .then(([stmts, recStmts, budget, carrierRules]) => {
         if (isMounted) {
           cachedStatementsRef.current = stmts || [];
           cachedRecurringStatementsRef.current = recStmts || [];
+          cachedBudgetRef.current = budget || null;
+          cachedCarrierRulesRef.current = carrierRules || [];
         }
       })
       .catch(() => {});
@@ -157,14 +169,22 @@ export function useLedgerBackup({
       ledger: {
         id: currentLedger.id,
         name: currentLedger.name,
+        description: currentLedger.description || '',
+        currency: currentLedger.currency || 'TWD',
         invite_code: inviteCode,
         is_read_only: currentLedger.is_read_only,
+        allow_new_members: currentLedger.allow_new_members,
+        admin_pin: currentLedger.admin_pin,
       },
       members: members.map(m => ({
         id: m.id,
         display_name: m.display_name,
         avatar_url: m.avatar_url,
         role: m.role,
+        custom_name: m.custom_name,
+        custom_avatar: m.custom_avatar,
+        mof_barcode: m.mof_barcode,
+        mof_sync_enabled: m.mof_sync_enabled,
       })),
       categories: categories.map(c => ({
         id: c.id,
@@ -190,24 +210,57 @@ export function useLedgerBackup({
           icon: a.icon,
           sort_order: a.sort_order,
         })),
-      transactions: transactions.map(t => ({
-        id: t.id,
-        amount: t.amount,
-        type: t.type,
-        reminder_date: t.reminder_date,
-        completed_by: t.completed_by,
-        completed_at: t.completed_at,
-        category_id: t.category_id,
-        paid_by: t.paid_by,
-        transacted_at: t.transacted_at,
-        merchant: t.merchant,
-        note: t.note,
-        image_url: t.image_url,
-        payment_method: t.payment_method,
-        account_id: t.account_id,
-        is_reconciled: t.is_reconciled,
-        is_settled: t.is_settled,
-      })),
+      transactions: transactions.map(t => {
+        const isMemo = t.type === 'memo';
+        const encodedMerchant = isMemo
+          ? (t.merchant || encodeMemoMerchantTag({
+              reminderDate: t.reminder_date,
+              reminderCalendar: t.reminder_calendar,
+              reminderRepeat: t.reminder_repeat,
+              completedBy: t.completed_by,
+              completedAt: t.completed_at,
+            }))
+          : t.merchant;
+
+        return {
+          id: t.id,
+          creator_id: t.creator_id,
+          created_at: t.created_at,
+          amount: t.amount,
+          type: t.type,
+          reminder_date: t.reminder_date,
+          reminder_calendar: t.reminder_calendar,
+          reminder_repeat: t.reminder_repeat,
+          reminder_target: t.reminder_target,
+          completed_by: t.completed_by,
+          completed_at: t.completed_at,
+          completion_note: t.completion_note,
+          linked_transaction_id: t.linked_transaction_id,
+          category_id: t.category_id,
+          paid_by: t.paid_by,
+          transacted_at: t.transacted_at,
+          merchant: encodedMerchant,
+          note: t.note,
+          image_url: t.image_url,
+          payment_method: t.payment_method,
+          account_id: t.account_id,
+          is_reconciled: t.is_reconciled,
+          is_settled: t.is_settled,
+          // 統一發票與雲端載具延伸明細
+          invoice_number: t.invoice_number,
+          invoice_period: t.invoice_period,
+          invoice_random_code: t.invoice_random_code,
+          invoice_status: t.invoice_status,
+          invoice_prize_amount: t.invoice_prize_amount,
+          invoice_prize_name: t.invoice_prize_name,
+          invoice_sync_status: t.invoice_sync_status,
+          cloud_synced_at: t.cloud_synced_at,
+          invoice_items: t.invoice_items,
+          cloud_carrier_name: t.cloud_carrier_name,
+          // 多人分攤明細
+          splits: t.splits,
+        };
+      }),
       statement_attachments: (cachedStatementsRef.current || []).map(s => ({
         path: s.path,
         fileName: s.fileName,
@@ -237,26 +290,26 @@ export function useLedgerBackup({
       recurring_rules: recurringRules
         .filter(r => !r.ledger_id || r.ledger_id === currentLedger.id)
         .map(r => ({
-        id: r.id,
-        name: r.name,
-        amount_type: r.amount_type,
-        default_amount: r.default_amount,
-        category_id: r.category_id,
-        merchant: r.merchant,
-        paid_by: r.paid_by,
-        payment_method: r.payment_method,
-        account_id: r.account_id,
-        frequency: r.frequency,
-        due_day: r.due_day,
-        bimonthly_start_month: r.bimonthly_start_month,
-        is_active: r.is_active,
-        last_recorded_period: r.last_recorded_period,
-        is_installment: r.is_installment,
-        total_installments: r.total_installments,
-        current_installment: r.current_installment,
-        installment_start_period: r.installment_start_period,
-        note: r.note,
-      })),
+          id: r.id,
+          name: r.name,
+          amount_type: r.amount_type,
+          default_amount: r.default_amount,
+          category_id: r.category_id,
+          merchant: r.merchant,
+          paid_by: r.paid_by,
+          payment_method: r.payment_method,
+          account_id: r.account_id,
+          frequency: r.frequency,
+          due_day: r.due_day,
+          bimonthly_start_month: r.bimonthly_start_month,
+          is_active: r.is_active,
+          last_recorded_period: r.last_recorded_period,
+          is_installment: r.is_installment,
+          total_installments: r.total_installments,
+          current_installment: r.current_installment,
+          installment_start_period: r.installment_start_period,
+          note: r.note,
+        })),
       payment_methods: paymentMethods.map(m => ({
         id: m.id,
         name: m.name,
@@ -268,6 +321,10 @@ export function useLedgerBackup({
         is_system: m.is_system,
         sort_order: m.sort_order,
       })),
+      budget: cachedBudgetRef.current || undefined,
+      carrier_rules: (cachedCarrierRulesRef.current && cachedCarrierRulesRef.current.length > 0)
+        ? cachedCarrierRulesRef.current
+        : undefined,
     };
     return JSON.stringify(backupData, null, 2);
   };
@@ -361,6 +418,18 @@ export function useLedgerBackup({
               if (bm.avatar_url && !existing.avatar_url) {
                 existing.avatar_url = bm.avatar_url;
               }
+              if (bm.custom_name && !existing.custom_name) {
+                existing.custom_name = bm.custom_name;
+              }
+              if (bm.custom_avatar && !existing.custom_avatar) {
+                existing.custom_avatar = bm.custom_avatar;
+              }
+              if (bm.mof_barcode && !existing.mof_barcode) {
+                existing.mof_barcode = bm.mof_barcode;
+              }
+              if (bm.mof_sync_enabled !== undefined && existing.mof_sync_enabled === undefined) {
+                existing.mof_sync_enabled = bm.mof_sync_enabled;
+              }
             } else {
               const isDemoConst = backupId?.startsWith('20000000');
               const targetId = (backupId && isValidUUID(backupId) && !isCrossLedgerRestore && (!isRealCloud || !isDemoConst))
@@ -373,6 +442,10 @@ export function useLedgerBackup({
                 avatar_url: bm.avatar_url || '😊',
                 role: bm.role || 'member',
                 email: bm.email || `${rawName.toLowerCase()}@family.local`,
+                custom_name: bm.custom_name || null,
+                custom_avatar: bm.custom_avatar || null,
+                mof_barcode: bm.mof_barcode || undefined,
+                mof_sync_enabled: bm.mof_sync_enabled !== undefined ? bm.mof_sync_enabled : undefined,
               };
               newMemberList.push(restoredProf);
               if (backupId) {
@@ -399,6 +472,18 @@ export function useLedgerBackup({
               if (backupId) {
                 memberIdMap[backupId] = existing.id;
               }
+              if (bm.custom_name && !existing.custom_name) {
+                existing.custom_name = bm.custom_name;
+              }
+              if (bm.custom_avatar && !existing.custom_avatar) {
+                existing.custom_avatar = bm.custom_avatar;
+              }
+              if (bm.mof_barcode && !existing.mof_barcode) {
+                existing.mof_barcode = bm.mof_barcode;
+              }
+              if (bm.mof_sync_enabled !== undefined && existing.mof_sync_enabled === undefined) {
+                existing.mof_sync_enabled = bm.mof_sync_enabled;
+              }
             } else {
               const isDemoConst = backupId?.startsWith('20000000');
               const targetId = (backupId && isValidUUID(backupId) && !isCrossLedgerRestore && (!isRealCloud || !isDemoConst))
@@ -411,6 +496,10 @@ export function useLedgerBackup({
                 avatar_url: bm.avatar_url || '😊',
                 role: bm.role || 'member',
                 email: bm.email || `${rawName.toLowerCase()}@family.local`,
+                custom_name: bm.custom_name || null,
+                custom_avatar: bm.custom_avatar || null,
+                mof_barcode: bm.mof_barcode || undefined,
+                mof_sync_enabled: bm.mof_sync_enabled !== undefined ? bm.mof_sync_enabled : undefined,
               };
               nextMembers.push(newProf);
               if (backupId) {
@@ -441,6 +530,8 @@ export function useLedgerBackup({
                 ledger_id: currentLedger.id,
                 user_id: m.id,
                 role: m.role || 'member',
+                custom_name: m.custom_name || null,
+                custom_avatar: m.custom_avatar || null,
               });
             }
           } catch (e) {
@@ -709,6 +800,36 @@ export function useLedgerBackup({
         }
         setRecurringRules(nextRecurringRules);
         await saveRecurringRulesToStorage(nextRecurringRules, currentLedger.id);
+
+        if (isRealCloud && nextRecurringRules.length > 0) {
+          try {
+            const rulesToUpsert = nextRecurringRules.map(r => ({
+              id: r.id,
+              ledger_id: currentLedger.id,
+              name: r.name,
+              amount_type: r.amount_type || 'variable',
+              default_amount: Number(r.default_amount) || 0,
+              category_id: r.category_id || null,
+              merchant: r.merchant || null,
+              paid_by: r.paid_by || null,
+              payment_method: r.payment_method || 'credit_card',
+              account_id: r.account_id && !r.account_id.startsWith('50000000') ? r.account_id : null,
+              frequency: r.frequency || 'monthly',
+              due_day: r.due_day || 1,
+              bimonthly_start_month: r.bimonthly_start_month || null,
+              is_active: r.is_active ?? true,
+              last_recorded_period: r.last_recorded_period || null,
+              is_installment: Boolean(r.is_installment),
+              total_installments: r.total_installments || null,
+              current_installment: r.current_installment || 1,
+              installment_start_period: r.installment_start_period || null,
+              note: r.note || null,
+            }));
+            await supabase.from('recurring_rules').upsert(rulesToUpsert);
+          } catch (ruleCloudErr) {
+            console.warn('雲端還原同步週期規則失敗:', ruleCloudErr);
+          }
+        }
       }
 
       // 3.6 還原/合併 自訂付款方式 (Payment Methods)
@@ -757,6 +878,25 @@ export function useLedgerBackup({
         }
         setPaymentMethods(nextPaymentMethods);
         await savePaymentMethodsToStorage(nextPaymentMethods);
+
+        if (isRealCloud && nextPaymentMethods.length > 0) {
+          try {
+            const methodsToUpsert = nextPaymentMethods.map(m => ({
+              id: m.id,
+              ledger_id: currentLedger.id,
+              name: m.name,
+              icon: m.icon || '📱',
+              color: m.color || '#0055B8',
+              type: m.type || 'other',
+              supports_credit_card: Boolean(m.supports_credit_card),
+              is_system: Boolean(m.is_system),
+              sort_order: m.sort_order || 1,
+            }));
+            await supabase.from('payment_methods').upsert(methodsToUpsert);
+          } catch (pmCloudErr) {
+            console.warn('雲端還原同步付款方式失敗:', pmCloudErr);
+          }
+        }
       }
 
       // 4. 還原/合併 交易明細
@@ -786,6 +926,14 @@ export function useLedgerBackup({
       const existingFingerprints = new Set(
         transactions.map(t => `${t.type}_${Number(t.amount)}_${t.transacted_at}_${t.merchant || ''}_${t.note || ''}`)
       );
+
+      // 建立新舊交易 ID 映射表，以便連動之交易與分攤明細能精確對齊
+      const txIdMap: Record<string, string> = {};
+      for (const t of backupTxs) {
+        if (t && t.id) {
+          txIdMap[t.id] = generateUUID();
+        }
+      }
 
       const sanitizedTxs: Transaction[] = [];
 
@@ -830,13 +978,42 @@ export function useLedgerBackup({
           resolvedAccountId = accountIdMap[resolvedAccountId];
         }
 
-        // 核心免疫關鍵：一律生成全新獨立 UUID！
-        // 徹底根除任何客戶端或資料庫中舊 ID 的「歷史刪除標記」，確保 100% 不會被自動刪除
-        const freshTxId = generateUUID();
+        const freshTxId = (t.id && txIdMap[t.id]) ? txIdMap[t.id] : generateUUID();
 
-        const isBackupMemo = t.type === 'memo' || (t.type === 'transfer' && Number(t.amount) === 0) || t.merchant?.startsWith('remind:') || t.merchant === 'memo';
+        // 待辦與生活備忘資訊解析
+        const decodedMemo = decodeMemoMerchantTag(t.merchant);
+        const isBackupMemo = t.type === 'memo' || (t.type === 'transfer' && Number(t.amount) === 0) || decodedMemo.isMemo;
         const restoredType: TransactionType = isBackupMemo ? 'memo' : (t.type === 'income' ? 'income' : (t.type === 'transfer' ? 'transfer' : 'expense'));
-        const restoredReminder = t.reminder_date || (t.merchant?.startsWith('remind:') ? t.merchant.replace('remind:', '') : undefined);
+
+        const restoredReminderDate = t.reminder_date || decodedMemo.reminderDate || undefined;
+        const restoredReminderCal = t.reminder_calendar || decodedMemo.reminderCalendar || undefined;
+        const restoredReminderRep = t.reminder_repeat || decodedMemo.reminderRepeat || undefined;
+        const restoredReminderTarget = t.reminder_target || 'family';
+        const restoredCompletedBy = t.completed_by ? (memberIdMap[t.completed_by] || t.completed_by) : (decodedMemo.completedBy ? (memberIdMap[decodedMemo.completedBy] || decodedMemo.completedBy) : undefined);
+        const restoredCompletedAt = t.completed_at || decodedMemo.completedAt || undefined;
+        const restoredCompletionNote = t.completion_note || undefined;
+
+        // 若為生活備忘，確保 merchant 標籤完整編碼，杜絕跨版本遺失
+        const restoredMerchant = isBackupMemo
+          ? encodeMemoMerchantTag({
+              reminderDate: restoredReminderDate,
+              reminderCalendar: restoredReminderCal,
+              reminderRepeat: restoredReminderRep,
+              completedBy: restoredCompletedBy,
+              completedAt: restoredCompletedAt,
+            })
+          : (t.merchant || undefined);
+
+        // 分攤明細 (splits) 成員 ID 重新對齊
+        let restoredSplits = t.splits;
+        if (Array.isArray(t.splits) && t.splits.length > 0) {
+          restoredSplits = t.splits.map((s: any) => ({
+            ...s,
+            id: generateUUID(),
+            transaction_id: freshTxId,
+            user_id: memberIdMap[s.user_id] || s.user_id,
+          }));
+        }
 
         sanitizedTxs.push({
           id: freshTxId,
@@ -845,12 +1022,17 @@ export function useLedgerBackup({
           category_id: matchedCategory?.id || targetCatId,
           amount: isBackupMemo ? 0 : Number(t.amount),
           type: restoredType,
-          reminder_date: restoredReminder,
-          completed_by: t.completed_by || undefined,
-          completed_at: t.completed_at || undefined,
+          reminder_date: restoredReminderDate,
+          reminder_calendar: restoredReminderCal,
+          reminder_repeat: restoredReminderRep,
+          reminder_target: restoredReminderTarget,
+          completed_by: restoredCompletedBy,
+          completed_at: restoredCompletedAt,
+          completion_note: restoredCompletionNote,
+          linked_transaction_id: t.linked_transaction_id ? (txIdMap[t.linked_transaction_id] || t.linked_transaction_id) : undefined,
           paid_by: resolvedPaidBy,
           transacted_at: t.transacted_at || new Date().toISOString(),
-          merchant: t.merchant || undefined,
+          merchant: restoredMerchant,
           note: t.note || '',
           image_url: t.image_url || undefined,
           payment_method: t.payment_method || 'cash',
@@ -859,6 +1041,18 @@ export function useLedgerBackup({
           category: matchedCategory,
           is_settled: t.is_settled ?? false,
           created_at: t.created_at || new Date().toISOString(),
+          // 發票延伸明細
+          invoice_number: t.invoice_number || undefined,
+          invoice_period: t.invoice_period || undefined,
+          invoice_random_code: t.invoice_random_code || undefined,
+          invoice_status: t.invoice_status || undefined,
+          invoice_prize_amount: t.invoice_prize_amount || undefined,
+          invoice_prize_name: t.invoice_prize_name || undefined,
+          invoice_sync_status: t.invoice_sync_status || undefined,
+          cloud_synced_at: t.cloud_synced_at || undefined,
+          invoice_items: t.invoice_items || undefined,
+          cloud_carrier_name: t.cloud_carrier_name || undefined,
+          splits: restoredSplits,
         });
       }
 
@@ -889,6 +1083,7 @@ export function useLedgerBackup({
               transacted_at: t.transacted_at,
               is_settled: t.is_settled || false,
               note: t.note || '',
+              created_at: t.created_at || new Date().toISOString(),
             };
             if (t.image_url) {
               p.image_url = t.image_url;
@@ -901,6 +1096,13 @@ export function useLedgerBackup({
               if (t.account_id && !t.account_id.startsWith('50000000')) p.account_id = t.account_id;
               if (t.is_reconciled !== undefined) p.is_reconciled = t.is_reconciled;
             }
+            // 🌟 生活待辦與提醒延伸欄位寫入雲端
+            if (t.reminder_date) p.reminder_date = t.reminder_date;
+            if (t.reminder_target) p.reminder_target = t.reminder_target;
+            if (t.completed_by && isValidUUID(t.completed_by)) p.completed_by = t.completed_by;
+            if (t.completed_at) p.completed_at = t.completed_at;
+            if (t.completion_note) p.completion_note = t.completion_note;
+            if (t.linked_transaction_id && isValidUUID(t.linked_transaction_id)) p.linked_transaction_id = t.linked_transaction_id;
             return p;
           });
 
@@ -908,7 +1110,25 @@ export function useLedgerBackup({
             const batch = txsToUpsert.slice(i, i + 500);
             const { error: batchErr } = await supabase.from('transactions').upsert(batch);
             if (batchErr) {
-              await supabase.rpc('secure_batch_add_transactions', { p_transactions: batch });
+              // 若因資料庫尚未加新欄位 (42703)，移除生活備忘延伸欄位後重試
+              if (batchErr.code === '42703' || batchErr.message?.includes('column')) {
+                const compatBatch = batch.map((item: any) => {
+                  const copy = { ...item };
+                  delete copy.reminder_date;
+                  delete copy.reminder_target;
+                  delete copy.completed_by;
+                  delete copy.completed_at;
+                  delete copy.completion_note;
+                  delete copy.linked_transaction_id;
+                  return copy;
+                });
+                const { error: compatErr } = await supabase.from('transactions').upsert(compatBatch);
+                if (compatErr) {
+                  await supabase.rpc('secure_batch_add_transactions', { p_transactions: compatBatch });
+                }
+              } else {
+                await supabase.rpc('secure_batch_add_transactions', { p_transactions: batch });
+              }
             }
           }
         } catch (cloudErr) {
@@ -959,6 +1179,95 @@ export function useLedgerBackup({
         }
       }
 
+      // 6. 還原/合併 月度總預算設定 (Ledger Budget)
+      if (backup.budget) {
+        try {
+          const rawBudget = backup.budget;
+          const remappedCategoryBudgets: Record<string, number> = {};
+          if (rawBudget.category_budgets) {
+            for (const [catId, amt] of Object.entries(rawBudget.category_budgets)) {
+              const targetCatId = categoryIdMap[catId] || catId;
+              remappedCategoryBudgets[targetCatId] = Number(amt) || 0;
+            }
+          }
+          const remappedMemberBudgets: Record<string, number> = {};
+          if (rawBudget.member_budgets) {
+            for (const [memId, amt] of Object.entries(rawBudget.member_budgets)) {
+              const targetMemId = memberIdMap[memId] || memId;
+              remappedMemberBudgets[targetMemId] = Number(amt) || 0;
+            }
+          }
+          const restoredBudget: LedgerBudget = {
+            ledger_id: currentLedger.id,
+            is_enabled: rawBudget.is_enabled ?? true,
+            monthly_total: Number(rawBudget.monthly_total) || 40000,
+            alert_threshold: Number(rawBudget.alert_threshold) || 80,
+            category_budgets: remappedCategoryBudgets,
+            member_budgets: remappedMemberBudgets,
+            updated_at: new Date().toISOString(),
+          };
+          cachedBudgetRef.current = restoredBudget;
+          await AsyncStorage.setItem(`${STORAGE_KEYS.BUDGET}_${currentLedger.id}`, JSON.stringify(restoredBudget));
+          if (isRealCloud) {
+            try {
+              await supabase.from('ledger_budgets').upsert({
+                ledger_id: currentLedger.id,
+                is_enabled: restoredBudget.is_enabled,
+                monthly_total: restoredBudget.monthly_total,
+                alert_threshold: restoredBudget.alert_threshold,
+                category_budgets: restoredBudget.category_budgets,
+                member_budgets: restoredBudget.member_budgets,
+                updated_at: new Date().toISOString(),
+              }, { onConflict: 'ledger_id' });
+            } catch (bCloudErr) {
+              console.warn('雲端還原同步預算失敗:', bCloudErr);
+            }
+          }
+        } catch (budgetErr) {
+          console.warn('還原預算失敗:', budgetErr);
+        }
+      }
+
+      // 7. 還原/合併 雲端發票載具歸屬規則 (Carrier Rules)
+      if (Array.isArray(backup.carrier_rules) && backup.carrier_rules.length > 0) {
+        try {
+          const restoredCarrierRules: CarrierRule[] = backup.carrier_rules.map((cr: any) => {
+            const targetUserId = cr.user_id ? (memberIdMap[cr.user_id] || cr.user_id) : fallbackPayerId;
+            const targetAccId = cr.account_id ? (accountIdMap[cr.account_id] || cr.account_id) : undefined;
+            return {
+              id: (!isCrossLedgerRestore && cr.id && isValidUUID(cr.id)) ? cr.id : generateUUID(),
+              ledger_id: currentLedger.id,
+              carrier_no: cr.carrier_no,
+              carrier_name: cr.carrier_name,
+              user_id: targetUserId,
+              account_id: targetAccId,
+              created_at: cr.created_at || new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            };
+          });
+          cachedCarrierRulesRef.current = restoredCarrierRules;
+          await persistCarrierRules(currentLedger.id, restoredCarrierRules);
+        } catch (crErr) {
+          console.warn('還原發票載具規則失敗:', crErr);
+        }
+      }
+
+      // 8. 還原/更新 帳本設定 (管理員密碼鎖與新成員門禁)
+      if (backup.ledger) {
+        try {
+          if (backup.ledger.admin_pin) {
+            await AsyncStorage.setItem(`${STORAGE_KEYS.ADMIN_PIN}_${currentLedger.id}`, backup.ledger.admin_pin);
+            setCurrentLedger(prev => ({ ...prev, admin_pin: backup.ledger.admin_pin }));
+          }
+          if (backup.ledger.allow_new_members !== undefined) {
+            await AsyncStorage.setItem(`${STORAGE_KEYS.LEDGER_ALLOW_NEW_MEMBERS}_${currentLedger.id}`, backup.ledger.allow_new_members ? 'true' : 'false');
+            setCurrentLedger(prev => ({ ...prev, allow_new_members: Boolean(backup.ledger.allow_new_members) }));
+          }
+        } catch (lErr) {
+          console.warn('還原帳本設定失敗:', lErr);
+        }
+      }
+
       const parts: string[] = [`${sanitizedTxs.length} 筆明細`];
       if (Array.isArray(backup.members) && backup.members.length > 0) {
         parts.push(`${nextMembers.length} 位成員`);
@@ -977,6 +1286,12 @@ export function useLedgerBackup({
       }
       if (Array.isArray(stmtsFromBackup) && stmtsFromBackup.length > 0) {
         parts.push(`${stmtsFromBackup.length} 份帳單附件`);
+      }
+      if (backup.budget) {
+        parts.push('1 組月度預算');
+      }
+      if (Array.isArray(backup.carrier_rules) && backup.carrier_rules.length > 0) {
+        parts.push(`${backup.carrier_rules.length} 條載具規則`);
       }
 
       return {

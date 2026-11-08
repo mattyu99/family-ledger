@@ -27,6 +27,7 @@ import {
   addOrUpdateCarrierRule,
   removeCarrierRule,
 } from '../lib/carrierRules';
+import * as DocumentPicker from 'expo-document-picker';
 
 interface CloudInvoiceSyncModalProps {
   visible: boolean;
@@ -59,6 +60,7 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
   const [parsedInvoices, setParsedInvoices] = useState<CloudInvoiceItem[] | null>(null);
   const [rawCsvText, setRawCsvText] = useState('');
   const [showRawTextInput, setShowRawTextInput] = useState(false);
+  const [isReadingFile, setIsReadingFile] = useState(false);
   const [statusBanner, setStatusBanner] = useState<{
     type: 'success' | 'error' | 'info';
     message: string;
@@ -176,22 +178,63 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
     event.target.value = '';
   };
 
-  // 點選檔案選取按鈕（跨平台分流）
-  const handleFileSelectBtnPress = () => {
+  // 點選檔案選取按鈕（跨平台分流：支援 Web 與手機原生檔案選取器）
+  const handleFileSelectBtnPress = async () => {
     if (Platform.OS === 'web') {
       if (typeof document !== 'undefined') {
         const el = document.getElementById('mof-csv-file-input');
         el?.click();
       }
-    } else {
+      return;
+    }
+
+    try {
+      setIsReadingFile(true);
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          'text/csv',
+          'text/comma-separated-values',
+          'application/vnd.ms-excel',
+          'text/plain',
+          'text/*',
+          '*/*',
+        ],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      let text = '';
+      if (asset.file) {
+        text = await asset.file.text();
+      } else if (asset.uri) {
+        const resp = await fetch(asset.uri);
+        text = await resp.text();
+      }
+
+      if (text && text.trim()) {
+        handleProcessCsvText(text.trim(), asset.name || '發票 CSV 檔');
+      } else {
+        setStatusBanner({
+          type: 'error',
+          message: '選取的發票檔案內容為空，請確認檔案是否正確。',
+        });
+      }
+    } catch (err: any) {
+      console.warn('DocumentPicker 讀取發票 CSV 失敗，降級提示操作指引:', err);
       Alert.alert(
         '📂 手機端讀取發票 CSV 指引',
-        '在手機上匯入最簡便的方式：\n\n1. 請於信箱中開啟財政部通知信之附件 CSV 檔並「全選複製」\n2. 回到此處點擊「📋 讀取剪貼簿貼上 CSV」\n\n系統將自動秒速辨識並完成卡號分流！',
+        '若手機系統未支援直接開檔，可使用剪貼簿快速讀取：\n\n1. 請於信箱中開啟財政部通知信之附件 CSV 檔並「全選複製」\n2. 回到此處點擊「📋 讀取剪貼簿貼上 CSV」\n\n系統將自動秒速辨識並完成卡號分流！',
         [
           { text: '關閉', style: 'cancel' },
           { text: '📋 立即讀取剪貼簿', onPress: () => handlePasteClipboard() },
         ]
       );
+    } finally {
+      setIsReadingFile(false);
     }
   };
 
@@ -654,11 +697,23 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
               {/* 匯入動作按鈕列 */}
               <View style={styles.actionBtnRow}>
                 <TouchableOpacity
-                  style={[styles.primaryActionBtn, { flex: 1.1 }]}
+                  style={[
+                    styles.primaryActionBtn,
+                    { flex: 1.1 },
+                    isReadingFile && { opacity: 0.7 },
+                  ]}
                   onPress={handleFileSelectBtnPress}
+                  disabled={isReadingFile}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.primaryActionBtnText}>📂 選擇發票 CSV 檔</Text>
+                  {isReadingFile ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                      <Text style={styles.primaryActionBtnText}>讀取中...</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.primaryActionBtnText}>📂 選擇發票 CSV 檔</Text>
+                  )}
                 </TouchableOpacity>
 
                 <TouchableOpacity
