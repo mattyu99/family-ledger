@@ -128,6 +128,11 @@ function withAndroidWidgets(config) {
             sendBroadcast(intent)
         } catch (_: Exception) {}
     }
+
+    override fun onNewIntent(intent: android.content.Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+    }
 `
         : `
     @Override
@@ -138,6 +143,12 @@ function withAndroidWidgets(config) {
             intent.setPackage(getPackageName());
             sendBroadcast(intent);
         } catch (Exception ignored) {}
+    }
+
+    @Override
+    public void onNewIntent(android.content.Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
     }
 `;
       const lastBraceIndex = contents.lastIndexOf('}');

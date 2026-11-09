@@ -935,14 +935,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     if (justOpened || initialModeChanged) {
       setHasUserManuallySelectedPayer(false);
       resetFormRef.current();
-      if (autoOpenScanner) {
-        setScannerModalVisible(true);
-        onClearAutoOpenScanner?.();
-      }
     }
     prevVisibleRef.current = visible;
     prevInitialModeRef.current = initialMode;
-  }, [visible, initialMode, autoOpenScanner, onClearAutoOpenScanner]);
+  }, [visible, initialMode]);
 
   // 監聽外部傳入之 resetKey（例如桌面小工具快捷進入、或重設要求），強制執行全新表單重設
   const prevResetKeyRef = React.useRef(resetKey);
@@ -951,12 +947,19 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       prevResetKeyRef.current = resetKey;
       setHasUserManuallySelectedPayer(false);
       resetFormRef.current();
-      if (autoOpenScanner) {
+    }
+  }, [resetKey]);
+
+  // 專門獨立監聽 autoOpenScanner：只要彈窗處於開啟狀態且 autoOpenScanner 為 true，即刻喚起掃描器
+  React.useEffect(() => {
+    if (visible && autoOpenScanner) {
+      const timer = setTimeout(() => {
         setScannerModalVisible(true);
         onClearAutoOpenScanner?.();
-      }
+      }, 0);
+      return () => clearTimeout(timer);
     }
-  }, [resetKey, autoOpenScanner, onClearAutoOpenScanner]);
+  }, [visible, autoOpenScanner, onClearAutoOpenScanner]);
 
   // 關閉彈窗時同步清空重設表單狀態
   const handleClose = React.useCallback(() => {

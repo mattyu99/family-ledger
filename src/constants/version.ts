@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.15';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.15 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 14;
+export const APP_BUILD_REVISION = 15;
 
-// 完整版本字串 (例如 "1.0.15.14")
+// 完整版本字串 (例如 "1.0.15.15")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -20,10 +20,10 @@ export interface ChangelogItem {
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.15',
-    date: '2026-11-06 ~ 2026-11-08',
-    title: '桌面小工具記帳直達校準、備份還原全資料無失真同步與待辦提醒修復',
+    date: '2026-11-06 ~ 2026-11-09',
+    title: '桌面快捷與小工具極速直達無縫切換、備份還原全資料無失真同步與待辦提醒修復',
     highlights: [
-      '⚡ 桌面小工具記帳直達本機成員校準：修復由桌面小工具點擊「記支出」或「隨手記事」快捷進入時預設付款人或紀錄人未選取問題，精準鎖定當前手機成員，拿起手機秒速記帳。',
+      '⚡ 桌面快捷與小工具極速直達無縫切換：修復快捷進入時預設付款人未選取與退出後連按不同捷徑之視窗切換問題，點選掃發票即刻喚起相機，拿起手機秒速記帳。',
       '📦 備份還原生活待辦與全資料無失真同步：修復備份還原時待辦提醒日期遺失問題，全方位補齊提醒週期、發票明細、家庭預算與載具分流規則之完整備份與同步。',
       '🏷️ 帳本專屬獨立稱謂隔離：各帳本支援設定專屬暱稱（如公司帳叫 Matt、家庭帳叫梅特），切換帳本各自獨立呈現，彼此絕不相互覆寫。',
       '👑 管理員即時生物辨識授權升級：移除繁瑣的日常模式切換窗條，管理身分常態生效，還原備份改由最後執行時驗證指紋，徹底解決跳出選檔中斷問題。',

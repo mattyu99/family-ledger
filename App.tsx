@@ -12,6 +12,8 @@ import {
   TextInputProps,
   TextInput as RNTextInput,
   Linking,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import * as Updates from 'expo-updates';
 import * as QuickActions from 'expo-quick-actions';
@@ -205,6 +207,11 @@ const AppContent: React.FC = () => {
 
   // 新增/編輯交易表單狀態
   const [modalVisible, setModalVisible] = useState(false);
+  const modalVisibleRef = useRef<boolean>(false);
+  useEffect(() => {
+    modalVisibleRef.current = modalVisible;
+  }, [modalVisible]);
+
   const [modalResetKey, setModalResetKey] = useState<number>(0);
   const [modalMode, setModalMode] = useState<'expense' | 'income' | 'transfer' | 'allowance' | 'memo'>('expense');
   const [modalRecipientId, setModalRecipientId] = useState<string | undefined>(undefined);
@@ -227,12 +234,21 @@ const AppContent: React.FC = () => {
   const initialActionHandledRef = useRef<boolean>(false);
   const initialUrlHandledRef = useRef<boolean>(false);
 
+  // 監聽 App 移至背景：當使用者按 Home / 返回鍵離開 App 時，安全重設自動開啟相機之暫存旗標
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      if (nextState === 'background') {
+        setModalAutoOpenScanner(false);
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
   const executeQuickAction = useCallback((kind: QuickActionKind) => {
     setEditingTransaction(null);
-    setMemoTodoModalVisible(false);
     setInvoiceLotteryModalVisible(false);
 
-    // 清空任何暫存之特定付款人與連結備註，確保桌面小工具快捷完全回歸當前本機成員
+    // 清空任何暫存之特定付款人與連結備註，確保快捷直達完全回歸當前本機成員
     setModalDefaultPayerId(undefined);
     setModalDefaultNote(undefined);
     setModalLinkedMemoId(undefined);
@@ -241,26 +257,30 @@ const AppContent: React.FC = () => {
 
     if (kind === 'todo') {
       setModalVisible(false);
+      setModalAutoOpenScanner(false);
       setMemoTodoModalVisible(true);
-    } else if (kind === 'scan') {
-      setModalMode('expense');
-      setModalRecipientId(undefined);
-      setModalAutoOpenScanner(true);
-      setModalVisible(true);
-    } else if (kind === 'income') {
-      setModalMode('income');
-      setModalRecipientId(undefined);
+      return;
+    }
+
+    setMemoTodoModalVisible(false);
+    const targetMode = kind === 'scan' ? 'expense' : kind;
+    const shouldScan = kind === 'scan';
+
+    if (modalVisibleRef.current) {
+      // 若原先已有彈窗開啟中，先關閉原視窗釋放 Android 原生 Dialog 與相機鎖定，再於下一幀乾淨開啟目標捷徑
+      setModalVisible(false);
       setModalAutoOpenScanner(false);
-      setModalVisible(true);
-    } else if (kind === 'memo') {
-      setModalMode('memo');
-      setModalRecipientId(undefined);
-      setModalAutoOpenScanner(false);
-      setModalVisible(true);
+      setTimeout(() => {
+        setModalMode(targetMode);
+        setModalRecipientId(undefined);
+        setModalAutoOpenScanner(shouldScan);
+        setModalResetKey(prev => prev + 1);
+        setModalVisible(true);
+      }, 50);
     } else {
-      setModalMode('expense');
+      setModalMode(targetMode);
       setModalRecipientId(undefined);
-      setModalAutoOpenScanner(false);
+      setModalAutoOpenScanner(shouldScan);
       setModalVisible(true);
     }
   }, []);

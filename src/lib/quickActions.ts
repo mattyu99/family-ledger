@@ -66,6 +66,7 @@ const QUICK_ACTION_ITEMS: QuickActions.Action[] = QUICK_ACTIONS_CONFIG.map(item 
   }),
   params: {
     mode: item.kind,
+    href: `familyledger://quick-action?mode=${item.kind}`,
   },
 }));
 
