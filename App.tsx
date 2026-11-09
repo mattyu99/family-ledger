@@ -722,11 +722,35 @@ const AppContent: React.FC = () => {
       {/* 頂部導航列 (溫馨雙行品牌架構) */}
       <View style={[styles.topBar, { backgroundColor: colors.background.card, borderBottomColor: colors.border.default }]}>
         <View style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
-          {/* 第一行：品牌 Slogan 與全域安全模式開關 */}
+          {/* 第一行：純品牌 Slogan 緩衝列 */}
           <View style={styles.topBarSubtitleRow}>
             <Text style={[styles.ledgerSubtitle, { color: colors.text.muted }]} maxFontSizeMultiplier={1.2}>
-              💖 甜心記帳本 · 陪伴每個溫暖日常
+              💖 甜心記帳本 · 一起記錄生活點滴
             </Text>
+          </View>
+
+          {/* 第二行：帳本主標題 (點擊自帶下拉切換) + 權限安全開關 */}
+          <View style={styles.topBarTitleRow}>
+            <TouchableOpacity
+              style={styles.ledgerTitleClickable}
+              onPress={() => setSwitchLedgerModalVisible(true)}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+            >
+              <Text style={[styles.ledgerTitle, { color: colors.text.primary }]} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.15}>
+                {isDemoLedger ? currentLedger.name.replace(/\s*\(SWEETHOME\)/i, '') : currentLedger.name}
+              </Text>
+              <Text style={[styles.ledgerDropdownArrow, isDark && { color: colors.text.secondary }]}>▾</Text>
+              {hasOtherUnread && <View style={styles.ledgerDropdownRedDot} />}
+            </TouchableOpacity>
+
+            {Boolean(currentLedger.is_read_only) && (
+              <View style={[styles.topBarReadOnlyBadge, isDark && { backgroundColor: colors.background.cardSubtle }]}>
+                <Text style={styles.topBarReadOnlyBadgeText}>🔒 唯讀</Text>
+              </View>
+            )}
+
+            {/* 全域安全模式開關 (管理員專屬) */}
             {realIsOwner && (
               isAdminMode ? (
                 <TouchableOpacity
@@ -749,31 +773,9 @@ const AppContent: React.FC = () => {
               )
             )}
           </View>
-
-          {/* 第二行：帳本主標題 (點擊自帶下拉切換) */}
-          <View style={styles.topBarTitleRow}>
-            <TouchableOpacity
-              style={styles.ledgerTitleClickable}
-              onPress={() => setSwitchLedgerModalVisible(true)}
-              activeOpacity={0.7}
-              hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-            >
-              <Text style={[styles.ledgerTitle, { color: colors.text.primary }]} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.15}>
-                {isDemoLedger ? currentLedger.name.replace(/\s*\(SWEETHOME\)/i, '') : currentLedger.name}
-              </Text>
-              <Text style={[styles.ledgerDropdownArrow, isDark && { color: colors.text.secondary }]}>▾</Text>
-              {hasOtherUnread && <View style={styles.ledgerDropdownRedDot} />}
-            </TouchableOpacity>
-
-            {Boolean(currentLedger.is_read_only) && (
-              <View style={[styles.topBarReadOnlyBadge, isDark && { backgroundColor: colors.background.cardSubtle }]}>
-                <Text style={styles.topBarReadOnlyBadgeText}>🔒 唯讀</Text>
-              </View>
-            )}
-          </View>
         </View>
 
-        {/* 右側操作按鈕群組 */}
+        {/* 右側操作按鈕群組 (精減短版) */}
         <View style={styles.topBarRightActions}>
           <TouchableOpacity
             style={[
@@ -789,9 +791,6 @@ const AppContent: React.FC = () => {
           >
             <Text style={styles.themeToggleBtnIcon}>
               {themeMode === 'light' ? '☀️' : themeMode === 'dark' ? '🌙' : '🌓'}
-            </Text>
-            <Text style={[styles.themeToggleBtnText, { color: colors.text.secondary }]} maxFontSizeMultiplier={1.2}>
-              {themeMode === 'light' ? '淺色' : themeMode === 'dark' ? '深色' : '系統'}
             </Text>
           </TouchableOpacity>
 
@@ -860,16 +859,14 @@ const AppContent: React.FC = () => {
               maxFontSizeMultiplier={1.2}
             >
               {isDemoLedger
-                ? '本機體驗中'
-                : historySyncProgress
-                ? '歷史同步中...'
-                : isRefreshing || isProcessingQueue
-                ? '同步補傳中...'
+                ? '體驗'
+                : historySyncProgress || isRefreshing || isProcessingQueue
+                ? '同步中'
                 : pendingOfflineCount > 0
-                ? `離線 (${pendingOfflineCount}筆待補傳)`
+                ? `${pendingOfflineCount}筆`
                 : isCloudSynced
-                ? '雲端即時同步'
-                : '本地離線快取'}
+                ? '同步'
+                : '快取'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -1739,9 +1736,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FCE7F3',
     borderColor: '#F472B6',
     borderWidth: 1,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 7,
     flexShrink: 0,
   },
   ownerTopBadgeText: {
@@ -1753,9 +1750,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F5F9',
     borderColor: '#CBD5E1',
     borderWidth: 1,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 7,
     flexShrink: 0,
   },
   dailyModeTopBadgeText: {
@@ -1808,20 +1805,15 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   themeToggleBtn: {
-    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 16,
     borderWidth: 1,
-    gap: 4,
   },
   themeToggleBtnIcon: {
-    fontSize: 12,
-  },
-  themeToggleBtnText: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 13,
   },
   syncBadge: {
     flexDirection: 'row',
