@@ -64,7 +64,6 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
     leaveLedgerById,
     leaveCurrentLedger,
     isAdminMode,
-    requireAdminAuth,
     isGoogleAuthenticated,
     googleUserEmail,
     signInWithGoogle,
@@ -506,10 +505,13 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
                           <TouchableOpacity
                             style={styles.leaveMiniBtn}
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            onPress={async () => {
+                            onPress={() => {
                               if (isAdmin && !isAdminMode) {
-                                const authed = await requireAdminAuth(`退出管理員公帳「${l.name}」`);
-                                if (!authed) return;
+                                showAlert(
+                                  '日常保護模式',
+                                  '目前為日常檢視模式。若管理員需退出公帳，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。'
+                                );
+                                return;
                               }
                               showConfirm(
                                 '退出此帳本',
@@ -569,8 +571,11 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
                             ]}
                             onPress={async () => {
                               if (!isAdminMode) {
-                                const authed = await requireAdminAuth(`調整「${l.name}」門禁安全鎖`);
-                                if (!authed) return;
+                                showAlert(
+                                  '日常檢視模式',
+                                  '目前為日常檢視模式，僅供瀏覽門禁狀態。\n如需調整門禁安全鎖，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。'
+                                );
+                                return;
                               }
                               const nextVal = l.allow_new_members === false;
                               const res = await updateAllowNewMembers(nextVal, l.id);
@@ -604,8 +609,11 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
                             ]}
                             onPress={async () => {
                               if (!isAdminMode) {
-                                const authed = await requireAdminAuth(`切換「${l.name}」唯讀保護模式`);
-                                if (!authed) return;
+                                showAlert(
+                                  '日常檢視模式',
+                                  '目前為日常檢視模式，僅供瀏覽唯讀狀態。\n如需調整唯讀保護，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。'
+                                );
+                                return;
                               }
                               const nextVal = !l.is_read_only;
                               await toggleLedgerReadOnly(l.id, nextVal);

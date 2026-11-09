@@ -61,7 +61,6 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
     exitMemberPreview,
     switchCurrentUser,
     isAdminMode,
-    requireAdminAuth,
   } = useLedger();
 
   const [nameInput, setNameInput] = useState('');
@@ -521,10 +520,13 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
                 {!targetMember.is_locked && (
                   <TouchableOpacity
                     style={[styles.modalPreviewBtn, { marginTop: 8, backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF', borderColor: isDark ? '#6366F1' : '#C7D2FE' }]}
-                    onPress={async () => {
+                    onPress={() => {
                       if (!isAdminMode) {
-                        const authed = await requireAdminAuth(`切換身分為「${targetMember.display_name}」`);
-                        if (!authed) return;
+                        showAlert(
+                          '日常檢視模式',
+                          '目前為日常檢視模式，僅供瀏覽成員資料。\n如需切換本機身分，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。'
+                        );
+                        return;
                       }
                       showConfirm(
                         '切換本機身分',
@@ -615,11 +617,7 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
                     <Text style={styles.formLabel}>移除家庭成員</Text>
                     <TouchableOpacity
                       style={styles.modalDeleteBtn}
-                      onPress={async () => {
-                        if (!isAdminMode) {
-                          const authed = await requireAdminAuth(`從家庭名冊移除「${targetMember.display_name}」`);
-                          if (!authed) return;
-                        }
+                      onPress={() => {
                         onClose();
                         const paidTxs = transactions.filter(
                           t => (getMemberById(t.paid_by)?.id || t.paid_by) === targetMember.id

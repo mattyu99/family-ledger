@@ -118,7 +118,6 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     isOwner,
     realIsOwner,
     isAdminMode,
-    requireAdminAuth,
     disableAdminMode,
     enableAdminModeWithBiometrics,
     memberDevices,
@@ -540,10 +539,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             {realIsOwner && (
               <TouchableOpacity
                 style={styles.addMemberBtn}
-                onPress={async () => {
+                onPress={() => {
                   if (!isAdminMode) {
-                    const authed = await requireAdminAuth('新增家庭成員');
-                    if (!authed) return;
+                    showAlert('日常模式受限', '目前為日常檢視模式。如需新增家庭成員，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。');
+                    return;
                   }
                   onOpenAddMemberModal();
                 }}
@@ -711,10 +710,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             <View style={styles.ownerControlsRow}>
               <TouchableOpacity
                 style={[styles.ownerControlBtn, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}
-                onPress={async () => {
+                onPress={() => {
                   if (!isAdminMode) {
-                    const authed = await requireAdminAuth('修改帳本名稱');
-                    if (!authed) return;
+                    showAlert('日常模式受限', '目前為日常檢視模式。如需修改帳本名稱，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。');
+                    return;
                   }
                   onOpenEditLedgerModal();
                 }}
@@ -724,10 +723,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
 
               <TouchableOpacity
                 style={[styles.ownerControlBtn, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}
-                onPress={async () => {
+                onPress={() => {
                   if (!isAdminMode) {
-                    const authed = await requireAdminAuth('重新產生邀請碼');
-                    if (!authed) return;
+                    showAlert('日常模式受限', '目前為日常檢視模式。如需重新產生邀請碼，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。');
+                    return;
                   }
                   showConfirm(
                     '重新產生邀請碼',
@@ -744,10 +743,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
 
               <TouchableOpacity
                 style={[styles.ownerControlBtn, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}
-                onPress={async () => {
+                onPress={() => {
                   if (!isAdminMode) {
-                    const authed = await requireAdminAuth('自訂家庭邀請碼');
-                    if (!authed) return;
+                    showAlert('日常模式受限', '目前為日常檢視模式。如需自訂邀請碼，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。');
+                    return;
                   }
                   onOpenCustomCodeModal();
                 }}
@@ -778,26 +777,18 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                 <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                   <TouchableOpacity
                     style={[styles.togglePinBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
-                    onPress={async () => {
-                      if (!showPinClear) {
-                        if (!isAdminMode) {
-                          const authed = await requireAdminAuth('檢視應急安全碼');
-                          if (!authed) return;
-                        }
-                        setShowPinClear(true);
-                      } else {
-                        setShowPinClear(false);
-                      }
+                    onPress={() => {
+                      setShowPinClear(!showPinClear);
                     }}
                   >
                     <Text style={[styles.togglePinBtnText, { color: colors.text.primary }]}>{showPinClear ? '🙈 隱藏' : '👁️ 顯示'}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.changePinBtn}
-                    onPress={async () => {
+                    onPress={() => {
                       if (!isAdminMode) {
-                        const authed = await requireAdminAuth('修改應急安全碼');
-                        if (!authed) return;
+                        showAlert('日常模式受限', '目前為日常檢視模式。如需修改應急安全碼，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。');
+                        return;
                       }
                       onOpenChangePinModal();
                     }}
@@ -832,8 +823,8 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                   value={allowNewMembers}
                   onValueChange={async (newVal) => {
                     if (!isAdminMode) {
-                      const authed = await requireAdminAuth('調整家庭門禁安全鎖');
-                      if (!authed) return;
+                      showAlert('日常檢視模式', '目前為日常檢視模式，僅供瀏覽門禁狀態。\n如需調整門禁安全鎖，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。');
+                      return;
                     }
                     if (!newVal) {
                       showConfirm(
@@ -1762,7 +1753,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
 
         <TouchableOpacity
           style={[styles.restoreEntryBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
-          onPress={async () => {
+          onPress={() => {
             if (!realIsOwner) {
               showAlert(
                 '🔒 僅限管理員執行',
@@ -1771,8 +1762,8 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
               return;
             }
             if (!isAdminMode) {
-              const authed = await requireAdminAuth('從備份檔回復資料');
-              if (!authed) return;
+              showAlert('日常模式受限', '目前為日常檢視模式。從備份檔回復資料具有重大影響，請先點擊首頁頂部的【🛡️ 日常模式】啟用管理員模式。');
+              return;
             }
             onOpenExportModal('restore');
           }}
@@ -1816,10 +1807,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
         {realIsOwner && (
           <TouchableOpacity
             style={[styles.restoreEntryBtn, { backgroundColor: isDark ? '#1E3A8A22' : '#EFF6FF', borderColor: isDark ? '#1E40AF' : '#BFDBFE', marginTop: 10 }]}
-            onPress={async () => {
+            onPress={() => {
               if (!isAdminMode) {
-                const authed = await requireAdminAuth('開啟雲端帳本總管');
-                if (!authed) return;
+                showAlert('日常模式受限', '目前為日常檢視模式。如需管理名下所有雲端帳本，請先點擊首頁頂部的【🛡️ 日常模式】啟用管理員模式。');
+                return;
               }
               onOpenCloudLedgerManager();
             }}

@@ -43,7 +43,6 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
     isOwner,
     realIsOwner,
     isAdminMode,
-    requireAdminAuth,
     isBudgetWidgetVisibleOnDevice,
     setBudgetWidgetVisibleOnDevice,
   } = useLedger();
@@ -292,21 +291,10 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
                       <Text style={styles.readOnlyBannerTitle}>僅帳本管理員可修改家庭公帳總預算</Text>
                       <Text style={styles.readOnlyBannerDesc}>
                         {realIsOwner
-                          ? '您目前為日常成員檢視模式。點擊右方按鈕驗證指紋即可就地解鎖編輯。'
+                          ? '您目前為日常成員檢視模式，可瀏覽公帳月預算與分類額度。如需調整請先點擊首頁頂部的【🛡️ 日常模式】啟用管理員模式。'
                           : '您目前為日常成員檢視模式，可瀏覽公帳月預算與分類額度，如需調整請由帳本管理員設定。'}
                       </Text>
                     </View>
-                    {realIsOwner && !isAdminMode && (
-                      <TouchableOpacity
-                        style={styles.unlockAdminBtn}
-                        onPress={async () => {
-                          await requireAdminAuth('調整家庭公帳總預算');
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.unlockAdminBtnText}>🔐 驗證解鎖</Text>
-                      </TouchableOpacity>
-                    )}
                   </View>
                 )}
 
@@ -320,18 +308,11 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
                   </View>
                   <Switch
                     value={isEnabled}
-                    onValueChange={async (val) => {
-                      if (!isOwner) {
-                        if (realIsOwner) {
-                          const authed = await requireAdminAuth('調整公帳預算控管');
-                          if (!authed) return;
-                          setIsEnabled(val);
-                        }
-                        return;
-                      }
+                    onValueChange={(val) => {
+                      if (!isOwner) return;
                       setIsEnabled(val);
                     }}
-                    disabled={!realIsOwner}
+                    disabled={!isOwner}
                     trackColor={{ false: '#CBD5E1', true: '#4F46E5' }}
                     thumbColor="#FFFFFF"
                   />

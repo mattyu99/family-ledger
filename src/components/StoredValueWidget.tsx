@@ -34,7 +34,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
 }) => {
   const { isDark, colors } = useTheme();
   const styles = React.useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-  const { paymentAccounts, paymentMethods, topUpAccountBalance, adjustAccountBalance, getMemberById, isOwner, realIsOwner, requireAdminAuth, currentUser, members } = useLedger();
+  const { paymentAccounts, paymentMethods, topUpAccountBalance, adjustAccountBalance, getMemberById, isOwner, realIsOwner, isAdminMode, currentUser, members } = useLedger();
 
   const targetFilteredMember = React.useMemo(() => {
     if (!filterMemberId || filterMemberId === 'all') return undefined;
@@ -360,8 +360,12 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
       return;
     }
 
-    const authed = await requireAdminAuth(`校正【${acc.name}】卡片餘額`);
-    if (!authed) return;
+    if (!isAdminMode) {
+      const msg = `此為【${acc.name}】非本人卡片，目前為日常檢視模式。\n若需校正餘額，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。`;
+      if (Platform.OS === 'web') alert(msg);
+      else Alert.alert('日常檢視模式', msg);
+      return;
+    }
 
     setActiveModalAccount(acc);
     setModalMode('adjust');
@@ -394,9 +398,10 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
         else Alert.alert('權限不足', '只有帳本管理員或持卡人本人才能校正卡片餘額');
         return;
       }
-      if (!isMyCard) {
-        const authed = await requireAdminAuth(`校正【${activeModalAccount.name}】卡片餘額`);
-        if (!authed) return;
+      if (!isMyCard && !isAdminMode) {
+        if (Platform.OS === 'web') alert('權限不足：只有在管理員模式下才能校正非本人卡片餘額');
+        else Alert.alert('日常模式受限', '只有在管理員模式下才能校正非本人卡片餘額');
+        return;
       }
       const success = await adjustAccountBalance(activeModalAccount.id, num);
       if (success) {

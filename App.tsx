@@ -748,10 +748,10 @@ const AppContent: React.FC = () => {
             {realIsOwner ? (
               <TouchableOpacity
                 style={styles.ledgerTitleClickable}
-                onPress={async () => {
+                onPress={() => {
                   if (!isAdminMode) {
-                    const authed = await requireAdminAuth('修改帳本名稱');
-                    if (!authed) return;
+                    showAlert('日常模式受限', '目前為日常檢視模式。如需修改帳本名稱，請先點擊右上方【🛡️ 日常模式】切換為管理員模式。');
+                    return;
                   }
                   setEditLedgerModalVisible(true);
                 }}
@@ -760,7 +760,7 @@ const AppContent: React.FC = () => {
                 <Text style={[styles.ledgerTitle, { color: colors.text.primary }]} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.15}>
                   {isDemoLedger ? currentLedger.name.replace(/\s*\(SWEETHOME\)/i, '') : currentLedger.name}
                 </Text>
-                <Text style={styles.ledgerEditPencil}>✏️</Text>
+                {isAdminMode && <Text style={styles.ledgerEditPencil}>✏️</Text>}
               </TouchableOpacity>
             ) : (
               <Text style={[styles.ledgerTitle, { color: colors.text.primary }]} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.15}>
