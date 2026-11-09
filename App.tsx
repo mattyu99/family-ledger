@@ -719,54 +719,61 @@ const AppContent: React.FC = () => {
       {/* App 內即時溫馨動態泡泡 */}
       <LiveToastBanner toast={liveToast} onDismiss={dismissLiveToast} />
 
-      {/* 頂部導航列 (極簡單行架構) */}
+      {/* 頂部導航列 (溫馨雙行品牌架構) */}
       <View style={[styles.topBar, { backgroundColor: colors.background.card, borderBottomColor: colors.border.default }]}>
-        <View style={styles.topBarLeftGroup}>
-          {/* 大標題：帳本名稱自帶下拉切換 */}
-          <TouchableOpacity
-            style={styles.ledgerTitleClickable}
-            onPress={() => setSwitchLedgerModalVisible(true)}
-            activeOpacity={0.7}
-            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-          >
-            <Text style={[styles.ledgerTitle, { color: colors.text.primary }]} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.15}>
-              {isDemoLedger ? currentLedger.name.replace(/\s*\(SWEETHOME\)/i, '') : currentLedger.name}
+        <View style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
+          {/* 第一行：品牌 Slogan 與全域安全模式開關 */}
+          <View style={styles.topBarSubtitleRow}>
+            <Text style={[styles.ledgerSubtitle, { color: colors.text.muted }]} maxFontSizeMultiplier={1.2}>
+              💖 甜心記帳本 · 陪伴每個溫暖日常
             </Text>
-            <Text style={[styles.ledgerDropdownArrow, isDark && { color: colors.text.secondary }]}>▾</Text>
-            {hasOtherUnread && <View style={styles.ledgerDropdownRedDot} />}
-          </TouchableOpacity>
+            {realIsOwner && (
+              isAdminMode ? (
+                <TouchableOpacity
+                  style={[styles.ownerTopBadge, isDark && { backgroundColor: 'rgba(236, 72, 153, 0.2)', borderColor: 'rgba(236, 72, 153, 0.4)' }]}
+                  onPress={handleSwitchToDailyMemberMode}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                >
+                  <Text style={styles.ownerTopBadgeText} maxFontSizeMultiplier={1.2}>👑 管理員模式</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.dailyModeTopBadge, isDark && { backgroundColor: 'rgba(100, 116, 139, 0.2)', borderColor: 'rgba(100, 116, 139, 0.35)' }]}
+                  onPress={handleSwitchToAdminMode}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                >
+                  <Text style={styles.dailyModeTopBadgeText} maxFontSizeMultiplier={1.2}>🛡️ 日常模式</Text>
+                </TouchableOpacity>
+              )
+            )}
+          </View>
 
-          {Boolean(currentLedger.is_read_only) && (
-            <View style={[styles.topBarReadOnlyBadge, isDark && { backgroundColor: colors.background.cardSubtle }]}>
-              <Text style={styles.topBarReadOnlyBadgeText}>🔒 唯讀</Text>
-            </View>
-          )}
+          {/* 第二行：帳本主標題 (點擊自帶下拉切換) */}
+          <View style={styles.topBarTitleRow}>
+            <TouchableOpacity
+              style={styles.ledgerTitleClickable}
+              onPress={() => setSwitchLedgerModalVisible(true)}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+            >
+              <Text style={[styles.ledgerTitle, { color: colors.text.primary }]} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.15}>
+                {isDemoLedger ? currentLedger.name.replace(/\s*\(SWEETHOME\)/i, '') : currentLedger.name}
+              </Text>
+              <Text style={[styles.ledgerDropdownArrow, isDark && { color: colors.text.secondary }]}>▾</Text>
+              {hasOtherUnread && <View style={styles.ledgerDropdownRedDot} />}
+            </TouchableOpacity>
 
-          {/* 全域安全模式開關 (管理員專屬) */}
-          {realIsOwner && (
-            isAdminMode ? (
-              <TouchableOpacity
-                style={[styles.ownerTopBadge, isDark && { backgroundColor: 'rgba(236, 72, 153, 0.2)', borderColor: 'rgba(236, 72, 153, 0.4)' }]}
-                onPress={handleSwitchToDailyMemberMode}
-                activeOpacity={0.7}
-                hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-              >
-                <Text style={styles.ownerTopBadgeText} maxFontSizeMultiplier={1.2}>👑 管理員模式</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={[styles.dailyModeTopBadge, isDark && { backgroundColor: 'rgba(100, 116, 139, 0.2)', borderColor: 'rgba(100, 116, 139, 0.35)' }]}
-                onPress={handleSwitchToAdminMode}
-                activeOpacity={0.7}
-                hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-              >
-                <Text style={styles.dailyModeTopBadgeText} maxFontSizeMultiplier={1.2}>🛡️ 日常模式</Text>
-              </TouchableOpacity>
-            )
-          )}
+            {Boolean(currentLedger.is_read_only) && (
+              <View style={[styles.topBarReadOnlyBadge, isDark && { backgroundColor: colors.background.cardSubtle }]}>
+                <Text style={styles.topBarReadOnlyBadgeText}>🔒 唯讀</Text>
+              </View>
+            )}
+          </View>
         </View>
 
-        {/* 右側操作按鈕群組 (瘦身防推擠) */}
+        {/* 右側操作按鈕群組 */}
         <View style={styles.topBarRightActions}>
           <TouchableOpacity
             style={[
@@ -782,6 +789,9 @@ const AppContent: React.FC = () => {
           >
             <Text style={styles.themeToggleBtnIcon}>
               {themeMode === 'light' ? '☀️' : themeMode === 'dark' ? '🌙' : '🌓'}
+            </Text>
+            <Text style={[styles.themeToggleBtnText, { color: colors.text.secondary }]} maxFontSizeMultiplier={1.2}>
+              {themeMode === 'light' ? '淺色' : themeMode === 'dark' ? '深色' : '系統'}
             </Text>
           </TouchableOpacity>
 
@@ -850,14 +860,16 @@ const AppContent: React.FC = () => {
               maxFontSizeMultiplier={1.2}
             >
               {isDemoLedger
-                ? '體驗'
-                : historySyncProgress || isRefreshing || isProcessingQueue
-                ? '同步中'
+                ? '本機體驗中'
+                : historySyncProgress
+                ? '歷史同步中...'
+                : isRefreshing || isProcessingQueue
+                ? '同步補傳中...'
                 : pendingOfflineCount > 0
-                ? `${pendingOfflineCount}筆`
+                ? `離線 (${pendingOfflineCount}筆待補傳)`
                 : isCloudSynced
-                ? '同步'
-                : '快取'}
+                ? '雲端即時同步'
+                : '本地離線快取'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -1703,44 +1715,52 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'android' ? 28 : 6,
-    paddingBottom: 6,
+    paddingTop: Platform.OS === 'android' ? 36 : 10,
+    paddingBottom: 10,
     borderBottomWidth: 1,
   },
-  topBarLeftGroup: {
-    flex: 1,
+  topBarSubtitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
+  },
+  ledgerSubtitle: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  topBarTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
     minWidth: 0,
-    marginRight: 8,
   },
   ownerTopBadge: {
     backgroundColor: '#FCE7F3',
     borderColor: '#F472B6',
     borderWidth: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
     flexShrink: 0,
   },
   ownerTopBadgeText: {
     color: '#DB2777',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
   },
   dailyModeTopBadge: {
     backgroundColor: '#F1F5F9',
     borderColor: '#CBD5E1',
     borderWidth: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
     flexShrink: 0,
   },
   dailyModeTopBadgeText: {
     color: '#475569',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
   },
   ledgerTitleClickable: {
@@ -1788,15 +1808,20 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   themeToggleBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 16,
     borderWidth: 1,
+    gap: 4,
   },
   themeToggleBtnIcon: {
-    fontSize: 13,
+    fontSize: 12,
+  },
+  themeToggleBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   syncBadge: {
     flexDirection: 'row',
