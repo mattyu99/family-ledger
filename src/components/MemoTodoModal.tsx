@@ -16,7 +16,7 @@ import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
-import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime } from '../lib/memo';
+import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { HorizontalScrollView } from './HorizontalScrollView';
 
@@ -42,7 +42,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
 }) => {
   const { isDark, colors } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-  const { transactions, getMemberById, toggleMemoSettled, toggleMemoChecklistItem, currentUser } = useLedger();
+  const { transactions, getMemberById, toggleMemoSettled, toggleMemoChecklistItem, updateTransaction, currentUser } = useLedger();
   const [activeTab, setActiveTab] = useState<TodoTab>('all');
   const [scopeFilter, setScopeFilter] = useState<TodoScope>('all');
   const scrollRef = useRef<ScrollView>(null);
@@ -111,26 +111,35 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
     });
   }, [transactions, scopeFilter, currentUser?.id]);
 
-  // 今日或已逾期待辦 (未完成)
+  // 今日或已逾期待辦 (未完成，置頂項目優先排列)
   const todayAndOverdueMemos = useMemo(() => {
-    return allMemos
+    const list = allMemos
       .filter(t => !t.is_settled && !!t.reminder_date && t.reminder_date <= todayYmd)
       .sort((a, b) => (a.reminder_date || '').localeCompare(b.reminder_date || ''));
+    const pinned = list.filter(m => isMemoPinned(m));
+    const unpinned = list.filter(m => !isMemoPinned(m));
+    return [...pinned, ...unpinned];
   }, [allMemos, todayYmd]);
 
-  // 未來到期預告 (未完成)
+  // 未來到期預告 (未完成，置頂項目優先排列)
   const upcomingMemos = useMemo(() => {
-    return allMemos
+    const list = allMemos
       .filter(t => !t.is_settled && !!t.reminder_date && t.reminder_date > todayYmd)
       .sort((a, b) => (a.reminder_date || '').localeCompare(b.reminder_date || ''));
+    const pinned = list.filter(m => isMemoPinned(m));
+    const unpinned = list.filter(m => !isMemoPinned(m));
+    return [...pinned, ...unpinned];
   }, [allMemos, todayYmd]);
 
-  // 日常備忘 (未設提醒日期且未完成)
+  // 日常備忘 (未設提醒日期且未完成，置頂項目優先排列)
   const undatedMemos = useMemo(() => {
-    return allMemos.filter(t => !t.is_settled && !t.reminder_date);
+    const list = allMemos.filter(t => !t.is_settled && !t.reminder_date);
+    const pinned = list.filter(m => isMemoPinned(m));
+    const unpinned = list.filter(m => !isMemoPinned(m));
+    return [...pinned, ...unpinned];
   }, [allMemos]);
 
-  // 已完成辦妥記事 (依辦妥時間 completed_at 降序排序，最新辦妥排在最上方)
+  // 已完成辦妥記事 (依辦妥時間 completed_at 降序排序，最新辦妥排在最上方；辦妥事項完全不置頂)
   const completedMemos = useMemo(() => {
     const getCompletionTimestamp = (item: Transaction): number => {
       const raw = item.completed_at || decodeMemoMerchantTag(item.merchant).completedAt || item.updated_at || item.transacted_at;
@@ -149,9 +158,19 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
       });
   }, [allMemos]);
 
-  // 全部未完成待辦
+  // 全部未完成待辦 (所有未完成之置頂事項統一置頂於榜首)
   const activeMemos = useMemo(() => {
-    return [...todayAndOverdueMemos, ...upcomingMemos, ...undatedMemos];
+    const raw = [...todayAndOverdueMemos, ...upcomingMemos, ...undatedMemos];
+    // 依 id 去重並將置頂項目統一拉至最頂部
+    const seen = new Set<string>();
+    const deduplicated = raw.filter(m => {
+      if (seen.has(m.id)) return false;
+      seen.add(m.id);
+      return true;
+    });
+    const pinned = deduplicated.filter(m => isMemoPinned(m));
+    const unpinned = deduplicated.filter(m => !isMemoPinned(m));
+    return [...pinned, ...unpinned];
   }, [todayAndOverdueMemos, upcomingMemos, undatedMemos]);
 
   // 當前分頁顯示之項目清單
@@ -446,6 +465,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                 const linkedTx = item.linked_transaction_id
                   ? transactions.find(t => t.id === item.linked_transaction_id)
                   : undefined;
+                const isPinned = isMemoPinned(item);
 
                 return (
                   <TouchableOpacity
@@ -453,12 +473,24 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                     style={[
                       styles.itemCard,
                       isCompleted && styles.itemCardCompleted,
+                      isPinned && !isCompleted && styles.itemCardPinned,
+                      isDark && isPinned && !isCompleted && {
+                        backgroundColor: 'rgba(245, 158, 11, 0.08)',
+                        borderColor: 'rgba(245, 158, 11, 0.45)',
+                        borderLeftColor: '#F59E0B',
+                      },
                       isLastViewed && styles.itemCardLastViewed,
                     ]}
                     activeOpacity={0.7}
                     onPress={() => {
                       setLastViewedMemoId(item.id);
                       onEditMemo(item);
+                    }}
+                    onLongPress={async () => {
+                      if (!isCompleted) {
+                        const newPinned = !isPinned;
+                        await updateTransaction(item.id, { is_pinned: newPinned });
+                      }
                     }}
                   >
                     <View style={styles.itemHeaderRow}>
@@ -496,12 +528,19 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                         </Text>
                       </View>
 
-                      {/* 右側：剛才查看高光標籤 + 已辦妥徽章 或 提醒對象膠囊 (全家 / 個人·某某) */}
+                      {/* 右側：剛才查看高光標籤 + 置頂標籤 + 已辦妥徽章 或 提醒對象膠囊 (全家 / 個人·某某) */}
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         {isLastViewed && (
                           <View style={[styles.lastViewedBadge, isDark && styles.lastViewedBadgeDark]}>
                             <Text style={[styles.lastViewedBadgeText, isDark && styles.lastViewedBadgeTextDark]} maxFontSizeMultiplier={1.08}>
                               👁️ 剛才查看
+                            </Text>
+                          </View>
+                        )}
+                        {isPinned && !isCompleted && (
+                          <View style={styles.pinnedBadge}>
+                            <Text style={styles.pinnedBadgeText} maxFontSizeMultiplier={1.08}>
+                              📌 置頂
                             </Text>
                           </View>
                         )}
@@ -925,6 +964,31 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     borderColor: isDark ? colors.border.default : '#E2E8F0',
     borderLeftColor: '#10B981',
     opacity: 0.88,
+  },
+  itemCardPinned: {
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.16)' : '#FFFDF5',
+    borderColor: isDark ? '#F59E0B' : '#FBBF24',
+    borderWidth: 1.5,
+    borderLeftWidth: 5,
+    borderLeftColor: '#F59E0B',
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  pinnedBadge: {
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(245, 158, 11, 0.5)' : '#FDE68A',
+  },
+  pinnedBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: isDark ? '#FDE68A' : '#B45309',
   },
   itemCardLastViewed: {
     borderColor: '#38BDF8',

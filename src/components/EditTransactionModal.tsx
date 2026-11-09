@@ -59,6 +59,7 @@ import {
   formatMemoCompletedTime,
   decodeMemoMerchantTag,
   parseMemoNote,
+  isMemoPinned,
 } from '../lib/memo';
 import {
   CalendarSystem,
@@ -277,6 +278,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     return decoded.reminderCalendar || 'solar';
   });
   const [isSettled, setIsSettled] = useState<boolean>(() => !!transaction?.is_settled);
+  const [isPinned, setIsPinned] = useState<boolean>(() => (transaction ? isMemoPinned(transaction) : false));
   const [completionNote, setCompletionNote] = useState<string>(() => transaction?.completion_note || '');
   const [linkedTxId, setLinkedTxId] = useState<string>(() => transaction?.linked_transaction_id || '');
   const [transactedAt, setTransactedAt] = useState<string>(() => transaction?.transacted_at || new Date().toISOString());
@@ -860,6 +862,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       if (transaction.type === 'memo') {
         setAmount('');
         setNote(stripInvoiceTag(transaction.note || ''));
+        setIsPinned(isMemoPinned(transaction));
         setShowDiscountPanel(false);
         setDiscountAmount('');
       } else {
@@ -1181,6 +1184,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             completed_at: effectiveCompletedAt,
             completion_note: completionNote.trim() || undefined,
             linked_transaction_id: linkedTxId || undefined,
+            is_pinned: isSettled ? false : undefined,
           });
 
           if (success) {
@@ -1227,6 +1231,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           completed_at: isSettled ? (transaction.completed_at || new Date().toISOString()) : undefined,
           completion_note: completionNote.trim() || undefined,
           linked_transaction_id: linkedTxId || undefined,
+          is_pinned: isSettled ? false : isPinned,
         });
 
         if (success) {
@@ -1524,6 +1529,21 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                     </Text>
                   )}
                 </View>
+
+                {/* 📌 置頂重要記事切換 */}
+                {canEdit && !isSettled && (
+                  <View style={styles.memoPinContainer}>
+                    <TouchableOpacity
+                      style={[styles.memoPinToggleBtn, isPinned && styles.memoPinToggleBtnActive]}
+                      onPress={() => setIsPinned(!isPinned)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.memoPinToggleText, isPinned && styles.memoPinToggleTextActive]}>
+                        {isPinned ? '📌 已置頂 (常駐於首頁與待辦總覽最上方)' : '📌 置頂此記事 (常駐首頁榜首)'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
 
                 {/* 辦妥補充說明 / 回報備註 (辦妥時顯示) */}
                 {isSettled && (
@@ -3972,6 +3992,32 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   },
   memoStatusContainer: {
     marginBottom: 12,
+  },
+  memoPinContainer: {
+    marginBottom: 12,
+  },
+  memoPinToggleBtn: {
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F9FAFB',
+    borderWidth: 1.5,
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  memoPinToggleBtnActive: {
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
+    borderColor: '#F59E0B',
+  },
+  memoPinToggleText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text.secondary,
+  },
+  memoPinToggleTextActive: {
+    color: isDark ? '#FDE68A' : '#B45309',
+    fontWeight: '700',
   },
   memoStatusRow: {
     flexDirection: 'row',

@@ -7,7 +7,7 @@ import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { getCategoryIcon } from '../lib/icons';
 import { formatPaymentLabel, parseExpenseDiscount, isTransferToMember } from '../lib/payment';
-import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime } from '../lib/memo';
+import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { stripInvoiceTag } from '../lib/invoice';
 
@@ -17,6 +17,7 @@ interface TransactionItemProps {
   isLastViewed?: boolean;
   onPress?: (transaction: Transaction) => void;
   onCompleteMemo?: (transaction: Transaction) => void;
+  onTogglePinMemo?: (transaction: Transaction) => void;
   onViewImage?: (imageUrl: string, title?: string) => void;
 }
 
@@ -26,6 +27,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
   isLastViewed,
   onPress,
   onCompleteMemo,
+  onTogglePinMemo,
   onViewImage,
 }) => {
   const { getMemberById, getCategoryById, getAccountById, paymentMethods, toggleMemoSettled, toggleMemoChecklistItem, transactions, members, currentUser } = useLedger();
@@ -67,6 +69,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
 
   if (transaction.type === 'memo') {
     const isCompleted = !!transaction.is_settled;
+    const isPinned = isMemoPinned(transaction);
     const decodedMerchant = decodeMemoMerchantTag(transaction.merchant);
     const reminderDate = transaction.reminder_date || decodedMerchant.reminderDate;
     const reminderCal = transaction.reminder_calendar || decodedMerchant.reminderCalendar;
@@ -112,14 +115,16 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
         style={[
           styles.memoCard,
           isCompleted && styles.memoCardCompleted,
+          isPinned && !isCompleted && styles.memoCardPinned,
           isDark && {
-            backgroundColor: isCompleted ? colors.background.card : '#272218',
-            borderColor: isCompleted ? colors.border.default : '#78350F',
+            backgroundColor: isCompleted ? colors.background.card : (isPinned ? 'rgba(245, 158, 11, 0.12)' : '#272218'),
+            borderColor: isCompleted ? colors.border.default : (isPinned ? '#F59E0B' : '#78350F'),
             borderLeftColor: isCompleted ? colors.status.income : '#F59E0B',
           },
           isLastViewed && styles.memoCardLastViewed,
         ]}
         onPress={() => onPress?.(transaction)}
+        onLongPress={() => onTogglePinMemo?.(transaction)}
       >
         <View style={styles.memoHeaderRow}>
           <View style={styles.memoHeaderLeft}>
@@ -166,6 +171,13 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
               <View style={[styles.lastViewedBadge, isDark && styles.lastViewedBadgeDark]}>
                 <Text style={[styles.lastViewedBadgeText, isDark && styles.lastViewedBadgeTextDark]} maxFontSizeMultiplier={1.08}>
                   👁️ 剛才查看
+                </Text>
+              </View>
+            )}
+            {isPinned && !isCompleted && (
+              <View style={[styles.memoPinnedBadge, isDark && styles.memoPinnedBadgeDark]}>
+                <Text style={[styles.memoPinnedBadgeText, isDark && styles.memoPinnedBadgeTextDark]} maxFontSizeMultiplier={1.08}>
+                  📌 置頂
                 </Text>
               </View>
             )}
@@ -916,6 +928,38 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     borderLeftColor: '#10B981',
     opacity: 0.88,
+  },
+  memoCardPinned: {
+    backgroundColor: '#FFFDF5',
+    borderColor: '#F59E0B',
+    borderWidth: 1.5,
+    borderLeftWidth: 5,
+    borderLeftColor: '#F59E0B',
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  memoPinnedBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  memoPinnedBadgeDark: {
+    backgroundColor: 'rgba(245, 158, 11, 0.25)',
+    borderColor: 'rgba(245, 158, 11, 0.5)',
+  },
+  memoPinnedBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#B45309',
+  },
+  memoPinnedBadgeTextDark: {
+    color: '#FDE68A',
   },
   memoHeaderRow: {
     flexDirection: 'row',

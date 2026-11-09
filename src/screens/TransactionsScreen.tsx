@@ -22,7 +22,7 @@ import { StoredValueWidget } from '../components/StoredValueWidget';
 import { HorizontalScrollView } from '../components/HorizontalScrollView';
 import { isTransferToMember } from '../lib/payment';
 import { getRollingPendingBills } from '../lib/recurring';
-import { getLocalDateYmd, parseMemoNote, getRollingMemoDueInfo } from '../lib/memo';
+import { getLocalDateYmd, parseMemoNote, getRollingMemoDueInfo, isMemoPinned } from '../lib/memo';
 import { checkInvoiceWinning } from '../lib/lottery';
 import { getInvoicePeriodKey } from '../lib/invoice';
 
@@ -84,6 +84,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
     autoBackupInterval,
     autoBackupEnabled,
     refreshLedger,
+    updateTransaction,
     paymentAccounts,
     recurringRules,
     getMemberById,
@@ -318,12 +319,88 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
     return { all, financial, memo };
   }, [transactions, filterMonth, filterMemberId, searchQuery, getMemberById, getCategoryById, members, currentUser, paymentAccounts]);
 
-  // 依據篩選條件計算 filteredTransactions
+  // 依據篩選條件計算 filteredTransactions (支援方案 C 智慧分流與方案 1 全家/個人置頂)
   const filteredTransactions = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
 
-    return transactions.filter(t => {
-      if (transactionTypeFilter === 'financial' && t.type === 'memo') return false;
+    // 1. 若篩選為「僅看收支」，直接排除所有 memo（包含置頂）
+    if (transactionTypeFilter === 'financial') {
+      return transactions.filter(t => {
+        if (t.type === 'memo') return false;
+
+        if (filterMonth !== 'all') {
+          if (!t.transacted_at) return false;
+          const d = new Date(t.transacted_at);
+          if (isNaN(d.getTime())) return false;
+          if (/^\d{4}$/.test(filterMonth)) {
+            if (d.getFullYear() !== parseInt(filterMonth, 10)) return false;
+          } else {
+            const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            if (ym !== filterMonth) return false;
+          }
+        }
+
+        if (filterMemberId !== 'all') {
+          const payer = getMemberById(t.paid_by) || t.payer_profile;
+          const targetMember = members.find(m => m.id === filterMemberId) || (currentUser?.id === filterMemberId ? currentUser : undefined);
+          const isTransferIn = isTransferToMember(t, filterMemberId, targetMember?.display_name, paymentAccounts);
+          const isMatch =
+            (payer && payer.id === filterMemberId) ||
+            t.paid_by === filterMemberId ||
+            (targetMember && (payer?.display_name === targetMember.display_name || (t as any).payer_name === targetMember.display_name)) ||
+            isTransferIn;
+          if (!isMatch) return false;
+        }
+
+        if (q) {
+          const mMatch = t.merchant && t.merchant.toLowerCase().includes(q);
+          const nMatch = t.note && t.note.toLowerCase().includes(q);
+          const cat = getCategoryById(t.category_id, t.category);
+          const cMatch = cat && cat.name.toLowerCase().includes(q);
+          if (!mMatch && !nMatch && !cMatch) return false;
+        }
+
+        return true;
+      });
+    }
+
+    // 2. 篩選「全部記錄」或「僅看記事」：
+    // (A) 尋找未完成的置頂記事 (跨月常駐 + 方案 1 全家共享/個人隔離)
+    const pinnedMemos = transactions.filter(t => {
+      if (!isMemoPinned(t)) return false;
+
+      // 成員過濾 (方案 1)
+      if (filterMemberId !== 'all') {
+        const isFamily = !t.reminder_target || t.reminder_target === 'family';
+        if (!isFamily) {
+          // 個人專屬：必須為本人記錄或指名給本人
+          const payer = getMemberById(t.paid_by) || t.payer_profile;
+          const targetMember = members.find(m => m.id === filterMemberId) || (currentUser?.id === filterMemberId ? currentUser : undefined);
+          const isMatch =
+            (payer && payer.id === filterMemberId) ||
+            t.paid_by === filterMemberId ||
+            (targetMember && (payer?.display_name === targetMember.display_name || (t as any).payer_name === targetMember.display_name));
+          if (!isMatch) return false;
+        }
+      }
+
+      // 關鍵字搜尋過濾
+      if (q) {
+        const mMatch = t.merchant && t.merchant.toLowerCase().includes(q);
+        const nMatch = t.note && t.note.toLowerCase().includes(q);
+        const cat = getCategoryById(t.category_id, t.category);
+        const cMatch = cat && cat.name.toLowerCase().includes(q);
+        if (!mMatch && !nMatch && !cMatch) return false;
+      }
+
+      return true;
+    });
+
+    const pinnedIds = new Set(pinnedMemos.map(p => p.id));
+
+    // (B) 一般時間序列常規過濾 (排除已在上方置頂者，避免重複渲染)
+    const normalTransactions = transactions.filter(t => {
+      if (pinnedIds.has(t.id)) return false;
       if (transactionTypeFilter === 'memo' && t.type !== 'memo') return false;
 
       if (filterMonth !== 'all') {
@@ -360,6 +437,9 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
 
       return true;
     });
+
+    // 置頂記事排在最前面
+    return [...pinnedMemos, ...normalTransactions];
   }, [transactions, transactionTypeFilter, filterMonth, filterMemberId, searchQuery, getMemberById, getCategoryById, members, currentUser, paymentAccounts]);
 
   const displayedTransactions = useMemo(() => {
@@ -1439,6 +1519,10 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
               onCompleteMemo={tx => {
                 setLastViewedTxId(tx.id);
                 onOpenMemoCompletion(tx);
+              }}
+              onTogglePinMemo={async tx => {
+                const newPinned = !isMemoPinned(tx);
+                await updateTransaction(tx.id, { is_pinned: newPinned });
               }}
               onViewImage={(url, title) => onViewImage(url, title || '消費收據 / 保固憑證')}
             />

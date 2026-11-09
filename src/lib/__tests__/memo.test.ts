@@ -7,6 +7,8 @@ import {
   parseMemoChecklist,
   toggleChecklistItem,
   getRollingMemoDueInfo,
+  isMemoPinned,
+  toggleMemoPinnedMerchant,
 } from '../memo';
 
 describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
@@ -176,6 +178,48 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
 
       const memoForTransfer = findLinkedMemo(transactions[3]);
       expect(memoForTransfer?.id).toBe('memo-2');
+    });
+  });
+
+  describe('記事置頂與退場機制 (isMemoPinned & toggleMemoPinnedMerchant)', () => {
+    it('應能正確編碼與解碼 pin:1 標籤', () => {
+      const merchant = encodeMemoMerchantTag({
+        reminderDate: '2026-11-20',
+        isPinned: true,
+      });
+      expect(merchant).toContain('pin:1');
+      const decoded = decodeMemoMerchantTag(merchant);
+      expect(decoded.isPinned).toBe(true);
+      expect(decoded.reminderDate).toBe('2026-11-20');
+    });
+
+    it('未辦妥且帶有置頂標記時 isMemoPinned 應傳回 true', () => {
+      const tx = {
+        type: 'memo',
+        is_settled: false,
+        merchant: 'memo|pin:1',
+      };
+      expect(isMemoPinned(tx)).toBe(true);
+    });
+
+    it('核心防呆：一旦事項標記為辦妥 (is_settled: true)，置頂自動解除並傳回 false', () => {
+      const tx = {
+        type: 'memo',
+        is_settled: true,
+        merchant: 'memo|pin:1',
+      };
+      expect(isMemoPinned(tx)).toBe(false);
+    });
+
+    it('切換置頂狀態 toggleMemoPinnedMerchant 應能精準新增與移除 pin:1', () => {
+      const initial = 'remind:2026-11-14|cal:solar';
+      const pinned = toggleMemoPinnedMerchant(initial, true);
+      expect(pinned).toContain('pin:1');
+      expect(decodeMemoMerchantTag(pinned).isPinned).toBe(true);
+
+      const unpinned = toggleMemoPinnedMerchant(pinned, false);
+      expect(unpinned).not.toContain('pin:1');
+      expect(decodeMemoMerchantTag(unpinned).isPinned).toBe(false);
     });
   });
 });

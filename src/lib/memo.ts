@@ -223,7 +223,7 @@ export function getLocalDateYmd(d: Date = new Date()): string {
 
 /**
  * 編碼生活記事之提醒與週期 메타 標籤（存入 merchant 欄位，100% 相容既有雲端資料表）
- * 格式範例：remind:2026-10-25|cal:lunar|rep:lunar_1_15|done:uuid|done_at:2026-10-29T16:30:00.000Z
+ * 格式範例：remind:2026-10-25|cal:lunar|rep:lunar_1_15|pin:1|done:uuid|done_at:2026-10-29T16:30:00.000Z
  */
 export function encodeMemoMerchantTag(options: {
   reminderDate?: string;
@@ -231,8 +231,9 @@ export function encodeMemoMerchantTag(options: {
   reminderRepeat?: MemoRepeatFrequency;
   completedBy?: string;
   completedAt?: string;
+  isPinned?: boolean;
 }): string {
-  const { reminderDate, reminderCalendar, reminderRepeat, completedBy, completedAt } = options;
+  const { reminderDate, reminderCalendar, reminderRepeat, completedBy, completedAt, isPinned } = options;
   const parts: string[] = [];
 
   if (reminderDate && reminderDate.trim()) {
@@ -250,6 +251,10 @@ export function encodeMemoMerchantTag(options: {
     }
   } else {
     parts.push('memo');
+  }
+
+  if (isPinned) {
+    parts.push('pin:1');
   }
 
   if (completedBy && completedBy.trim()) {
@@ -273,11 +278,12 @@ export function decodeMemoMerchantTag(rawMerchant?: string): {
   reminderRepeat?: MemoRepeatFrequency;
   completedBy?: string;
   completedAt?: string;
+  isPinned?: boolean;
 } {
-  if (!rawMerchant) return { isMemo: false };
+  if (!rawMerchant) return { isMemo: false, isPinned: false };
   const trimmed = rawMerchant.trim();
   if (!trimmed.startsWith('remind:') && !trimmed.startsWith('memo')) {
-    return { isMemo: false };
+    return { isMemo: false, isPinned: false };
   }
 
   let reminderDate: string | undefined;
@@ -285,6 +291,7 @@ export function decodeMemoMerchantTag(rawMerchant?: string): {
   let reminderRepeat: MemoRepeatFrequency | undefined;
   let completedBy: string | undefined;
   let completedAt: string | undefined;
+  let isPinned = false;
 
   const segments = trimmed.split('|');
   for (const seg of segments) {
@@ -298,6 +305,8 @@ export function decodeMemoMerchantTag(rawMerchant?: string): {
       if (['once', 'weekly', 'monthly', 'lunar_1_15', 'lunar_2_16', 'yearly'].includes(repVal)) {
         reminderRepeat = repVal;
       }
+    } else if (seg === 'pin:1' || seg === 'pin:true') {
+      isPinned = true;
     } else if (seg.startsWith('done:')) {
       completedBy = seg.slice(5).trim() || undefined;
     } else if (seg.startsWith('done_at:')) {
@@ -316,7 +325,40 @@ export function decodeMemoMerchantTag(rawMerchant?: string): {
     reminderRepeat: reminderDate ? (reminderRepeat || 'once') : undefined,
     completedBy,
     completedAt,
+    isPinned,
   };
+}
+
+/**
+ * 判斷指定項目是否處於有效置頂狀態
+ * 核心防呆：一旦事項標記為辦妥 (is_settled: true)，置頂自動解除並退場！
+ */
+export function isMemoPinned(item?: {
+  type?: string;
+  is_settled?: boolean;
+  is_pinned?: boolean;
+  merchant?: string;
+}): boolean {
+  if (!item || item.type !== 'memo') return false;
+  if (item.is_settled) return false;
+  if (item.is_pinned !== undefined) return Boolean(item.is_pinned);
+  return Boolean(decodeMemoMerchantTag(item.merchant).isPinned);
+}
+
+/**
+ * 切換或設定 merchant 標籤中的置頂狀態
+ */
+export function toggleMemoPinnedMerchant(rawMerchant?: string, targetState?: boolean): string {
+  const decoded = decodeMemoMerchantTag(rawMerchant);
+  const nextPinned = targetState !== undefined ? targetState : !decoded.isPinned;
+  return encodeMemoMerchantTag({
+    reminderDate: decoded.reminderDate,
+    reminderCalendar: decoded.reminderCalendar,
+    reminderRepeat: decoded.reminderRepeat,
+    completedBy: decoded.completedBy,
+    completedAt: decoded.completedAt,
+    isPinned: nextPinned,
+  });
 }
 
 /**

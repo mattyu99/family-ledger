@@ -280,6 +280,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [memoReminderCalendar, setMemoReminderCalendar] = useState<CalendarSystem>('solar');
   const [memoReminderRepeat, setMemoReminderRepeat] = useState<MemoRepeatFrequency>('once');
   const [memoReminderTarget, setMemoReminderTarget] = useState<'family' | 'personal'>('family');
+  const [memoIsPinned, setMemoIsPinned] = useState<boolean>(false);
   const [reminderPickerInitialMode, setReminderPickerInitialMode] = useState<CalendarSystem>('solar');
   const [reminderDatePickerVisible, setReminderDatePickerVisible] = useState<boolean>(false);
   const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
@@ -1193,6 +1194,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         reminder_target: memoReminderDate ? memoReminderTarget : undefined,
         linked_transaction_id: linkedMemoId || undefined,
         transacted_at,
+        is_pinned: memoIsPinned,
       });
 
       if (linkedMemoId && createdTxId) {
@@ -1211,6 +1213,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       setMemoReminderCalendar('solar');
       setMemoReminderRepeat('once');
       setMemoReminderTarget('family');
+      setMemoIsPinned(false);
       setSelectedDate(new Date());
       onSuccess?.(createdTxId);
       onClose();
@@ -2008,6 +2011,19 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       </TouchableOpacity>
                     );
                   })}
+                </View>
+
+                {/* 📌 置頂重要記事切換 */}
+                <View style={styles.memoPinContainer}>
+                  <TouchableOpacity
+                    style={[styles.memoPinToggleBtn, memoIsPinned && styles.memoPinToggleBtnActive]}
+                    onPress={() => setMemoIsPinned(!memoIsPinned)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.memoPinToggleText, memoIsPinned && styles.memoPinToggleTextActive]}>
+                      {memoIsPinned ? '📌 已置頂 (常駐於首頁與待辦總覽最上方)' : '📌 置頂此記事 (常駐首頁榜首)'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </>
             ) : (
@@ -4361,6 +4377,33 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     color: isDark ? colors.text.muted : '#64748B',
     lineHeight: 16,
     marginTop: 2,
+  },
+  memoPinContainer: {
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  memoPinToggleBtn: {
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F9FAFB',
+    borderWidth: 1.5,
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  memoPinToggleBtnActive: {
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
+    borderColor: '#F59E0B',
+  },
+  memoPinToggleText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text.secondary,
+  },
+  memoPinToggleTextActive: {
+    color: isDark ? '#FDE68A' : '#B45309',
+    fontWeight: '700',
   },
   discountToggleChip: {
     backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5',

@@ -125,6 +125,7 @@ interface LedgerContextType {
     reminder_calendar?: CalendarSystem;
     reminder_repeat?: MemoRepeatFrequency;
     reminder_target?: 'family' | 'personal';
+    is_pinned?: boolean;
     completed_by?: string;
     transacted_at?: string;
     payment_method?: PaymentMethod;
@@ -158,6 +159,7 @@ interface LedgerContextType {
       reminder_calendar?: CalendarSystem | null;
       reminder_repeat?: MemoRepeatFrequency | null;
       reminder_target?: 'family' | 'personal' | null;
+      is_pinned?: boolean | null;
       completed_by?: string;
       completed_at?: string;
       completion_note?: string;
@@ -6871,6 +6873,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     reminder_calendar?: CalendarSystem;
     reminder_repeat?: MemoRepeatFrequency;
     reminder_target?: 'family' | 'personal';
+    is_pinned?: boolean;
     completed_by?: string;
     transacted_at?: string;
     payment_method?: PaymentMethod;
@@ -6914,6 +6917,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         reminderCalendar: effectiveReminderCal,
         reminderRepeat: effectiveReminderRep,
         completedBy: data.completed_by,
+        isPinned: Boolean(data.is_pinned),
       });
       if (data.note) {
         const memoTag = extractMemoTag(data.note);
@@ -7017,6 +7021,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       reminder_calendar: effectiveReminderCal,
       reminder_repeat: effectiveReminderRep,
       reminder_target: data.reminder_target || 'family',
+      is_pinned: Boolean(data.is_pinned),
       completed_by: data.completed_by,
       completion_note: data.completion_note || undefined,
       linked_transaction_id: data.linked_transaction_id || undefined,
@@ -7847,6 +7852,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       reminder_calendar?: CalendarSystem | null;
       reminder_repeat?: MemoRepeatFrequency | null;
       reminder_target?: 'family' | 'personal' | null;
+      is_pinned?: boolean | null;
       completed_by?: string;
       completed_at?: string;
       completion_note?: string;
@@ -7883,6 +7889,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       let effectiveCalendar: CalendarSystem | undefined;
       let effectiveRepeat: MemoRepeatFrequency | undefined;
       let effectiveSettled: boolean | undefined;
+      let effectivePinned: boolean | undefined;
 
       let effectiveCompletedAt: string | undefined;
 
@@ -7909,12 +7916,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           : undefined;
         effectiveRepeat = effectiveReminder ? (rawRepeat || 'once') : undefined;
 
+        effectivePinned = data.is_pinned !== undefined
+          ? Boolean(data.is_pinned)
+          : (targetTx?.is_pinned !== undefined ? targetTx.is_pinned : decodeMemoMerchantTag(targetTx?.merchant).isPinned);
+
         cleanMerchant = encodeMemoMerchantTag({
           reminderDate: effectiveReminder,
           reminderCalendar: effectiveCalendar,
           reminderRepeat: effectiveRepeat,
           completedBy: effectiveCompletedBy,
           completedAt: effectiveCompletedAt,
+          isPinned: effectivePinned,
         });
         const currentMemoNote = data.note !== undefined ? data.note : targetTx?.note;
         if (currentMemoNote) {
@@ -8059,6 +8071,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             reminder_calendar: isTargetMemo ? effectiveCalendar : (data.reminder_calendar !== undefined ? (data.reminder_calendar || undefined) : t.reminder_calendar),
             reminder_repeat: isTargetMemo ? effectiveRepeat : (data.reminder_repeat !== undefined ? (data.reminder_repeat || undefined) : t.reminder_repeat),
             reminder_target: isTargetMemo ? (effectiveReminder ? (data.reminder_target || t.reminder_target || 'family') : undefined) : (data.reminder_target !== undefined ? (data.reminder_target || undefined) : t.reminder_target),
+            is_pinned: isTargetMemo ? effectivePinned : t.is_pinned,
             completed_by: rowCompletedBy,
             completed_at: isTargetMemo ? (rowSettled ? effectiveCompletedAt : undefined) : (data.completed_at !== undefined ? data.completed_at : t.completed_at),
             completion_note: data.completion_note !== undefined ? (data.completion_note || undefined) : t.completion_note,
