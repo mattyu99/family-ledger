@@ -1703,7 +1703,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'android' ? 18 : 6,
+    paddingTop: Platform.OS === 'android' ? 28 : 6,
     paddingBottom: 6,
     borderBottomWidth: 1,
   },
