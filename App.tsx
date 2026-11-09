@@ -719,79 +719,54 @@ const AppContent: React.FC = () => {
       {/* App 內即時溫馨動態泡泡 */}
       <LiveToastBanner toast={liveToast} onDismiss={dismissLiveToast} />
 
-      {/* 頂部導航列 */}
+      {/* 頂部導航列 (極簡單行架構) */}
       <View style={[styles.topBar, { backgroundColor: colors.background.card, borderBottomColor: colors.border.default }]}>
-        <View style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
-          <View style={styles.topBarSubtitleRow}>
-            <Text style={[styles.ledgerSubtitle, { color: colors.text.muted }]} maxFontSizeMultiplier={1.2}>家庭共享記帳本</Text>
-            {realIsOwner && (
-              isAdminMode ? (
-                <TouchableOpacity
-                  style={[styles.ownerTopBadge, isDark && { backgroundColor: 'rgba(236, 72, 153, 0.2)', borderColor: 'rgba(236, 72, 153, 0.4)' }]}
-                  onPress={handleSwitchToDailyMemberMode}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.ownerTopBadgeText} maxFontSizeMultiplier={1.2}>👑 管理員模式</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={[styles.dailyModeTopBadge, isDark && { backgroundColor: 'rgba(100, 116, 139, 0.2)', borderColor: 'rgba(100, 116, 139, 0.35)' }]}
-                  onPress={handleSwitchToAdminMode}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.dailyModeTopBadgeText} maxFontSizeMultiplier={1.2}>🛡️ 日常模式</Text>
-                </TouchableOpacity>
-              )
-            )}
-          </View>
-          <View style={styles.topBarTitleRow}>
-            {realIsOwner ? (
+        <View style={styles.topBarLeftGroup}>
+          {/* 大標題：帳本名稱自帶下拉切換 */}
+          <TouchableOpacity
+            style={styles.ledgerTitleClickable}
+            onPress={() => setSwitchLedgerModalVisible(true)}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+          >
+            <Text style={[styles.ledgerTitle, { color: colors.text.primary }]} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.15}>
+              {isDemoLedger ? currentLedger.name.replace(/\s*\(SWEETHOME\)/i, '') : currentLedger.name}
+            </Text>
+            <Text style={[styles.ledgerDropdownArrow, isDark && { color: colors.text.secondary }]}>▾</Text>
+            {hasOtherUnread && <View style={styles.ledgerDropdownRedDot} />}
+          </TouchableOpacity>
+
+          {Boolean(currentLedger.is_read_only) && (
+            <View style={[styles.topBarReadOnlyBadge, isDark && { backgroundColor: colors.background.cardSubtle }]}>
+              <Text style={styles.topBarReadOnlyBadgeText}>🔒 唯讀</Text>
+            </View>
+          )}
+
+          {/* 全域安全模式開關 (管理員專屬) */}
+          {realIsOwner && (
+            isAdminMode ? (
               <TouchableOpacity
-                style={styles.ledgerTitleClickable}
-                onPress={() => {
-                  if (!isAdminMode) {
-                    showAlert('日常模式受限', '目前為日常檢視模式。如需修改帳本名稱，請先點擊右上方【🛡️ 日常模式】切換為管理員模式。');
-                    return;
-                  }
-                  setEditLedgerModalVisible(true);
-                }}
+                style={[styles.ownerTopBadge, isDark && { backgroundColor: 'rgba(236, 72, 153, 0.2)', borderColor: 'rgba(236, 72, 153, 0.4)' }]}
+                onPress={handleSwitchToDailyMemberMode}
                 activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
               >
-                <Text style={[styles.ledgerTitle, { color: colors.text.primary }]} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.15}>
-                  {isDemoLedger ? currentLedger.name.replace(/\s*\(SWEETHOME\)/i, '') : currentLedger.name}
-                </Text>
-                {isAdminMode && <Text style={styles.ledgerEditPencil}>✏️</Text>}
+                <Text style={styles.ownerTopBadgeText} maxFontSizeMultiplier={1.2}>👑 管理員模式</Text>
               </TouchableOpacity>
             ) : (
-              <Text style={[styles.ledgerTitle, { color: colors.text.primary }]} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.15}>
-                {isDemoLedger ? currentLedger.name.replace(/\s*\(SWEETHOME\)/i, '') : currentLedger.name}
-              </Text>
-            )}
-
-            {Boolean(currentLedger.is_read_only) && (
-              <View style={[styles.topBarReadOnlyBadge, isDark && { backgroundColor: colors.background.cardSubtle }]}>
-                <Text style={styles.topBarReadOnlyBadgeText}>🔒 唯讀</Text>
-              </View>
-            )}
-
-            {(ledgers.length > 1 || (isDemoLedger && ledgers.length >= 1)) && (
               <TouchableOpacity
-                style={[
-                  styles.switchLedgerTopBadge,
-                  isDark && { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default },
-                  hasOtherUnread && styles.switchLedgerTopBadgeUnread,
-                ]}
-                onPress={() => setSwitchLedgerModalVisible(true)}
+                style={[styles.dailyModeTopBadge, isDark && { backgroundColor: 'rgba(100, 116, 139, 0.2)', borderColor: 'rgba(100, 116, 139, 0.35)' }]}
+                onPress={handleSwitchToAdminMode}
                 activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
               >
-                <Text style={[styles.switchLedgerTopBadgeText, isDark && { color: colors.text.secondary }]} maxFontSizeMultiplier={1.1}>切換 ▾</Text>
-                {hasOtherUnread && <View style={styles.topBadgeRedDot} />}
+                <Text style={styles.dailyModeTopBadgeText} maxFontSizeMultiplier={1.2}>🛡️ 日常模式</Text>
               </TouchableOpacity>
-            )}
-          </View>
+            )
+          )}
         </View>
 
-        {/* 右側操作按鈕群組 */}
+        {/* 右側操作按鈕群組 (瘦身防推擠) */}
         <View style={styles.topBarRightActions}>
           <TouchableOpacity
             style={[
@@ -803,13 +778,10 @@ const AppContent: React.FC = () => {
             ]}
             onPress={toggleTheme}
             activeOpacity={0.7}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
           >
             <Text style={styles.themeToggleBtnIcon}>
               {themeMode === 'light' ? '☀️' : themeMode === 'dark' ? '🌙' : '🌓'}
-            </Text>
-            <Text style={[styles.themeToggleBtnText, { color: colors.text.secondary }]}>
-              {themeMode === 'light' ? '淺色' : themeMode === 'dark' ? '深色' : '系統'}
             </Text>
           </TouchableOpacity>
 
@@ -855,6 +827,7 @@ const AppContent: React.FC = () => {
               handleRefresh();
             }}
             activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
           >
             <Text style={styles.syncDot}>
               {isDemoLedger
@@ -877,16 +850,14 @@ const AppContent: React.FC = () => {
               maxFontSizeMultiplier={1.2}
             >
               {isDemoLedger
-                ? '本機體驗中'
-                : historySyncProgress
-                ? '歷史同步中...'
-                : isRefreshing || isProcessingQueue
-                ? '同步補傳中...'
+                ? '體驗'
+                : historySyncProgress || isRefreshing || isProcessingQueue
+                ? '同步中'
                 : pendingOfflineCount > 0
-                ? `離線 (${pendingOfflineCount}筆待補傳)`
+                ? `${pendingOfflineCount}筆`
                 : isCloudSynced
-                ? '雲端即時同步'
-                : '本地離線快取'}
+                ? '同步'
+                : '快取'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -1732,56 +1703,49 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'android' ? 36 : 10,
+    paddingTop: Platform.OS === 'android' ? Math.max(StatusBar.currentHeight || 0, 36) + 4 : 10,
     paddingBottom: 10,
     borderBottomWidth: 1,
   },
-  topBarSubtitleRow: {
+  topBarLeftGroup: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-  },
-  ledgerSubtitle: {
-    fontSize: 11,
-    fontWeight: '500',
+    gap: 8,
+    minWidth: 0,
+    marginRight: 8,
   },
   ownerTopBadge: {
     backgroundColor: '#FCE7F3',
     borderColor: '#F472B6',
     borderWidth: 1,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    flexShrink: 0,
   },
   ownerTopBadgeText: {
     color: '#DB2777',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
   },
   dailyModeTopBadge: {
     backgroundColor: '#F1F5F9',
     borderColor: '#CBD5E1',
     borderWidth: 1,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    flexShrink: 0,
   },
   dailyModeTopBadgeText: {
     color: '#475569',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
-  },
-  topBarTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 2,
-    minWidth: 0,
   },
   ledgerTitleClickable: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
     flexShrink: 1,
     minWidth: 0,
   },
@@ -1790,10 +1754,21 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     flexShrink: 1,
   },
-  ledgerEditPencil: {
+  ledgerDropdownArrow: {
     fontSize: 12,
-    opacity: 0.6,
+    fontWeight: '700',
+    color: '#64748B',
+    marginLeft: 3,
+    marginTop: 1,
     flexShrink: 0,
+  },
+  ledgerDropdownRedDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#EF4444',
+    marginLeft: 2,
+    marginTop: -8,
   },
   topBarReadOnlyBadge: {
     backgroundColor: '#F1F5F9',
@@ -1807,55 +1782,21 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
   },
-  switchLedgerTopBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderColor: '#CBD5E1',
-    borderWidth: 1,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 12,
-    position: 'relative',
-    flexShrink: 0,
-  },
-  switchLedgerTopBadgeUnread: {
-    borderColor: '#EF4444',
-  },
-  switchLedgerTopBadgeText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#475569',
-  },
-  topBadgeRedDot: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#EF4444',
-  },
   topBarRightActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
   themeToggleBtn: {
-    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 16,
     borderWidth: 1,
-    gap: 4,
   },
   themeToggleBtnIcon: {
-    fontSize: 12,
-  },
-  themeToggleBtnText: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 13,
   },
   syncBadge: {
     flexDirection: 'row',
