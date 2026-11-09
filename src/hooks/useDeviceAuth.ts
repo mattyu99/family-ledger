@@ -56,7 +56,7 @@ export function useDeviceAuth({
   const isOwner = userRole === 'owner' || userRole === 'admin';
   const effectiveIsOwner = isPreviewMode
     ? (previewMember?.role === 'owner' || previewMember?.role === 'admin')
-    : isOwner;
+    : (isOwner && isAdminMode);
   const isCurrentUserLocked = Boolean(currentUser?.is_locked);
 
   const startMemberPreview = useCallback((member: Profile) => {
@@ -82,7 +82,7 @@ export function useDeviceAuth({
   }, [currentLedger, adminPin]);
 
   // 🛡️ 現代化生物辨識管理員提權：僅限雲端核准之管理員，經指紋/Face ID 本人驗證後秒開特權
-  const enableAdminModeWithBiometrics = useCallback(async (): Promise<{ success: boolean; fallbackToPin?: boolean; message?: string }> => {
+  const enableAdminModeWithBiometrics = useCallback(async (customPrompt?: string): Promise<{ success: boolean; fallbackToPin?: boolean; message?: string }> => {
     // 1. 嚴格權限檢查：當前成員是否在該帳本名冊中具備管理員資格
     if (!isOwner) {
       return {
@@ -111,7 +111,7 @@ export function useDeviceAuth({
 
     // 3. 喚起生物辨識或手機鎖屏密碼驗證
     const res = await authenticateWithBiometrics(
-      `請驗證 ${cap.biometryType} 以啟用家庭公帳管理員模式`,
+      customPrompt || `請驗證 ${cap.biometryType} 以啟用家庭公帳管理員模式`,
       '使用手機鎖屏密碼驗證'
     );
 
@@ -129,6 +129,48 @@ export function useDeviceAuth({
   const disableAdminMode = useCallback(() => {
     setIsAdminMode(false);
   }, []);
+
+  // 🛡️ 現代化就地即時授權輔助函式（Just-In-Time Authorization）
+  // 處於 10 分鐘寬限期內直接放行；未解鎖則喚起生物辨識提權
+  const requireAdminAuth = useCallback(async (actionDesc?: string): Promise<boolean> => {
+    if (isAdminMode) {
+      return true;
+    }
+    if (!isOwner) {
+      safeAlert('權限不足', '此操作涉及全家設定，僅限家庭帳本管理員執行。');
+      return false;
+    }
+    const prompt = actionDesc ? `請驗證身分以${actionDesc}` : '請驗證身分以授權管理全家項目';
+    const res = await enableAdminModeWithBiometrics(prompt);
+    if (res.success) {
+      return true;
+    }
+    if (res.fallbackToPin) {
+      safeAlert('需驗證安全碼', res.message || '請使用帳本應急安全碼驗證');
+    } else if (res.message) {
+      safeAlert('身分驗證未通過', res.message);
+    }
+    return false;
+  }, [isAdminMode, isOwner, enableAdminModeWithBiometrics]);
+
+  // 🛡️ 管理員授權逾期自動降級機制（10 分鐘操作寬限期）
+  // 僅以純計時器計算操作寬限，絕不因跳出 App (如選取備份檔/發票 CSV) 而誤殺降級
+  useEffect(() => {
+    if (!isAdminMode) return;
+
+    const timeoutId = setTimeout(() => {
+      setIsAdminMode(false);
+      triggerLiveToast?.({
+        title: '🔒 管理員授權已到期',
+        message: '已自動安全鎖回日常成員模式',
+        createdAt: Date.now(),
+      });
+    }, 10 * 60 * 1000);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [isAdminMode, triggerLiveToast]);
 
   const updateAdminPin = useCallback(async (newPin: string): Promise<boolean> => {
     const clean = newPin.trim();
@@ -1032,6 +1074,7 @@ export function useDeviceAuth({
     enableAdminMode,
     enableAdminModeWithBiometrics,
     disableAdminMode,
+    requireAdminAuth,
     previewMember,
     setPreviewMember,
     isPreviewMode,

@@ -118,6 +118,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     isOwner,
     realIsOwner,
     isAdminMode,
+    requireAdminAuth,
     disableAdminMode,
     enableAdminModeWithBiometrics,
     memberDevices,
@@ -536,10 +537,16 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             >
               <Text style={styles.allowanceQuickBtnText} maxFontSizeMultiplier={1.08}>🎁 撥零用錢</Text>
             </TouchableOpacity>
-            {isOwner && (
+            {realIsOwner && (
               <TouchableOpacity
                 style={styles.addMemberBtn}
-                onPress={onOpenAddMemberModal}
+                onPress={async () => {
+                  if (!isAdminMode) {
+                    const authed = await requireAdminAuth('新增家庭成員');
+                    if (!authed) return;
+                  }
+                  onOpenAddMemberModal();
+                }}
                 activeOpacity={0.7}
               >
                 <Text style={styles.addMemberBtnText}>＋ 新增成員</Text>
@@ -666,17 +673,17 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           </View>
           <View style={[
             styles.roleBadge,
-            isOwner
+            realIsOwner
               ? { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7' }
               : { backgroundColor: isDark ? '#334155' : '#E2E8F0' },
           ]}>
             <Text style={[
               styles.roleBadgeText,
-              isOwner
+              realIsOwner
                 ? { color: isDark ? '#FBBF24' : '#B45309' }
                 : { color: isDark ? '#CBD5E1' : '#475569' },
             ]}>
-              {isOwner ? '👑 管理員' : '👤 一般成員'}
+              {realIsOwner ? '👑 管理員' : '👤 一般成員'}
             </Text>
           </View>
         </View>
@@ -700,18 +707,28 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             <Text style={styles.copyLinkBtnText}>📋 複製專屬邀請連結 (傳 LINE 給家人)</Text>
           </TouchableOpacity>
 
-          {isOwner && (
+          {realIsOwner && (
             <View style={styles.ownerControlsRow}>
               <TouchableOpacity
                 style={[styles.ownerControlBtn, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}
-                onPress={onOpenEditLedgerModal}
+                onPress={async () => {
+                  if (!isAdminMode) {
+                    const authed = await requireAdminAuth('修改帳本名稱');
+                    if (!authed) return;
+                  }
+                  onOpenEditLedgerModal();
+                }}
               >
                 <Text style={[styles.ownerControlBtnText, { color: colors.text.primary }]}>✏️ 帳本更名</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.ownerControlBtn, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}
-                onPress={() => {
+                onPress={async () => {
+                  if (!isAdminMode) {
+                    const authed = await requireAdminAuth('重新產生邀請碼');
+                    if (!authed) return;
+                  }
                   showConfirm(
                     '重新產生邀請碼',
                     '重新產生後，舊代碼將會作廢。確定要產生全新的一組隨機邀請碼嗎？',
@@ -727,7 +744,13 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
 
               <TouchableOpacity
                 style={[styles.ownerControlBtn, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}
-                onPress={onOpenCustomCodeModal}
+                onPress={async () => {
+                  if (!isAdminMode) {
+                    const authed = await requireAdminAuth('自訂家庭邀請碼');
+                    if (!authed) return;
+                  }
+                  onOpenCustomCodeModal();
+                }}
               >
                 <Text style={[styles.ownerControlBtnText, { color: colors.text.primary }]}>✏️ 自訂代碼</Text>
               </TouchableOpacity>
@@ -735,7 +758,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           )}
 
           {/* 帳本應急救援安全碼 (僅 Owner 可見) */}
-          {isOwner && (
+          {realIsOwner && (
             <View style={[styles.pinSectionWrapper, { borderTopColor: colors.border.default }]}>
               <View style={styles.pinHeaderRow}>
                 <Text style={[styles.pinHeaderTitle, { color: colors.text.primary }]}>🚨 帳本應急救援安全碼</Text>
@@ -1719,30 +1742,34 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
 
         <TouchableOpacity
           style={[styles.restoreEntryBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
-          onPress={() => {
-            if (!isOwner) {
+          onPress={async () => {
+            if (!realIsOwner) {
               showAlert(
                 '🔒 僅限管理員執行',
                 '回復備份具有覆蓋家庭帳本之重大影響，僅限帳本管理員執行。\n若需回復資料，請洽詢家庭管理員協助。'
               );
               return;
             }
+            if (!isAdminMode) {
+              const authed = await requireAdminAuth('從備份檔回復資料');
+              if (!authed) return;
+            }
             onOpenExportModal('restore');
           }}
-          activeOpacity={isOwner ? 0.8 : 0.6}
+          activeOpacity={realIsOwner ? 0.8 : 0.6}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
             <Text style={[styles.restoreEntryBtnText, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              {isOwner ? '📥 從備份檔回復資料 (還原)' : '🔒 從備份檔回復資料 (僅管理員)'}
+              {realIsOwner ? '📥 從備份檔回復資料 (還原)' : '🔒 從備份檔回復資料 (僅管理員)'}
             </Text>
-            {!isOwner && (
+            {!realIsOwner && (
               <View style={styles.adminOnlyMiniBadge}>
                 <Text style={styles.adminOnlyMiniBadgeText}>管理員</Text>
               </View>
             )}
           </View>
           <Text style={[styles.restoreEntryBtnSub, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            {isOwner
+            {realIsOwner
               ? '支援上傳 .json 備份檔或直接貼上代碼安全還原'
               : '此操作具有覆蓋全帳本之影響，需管理員權限'}
           </Text>
@@ -1766,10 +1793,16 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
         </TouchableOpacity>
 
         {/* 👑 管理員專屬：☁️ 雲端帳本總管入口 */}
-        {(isAdminMode || isOwner) && (
+        {realIsOwner && (
           <TouchableOpacity
             style={[styles.restoreEntryBtn, { backgroundColor: isDark ? '#1E3A8A22' : '#EFF6FF', borderColor: isDark ? '#1E40AF' : '#BFDBFE', marginTop: 10 }]}
-            onPress={onOpenCloudLedgerManager}
+            onPress={async () => {
+              if (!isAdminMode) {
+                const authed = await requireAdminAuth('開啟雲端帳本總管');
+                if (!authed) return;
+              }
+              onOpenCloudLedgerManager();
+            }}
             activeOpacity={0.8}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>

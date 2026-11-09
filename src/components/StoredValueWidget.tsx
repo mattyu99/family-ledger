@@ -34,7 +34,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
 }) => {
   const { isDark, colors } = useTheme();
   const styles = React.useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-  const { paymentAccounts, paymentMethods, topUpAccountBalance, adjustAccountBalance, getMemberById, isOwner, currentUser, members } = useLedger();
+  const { paymentAccounts, paymentMethods, topUpAccountBalance, adjustAccountBalance, getMemberById, isOwner, realIsOwner, requireAdminAuth, currentUser, members } = useLedger();
 
   const targetFilteredMember = React.useMemo(() => {
     if (!filterMemberId || filterMemberId === 'all') return undefined;
@@ -345,13 +345,24 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
     return `💡 將建立內部轉帳明細：【${activeModalAccount?.name}】餘額增加 +NT$ ${formattedAmount}，從【${currentMethodObj?.icon || ''} ${currentMethodObj?.name || '其他出資管道'}】扣款，且不重複計入家庭總支出！`;
   };
 
-  const handleOpenAdjust = (acc: PaymentAccount) => {
+  const handleOpenAdjust = async (acc: PaymentAccount) => {
     const isMyCard = isMatchedToCurrentUser(acc.user_id);
-    if (!isOwner && !isMyCard) {
+    if (isMyCard) {
+      setActiveModalAccount(acc);
+      setModalMode('adjust');
+      setCustomAmount(String(acc.balance));
+      return;
+    }
+
+    if (!realIsOwner) {
       if (Platform.OS === 'web') alert('權限不足：只有帳本管理員或持卡人本人才能校正卡片餘額');
       else Alert.alert('權限不足', '只有帳本管理員或持卡人本人才能校正卡片餘額');
       return;
     }
+
+    const authed = await requireAdminAuth(`校正【${acc.name}】卡片餘額`);
+    if (!authed) return;
+
     setActiveModalAccount(acc);
     setModalMode('adjust');
     setCustomAmount(String(acc.balance));
@@ -378,10 +389,14 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
       }
     } else {
       const isMyCard = isMatchedToCurrentUser(activeModalAccount.user_id);
-      if (!isOwner && !isMyCard) {
+      if (!isMyCard && !realIsOwner) {
         if (Platform.OS === 'web') alert('權限不足：只有帳本管理員或持卡人本人才能校正卡片餘額');
         else Alert.alert('權限不足', '只有帳本管理員或持卡人本人才能校正卡片餘額');
         return;
+      }
+      if (!isMyCard) {
+        const authed = await requireAdminAuth(`校正【${activeModalAccount.name}】卡片餘額`);
+        if (!authed) return;
       }
       const success = await adjustAccountBalance(activeModalAccount.id, num);
       if (success) {

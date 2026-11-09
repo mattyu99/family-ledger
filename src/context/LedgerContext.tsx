@@ -352,6 +352,7 @@ interface LedgerContextType {
   enableAdminMode: (pin: string) => { success: boolean; message?: string };
   enableAdminModeWithBiometrics: () => Promise<{ success: boolean; fallbackToPin?: boolean; message?: string }>;
   disableAdminMode: () => void;
+  requireAdminAuth: (actionDesc?: string) => Promise<boolean>;
   isAdminUnlocked: boolean;
   setIsAdminUnlocked: (unlocked: boolean) => void;
   unlockAdmin: (pin: string) => { success: boolean; message?: string };
@@ -749,6 +750,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     enableAdminMode,
     enableAdminModeWithBiometrics,
     disableAdminMode,
+    requireAdminAuth,
     previewMember,
     setPreviewMember,
     isPreviewMode,
@@ -9111,6 +9113,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         enableAdminMode,
         enableAdminModeWithBiometrics,
         disableAdminMode,
+        requireAdminAuth,
         isAdminUnlocked: isAdminMode,
         setIsAdminUnlocked: setIsAdminMode,
         unlockAdmin: enableAdminMode,

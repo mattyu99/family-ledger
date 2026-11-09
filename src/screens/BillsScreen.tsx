@@ -34,6 +34,9 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
   const {
     currentUser,
     isOwner,
+    realIsOwner,
+    isAdminMode,
+    requireAdminAuth,
     paymentAccounts,
     recurringRules,
     paymentMethods,
@@ -189,12 +192,16 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
             )}
             <TouchableOpacity
               style={styles.manageCategoryBtn}
-              onPress={() => {
+              onPress={async () => {
+                if (billsScope === 'all' && !isAdminMode) {
+                  const authed = await requireAdminAuth('管理全家定期扣款規則');
+                  if (!authed) return;
+                }
                 onOpenRecurringModal(billsScope, undefined, 'bills');
               }}
             >
               <Text style={styles.manageCategoryBtnText} maxFontSizeMultiplier={1.2}>
-                {billsScope === 'my' || isOwner ? '⚙️ 管理規則' : '👀 查看規則'}
+                {billsScope === 'my' || isOwner ? '⚙️ 管理規則' : (realIsOwner ? '🔒 管理規則' : '👀 查看規則')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -320,10 +327,16 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.manageCategoryBtn}
-              onPress={() => onOpenAccountsManageModal(billsScope)}
+              onPress={async () => {
+                if (billsScope === 'all' && !isAdminMode) {
+                  const authed = await requireAdminAuth('管理全家支付卡片');
+                  if (!authed) return;
+                }
+                onOpenAccountsManageModal(billsScope);
+              }}
             >
               <Text style={styles.manageCategoryBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                {billsScope === 'my' || isOwner ? '⚙️ 管理' : '👀 查看'}
+                {billsScope === 'my' || isOwner ? '⚙️ 管理' : (realIsOwner ? '🔒 管理' : '👀 查看')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -428,10 +441,16 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
           </View>
           <TouchableOpacity
             style={styles.manageCategoryBtn}
-            onPress={onOpenPaymentMethodsModal}
+            onPress={async () => {
+              if (!isAdminMode) {
+                const authed = await requireAdminAuth('管理全家常用付款方式');
+                if (!authed) return;
+              }
+              onOpenPaymentMethodsModal();
+            }}
           >
             <Text style={styles.manageCategoryBtnText} maxFontSizeMultiplier={1.2}>
-              {isOwner ? '⚙️ 管理付款方式' : '👀 查看付款方式'}
+              {isOwner ? '⚙️ 管理付款方式' : (realIsOwner ? '🔒 管理付款方式' : '👀 查看付款方式')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -441,7 +460,13 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
             <TouchableOpacity
               key={m.id}
               style={[styles.paymentAccountPreviewChip, { borderColor: `${m.color || '#3B82F6'}45` }]}
-              onPress={onOpenPaymentMethodsModal}
+              onPress={async () => {
+                if (!isAdminMode) {
+                  const authed = await requireAdminAuth('管理全家常用付款方式');
+                  if (!authed) return;
+                }
+                onOpenPaymentMethodsModal();
+              }}
               activeOpacity={0.7}
             >
               <Text style={styles.paymentAccountPreviewIcon}>{m.icon}</Text>
@@ -471,10 +496,16 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
           </View>
           <TouchableOpacity
             style={styles.manageCategoryBtn}
-            onPress={onOpenCategoryModal}
+            onPress={async () => {
+              if (!isAdminMode) {
+                const authed = await requireAdminAuth('管理全家記帳分類');
+                if (!authed) return;
+              }
+              onOpenCategoryModal();
+            }}
           >
             <Text style={styles.manageCategoryBtnText} maxFontSizeMultiplier={1.2}>
-              {isOwner ? '⚙️ 管理分類' : '👀 查看分類'}
+              {isOwner ? '⚙️ 管理分類' : (realIsOwner ? '🔒 管理分類' : '👀 查看分類')}
             </Text>
           </TouchableOpacity>
         </View>
