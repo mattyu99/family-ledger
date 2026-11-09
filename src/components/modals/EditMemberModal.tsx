@@ -60,6 +60,8 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
     startCurrentMemberPreview,
     exitMemberPreview,
     switchCurrentUser,
+    isAdminMode,
+    requireAdminAuth,
   } = useLedger();
 
   const [nameInput, setNameInput] = useState('');
@@ -519,7 +521,11 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
                 {!targetMember.is_locked && (
                   <TouchableOpacity
                     style={[styles.modalPreviewBtn, { marginTop: 8, backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF', borderColor: isDark ? '#6366F1' : '#C7D2FE' }]}
-                    onPress={() => {
+                    onPress={async () => {
+                      if (!isAdminMode) {
+                        const authed = await requireAdminAuth(`切換身分為「${targetMember.display_name}」`);
+                        if (!authed) return;
+                      }
                       showConfirm(
                         '切換本機身分',
                         `確定要將本機在此帳本的身分切換為「${targetMember.display_name}」嗎？\n\n切換後，此手機記帳付款人與生活待辦將對齊「${targetMember.display_name}」。`,
@@ -609,7 +615,11 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
                     <Text style={styles.formLabel}>移除家庭成員</Text>
                     <TouchableOpacity
                       style={styles.modalDeleteBtn}
-                      onPress={() => {
+                      onPress={async () => {
+                        if (!isAdminMode) {
+                          const authed = await requireAdminAuth(`從家庭名冊移除「${targetMember.display_name}」`);
+                          if (!authed) return;
+                        }
                         onClose();
                         const paidTxs = transactions.filter(
                           t => (getMemberById(t.paid_by)?.id || t.paid_by) === targetMember.id

@@ -125,6 +125,7 @@ const AppContent: React.FC = () => {
     hasJoinedLedger,
     isAdminMode,
     disableAdminMode,
+    requireAdminAuth,
     isCloudSynced,
     historySyncProgress,
     refreshLedger,
@@ -187,13 +188,38 @@ const AppContent: React.FC = () => {
     }
   };
 
+  // 切換為管理員模式 (頂部總開關)
+  const handleSwitchToAdminMode = async () => {
+    const authed = await requireAdminAuth('啟用管理員模式');
+    if (authed) {
+      triggerLiveToast({
+        id: `admin-mode-${Date.now()}`,
+        type: 'info',
+        actorName: '系統管理',
+        avatar: '👑',
+        title: '👑 管理員模式已啟用',
+        message: '已解除全域管理防護，可自由維護帳本、卡片與設定（10分鐘內有效）',
+        createdAt: Date.now(),
+      });
+    }
+  };
+
   // 切回日常成員模式
   const handleSwitchToDailyMemberMode = () => {
     showConfirm(
       '切回日常成員模式',
-      '確定要切回日常成員模式嗎？\n切回後所有管理專屬按鈕將自動隱藏，讓日常記帳更安心防誤觸。',
+      '確定要切回日常成員模式嗎？\n切回後所有全家管理設定將自動上鎖保護，日常記帳更安心防誤觸。',
       () => {
         disableAdminMode();
+        triggerLiveToast({
+          id: `daily-mode-${Date.now()}`,
+          type: 'info',
+          actorName: '系統管理',
+          avatar: '🛡️',
+          title: '🛡️ 已切回日常模式',
+          message: '全家公用設定已安全上鎖保護',
+          createdAt: Date.now(),
+        });
       }
     );
   };
@@ -698,21 +724,37 @@ const AppContent: React.FC = () => {
         <View style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
           <View style={styles.topBarSubtitleRow}>
             <Text style={[styles.ledgerSubtitle, { color: colors.text.muted }]} maxFontSizeMultiplier={1.2}>家庭共享記帳本</Text>
-            {isAdminMode && (
-              <TouchableOpacity
-                style={[styles.ownerTopBadge, isDark && { backgroundColor: 'rgba(236, 72, 153, 0.2)', borderColor: 'rgba(236, 72, 153, 0.4)' }]}
-                onPress={handleSwitchToDailyMemberMode}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.ownerTopBadgeText} maxFontSizeMultiplier={1.2}>👑 管理員模式</Text>
-              </TouchableOpacity>
+            {realIsOwner && (
+              isAdminMode ? (
+                <TouchableOpacity
+                  style={[styles.ownerTopBadge, isDark && { backgroundColor: 'rgba(236, 72, 153, 0.2)', borderColor: 'rgba(236, 72, 153, 0.4)' }]}
+                  onPress={handleSwitchToDailyMemberMode}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.ownerTopBadgeText} maxFontSizeMultiplier={1.2}>👑 管理員模式</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.dailyModeTopBadge, isDark && { backgroundColor: 'rgba(100, 116, 139, 0.2)', borderColor: 'rgba(100, 116, 139, 0.35)' }]}
+                  onPress={handleSwitchToAdminMode}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.dailyModeTopBadgeText} maxFontSizeMultiplier={1.2}>🛡️ 日常模式</Text>
+                </TouchableOpacity>
+              )
             )}
           </View>
           <View style={styles.topBarTitleRow}>
-            {isOwner ? (
+            {realIsOwner ? (
               <TouchableOpacity
                 style={styles.ledgerTitleClickable}
-                onPress={() => setEditLedgerModalVisible(true)}
+                onPress={async () => {
+                  if (!isAdminMode) {
+                    const authed = await requireAdminAuth('修改帳本名稱');
+                    if (!authed) return;
+                  }
+                  setEditLedgerModalVisible(true);
+                }}
                 activeOpacity={0.7}
               >
                 <Text style={[styles.ledgerTitle, { color: colors.text.primary }]} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.15}>
@@ -1715,6 +1757,19 @@ const styles = StyleSheet.create({
     color: '#DB2777',
     fontSize: 10,
     fontWeight: '700',
+  },
+  dailyModeTopBadge: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#CBD5E1',
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  dailyModeTopBadgeText: {
+    color: '#475569',
+    fontSize: 10,
+    fontWeight: '600',
   },
   topBarTitleRow: {
     flexDirection: 'row',

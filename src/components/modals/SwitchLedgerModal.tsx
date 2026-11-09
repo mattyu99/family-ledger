@@ -63,6 +63,8 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
     updateAllowNewMembers,
     leaveLedgerById,
     leaveCurrentLedger,
+    isAdminMode,
+    requireAdminAuth,
     isGoogleAuthenticated,
     googleUserEmail,
     signInWithGoogle,
@@ -504,7 +506,11 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
                           <TouchableOpacity
                             style={styles.leaveMiniBtn}
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            onPress={() => {
+                            onPress={async () => {
+                              if (isAdmin && !isAdminMode) {
+                                const authed = await requireAdminAuth(`退出管理員公帳「${l.name}」`);
+                                if (!authed) return;
+                              }
                               showConfirm(
                                 '退出此帳本',
                                 `確定要退出「${l.name}」嗎？退出後該帳本將從您的帳本清單中移除。`,
@@ -562,6 +568,10 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
                               l.allow_new_members === false ? styles.adminChipLocked : styles.adminChipOpen,
                             ]}
                             onPress={async () => {
+                              if (!isAdminMode) {
+                                const authed = await requireAdminAuth(`調整「${l.name}」門禁安全鎖`);
+                                if (!authed) return;
+                              }
                               const nextVal = l.allow_new_members === false;
                               const res = await updateAllowNewMembers(nextVal, l.id);
                               if (res.success) {
@@ -593,6 +603,10 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
                               l.is_read_only ? styles.adminChipReadOnly : styles.adminChipNormal,
                             ]}
                             onPress={async () => {
+                              if (!isAdminMode) {
+                                const authed = await requireAdminAuth(`切換「${l.name}」唯讀保護模式`);
+                                if (!authed) return;
+                              }
                               const nextVal = !l.is_read_only;
                               await toggleLedgerReadOnly(l.id, nextVal);
                               showAlert(
