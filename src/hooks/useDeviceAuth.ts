@@ -46,7 +46,7 @@ export function useDeviceAuth({
   const [isDeviceBound, setIsDeviceBound] = useState<boolean>(false);
   const [userRole, setUserRole] = useState<'owner' | 'admin' | 'member'>('owner');
   const [adminPin, setAdminPin] = useState<string>('8888');
-  const [isAdminMode, setIsAdminMode] = useState<boolean>(true);
+  const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
   const [previewMember, setPreviewMember] = useState<Profile | null>(null);
   const [isGoogleAuthenticated, setIsGoogleAuthenticated] = useState<boolean>(false);
   const [googleUserEmail, setGoogleUserEmail] = useState<string | null>(null);
