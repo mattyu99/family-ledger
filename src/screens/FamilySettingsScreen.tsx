@@ -778,13 +778,29 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                 <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                   <TouchableOpacity
                     style={[styles.togglePinBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
-                    onPress={() => setShowPinClear(!showPinClear)}
+                    onPress={async () => {
+                      if (!showPinClear) {
+                        if (!isAdminMode) {
+                          const authed = await requireAdminAuth('檢視應急安全碼');
+                          if (!authed) return;
+                        }
+                        setShowPinClear(true);
+                      } else {
+                        setShowPinClear(false);
+                      }
+                    }}
                   >
                     <Text style={[styles.togglePinBtnText, { color: colors.text.primary }]}>{showPinClear ? '🙈 隱藏' : '👁️ 顯示'}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.changePinBtn}
-                    onPress={onOpenChangePinModal}
+                    onPress={async () => {
+                      if (!isAdminMode) {
+                        const authed = await requireAdminAuth('修改應急安全碼');
+                        if (!authed) return;
+                      }
+                      onOpenChangePinModal();
+                    }}
                   >
                     <Text style={styles.changePinBtnText}>✏️ 修改</Text>
                   </TouchableOpacity>
@@ -811,10 +827,14 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                     : '已上鎖：全面阻斷新成員加入並隱藏家庭名冊，現有已加入之家人日常記帳完全不受影響。'}
                 </Text>
               </View>
-              {isOwner ? (
+              {realIsOwner ? (
                 <Switch
                   value={allowNewMembers}
                   onValueChange={async (newVal) => {
+                    if (!isAdminMode) {
+                      const authed = await requireAdminAuth('調整家庭門禁安全鎖');
+                      if (!authed) return;
+                    }
                     if (!newVal) {
                       showConfirm(
                         '上鎖家庭門禁',

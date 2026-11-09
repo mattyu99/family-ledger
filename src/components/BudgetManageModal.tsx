@@ -41,6 +41,9 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
     members,
     currentUser,
     isOwner,
+    realIsOwner,
+    isAdminMode,
+    requireAdminAuth,
     isBudgetWidgetVisibleOnDevice,
     setBudgetWidgetVisibleOnDevice,
   } = useLedger();
@@ -288,9 +291,22 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
                     <View style={{ flex: 1 }}>
                       <Text style={styles.readOnlyBannerTitle}>僅帳本管理員可修改家庭公帳總預算</Text>
                       <Text style={styles.readOnlyBannerDesc}>
-                        您目前為日常成員檢視模式，可瀏覽公帳月預算與分類額度，如需調整請由帳本管理員設定。
+                        {realIsOwner
+                          ? '您目前為日常成員檢視模式。點擊右方按鈕驗證指紋即可就地解鎖編輯。'
+                          : '您目前為日常成員檢視模式，可瀏覽公帳月預算與分類額度，如需調整請由帳本管理員設定。'}
                       </Text>
                     </View>
+                    {realIsOwner && !isAdminMode && (
+                      <TouchableOpacity
+                        style={styles.unlockAdminBtn}
+                        onPress={async () => {
+                          await requireAdminAuth('調整家庭公帳總預算');
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.unlockAdminBtnText}>🔐 驗證解鎖</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 )}
 
@@ -304,8 +320,18 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
                   </View>
                   <Switch
                     value={isEnabled}
-                    onValueChange={isOwner ? setIsEnabled : undefined}
-                    disabled={!isOwner}
+                    onValueChange={async (val) => {
+                      if (!isOwner) {
+                        if (realIsOwner) {
+                          const authed = await requireAdminAuth('調整公帳預算控管');
+                          if (!authed) return;
+                          setIsEnabled(val);
+                        }
+                        return;
+                      }
+                      setIsEnabled(val);
+                    }}
+                    disabled={!realIsOwner}
                     trackColor={{ false: '#CBD5E1', true: '#4F46E5' }}
                     thumbColor="#FFFFFF"
                   />
@@ -1069,6 +1095,18 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       color: isDark ? '#FDE68A' : '#92400E',
       marginTop: 2,
       lineHeight: 15,
+    },
+    unlockAdminBtn: {
+      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.3)' : '#F59E0B',
+      paddingHorizontal: 8,
+      paddingVertical: 5,
+      borderRadius: 8,
+      alignSelf: 'center',
+    },
+    unlockAdminBtnText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: isDark ? '#FEF3C7' : '#FFFFFF',
     },
     lockBadge: {
       backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
