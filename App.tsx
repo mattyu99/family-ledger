@@ -1703,8 +1703,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'android' ? Math.max(StatusBar.currentHeight || 0, 36) + 4 : 10,
-    paddingBottom: 10,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ? StatusBar.currentHeight + 2 : 26) : 8,
+    paddingBottom: 8,
     borderBottomWidth: 1,
   },
   topBarLeftGroup: {
