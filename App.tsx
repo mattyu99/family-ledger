@@ -190,7 +190,9 @@ const AppContent: React.FC = () => {
 
   // 切換為管理員模式 (頂部總開關)
   const handleSwitchToAdminMode = async () => {
-    const authed = await requireAdminAuth('啟用管理員模式');
+    const authed = await requireAdminAuth('啟用管理員模式', () => {
+      setAdminModeModalVisible(true);
+    });
     if (authed) {
       triggerLiveToast({
         id: `admin-mode-${Date.now()}`,

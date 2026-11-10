@@ -132,7 +132,7 @@ export function useDeviceAuth({
 
   // 🛡️ 現代化就地即時授權輔助函式（Just-In-Time Authorization）
   // 處於 10 分鐘寬限期內直接放行；未解鎖則喚起生物辨識提權
-  const requireAdminAuth = useCallback(async (actionDesc?: string): Promise<boolean> => {
+  const requireAdminAuth = useCallback(async (actionDesc?: string, onFallbackToPin?: () => void): Promise<boolean> => {
     if (isAdminMode) {
       return true;
     }
@@ -147,6 +147,9 @@ export function useDeviceAuth({
     }
     if (res.fallbackToPin) {
       safeAlert('需驗證安全碼', res.message || '請使用帳本應急安全碼驗證');
+      if (onFallbackToPin) {
+        onFallbackToPin();
+      }
     } else if (res.message) {
       safeAlert('身分驗證未通過', res.message);
     }

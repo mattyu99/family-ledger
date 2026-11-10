@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.15';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.15 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 44;
+export const APP_BUILD_REVISION = 45;
 
 // 完整版本字串 (例如 "1.0.15.16")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -23,6 +23,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
     date: '2026-11-06 ~ 2026-11-10',
     title: '重要記事跨月常駐置頂與雲端持久保存、頂部品牌雙行架構與桌面小工具極速直達',
     highlights: [
+      '🛡️ 網頁版管理員安全碼無縫切換：修復無生物辨識環境（如電腦網頁版）切換管理員模式時未彈出輸入框之問題，按確認後自動開啟安全碼視窗秒速提權。',
       '💳 全 App 卡片防擠壓舒展與緊湊優化：帳單、設定、提醒與統計全面告別死腦筋擠壓，說明文字全寬舒展且緊湊密實；分類標籤直列一覽無遺、名單移除多餘按鈕。',
       '☕ 待繳帳單與生活待辦雙管家膠囊常駐：左右對稱並排永不彈跳；無待繳時呈現「暫無待繳帳單」，無待辦時顯示「今日無待辦」，隨點隨開完整總覽大水庫。',
       '✨ 首頁版面全方位精簡瘦身與統計校準：收支看板一鍵收合、淨值內嵌；明細標題還原原版醒目大字體並與分類數字精準對齊；篩選工具列改為單行橫向滑動，首屏視野大幅釋放。',

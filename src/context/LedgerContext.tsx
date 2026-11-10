@@ -354,7 +354,7 @@ interface LedgerContextType {
   enableAdminMode: (pin: string) => { success: boolean; message?: string };
   enableAdminModeWithBiometrics: () => Promise<{ success: boolean; fallbackToPin?: boolean; message?: string }>;
   disableAdminMode: () => void;
-  requireAdminAuth: (actionDesc?: string) => Promise<boolean>;
+  requireAdminAuth: (actionDesc?: string, onFallbackToPin?: () => void) => Promise<boolean>;
   isAdminUnlocked: boolean;
   setIsAdminUnlocked: (unlocked: boolean) => void;
   unlockAdmin: (pin: string) => { success: boolean; message?: string };
