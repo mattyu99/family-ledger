@@ -959,16 +959,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     }
   }, [resetKey]);
 
-  // 專門獨立監聽 autoOpenScanner：只要彈窗處於開啟狀態且 autoOpenScanner 為 true，即刻喚起掃描器；若為 false 則立即收起
+  // 專門獨立監聽 autoOpenScanner：只要彈窗處於開啟狀態且 autoOpenScanner 為 true，即刻喚起掃描器並清空單次旗標
   React.useEffect(() => {
     if (visible && autoOpenScanner) {
       const timer = setTimeout(() => {
         setScannerModalVisible(true);
         onClearAutoOpenScanner?.();
-      }, 0);
+      }, 50);
       return () => clearTimeout(timer);
-    } else if (!autoOpenScanner) {
-      setScannerModalVisible(false);
     }
   }, [visible, autoOpenScanner, onClearAutoOpenScanner]);
 
