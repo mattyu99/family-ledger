@@ -87,12 +87,8 @@ export function extractWidgetSnapshot(
     return true;
   });
 
-  // 篩選與排序：置頂事項優先，其次今日與逾期待辦最優先，再次為未到期待辦與日常雜記
+  // 篩選與排序：桌面小工具與置頂解除綁定，嚴格依照緊急程度排序（提醒到期日由近至遠、逾期與今日最優先，無設定日期之日常備忘排後方）
   const sortedMemos = [...activeMemos].sort((a, b) => {
-    const pinA = isMemoPinned(a);
-    const pinB = isMemoPinned(b);
-    if (pinA !== pinB) return pinA ? -1 : 1;
-
     const rA = a.reminder_date || decodeMemoMerchantTag(a.merchant).reminderDate || '';
     const rB = b.reminder_date || decodeMemoMerchantTag(b.merchant).reminderDate || '';
     if (!rA && !rB) return (b.transacted_at || '').localeCompare(a.transacted_at || '');

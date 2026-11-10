@@ -156,18 +156,18 @@ describe('Android 桌面小工具快照萃取與待辦隱私分流測試 (widget
     expect(snapshot.ledgerName).toBe('💖 甜心示範家庭');
   });
 
-  it('桌面小工具置頂優先排序：置頂事項排在最前面，且標題自動附帶 📌 標記', () => {
+  it('桌面小工具解除置頂排序綁定：嚴格依照緊急程度（到期日由近至遠）排序，不被不緊急的置頂事項排擠', () => {
     const memosWithPin: Transaction[] = [
       {
-        id: 'memo-normal',
+        id: 'memo-urgent',
         ledger_id: 'l1',
         type: 'memo',
         amount: 0,
         creator_id: 'u1',
         paid_by: 'u1',
         reminder_target: 'family',
-        reminder_date: '2026-11-01',
-        note: '普通待辦事項',
+        reminder_date: '2026-11-01', // 緊急事件（日期較早/已到期）
+        note: '緊急採買待辦',
         category_id: 'c',
         transacted_at: '2026-11-01',
         created_at: '2026-11-01',
@@ -194,11 +194,11 @@ describe('Android 桌面小工具快照萃取與待辦隱私分流測試 (widget
 
     const snapshot = extractWidgetSnapshot(mockLedger, memosWithPin, mockMembers, 'u1');
     expect(snapshot.pendingMemos.length).toBe(2);
-    // 第一筆應為置頂項目
-    expect(snapshot.pendingMemos[0].id).toBe('memo-pinned');
-    expect(snapshot.pendingMemos[0].title).toContain('📌 重要家庭置頂事項');
-    // 第二筆為普通項目
-    expect(snapshot.pendingMemos[1].id).toBe('memo-normal');
-    expect(snapshot.pendingMemos[1].title).not.toContain('📌');
+    // 第一筆應為最緊急的項目 (2026-11-01)，不被置頂排擠
+    expect(snapshot.pendingMemos[0].id).toBe('memo-urgent');
+    expect(snapshot.pendingMemos[0].title).toContain('緊急採買待辦');
+    // 第二筆為日期較晚的置頂項目 (2026-11-15)，若有置頂標題仍可附帶 📌 識別
+    expect(snapshot.pendingMemos[1].id).toBe('memo-pinned');
+    expect(snapshot.pendingMemos[1].title).toContain('📌 重要家庭置頂事項');
   });
 });
