@@ -1273,14 +1273,14 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
       <View style={styles.sectionHeaderInlineRow}>
         <View style={styles.sectionHeaderTitleWrap}>
           <Text style={[styles.sectionInlineTitle, isDark && { color: colors.text.primary }]}>
-            {transactionTypeFilter === 'memo' ? '記事' : transactionTypeFilter === 'financial' ? '收支' : '明細'}
-          </Text>
-          <Text style={[styles.sectionInlineCount, isDark && { color: colors.text.muted }]}>
-            {historySyncProgress
-              ? `${Math.max(historySyncProgress.loaded, transactions.length).toLocaleString()}/${historySyncProgress.total.toLocaleString()}`
-              : filteredTransactions.length < transactions.length
-              ? `${filteredTransactions.length.toLocaleString()}/${transactions.length.toLocaleString()}`
-              : `${transactions.length.toLocaleString()}`}
+            {transactionTypeFilter === 'memo' ? '記事' : transactionTypeFilter === 'financial' ? '收支' : '明細'}{' '}
+            <Text style={[styles.sectionInlineCount, isDark && { color: colors.text.primary }]}>
+              {historySyncProgress
+                ? `${Math.max(historySyncProgress.loaded, transactions.length).toLocaleString()}/${historySyncProgress.total.toLocaleString()}`
+                : filteredTransactions.length < transactions.length
+                ? `${filteredTransactions.length.toLocaleString()}/${transactions.length.toLocaleString()}`
+                : `${transactions.length.toLocaleString()}`}
+            </Text>
           </Text>
           {keyboardOffset > 0 && (
             <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -2540,14 +2540,14 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       flexShrink: 0,
     },
     sectionInlineTitle: {
-      fontSize: 16.5,
-      fontWeight: '800',
+      fontSize: 16,
+      fontWeight: '700',
       color: colors.text.primary,
     },
     sectionInlineCount: {
-      fontSize: 13,
+      fontSize: 16,
       fontWeight: '700',
-      color: isDark ? '#94A3B8' : '#64748B',
+      color: colors.text.primary,
     },
     dismissKeyboardText: {
       fontSize: 11,
