@@ -61,15 +61,68 @@ export function getMergedMemoTags(recentTags: string[] = [], dismissedTags: stri
 }
 
 /**
+ * 徹底剔除生活記事文字中可能殘留的系統內部中繼標籤 (如 [memo|done:...], [remind:...])
+ * 無論長度多長或含有管線符號，一律乾淨剝除，還原使用者真實記事內容
+ */
+export function stripMemoInternalTag(text?: string): string {
+  if (!text) return '';
+  let cleaned = text;
+  while (/^[\[［【]\s*(?:memo|remind:)[^\]］】]*[\]］】]\s*/i.test(cleaned)) {
+    cleaned = cleaned.replace(/^[\[［【]\s*(?:memo|remind:)[^\]］】]*[\]］】]\s*/i, '');
+  }
+  return cleaned.trim();
+}
+
+/**
+ * 判斷指定字串是否為合法的消費店家名稱 (過濾系統中繼標籤、UUID、memo 等非商家字串)
+ */
+export function isValidMerchantName(name?: string | null): boolean {
+  if (!name) return false;
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  if (trimmed.length > 40) return false;
+
+  // 1. 包含系統中繼標籤特徵 (如 memo|done:..., remind:...)
+  if (
+    trimmed.startsWith('memo') ||
+    trimmed.startsWith('remind:') ||
+    trimmed.includes('done:') ||
+    trimmed.includes('done_at:') ||
+    trimmed.includes('cal:') ||
+    trimmed.includes('rep:') ||
+    trimmed.includes('tgt:') ||
+    trimmed.includes('pin:') ||
+    trimmed.includes('|')
+  ) {
+    return false;
+  }
+
+  // 2. 包含 UUID 特徵 (如 8a0505f0-cdd6-4948-9cec-1926805e2e1d)
+  if (/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(trimmed)) {
+    return false;
+  }
+
+  // 3. 包含日期時間戳記特徵 (如 2026-11-09T10:32:43.983Z)
+  if (/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(trimmed)) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
  * 尋找內文中的首個有效生活記事主題標籤 (支援 [標籤]、［標籤］、【標籤】)
  * 自動避開 Markdown 檢核清單方框 (如 - [ ]、- [x]、[✓]) 與系統中繼標籤
  */
 export function findMemoTopicTagMatch(text?: string): RegExpExecArray | null {
   if (!text) return null;
+  const cleaned = stripMemoInternalTag(text);
+  if (!cleaned) return null;
+
   const tagRegex = /[\[［【]([^\[\]［］【】\n]{1,16})[\]］】]/g;
   let match: RegExpExecArray | null;
 
-  while ((match = tagRegex.exec(text)) !== null) {
+  while ((match = tagRegex.exec(cleaned)) !== null) {
     const rawInner = match[1];
     const trimmed = rawInner.trim();
 
@@ -83,11 +136,13 @@ export function findMemoTopicTagMatch(text?: string): RegExpExecArray | null {
       trimmed.startsWith('http://') ||
       trimmed.startsWith('https://') ||
       trimmed === '辦妥' ||
+      trimmed.startsWith('memo') ||
       trimmed.startsWith('remind:') ||
       trimmed.startsWith('done:') ||
       trimmed.startsWith('merchant:') ||
       trimmed.startsWith('id:') ||
-      trimmed.startsWith('linked:')
+      trimmed.startsWith('linked:') ||
+      trimmed.includes('|')
     ) {
       continue;
     }
@@ -129,7 +184,8 @@ const EMOJI_REGEX = /(\p{Extended_Pictographic}|\p{Emoji_Presentation})(?:\uFE0F
  * 5. 智慧保護 Markdown 待辦清單方框 (- [ ] / - [x]) 不被誤判或抹除
  */
 export function parseMemoNote(noteText?: string, categoryName?: string, categoryIcon?: string): ParsedMemo {
-  if (!noteText || !noteText.trim()) {
+  const cleanedText = stripMemoInternalTag(noteText);
+  if (!cleanedText) {
     return {
       title: '生活記事',
       icon: '📌',
@@ -137,7 +193,7 @@ export function parseMemoNote(noteText?: string, categoryName?: string, category
     };
   }
 
-  const raw = noteText.trim();
+  const raw = cleanedText;
   // 支援半形中括號 [標籤]、全形中括號 ［標籤］、粗括號 【標籤】 (依文本出現順序由左至右優先解析首個主題標籤，自動略過待辦方框 - [ ] / [x])
   const match = findMemoTopicTagMatch(raw);
 
@@ -537,11 +593,12 @@ export interface ParsedMemoChecklist {
  * 解析文字中的檢核清單項目 (支援 Markdown `-[ ]` / `-[x]` 或 `☐` / `☑`)
  */
 export function parseMemoChecklist(noteText?: string): ParsedMemoChecklist {
-  if (!noteText || !noteText.trim()) {
+  const cleanText = stripMemoInternalTag(noteText);
+  if (!cleanText) {
     return { isChecklist: false, items: [], completedCount: 0, totalCount: 0 };
   }
 
-  const lines = noteText.split('\n');
+  const lines = cleanText.split('\n');
   const items: MemoChecklistItem[] = [];
   const prefixLines: string[] = [];
   const suffixLines: string[] = [];
@@ -549,6 +606,11 @@ export function parseMemoChecklist(noteText?: string): ParsedMemoChecklist {
 
   for (const line of lines) {
     const trimmed = line.trim();
+    // 忽略獨立的中括號系統內部標籤行 (如 [memo|...] 或 [remind:...])
+    if (/^[\[［【]\s*(?:memo|remind:)/i.test(trimmed)) {
+      continue;
+    }
+
     // 忽略獨立的中括號標籤行如 [✈️ 出國必備] (但排除待辦方框行)
     const tagMatch = trimmed.match(/^[\[［【]([^\[\]［］【】\n]{1,16})[\]］】]$/);
     if (tagMatch) {

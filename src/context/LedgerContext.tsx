@@ -8,7 +8,7 @@ const getStorageServiceToken = (): string => SUPABASE_ANON_KEY;
 import { generateUUID } from '../lib/uuid';
 import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS, isAccountBelongingToMember, KNOWN_PAYMENT_METHOD_UUIDS } from '../lib/payment';
 import { DEFAULT_RECURRING_PRESETS, getCurrentPeriodKey, getBillPeriodLabel, getInstallmentInfo, appendPeriodKey } from '../lib/recurring';
-import { parseMemoNote, encodeMemoMerchantTag, decodeMemoMerchantTag, DEFAULT_MEMO_QUICK_TAGS, extractMemoTag, toggleChecklistItem } from '../lib/memo';
+import { parseMemoNote, encodeMemoMerchantTag, decodeMemoMerchantTag, DEFAULT_MEMO_QUICK_TAGS, extractMemoTag, toggleChecklistItem, stripMemoInternalTag, isValidMerchantName } from '../lib/memo';
 import { CalendarSystem, MemoRepeatFrequency, getNextMemoReminderDate, formatMemoReminderBadge } from '../lib/lunar';
 import { formatInvoiceNumber, getInvoicePeriodKey, encodeInvoiceTag, decodeInvoiceTag, stripInvoiceTag } from '../lib/invoice';
 import { checkInvoiceWinning, syncLotteryDrawsAsync } from '../lib/lottery';
@@ -583,8 +583,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [recentMemoTags, setRecentMemoTags] = useState<string[]>(DEFAULT_MEMO_QUICK_TAGS);
   const [dismissedMemoTags, setDismissedMemoTags] = useState<string[]>([]);
   const dismissedMemoTagsRef = useRef<Set<string>>(new Set());
-  const hasMerchantColumnRef = useRef<boolean>(false);
-  const hasPaymentColumnsRef = useRef<boolean>(false);
+  const hasMerchantColumnRef = useRef<boolean>(true);
+  const hasPaymentColumnsRef = useRef<boolean>(true);
   const deletedTxIdsRef = useRef<Set<string>>(new Set());
   const recentToastTimestampsRef = useRef<Map<string, number>>(new Map());
   const recentUpdatersRef = useRef<Map<string, { updaterId: string; updaterName: string; updaterAvatar: string; timestamp: number }>>(new Map());
@@ -602,9 +602,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const recordMerchant = React.useCallback(async (m: string) => {
     const clean = (m || '').trim();
-    if (!clean) return;
+    if (!clean || !isValidMerchantName(clean)) return;
     setRecentMerchants(prev => {
-      const filtered = prev.filter(item => item.toLowerCase() !== clean.toLowerCase());
+      const filtered = prev.filter(item => item.toLowerCase() !== clean.toLowerCase() && isValidMerchantName(item));
       const updated = [clean, ...filtered].slice(0, 50);
       AsyncStorage.setItem(STORAGE_KEYS.RECENT_MERCHANTS, JSON.stringify(updated)).catch(() => {});
       return updated;
@@ -1127,7 +1127,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           try {
             const parsed = JSON.parse(savedRecentMerchants);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              setRecentMerchants(parsed);
+              const cleaned = parsed.filter(isValidMerchantName);
+              setRecentMerchants(cleaned);
+              if (cleaned.length !== parsed.length) {
+                AsyncStorage.setItem(STORAGE_KEYS.RECENT_MERCHANTS, JSON.stringify(cleaned)).catch(() => {});
+              }
             }
           } catch {}
         }
@@ -2932,7 +2936,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       let parsedMerchant = t.merchant;
       let parsedNote = t.note;
-      if (!parsedMerchant && t.note) {
+
+      // 智慧自癒修復：若 note 前綴殘留系統內部中繼標籤 (如 [memo|done:...], [remind:...])
+      if (parsedNote && /^[\[［【]\s*(?:memo|remind:)[^\]］】]*[\]］】]/i.test(parsedNote)) {
+        if (!parsedMerchant) {
+          const match = parsedNote.match(/^[\[［【](.*?)[\]］】]\s*(.*)$/);
+          if (match) {
+            parsedMerchant = match[1];
+          }
+        }
+        parsedNote = stripMemoInternalTag(parsedNote);
+      } else if (!parsedMerchant && t.note) {
         const match = t.note.match(/^[\[［【](.*?)[\]］】]\s*(.*)$/);
         if (match) {
           parsedMerchant = match[1];
@@ -2960,13 +2974,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (decodedMemo.isPinned) isPinned = true;
       } else if (t.type === 'memo' || (t.type === 'transfer' && Number(t.amount) === 0)) {
         resolvedType = 'memo';
-        parsedNote = t.note;
-      } else if (parsedMerchant) {
+        parsedNote = stripMemoInternalTag(t.note);
+      } else if (parsedMerchant && isValidMerchantName(parsedMerchant)) {
         recordMerchant(parsedMerchant);
       }
 
-      if (resolvedType === 'memo' && t.note) {
-        const memoTag = extractMemoTag(t.note);
+      if (resolvedType === 'memo' && parsedNote) {
+        parsedNote = stripMemoInternalTag(parsedNote);
+        const memoTag = extractMemoTag(parsedNote);
         if (memoTag) recordMemoTag(memoTag);
       }
 
@@ -3150,7 +3165,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             if (hasMerchantColumnRef.current && ut.merchant) {
               syncPayload.merchant = ut.merchant;
-            } else if (ut.merchant && !syncPayload.note?.startsWith(`[${ut.merchant}]`)) {
+            } else if (ut.merchant && ut.type !== 'memo' && !syncPayload.note?.startsWith(`[${ut.merchant}]`)) {
               syncPayload.note = `[${ut.merchant}] ${ut.note || ''}`.trim();
             }
 
@@ -4715,6 +4730,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (clean.completed_at !== undefined && (!clean.completed_at || clean.completed_at === '' || clean.completed_at === 'null')) {
       clean.completed_at = null;
+    }
+
+    if (clean.type === 'memo' || (clean.note && /^[\[［【]\s*(?:memo|remind:)/i.test(clean.note))) {
+      clean.note = stripMemoInternalTag(clean.note);
     }
 
     return clean;
@@ -7120,13 +7139,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           is_settled: newTx.is_settled,
         };
 
+        const cleanNote = newTx.type === 'memo' ? stripMemoInternalTag(newTx.note) : newTx.note;
         if (hasMerchantColumnRef.current) {
           insertPayload.merchant = newTx.merchant || null;
-          insertPayload.note = newTx.note;
+          insertPayload.note = cleanNote;
         } else {
-          insertPayload.note = newTx.merchant
-            ? `[${newTx.merchant}] ${newTx.note || ''}`.trim()
-            : newTx.note;
+          insertPayload.note = (newTx.merchant && newTx.type !== 'memo')
+            ? `[${newTx.merchant}] ${cleanNote || ''}`.trim()
+            : cleanNote;
         }
 
         if (hasPaymentColumnsRef.current) {
@@ -7190,9 +7210,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             delete insertPayload.linked_transaction_id;
             delete insertPayload.image_url;
             delete insertPayload.reminder_target;
-            insertPayload.note = newTx.merchant
-              ? `[${newTx.merchant}] ${newTx.note || ''}`.trim()
-              : newTx.note;
+            insertPayload.note = (newTx.merchant && newTx.type !== 'memo')
+              ? `[${newTx.merchant}] ${cleanNote || ''}`.trim()
+              : cleanNote;
             const retryRes = await supabase.from('transactions').insert(insertPayload);
             txError = retryRes.error;
           }
@@ -7510,11 +7530,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (tx.completed_by) {
             payload.completed_by = tx.completed_by;
           }
+          const cleanTxNote = tx.type === 'memo' ? stripMemoInternalTag(tx.note) : tx.note;
           if (hasMerchantColumnRef.current) {
             payload.merchant = tx.merchant || null;
-            payload.note = tx.note;
+            payload.note = cleanTxNote;
           } else {
-            payload.note = tx.merchant ? `[${tx.merchant}] ${tx.note || ''}`.trim() : tx.note;
+            payload.note = (tx.merchant && tx.type !== 'memo') ? `[${tx.merchant}] ${cleanTxNote || ''}`.trim() : cleanTxNote;
           }
           if (hasPaymentColumnsRef.current) {
             if (tx.payment_method) payload.payment_method = tx.payment_method;
@@ -7987,7 +8008,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       const rawNote = data.note !== undefined ? data.note : (targetTx?.note || '');
-      const cleanUserNote = stripInvoiceTag(rawNote);
+      const cleanUserNote = isTargetMemo ? stripMemoInternalTag(stripInvoiceTag(rawNote)) : stripInvoiceTag(rawNote);
       const effectiveNote = formattedInvoiceNumber
         ? (cleanUserNote
             ? `${cleanUserNote} ${encodeInvoiceTag({
@@ -8237,12 +8258,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (data.merchant !== undefined || isTargetMemo) updatePayload.merchant = cleanMerchant || null;
           if (data.note !== undefined || formattedInvoiceNumber !== undefined) updatePayload.note = effectiveNote;
         } else {
-          // 若雲端無 merchant 欄位，包裝進 note
-          if (data.note !== undefined || data.merchant !== undefined || isTargetMemo || formattedInvoiceNumber !== undefined) {
-            const effectiveMerchant = (data.merchant !== undefined || isTargetMemo) ? cleanMerchant : targetTx?.merchant;
+          // 若雲端無 merchant 欄位，包裝進 note (僅限消費店家，生活記事絕不包入 note)
+          if (!isTargetMemo && (data.note !== undefined || data.merchant !== undefined || formattedInvoiceNumber !== undefined)) {
+            const effectiveMerchant = data.merchant !== undefined ? cleanMerchant : targetTx?.merchant;
             updatePayload.note = effectiveMerchant
               ? `[${effectiveMerchant}] ${effectiveNote}`.trim()
               : effectiveNote;
+          } else if (isTargetMemo) {
+            updatePayload.note = effectiveNote;
           }
         }
 
@@ -8309,7 +8332,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               delete updatePayload.reminder_date;
               delete updatePayload.reminder_calendar;
               delete updatePayload.reminder_repeat;
-              const effectiveMerchant = data.merchant !== undefined ? cleanMerchant : targetTx?.merchant;
+              const effectiveMerchant = (!isTargetMemo && data.merchant !== undefined) ? cleanMerchant : (!isTargetMemo ? targetTx?.merchant : undefined);
               updatePayload.note = effectiveMerchant
                 ? `[${effectiveMerchant}] ${effectiveNote}`.trim()
                 : effectiveNote;
@@ -8413,13 +8436,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               transacted_at: nextMemoTx.transacted_at,
               is_settled: false,
             };
+            const cleanNextMemoNote = stripMemoInternalTag(nextMemoTx.note);
             if (hasMerchantColumnRef.current) {
               nextInsertPayload.merchant = nextMemoTx.merchant || null;
-              nextInsertPayload.note = nextMemoTx.note;
+              nextInsertPayload.note = cleanNextMemoNote;
             } else {
-              nextInsertPayload.note = nextMemoTx.merchant
-                ? `[${nextMemoTx.merchant}] ${nextMemoTx.note || ''}`.trim()
-                : nextMemoTx.note;
+              nextInsertPayload.note = cleanNextMemoNote;
             }
             let { error: nextErr } = await supabase.from('transactions').insert(nextInsertPayload);
             if (nextErr && (nextErr.code === '23514' || nextErr.message?.includes('check constraint'))) {

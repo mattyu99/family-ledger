@@ -6,7 +6,7 @@ import {
   getInvoicePeriodKey,
 } from './invoice';
 import { checkInvoiceWinning } from './lottery';
-import { decodeMemoMerchantTag } from './memo';
+import { decodeMemoMerchantTag, stripMemoInternalTag } from './memo';
 import {
   DEMO_USER_DAD,
   DEMO_USER_MOM,
@@ -26,6 +26,11 @@ export const safeAlert = (title: string, message: string) => {
  */
 export const hydrateTransactionWithInvoice = (t: any): Transaction => {
   if (!t) return t;
+
+  let note = t.note;
+  if (t.type === 'memo' || /^[\[［【]\s*(?:memo|remind:)/i.test(note || '')) {
+    note = stripMemoInternalTag(note);
+  }
 
   let isPinned = t.is_pinned;
   if (isPinned === undefined && t.merchant) {
@@ -89,6 +94,7 @@ export const hydrateTransactionWithInvoice = (t: any): Transaction => {
 
     return {
       ...t,
+      note,
       is_pinned: isPinned !== undefined ? Boolean(isPinned) : t.is_pinned,
       invoice_number: invoiceNumber,
       invoice_period: periodKey,
@@ -99,7 +105,11 @@ export const hydrateTransactionWithInvoice = (t: any): Transaction => {
     };
   }
 
-  return isPinned !== undefined ? { ...t, is_pinned: Boolean(isPinned) } : t;
+  return {
+    ...t,
+    note,
+    is_pinned: isPinned !== undefined ? Boolean(isPinned) : t.is_pinned,
+  };
 };
 
 // 成員名冊去重函式：相同 display_name 或相同 Google 綁定信箱者視為同一位家庭成員（支援多台手機/電腦認領同一身分及 Google 帳號授權）

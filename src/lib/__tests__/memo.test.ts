@@ -12,6 +12,8 @@ import {
   checkMemoPinQuota,
   MAX_PINNED_MEMOS_FAMILY,
   MAX_PINNED_MEMOS_PERSONAL,
+  stripMemoInternalTag,
+  isValidMerchantName,
 } from '../memo';
 import { hydrateTransactionWithInvoice } from '../ledgerUtils';
 
@@ -334,6 +336,68 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
       const familyCheck = checkMemoPinQuota(mockTxs, { targetScope: 'family' });
       expect(familyCheck.canPin).toBe(true);
       expect(familyCheck.currentCount).toBe(0);
+    });
+  });
+
+  describe('系統內部中繼標籤剝除與商家合法性過濾 (自癒與防污染機制)', () => {
+    it('stripMemoInternalTag 應徹底剝除開頭中繼字串，還原真實使用者記事', () => {
+      const dirtyMemo = '[memo|done:8a0505f0-cdd6-4948-9cec-1926805e2e1d|done_at:2026-11-09T10:32:43.983Z] - [x] 洗碗';
+      expect(stripMemoInternalTag(dirtyMemo)).toBe('- [x] 洗碗');
+
+      const dirtyRemind = '[remind:2026-11-10|rep:once] 記得繳管理費';
+      expect(stripMemoInternalTag(dirtyRemind)).toBe('記得繳管理費');
+
+      const fullWidthDirty = '［memo|pin:1］大掃除工作分配';
+      expect(stripMemoInternalTag(fullWidthDirty)).toBe('大掃除工作分配');
+
+      // 多重堆疊內部標籤應全數剝離
+      const multiDirty = '[memo|done:abc][remind:2026-11-10] 買醬油';
+      expect(stripMemoInternalTag(multiDirty)).toBe('買醬油');
+
+      // 正常使用者自訂主題標籤不應被抹除
+      const normalTag = '[🛒 採買清單] 鮮奶、吐司';
+      expect(stripMemoInternalTag(normalTag)).toBe('[🛒 採買清單] 鮮奶、吐司');
+    });
+
+    it('isValidMerchantName 應精準區分真實商家名稱與系統內部中繼編碼', () => {
+      // 合法店家
+      expect(isValidMerchantName('全聯福利中心')).toBe(true);
+      expect(isValidMerchantName('好市多')).toBe(true);
+      expect(isValidMerchantName('台北捷運')).toBe(true);
+      expect(isValidMerchantName('7-ELEVEN')).toBe(true);
+
+      // 非法中繼字串 (不得出現在搜尋快捷膠囊或商家統計)
+      expect(isValidMerchantName('memo|done:8a0505f0-cdd6-4948-9cec-1926805e2e1d')).toBe(false);
+      expect(isValidMerchantName('remind:2026-11-10|rep:once')).toBe(false);
+      expect(isValidMerchantName('8a0505f0-cdd6-4948-9cec-1926805e2e1d')).toBe(false);
+      expect(isValidMerchantName('2026-11-09T10:32:43.983Z')).toBe(false);
+      expect(isValidMerchantName(null)).toBe(false);
+      expect(isValidMerchantName('')).toBe(false);
+      expect(isValidMerchantName('   ')).toBe(false);
+    });
+
+    it('parseMemoChecklist 遇到髒資料時應自動自癒，正確解析清單項目', () => {
+      const dirtyChecklistText = '[memo|done:8a0505f0-cdd6-4948-9cec-1926805e2e1d|done_at:2026-11-09T10:32:43.983Z] - [x] 洗碗\n- [ ] 倒垃圾\n- [x] 擦桌子';
+      const parsed = parseMemoChecklist(dirtyChecklistText);
+      expect(parsed.isChecklist).toBe(true);
+      expect(parsed.totalCount).toBe(3);
+      expect(parsed.completedCount).toBe(2);
+      expect(parsed.items[0].text).toBe('洗碗');
+      expect(parsed.items[0].completed).toBe(true);
+      expect(parsed.items[1].text).toBe('倒垃圾');
+      expect(parsed.items[1].completed).toBe(false);
+      expect(parsed.prefixText).toBeUndefined();
+    });
+
+    it('hydrateTransactionWithInvoice 應在水合時自癒歷史髒資料', () => {
+      const dirtyTx = {
+        id: 'tx-123',
+        type: 'memo',
+        merchant: 'memo|done:8a0505f0-cdd6-4948-9cec-1926805e2e1d|done_at:2026-11-09T10:32:43.983Z',
+        note: '[memo|done:8a0505f0-cdd6-4948-9cec-1926805e2e1d|done_at:2026-11-09T10:32:43.983Z] - [x] 洗碗',
+      };
+      const hydrated = hydrateTransactionWithInvoice(dirtyTx);
+      expect(hydrated.note).toBe('- [x] 洗碗');
     });
   });
 });

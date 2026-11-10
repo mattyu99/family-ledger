@@ -23,7 +23,7 @@ import { StoredValueWidget } from '../components/StoredValueWidget';
 import { HorizontalScrollView } from '../components/HorizontalScrollView';
 import { isTransferToMember } from '../lib/payment';
 import { getRollingPendingBills } from '../lib/recurring';
-import { getLocalDateYmd, parseMemoNote, getRollingMemoDueInfo, isMemoPinned, checkMemoPinQuota } from '../lib/memo';
+import { getLocalDateYmd, parseMemoNote, getRollingMemoDueInfo, isMemoPinned, checkMemoPinQuota, isValidMerchantName } from '../lib/memo';
 import { checkInvoiceWinning } from '../lib/lottery';
 import { getInvoicePeriodKey } from '../lib/invoice';
 
@@ -253,12 +253,13 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
     return rollingBills.filter(item => isMatchedToTargetMember(item.rule.paid_by, filterMemberId));
   }, [scopedRecurringRules, filterMemberId, currentUser, members, isMatchedToCurrentUser, isMatchedToTargetMember]);
 
-  // 提取此帳本現有紀錄中的店家清單
+  // 提取此帳本現有紀錄中的店家清單（嚴格排除生活備忘與中繼標籤）
   const activeMerchantsInLedger = useMemo(() => {
     const counts = new Map<string, number>();
     transactions.forEach(t => {
+      if (t.type === 'memo') return; // 生活記事絕非消費店家！
       const m = (t.merchant || '').trim();
-      if (m) {
+      if (m && isValidMerchantName(m)) {
         counts.set(m, (counts.get(m) || 0) + 1);
       }
     });
@@ -266,7 +267,8 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
       .sort((a, b) => b[1] - a[1])
       .map(([m]) => m);
 
-    const combined = Array.from(new Set([...fromTx, ...(recentMerchants || [])]));
+    const validRecent = (recentMerchants || []).filter(isValidMerchantName);
+    const combined = Array.from(new Set([...fromTx, ...validRecent]));
     return combined.slice(0, 15);
   }, [transactions, recentMerchants]);
 
