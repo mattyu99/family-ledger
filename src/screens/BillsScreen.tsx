@@ -161,22 +161,13 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
         </TouchableOpacity>
       </View>
 
-      {/* 🗓️ 週期扣款與固定帳單 */}
+      {/* 🗓️ 週期固定帳單 */}
       <View style={styles.cardSection}>
         <View style={styles.sectionHeaderRow}>
-          <View style={styles.sectionHeaderLeft}>
-            <Text style={styles.cardSectionTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              🗓️ 週期扣款與固定帳單 ({displayedRecurringRules.length})
-            </Text>
-            <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              {billsScope === 'my'
-                ? `僅列出綁定本機「${currentUser?.display_name || '我'}」負責之定期項目，可自主管理規則與確認入帳`
-                : isOwner
-                ? '管理水電瓦斯、房租通訊、分期攤提等定期週期項目，到期手動確認記帳'
-                : '查看家庭固定週期扣款設定與出帳月份（全家純瀏覽模式）'}
-            </Text>
-          </View>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
+          <Text style={styles.cardSectionTitle} numberOfLines={1} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+            🗓️ 週期固定帳單 ({displayedRecurringRules.length})
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
             {activePendingBillsCount > 0 && (
               <TouchableOpacity
                 style={[styles.manageCategoryBtn, { backgroundColor: '#FEE2E2', borderColor: '#FECACA' }]}
@@ -196,11 +187,19 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
               }}
             >
               <Text style={styles.manageCategoryBtnText} maxFontSizeMultiplier={1.2}>
-                {billsScope === 'my' || isOwner ? '⚙️ 管理規則' : '👀 查看規則'}
+                {billsScope === 'my' || isOwner ? '⚙️ 規則' : '👀 查看'}
               </Text>
             </TouchableOpacity>
           </View>
         </View>
+
+        <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          {billsScope === 'my'
+            ? `僅列出綁定本機「${currentUser?.display_name || '我'}」負責之定期項目，可自主管理規則與確認入帳`
+            : isOwner
+            ? '管理水電瓦斯、房租通訊、分期攤提等定期週期項目，到期手動確認記帳'
+            : '查看家庭固定週期扣款設定與出帳月份（全家純瀏覽模式）'}
+        </Text>
 
         <View style={styles.paymentAccountPreviewRow}>
           {displayedRecurringRules.map(rule => {
@@ -297,19 +296,10 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
       {/* 支付卡片與帳戶管理 */}
       <View style={styles.cardSection}>
         <View style={styles.sectionHeaderRow}>
-          <View style={styles.sectionHeaderLeft}>
-            <Text style={styles.cardSectionTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              💳 支付卡片與帳戶 ({displayedPaymentAccounts.length})
-            </Text>
-            <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              {billsScope === 'my'
-                ? `僅列出綁定本機「${currentUser?.display_name || '我'}」專屬之卡片與帳戶，可自主管理與對帳`
-                : isOwner
-                ? '管理信用卡結帳週期、悠遊卡/一卡通餘額與帳單對帳'
-                : '查看全家信用卡結帳日與悠遊卡即時餘額（全家純瀏覽模式）'}
-            </Text>
-          </View>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
+          <Text style={styles.cardSectionTitle} numberOfLines={1} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+            💳 支付卡片與帳戶 ({displayedPaymentAccounts.length})
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
             <TouchableOpacity
               style={[styles.manageCategoryBtn, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}
               onPress={() => {
@@ -332,6 +322,14 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
             </TouchableOpacity>
           </View>
         </View>
+
+        <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          {billsScope === 'my'
+            ? `僅列出綁定本機「${currentUser?.display_name || '我'}」專屬之卡片與帳戶，可自主管理與對帳`
+            : isOwner
+            ? '管理信用卡結帳週期、悠遊卡/一卡通餘額與帳單對帳'
+            : '查看全家信用卡結帳日與悠遊卡即時餘額（全家純瀏覽模式）'}
+        </Text>
 
         <View style={styles.paymentAccountPreviewRow}>
           {displayedPaymentAccounts.map(acc => {
@@ -609,6 +607,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
+      marginBottom: 6,
     },
     sectionHeaderLeft: {
       flex: 1,
@@ -618,12 +617,14 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontSize: 15,
       fontWeight: '700',
       color: colors.text.primary,
+      flex: 1,
+      marginRight: 8,
     },
     sectionHeaderDesc: {
       fontSize: 12,
       color: colors.text.muted,
-      marginTop: 2,
-      marginBottom: 14,
+      marginBottom: 12,
+      lineHeight: 17,
     },
     manageCategoryBtn: {
       paddingHorizontal: 10,

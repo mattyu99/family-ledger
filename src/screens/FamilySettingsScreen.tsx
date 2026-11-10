@@ -526,32 +526,21 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
               點擊成員可自訂稱謂、管理連線裝置與 Google 帳號安全防護
             </Text>
           </View>
-          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+          {realIsOwner && (
             <TouchableOpacity
-              style={styles.allowanceQuickBtn}
+              style={styles.addMemberBtn}
               onPress={() => {
-                onOpenModal('allowance');
+                if (!isAdminMode) {
+                  showAlert('日常模式受限', '目前為日常檢視模式。如需新增家庭成員，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。');
+                  return;
+                }
+                onOpenAddMemberModal();
               }}
               activeOpacity={0.7}
             >
-              <Text style={styles.allowanceQuickBtnText} maxFontSizeMultiplier={1.08}>🎁 撥零用錢</Text>
+              <Text style={styles.addMemberBtnText}>＋ 新增成員</Text>
             </TouchableOpacity>
-            {realIsOwner && (
-              <TouchableOpacity
-                style={styles.addMemberBtn}
-                onPress={() => {
-                  if (!isAdminMode) {
-                    showAlert('日常模式受限', '目前為日常檢視模式。如需新增家庭成員，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。');
-                    return;
-                  }
-                  onOpenAddMemberModal();
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.addMemberBtnText}>＋ 新增成員</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          )}
         </View>
 
         <View style={styles.userSwitchRow}>
