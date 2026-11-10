@@ -9,6 +9,7 @@ import {
   Platform,
   Linking,
   Animated,
+  Alert,
 } from 'react-native';
 import { Text } from './common/Text';
 
@@ -16,7 +17,7 @@ import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
-import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned } from '../lib/memo';
+import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, checkMemoPinQuota } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { HorizontalScrollView } from './HorizontalScrollView';
 
@@ -489,6 +490,21 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                     onLongPress={async () => {
                       if (!isCompleted) {
                         const newPinned = !isPinned;
+                        if (newPinned) {
+                          const targetScope = item.reminder_target === 'personal' ? 'personal' : 'family';
+                          const quota = checkMemoPinQuota(transactions, {
+                            targetScope,
+                            memberId: item.paid_by || currentUser?.id,
+                            excludeTxId: item.id,
+                          });
+                          if (!quota.canPin) {
+                            Alert.alert(
+                              targetScope === 'personal' ? '個人置頂已達上限' : '全家置頂已達上限',
+                              quota.errorMessage || '置頂已達 5 筆上限，請先辦妥或取消現有置頂事項。'
+                            );
+                            return;
+                          }
+                        }
                         await updateTransaction(item.id, { is_pinned: newPinned });
                       }
                     }}

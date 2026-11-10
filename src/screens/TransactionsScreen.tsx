@@ -8,6 +8,7 @@ import {
   Platform,
   StyleSheet,
   Animated,
+  Alert,
 } from 'react-native';
 import { Text, TextInput } from '../components/common/Text';
 
@@ -22,7 +23,7 @@ import { StoredValueWidget } from '../components/StoredValueWidget';
 import { HorizontalScrollView } from '../components/HorizontalScrollView';
 import { isTransferToMember } from '../lib/payment';
 import { getRollingPendingBills } from '../lib/recurring';
-import { getLocalDateYmd, parseMemoNote, getRollingMemoDueInfo, isMemoPinned } from '../lib/memo';
+import { getLocalDateYmd, parseMemoNote, getRollingMemoDueInfo, isMemoPinned, checkMemoPinQuota } from '../lib/memo';
 import { checkInvoiceWinning } from '../lib/lottery';
 import { getInvoicePeriodKey } from '../lib/invoice';
 
@@ -106,6 +107,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
   const [isReminderDismissed, setIsReminderDismissed] = useState(false);
   const [isAssetSectionExpanded, setIsAssetSectionExpanded] = useState(false);
+  const [isPinnedExpanded, setIsPinnedExpanded] = useState<boolean>(false);
 
   // 剛才查看之高光錨點紀錄（自動維持 6 秒讓使用者退回列表時瞬間鎖定焦點）
   const [lastViewedTxId, setLastViewedTxId] = useState<string | null>(null);
@@ -319,13 +321,13 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
     return { all, financial, memo };
   }, [transactions, filterMonth, filterMemberId, searchQuery, getMemberById, getCategoryById, members, currentUser, paymentAccounts]);
 
-  // 依據篩選條件計算 filteredTransactions (支援方案 C 智慧分流與方案 1 全家/個人置頂)
-  const filteredTransactions = useMemo(() => {
+  // 依據篩選條件計算 groupedFilteredTransactions (支援方案 C 智慧分流與方案 1 全家/個人置頂)
+  const groupedFilteredTransactions = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
 
     // 1. 若篩選為「僅看收支」，直接排除所有 memo（包含置頂）
     if (transactionTypeFilter === 'financial') {
-      return transactions.filter(t => {
+      const list = transactions.filter(t => {
         if (t.type === 'memo') return false;
 
         if (filterMonth !== 'all') {
@@ -362,6 +364,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
 
         return true;
       });
+      return { pinnedMemos: [], normalTransactions: list, all: list };
     }
 
     // 2. 篩選「全部記錄」或「僅看記事」：
@@ -369,7 +372,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
     const pinnedMemos = transactions.filter(t => {
       if (!isMemoPinned(t)) return false;
 
-      // 成員過濾 (方案 1)
+      // 成員過濾 (方案 1: 全家共享人人可見；個人專屬視角隔離)
       if (filterMemberId !== 'all') {
         const isFamily = !t.reminder_target || t.reminder_target === 'family';
         if (!isFamily) {
@@ -381,6 +384,16 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
             t.paid_by === filterMemberId ||
             (targetMember && (payer?.display_name === targetMember.display_name || (t as any).payer_name === targetMember.display_name));
           if (!isMatch) return false;
+        }
+      } else {
+        // 當查看全體「全部」視角時：
+        // 全家共享項目對全體家庭成員公開；個人專屬記事僅本人可見，隱藏其他家人的私人備忘
+        if (t.reminder_target === 'personal') {
+          const isMine =
+            (t.paid_by && t.paid_by === currentUser?.id) ||
+            (t.creator_id && t.creator_id === currentUser?.id) ||
+            (t.paid_by && currentUser?.display_name && (getMemberById(t.paid_by)?.display_name === currentUser.display_name));
+          if (!isMine) return false;
         }
       }
 
@@ -394,7 +407,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
       }
 
       return true;
-    });
+    }).sort((a, b) => (b.transacted_at || '').localeCompare(a.transacted_at || ''));
 
     const pinnedIds = new Set(pinnedMemos.map(p => p.id));
 
@@ -425,6 +438,15 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
           (targetMember && (payer?.display_name === targetMember.display_name || (t as any).payer_name === targetMember.display_name)) ||
           isTransferIn;
         if (!isMatch) return false;
+      } else {
+        // 全家「全部」視角：個人專屬純記事不打擾其他家庭成員
+        if (t.type === 'memo' && t.reminder_target === 'personal') {
+          const isMine =
+            (t.paid_by && t.paid_by === currentUser?.id) ||
+            (t.creator_id && t.creator_id === currentUser?.id) ||
+            (t.paid_by && currentUser?.display_name && (getMemberById(t.paid_by)?.display_name === currentUser.display_name));
+          if (!isMine) return false;
+        }
       }
 
       if (q) {
@@ -438,13 +460,40 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
       return true;
     });
 
-    // 置頂記事排在最前面
-    return [...pinnedMemos, ...normalTransactions];
+    return {
+      pinnedMemos,
+      normalTransactions,
+      all: [...pinnedMemos, ...normalTransactions],
+    };
   }, [transactions, transactionTypeFilter, filterMonth, filterMemberId, searchQuery, getMemberById, getCategoryById, members, currentUser, paymentAccounts]);
 
+  const filteredTransactions = useMemo(() => {
+    return groupedFilteredTransactions.all || [];
+  }, [groupedFilteredTransactions]);
+
+  const pinnedMemosList = useMemo(() => {
+    return groupedFilteredTransactions.pinnedMemos || [];
+  }, [groupedFilteredTransactions]);
+
+  const normalTransactionsList = useMemo(() => {
+    return groupedFilteredTransactions.normalTransactions || [];
+  }, [groupedFilteredTransactions]);
+
+  // 首頁置頂防霸屏折疊：預設常駐前 2 筆最新置頂記事，超過 2 筆時折疊收合
+  const visiblePinnedMemos = useMemo(() => {
+    if (pinnedMemosList.length <= 2 || isPinnedExpanded) {
+      return pinnedMemosList;
+    }
+    return pinnedMemosList.slice(0, 2);
+  }, [pinnedMemosList, isPinnedExpanded]);
+
+  const displayedNormalTransactions = useMemo(() => {
+    return normalTransactionsList.slice(0, displayCount);
+  }, [normalTransactionsList, displayCount]);
+
   const displayedTransactions = useMemo(() => {
-    return filteredTransactions.slice(0, displayCount);
-  }, [filteredTransactions, displayCount]);
+    return [...visiblePinnedMemos, ...displayedNormalTransactions];
+  }, [visiblePinnedMemos, displayedNormalTransactions]);
 
   const defaultMemberId = currentUser?.id || 'all';
   const isFiltered = filterMonth !== currentMonthYm || filterMemberId !== defaultMemberId || !!searchQuery.trim() || transactionTypeFilter !== 'all';
@@ -1506,7 +1555,8 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         </View>
       ) : (
         <>
-          {displayedTransactions.map(item => (
+          {/* 置頂生活記事卡片清單 (常駐最上方，預設展開最新 2 筆) */}
+          {visiblePinnedMemos.map(item => (
             <TransactionItem
               key={item.id}
               transaction={item}
@@ -1521,33 +1571,101 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
                 onOpenMemoCompletion(tx);
               }}
               onTogglePinMemo={async tx => {
-                const newPinned = !isMemoPinned(tx);
-                await updateTransaction(tx.id, { is_pinned: newPinned });
+                const currentlyPinned = isMemoPinned(tx);
+                if (!currentlyPinned) {
+                  const targetScope = tx.reminder_target === 'personal' ? 'personal' : 'family';
+                  const quota = checkMemoPinQuota(transactions, {
+                    targetScope,
+                    memberId: tx.paid_by || currentUser?.id,
+                    excludeTxId: tx.id,
+                  });
+                  if (!quota.canPin) {
+                    Alert.alert(
+                      targetScope === 'personal' ? '個人置頂已達上限' : '全家置頂已達上限',
+                      quota.errorMessage || '置頂已達 5 筆上限，請先辦妥或取消現有置頂事項。'
+                    );
+                    return;
+                  }
+                }
+                await updateTransaction(tx.id, { is_pinned: !currentlyPinned });
+              }}
+              onViewImage={(url, title) => onViewImage(url, title || '消費收據 / 保固憑證')}
+            />
+          ))}
+
+          {/* 首頁防霸屏折疊按鈕：超過 2 筆置頂時提供展開 / 收合控制 */}
+          {pinnedMemosList.length > 2 && (
+            <TouchableOpacity
+              style={[styles.pinnedCollapseBtn, isDark && styles.pinnedCollapseBtnDark]}
+              onPress={() => setIsPinnedExpanded(prev => !prev)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.pinnedCollapseText, isDark && styles.pinnedCollapseTextDark]}>
+                {isPinnedExpanded
+                  ? '▴ 收合其餘置頂事項'
+                  : `📌 其餘 ${pinnedMemosList.length - 2} 筆置頂事項 (展開 ▾)`}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* 常規交易與日常生活記事清單 */}
+          {displayedNormalTransactions.map(item => (
+            <TransactionItem
+              key={item.id}
+              transaction={item}
+              viewingMemberId={filterMemberId}
+              isLastViewed={item.id === lastViewedTxId}
+              onPress={tx => {
+                setLastViewedTxId(tx.id);
+                onOpenEditTransaction(tx);
+              }}
+              onCompleteMemo={tx => {
+                setLastViewedTxId(tx.id);
+                onOpenMemoCompletion(tx);
+              }}
+              onTogglePinMemo={async tx => {
+                const currentlyPinned = isMemoPinned(tx);
+                if (!currentlyPinned) {
+                  const targetScope = tx.reminder_target === 'personal' ? 'personal' : 'family';
+                  const quota = checkMemoPinQuota(transactions, {
+                    targetScope,
+                    memberId: tx.paid_by || currentUser?.id,
+                    excludeTxId: tx.id,
+                  });
+                  if (!quota.canPin) {
+                    Alert.alert(
+                      targetScope === 'personal' ? '個人置頂已達上限' : '全家置頂已達上限',
+                      quota.errorMessage || '置頂已達 5 筆上限，請先辦妥或取消現有置頂事項。'
+                    );
+                    return;
+                  }
+                }
+                await updateTransaction(tx.id, { is_pinned: !currentlyPinned });
               }}
               onViewImage={(url, title) => onViewImage(url, title || '消費收據 / 保固憑證')}
             />
           ))}
 
           {/* 分批動態載入控制列 */}
-          {filteredTransactions.length > displayCount && (
+          {normalTransactionsList.length > displayCount && (
             <View style={styles.loadMoreContainer}>
               <TouchableOpacity
                 style={styles.loadMoreBtn}
-                onPress={() => setDisplayCount(prev => Math.min(prev + PAGE_SIZE, filteredTransactions.length))}
+                onPress={() => setDisplayCount(prev => Math.min(prev + PAGE_SIZE, normalTransactionsList.length))}
                 activeOpacity={0.7}
               >
                 <Text style={styles.loadMoreBtnText}>
-                  載入更多明細 (+{Math.min(PAGE_SIZE, filteredTransactions.length - displayCount)} 筆) ▾
+                  載入更多明細 (+{Math.min(PAGE_SIZE, normalTransactionsList.length - displayCount)} 筆) ▾
                 </Text>
                 <Text style={styles.loadMoreSubtext}>
                   已顯示 {displayedTransactions.length} / {filteredTransactions.length} 筆
                 </Text>
               </TouchableOpacity>
 
-              {filteredTransactions.length - displayCount > PAGE_SIZE && (
+              {normalTransactionsList.length - displayCount > PAGE_SIZE && (
                 <TouchableOpacity
                   style={styles.loadAllBtn}
-                  onPress={() => setDisplayCount(filteredTransactions.length)}
+                  onPress={() => setDisplayCount(normalTransactionsList.length)}
                   activeOpacity={0.7}
                 >
                   <Text style={styles.loadAllBtnText}>直接全部展開 ({filteredTransactions.length} 筆)</Text>
@@ -2292,6 +2410,30 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       color: colors.text.muted,
       textDecorationLine: 'underline',
       fontWeight: '600',
+    },
+    pinnedCollapseBtn: {
+      width: '100%',
+      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.12)' : '#FFFBEB',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(245, 158, 11, 0.35)' : '#FDE68A',
+      borderRadius: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginVertical: 4,
+    },
+    pinnedCollapseBtnDark: {
+      backgroundColor: 'rgba(245, 158, 11, 0.15)',
+      borderColor: 'rgba(245, 158, 11, 0.45)',
+    },
+    pinnedCollapseText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: isDark ? '#FBBF24' : '#D97706',
+    },
+    pinnedCollapseTextDark: {
+      color: '#FBBF24',
     },
     listEndIndicator: {
       marginTop: 14,

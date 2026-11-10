@@ -155,4 +155,50 @@ describe('Android 桌面小工具快照萃取與待辦隱私分流測試 (widget
     const snapshot = extractWidgetSnapshot(demoLedger, mockTransactions, mockMembers, 'user-dad');
     expect(snapshot.ledgerName).toBe('💖 甜心示範家庭');
   });
+
+  it('桌面小工具置頂優先排序：置頂事項排在最前面，且標題自動附帶 📌 標記', () => {
+    const memosWithPin: Transaction[] = [
+      {
+        id: 'memo-normal',
+        ledger_id: 'l1',
+        type: 'memo',
+        amount: 0,
+        creator_id: 'u1',
+        paid_by: 'u1',
+        reminder_target: 'family',
+        reminder_date: '2026-11-01',
+        note: '普通待辦事項',
+        category_id: 'c',
+        transacted_at: '2026-11-01',
+        created_at: '2026-11-01',
+        is_settled: false,
+        is_pinned: false,
+      },
+      {
+        id: 'memo-pinned',
+        ledger_id: 'l1',
+        type: 'memo',
+        amount: 0,
+        creator_id: 'u1',
+        paid_by: 'u1',
+        reminder_target: 'family',
+        reminder_date: '2026-11-15', // 日期較晚，但有置頂
+        note: '重要家庭置頂事項',
+        category_id: 'c',
+        transacted_at: '2026-11-01',
+        created_at: '2026-11-01',
+        is_settled: false,
+        is_pinned: true,
+      },
+    ];
+
+    const snapshot = extractWidgetSnapshot(mockLedger, memosWithPin, mockMembers, 'u1');
+    expect(snapshot.pendingMemos.length).toBe(2);
+    // 第一筆應為置頂項目
+    expect(snapshot.pendingMemos[0].id).toBe('memo-pinned');
+    expect(snapshot.pendingMemos[0].title).toContain('📌 重要家庭置頂事項');
+    // 第二筆為普通項目
+    expect(snapshot.pendingMemos[1].id).toBe('memo-normal');
+    expect(snapshot.pendingMemos[1].title).not.toContain('📌');
+  });
 });

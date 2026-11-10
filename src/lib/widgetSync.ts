@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import { Transaction, Ledger, LedgerMember } from '../types';
-import { getLocalDateYmd, decodeMemoMerchantTag, parseMemoNote } from './memo';
+import { Transaction, Ledger } from '../types';
+import { getLocalDateYmd, decodeMemoMerchantTag, parseMemoNote, isMemoPinned } from './memo';
 import { QUICK_ACTIONS_CONFIG, QuickActionKind } from './quickActions';
 
 export const WIDGET_SNAPSHOT_STORAGE_KEY = '@family_ledger_widget_snapshot';
@@ -87,8 +87,12 @@ export function extractWidgetSnapshot(
     return true;
   });
 
-  // 篩選與排序：今日與逾期待辦最優先，其次為未到期待辦與日常雜記
+  // 篩選與排序：置頂事項優先，其次今日與逾期待辦最優先，再次為未到期待辦與日常雜記
   const sortedMemos = [...activeMemos].sort((a, b) => {
+    const pinA = isMemoPinned(a);
+    const pinB = isMemoPinned(b);
+    if (pinA !== pinB) return pinA ? -1 : 1;
+
     const rA = a.reminder_date || decodeMemoMerchantTag(a.merchant).reminderDate || '';
     const rB = b.reminder_date || decodeMemoMerchantTag(b.merchant).reminderDate || '';
     if (!rA && !rB) return (b.transacted_at || '').localeCompare(a.transacted_at || '');
@@ -99,6 +103,7 @@ export function extractWidgetSnapshot(
 
   // 取前 4 筆待辦放入小工具快照
   const pendingMemos: WidgetPendingMemo[] = sortedMemos.slice(0, 4).map(item => {
+    const isPinned = isMemoPinned(item);
     const decoded = decodeMemoMerchantTag(item.merchant);
     const parsed = parseMemoNote(item.note);
     const reminderDate = item.reminder_date || decoded.reminderDate;
@@ -130,6 +135,10 @@ export function extractWidgetSnapshot(
       displayTitle = cleanContent;
     } else {
       displayTitle = parsed.title || item.note || '生活備忘';
+    }
+
+    if (isPinned && !displayTitle.startsWith('📌')) {
+      displayTitle = `📌 ${displayTitle}`;
     }
 
     // 構造狀態與日期提示（如 "已逾期" 或 "11-09 · 智爸"）

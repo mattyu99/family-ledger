@@ -9,6 +9,9 @@ import {
   getRollingMemoDueInfo,
   isMemoPinned,
   toggleMemoPinnedMerchant,
+  checkMemoPinQuota,
+  MAX_PINNED_MEMOS_FAMILY,
+  MAX_PINNED_MEMOS_PERSONAL,
 } from '../memo';
 import { hydrateTransactionWithInvoice } from '../ledgerUtils';
 
@@ -238,6 +241,99 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
       const hydrated = hydrateTransactionWithInvoice(cloudDbRow);
       expect(hydrated.is_pinned).toBe(true);
       expect(isMemoPinned(hydrated)).toBe(true);
+    });
+
+    it('應能正確編碼與解碼 tgt:personal 與 tgt:family 適用對象標籤', () => {
+      const personalMerchant = encodeMemoMerchantTag({
+        reminderDate: '2026-11-20',
+        reminderTarget: 'personal',
+        isPinned: true,
+      });
+      expect(personalMerchant).toContain('tgt:personal');
+      const decodedPersonal = decodeMemoMerchantTag(personalMerchant);
+      expect(decodedPersonal.reminderTarget).toBe('personal');
+      expect(decodedPersonal.isPinned).toBe(true);
+
+      const familyMerchant = encodeMemoMerchantTag({
+        reminderTarget: 'family',
+      });
+      expect(familyMerchant).toContain('tgt:family');
+      expect(decodeMemoMerchantTag(familyMerchant).reminderTarget).toBe('family');
+    });
+  });
+
+  describe('生活記事置頂配額限制與防呆測試 (checkMemoPinQuota)', () => {
+    it('全家公用置頂上限為 5 筆，達上限時阻擋並回傳親切提示', () => {
+      // 構造 5 筆未辦妥之全家公用置頂事項
+      const mockTxs = [
+        { id: '1', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'family' },
+        { id: '2', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'family' },
+        { id: '3', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'family' },
+        { id: '4', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'family' },
+        { id: '5', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'family' },
+      ];
+
+      const res = checkMemoPinQuota(mockTxs, { targetScope: 'family' });
+      expect(res.canPin).toBe(false);
+      expect(res.currentCount).toBe(5);
+      expect(res.maxLimit).toBe(MAX_PINNED_MEMOS_FAMILY);
+      expect(res.errorMessage).toContain('全家公用置頂已達上限（5 筆）');
+    });
+
+    it('編輯既有置頂事項時 (傳入 excludeTxId) 應排除自身，允許保存', () => {
+      const mockTxs = [
+        { id: '1', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'family' },
+        { id: '2', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'family' },
+        { id: '3', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'family' },
+        { id: '4', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'family' },
+        { id: '5', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'family' },
+      ];
+
+      const res = checkMemoPinQuota(mockTxs, { targetScope: 'family', excludeTxId: '3' });
+      expect(res.canPin).toBe(true);
+      expect(res.currentCount).toBe(4);
+    });
+
+    it('已辦妥的事項不計入置頂上限', () => {
+      const mockTxs = [
+        { id: '1', type: 'memo', is_settled: true, is_pinned: true, reminder_target: 'family' },
+        { id: '2', type: 'memo', is_settled: true, is_pinned: true, reminder_target: 'family' },
+        { id: '3', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'family' },
+      ];
+
+      const res = checkMemoPinQuota(mockTxs, { targetScope: 'family' });
+      expect(res.canPin).toBe(true);
+      expect(res.currentCount).toBe(1);
+    });
+
+    it('個人專屬置頂上限每人各 5 筆，成員間額度獨立互不干擾', () => {
+      // 爸爸 (user-dad) 擁有 5 筆個人置頂
+      const mockTxs = [
+        { id: 'd1', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'personal', paid_by: 'user-dad' },
+        { id: 'd2', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'personal', paid_by: 'user-dad' },
+        { id: 'd3', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'personal', paid_by: 'user-dad' },
+        { id: 'd4', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'personal', paid_by: 'user-dad' },
+        { id: 'd5', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'personal', paid_by: 'user-dad' },
+        // 媽媽 (user-mom) 只有 1 筆個人置頂
+        { id: 'm1', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'personal', paid_by: 'user-mom' },
+      ];
+
+      // 爸爸要再置頂個人備忘 -> 阻擋
+      const dadCheck = checkMemoPinQuota(mockTxs, { targetScope: 'personal', memberId: 'user-dad' });
+      expect(dadCheck.canPin).toBe(false);
+      expect(dadCheck.currentCount).toBe(5);
+      expect(dadCheck.maxLimit).toBe(MAX_PINNED_MEMOS_PERSONAL);
+      expect(dadCheck.errorMessage).toContain('個人專屬置頂已達上限（5 筆）');
+
+      // 媽媽要置頂個人備忘 -> 通過 (目前僅 1 筆)
+      const momCheck = checkMemoPinQuota(mockTxs, { targetScope: 'personal', memberId: 'user-mom' });
+      expect(momCheck.canPin).toBe(true);
+      expect(momCheck.currentCount).toBe(1);
+
+      // 全家公用置頂依然為 0 筆 -> 通過
+      const familyCheck = checkMemoPinQuota(mockTxs, { targetScope: 'family' });
+      expect(familyCheck.canPin).toBe(true);
+      expect(familyCheck.currentCount).toBe(0);
     });
   });
 });

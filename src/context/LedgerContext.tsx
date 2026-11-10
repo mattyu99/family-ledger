@@ -2948,11 +2948,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       let isPinned = Boolean(t.is_pinned);
 
       const decodedMemo = decodeMemoMerchantTag(parsedMerchant);
+      let reminderTarget = t.reminder_target;
       if (decodedMemo.isMemo) {
         resolvedType = 'memo';
         reminderDate = decodedMemo.reminderDate;
         reminderCalendar = decodedMemo.reminderCalendar;
         reminderRepeat = decodedMemo.reminderRepeat;
+        if (decodedMemo.reminderTarget) reminderTarget = decodedMemo.reminderTarget;
         if (decodedMemo.completedBy) completedBy = decodedMemo.completedBy;
         if (decodedMemo.completedAt) completedAt = decodedMemo.completedAt;
         if (decodedMemo.isPinned) isPinned = true;
@@ -2974,6 +2976,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         reminder_date: reminderDate || t.reminder_date,
         reminder_calendar: reminderCalendar || t.reminder_calendar,
         reminder_repeat: reminderRepeat || t.reminder_repeat,
+        reminder_target: reminderTarget || t.reminder_target || 'family',
         completed_by: completedBy || t.completed_by,
         completed_at: completedAt || t.completed_at,
         is_pinned: isPinned,
@@ -6923,6 +6926,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         reminderDate: data.reminder_date,
         reminderCalendar: effectiveReminderCal,
         reminderRepeat: effectiveReminderRep,
+        reminderTarget: data.reminder_target || 'family',
         completedBy: data.completed_by,
         isPinned: Boolean(data.is_pinned),
       });
@@ -7927,10 +7931,15 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           ? Boolean(data.is_pinned)
           : (targetTx?.is_pinned !== undefined ? targetTx.is_pinned : decodeMemoMerchantTag(targetTx?.merchant).isPinned);
 
+        const effectiveReminderTarget = data.reminder_target !== undefined
+          ? (data.reminder_target || 'family')
+          : (targetTx?.reminder_target || decodeMemoMerchantTag(targetTx?.merchant).reminderTarget || 'family');
+
         cleanMerchant = encodeMemoMerchantTag({
           reminderDate: effectiveReminder,
           reminderCalendar: effectiveCalendar,
           reminderRepeat: effectiveRepeat,
+          reminderTarget: effectiveReminderTarget,
           completedBy: effectiveCompletedBy,
           completedAt: effectiveCompletedAt,
           isPinned: effectivePinned,
@@ -8077,7 +8086,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             reminder_date: isTargetMemo ? effectiveReminder : (data.reminder_date !== undefined ? (data.reminder_date || undefined) : t.reminder_date),
             reminder_calendar: isTargetMemo ? effectiveCalendar : (data.reminder_calendar !== undefined ? (data.reminder_calendar || undefined) : t.reminder_calendar),
             reminder_repeat: isTargetMemo ? effectiveRepeat : (data.reminder_repeat !== undefined ? (data.reminder_repeat || undefined) : t.reminder_repeat),
-            reminder_target: isTargetMemo ? (effectiveReminder ? (data.reminder_target || t.reminder_target || 'family') : undefined) : (data.reminder_target !== undefined ? (data.reminder_target || undefined) : t.reminder_target),
+            reminder_target: isTargetMemo
+              ? (data.reminder_target !== undefined
+                  ? (data.reminder_target || 'family')
+                  : (t.reminder_target || decodeMemoMerchantTag(t.merchant).reminderTarget || 'family'))
+              : (data.reminder_target !== undefined ? (data.reminder_target || undefined) : t.reminder_target),
             is_pinned: isTargetMemo ? effectivePinned : t.is_pinned,
             completed_by: rowCompletedBy,
             completed_at: isTargetMemo ? (rowSettled ? effectiveCompletedAt : undefined) : (data.completed_at !== undefined ? data.completed_at : t.completed_at),
@@ -8206,7 +8219,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (!updatePayload.reminder_date) {
             updatePayload.reminder_calendar = null;
             updatePayload.reminder_repeat = null;
-            updatePayload.reminder_target = null;
+            // 記事解綁：無提醒日期之純記事亦能獨立享有全家共享或個人專屬屬性
           }
         }
         if (data.reminder_calendar !== undefined && updatePayload.reminder_date) {
@@ -8215,8 +8228,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (data.reminder_repeat !== undefined && updatePayload.reminder_date) {
           updatePayload.reminder_repeat = data.reminder_repeat || null;
         }
-        if (data.reminder_target !== undefined && updatePayload.reminder_date) {
-          updatePayload.reminder_target = data.reminder_target || null;
+        if (data.reminder_target !== undefined) {
+          updatePayload.reminder_target = data.reminder_target || 'family';
         }
         updatePayload.updated_at = new Date().toISOString();
 

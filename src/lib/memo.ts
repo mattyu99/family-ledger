@@ -20,6 +20,14 @@ export const DEFAULT_MEMO_QUICK_TAGS = [
 export const MEMO_QUICK_TAGS = DEFAULT_MEMO_QUICK_TAGS;
 
 /**
+ * 生活記事置頂數量上限常數
+ * - 全家共享公用置頂：最多 5 筆
+ * - 個人專屬置頂：每位成員最多 5 筆
+ */
+export const MAX_PINNED_MEMOS_FAMILY = 5;
+export const MAX_PINNED_MEMOS_PERSONAL = 5;
+
+/**
  * 智慧合併生活記事標籤：固定內建核心項目在最前面維持位置穩定，使用者自訂或歷史常用標籤接在後面
  * 嚴格排除已被使用者長按主動移除的黑名單標籤 (dismissedTags)
  */
@@ -223,17 +231,18 @@ export function getLocalDateYmd(d: Date = new Date()): string {
 
 /**
  * 編碼生活記事之提醒與週期 메타 標籤（存入 merchant 欄位，100% 相容既有雲端資料表）
- * 格式範例：remind:2026-10-25|cal:lunar|rep:lunar_1_15|pin:1|done:uuid|done_at:2026-10-29T16:30:00.000Z
+ * 格式範例：remind:2026-10-25|cal:lunar|rep:lunar_1_15|tgt:personal|pin:1|done:uuid|done_at:2026-10-29T16:30:00.000Z
  */
 export function encodeMemoMerchantTag(options: {
   reminderDate?: string;
   reminderCalendar?: CalendarSystem;
   reminderRepeat?: MemoRepeatFrequency;
+  reminderTarget?: 'family' | 'personal';
   completedBy?: string;
   completedAt?: string;
   isPinned?: boolean;
 }): string {
-  const { reminderDate, reminderCalendar, reminderRepeat, completedBy, completedAt, isPinned } = options;
+  const { reminderDate, reminderCalendar, reminderRepeat, reminderTarget, completedBy, completedAt, isPinned } = options;
   const parts: string[] = [];
 
   if (reminderDate && reminderDate.trim()) {
@@ -251,6 +260,12 @@ export function encodeMemoMerchantTag(options: {
     }
   } else {
     parts.push('memo');
+  }
+
+  if (reminderTarget === 'personal') {
+    parts.push('tgt:personal');
+  } else if (reminderTarget === 'family') {
+    parts.push('tgt:family');
   }
 
   if (isPinned) {
@@ -276,6 +291,7 @@ export function decodeMemoMerchantTag(rawMerchant?: string): {
   reminderDate?: string;
   reminderCalendar?: CalendarSystem;
   reminderRepeat?: MemoRepeatFrequency;
+  reminderTarget?: 'family' | 'personal';
   completedBy?: string;
   completedAt?: string;
   isPinned?: boolean;
@@ -289,6 +305,7 @@ export function decodeMemoMerchantTag(rawMerchant?: string): {
   let reminderDate: string | undefined;
   let reminderCalendar: CalendarSystem | undefined;
   let reminderRepeat: MemoRepeatFrequency | undefined;
+  let reminderTarget: 'family' | 'personal' | undefined;
   let completedBy: string | undefined;
   let completedAt: string | undefined;
   let isPinned = false;
@@ -305,6 +322,10 @@ export function decodeMemoMerchantTag(rawMerchant?: string): {
       if (['once', 'weekly', 'monthly', 'lunar_1_15', 'lunar_2_16', 'yearly'].includes(repVal)) {
         reminderRepeat = repVal;
       }
+    } else if (seg === 'tgt:personal') {
+      reminderTarget = 'personal';
+    } else if (seg === 'tgt:family') {
+      reminderTarget = 'family';
     } else if (seg === 'pin:1' || seg === 'pin:true') {
       isPinned = true;
     } else if (seg.startsWith('done:')) {
@@ -323,6 +344,7 @@ export function decodeMemoMerchantTag(rawMerchant?: string): {
     reminderDate,
     reminderCalendar: reminderDate ? (reminderCalendar || 'solar') : undefined,
     reminderRepeat: reminderDate ? (reminderRepeat || 'once') : undefined,
+    reminderTarget,
     completedBy,
     completedAt,
     isPinned,
@@ -355,10 +377,95 @@ export function toggleMemoPinnedMerchant(rawMerchant?: string, targetState?: boo
     reminderDate: decoded.reminderDate,
     reminderCalendar: decoded.reminderCalendar,
     reminderRepeat: decoded.reminderRepeat,
+    reminderTarget: decoded.reminderTarget,
     completedBy: decoded.completedBy,
     completedAt: decoded.completedAt,
     isPinned: nextPinned,
   });
+}
+
+export interface PinQuotaCheckResult {
+  canPin: boolean;
+  currentCount: number;
+  maxLimit: number;
+  targetScope: 'family' | 'personal';
+  errorMessage?: string;
+}
+
+/**
+ * 檢查生活記事置頂配額（全家公用 5 筆、個人專屬 5 筆）
+ * - 排除已辦妥 (is_settled: true) 事項（辦妥自動退場不計入上限）
+ * - 支援傳入 excludeTxId，避免編輯現有已置頂項目時將自己重複計算
+ */
+export function checkMemoPinQuota(
+  transactions: {
+    id?: string;
+    type?: string;
+    is_settled?: boolean;
+    is_pinned?: boolean;
+    merchant?: string;
+    reminder_target?: string | null;
+    paid_by?: string | null;
+    creator_id?: string | null;
+  }[],
+  options: {
+    targetScope?: 'family' | 'personal';
+    memberId?: string | null;
+    excludeTxId?: string | null;
+  }
+): PinQuotaCheckResult {
+  const targetScope = options.targetScope === 'personal' ? 'personal' : 'family';
+  const excludeTxId = options.excludeTxId;
+  const maxLimit = targetScope === 'personal' ? MAX_PINNED_MEMOS_PERSONAL : MAX_PINNED_MEMOS_FAMILY;
+
+  let currentCount = 0;
+  for (const t of transactions) {
+    if (t.type !== 'memo') continue;
+    if (t.is_settled) continue;
+    if (!isMemoPinned(t)) continue;
+    if (excludeTxId && t.id === excludeTxId) continue;
+
+    const decoded = decodeMemoMerchantTag(t.merchant);
+    const resolvedTarget = t.reminder_target || decoded.reminderTarget || 'family';
+    const isPersonal = resolvedTarget === 'personal';
+
+    if (targetScope === 'family') {
+      if (!isPersonal) {
+        currentCount++;
+      }
+    } else {
+      // 個人專屬
+      if (isPersonal) {
+        const matchesMember =
+          (options.memberId && t.paid_by === options.memberId) ||
+          (!t.paid_by && options.memberId && t.creator_id === options.memberId);
+        if (matchesMember) {
+          currentCount++;
+        }
+      }
+    }
+  }
+
+  if (currentCount >= maxLimit) {
+    const errorMessage =
+      targetScope === 'family'
+        ? `全家公用置頂已達上限（${maxLimit} 筆）。請先將現有置頂事項打勾辦妥或取消置頂，以保持家庭看板簡明重點！`
+        : `個人專屬置頂已達上限（${maxLimit} 筆）。請先將現有個人置頂事項打勾辦妥或取消置頂，避免生活備忘堆積！`;
+    return {
+      canPin: false,
+      currentCount,
+      maxLimit,
+      targetScope,
+      errorMessage,
+    };
+  }
+
+  return {
+    canPin: true,
+    currentCount,
+    maxLimit,
+    targetScope,
+  };
 }
 
 /**

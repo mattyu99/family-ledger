@@ -38,6 +38,7 @@ import {
   applyChecklistTemplate,
   insertChecklistCheckbox,
   handleChecklistInput,
+  checkMemoPinQuota,
 } from '../lib/memo';
 import {
   CalendarSystem,
@@ -1191,7 +1192,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         reminder_date: memoReminderDate || undefined,
         reminder_calendar: memoReminderDate ? memoReminderCalendar : undefined,
         reminder_repeat: memoReminderDate ? memoReminderRepeat : undefined,
-        reminder_target: memoReminderDate ? memoReminderTarget : undefined,
+        reminder_target: memoReminderTarget || 'family',
         linked_transaction_id: linkedMemoId || undefined,
         transacted_at,
         is_pinned: memoIsPinned,
@@ -1929,64 +1930,92 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   })()}
                 </View>
 
-                {/* 🎯 待辦提醒對象範圍切換 (全家 vs 個人專屬) */}
-                {!!memoReminderDate && (
-                  <View style={styles.memoTargetCard}>
-                    <View style={styles.memoRepeatHeaderRow}>
-                      <Text style={styles.memoRepeatTitle} maxFontSizeMultiplier={1.08}>
-                        🎯 提醒對象 (通知範圍)
-                      </Text>
-                    </View>
-                    <View style={styles.memoTargetButtonsRow}>
-                      <TouchableOpacity
-                        style={[
-                          styles.memoTargetBtn,
-                          memoReminderTarget === 'family' && styles.memoTargetBtnActiveFamily,
-                        ]}
-                        onPress={() => setMemoReminderTarget('family')}
-                        activeOpacity={0.7}
-                      >
-                        <Text
-                          style={[
-                            styles.memoTargetBtnText,
-                            memoReminderTarget === 'family' && styles.memoTargetBtnTextActive,
-                          ]}
-                          maxFontSizeMultiplier={1.1}
-                        >
-                          🌐 全家提醒 (全員通知)
-                        </Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={[
-                          styles.memoTargetBtn,
-                          memoReminderTarget === 'personal' && styles.memoTargetBtnActivePersonal,
-                        ]}
-                        onPress={() => setMemoReminderTarget('personal')}
-                        activeOpacity={0.7}
-                      >
-                        <Text
-                          style={[
-                            styles.memoTargetBtnText,
-                            memoReminderTarget === 'personal' && styles.memoTargetBtnTextActive,
-                          ]}
-                          maxFontSizeMultiplier={1.1}
-                        >
-                          👤 個人專屬 (僅提醒負責人)
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                    <Text style={styles.memoTargetDescText} maxFontSizeMultiplier={1.05}>
-                      {memoReminderTarget === 'personal'
-                        ? `💡 僅指派之負責人（${(members.find(m => m.id === effectivePaidBy) || currentUser)?.display_name || '此成員'}）的手機會在到期日收到推播。`
-                        : '💡 全體家庭成員的手機在提醒日皆會收到推播，適合家庭採買與公共待辦。'}
+                {/* 🎯 適用對象範圍切換 (解綁日期限制：全家共享 vs 個人專屬) */}
+                <View style={styles.memoTargetCard}>
+                  <View style={styles.memoRepeatHeaderRow}>
+                    <Text style={styles.memoRepeatTitle} maxFontSizeMultiplier={1.08}>
+                      🎯 適用對象 ({memoReminderDate ? '通知與共享範圍' : '可見與共享範圍'})
                     </Text>
                   </View>
-                )}
+                  <View style={styles.memoTargetButtonsRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.memoTargetBtn,
+                        memoReminderTarget === 'family' && styles.memoTargetBtnActiveFamily,
+                      ]}
+                      onPress={() => {
+                        if (memoIsPinned && memoReminderTarget !== 'family') {
+                          const quota = checkMemoPinQuota(transactions, {
+                            targetScope: 'family',
+                            memberId: effectivePaidBy || currentUser?.id,
+                          });
+                          if (!quota.canPin) {
+                            Alert.alert('全家置頂已達上限', `${quota.errorMessage}\n切換為全家共享後已自動取消置頂。`);
+                            setMemoIsPinned(false);
+                          }
+                        }
+                        setMemoReminderTarget('family');
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.memoTargetBtnText,
+                          memoReminderTarget === 'family' && styles.memoTargetBtnTextActive,
+                        ]}
+                        maxFontSizeMultiplier={1.1}
+                      >
+                        🌐 全家共享 ({memoReminderDate ? '全員通知' : '全員可見'})
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.memoTargetBtn,
+                        memoReminderTarget === 'personal' && styles.memoTargetBtnActivePersonal,
+                      ]}
+                      onPress={() => {
+                        if (memoIsPinned && memoReminderTarget !== 'personal') {
+                          const quota = checkMemoPinQuota(transactions, {
+                            targetScope: 'personal',
+                            memberId: effectivePaidBy || currentUser?.id,
+                          });
+                          if (!quota.canPin) {
+                            Alert.alert('個人置頂已達上限', `${quota.errorMessage}\n切換為個人專屬後已自動取消置頂。`);
+                            setMemoIsPinned(false);
+                          }
+                        }
+                        setMemoReminderTarget('personal');
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.memoTargetBtnText,
+                          memoReminderTarget === 'personal' && styles.memoTargetBtnTextActive,
+                        ]}
+                        maxFontSizeMultiplier={1.1}
+                      >
+                        👤 個人專屬 ({memoReminderDate ? '僅提醒負責人' : '僅負責人可見'})
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.memoTargetDescText} maxFontSizeMultiplier={1.05}>
+                    {memoReminderTarget === 'personal'
+                      ? (memoReminderDate
+                          ? `💡 僅指派之負責人（${(members.find(m => m.id === effectivePaidBy) || currentUser)?.display_name || '此成員'}）的手機會在到期日收到推播。`
+                          : `💡 僅指派之負責人（${(members.find(m => m.id === effectivePaidBy) || currentUser)?.display_name || '此成員'}）可檢視與置頂此記事，其他家人不會看到此私人備忘。`)
+                      : (memoReminderDate
+                          ? '💡 全體家庭成員的手機在提醒日皆會收到推播，適合家庭採買與公共待辦。'
+                          : '💡 全體家庭成員皆可在生活手帳中共同檢視與置頂，適合家庭公用資訊。')}
+                  </Text>
+                </View>
 
                 {/* 負責 / 記錄成員 */}
                 <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>
-                  {memoReminderTarget === 'personal' ? '負責成員 (僅該成員手機接收個人提醒)' : '記錄成員'}
+                  {memoReminderTarget === 'personal'
+                    ? (memoReminderDate ? '負責成員 (僅該成員手機接收個人提醒)' : '專屬成員 (僅該成員可見此私人記事)')
+                    : '記錄成員'}
                 </Text>
                 <View style={styles.payerRow}>
                   {members.map(member => {
@@ -2013,15 +2042,32 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   })}
                 </View>
 
-                {/* 📌 置頂重要記事切換 */}
+                {/* 📌 置頂重要記事切換 (含全家 5 筆 / 個人 5 筆配額防呆) */}
                 <View style={styles.memoPinContainer}>
                   <TouchableOpacity
                     style={[styles.memoPinToggleBtn, memoIsPinned && styles.memoPinToggleBtnActive]}
-                    onPress={() => setMemoIsPinned(!memoIsPinned)}
+                    onPress={() => {
+                      if (!memoIsPinned) {
+                        const quota = checkMemoPinQuota(transactions, {
+                          targetScope: memoReminderTarget,
+                          memberId: effectivePaidBy || currentUser?.id,
+                        });
+                        if (!quota.canPin) {
+                          Alert.alert(
+                            memoReminderTarget === 'personal' ? '個人置頂已達上限' : '全家置頂已達上限',
+                            quota.errorMessage || '置頂已達 5 筆上限，請先辦妥或取消現有置頂事項。'
+                          );
+                          return;
+                        }
+                      }
+                      setMemoIsPinned(!memoIsPinned);
+                    }}
                     activeOpacity={0.7}
                   >
                     <Text style={[styles.memoPinToggleText, memoIsPinned && styles.memoPinToggleTextActive]}>
-                      {memoIsPinned ? '📌 已置頂 (常駐於首頁與待辦總覽最上方)' : '📌 置頂此記事 (常駐首頁榜首)'}
+                      {memoIsPinned
+                        ? `📌 已置頂 (${memoReminderTarget === 'personal' ? '個人' : '全家'}看板最上方)`
+                        : `📌 置頂此記事 (常駐${memoReminderTarget === 'personal' ? '個人' : '全家'}看板最上方)`}
                     </Text>
                   </TouchableOpacity>
                 </View>
