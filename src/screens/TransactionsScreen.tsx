@@ -1075,7 +1075,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         </View>
       )}
 
-      {/* 雙提醒單行膠囊 (待繳週期帳單 + 生活待辦備忘) */}
+      {/* 雙提醒單行膠囊 (待繳週期帳單 + 生活待辦備忘) - 雙管家對稱常駐 */}
       {(() => {
         const todayYmd = getLocalDateYmd();
         const max7DaysDate = new Date();
@@ -1086,34 +1086,14 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
 
         const hasPendingBills = currentFilterPendingBills.length > 0;
         const hasPendingMemos = pendingMemos.length > 0 || upcoming7DaysMemos.length > 0 || upcomingMemos.length > 0;
-        if (!hasPendingBills && !hasPendingMemos) return null;
-
-        const hasBothNotices = hasPendingBills && hasPendingMemos;
 
         const isMe =
           filterMemberId === currentUser?.id ||
           (!!currentUser?.display_name && members.find(m => m.id === filterMemberId)?.display_name === currentUser.display_name);
-        const canActBill = isMe || filterMemberId === 'all';
-        const billActionText = canActBill ? '核對記帳 ›' : '查看帳單 ›';
 
-        const firstBillInfo = currentFilterPendingBills[0];
-        const firstRule = firstBillInfo?.rule;
-        let billPrefix = filterMemberId === 'all' ? '全家待繳' : '本期待繳';
-        if (firstBillInfo?.isOverdue) {
-          billPrefix = '待繳逾期';
-        } else if (firstBillInfo?.isToday) {
-          billPrefix = '今日扣款';
-        } else if (firstBillInfo?.daysRemaining === 1) {
-          billPrefix = '明日扣款預告';
-        } else if (firstBillInfo?.isUpcomingWithin7Days) {
-          billPrefix = `待繳預告 (${firstBillInfo.daysRemaining}天後)`;
-        }
-        const billName = firstRule?.name || '週期帳單';
-        const billAmount = firstRule?.default_amount ? ` · NT$ ${firstRule.default_amount.toLocaleString()}` : '';
-        const billMore = currentFilterPendingBills.length > 1 ? ` 等 ${currentFilterPendingBills.length} 筆` : '';
-        const billTitle = hasBothNotices
+        const billTitle = hasPendingBills
           ? `待繳帳單 (${currentFilterPendingBills.length})`
-          : `${billPrefix} (${currentFilterPendingBills.length})：${billName}${billAmount}${billMore}`;
+          : '暫無待繳帳單';
 
         const hasOverdueMemo = pendingMemos.some(t => t.reminder_date && t.reminder_date < todayYmd);
         const hasTodayMemo = pendingMemos.some(t => t.reminder_date && t.reminder_date === todayYmd);
@@ -1126,145 +1106,120 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         } else if (upcoming7DaysMemos.length > 0) {
           const firstDue = getRollingMemoDueInfo(upcoming7DaysMemos[0]?.reminder_date, todayYmd);
           memoPrefix = `近期待辦 (${firstDue?.badgeText || '7天內'})`;
-        } else {
+        } else if (upcomingMemos.length > 0) {
           memoPrefix = '排程預告';
         }
 
         const activeMemoList = pendingMemos.length > 0 ? pendingMemos : (upcoming7DaysMemos.length > 0 ? upcoming7DaysMemos : upcomingMemos);
-        const firstMemo = activeMemoList[0];
-        const firstMemoParsed = parseMemoNote(firstMemo?.note);
-        const firstMemoTitle = firstMemoParsed.title || firstMemoParsed.cleanContent || firstMemo?.note || '';
         const memoCount = activeMemoList.length;
-        const memoMore = memoCount > 1 ? ` 等 ${memoCount} 則` : '';
-        const memoTitle = hasBothNotices
+
+        const memoTitle = hasPendingMemos
           ? `${memoPrefix} (${memoCount})`
-          : `${memoPrefix} (${memoCount})：${firstMemoTitle}${memoMore}`;
+          : '今日無待辦';
 
         const isUrgentMemo = pendingMemos.length > 0 || upcoming7DaysMemos.length > 0;
 
         return (
           <View style={styles.compactNoticeRow}>
-            {hasPendingBills && (
-              <TouchableOpacity
-                style={[
-                  styles.compactNoticeChip,
-                  styles.compactNoticeBillChip,
-                  isDark && styles.compactNoticeBillChipDark,
-                ]}
-                activeOpacity={0.8}
-                onPress={() => {
-                  if (filterMemberId === 'all') {
-                    onOpenRecurringModal('all', undefined, 'pending');
+            {/* 左側：財務管家 (待繳週期帳單 / 暫無待繳帳單) */}
+            <TouchableOpacity
+              style={[
+                styles.compactNoticeChip,
+                hasPendingBills ? styles.compactNoticeBillChip : styles.compactNoticeBillChipCalm,
+                isDark && (hasPendingBills ? styles.compactNoticeBillChipDark : styles.compactNoticeBillChipCalmDark),
+              ]}
+              activeOpacity={0.8}
+              onPress={() => {
+                if (filterMemberId === 'all') {
+                  onOpenRecurringModal('all', undefined, 'pending');
+                } else {
+                  if (isMe) {
+                    onOpenRecurringModal('my', undefined, 'pending');
                   } else {
-                    if (isMe) {
-                      onOpenRecurringModal('my', undefined, 'pending');
-                    } else {
-                      onOpenRecurringModal('all', filterMemberId, 'pending');
-                    }
+                    onOpenRecurringModal('all', filterMemberId, 'pending');
                   }
-                }}
-              >
-                <Text style={styles.compactNoticeChipIcon}>🗓️</Text>
-                <Text
-                  style={[
-                    styles.compactNoticeChipText,
-                    styles.compactNoticeBillText,
-                    isDark && styles.compactNoticeBillTextDark,
-                  ]}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={1.08}
-                >
-                  {billTitle}
-                </Text>
-                {hasBothNotices ? (
-                  <Text
-                    style={[
-                      styles.compactNoticeChipArrow,
-                      styles.compactNoticeBillText,
-                      isDark && styles.compactNoticeBillTextDark,
-                    ]}
-                    maxFontSizeMultiplier={1.08}
-                  >
-                    ›
-                  </Text>
-                ) : (
-                  <View
-                    style={[
-                      styles.compactNoticeActionPill,
-                      styles.compactNoticeActionPillBill,
-                      isDark && styles.compactNoticeActionPillBillDark,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.compactNoticeActionPillText,
-                        styles.compactNoticeBillText,
-                        isDark && styles.compactNoticeBillTextDark,
-                      ]}
-                      maxFontSizeMultiplier={1.08}
-                    >
-                      {billActionText}
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            )}
-
-            {hasPendingMemos && (
-              <TouchableOpacity
+                }
+              }}
+            >
+              <Text style={styles.compactNoticeChipIcon}>{hasPendingBills ? '🗓️' : '🌿'}</Text>
+              <Text
                 style={[
-                  styles.compactNoticeChip,
-                  isUrgentMemo ? styles.compactNoticeMemoChip : styles.compactNoticeUpcomingChip,
-                  isDark && (isUrgentMemo ? styles.compactNoticeMemoChipDark : styles.compactNoticeUpcomingChipDark),
+                  styles.compactNoticeChipText,
+                  hasPendingBills ? styles.compactNoticeBillText : styles.compactNoticeBillTextCalm,
+                  isDark && (hasPendingBills ? styles.compactNoticeBillTextDark : styles.compactNoticeBillTextCalmDark),
                 ]}
-                activeOpacity={0.8}
-                onPress={onOpenMemoTodoModal}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.08}
               >
-                <Text style={styles.compactNoticeChipIcon}>{pendingMemos.length > 0 ? '🔔' : (upcoming7DaysMemos.length > 0 ? '🗓️' : '📌')}</Text>
-                <Text
-                  style={[
-                    styles.compactNoticeChipText,
-                    isUrgentMemo ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText,
-                    isDark && (isUrgentMemo ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark),
-                  ]}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={1.08}
-                >
-                  {memoTitle}
-                </Text>
-                {hasBothNotices ? (
-                  <Text
-                    style={[
-                      styles.compactNoticeChipArrow,
-                      isUrgentMemo ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText,
-                      isDark && (isUrgentMemo ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark),
-                    ]}
-                    maxFontSizeMultiplier={1.08}
-                  >
-                    ›
-                  </Text>
-                ) : (
-                  <View
-                    style={[
-                      styles.compactNoticeActionPill,
-                      isUrgentMemo ? styles.compactNoticeActionPillMemo : styles.compactNoticeActionPillUpcoming,
-                      isDark && (isUrgentMemo ? styles.compactNoticeActionPillMemoDark : styles.compactNoticeActionPillUpcomingDark),
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.compactNoticeActionPillText,
-                        isUrgentMemo ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText,
-                        isDark && (isUrgentMemo ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark),
-                      ]}
-                      maxFontSizeMultiplier={1.08}
-                    >
-                      待辦總覽 ›
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            )}
+                {billTitle}
+              </Text>
+              <Text
+                style={[
+                  styles.compactNoticeChipArrow,
+                  hasPendingBills ? styles.compactNoticeBillText : styles.compactNoticeBillTextCalm,
+                  isDark && (hasPendingBills ? styles.compactNoticeBillTextDark : styles.compactNoticeBillTextCalmDark),
+                ]}
+                maxFontSizeMultiplier={1.08}
+              >
+                ›
+              </Text>
+            </TouchableOpacity>
+
+            {/* 右側：生活管家 (今日/近期待辦 / 今日無待辦) */}
+            <TouchableOpacity
+              style={[
+                styles.compactNoticeChip,
+                hasPendingMemos
+                  ? (isUrgentMemo ? styles.compactNoticeMemoChip : styles.compactNoticeUpcomingChip)
+                  : styles.compactNoticeMemoChipCalm,
+                isDark && (
+                  hasPendingMemos
+                    ? (isUrgentMemo ? styles.compactNoticeMemoChipDark : styles.compactNoticeUpcomingChipDark)
+                    : styles.compactNoticeMemoChipCalmDark
+                ),
+              ]}
+              activeOpacity={0.8}
+              onPress={onOpenMemoTodoModal}
+            >
+              <Text style={styles.compactNoticeChipIcon}>
+                {hasPendingMemos
+                  ? (pendingMemos.length > 0 ? '🔔' : (upcoming7DaysMemos.length > 0 ? '🗓️' : '📌'))
+                  : '☕'}
+              </Text>
+              <Text
+                style={[
+                  styles.compactNoticeChipText,
+                  hasPendingMemos
+                    ? (isUrgentMemo ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText)
+                    : styles.compactNoticeMemoTextCalm,
+                  isDark && (
+                    hasPendingMemos
+                      ? (isUrgentMemo ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark)
+                      : styles.compactNoticeMemoTextCalmDark
+                  ),
+                ]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.08}
+              >
+                {memoTitle}
+              </Text>
+              <Text
+                style={[
+                  styles.compactNoticeChipArrow,
+                  hasPendingMemos
+                    ? (isUrgentMemo ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText)
+                    : styles.compactNoticeMemoTextCalm,
+                  isDark && (
+                    hasPendingMemos
+                      ? (isUrgentMemo ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark)
+                      : styles.compactNoticeMemoTextCalmDark
+                  ),
+                ]}
+                maxFontSizeMultiplier={1.08}
+              >
+                ›
+              </Text>
+            </TouchableOpacity>
           </View>
         );
       })()}
@@ -2415,6 +2370,22 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     compactNoticeBillTextDark: {
       color: '#FCA5A5',
     },
+    compactNoticeBillChipCalm: {
+      backgroundColor: '#ECFDF5',
+      borderColor: '#A7F3D0',
+    },
+    compactNoticeBillChipCalmDark: {
+      backgroundColor: 'rgba(16, 185, 129, 0.12)',
+      borderColor: 'rgba(16, 185, 129, 0.3)',
+    },
+    compactNoticeBillTextCalm: {
+      color: '#059669',
+      fontWeight: '600',
+    },
+    compactNoticeBillTextCalmDark: {
+      color: '#6EE7B7',
+      fontWeight: '600',
+    },
     compactNoticeMemoChip: {
       backgroundColor: '#FFFBEB',
       borderColor: '#FDE68A',
@@ -2442,6 +2413,22 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     },
     compactNoticeUpcomingTextDark: {
       color: '#93C5FD',
+    },
+    compactNoticeMemoChipCalm: {
+      backgroundColor: '#F8FAFC',
+      borderColor: '#E2E8F0',
+    },
+    compactNoticeMemoChipCalmDark: {
+      backgroundColor: 'rgba(255, 255, 255, 0.06)',
+      borderColor: 'rgba(255, 255, 255, 0.15)',
+    },
+    compactNoticeMemoTextCalm: {
+      color: '#64748B',
+      fontWeight: '600',
+    },
+    compactNoticeMemoTextCalmDark: {
+      color: '#94A3B8',
+      fontWeight: '600',
     },
     collapsibleAssetWrapper: {
       marginBottom: 10,
