@@ -181,6 +181,10 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                 </Text>
               </View>
             )}
+          </View>
+
+          {/* 右側：辦妥徽章 或 全家/個人標籤 + 建立日期 */}
+          <View style={styles.memoHeaderRight}>
             {isCompleted ? (
               <View style={styles.memoCompletedBadge}>
                 <Text style={styles.memoCompletedBadgeText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
@@ -188,50 +192,41 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                 </Text>
               </View>
             ) : (
-              !!reminderDate && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-                  <View style={styles.memoReminderBadge}>
-                    <Text style={styles.memoReminderBadgeText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                      {reminderBadge?.isLunar ? '🏮 ' : '⏰ '}{reminderBadge?.fullText || `提醒：${reminderDate}`}
-                    </Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.memoScopeBadge,
-                      transaction.reminder_target === 'personal'
-                        ? {
-                            backgroundColor: isDark ? 'rgba(168, 85, 247, 0.2)' : '#FAF5FF',
-                            borderColor: isDark ? '#A855F7' : '#E9D5FF',
-                          }
-                        : {
-                            backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF',
-                            borderColor: isDark ? '#3B82F6' : '#BFDBFE',
-                          },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.memoScopeBadgeText,
-                        {
-                          color:
-                            transaction.reminder_target === 'personal'
-                              ? (isDark ? '#D8B4FE' : '#9333EA')
-                              : (isDark ? '#93C5FD' : '#2563EB'),
-                        },
-                      ]}
-                      allowFontScaling={false}
-                      maxFontSizeMultiplier={1.08}
-                    >
-                      {transaction.reminder_target === 'personal' ? `👤 個人${payer?.display_name ? `·${payer.display_name}` : ''}` : '🌐 全家'}
-                    </Text>
-                  </View>
-                </View>
-              )
+              <View
+                style={[
+                  styles.memoScopeBadge,
+                  transaction.reminder_target === 'personal'
+                    ? {
+                        backgroundColor: isDark ? 'rgba(168, 85, 247, 0.2)' : '#FAF5FF',
+                        borderColor: isDark ? '#A855F7' : '#E9D5FF',
+                      }
+                    : {
+                        backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF',
+                        borderColor: isDark ? '#3B82F6' : '#BFDBFE',
+                      },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.memoScopeBadgeText,
+                    {
+                      color:
+                        transaction.reminder_target === 'personal'
+                          ? (isDark ? '#D8B4FE' : '#9333EA')
+                          : (isDark ? '#93C5FD' : '#2563EB'),
+                    },
+                  ]}
+                  allowFontScaling={false}
+                  maxFontSizeMultiplier={1.08}
+                >
+                  {transaction.reminder_target === 'personal' ? `👤 個人${payer?.display_name ? `·${payer.display_name}` : ''}` : '🌐 全家'}
+                </Text>
+              </View>
             )}
+            <Text style={[styles.memoDateText, isCompleted && styles.memoDateTextCompleted, isDark && { color: colors.text.muted }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              {formattedDate}
+            </Text>
           </View>
-          <Text style={[styles.memoDateText, isCompleted && styles.memoDateTextCompleted, isDark && { color: colors.text.muted }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            {formattedDate}
-          </Text>
         </View>
 
         {checklistData.isChecklist ? (
@@ -409,14 +404,41 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
         )}
 
         <View style={styles.memoFooterRow}>
-          <Text style={[styles.memoAuthorText, isCompleted && styles.memoAuthorTextCompleted, isDark && { color: colors.text.muted }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            {payer?.avatar_url || '👤'} {payer?.display_name || '成員'} 記錄
-            {isCompleted && (
-              completer
-                ? ` · 由 ${completer.avatar_url || '👤'} ${completer.display_name}${formatMemoCompletedDate(transaction.completed_at, transaction.updated_at) ? ` 於 ${formatMemoCompletedDate(transaction.completed_at, transaction.updated_at)}` : ''} 辦妥 ✓`
-                : (formatMemoCompletedDate(transaction.completed_at, transaction.updated_at) ? ` · 於 ${formatMemoCompletedDate(transaction.completed_at, transaction.updated_at)} 辦妥 ✓` : ' · 已辦妥 ✓')
+          <View style={styles.memoFooterLeft}>
+            <Text style={[styles.memoAuthorText, isCompleted && styles.memoAuthorTextCompleted, isDark && { color: colors.text.muted }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              {payer?.avatar_url || '👤'} {payer?.display_name || '成員'} 記錄
+              {isCompleted && (
+                completer
+                  ? ` · 由 ${completer.avatar_url || '👤'} ${completer.display_name}${formatMemoCompletedDate(transaction.completed_at, transaction.updated_at) ? ` 於 ${formatMemoCompletedDate(transaction.completed_at, transaction.updated_at)}` : ''} 辦妥 ✓`
+                  : (formatMemoCompletedDate(transaction.completed_at, transaction.updated_at) ? ` · 於 ${formatMemoCompletedDate(transaction.completed_at, transaction.updated_at)} 辦妥 ✓` : ' · 已辦妥 ✓')
+              )}
+            </Text>
+            {/* 提醒日期標籤 (移至智爸記錄右方，享有充裕空間) */}
+            {!isCompleted && !!reminderDate && (
+              <View
+                style={[
+                  styles.memoReminderBadge,
+                  isDark && {
+                    backgroundColor: reminderBadge?.isLunar ? 'rgba(239, 68, 68, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                    borderColor: reminderBadge?.isLunar ? 'rgba(239, 68, 68, 0.4)' : 'rgba(59, 130, 246, 0.4)',
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.memoReminderBadgeText,
+                    isDark && {
+                      color: reminderBadge?.isLunar ? '#FCA5A5' : '#93C5FD',
+                    },
+                  ]}
+                  allowFontScaling={false}
+                  maxFontSizeMultiplier={1.08}
+                >
+                  {reminderBadge?.isLunar ? '🏮 ' : '⏰ '}{reminderBadge?.fullText || `提醒：${reminderDate}`}
+                </Text>
+              </View>
             )}
-          </Text>
+          </View>
           <Text style={[styles.memoActionHint, isCompleted && styles.memoActionHintCompleted, isDark && { color: isCompleted ? colors.text.muted : '#FBBF24' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
             {isCompleted ? '查看詳情 ›' : '點擊查看 / 編輯 ›'}
           </Text>
@@ -972,6 +994,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     flex: 1,
+    marginRight: 6,
+  },
+  memoHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
   },
   memoCheckbox: {
     width: 20,
@@ -1014,6 +1043,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#92400E',
+    flexShrink: 1,
   },
   memoTitleTextCompleted: {
     color: '#64748B',
@@ -1080,6 +1110,14 @@ const styles = StyleSheet.create({
     paddingTop: 7,
     borderTopWidth: 1,
     borderTopColor: '#FEF3C7',
+  },
+  memoFooterLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    marginRight: 6,
+    flexWrap: 'wrap',
   },
   memoAuthorText: {
     fontSize: 11,
