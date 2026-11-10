@@ -556,16 +556,12 @@ export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({
 
       {/* 各成員付款支出比例 */}
       <View style={styles.cardSection}>
-        <View style={styles.sectionHeaderRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.cardSectionTitle}>
-              👨‍👩‍👧 各成員付款支出比例
-            </Text>
-            <Text style={styles.cardSectionDesc}>
-              依付款金額由高到低排序，掌握家庭開銷的付款貢獻
-            </Text>
-          </View>
-        </View>
+        <Text style={styles.cardSectionTitle}>
+          👨‍👩‍👧 各成員付款支出比例
+        </Text>
+        <Text style={styles.cardSectionDesc}>
+          依付款金額由高到低排序，掌握家庭開銷的付款貢獻
+        </Text>
 
         <View style={styles.memberPayList}>
           {analyticsMemberPaymentRanking.map(member => {
@@ -645,17 +641,10 @@ export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({
       {/* 分類收支排行 */}
       <View style={styles.cardSection}>
         <View style={styles.sectionHeaderRow}>
-          <View style={{ flex: 1, marginRight: 8 }}>
-            <Text style={styles.cardSectionTitle}>
-              {analyticsCategoryType === 'expense' ? '📊 支出分類排行' : '💰 收入分類排行'}
-              {analyticsCategoryRanking.length > 0 ? ` (${analyticsCategoryRanking.length}項)` : ''}
-            </Text>
-            <Text style={styles.cardSectionDesc}>
-              {analyticsCategoryType === 'expense'
-                ? '依開銷金額由高到低自動排序，掌握最大花費去向'
-                : '依進帳金額由高到低自動排序，掌握家庭資金來源'}
-            </Text>
-          </View>
+          <Text style={styles.cardSectionTitle} numberOfLines={1}>
+            {analyticsCategoryType === 'expense' ? '📊 支出分類排行' : '💰 收入分類排行'}
+            {analyticsCategoryRanking.length > 0 ? ` (${analyticsCategoryRanking.length}項)` : ''}
+          </Text>
 
           {/* 支出 / 收入 切換按鈕 */}
           <View style={styles.typeToggleContainer}>
@@ -676,7 +665,6 @@ export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({
                 支出
               </Text>
             </TouchableOpacity>
-
             <TouchableOpacity
               style={[
                 styles.typeToggleBtn,
@@ -696,6 +684,12 @@ export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({
             </TouchableOpacity>
           </View>
         </View>
+
+        <Text style={styles.cardSectionDesc}>
+          {analyticsCategoryType === 'expense'
+            ? '依開銷金額由高到低自動排序，掌握最大花費去向'
+            : '依進帳金額由高到低自動排序，掌握家庭資金來源'}
+        </Text>
 
         {analyticsCategoryRanking.length === 0 ? (
           <View style={styles.analyticsEmptyBox}>

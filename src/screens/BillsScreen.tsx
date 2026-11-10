@@ -122,21 +122,21 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollPadding}>
       {/* 帳單與支付總覽 Hero 卡片 */}
       <View style={styles.billsHeroCard}>
-        <View style={styles.billsHeroLeft}>
-          <Text style={styles.billsHeroTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+        <View style={styles.billsHeroHeaderRow}>
+          <Text style={styles.billsHeroTitle} numberOfLines={1} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
             💳 帳單與支付資產
           </Text>
-          <Text style={styles.billsHeroDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            定期扣款・分期攤提・信用卡結帳・悠遊卡與電子支付
-          </Text>
+          <View style={styles.billsHeroSummaryChip}>
+            <Text style={styles.billsHeroSummaryText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              {billsScope === 'my'
+                ? `${myPaymentAccounts.length} 帳戶 · ${myRecurringRules.length} 項定期 (本機)`
+                : `${scopedPaymentAccounts.length} 帳戶 · ${scopedRecurringRules.length} 項定期 (全家)`}
+            </Text>
+          </View>
         </View>
-        <View style={styles.billsHeroSummaryChip}>
-          <Text style={styles.billsHeroSummaryText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            {billsScope === 'my'
-              ? `${myPaymentAccounts.length} 帳戶 · ${myRecurringRules.length} 項定期 (本機)`
-              : `${scopedPaymentAccounts.length} 帳戶 · ${scopedRecurringRules.length} 項定期 (全家)`}
-          </Text>
-        </View>
+        <Text style={styles.billsHeroDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          定期扣款・分期攤提・信用卡結帳・悠遊卡與電子支付
+        </Text>
       </View>
 
       {/* 切換檢視範圍 */}
@@ -518,9 +518,6 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       borderRadius: 16,
       padding: 16,
       marginBottom: 16,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
       borderWidth: 1,
       borderColor: colors.border.default,
       shadowColor: '#0F172A',
@@ -528,6 +525,12 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       shadowOpacity: 0.04,
       shadowRadius: 8,
       elevation: 2,
+    },
+    billsHeroHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 4,
     },
     billsHeroLeft: {
       flex: 1,
@@ -537,7 +540,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontSize: 16,
       fontWeight: '800',
       color: colors.text.primary,
-      marginBottom: 4,
+      marginBottom: 0,
     },
     billsHeroDesc: {
       fontSize: 11,
@@ -604,7 +607,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 6,
+      marginBottom: 4,
     },
     sectionHeaderLeft: {
       flex: 1,

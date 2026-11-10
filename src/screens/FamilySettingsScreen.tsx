@@ -517,31 +517,30 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
         <>
           {/* 家庭成員名冊與管理 */}
           <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
-        <View style={styles.sectionHeaderRow}>
-          <View style={styles.sectionHeaderLeft}>
-            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} numberOfLines={1}>
-              👨‍👩‍👧 家庭成員名單 ({members.length})
-            </Text>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} numberOfLines={1}>
+                👨‍👩‍👧 家庭成員名單 ({members.length})
+              </Text>
+              {realIsOwner && (
+                <TouchableOpacity
+                  style={styles.addMemberBtn}
+                  onPress={() => {
+                    if (!isAdminMode) {
+                      showAlert('日常模式受限', '目前為日常檢視模式。如需新增家庭成員，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。');
+                      return;
+                    }
+                    onOpenAddMemberModal();
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.addMemberBtnText}>＋ 新增成員</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
             <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]}>
               點擊成員可自訂稱謂、管理連線裝置與 Google 帳號安全防護
             </Text>
-          </View>
-          {realIsOwner && (
-            <TouchableOpacity
-              style={styles.addMemberBtn}
-              onPress={() => {
-                if (!isAdminMode) {
-                  showAlert('日常模式受限', '目前為日常檢視模式。如需新增家庭成員，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。');
-                  return;
-                }
-                onOpenAddMemberModal();
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.addMemberBtnText}>＋ 新增成員</Text>
-            </TouchableOpacity>
-          )}
-        </View>
 
         <View style={styles.userSwitchRow}>
           {members.map(member => {
@@ -655,10 +654,9 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       {/* 邀請家人加入與代碼管理 */}
       <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
         <View style={styles.inviteHeaderRow}>
-          <View style={styles.sectionHeaderLeft}>
-            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} numberOfLines={1}>🔗 邀請家人共同記帳</Text>
-            <Text style={[styles.cardSectionDesc, { color: colors.text.secondary }]}>讓伴侶或家人加入這本公帳，資料即時雙向同步</Text>
-          </View>
+          <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} numberOfLines={1}>
+            🔗 邀請家人共同記帳
+          </Text>
           <View style={[
             styles.roleBadge,
             realIsOwner
@@ -675,6 +673,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             </Text>
           </View>
         </View>
+
+        <Text style={[styles.cardSectionDesc, { color: colors.text.secondary }]}>
+          讓伴侶或家人加入這本公帳，資料即時雙向同步
+        </Text>
 
         <View style={[styles.inviteCard, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
           <Text style={[styles.inviteCardLabel, { color: colors.text.secondary }]}>本家庭專屬邀請碼</Text>
@@ -870,12 +872,9 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       {/* 🎯 預算控管與成員額度設定 */}
       <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
         <View style={styles.sectionHeaderRow}>
-          <View style={styles.sectionHeaderLeft}>
-            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} numberOfLines={1}>🎯 預算控管與成員額度</Text>
-            <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]}>
-              設定每月家庭公帳預算、成員個人專屬上限，或自訂此裝置顯隱偏好
-            </Text>
-          </View>
+          <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} numberOfLines={1}>
+            🎯 預算控管與成員額度
+          </Text>
           <TouchableOpacity
             style={styles.manageCategoryBtn}
             onPress={onOpenBudgetManageModal}
@@ -884,20 +883,19 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             <Text style={styles.manageCategoryBtnText}>⚙️ 設定預算</Text>
           </TouchableOpacity>
         </View>
+
+        <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]}>
+          設定每月家庭公帳預算、成員個人專屬上限，或自訂此裝置顯隱偏好
+        </Text>
       </View>
 
       {/* ☁️ 財政部雲端發票智慧同步卡片 (家庭協作與提醒維度皆顯示) */}
       {onOpenCloudInvoiceModal && (
         <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
           <View style={styles.sectionHeaderRow}>
-            <View style={styles.sectionHeaderLeft}>
-              <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                ☁️ 財政部雲端發票智慧同步
-              </Text>
-              <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                共通性載具與卡片自動分流，悠遊卡/信用卡消費自動歸屬家庭成員
-              </Text>
-            </View>
+            <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} numberOfLines={1} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              ☁️ 財政部雲端發票智慧同步
+            </Text>
             <TouchableOpacity
               style={[styles.manageCategoryBtn, { backgroundColor: isDark ? 'rgba(14, 165, 233, 0.2)' : '#E0F2FE', borderColor: '#38BDF8' }]}
               onPress={onOpenCloudInvoiceModal}
@@ -908,6 +906,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
               </Text>
             </TouchableOpacity>
           </View>
+
+          <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+            共通性載具與卡片自動分流，悠遊卡/信用卡消費自動歸屬家庭成員
+          </Text>
         </View>
       )}
     </>
@@ -919,14 +921,9 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       {/* 💳 信用卡帳單與智慧推播提醒卡片 */}
       <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
         <View style={styles.sectionHeaderRow}>
-          <View style={styles.sectionHeaderLeft}>
-            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              💳 信用卡帳單個人提醒
-            </Text>
-            <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              僅提醒您本人持有的信用卡，於出帳日與繳款期限前自動發送專屬推播防忘繳
-            </Text>
-          </View>
+          <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+            💳 信用卡帳單個人提醒
+          </Text>
           <TouchableOpacity
             style={[styles.backupToggleBtn, billingNoticeEnabled ? styles.backupToggleBtnActive : styles.backupToggleBtnInactive]}
             onPress={handleToggleBillingNotice}
@@ -938,6 +935,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             </Text>
           </TouchableOpacity>
         </View>
+
+        <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          僅提醒您本人持有的信用卡，於出帳日與繳款期限前自動發送專屬推播防忘繳
+        </Text>
 
         {/* 展開/收合信用卡時程按鈕 */}
         <TouchableOpacity
@@ -1022,14 +1023,9 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       {/* 📌 生活記事與待辦推播提醒卡片 */}
       <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
         <View style={styles.sectionHeaderRow}>
-          <View style={styles.sectionHeaderLeft}>
-            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              📌 生活記事待辦提醒
-            </Text>
-            <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              全家待辦全員接收；個人專屬待辦僅提醒被指派之負責成員，精準防擾
-            </Text>
-          </View>
+          <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+            📌 生活記事待辦提醒
+          </Text>
           <TouchableOpacity
             style={[styles.backupToggleBtn, memoNoticeEnabled ? styles.backupToggleBtnActive : styles.backupToggleBtnInactive]}
             onPress={handleToggleMemoNotice}
@@ -1041,6 +1037,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             </Text>
           </TouchableOpacity>
         </View>
+
+        <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          全家待辦全員接收；個人專屬待辦僅提醒被指派之負責成員，精準防擾
+        </Text>
 
         {/* 展開/收合生活待辦時程按鈕 */}
         <TouchableOpacity
@@ -1117,14 +1117,9 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       {/* 🔐 生物辨識與財務隱私鎖卡片 */}
       <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
         <View style={styles.sectionHeaderRow}>
-          <View style={styles.sectionHeaderLeft}>
-            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              🔐 生物辨識與財務隱私鎖
-            </Text>
-            <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              以 {capability.biometryType} 或安全碼保護資產負債與真實淨值，防旁人窺視
-            </Text>
-          </View>
+          <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+            🔐 生物辨識與財務隱私鎖
+          </Text>
           <View style={[
             styles.roleBadge,
             capability.isSupported
@@ -1141,6 +1136,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             </Text>
           </View>
         </View>
+
+        <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          以 {capability.biometryType} 或安全碼保護資產負債與真實淨值，防旁人窺視
+        </Text>
 
         {/* 開關選項列表 */}
         <View style={[styles.cardScheduleContainer, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
@@ -1202,14 +1201,9 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       {/* 📱 手機桌面小工具 (Widgets) 與快捷動作 (Quick Actions) */}
       <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
         <View style={styles.sectionHeaderRow}>
-          <View style={styles.sectionHeaderLeft}>
-            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              📱 桌面小工具 (Widgets) 與快捷動作
-            </Text>
-            <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              免開 App 在手機桌面即覽今日待辦、本月支出，或 1 鍵直達記帳
-            </Text>
-          </View>
+          <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+            📱 桌面小工具 (Widgets) 與快捷動作
+          </Text>
           <View style={[
             styles.roleBadge,
             { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }
@@ -1222,6 +1216,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             </Text>
           </View>
         </View>
+
+        <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          免開 App 在手機桌面即覽今日待辦、本月支出，或 1 鍵直達記帳
+        </Text>
 
         {/* 桌面小工具即時快照預覽 */}
         <View style={{
@@ -1379,14 +1377,9 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       {/* 🔤 介面顯示與字型大小 */}
       <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
         <View style={styles.sectionHeaderRow}>
-          <View style={styles.sectionHeaderLeft}>
-            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]}>
-              🔤 介面顯示與字型大小
-            </Text>
-            <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]}>
-              自由調整全 App 顯示比例，長輩閱讀更輕鬆舒適
-            </Text>
-          </View>
+          <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} numberOfLines={1}>
+            🔤 介面顯示與字型大小
+          </Text>
           <View style={[
             styles.roleBadge,
             { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF' }
@@ -1399,6 +1392,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             </Text>
           </View>
         </View>
+
+        <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]}>
+          自由調整全 App 顯示比例，長輩閱讀更輕鬆舒適
+        </Text>
 
         {/* 4 檔位快速切換晶片 */}
         <View style={styles.fontSizeChipsRow}>
@@ -1506,14 +1503,9 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       {/* 資料備份與掌控 */}
       <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
         <View style={styles.sectionHeaderRow}>
-          <View style={styles.sectionHeaderLeft}>
-            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              🛡️ 資料備份與掌控
-            </Text>
-            <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              隨時匯出整本帳簿，資料自主永久保存在個人設備
-            </Text>
-          </View>
+          <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} numberOfLines={1} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+            🛡️ 資料備份與掌控
+          </Text>
           <View style={[
             styles.roleBadge,
             isCloudSynced
@@ -1530,6 +1522,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             </Text>
           </View>
         </View>
+
+        <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          隨時匯出整本帳簿，資料自主永久保存在個人設備
+        </Text>
 
         {/* 帳本狀態小指標 (6 大全要素封存數據) */}
         <View style={[styles.backupStatsGrid, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
@@ -2055,8 +2051,8 @@ const styles = StyleSheet.create({
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
+    alignItems: 'center',
+    marginBottom: 4,
   },
   sectionHeaderLeft: {
     flex: 1,
@@ -2065,15 +2061,19 @@ const styles = StyleSheet.create({
   cardSectionTitle: {
     fontSize: 15,
     fontWeight: '700',
-    marginBottom: 4,
+    marginBottom: 0,
+    flex: 1,
+    marginRight: 8,
   },
   sectionHeaderDesc: {
     fontSize: 12,
     lineHeight: 16,
+    marginBottom: 12,
   },
   cardSectionDesc: {
     fontSize: 12,
-    marginTop: 2,
+    lineHeight: 16,
+    marginBottom: 12,
   },
   allowanceQuickBtn: {
     backgroundColor: '#F59E0B',
@@ -2208,8 +2208,8 @@ const styles = StyleSheet.create({
   inviteHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
+    alignItems: 'center',
+    marginBottom: 4,
   },
   roleBadge: {
     paddingHorizontal: 8,
