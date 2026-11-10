@@ -20,6 +20,7 @@ import * as QuickActions from 'expo-quick-actions';
 
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { FontSizeProvider } from './src/theme/FontSizeContext';
+import { Text } from './src/components/common/Text';
 import { LedgerProvider, useLedger } from './src/context/LedgerContext';
 import { PrivacyProvider, usePrivacy } from './src/context/PrivacyContext';
 import { setupQuickActions, parseQuickAction, parseQuickActionUrl, QuickActionKind } from './src/lib/quickActions';
@@ -77,15 +78,6 @@ import { LiveToastBanner } from './src/components/LiveToastBanner';
 import { AppLockOverlay } from './src/components/AppLockOverlay';
 import { DemoQuestBanner } from './src/components/DemoQuestBanner';
 import { getLatestDrawnPeriodKey } from './src/lib/invoice';
-
-// 全域文字防禦包裝
-const Text: React.FC<TextProps> = ({ allowFontScaling = false, maxFontSizeMultiplier = 1.08, ...rest }) => (
-  <RNText
-    allowFontScaling={allowFontScaling}
-    maxFontSizeMultiplier={Math.min(maxFontSizeMultiplier ?? 1.08, 1.08)}
-    {...rest}
-  />
-);
 
 // Web 專用重設樣式注入
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
