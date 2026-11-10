@@ -418,27 +418,26 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
       {/* 常用付款方式管理 */}
       <View style={styles.cardSection}>
         <View style={styles.sectionHeaderRow}>
-          <View style={styles.sectionHeaderLeft}>
-            <Text style={styles.cardSectionTitle} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              📱 常用付款方式 ({(paymentMethods || []).filter(m => m.is_enabled !== false).length})
-            </Text>
-            <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              {isOwner
-                ? '自訂日常記帳可用的支付工具（如 LINE Pay、全支付、悠遊付、街口等），可隨時新增或開關隱藏'
-                : '查看目前日常記帳可用的支付工具（僅帳本管理員可新增或修改）'}
-            </Text>
-          </View>
+          <Text style={styles.cardSectionTitle} numberOfLines={1} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+            📱 常用付款方式 ({(paymentMethods || []).filter(m => m.is_enabled !== false).length})
+          </Text>
           <TouchableOpacity
             style={styles.manageCategoryBtn}
             onPress={() => {
               onOpenPaymentMethodsModal();
             }}
           >
-            <Text style={styles.manageCategoryBtnText} maxFontSizeMultiplier={1.2}>
-              {isOwner ? '⚙️ 管理付款方式' : '👀 查看付款方式'}
+            <Text style={styles.manageCategoryBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              {isOwner ? '⚙️ 管理' : '👀 查看'}
             </Text>
           </TouchableOpacity>
         </View>
+
+        <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          {isOwner
+            ? '自訂日常記帳可用的支付工具（如 LINE Pay、全支付、悠遊付、街口等），可隨時新增或開關隱藏'
+            : '查看目前日常記帳可用的支付工具（僅帳本管理員可新增或修改）'}
+        </Text>
 
         <View style={styles.paymentAccountPreviewRow}>
           {(paymentMethods || []).filter(m => m.is_enabled !== false).map(m => (
@@ -469,41 +468,39 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
       {/* 記帳分類項目管理入口 */}
       <View style={styles.cardSection}>
         <View style={styles.sectionHeaderRow}>
-          <View style={styles.sectionHeaderLeft}>
-            <Text style={styles.cardSectionTitle} maxFontSizeMultiplier={1.2}>🏷️ 記帳分類項目 ({categories.length})</Text>
-            <Text style={styles.sectionHeaderDesc} maxFontSizeMultiplier={1.2}>
-              {isOwner ? '管理員可自訂支出與收入分類項目、圖示及代表顏色' : '查看目前記帳分類項目（僅帳本管理員可新增或修改）'}
-            </Text>
-          </View>
+          <Text style={styles.cardSectionTitle} numberOfLines={1} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+            🏷️ 記帳分類項目 ({categories.length})
+          </Text>
           <TouchableOpacity
             style={styles.manageCategoryBtn}
             onPress={() => {
               onOpenCategoryModal();
             }}
           >
-            <Text style={styles.manageCategoryBtnText} maxFontSizeMultiplier={1.2}>
-              {isOwner ? '⚙️ 管理分類' : '👀 查看分類'}
+            <Text style={styles.manageCategoryBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              {isOwner ? '⚙️ 管理' : '👀 查看'}
             </Text>
           </TouchableOpacity>
         </View>
 
+        <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          {isOwner ? '管理員可自訂支出與收入分類項目、圖示及代表顏色' : '查看目前記帳分類項目（僅帳本管理員可新增或修改）'}
+        </Text>
+
         <View style={styles.categoryPreviewRow}>
-          {categories.slice(0, 10).map(cat => (
-            <View key={cat.id} style={[styles.categoryPreviewChip, { borderColor: `${cat.color || '#4F46E5'}40` }]}>
+          {categories.map(cat => (
+            <TouchableOpacity
+              key={cat.id}
+              style={[styles.categoryPreviewChip, { borderColor: `${cat.color || '#4F46E5'}40` }]}
+              onPress={onOpenCategoryModal}
+              activeOpacity={0.7}
+            >
               <Text style={styles.categoryPreviewIcon}>{getCategoryIcon(cat.icon)}</Text>
-              <Text style={styles.categoryPreviewText} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+              <Text style={styles.categoryPreviewText} numberOfLines={1} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                 {cat.name}
               </Text>
-            </View>
-          ))}
-          {categories.length > 10 && (
-            <TouchableOpacity
-              style={styles.categoryMoreChip}
-              onPress={onOpenCategoryModal}
-            >
-              <Text style={styles.categoryMoreText} maxFontSizeMultiplier={1.2}>+{categories.length - 10} 更多...</Text>
             </TouchableOpacity>
-          )}
+          ))}
         </View>
       </View>
     </ScrollView>
