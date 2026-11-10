@@ -221,7 +221,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [transferTargetType, setTransferTargetType] = useState<'account' | 'member'>(
     initialMode === 'allowance' || !!defaultRecipientId ? 'member' : 'account'
   );
-  const [type, setType] = useState<TransactionType>('expense');
+  const [type, setType] = useState<TransactionType>(
+    initialMode === 'income' ? 'income' : (initialMode === 'memo' ? 'memo' : (initialMode === 'transfer' ? 'transfer' : 'expense'))
+  );
   const [amount, setAmount] = useState<string>('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [paidBy, setPaidBy] = useState<string>('');

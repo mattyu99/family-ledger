@@ -260,11 +260,13 @@ const AppContent: React.FC = () => {
   const initialActionHandledRef = useRef<boolean>(false);
   const initialUrlHandledRef = useRef<boolean>(false);
 
-  // 監聽 App 移至背景：當使用者按 Home / 返回鍵離開 App 時，安全重設自動開啟相機之暫存旗標
+  // 監聽 App 移至背景：當使用者按 Home / 返回鍵離開 App 時，安全重設視窗與相機暫存旗標，回到乾淨狀態
   useEffect(() => {
     const sub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
       if (nextState === 'background') {
         setModalAutoOpenScanner(false);
+        setModalVisible(false);
+        setMemoTodoModalVisible(false);
       }
     });
     return () => sub.remove();
@@ -279,7 +281,6 @@ const AppContent: React.FC = () => {
     setModalDefaultNote(undefined);
     setModalLinkedMemoId(undefined);
     setModalLinkedCompletionNote(undefined);
-    setModalResetKey(prev => prev + 1);
 
     if (kind === 'todo') {
       setModalVisible(false);
@@ -292,24 +293,12 @@ const AppContent: React.FC = () => {
     const targetMode = kind === 'scan' ? 'expense' : kind;
     const shouldScan = kind === 'scan';
 
-    if (modalVisibleRef.current) {
-      // 若原先已有彈窗開啟中，先關閉原視窗釋放 Android 原生 Dialog 與相機鎖定，再於下一幀乾淨開啟目標捷徑
-      setModalVisible(false);
-      setModalAutoOpenScanner(false);
-      setTimeout(() => {
-        setModalMode(targetMode);
-        setModalRecipientId(undefined);
-        setModalAutoOpenScanner(shouldScan);
-        setModalResetKey(prev => prev + 1);
-        setModalVisible(true);
-      }, 50);
-    } else {
-      setModalMode(targetMode);
-      setModalRecipientId(undefined);
-      setModalAutoOpenScanner(shouldScan);
-      setModalResetKey(prev => prev + 1);
-      setModalVisible(true);
-    }
+    // 同步更新模式、掃描旗標與 resetKey，全新掛載目標視窗，避免關閉再開的 Dialog 競態
+    setModalMode(targetMode);
+    setModalRecipientId(undefined);
+    setModalAutoOpenScanner(shouldScan);
+    setModalResetKey(prev => prev + 1);
+    setModalVisible(true);
   }, []);
 
   const dispatchQuickAction = useCallback((kind: QuickActionKind) => {
