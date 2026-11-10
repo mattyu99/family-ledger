@@ -853,6 +853,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     setReceiptPhotoUri('');
     setReceiptPhotoBase64('');
     setViewingPhotoModal(false);
+    setScannerModalVisible(false);
 
     const fromCandidate = paymentAccounts.find(a => a.type === 'bank' || a.type === 'cash') || paymentAccounts[0];
     const toCandidate = paymentAccounts.find(a => a.id !== fromCandidate?.id) || paymentAccounts[1];
@@ -937,6 +938,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     if (justOpened || initialModeChanged) {
       setHasUserManuallySelectedPayer(false);
       resetFormRef.current();
+    } else if (!visible) {
+      // 當彈窗關閉時，確保所有子彈窗 (相機掃描器、照片檢視、日期選擇) 無條件關閉釋放資源
+      setScannerModalVisible(false);
+      setViewingPhotoModal(false);
+      setDatePickerVisible(false);
+      setReminderDatePickerVisible(false);
     }
     prevVisibleRef.current = visible;
     prevInitialModeRef.current = initialMode;
@@ -952,7 +959,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     }
   }, [resetKey]);
 
-  // 專門獨立監聽 autoOpenScanner：只要彈窗處於開啟狀態且 autoOpenScanner 為 true，即刻喚起掃描器
+  // 專門獨立監聽 autoOpenScanner：只要彈窗處於開啟狀態且 autoOpenScanner 為 true，即刻喚起掃描器；若為 false 則立即收起
   React.useEffect(() => {
     if (visible && autoOpenScanner) {
       const timer = setTimeout(() => {
@@ -960,6 +967,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         onClearAutoOpenScanner?.();
       }, 0);
       return () => clearTimeout(timer);
+    } else if (!autoOpenScanner) {
+      setScannerModalVisible(false);
     }
   }, [visible, autoOpenScanner, onClearAutoOpenScanner]);
 

@@ -307,6 +307,7 @@ const AppContent: React.FC = () => {
       setModalMode(targetMode);
       setModalRecipientId(undefined);
       setModalAutoOpenScanner(shouldScan);
+      setModalResetKey(prev => prev + 1);
       setModalVisible(true);
     }
   }, []);
@@ -1180,6 +1181,7 @@ const AppContent: React.FC = () => {
 
       {/* 全域彈窗調度 */}
       <AddTransactionModal
+        key={`add-tx-modal-${modalResetKey}`}
         visible={modalVisible}
         initialMode={modalMode}
         defaultRecipientId={modalRecipientId}
