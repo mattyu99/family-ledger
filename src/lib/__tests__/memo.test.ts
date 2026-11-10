@@ -10,6 +10,7 @@ import {
   isMemoPinned,
   toggleMemoPinnedMerchant,
 } from '../memo';
+import { hydrateTransactionWithInvoice } from '../ledgerUtils';
 
 describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
   describe('待辦主題標籤解析 (parseMemoNote)', () => {
@@ -220,6 +221,23 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
       const unpinned = toggleMemoPinnedMerchant(pinned, false);
       expect(unpinned).not.toContain('pin:1');
       expect(decodeMemoMerchantTag(unpinned).isPinned).toBe(false);
+    });
+
+    it('雲端同步持久性：從雲端拉取僅含 merchant 標籤之資料時，水合後置頂標記絕不遺失', () => {
+      // 模擬 Supabase 雲端資料庫抓取到的原始 row (DB 中沒有 is_pinned 欄位，標記編碼在 merchant)
+      const cloudDbRow = {
+        id: 'tx-cloud-1',
+        type: 'memo',
+        amount: 0,
+        merchant: 'remind:2026-11-20|pin:1',
+        note: '[📌 重要] 帶爸去三總抽血',
+        is_settled: false,
+        // is_pinned 為 undefined (Supabase 雲端無此獨立欄位)
+      };
+
+      const hydrated = hydrateTransactionWithInvoice(cloudDbRow);
+      expect(hydrated.is_pinned).toBe(true);
+      expect(isMemoPinned(hydrated)).toBe(true);
     });
   });
 });

@@ -1017,7 +1017,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 reminder_calendar: decodedLocalMemo.reminderCalendar || t.reminder_calendar,
                 reminder_repeat: decodedLocalMemo.reminderRepeat || t.reminder_repeat,
                 completed_by: decodedLocalMemo.completedBy || t.completed_by,
-                merchant: decodedLocalMemo.isMemo ? undefined : (parsedMerchant || undefined),
+                is_pinned: t.is_pinned !== undefined ? Boolean(t.is_pinned) : Boolean(decodedLocalMemo.isPinned),
+                merchant: parsedMerchant || t.merchant || undefined,
                 note: parsedNote || '',
                 category: matchedCat || t.category,
               };
@@ -1292,6 +1293,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           let completedBy: string | undefined = newRow.completed_by;
           let resolvedType: TransactionType = newRow.type;
 
+          let isPinned = Boolean(newRow.is_pinned);
+
           const decodedMemo = decodeMemoMerchantTag(parsedMerchant);
           if (decodedMemo.isMemo) {
             resolvedType = 'memo';
@@ -1299,10 +1302,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             reminderCalendar = decodedMemo.reminderCalendar;
             reminderRepeat = decodedMemo.reminderRepeat;
             if (decodedMemo.completedBy) completedBy = decodedMemo.completedBy;
-            parsedMerchant = undefined;
+            if (decodedMemo.isPinned) isPinned = true;
           } else if (newRow.type === 'memo' || (newRow.type === 'transfer' && Number(newRow.amount) === 0)) {
             resolvedType = 'memo';
-            parsedMerchant = undefined;
             parsedNote = newRow.note;
           } else if (parsedMerchant) {
             recordMerchant(parsedMerchant);
@@ -1324,7 +1326,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               reminder_repeat: reminderRepeat || newRow.reminder_repeat,
               reminder_target: newRow.reminder_target || 'family',
               completed_by: completedBy || newRow.completed_by,
-              merchant: parsedMerchant || undefined,
+              is_pinned: isPinned,
+              merchant: parsedMerchant || newRow.merchant || undefined,
               note: parsedNote || '',
               amount: resolvedType === 'memo' ? 0 : Number(newRow.amount),
               paid_by: canonicalPayer?.id || newRow.paid_by,
@@ -1403,6 +1406,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           let completedBy: string | undefined = updatedRow.completed_by;
           let resolvedType: TransactionType = updatedRow.type;
 
+          let isPinned = updatedRow.is_pinned !== undefined ? Boolean(updatedRow.is_pinned) : undefined;
+
           const decodedMemo = decodeMemoMerchantTag(parsedMerchant);
           if (decodedMemo.isMemo) {
             resolvedType = 'memo';
@@ -1410,10 +1415,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             reminderCalendar = decodedMemo.reminderCalendar;
             reminderRepeat = decodedMemo.reminderRepeat;
             if (decodedMemo.completedBy) completedBy = decodedMemo.completedBy;
-            parsedMerchant = undefined;
+            if (decodedMemo.isPinned !== undefined) isPinned = decodedMemo.isPinned;
           } else if (updatedRow.type === 'memo' || (updatedRow.type === 'transfer' && Number(updatedRow.amount) === 0)) {
             resolvedType = 'memo';
-            parsedMerchant = undefined;
             parsedNote = updatedRow.note;
           } else if (parsedMerchant) {
             recordMerchant(parsedMerchant);
@@ -1438,7 +1442,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     reminder_calendar: reminderCalendar !== undefined ? reminderCalendar : t.reminder_calendar,
                     reminder_repeat: reminderRepeat !== undefined ? reminderRepeat : t.reminder_repeat,
                     completed_by: updatedRow.is_settled ? (completedBy || t.completed_by) : undefined,
-                    merchant: parsedMerchant || undefined,
+                    is_pinned: isPinned !== undefined ? isPinned : t.is_pinned,
+                    merchant: parsedMerchant || updatedRow.merchant || t.merchant || undefined,
                     note: parsedNote || '',
                     amount: resolvedType === 'memo' ? 0 : Number(updatedRow.amount),
                     payer_profile: canonicalPayer || updatedRow.payer_profile || t.payer_profile,
@@ -2940,6 +2945,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       let completedBy: string | undefined = t.completed_by;
       let completedAt: string | undefined = t.completed_at;
       let resolvedType: TransactionType = t.type;
+      let isPinned = Boolean(t.is_pinned);
+
       const decodedMemo = decodeMemoMerchantTag(parsedMerchant);
       if (decodedMemo.isMemo) {
         resolvedType = 'memo';
@@ -2948,10 +2955,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         reminderRepeat = decodedMemo.reminderRepeat;
         if (decodedMemo.completedBy) completedBy = decodedMemo.completedBy;
         if (decodedMemo.completedAt) completedAt = decodedMemo.completedAt;
-        parsedMerchant = undefined;
+        if (decodedMemo.isPinned) isPinned = true;
       } else if (t.type === 'memo' || (t.type === 'transfer' && Number(t.amount) === 0)) {
         resolvedType = 'memo';
-        parsedMerchant = undefined;
         parsedNote = t.note;
       } else if (parsedMerchant) {
         recordMerchant(parsedMerchant);
@@ -2970,7 +2976,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         reminder_repeat: reminderRepeat || t.reminder_repeat,
         completed_by: completedBy || t.completed_by,
         completed_at: completedAt || t.completed_at,
-        merchant: parsedMerchant || undefined,
+        is_pinned: isPinned,
+        merchant: parsedMerchant || t.merchant || undefined,
         note: parsedNote || '',
         amount: Number(t.amount),
         paid_by: correctedPaidBy,

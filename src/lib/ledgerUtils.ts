@@ -6,6 +6,7 @@ import {
   getInvoicePeriodKey,
 } from './invoice';
 import { checkInvoiceWinning } from './lottery';
+import { decodeMemoMerchantTag } from './memo';
 import {
   DEMO_USER_DAD,
   DEMO_USER_MOM,
@@ -25,6 +26,14 @@ export const safeAlert = (title: string, message: string) => {
  */
 export const hydrateTransactionWithInvoice = (t: any): Transaction => {
   if (!t) return t;
+
+  let isPinned = t.is_pinned;
+  if (isPinned === undefined && t.merchant) {
+    const decodedMemo = decodeMemoMerchantTag(t.merchant);
+    if (decodedMemo.isPinned) {
+      isPinned = true;
+    }
+  }
 
   let invoiceNumber = t.invoice_number;
   let periodKey = t.invoice_period;
@@ -80,6 +89,7 @@ export const hydrateTransactionWithInvoice = (t: any): Transaction => {
 
     return {
       ...t,
+      is_pinned: isPinned !== undefined ? Boolean(isPinned) : t.is_pinned,
       invoice_number: invoiceNumber,
       invoice_period: periodKey,
       invoice_random_code: randomCode,
@@ -89,7 +99,7 @@ export const hydrateTransactionWithInvoice = (t: any): Transaction => {
     };
   }
 
-  return t;
+  return isPinned !== undefined ? { ...t, is_pinned: Boolean(isPinned) } : t;
 };
 
 // 成員名冊去重函式：相同 display_name 或相同 Google 綁定信箱者視為同一位家庭成員（支援多台手機/電腦認領同一身分及 Google 帳號授權）

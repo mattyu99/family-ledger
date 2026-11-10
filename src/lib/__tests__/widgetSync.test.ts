@@ -1,7 +1,12 @@
 import { extractWidgetSnapshot } from '../widgetSync';
+import { getLocalDateYmd } from '../memo';
 import { Transaction, Ledger } from '../../types';
 
 describe('Android 桌面小工具快照萃取與待辦隱私分流測試 (widgetSync.ts)', () => {
+  const futureDate = new Date();
+  futureDate.setDate(futureDate.getDate() + 5);
+  const futureYmd = getLocalDateYmd(futureDate);
+
   const mockLedger: Ledger = {
     id: 'ledger-main-id',
     name: '幸福家庭記帳本',
@@ -25,7 +30,7 @@ describe('Android 桌面小工具快照萃取與待辦隱私分流測試 (widget
       creator_id: 'user-dad',
       paid_by: 'user-dad',
       reminder_target: 'family', // 全家待辦
-      reminder_date: '2026-11-10',
+      reminder_date: futureYmd,
       note: '[🛒 採買清單]\n- [ ] 全脂鮮奶\n- [ ] 雞蛋一盒',
       category_id: 'cat-1',
       transacted_at: '2026-11-01T10:00:00.000Z',
@@ -55,7 +60,7 @@ describe('Android 桌面小工具快照萃取與待辦隱私分流測試 (widget
       creator_id: 'user-dad',
       paid_by: 'user-dad', // 爸爸專屬個人待辦
       reminder_target: 'personal',
-      reminder_date: '2026-11-09',
+      reminder_date: futureYmd,
       note: '[🚗 車輛保養] 汽車定期檢驗',
       category_id: 'cat-3',
       transacted_at: '2026-11-01T12:00:00.000Z',
@@ -106,16 +111,16 @@ describe('Android 桌面小工具快照萃取與待辦隱私分流測試 (widget
     const snapshot = extractWidgetSnapshot(mockLedger, mockTransactions, mockMembers, 'user-dad');
     const familyItem = snapshot.pendingMemos.find(m => m.title.includes('採買清單'));
     expect(familyItem).toBeDefined();
-    expect(familyItem?.badgeText).toBe('11-10');
+    expect(familyItem?.badgeText).toBe(futureYmd.slice(5));
     expect(familyItem?.badgeText).not.toContain('智爸');
     expect(familyItem?.assigneeName).toBeUndefined();
   });
 
-  it('個人專屬待辦之 badgeText 應附帶成員人名 (例如 11-09 · 智爸)', () => {
+  it('個人專屬待辦之 badgeText 應附帶成員人名 (例如 11-15 · 智爸)', () => {
     const snapshot = extractWidgetSnapshot(mockLedger, mockTransactions, mockMembers, 'user-dad');
     const personalItem = snapshot.pendingMemos.find(m => m.title.includes('車輛保養'));
     expect(personalItem).toBeDefined();
-    expect(personalItem?.badgeText).toBe('11-09 · 智爸');
+    expect(personalItem?.badgeText).toBe(`${futureYmd.slice(5)} · 智爸`);
     expect(personalItem?.assigneeName).toBe('智爸');
   });
 

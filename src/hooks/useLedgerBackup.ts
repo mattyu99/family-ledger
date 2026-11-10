@@ -994,6 +994,7 @@ export function useLedgerBackup({
         const restoredCompletionNote = t.completion_note || undefined;
 
         // 若為生活備忘，確保 merchant 標籤完整編碼，杜絕跨版本遺失
+        const isPinned = isBackupMemo ? Boolean(t.is_pinned || decodedMemo.isPinned) : undefined;
         const restoredMerchant = isBackupMemo
           ? encodeMemoMerchantTag({
               reminderDate: restoredReminderDate,
@@ -1001,6 +1002,7 @@ export function useLedgerBackup({
               reminderRepeat: restoredReminderRep,
               completedBy: restoredCompletedBy,
               completedAt: restoredCompletedAt,
+              isPinned: isPinned,
             })
           : (t.merchant || undefined);
 
@@ -1026,6 +1028,7 @@ export function useLedgerBackup({
           reminder_calendar: restoredReminderCal,
           reminder_repeat: restoredReminderRep,
           reminder_target: restoredReminderTarget,
+          is_pinned: isPinned,
           completed_by: restoredCompletedBy,
           completed_at: restoredCompletedAt,
           completion_note: restoredCompletionNote,
