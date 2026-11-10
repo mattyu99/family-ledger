@@ -277,13 +277,56 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
   }, [transactions, recentMerchants]);
 
   // 計算各類型數量（全部 / 僅看收支 / 僅看生活備忘）
+  // 必須與列表篩選邏輯完全一致，包含置頂記事跨月常駐與個人隱私隔離
   const typeCountStats = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    let all = 0;
-    let financial = 0;
-    let memo = 0;
 
+    // 1. 符合條件的未完成置頂記事 (跨月常駐，不受 filterMonth 限制)
+    const pinnedMemos = transactions.filter(t => {
+      if (!isMemoPinned(t)) return false;
+
+      // 成員過濾 (方案 1: 全家共享人人可見；個人專屬視角隔離)
+      if (filterMemberId !== 'all') {
+        const isFamily = !t.reminder_target || t.reminder_target === 'family';
+        if (!isFamily) {
+          const payer = getMemberById(t.paid_by) || t.payer_profile;
+          const targetMember = members.find(m => m.id === filterMemberId) || (currentUser?.id === filterMemberId ? currentUser : undefined);
+          const isMatch =
+            (payer && payer.id === filterMemberId) ||
+            t.paid_by === filterMemberId ||
+            (targetMember && (payer?.display_name === targetMember.display_name || (t as any).payer_name === targetMember.display_name));
+          if (!isMatch) return false;
+        }
+      } else {
+        if (t.reminder_target === 'personal') {
+          const isMine =
+            (t.paid_by && t.paid_by === currentUser?.id) ||
+            (t.creator_id && t.creator_id === currentUser?.id) ||
+            (t.paid_by && currentUser?.display_name && (getMemberById(t.paid_by)?.display_name === currentUser.display_name));
+          if (!isMine) return false;
+        }
+      }
+
+      // 關鍵字過濾
+      if (q) {
+        const mMatch = t.merchant && t.merchant.toLowerCase().includes(q);
+        const nMatch = t.note && t.note.toLowerCase().includes(q);
+        const cat = getCategoryById(t.category_id, t.category);
+        const cMatch = cat && cat.name.toLowerCase().includes(q);
+        if (!mMatch && !nMatch && !cMatch) return false;
+      }
+
+      return true;
+    });
+
+    const pinnedIds = new Set(pinnedMemos.map(p => p.id));
+    let normalMemoCount = 0;
+    let financial = 0;
+
+    // 2. 常規紀錄過濾 (排除已置頂者，受 filterMonth 限制)
     transactions.forEach(t => {
+      if (pinnedIds.has(t.id)) return;
+
       if (filterMonth !== 'all') {
         if (!t.transacted_at) return;
         const d = new Date(t.transacted_at);
@@ -306,6 +349,14 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
           (targetMember && (payer?.display_name === targetMember.display_name || (t as any).payer_name === targetMember.display_name)) ||
           isTransferIn;
         if (!isMatch) return;
+      } else {
+        if (t.type === 'memo' && t.reminder_target === 'personal') {
+          const isMine =
+            (t.paid_by && t.paid_by === currentUser?.id) ||
+            (t.creator_id && t.creator_id === currentUser?.id) ||
+            (t.paid_by && currentUser?.display_name && (getMemberById(t.paid_by)?.display_name === currentUser.display_name));
+          if (!isMine) return;
+        }
       }
 
       if (q) {
@@ -316,13 +367,15 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         if (!mMatch && !nMatch && !cMatch) return;
       }
 
-      all++;
       if (t.type === 'memo') {
-        memo++;
+        normalMemoCount++;
       } else {
         financial++;
       }
     });
+
+    const memo = pinnedMemos.length + normalMemoCount;
+    const all = financial + memo;
 
     return { all, financial, memo };
   }, [transactions, filterMonth, filterMemberId, searchQuery, getMemberById, getCategoryById, members, currentUser, paymentAccounts]);
@@ -1438,8 +1491,14 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         </HorizontalScrollView>
       )}
 
-      {/* 篩選工具列 */}
-      <View style={styles.filterToolbar}>
+      {/* 篩選工具列 (單行橫向滑動，清除篩選不跳行，節省垂直空間) */}
+      <HorizontalScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterToolbarScroll}
+        style={styles.filterToolbarWrapper}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* 月份篩選 */}
         <TouchableOpacity
           activeOpacity={0.7}
@@ -1552,7 +1611,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
             <Text style={[styles.filterResetText, isDark && { color: '#A5B4FC' }]}>清除篩選 ↺</Text>
           </TouchableOpacity>
         )}
-      </View>
+      </HorizontalScrollView>
 
       {/* 交易清單 */}
       {transactions.length === 0 ? (
@@ -2481,14 +2540,14 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       flexShrink: 0,
     },
     sectionInlineTitle: {
-      fontSize: 15,
+      fontSize: 16.5,
       fontWeight: '800',
       color: colors.text.primary,
     },
     sectionInlineCount: {
-      fontSize: 11,
+      fontSize: 13,
       fontWeight: '700',
-      color: colors.text.muted,
+      color: isDark ? '#94A3B8' : '#64748B',
     },
     dismissKeyboardText: {
       fontSize: 11,
@@ -2654,6 +2713,15 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     merchantFilterChipTextActive: {
       color: isDark ? '#818CF8' : '#4F46E5',
       fontWeight: '700',
+    },
+    filterToolbarWrapper: {
+      marginBottom: 10,
+    },
+    filterToolbarScroll: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingRight: 16,
     },
     filterToolbar: {
       flexDirection: 'row',
