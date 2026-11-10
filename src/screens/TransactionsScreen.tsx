@@ -110,6 +110,8 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
   const [isAssetSectionExpanded, setIsAssetSectionExpanded] = useState(false);
   const [isPinnedExpanded, setIsPinnedExpanded] = useState<boolean>(false);
   const [invoiceMenuVisible, setInvoiceMenuVisible] = useState<boolean>(false);
+  const [isSummaryExpanded, setIsSummaryExpanded] = useState<boolean>(true);
+  const [isSearchFocused, setIsSearchFocused] = useState<boolean>(false);
 
   // 剛才查看之高光錨點紀錄（自動維持 6 秒讓使用者退回列表時瞬間鎖定焦點）
   const [lastViewedTxId, setLastViewedTxId] = useState<string | null>(null);
@@ -746,7 +748,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         </View>
       )}
 
-      {/* 本月收支摘要卡片 */}
+      {/* 本月收支摘要卡片 (方案 1 支援一鍵收折，方案 3 內嵌淨值) */}
       <View
         style={[
           styles.summaryCard,
@@ -756,171 +758,269 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
             borderWidth: 1,
             shadowOpacity: 0.1,
           },
+          !isSummaryExpanded && styles.summaryCardCollapsed,
         ]}
       >
         <View style={styles.summaryHeader}>
-          <View style={{ flex: 1, marginRight: 8 }}>
-            <Text style={styles.summaryTitle} maxFontSizeMultiplier={1.2}>
-              {summaryCardTitle}
-            </Text>
-            <Text style={styles.currencyLabel} maxFontSizeMultiplier={1.2}>
-              {isFiltered ? '🔍 已套用篩選' : 'TWD (新台幣)'}
-            </Text>
-          </View>
-          {filterMemberId !== 'all' && filterMemberId !== currentUser?.id && (
+          <TouchableOpacity
+            style={styles.summaryTitleTouchArea}
+            activeOpacity={0.7}
+            onPress={() => setIsSummaryExpanded(prev => !prev)}
+          >
+            <View>
+              <Text style={styles.summaryTitle} maxFontSizeMultiplier={1.2}>
+                {summaryCardTitle}
+              </Text>
+              <Text style={styles.currencyLabel} maxFontSizeMultiplier={1.2}>
+                {isFiltered ? '🔍 已套用篩選' : 'TWD (新台幣)'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          <View style={styles.summaryHeaderRight}>
+            {filterMemberId !== 'all' && filterMemberId !== currentUser?.id && (
+              <TouchableOpacity
+                style={styles.summaryAllowanceBtn}
+                onPress={() => onOpenModal('allowance', filterMemberId)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.summaryAllowanceBtnText} maxFontSizeMultiplier={1.08}>
+                  🎁 撥零用錢
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {/* 方案 1: 一鍵收折切換按鈕 */}
             <TouchableOpacity
-              style={styles.summaryAllowanceBtn}
-              onPress={() => onOpenModal('allowance', filterMemberId)}
+              style={styles.summaryCollapseBtn}
+              onPress={() => setIsSummaryExpanded(prev => !prev)}
               activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Text style={styles.summaryAllowanceBtnText} maxFontSizeMultiplier={1.08}>
-                🎁 撥零用錢
+              <Text style={styles.summaryCollapseBtnText}>
+                {isSummaryExpanded ? '收合 ▴' : '展開 ▾'}
               </Text>
             </TouchableOpacity>
-          )}
-        </View>
-
-        <View style={styles.summaryGrid}>
-          <View style={styles.summaryCol}>
-            <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2}>
-              {displaySummary.isMemberFilter && displaySummary.personalTransferOut > 0 ? '總支出 (含轉出)' : '總支出'}
-            </Text>
-            <Text
-              style={[styles.summaryVal, styles.expenseVal]}
-              maxFontSizeMultiplier={1.2}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              -NT$ {displaySummary.effectiveExpense.toLocaleString()}
-            </Text>
-          </View>
-
-          <View style={styles.summaryDivider} />
-
-          <View style={styles.summaryCol}>
-            <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2}>
-              {displaySummary.isMemberFilter && displaySummary.personalTransferIn > 0
-                ? (displaySummary.totalIncome > 0 ? '總進帳 (含轉入)' : '轉入款項')
-                : '總收入'}
-            </Text>
-            <Text
-              style={[styles.summaryVal, styles.incomeVal]}
-              maxFontSizeMultiplier={1.2}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              +NT$ {displaySummary.effectiveIncome.toLocaleString()}
-            </Text>
-          </View>
-
-          <View style={styles.summaryDivider} />
-
-          <View style={styles.summaryCol}>
-            <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2}>
-              結餘
-            </Text>
-            <Text
-              style={[
-                styles.summaryVal,
-                displaySummary.netBalance > 0
-                  ? styles.incomeVal
-                  : displaySummary.netBalance < 0
-                  ? styles.expenseVal
-                  : null,
-              ]}
-              maxFontSizeMultiplier={1.2}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              {displaySummary.netBalance > 0 ? '+' : ''}NT$ {displaySummary.netBalance.toLocaleString()}
-            </Text>
           </View>
         </View>
 
-        {displaySummary.isMemberFilter && (displaySummary.personalTransferIn > 0 || displaySummary.personalTransferOut > 0) && (
-          <View style={styles.summaryTransferHintRow}>
-            {displaySummary.personalTransferIn > 0 && (
-              <Text style={styles.summaryTransferHintText} maxFontSizeMultiplier={1.08}>
-                📥 轉入款項：+NT$ {displaySummary.personalTransferIn.toLocaleString()}
+        {!isSummaryExpanded ? (
+          /* 緊湊單行摘要 (收折時) */
+          <TouchableOpacity
+            style={styles.summaryCollapsedBar}
+            onPress={() => setIsSummaryExpanded(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.summaryCollapsedText} numberOfLines={1}>
+              結餘{' '}
+              <Text
+                style={[
+                  styles.summaryCollapsedVal,
+                  displaySummary.netBalance > 0
+                    ? styles.incomeVal
+                    : displaySummary.netBalance < 0
+                    ? styles.expenseVal
+                    : null,
+                ]}
+              >
+                {displaySummary.netBalance > 0 ? '+' : ''}NT$ {displaySummary.netBalance.toLocaleString()}
               </Text>
-            )}
-            {displaySummary.personalTransferOut > 0 && (
-              <Text style={styles.summaryTransferHintText} maxFontSizeMultiplier={1.08}>
-                📤 轉出款項：-NT$ {displaySummary.personalTransferOut.toLocaleString()}
-              </Text>
-            )}
-          </View>
-        )}
+              {'   '}支 -NT$ {displaySummary.effectiveExpense.toLocaleString()}
+              {'   '}收 +NT$ {displaySummary.effectiveIncome.toLocaleString()}
+            </Text>
+            <Text style={styles.summaryCollapsedHint}>
+              💎 {maskedNetWorth}
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          /* 展開時完整內容 */
+          <>
+            <View style={styles.summaryGrid}>
+              <View style={styles.summaryCol}>
+                <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2}>
+                  {displaySummary.isMemberFilter && displaySummary.personalTransferOut > 0 ? '總支出 (含轉出)' : '總支出'}
+                </Text>
+                <Text
+                  style={[styles.summaryVal, styles.expenseVal]}
+                  maxFontSizeMultiplier={1.2}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                >
+                  -NT$ {displaySummary.effectiveExpense.toLocaleString()}
+                </Text>
+              </View>
 
-        {/* 內嵌預算迷你進度條 (方向 1 版面瘦身) */}
-        {isBudgetWidgetVisibleOnDevice && (
-          <View style={styles.summaryBudgetSection}>
-            {!budgetProgress.isEnabled ? (
-              <TouchableOpacity
-                style={styles.summaryBudgetUnconfiguredRow}
-                onPress={() => onOpenBudgetManageModal('family')}
-                activeOpacity={0.75}
-              >
-                <Text style={styles.summaryBudgetUnconfiguredText} maxFontSizeMultiplier={1.08}>
-                  🎯 尚未設定每月預算 · 點擊立即開啟預算控管 ›
+              <View style={styles.summaryDivider} />
+
+              <View style={styles.summaryCol}>
+                <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2}>
+                  {displaySummary.isMemberFilter && displaySummary.personalTransferIn > 0
+                    ? (displaySummary.totalIncome > 0 ? '總進帳 (含轉入)' : '轉入款項')
+                    : '總收入'}
                 </Text>
-              </TouchableOpacity>
-            ) : budgetProgress.isMemberPerspective && !budgetProgress.hasMemberBudgetConfigured ? (
-              <TouchableOpacity
-                style={styles.summaryBudgetUnconfiguredRow}
-                onPress={() => onOpenBudgetManageModal('members')}
-                activeOpacity={0.75}
-              >
-                <Text style={styles.summaryBudgetUnconfiguredText} maxFontSizeMultiplier={1.08}>
-                  👤 點此設定 {budgetProgress.targetMemberName || '該成員'} 的專屬預算額度 ›
+                <Text
+                  style={[styles.summaryVal, styles.incomeVal]}
+                  maxFontSizeMultiplier={1.2}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                >
+                  +NT$ {displaySummary.effectiveIncome.toLocaleString()}
                 </Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={styles.summaryBudgetBarWrap}
-                onPress={() => onOpenBudgetManageModal(budgetProgress.isMemberPerspective ? 'members' : 'family')}
-                activeOpacity={0.75}
-              >
-                <View style={styles.summaryBudgetInfoRow}>
-                  <Text style={styles.summaryBudgetLabel} numberOfLines={1} maxFontSizeMultiplier={1.08}>
-                    {budgetProgress.isOverBudget
-                      ? `🚨 預算超支 ${isPrivacyMaskActive ? '••••••' : `NT$ ${Math.abs(budgetProgress.remainingAmount).toLocaleString()}`}`
-                      : `🎯 預算剩餘 ${isPrivacyMaskActive ? '••••••' : `NT$ ${budgetProgress.remainingAmount.toLocaleString()}`}`}
-                  </Text>
-                  <View style={styles.summaryBudgetRightWrap}>
-                    <Text
-                      style={[
-                        styles.summaryBudgetPercent,
-                        budgetProgress.isOverBudget && styles.summaryBudgetPercentOver,
-                        budgetProgress.isWarning && styles.summaryBudgetPercentWarning,
-                      ]}
-                      maxFontSizeMultiplier={1.08}
-                    >
-                      {budgetProgress.spentRatio}%
+              </View>
+
+              <View style={styles.summaryDivider} />
+
+              <View style={styles.summaryCol}>
+                <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2}>
+                  結餘
+                </Text>
+                <Text
+                  style={[
+                    styles.summaryVal,
+                    displaySummary.netBalance > 0
+                      ? styles.incomeVal
+                      : displaySummary.netBalance < 0
+                      ? styles.expenseVal
+                      : null,
+                  ]}
+                  maxFontSizeMultiplier={1.2}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                >
+                  {displaySummary.netBalance > 0 ? '+' : ''}NT$ {displaySummary.netBalance.toLocaleString()}
+                </Text>
+              </View>
+            </View>
+
+            {/* 方案 3: 卡片內嵌轉出款項與淨值資產整併列 */}
+            <View style={styles.summaryBottomInfoRow}>
+              {displaySummary.isMemberFilter && (displaySummary.personalTransferIn > 0 || displaySummary.personalTransferOut > 0) ? (
+                <View style={styles.summaryTransferHintCol}>
+                  {displaySummary.personalTransferIn > 0 && (
+                    <Text style={styles.summaryTransferHintText} maxFontSizeMultiplier={1.08}>
+                      📥 轉入：+NT$ {displaySummary.personalTransferIn.toLocaleString()}
                     </Text>
-                    <Text style={styles.summaryBudgetArrow} maxFontSizeMultiplier={1.08}>›</Text>
+                  )}
+                  {displaySummary.personalTransferOut > 0 && (
+                    <Text style={styles.summaryTransferHintText} maxFontSizeMultiplier={1.08}>
+                      📤 轉出：-NT$ {displaySummary.personalTransferOut.toLocaleString()}
+                    </Text>
+                  )}
+                </View>
+              ) : (
+                <View style={{ flex: 1 }} />
+              )}
+
+              {/* 💎 方案 3 內嵌淨值與展開資產按鈕 */}
+              <TouchableOpacity
+                style={styles.summaryNetWorthInlineBtn}
+                onPress={() => setIsAssetSectionExpanded(prev => !prev)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.summaryNetWorthInlineIcon}>💎</Text>
+                <Text style={styles.summaryNetWorthInlineText} maxFontSizeMultiplier={1.08}>
+                  {filterMemberId === 'all' ? '全家淨值' : '淨值'} {maskedNetWorth}
+                </Text>
+                {netWorthSummary.accounts.storedValues.length > 0 && (
+                  <View style={styles.summaryNetWorthStoredBadge}>
+                    <Text style={styles.summaryNetWorthStoredText}>
+                      💳 {netWorthSummary.accounts.storedValues.length}
+                    </Text>
                   </View>
-                </View>
-                <View style={styles.summaryBudgetTrack}>
-                  <View
-                    style={[
-                      styles.summaryBudgetFill,
-                      {
-                        width: `${Math.min(100, Math.max(0, budgetProgress.spentRatio))}%`,
-                        backgroundColor: budgetProgress.isOverBudget
-                          ? '#EF4444'
-                          : budgetProgress.isWarning
-                          ? '#F59E0B'
-                          : '#10B981',
-                      },
-                    ]}
-                  />
-                </View>
+                )}
+                <Text style={styles.summaryNetWorthInlineArrow}>
+                  {isAssetSectionExpanded ? '收合 ▴' : '展開 ▾'}
+                </Text>
               </TouchableOpacity>
+            </View>
+
+            {/* 內嵌預算迷你進度條 (方向 1 版面瘦身) */}
+            {isBudgetWidgetVisibleOnDevice && (
+              <View style={styles.summaryBudgetSection}>
+                {!budgetProgress.isEnabled ? (
+                  <TouchableOpacity
+                    style={styles.summaryBudgetUnconfiguredRow}
+                    onPress={() => onOpenBudgetManageModal('family')}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={styles.summaryBudgetUnconfiguredText} maxFontSizeMultiplier={1.08}>
+                      🎯 尚未設定每月預算 · 點擊立即開啟預算控管 ›
+                    </Text>
+                  </TouchableOpacity>
+                ) : budgetProgress.isMemberPerspective && !budgetProgress.hasMemberBudgetConfigured ? (
+                  <TouchableOpacity
+                    style={styles.summaryBudgetUnconfiguredRow}
+                    onPress={() => onOpenBudgetManageModal('members')}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={styles.summaryBudgetUnconfiguredText} maxFontSizeMultiplier={1.08}>
+                      👤 點此設定 {budgetProgress.targetMemberName || '該成員'} 的專屬預算額度 ›
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.summaryBudgetBarWrap}
+                    onPress={() => onOpenBudgetManageModal(budgetProgress.isMemberPerspective ? 'members' : 'family')}
+                    activeOpacity={0.75}
+                  >
+                    <View style={styles.summaryBudgetInfoRow}>
+                      <Text style={styles.summaryBudgetLabel} numberOfLines={1} maxFontSizeMultiplier={1.08}>
+                        {budgetProgress.isOverBudget
+                          ? `🚨 預算超支 ${isPrivacyMaskActive ? '••••••' : `NT$ ${Math.abs(budgetProgress.remainingAmount).toLocaleString()}`}`
+                          : `🎯 預算剩餘 ${isPrivacyMaskActive ? '••••••' : `NT$ ${budgetProgress.remainingAmount.toLocaleString()}`}`}
+                      </Text>
+                      <View style={styles.summaryBudgetRightWrap}>
+                        <Text
+                          style={[
+                            styles.summaryBudgetPercent,
+                            budgetProgress.isOverBudget && styles.summaryBudgetPercentOver,
+                            budgetProgress.isWarning && styles.summaryBudgetPercentWarning,
+                          ]}
+                          maxFontSizeMultiplier={1.08}
+                        >
+                          {budgetProgress.spentRatio}%
+                        </Text>
+                        <Text style={styles.summaryBudgetArrow} maxFontSizeMultiplier={1.08}>›</Text>
+                      </View>
+                    </View>
+                    <View style={styles.summaryBudgetTrack}>
+                      <View
+                        style={[
+                          styles.summaryBudgetFill,
+                          {
+                            width: `${Math.min(100, Math.max(0, budgetProgress.spentRatio))}%`,
+                            backgroundColor: budgetProgress.isOverBudget
+                              ? '#EF4444'
+                              : budgetProgress.isWarning
+                              ? '#F59E0B'
+                              : '#10B981',
+                          },
+                        ]}
+                      />
+                    </View>
+                  </TouchableOpacity>
+                )}
+              </View>
             )}
-          </View>
+          </>
         )}
       </View>
+
+      {/* 方案 3: 展開之資產明細 (僅於點擊展開時顯示) */}
+      {isAssetSectionExpanded && (
+        <View style={styles.expandedAssetContentStandalone}>
+          <NetWorthWidget
+            filterMemberId={filterMemberId}
+            onOpenTransferModal={() => onOpenModal('transfer')}
+            onOpenAccountsManageModal={() => onOpenAccountsManageModal(filterMemberId && filterMemberId === currentUser?.id ? 'my' : 'all')}
+          />
+          <StoredValueWidget
+            filterMemberId={filterMemberId}
+            onOpenCreditCardReconcile={() => onOpenReconcileModal('credit_card')}
+            onOpenReconcile={(card) => onOpenReconcileModal('stored_value', card?.id)}
+          />
+        </View>
+      )}
 
       {/* 雙提醒單行膠囊 (待繳週期帳單 + 生活待辦備忘) */}
       {(() => {
@@ -1116,151 +1216,103 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         );
       })()}
 
-      {/* 💎 財務淨值與儲值票證折疊看板 */}
-      <View style={styles.collapsibleAssetWrapper}>
-        <TouchableOpacity
-          style={[
-            styles.compactAssetBar,
-            isDark && styles.compactAssetBarDark,
-            isAssetSectionExpanded && styles.compactAssetBarExpanded,
-            isDark && isAssetSectionExpanded && styles.compactAssetBarExpandedDark,
-          ]}
-          activeOpacity={0.8}
-          onPress={() => setIsAssetSectionExpanded(prev => !prev)}
-        >
-          <View style={styles.compactAssetLeft}>
-            <Text style={styles.compactAssetIcon}>💎</Text>
-            <Text style={[styles.compactAssetLabel, isDark && { color: colors.text.secondary }]} maxFontSizeMultiplier={1.08}>
-              {filterMemberId === 'all'
-                ? '全家淨值'
-                : filterMemberId === currentUser?.id
-                ? '我的淨值'
-                : `${members.find(m => m.id === filterMemberId)?.display_name || '成員'}淨值`}
-            </Text>
-            <Text style={[styles.compactAssetAmount, isDark && { color: colors.text.primary }]} maxFontSizeMultiplier={1.08}>
-              {maskedNetWorth}
-            </Text>
-            {netWorthSummary.accounts.storedValues.length > 0 && (
-              <View style={[styles.compactAssetPill, isDark && styles.compactAssetPillDark]}>
-                <Text style={[styles.compactAssetPillText, isDark && styles.compactAssetPillTextDark]} maxFontSizeMultiplier={1.08}>
-                  💳 儲值卡 {netWorthSummary.accounts.storedValues.length}
-                </Text>
-              </View>
-            )}
-          </View>
-          <View style={styles.compactAssetRight}>
-            <Text style={[styles.compactAssetToggleText, isDark && { color: '#818CF8' }]} maxFontSizeMultiplier={1.08}>
-              {isAssetSectionExpanded ? '收合資產 ▴' : '展開資產 ▾'}
-            </Text>
-          </View>
-        </TouchableOpacity>
+      {/* 方案 4: 交易列表標題與類型快捷切換同列並排 (節省 35~40px) */}
+      <View style={styles.sectionHeaderInlineRow}>
+        <View style={styles.sectionHeaderTitleWrap}>
+          <Text style={[styles.sectionInlineTitle, isDark && { color: colors.text.primary }]}>
+            {transactionTypeFilter === 'memo' ? '記事' : transactionTypeFilter === 'financial' ? '收支' : '明細'}
+          </Text>
+          <Text style={[styles.sectionInlineCount, isDark && { color: colors.text.muted }]}>
+            {historySyncProgress
+              ? `${Math.max(historySyncProgress.loaded, transactions.length).toLocaleString()}/${historySyncProgress.total.toLocaleString()}`
+              : filteredTransactions.length < transactions.length
+              ? `${filteredTransactions.length.toLocaleString()}/${transactions.length.toLocaleString()}`
+              : `${transactions.length.toLocaleString()}`}
+          </Text>
+          {keyboardOffset > 0 && (
+            <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收鍵盤▾</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
-        {isAssetSectionExpanded && (
-          <View style={styles.expandedAssetContent}>
-            <NetWorthWidget
-              filterMemberId={filterMemberId}
-              onOpenTransferModal={() => onOpenModal('transfer')}
-              onOpenAccountsManageModal={() => onOpenAccountsManageModal(filterMemberId && filterMemberId === currentUser?.id ? 'my' : 'all')}
-            />
-            <StoredValueWidget
-              filterMemberId={filterMemberId}
-              onOpenCreditCardReconcile={() => onOpenReconcileModal('credit_card')}
-              onOpenReconcile={(card) => onOpenReconcileModal('stored_value', card?.id)}
-            />
-          </View>
-        )}
-      </View>
-
-      {/* 交易列表標題 */}
-      <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, isDark && { color: colors.text.primary }]}>
-          {transactionTypeFilter === 'memo' ? '📝 生活備忘記事' : transactionTypeFilter === 'financial' ? '💳 日常收支明細' : '近期收支明細'} {historySyncProgress ? `(同步中 ${Math.max(historySyncProgress.loaded, transactions.length).toLocaleString()} / ${historySyncProgress.total.toLocaleString()})` : (filteredTransactions.length < transactions.length ? `(${filteredTransactions.length.toLocaleString()} / 總 ${transactions.length.toLocaleString()})` : `(總 ${transactions.length.toLocaleString()})`)}
-        </Text>
-        {keyboardOffset > 0 ? (
-          <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+        {/* 緊湊三態切換膠囊 */}
+        <View style={[styles.typeFilterInlineContainer, isDark && { backgroundColor: colors.background.cardSubtle }]}>
+          <TouchableOpacity
+            style={[
+              styles.typeFilterInlineTab,
+              transactionTypeFilter === 'all' && styles.typeFilterInlineTabActiveAll,
+              isDark && transactionTypeFilter === 'all' && {
+                backgroundColor: colors.background.card,
+                borderColor: colors.border.strong,
+              },
+            ]}
+            onPress={() => setTransactionTypeFilter('all')}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.typeFilterInlineTabText,
+                transactionTypeFilter === 'all' && styles.typeFilterInlineTabTextActiveAll,
+                isDark && { color: colors.text.secondary },
+                isDark && transactionTypeFilter === 'all' && { color: '#A5B4FC' },
+              ]}
+              maxFontSizeMultiplier={1.08}
+            >
+              全部 {typeCountStats.all}
+            </Text>
           </TouchableOpacity>
-        ) : (
-          <Text style={[styles.sectionSubtitle, isDark && { color: '#818CF8' }]}>點擊明細可直接修改或刪除 ✍️</Text>
-        )}
-      </View>
 
-      {/* 明細類型快捷切換列 */}
-      <View style={[styles.typeFilterContainer, isDark && { backgroundColor: colors.background.cardSubtle }]}>
-        <TouchableOpacity
-          style={[
-            styles.typeFilterTab,
-            transactionTypeFilter === 'all' && styles.typeFilterTabActiveAll,
-            isDark && transactionTypeFilter === 'all' && {
-              backgroundColor: colors.background.card,
-              borderColor: colors.border.strong,
-            },
-          ]}
-          onPress={() => setTransactionTypeFilter('all')}
-          activeOpacity={0.7}
-        >
-          <Text
+          <TouchableOpacity
             style={[
-              styles.typeFilterTabText,
-              transactionTypeFilter === 'all' && styles.typeFilterTabTextActiveAll,
-              isDark && { color: colors.text.secondary },
-              isDark && transactionTypeFilter === 'all' && { color: '#A5B4FC' },
+              styles.typeFilterInlineTab,
+              transactionTypeFilter === 'financial' && styles.typeFilterInlineTabActiveFinancial,
+              isDark && transactionTypeFilter === 'financial' && {
+                backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                borderColor: 'rgba(59, 130, 246, 0.45)',
+              },
             ]}
-            maxFontSizeMultiplier={1.08}
+            onPress={() => setTransactionTypeFilter('financial')}
+            activeOpacity={0.7}
           >
-            全部紀錄 ({typeCountStats.all})
-          </Text>
-        </TouchableOpacity>
+            <Text
+              style={[
+                styles.typeFilterInlineTabText,
+                transactionTypeFilter === 'financial' && styles.typeFilterInlineTabTextActiveFinancial,
+                isDark && { color: colors.text.secondary },
+                isDark && transactionTypeFilter === 'financial' && { color: '#93C5FD' },
+              ]}
+              maxFontSizeMultiplier={1.08}
+            >
+              💳 收支 {typeCountStats.financial}
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[
-            styles.typeFilterTab,
-            transactionTypeFilter === 'financial' && styles.typeFilterTabActiveFinancial,
-            isDark && transactionTypeFilter === 'financial' && {
-              backgroundColor: 'rgba(59, 130, 246, 0.2)',
-              borderColor: 'rgba(59, 130, 246, 0.45)',
-            },
-          ]}
-          onPress={() => setTransactionTypeFilter('financial')}
-          activeOpacity={0.7}
-        >
-          <Text
+          <TouchableOpacity
             style={[
-              styles.typeFilterTabText,
-              transactionTypeFilter === 'financial' && styles.typeFilterTabTextActiveFinancial,
-              isDark && { color: colors.text.secondary },
-              isDark && transactionTypeFilter === 'financial' && { color: '#93C5FD' },
+              styles.typeFilterInlineTab,
+              transactionTypeFilter === 'memo' && styles.typeFilterInlineTabActiveMemo,
+              isDark && transactionTypeFilter === 'memo' && {
+                backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                borderColor: 'rgba(245, 158, 11, 0.45)',
+              },
             ]}
-            maxFontSizeMultiplier={1.08}
+            onPress={() => setTransactionTypeFilter('memo')}
+            activeOpacity={0.7}
           >
-            💳 僅看收支 ({typeCountStats.financial})
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.typeFilterTab,
-            transactionTypeFilter === 'memo' && styles.typeFilterTabActiveMemo,
-            isDark && transactionTypeFilter === 'memo' && {
-              backgroundColor: 'rgba(245, 158, 11, 0.2)',
-              borderColor: 'rgba(245, 158, 11, 0.45)',
-            },
-          ]}
-          onPress={() => setTransactionTypeFilter('memo')}
-          activeOpacity={0.7}
-        >
-          <Text
-            style={[
-              styles.typeFilterTabText,
-              transactionTypeFilter === 'memo' && styles.typeFilterTabTextActiveMemo,
-              isDark && { color: colors.text.secondary },
-              isDark && transactionTypeFilter === 'memo' && { color: '#FCD34D' },
-            ]}
-            maxFontSizeMultiplier={1.08}
-          >
-            📝 僅看記事 ({typeCountStats.memo})
-          </Text>
-        </TouchableOpacity>
+            <Text
+              style={[
+                styles.typeFilterInlineTabText,
+                transactionTypeFilter === 'memo' && styles.typeFilterInlineTabTextActiveMemo,
+                isDark && { color: colors.text.secondary },
+                isDark && transactionTypeFilter === 'memo' && { color: '#FCD34D' },
+              ]}
+              maxFontSizeMultiplier={1.08}
+            >
+              📝 記事 {typeCountStats.memo}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* 🔍 店家 / 關鍵字即時搜尋列 + 🧾 發票工具快捷選單按鈕 */}
@@ -1276,9 +1328,13 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
             returnKeyType="search"
             onSubmitEditing={Keyboard.dismiss}
             onFocus={() => {
+              setIsSearchFocused(true);
               setTimeout(() => {
                 activeScrollRef.current?.scrollTo({ y: 260, animated: true });
               }, 120);
+            }}
+            onBlur={() => {
+              setIsSearchFocused(false);
             }}
           />
           {!!searchQuery && (
@@ -1338,8 +1394,8 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         </TouchableOpacity>
       </View>
 
-      {/* 🏷️ 店家 1 鍵快速篩選膠囊橫向列 */}
-      {activeMerchantsInLedger.length > 0 && (
+      {/* 🏷️ 店家 1 鍵快速篩選膠囊橫向列 (方案 2: 點擊搜尋框輸入或有搜尋字時才展開，平時不佔空間) */}
+      {activeMerchantsInLedger.length > 0 && (isSearchFocused || !!searchQuery.trim()) && (
         <HorizontalScrollView
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.merchantFilterScroll}
@@ -2000,11 +2056,57 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       shadowRadius: 10,
       elevation: 6,
     },
+    summaryCardCollapsed: {
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      marginBottom: 8,
+    },
     summaryHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 14,
+      marginBottom: 12,
+    },
+    summaryTitleTouchArea: {
+      flex: 1,
+      marginRight: 8,
+    },
+    summaryHeaderRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    summaryCollapseBtn: {
+      backgroundColor: 'rgba(255, 255, 255, 0.2)',
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
+    },
+    summaryCollapseBtnText: {
+      fontSize: 11,
+      color: '#FFFFFF',
+      fontWeight: '700',
+    },
+    summaryCollapsedBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: 2,
+    },
+    summaryCollapsedText: {
+      fontSize: 12,
+      color: '#E0E7FF',
+      fontWeight: '600',
+      flex: 1,
+    },
+    summaryCollapsedVal: {
+      fontSize: 13,
+      fontWeight: '800',
+    },
+    summaryCollapsedHint: {
+      fontSize: 11,
+      color: '#C7D2FE',
+      fontWeight: '600',
     },
     summaryTitle: {
       fontSize: 15,
@@ -2055,6 +2157,20 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     incomeVal: {
       color: '#6EE7B7',
     },
+    summaryBottomInfoRow: {
+      marginTop: 12,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: 'rgba(255, 255, 255, 0.15)',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    summaryTransferHintCol: {
+      flex: 1,
+      gap: 2,
+      marginRight: 8,
+    },
     summaryTransferHintRow: {
       marginTop: 14,
       paddingTop: 10,
@@ -2067,9 +2183,46 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       gap: 12,
     },
     summaryTransferHintText: {
-      fontSize: 12,
+      fontSize: 11,
       color: '#E0E7FF',
       fontWeight: '600',
+    },
+    summaryNetWorthInlineBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: 'rgba(255, 255, 255, 0.16)',
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 10,
+      gap: 4,
+    },
+    summaryNetWorthInlineIcon: {
+      fontSize: 12,
+    },
+    summaryNetWorthInlineText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: '#FFFFFF',
+    },
+    summaryNetWorthStoredBadge: {
+      backgroundColor: 'rgba(255, 255, 255, 0.22)',
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+      borderRadius: 6,
+    },
+    summaryNetWorthStoredText: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: '#FFFFFF',
+    },
+    summaryNetWorthInlineArrow: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: '#C7D2FE',
+    },
+    expandedAssetContentStandalone: {
+      marginBottom: 10,
+      gap: 8,
     },
     summaryBudgetSection: {
       marginTop: 12,
@@ -2314,44 +2467,49 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       marginTop: 8,
       gap: 8,
     },
-    sectionHeader: {
+    sectionHeaderInlineRow: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 12,
+      justifyContent: 'space-between',
+      marginBottom: 8,
+      gap: 6,
     },
-    sectionTitle: {
-      fontSize: 16,
-      fontWeight: '700',
+    sectionHeaderTitleWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      flexShrink: 0,
+    },
+    sectionInlineTitle: {
+      fontSize: 15,
+      fontWeight: '800',
       color: colors.text.primary,
     },
+    sectionInlineCount: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.text.muted,
+    },
     dismissKeyboardText: {
-      fontSize: 12,
+      fontSize: 11,
       color: '#4F46E5',
       fontWeight: '700',
     },
-    sectionSubtitle: {
-      fontSize: 12,
-      color: isDark ? '#818CF8' : '#6366F1',
-      fontWeight: '500',
-    },
-    typeFilterContainer: {
+    typeFilterInlineContainer: {
       flexDirection: 'row',
       backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
-      borderRadius: 12,
-      padding: 3,
-      marginBottom: 10,
-      gap: 4,
+      borderRadius: 10,
+      padding: 2,
+      gap: 2,
     },
-    typeFilterTab: {
-      flex: 1,
-      paddingVertical: 7,
-      paddingHorizontal: 4,
-      borderRadius: 9,
+    typeFilterInlineTab: {
+      paddingVertical: 4,
+      paddingHorizontal: 7,
+      borderRadius: 8,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    typeFilterTabActiveAll: {
+    typeFilterInlineTabActiveAll: {
       backgroundColor: isDark ? colors.background.card : '#FFFFFF',
       borderColor: colors.border.default,
       borderWidth: 1,
@@ -2361,8 +2519,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       shadowRadius: 2,
       elevation: 2,
     },
-    typeFilterTabActiveFinancial: {
-      backgroundColor: isDark ? 'rgba(37, 99, 235, 0.15)' : '#EFF6FF',
+    typeFilterInlineTabActiveFinancial: {
+      backgroundColor: isDark ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF',
       borderColor: '#3B82F6',
       borderWidth: 1,
       shadowColor: '#1D4ED8',
@@ -2371,8 +2529,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       shadowRadius: 2,
       elevation: 2,
     },
-    typeFilterTabActiveMemo: {
-      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FEF3C7',
+    typeFilterInlineTabActiveMemo: {
+      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
       borderColor: '#F59E0B',
       borderWidth: 1,
       shadowColor: '#B45309',
@@ -2381,20 +2539,20 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       shadowRadius: 2,
       elevation: 2,
     },
-    typeFilterTabText: {
-      fontSize: 12,
+    typeFilterInlineTabText: {
+      fontSize: 11,
       fontWeight: '600',
       color: colors.text.muted,
     },
-    typeFilterTabTextActiveAll: {
+    typeFilterInlineTabTextActiveAll: {
       color: isDark ? '#818CF8' : '#4F46E5',
       fontWeight: '800',
     },
-    typeFilterTabTextActiveFinancial: {
+    typeFilterInlineTabTextActiveFinancial: {
       color: isDark ? '#60A5FA' : '#1D4ED8',
       fontWeight: '800',
     },
-    typeFilterTabTextActiveMemo: {
+    typeFilterInlineTabTextActiveMemo: {
       color: isDark ? '#FBBF24' : '#B45309',
       fontWeight: '800',
     },
