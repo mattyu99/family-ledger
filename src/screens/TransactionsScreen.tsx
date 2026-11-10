@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Animated,
   Alert,
+  Modal,
 } from 'react-native';
 import { Text, TextInput } from '../components/common/Text';
 
@@ -108,6 +109,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
   const [isReminderDismissed, setIsReminderDismissed] = useState(false);
   const [isAssetSectionExpanded, setIsAssetSectionExpanded] = useState(false);
   const [isPinnedExpanded, setIsPinnedExpanded] = useState<boolean>(false);
+  const [invoiceMenuVisible, setInvoiceMenuVisible] = useState<boolean>(false);
 
   // 剛才查看之高光錨點紀錄（自動維持 6 秒讓使用者退回列表時瞬間鎖定焦點）
   const [lastViewedTxId, setLastViewedTxId] = useState<string | null>(null);
@@ -1261,13 +1263,13 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         </TouchableOpacity>
       </View>
 
-      {/* 🔍 店家 / 關鍵字即時搜尋列 */}
+      {/* 🔍 店家 / 關鍵字即時搜尋列 + 🧾 發票工具快捷選單按鈕 */}
       <View style={styles.searchBarContainer}>
         <View style={[styles.searchBarInner, isDark && { backgroundColor: colors.background.input, borderColor: colors.border.default }]}>
           <Text style={styles.searchBarIcon}>🔍</Text>
           <TextInput
             style={[styles.searchBarInput, isDark && { color: colors.text.primary }]}
-            placeholder="搜尋店家或備註 (例如：好市多、全聯、加油...)"
+            placeholder="搜尋店家或備註 (好市多、全聯...)"
             placeholderTextColor={isDark ? colors.text.muted : '#9CA3AF'}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -1289,6 +1291,51 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
             </TouchableOpacity>
           )}
         </View>
+
+        {/* 🧾 發票工具選單按鈕 (有中獎時高亮變身 🎉 中獎) */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          style={[
+            styles.invoiceMenuBtn,
+            isDark && {
+              backgroundColor: colors.background.card,
+              borderColor: colors.border.default,
+            },
+            invoiceLotteryStats.wonCount > 0 && {
+              borderColor: '#F59E0B',
+              backgroundColor: isDark ? 'rgba(245, 158, 11, 0.22)' : '#FEF3C7',
+            },
+          ]}
+          onPress={() => setInvoiceMenuVisible(true)}
+        >
+          <Text style={styles.invoiceMenuBtnIcon}>
+            {invoiceLotteryStats.wonCount > 0 ? '🎉' : '🧾'}
+          </Text>
+          <Text
+            style={[
+              styles.invoiceMenuBtnText,
+              isDark && { color: colors.text.primary },
+              invoiceLotteryStats.wonCount > 0 && {
+                color: isDark ? '#FBBF24' : '#B45309',
+                fontWeight: '700',
+              },
+            ]}
+            numberOfLines={1}
+          >
+            {invoiceLotteryStats.wonCount > 0
+              ? `中獎 (${invoiceLotteryStats.wonCount})`
+              : '發票'}
+          </Text>
+          <Text
+            style={[
+              styles.invoiceMenuBtnArrow,
+              isDark && { color: colors.text.muted },
+              invoiceLotteryStats.wonCount > 0 && { color: isDark ? '#FBBF24' : '#B45309' },
+            ]}
+          >
+            ▾
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* 🏷️ 店家 1 鍵快速篩選膠囊橫向列 */}
@@ -1416,66 +1463,6 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
           </Text>
           <Text style={[styles.filterChipArrow, filterMemberId !== defaultMemberId && styles.filterChipArrowActive, isDark && { color: colors.text.muted }, isDark && filterMemberId !== defaultMemberId && { color: '#818CF8' }]}>▾</Text>
         </TouchableOpacity>
-
-        {/* 發票對獎按鈕 */}
-        <TouchableOpacity
-          activeOpacity={0.7}
-          style={[
-            styles.filterChip,
-            isDark && {
-              backgroundColor: colors.background.card,
-              borderColor: colors.border.default,
-            },
-            invoiceLotteryStats.wonCount > 0 && {
-              borderColor: '#F59E0B',
-              backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
-            },
-          ]}
-          onPress={onOpenInvoiceLotteryModal}
-        >
-          <Text style={styles.filterChipIcon}>{invoiceLotteryStats.wonCount > 0 ? '🎉' : '🧾'}</Text>
-          <Text
-            style={[
-              styles.filterChipText,
-              isDark && { color: colors.text.secondary },
-              invoiceLotteryStats.wonCount > 0 && { color: isDark ? '#FBBF24' : '#B45309', fontWeight: '700' },
-            ]}
-            numberOfLines={1}
-          >
-            {invoiceLotteryStats.wonCount > 0
-              ? `發票中獎 (${invoiceLotteryStats.wonCount})`
-              : '發票對獎'}
-          </Text>
-        </TouchableOpacity>
-
-        {onOpenCloudInvoiceModal && (
-          <TouchableOpacity
-            activeOpacity={0.7}
-            style={[
-              styles.filterChip,
-              isDark && {
-                backgroundColor: colors.background.card,
-                borderColor: colors.border.default,
-              },
-              {
-                borderColor: isDark ? 'rgba(56, 189, 248, 0.4)' : '#BAE6FD',
-                backgroundColor: isDark ? 'rgba(14, 165, 233, 0.15)' : '#F0F9FF',
-              },
-            ]}
-            onPress={onOpenCloudInvoiceModal}
-          >
-            <Text style={styles.filterChipIcon}>☁️</Text>
-            <Text
-              style={[
-                styles.filterChipText,
-                { color: isDark ? '#38BDF8' : '#0284C7', fontWeight: '700' },
-              ]}
-              numberOfLines={1}
-            >
-              雲端發票
-            </Text>
-          </TouchableOpacity>
-        )}
 
         {!!searchQuery.trim() && filterMonth !== 'all' && (
           <TouchableOpacity
@@ -1699,6 +1686,204 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         </Text>
       </Animated.View>
     )}
+
+    {/* 🧾 發票智慧服務快捷彈出選單 */}
+    <Modal
+      visible={invoiceMenuVisible}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setInvoiceMenuVisible(false)}
+    >
+      <TouchableOpacity
+        style={styles.invoiceMenuOverlay}
+        activeOpacity={1}
+        onPress={() => setInvoiceMenuVisible(false)}
+      >
+        <TouchableOpacity
+          style={[
+            styles.invoiceMenuCard,
+            isDark && {
+              backgroundColor: colors.background.card,
+              borderColor: colors.border.default,
+            },
+          ]}
+          activeOpacity={1}
+          onPress={(e) => e.stopPropagation()}
+        >
+          {/* 選單頂部標題列 */}
+          <View style={styles.invoiceMenuHeader}>
+            <View style={styles.invoiceMenuHeaderTitleRow}>
+              <Text style={styles.invoiceMenuHeaderIcon}>🧾</Text>
+              <Text
+                style={[
+                  styles.invoiceMenuHeaderTitle,
+                  isDark && { color: colors.text.primary },
+                ]}
+              >
+                發票智慧服務
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.invoiceMenuCloseBtn}
+              onPress={() => setInvoiceMenuVisible(false)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text
+                style={[
+                  styles.invoiceMenuCloseText,
+                  isDark && { color: colors.text.muted },
+                ]}
+              >
+                ✕
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* 選項 1: 財政部雲端發票 */}
+          {onOpenCloudInvoiceModal && (
+            <TouchableOpacity
+              style={[
+                styles.invoiceMenuItem,
+                isDark && {
+                  backgroundColor: colors.background.cardSubtle,
+                  borderColor: colors.border.default,
+                },
+              ]}
+              activeOpacity={0.7}
+              onPress={() => {
+                setInvoiceMenuVisible(false);
+                onOpenCloudInvoiceModal();
+              }}
+            >
+              <View
+                style={[
+                  styles.invoiceMenuItemIconWrap,
+                  {
+                    backgroundColor: isDark
+                      ? 'rgba(14, 165, 233, 0.2)'
+                      : '#F0F9FF',
+                  },
+                ]}
+              >
+                <Text style={styles.invoiceMenuItemIcon}>☁️</Text>
+              </View>
+              <View style={styles.invoiceMenuItemContent}>
+                <Text
+                  style={[
+                    styles.invoiceMenuItemTitle,
+                    isDark && { color: colors.text.primary },
+                  ]}
+                >
+                  財政部雲端發票
+                </Text>
+                <Text
+                  style={[
+                    styles.invoiceMenuItemSub,
+                    isDark && { color: colors.text.muted },
+                  ]}
+                >
+                  載具自動同步 · 發票 CSV 智慧匯入
+                </Text>
+              </View>
+              <Text
+                style={[
+                  styles.invoiceMenuItemArrow,
+                  isDark && { color: colors.text.muted },
+                ]}
+              >
+                ›
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* 選項 2: 統一發票對獎中心 */}
+          <TouchableOpacity
+            style={[
+              styles.invoiceMenuItem,
+              isDark && {
+                backgroundColor: colors.background.cardSubtle,
+                borderColor: colors.border.default,
+              },
+              invoiceLotteryStats.wonCount > 0 && {
+                borderColor: isDark
+                  ? 'rgba(245, 158, 11, 0.5)'
+                  : '#FDE68A',
+                backgroundColor: isDark
+                  ? 'rgba(245, 158, 11, 0.12)'
+                  : '#FFFBEB',
+              },
+            ]}
+            activeOpacity={0.7}
+            onPress={() => {
+              setInvoiceMenuVisible(false);
+              onOpenInvoiceLotteryModal();
+            }}
+          >
+            <View
+              style={[
+                styles.invoiceMenuItemIconWrap,
+                {
+                  backgroundColor:
+                    invoiceLotteryStats.wonCount > 0
+                      ? isDark
+                        ? 'rgba(245, 158, 11, 0.25)'
+                        : '#FEF3C7'
+                      : isDark
+                      ? 'rgba(99, 102, 241, 0.2)'
+                      : '#EEF2FF',
+                },
+              ]}
+            >
+              <Text style={styles.invoiceMenuItemIcon}>
+                {invoiceLotteryStats.wonCount > 0 ? '🎉' : '🧾'}
+              </Text>
+            </View>
+            <View style={styles.invoiceMenuItemContent}>
+              <View style={styles.invoiceMenuItemTitleRow}>
+                <Text
+                  style={[
+                    styles.invoiceMenuItemTitle,
+                    isDark && { color: colors.text.primary },
+                    invoiceLotteryStats.wonCount > 0 && {
+                      color: isDark ? '#FBBF24' : '#B45309',
+                      fontWeight: '800',
+                    },
+                  ]}
+                >
+                  統一發票對獎中心
+                </Text>
+                {invoiceLotteryStats.wonCount > 0 && (
+                  <View style={styles.invoiceWonBadge}>
+                    <Text style={styles.invoiceWonBadgeText}>
+                      🎉 中獎 {invoiceLotteryStats.wonCount} 筆
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <Text
+                style={[
+                  styles.invoiceMenuItemSub,
+                  isDark && { color: colors.text.muted },
+                ]}
+              >
+                雙月開獎動態核對 · 獎金一鍵入帳
+              </Text>
+            </View>
+            <Text
+              style={[
+                styles.invoiceMenuItemArrow,
+                isDark && { color: colors.text.muted },
+                invoiceLotteryStats.wonCount > 0 && {
+                  color: isDark ? '#FBBF24' : '#D97706',
+                },
+              ]}
+            >
+              ›
+            </Text>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
   </View>
   );
 };
@@ -2214,9 +2399,13 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontWeight: '800',
     },
     searchBarContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
       marginBottom: 8,
     },
     searchBarInner: {
+      flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: isDark ? colors.background.card : '#FFFFFF',
@@ -2225,11 +2414,42 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       borderColor: colors.border.default,
       paddingHorizontal: 12,
       paddingVertical: Platform.OS === 'ios' ? 8 : 4,
+      minHeight: 40,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.03,
       shadowRadius: 2,
       elevation: 1,
+    },
+    invoiceMenuBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? colors.background.card : '#FFFFFF',
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border.default,
+      paddingHorizontal: 10,
+      minHeight: 40,
+      gap: 4,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.03,
+      shadowRadius: 2,
+      elevation: 1,
+    },
+    invoiceMenuBtnIcon: {
+      fontSize: 14,
+    },
+    invoiceMenuBtnText: {
+      fontSize: 12.5,
+      fontWeight: '600',
+      color: colors.text.primary,
+    },
+    invoiceMenuBtnArrow: {
+      fontSize: 10,
+      color: colors.text.muted,
+      marginLeft: 1,
     },
     searchBarIcon: {
       fontSize: 14,
@@ -2446,5 +2666,112 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontSize: 12,
       color: colors.text.muted,
       fontWeight: '500',
+    },
+    invoiceMenuOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.55)',
+      justifyContent: 'flex-end',
+      paddingBottom: Platform.OS === 'ios' ? 24 : 16,
+      paddingHorizontal: 16,
+    },
+    invoiceMenuCard: {
+      backgroundColor: isDark ? colors.background.card : '#FFFFFF',
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.border.default,
+      padding: 16,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: -2 },
+      shadowOpacity: 0.15,
+      shadowRadius: 10,
+      elevation: 8,
+    },
+    invoiceMenuHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingBottom: 12,
+      marginBottom: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: isDark ? colors.border.default : '#F1F5F9',
+    },
+    invoiceMenuHeaderTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    invoiceMenuHeaderIcon: {
+      fontSize: 18,
+    },
+    invoiceMenuHeaderTitle: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: colors.text.primary,
+    },
+    invoiceMenuCloseBtn: {
+      padding: 4,
+    },
+    invoiceMenuCloseText: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: colors.text.muted,
+    },
+    invoiceMenuItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 12,
+      borderRadius: 14,
+      backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
+      borderWidth: 1.5,
+      borderColor: isDark ? colors.border.default : '#E2E8F0',
+      marginBottom: 10,
+    },
+    invoiceMenuItemIconWrap: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 12,
+    },
+    invoiceMenuItemIcon: {
+      fontSize: 20,
+    },
+    invoiceMenuItemContent: {
+      flex: 1,
+    },
+    invoiceMenuItemTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    invoiceMenuItemTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.text.primary,
+    },
+    invoiceMenuItemSub: {
+      fontSize: 12,
+      color: colors.text.muted,
+      marginTop: 2,
+    },
+    invoiceMenuItemArrow: {
+      fontSize: 18,
+      color: colors.text.muted,
+      fontWeight: '600',
+      marginLeft: 8,
+    },
+    invoiceWonBadge: {
+      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7',
+      borderColor: isDark ? '#FBBF24' : '#F59E0B',
+      borderWidth: 1,
+      borderRadius: 8,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    invoiceWonBadgeText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: isDark ? '#FBBF24' : '#B45309',
     },
   });

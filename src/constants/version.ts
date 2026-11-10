@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.15';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.15 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 36;
+export const APP_BUILD_REVISION = 37;
 
 // 完整版本字串 (例如 "1.0.15.16")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -23,6 +23,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
     date: '2026-11-06 ~ 2026-11-10',
     title: '重要記事跨月常駐置頂與雲端持久保存、頂部品牌雙行架構與桌面小工具極速直達',
     highlights: [
+      '🧾 首頁搜尋列整合發票智慧選單與中獎驚喜：雲端發票與發票對獎整合為搜尋列右側「發票」按鈕，釋放整行版面；開獎中獎時自動變身金黃「中獎」高亮提示。',
       '⚡ 桌面快捷隨點隨開與後台離開乾淨歸位：徹底修復退回桌面連點不同捷徑時卡在支出頁面之問題；離開 App 即刻收合前次視窗，點選收入、記事或發票皆精準直達。',
       '⚡ 桌面小工具回歸純粹緊急排序：桌面小工具與置頂功能解除綁定，嚴格依到期時間由近至遠排序，確保今日或逾期之緊急待辦不被排擠。',
       '🏷️ 記事卡片全家與個人標籤常駐、提醒日期優雅下移：未設提醒之記事卡片右上方全面標示全家或個人專屬標籤，提醒日期標籤移至底部記錄人右方，排版寬敞舒爽不再溢出螢幕。',
