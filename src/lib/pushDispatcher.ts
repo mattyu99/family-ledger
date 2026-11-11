@@ -39,6 +39,7 @@ export interface PushNotificationPayload {
   type: 'memo_added' | 'memo_completed' | 'memo_updated' | 'transaction_added' | 'widget_sync';
   data?: Record<string, any>;
   isSilent?: boolean; // 若為 true 則不發出鈴聲，專用於靜默喚醒更新小工具
+  targetMemberId?: string; // 🎯 精準推播：僅投遞給特定成員名下之連線裝置 (例如生活待辦辦妥僅通知紀錄者)
 }
 
 /**
@@ -54,19 +55,29 @@ export async function sendFamilyPushNotification(payload: PushNotificationPayloa
 
     // 1. 查詢該帳本名下所有其他成員的活躍裝置與 push_token (具備雙軌 anon 備援，防止跨裝置 Session RLS 回傳 0 筆而漏發推播)
     let devices: any[] | null = null;
-    const { data: clientDevs, error } = await supabase
+    let query = supabase
       .from('member_devices')
       .select('device_id, push_token')
       .eq('ledger_id', payload.ledgerId)
       .neq('device_id', currentDeviceId)
       .not('push_token', 'is', null);
 
+    if (payload.targetMemberId) {
+      query = query.eq('member_id', payload.targetMemberId);
+    }
+
+    const { data: clientDevs, error } = await query;
+
     if (!error && Array.isArray(clientDevs) && clientDevs.length > 0) {
       devices = clientDevs;
     } else {
       try {
+        let anonUrl = `${SUPABASE_URL}/rest/v1/member_devices?ledger_id=eq.${encodeURIComponent(payload.ledgerId)}&device_id=neq.${encodeURIComponent(currentDeviceId)}&push_token=not.is.null&select=device_id,push_token`;
+        if (payload.targetMemberId) {
+          anonUrl += `&member_id=eq.${encodeURIComponent(payload.targetMemberId)}`;
+        }
         const res = await fetch(
-          `${SUPABASE_URL}/rest/v1/member_devices?ledger_id=eq.${encodeURIComponent(payload.ledgerId)}&device_id=neq.${encodeURIComponent(currentDeviceId)}&push_token=not.is.null&select=device_id,push_token`,
+          anonUrl,
           {
             headers: {
               apikey: SUPABASE_ANON_KEY,

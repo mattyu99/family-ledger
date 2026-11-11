@@ -1476,17 +1476,24 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               // 待辦打勾完成！
               const completerId = completedBy || prevTx?.completed_by;
               const isFromOther = !myId || (completerId && completerId !== myId);
-              if (isFromOther && shouldShowToast(updatedRow.id, 'done')) {
+              const creatorId = updatedRow.creator_id || prevTx?.creator_id;
+              const isCreator = Boolean(creatorId && myId && creatorId === myId);
+
+              // 🎯 家人即時通知：僅通知該記事之紀錄者 (Creator)，其他家人不打擾
+              if (isFromOther && isCreator && shouldShowToast(updatedRow.id, 'done')) {
                 const completer = getMemberById(completerId);
                 const completerName = completer?.display_name || '家人';
                 const memoData = parseMemoNote(parsedNote || prevTx?.note);
+                const completionNote = updatedRow.completion_note || prevTx?.completion_note;
                 setLiveToast({
                   id: `complete-${updatedRow.id}-${Date.now()}`,
                   type: 'complete',
                   actorName: completerName,
-                  avatar: '✓',
-                  title: `✓ ${completerName} 辦妥了一項待辦！`,
-                  message: `[${memoData.title}] ${memoData.cleanContent}`,
+                  avatar: '💌',
+                  title: `💌 ${completerName} 已為您辦妥待辦！`,
+                  message: completionNote
+                    ? `「${memoData.title}」\n💬 貼心回報：${completionNote} 🥰`
+                    : `已為您辦妥「${memoData.title}」囉！✨`,
                   createdAt: Date.now(),
                 });
               }
@@ -1572,10 +1579,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (myId && actorId === myId) return;
 
           let targetNote = '';
+          let targetCreatorId: string | undefined;
+          let targetCompletionNote: string | undefined;
           setTransactions((prev) => {
             const target = prev.find((t) => t.id === id);
             if (!target) return prev;
             targetNote = target.note || '';
+            targetCreatorId = target.creator_id;
+            targetCompletionNote = target.completion_note;
             const updated = prev.map((t) =>
               t.id === id
                 ? {
@@ -1594,14 +1605,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const completerName = actorName || '家人';
           const memoData = parseMemoNote(targetNote);
           if (is_settled) {
-            if (shouldShowToast(id, 'done')) {
+            const isCreator = Boolean(targetCreatorId && myId && targetCreatorId === myId);
+            // 🎯 家人即時通知：僅通知該記事之紀錄者 (Creator)，其他家人不打擾
+            if (isCreator && shouldShowToast(id, 'done')) {
               setLiveToast({
                 id: `memo-done-${id}-${Date.now()}`,
                 type: 'complete',
                 actorName: completerName,
-                avatar: '✓',
-                title: `✓ ${completerName} 辦妥了一項待辦！`,
-                message: `[${memoData.title}] ${memoData.cleanContent}`,
+                avatar: '💌',
+                title: `💌 ${completerName} 已為您辦妥待辦！`,
+                message: targetCompletionNote
+                  ? `「${memoData.title}」\n💬 貼心回報：${targetCompletionNote} 🥰`
+                  : `已為您辦妥「${memoData.title}」囉！✨`,
                 createdAt: Date.now(),
               });
             }
@@ -8486,25 +8501,57 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }).catch(() => {});
       }
 
-      // 若為生活待辦記事，向同公帳其他成員之裝置發送跨裝置即時推播 (含背景喚醒同步小工具)
+      // 若為生活待辦記事，向紀錄者發送跨裝置溫馨即時推播，並向全家裝置發送背景靜默推播刷新桌面小工具
       if (isTargetMemo && isConfigured && !isDemoLedgerId(currentLedger.id)) {
         const updaterName = currentUser?.display_name || '家庭成員';
         const parsedMemo = parseMemoNote(data.note !== undefined ? data.note : (targetTx?.note || ''));
-        const memoTitle = parsedMemo.title || '生活備忘';
+        const memoTitle = parsedMemo.title || '生活待辦';
+        const completionNote = (data as any)?.completion_note || targetTx?.completion_note;
         const isNewlyCompleted = !targetTx?.is_settled && effectiveSettled === true;
-        const pushTitle = isNewlyCompleted ? `✅ ${currentLedger.name} 待辦已辦妥` : `📋 ${currentLedger.name} 待辦記事更新`;
-        const pushBody = isNewlyCompleted
-          ? `${updaterName} 已完成待辦：${memoTitle}`
-          : `${updaterName} 更新了待辦：${memoTitle}`;
+        const creatorId = targetTx?.creator_id;
+        const completerId = currentUser?.id;
 
-        sendFamilyPushNotification({
-          ledgerId: currentLedger.id,
-          senderName: updaterName,
-          title: pushTitle,
-          body: pushBody,
-          type: isNewlyCompleted ? 'memo_completed' : 'memo_updated',
-          data: { id, isSettled: !!effectiveSettled },
-        }).catch(() => {});
+        if (isNewlyCompleted) {
+          // 🎯 待辦辦妥：僅精準通知該記事之紀錄者 (防自己吵自己：自己辦妥自己建立的不發推播)
+          if (creatorId && completerId && creatorId !== completerId) {
+            const pushTitle = `💌 甜心生活回報 · 待辦辦妥囉！`;
+            const pushBody = completionNote
+              ? `${updaterName} 已為您辦妥「${memoTitle}」！\n💬 貼心回報：${completionNote} 🥰`
+              : `${updaterName} 已為您辦妥「${memoTitle}」囉！✨`;
+
+            sendFamilyPushNotification({
+              ledgerId: currentLedger.id,
+              senderName: updaterName,
+              title: pushTitle,
+              body: pushBody,
+              type: 'memo_completed',
+              data: { id, isSettled: true, creatorId, completerId },
+              targetMemberId: creatorId,
+            }).catch(() => {});
+          }
+
+          // 對全家其他裝置發送靜默推播（更新桌面小工具待辦計數與清單，不響鈴打擾）
+          sendFamilyPushNotification({
+            ledgerId: currentLedger.id,
+            senderName: updaterName,
+            title: '',
+            body: '',
+            type: 'widget_sync',
+            data: { id, isSettled: true },
+            isSilent: true,
+          }).catch(() => {});
+        } else {
+          // 一般待辦更新：維持靜默桌面小工具同步
+          sendFamilyPushNotification({
+            ledgerId: currentLedger.id,
+            senderName: updaterName,
+            title: '',
+            body: '',
+            type: 'widget_sync',
+            data: { id, isSettled: !!effectiveSettled },
+            isSilent: true,
+          }).catch(() => {});
+        }
       }
 
       return true;

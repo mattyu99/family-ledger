@@ -146,9 +146,10 @@ export function useDeviceAuth({
       return true;
     }
     if (res.fallbackToPin) {
-      safeAlert('需驗證安全碼', res.message || '請使用帳本應急安全碼驗證');
       if (onFallbackToPin) {
         onFallbackToPin();
+      } else {
+        safeAlert('需驗證安全碼', res.message || '請使用帳本應急安全碼驗證');
       }
     } else if (res.message) {
       safeAlert('身分驗證未通過', res.message);

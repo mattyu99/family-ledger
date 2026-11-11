@@ -242,8 +242,8 @@ flowchart TD
 ## 🚀 快速開始與版本資訊
 
 ### 📌 目前最新發布版本
-* **主版本號**：`v1.0.15` (Android versionCode 46)
-* **完整建置版本號**：`v1.0.15.46` (Build 46)
+* **主版本號**：`v1.0.15` (Android versionCode 47)
+* **完整建置版本號**：`v1.0.15.47` (Build 47)
 * **示範體驗帳本直達**：[https://mattyu99.github.io/family-ledger/?invite=SWEETHOME](https://mattyu99.github.io/family-ledger/?invite=SWEETHOME)
 * **網頁體驗版網址**：[https://mattyu99.github.io/family-ledger/](https://mattyu99.github.io/family-ledger/)
 * **官方使用者手冊**：[《甜心記帳本官方使用者手冊 (線上純淨網頁版)》](https://mattyu99.github.io/family-ledger/manual.html) | [Markdown 原始檔](./USER_MANUAL.md)
