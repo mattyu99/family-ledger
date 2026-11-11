@@ -681,6 +681,7 @@ export interface ParsedExpenseDiscount {
   originalAmount?: number;
   cleanNote: string;
   badgeText: string;
+  shortBadgeText: string; // 🎯 緊湊型折抵標籤 (專用於與店家標籤並列時，免去長串金額擠壓版面)
 }
 
 const EXPENSE_DISCOUNT_REGEX =
@@ -696,6 +697,7 @@ export const parseExpenseDiscount = (note?: string): ParsedExpenseDiscount => {
       discountLabel: '',
       cleanNote: raw,
       badgeText: '',
+      shortBadgeText: '',
     };
   }
 
@@ -711,6 +713,7 @@ export const parseExpenseDiscount = (note?: string): ParsedExpenseDiscount => {
       discountLabel: '',
       cleanNote: raw,
       badgeText: '',
+      shortBadgeText: '',
     };
   }
 
@@ -718,6 +721,11 @@ export const parseExpenseDiscount = (note?: string): ParsedExpenseDiscount => {
   const badgeText = isFullRebate
     ? `🎁 ${discountLabel} 全額折 $${discountAmount.toLocaleString()}`
     : `🎁 ${discountLabel} 折 $${discountAmount.toLocaleString()}`;
+  const shortBadgeText = isFullRebate
+    ? `🎁 ${discountLabel}全折`
+    : discountLabel.endsWith('折') || discountLabel.endsWith('幣') || discountLabel.endsWith('點') || discountLabel.endsWith('券')
+    ? `🎁 ${discountLabel}`
+    : `🎁 ${discountLabel}折`;
 
   return {
     hasDiscount: true,
@@ -726,6 +734,7 @@ export const parseExpenseDiscount = (note?: string): ParsedExpenseDiscount => {
     originalAmount,
     cleanNote,
     badgeText,
+    shortBadgeText,
   };
 };
 

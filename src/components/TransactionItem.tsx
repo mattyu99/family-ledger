@@ -568,7 +568,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
             {!!parsedDiscount?.hasDiscount && (
               <View style={[styles.expenseDiscountBadge, isDark && { backgroundColor: 'rgba(239, 68, 68, 0.18)', borderColor: 'rgba(239, 68, 68, 0.4)' }]}>
                 <Text style={[styles.expenseDiscountBadgeText, isDark && { color: '#FCA5A5' }]} numberOfLines={1} maxFontSizeMultiplier={1.08}>
-                  {parsedDiscount.badgeText}
+                  {transaction.merchant ? (parsedDiscount.shortBadgeText || parsedDiscount.badgeText) : parsedDiscount.badgeText}
                 </Text>
               </View>
             )}
@@ -617,6 +617,8 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                     ? `🎉 中獎 $${transaction.invoice_prize_amount?.toLocaleString()} (${transaction.invoice_prize_name || '中獎'})`
                     : transaction.invoice_status === 'claimed'
                     ? `✅ 已兌領 $${transaction.invoice_prize_amount?.toLocaleString()}`
+                    : transaction.merchant
+                    ? ((transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported') ? '☁️ 載具' : '🧾 發票')
                     : (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported')
                     ? `☁️ 雲端發票 ${transaction.invoice_number}`
                     : `🧾 ${transaction.invoice_number}`}
@@ -806,8 +808,8 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 0.5,
     borderColor: '#E2E8F0',
-    maxWidth: 90,
-    flexShrink: 1,
+    maxWidth: 105,
+    flexShrink: 0,
   },
   merchantBadgeText: {
     fontSize: 11,
@@ -1298,6 +1300,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#BFDBFE',
     marginRight: 4,
+    flexShrink: 1,
   },
   imageReceiptBadge: {
     backgroundColor: '#EFF6FF',

@@ -2091,7 +2091,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                             </Text>
                             {!!parsedDiscount?.hasDiscount && (
                               <View style={styles.topUpBadge}>
-                                <Text style={styles.topUpBadgeText}>{parsedDiscount.badgeText}</Text>
+                                <Text style={styles.topUpBadgeText}>{parsedDiscount.shortBadgeText || parsedDiscount.badgeText}</Text>
                               </View>
                             )}
                           </View>
