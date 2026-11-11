@@ -18,6 +18,8 @@ import { MemberAvatar } from '../MemberAvatar';
 import { showAlert, showConfirm } from '../../lib/alert';
 import { getDevicePlatformIcon, formatDeviceRelativeTime } from '../../lib/device';
 import { authenticateWithBiometrics } from '../../lib/biometrics';
+import { testLocalPushNotification, getPushDiagnostics } from '../../lib/pushDispatcher';
+import { Platform } from 'react-native';
 
 export interface EditMemberModalProps {
   visible: boolean;
@@ -417,7 +419,29 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
                           </View>
                           <Text style={styles.deviceItemMeta}>
                             版本 v{dev.app_version || '1.0'} · {formatDeviceRelativeTime(dev.last_active_at)}
+                            {dev.platform !== 'web' ? (dev.push_token ? ' · 🔔 推播就緒' : ' · ⚠️ 未啟用推播') : ' · 🌐 網頁版'}
                           </Text>
+                          {isThisDevice && Platform.OS !== 'web' && (
+                            <TouchableOpacity
+                              style={{ marginTop: 4, alignSelf: 'flex-start' }}
+                              activeOpacity={0.7}
+                              onPress={async () => {
+                                const ok = await testLocalPushNotification(
+                                  '🔔 甜心記帳本測試通知',
+                                  '若您看到此通知，代表手機推播功能一切正常！'
+                                );
+                                if (ok) {
+                                  showAlert('🔔 測試推播已發送', '請查看手機頂部通知中心或退回桌面，確認是否已彈出系統通知。');
+                                } else {
+                                  showAlert('⚠️ 發送失敗', '請確認手機系統設定中已允許「甜心記帳本」發送通知。');
+                                }
+                              }}
+                            >
+                              <Text style={{ fontSize: 11, color: '#3B82F6', fontWeight: '600' }}>
+                                🔔 點擊測試本機推播通知 ❯
+                              </Text>
+                            </TouchableOpacity>
+                          )}
                         </View>
                         {canModifyProfile && (
                           <TouchableOpacity

@@ -13,6 +13,15 @@ export async function getExpoPushTokenSafely(): Promise<string | null> {
   if (cachedPushToken) return cachedPushToken;
 
   try {
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: '甜心生活待辦與記帳提醒',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#F43F5E',
+      });
+    }
+
     let { status } = await Notifications.getPermissionsAsync();
     if (status !== 'granted') {
       const requested = await Notifications.requestPermissionsAsync();
@@ -33,6 +42,69 @@ export async function getExpoPushTokenSafely(): Promise<string | null> {
     console.warn('[PushDispatcher] 獲取 Push Token 失敗或環境不支援:', err);
   }
   return null;
+}
+
+/**
+ * 診斷當前裝置之推播權限與 Token 狀態
+ */
+export async function getPushDiagnostics(): Promise<{
+  platform: string;
+  permissionStatus: string;
+  hasToken: boolean;
+  pushToken: string | null;
+  error?: string;
+}> {
+  if (Platform.OS === 'web') {
+    return { platform: 'web', permissionStatus: 'n/a', hasToken: false, pushToken: null };
+  }
+  try {
+    const { status } = await Notifications.getPermissionsAsync();
+    const token = await getExpoPushTokenSafely();
+    return {
+      platform: Platform.OS,
+      permissionStatus: status,
+      hasToken: Boolean(token),
+      pushToken: token,
+    };
+  } catch (e: any) {
+    return {
+      platform: Platform.OS,
+      permissionStatus: 'error',
+      hasToken: false,
+      pushToken: null,
+      error: e?.message || String(e),
+    };
+  }
+}
+
+/**
+ * 測試發送本機即時通知（確認手機桌面/鎖屏下拉通知能正常彈出）
+ */
+export async function testLocalPushNotification(title: string, body: string): Promise<boolean> {
+  if (Platform.OS === 'web') return false;
+  try {
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: '甜心生活待辦與記帳提醒',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#F43F5E',
+      });
+    }
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        sound: 'default',
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+      },
+      trigger: null,
+    });
+    return true;
+  } catch (err) {
+    console.warn('[PushDispatcher] 測試本機推播失敗:', err);
+    return false;
+  }
 }
 
 export interface PushNotificationPayload {

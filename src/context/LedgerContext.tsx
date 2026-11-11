@@ -588,8 +588,15 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const deletedTxIdsRef = useRef<Set<string>>(new Set());
   const recentToastTimestampsRef = useRef<Map<string, number>>(new Map());
   const recentUpdatersRef = useRef<Map<string, { updaterId: string; updaterName: string; updaterAvatar: string; timestamp: number }>>(new Map());
+  // 本機發起變更之短期快取（防回音：本機自己操作的變更，收到 Realtime 廣播時絕不對自己彈出通知泡泡）
+  const localMutatedTxIdsRef = useRef<Map<string, number>>(new Map());
 
   const shouldShowToast = React.useCallback((id: string, actionType: string): boolean => {
+    // 若該筆更新為本機 15 秒內剛剛發起的操作，一律靜默同步，絕不對自己彈泡泡
+    const localMutatedTime = localMutatedTxIdsRef.current.get(id);
+    if (localMutatedTime && Date.now() - localMutatedTime < 15000) {
+      return false;
+    }
     const key = `${id}:${actionType}`;
     const now = Date.now();
     const last = recentToastTimestampsRef.current.get(key);
@@ -1474,9 +1481,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             if (!wasSettledBefore && isSettledNow) {
               // 待辦打勾完成！
+              const isLocalMutated = localMutatedTxIdsRef.current.has(updatedRow.id) && (Date.now() - (localMutatedTxIdsRef.current.get(updatedRow.id) || 0) < 15000);
               const completerId = completedBy || prevTx?.completed_by;
-              const isFromOther = !myId || (completerId && completerId !== myId);
-              const creatorId = updatedRow.creator_id || prevTx?.creator_id;
+              const isFromOther = !isLocalMutated && (!myId || (completerId && completerId !== myId));
+              const creatorId = updatedRow.creator_id || prevTx?.creator_id || updatedRow.paid_by || prevTx?.paid_by;
               const isCreator = Boolean(creatorId && myId && creatorId === myId);
 
               // 🎯 家人即時通知：僅通知該記事之紀錄者 (Creator)，其他家人不打擾
@@ -1496,6 +1504,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     : `已為您辦妥「${memoData.title}」囉！✨`,
                   createdAt: Date.now(),
                 });
+
+                // 🔔 手機端額外觸發本機系統下拉通知（確保退回桌面或在後台時也能彈出橫幅）
+                if (Platform.OS !== 'web') {
+                  Notifications.scheduleNotificationAsync({
+                    content: {
+                      title: `💌 ${completerName} 已為您辦妥待辦！`,
+                      body: completionNote
+                        ? `「${memoData.title}」\n💬 貼心回報：${completionNote} 🥰`
+                        : `已為您辦妥「${memoData.title}」囉！✨`,
+                      sound: 'default',
+                      priority: Notifications.AndroidNotificationPriority.HIGH,
+                    },
+                    trigger: null,
+                  }).catch(() => {});
+                }
               }
             } else if (wasSettledBefore && !isSettledNow) {
               // 取消完成（重新開啟待辦）
@@ -1605,7 +1628,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const completerName = actorName || '家人';
           const memoData = parseMemoNote(targetNote);
           if (is_settled) {
-            const isCreator = Boolean(targetCreatorId && myId && targetCreatorId === myId);
+            const isLocalMutated = localMutatedTxIdsRef.current.has(id) && (Date.now() - (localMutatedTxIdsRef.current.get(id) || 0) < 15000);
+            const isCreator = !isLocalMutated && Boolean(targetCreatorId && myId && targetCreatorId === myId);
             // 🎯 家人即時通知：僅通知該記事之紀錄者 (Creator)，其他家人不打擾
             if (isCreator && shouldShowToast(id, 'done')) {
               setLiveToast({
@@ -1619,6 +1643,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                   : `已為您辦妥「${memoData.title}」囉！✨`,
                 createdAt: Date.now(),
               });
+
+              // 🔔 手機端額外觸發本機系統下拉通知（確保退回桌面或在後台時也能彈出橫幅）
+              if (Platform.OS !== 'web') {
+                Notifications.scheduleNotificationAsync({
+                  content: {
+                    title: `💌 ${completerName} 已為您辦妥待辦！`,
+                    body: targetCompletionNote
+                      ? `「${memoData.title}」\n💬 貼心回報：${targetCompletionNote} 🥰`
+                      : `已為您辦妥「${memoData.title}」囉！✨`,
+                    sound: 'default',
+                    priority: Notifications.AndroidNotificationPriority.HIGH,
+                  },
+                  trigger: null,
+                }).catch(() => {});
+              }
             }
           } else {
             if (shouldShowToast(id, 'reopen')) {
@@ -7927,6 +7966,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return false;
     }
     try {
+      // 標記本機剛剛發起變更，避免收到 Realtime 回傳時產生自發自收之回音泡泡
+      localMutatedTxIdsRef.current.set(id, Date.now());
       const currentList = transactionsRef.current && transactionsRef.current.length > 0 ? transactionsRef.current : transactions;
       const targetTx = currentList.find(t => t.id === id);
       const isTargetMemo = data.type === 'memo' || targetTx?.type === 'memo';
@@ -8242,6 +8283,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (!data.is_settled) {
             updatePayload.completed_by = null;
             updatePayload.completed_at = null;
+            updatePayload.completion_note = null;
+            updatePayload.linked_transaction_id = null;
           }
         }
         if (data.completed_by !== undefined) {
@@ -8249,6 +8292,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
         if (data.completed_at !== undefined || (isTargetMemo && effectiveSettled)) {
           updatePayload.completed_at = (isTargetMemo && effectiveSettled ? effectiveCompletedAt : data.completed_at) || null;
+        }
+        if (data.completion_note !== undefined) {
+          updatePayload.completion_note = data.completion_note ? data.completion_note.trim() : null;
+        }
+        if (data.linked_transaction_id !== undefined) {
+          updatePayload.linked_transaction_id = data.linked_transaction_id || null;
         }
         if (data.reminder_date !== undefined) {
           updatePayload.reminder_date = data.reminder_date && data.reminder_date.trim() ? data.reminder_date.trim() : null;
@@ -8503,13 +8552,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       // 若為生活待辦記事，向紀錄者發送跨裝置溫馨即時推播，並向全家裝置發送背景靜默推播刷新桌面小工具
       if (isTargetMemo && isConfigured && !isDemoLedgerId(currentLedger.id)) {
-        const updaterName = currentUser?.display_name || '家庭成員';
+        const completerId = data.completed_by || currentUser?.id;
+        const completer = getMemberById(completerId);
+        const updaterName = completer?.display_name || currentUser?.display_name || '家庭成員';
         const parsedMemo = parseMemoNote(data.note !== undefined ? data.note : (targetTx?.note || ''));
         const memoTitle = parsedMemo.title || '生活待辦';
         const completionNote = (data as any)?.completion_note || targetTx?.completion_note;
         const isNewlyCompleted = !targetTx?.is_settled && effectiveSettled === true;
         const creatorId = targetTx?.creator_id || targetTx?.paid_by;
-        const completerId = currentUser?.id;
 
         if (isNewlyCompleted) {
           // 🎯 待辦辦妥：僅精準通知該記事之紀錄者 (防自己吵自己：自己辦妥自己建立的不發推播)
