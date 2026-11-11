@@ -722,10 +722,10 @@ export const parseExpenseDiscount = (note?: string): ParsedExpenseDiscount => {
     ? `🎁 ${discountLabel} 全額折 $${discountAmount.toLocaleString()}`
     : `🎁 ${discountLabel} 折 $${discountAmount.toLocaleString()}`;
   const shortBadgeText = isFullRebate
-    ? `🎁 ${discountLabel}全折`
-    : discountLabel.endsWith('折') || discountLabel.endsWith('幣') || discountLabel.endsWith('點') || discountLabel.endsWith('券')
-    ? `🎁 ${discountLabel}`
-    : `🎁 ${discountLabel}折`;
+    ? `🎁 ${discountLabel}全折 $${discountAmount.toLocaleString()}`
+    : discountLabel.endsWith('折')
+    ? `🎁 ${discountLabel} $${discountAmount.toLocaleString()}`
+    : `🎁 ${discountLabel}折 $${discountAmount.toLocaleString()}`;
 
   return {
     hasDiscount: true,

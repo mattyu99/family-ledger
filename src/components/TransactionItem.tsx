@@ -452,10 +452,10 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
        || transactions.find(t => t.type === 'memo' && t.linked_transaction_id === transaction.id))
     : transactions.find(t => t.type === 'memo' && t.linked_transaction_id === transaction.id);
   const parsedDiscount = isExpense ? parseExpenseDiscount(transaction.note) : null;
-  const rawNote = parsedDiscount?.hasDiscount
-    ? parsedDiscount.cleanNote || '無備註'
-    : transaction.note || '無備註';
-  const displayNote = stripInvoiceTag(rawNote) || (rawNote && rawNote !== '無備註' ? '' : '無備註');
+  const rawUserNote = parsedDiscount?.hasDiscount
+    ? parsedDiscount.cleanNote
+    : transaction.note || '';
+  const displayNote = stripInvoiceTag(rawUserNote).trim();
 
   return (
     <TouchableOpacity
@@ -563,7 +563,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
             {!!parsedDiscount?.hasDiscount && (
               <View style={[styles.expenseDiscountBadge, isDark && { backgroundColor: 'rgba(239, 68, 68, 0.18)', borderColor: 'rgba(239, 68, 68, 0.4)' }]}>
                 <Text style={[styles.expenseDiscountBadgeText, isDark && { color: '#FCA5A5' }]} numberOfLines={1} maxFontSizeMultiplier={1.08}>
-                  {transaction.merchant ? (parsedDiscount.shortBadgeText || parsedDiscount.badgeText) : parsedDiscount.badgeText}
+                  {parsedDiscount.shortBadgeText || parsedDiscount.badgeText}
                 </Text>
               </View>
             )}
