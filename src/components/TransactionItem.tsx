@@ -508,7 +508,9 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
               ellipsizeMode="tail"
               maxFontSizeMultiplier={1.2}
             >
-              {isTransfer ? (category?.name || '內部轉帳') : (category?.name || '其他')}
+              {isTransfer
+                ? (transaction.merchant || recipient?.display_name || category?.name || '內部轉帳')
+                : (transaction.merchant || category?.name || '其他')}
             </Text>
             {isTransfer && (
               <View
@@ -555,13 +557,6 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                     : isTransferOut
                     ? '📤 轉出款項'
                     : '⇄ 內部轉帳'}
-                </Text>
-              </View>
-            )}
-            {!!transaction.merchant && (
-              <View style={[styles.merchantBadge, isDark && { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
-                <Text style={[styles.merchantBadgeText, isDark && { color: colors.text.secondary }]} numberOfLines={1} maxFontSizeMultiplier={1.08}>
-                  {transaction.merchant}
                 </Text>
               </View>
             )}
@@ -799,7 +794,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#1F2937',
-    flexShrink: 0,
+    flexShrink: 1,
+    maxWidth: 160,
   },
   merchantBadge: {
     backgroundColor: '#F1F5F9',
