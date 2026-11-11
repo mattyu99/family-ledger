@@ -3285,6 +3285,52 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // 嚴格隔離防污染：確保 finalTx 中每一筆明細皆百分之百屬於當前 targetLedger.id
     finalTx = finalTx.filter(t => t && t.ledger_id === targetLedger.id);
 
+    // 💡 離線同步貼心回報偵測：比對本機原先快取與雲端最新狀態
+    // 若在離線/背景休眠期間，有家人為本機登入成員打勾辦妥了生活待辦，於開啟 App 時自動補發溫馨粉紫泡泡！
+    const prevList = transactionsRef.current && transactionsRef.current.length > 0
+      ? transactionsRef.current
+      : (localCachedTransactions && localCachedTransactions.length > 0 ? localCachedTransactions : []);
+    const myId = currentUserRef.current?.id || authUserId;
+
+    if (prevList.length > 0 && myId) {
+      const prevMap = new Map<string, Transaction>();
+      prevList.forEach(t => prevMap.set(t.id, t));
+
+      finalTx.forEach(freshTx => {
+        if (freshTx.type === 'memo' && freshTx.is_settled) {
+          const prevTx = prevMap.get(freshTx.id);
+          // 若原本在本地是未辦妥，但在雲端變成了已辦妥
+          if (prevTx && !prevTx.is_settled) {
+            const creatorId = freshTx.creator_id || freshTx.paid_by || prevTx.creator_id || prevTx.paid_by;
+            const completerId = freshTx.completed_by;
+            const isCreator = Boolean(creatorId && creatorId === myId);
+            const isFromOther = Boolean(completerId && completerId !== myId);
+
+            if (isCreator && isFromOther && shouldShowToast(freshTx.id, 'done')) {
+              const completer = getMemberById(completerId);
+              const completerName = completer?.display_name || '家人';
+              const memoData = parseMemoNote(freshTx.note);
+              const completionNote = freshTx.completion_note;
+
+              setTimeout(() => {
+                triggerLiveToast({
+                  id: `sync-complete-${freshTx.id}-${Date.now()}`,
+                  type: 'complete',
+                  actorName: completerName,
+                  avatar: '💌',
+                  title: `💌 ${completerName} 已為您辦妥待辦！`,
+                  message: completionNote
+                    ? `「${memoData.title}」\n💬 貼心回報：${completionNote} 🥰`
+                    : `已為您辦妥「${memoData.title}」囉！✨`,
+                  createdAt: Date.now(),
+                });
+              }, 600);
+            }
+          }
+        }
+      });
+    }
+
     finalTx.sort((a, b) => (b.transacted_at > a.transacted_at ? 1 : b.transacted_at < a.transacted_at ? -1 : 0));
     setTransactions(finalTx);
     inMemoryLedgerTxCacheRef.current.set(targetLedger.id, finalTx);
