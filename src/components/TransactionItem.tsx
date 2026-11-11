@@ -797,7 +797,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#1F2937',
-    flexShrink: 1,
+    flexShrink: 0,
   },
   merchantBadge: {
     backgroundColor: '#F1F5F9',
@@ -806,7 +806,8 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 0.5,
     borderColor: '#E2E8F0',
-    maxWidth: 100,
+    maxWidth: 90,
+    flexShrink: 1,
   },
   merchantBadgeText: {
     fontSize: 11,
@@ -1191,7 +1192,8 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 1.5,
-    maxWidth: 185,
+    maxWidth: 140,
+    flexShrink: 1,
   },
   expenseDiscountBadgeText: {
     fontSize: 10.5,

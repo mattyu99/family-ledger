@@ -715,10 +715,8 @@ export const parseExpenseDiscount = (note?: string): ParsedExpenseDiscount => {
   }
 
   const isFullRebate = originalAmount !== undefined && originalAmount > 0 && originalAmount <= discountAmount;
-  const badgeText = originalAmount
-    ? isFullRebate
-      ? `🎁 ${discountLabel} 全額折 $${discountAmount.toLocaleString()} (原價 $${originalAmount.toLocaleString()})`
-      : `🎁 ${discountLabel} 折 $${discountAmount.toLocaleString()} (原價 $${originalAmount.toLocaleString()})`
+  const badgeText = isFullRebate
+    ? `🎁 ${discountLabel} 全額折 $${discountAmount.toLocaleString()}`
     : `🎁 ${discountLabel} 折 $${discountAmount.toLocaleString()}`;
 
   return {
