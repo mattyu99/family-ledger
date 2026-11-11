@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.15';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.15 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 58;
+export const APP_BUILD_REVISION = 59;
 
 // 完整版本字串 (例如 "1.0.15.16")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.15',
     date: '2026-11-06 ~ 2026-11-11',
-    title: '待辦單筆詳細與多筆智慧彙總、前景去重與遠端推播診斷',
+    title: 'Google 全端服務串接手冊、待辦回報單筆詳細與智慧彙總',
     highlights: [
+      '🌐 Google 全端服務串接手冊與跨裝置推播指引：完整補齊智慧發票辨識、帳號身分鎖與遠端推播之申請步驟與設定教學，全端串接更透明完整。',
       '💌 待辦回報單筆詳細與多筆智慧彙總：單筆辦妥完整展示留言回報，多筆辦妥自動合併為清爽進度彙總，打開 App 一目了然。',
       '🧾 首頁發票一鍵直達對獎中心：點選發票按鈕直接進入對獎中心，免去彈出選單二次點擊，頁內無縫串接載具同步與雙月對獎。',
       '🏷️ 折抵帶金額彈性呈現與備註純淨留白：折抵標籤支援緊湊折抵金額動態展示，無備註交易一律清爽留白不印贅字，徹底告別滿版重複文字。',

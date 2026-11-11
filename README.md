@@ -142,7 +142,8 @@
 
 ## 📋 歷次功能演進與重大更新記錄 (Changelog)
 
-### 🚀 v1.0.15 (當前最新版本: v1.0.15.58 / Android versionCode 58)
+### 🚀 v1.0.15 (當前最新版本: v1.0.15.59 / Android versionCode 59)
+* **🌐 Google 全端服務串接手冊與跨裝置推播指引**：完整補齊智慧發票辨識、帳號身分鎖與遠端推播之申請步驟與設定教學，全端串接更透明完整。
 * **🏷️ 店家與折抵智慧排版無截斷**：有店家時自動啟用發票與折抵精簡模式，店家名稱完整呈現不再變縮寫或空膠囊，無店家時發票全碼如常舒展。
 * **💌 生活待辦辦妥溫馨即時回報**：家人辦妥公用生活記事時，系統自動向該記事紀錄者發送專屬甜心回報，桌面小工具靜默同步刷新且不打擾其他成員。
 * **🛡️ 網頁版管理員安全碼無縫切換**：修復無生物辨識環境（如電腦網頁版）切換管理員模式時未彈出輸入框之問題，免除阻斷視窗直覺秒速提權。
@@ -467,6 +468,68 @@ family-ledger/
   ```bash
   npm run report:daily
   ```
+
+---
+
+## 🌐 Google 雲端服務串接完整指南（Gemini AI、身分電子鎖與 FCM 遠端推播）
+
+甜心記帳本全面整合了 Google 官方三大雲端服務，打造智慧發票辨識、身分安全電子鎖與原生跨裝置即時推播體驗。三項服務皆提供**永久免費額度**，可視需求自由啟用：
+
+### 1. 📷 Google Gemini AI 智慧發票拍照辨識（免費 API Key）
+* **核心效益**：支援長條收據、非標準電子發票與手寫明細拍照，透過 Gemini 多模態 AI 智慧抽取消費金額、店家與明細，並具備 Supabase 雲端 Edge Function 零暴露封存防護。
+* **申請與設定 3 步驟**：
+  1. 前往 [Google AI Studio](https://aistudio.google.com/)，登入 Google 帳號後點擊 **Get API key ➜ Create API key**。
+  2. 複製產生的專屬 API Key。
+  3. 在本機專案根目錄 `.env` 檔案中加入：
+     ```env
+     EXPO_PUBLIC_GEMINI_API_KEY=您的_GEMINI_API_KEY
+     ```
+  4. （選用安全性升級）若已部署 Supabase Edge Function (`gemini-ocr`)，可至 Supabase 後台 **Project Settings ➜ Edge Functions ➜ Secrets** 加入金鑰 `GEMINI_API_KEY`，前端客戶端 App 即可達到零金鑰暴露之最高安全防護。
+
+---
+
+### 2. 🔐 Google 帳號身分電子鎖與一鍵認領（OAuth 2.0）
+* **核心效益**：家庭成員可自由選擇綁定 Google 帳號為個人稱謂加裝電子鎖（防冒名竄改）；換手機或重新安裝 App 時，只需登入 Google 即可一秒無縫認領並找回專屬身分與管理權限。
+* **申請與設定 4 步驟**：
+  1. 前往 [Google Cloud Platform (GCP) 控制台](https://console.cloud.google.com/)，建立或選擇您的專案。
+  2. 進入 **API 和服務 ➜ 憑證 ➜ 建立憑證 ➜ 選擇「OAuth 用戶端 ID」**：
+     * **應用程式類型**：選擇「網頁應用程式 (Web application)」。
+     * **已授權的重新導向 URI**：填入您的 Supabase 專案 Auth 回呼網址：
+       `https://<您的_SUPABASE_專案_ID>.supabase.co/auth/v1/callback`
+  3. 建立完成後，複製畫面上顯示的 **用戶端 ID (Client ID)** 與 **用戶端密鑰 (Client Secret)**。
+  4. 前往 Supabase 後台 ➜ **Authentication ➜ Providers ➜ Google**：
+     * 將開關切換為 **Enabled（啟用）**。
+     * 貼入剛剛複製的 Client ID 與 Client Secret，點擊 **Save** 儲存。
+  5. 回到 App 的「家庭設定」，成員即可點選「綁定 Google 帳號」為身分上鎖！
+
+---
+
+### 3. 🔔 Android Google 原生遠端推播與桌面喚醒（Firebase FCM）
+* **核心效益**：當家人打勾辦妥待辦或新增記事時，即使您的手機停在桌面或螢幕休眠放入口袋，Google FCM 特權省電長連線也能穿透休眠，即時喚醒手機並彈出頂部下拉通知與震動。
+* **申請與設定完整 7 步驟**：
+  1. **建立 Firebase 專案**：前往 [Firebase 控制台](https://console.firebase.google.com/)，點擊「新增專案」（名稱如 `family-ledger`，分析功能建議關閉以簡化設定）。
+  2. **註冊 Android 應用程式**：在 Firebase 專案首頁點選 Android 圖示 🤖：
+     * ⚠️ **套件名稱（Package Name）務必完全精確一致**：填寫 `com.mattyu.familyledger`
+     * 點擊「註冊應用程式」。
+  3. **下載設定檔**：點擊藍色按鈕下載 `google-services.json`，將該檔案放置於專案根目錄（與 `app.json` 同一層級）。
+  4. **配置 `app.json`**：在 `app.json` 的 `"android"` 物件中加入憑證路徑：
+     ```json
+     "android": {
+       "package": "com.mattyu.familyledger",
+       "googleServicesFile": "./google-services.json"
+     }
+     ```
+  5. **取得伺服器推播私密金鑰**：在 Firebase 控制台左上角點選 ⚙️ **專案設定 ➜ 服務帳戶 (Service accounts) ➜ 產生新的私密金鑰 (Generate new private key)**，下載 `.json` 金鑰檔案。
+  6. **綁定金鑰至 Expo 雲端**：在終端機執行 EAS 憑證設定指令：
+     ```bash
+     bunx eas-cli credentials
+     ```
+     依終端機提示選擇 **Android ➜ Push Notifications ➜ 上傳剛才下載的私密金鑰 .json 檔案**。
+  7. **重新編譯 APK 並驗收**：
+     ```bash
+     npm run build:android
+     ```
+     編譯完成後安裝新版 APK，進入 App「家庭設定」➜ 點擊「🔔 點擊測試本機推播通知」，狀態將成功顯示為正式 Token（`ExponentPushToken[...]`），即日起停在桌面也能收到即時推播！
 
 ---
 
