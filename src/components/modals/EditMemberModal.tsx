@@ -54,6 +54,7 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
     updateMemberRole,
     deleteMember,
     removeDevice,
+    registerDevice,
     fetchMemberDevices,
     linkGoogleAccount,
     unlinkGoogleAccount,
@@ -428,17 +429,25 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
                               onPress={async () => {
                                 const ok = await testLocalPushNotification(
                                   '🔔 甜心記帳本測試通知',
-                                  '若您看到此通知，代表手機推播功能一切正常！'
+                                  '若您看到此通知，代表手機通知功能一切正常！'
                                 );
-                                if (ok) {
-                                  showAlert('🔔 測試推播已發送', '請查看手機頂部通知中心或退回桌面，確認是否已彈出系統通知。');
+                                const diag = await getPushDiagnostics();
+                                let tokenHint = '';
+                                if (diag.hasToken && diag.pushToken) {
+                                  tokenHint = `\n\n✅ 遠端推播憑證就緒：\n${diag.pushToken.slice(0, 22)}...`;
+                                  registerDevice?.(targetMember.id, currentLedger?.id).catch(() => {});
                                 } else {
-                                  showAlert('⚠️ 發送失敗', '請確認手機系統設定中已允許「甜心記帳本」發送通知。');
+                                  tokenHint = `\n\n⚠️ 遠端推播 Token 狀態：\n${diag.error || '尚未取得遠端推播憑證'}`;
                                 }
+
+                                showAlert(
+                                  ok ? '🔔 本機通知測試成功' : '⚠️ 本機通知發送失敗',
+                                  `【系統權限狀態】：${diag.permissionStatus === 'granted' ? '已授權 ✅' : diag.permissionStatus}${tokenHint}`
+                                );
                               }}
                             >
                               <Text style={{ fontSize: 11, color: '#3B82F6', fontWeight: '600' }}>
-                                🔔 點擊測試本機推播通知 ❯
+                                🔔 點擊測試本機通知與推播診斷 ❯
                               </Text>
                             </TouchableOpacity>
                           )}

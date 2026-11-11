@@ -4,6 +4,7 @@ import { supabase, isConfigured, SUPABASE_URL, SUPABASE_ANON_KEY } from './supab
 import { getDeviceId } from './device';
 
 let cachedPushToken: string | null = null;
+let lastPushError: string | null = null;
 
 /**
  * 安全獲取當前裝置之 Expo Push Token
@@ -27,7 +28,10 @@ export async function getExpoPushTokenSafely(): Promise<string | null> {
       const requested = await Notifications.requestPermissionsAsync();
       status = requested.status;
     }
-    if (status !== 'granted') return null;
+    if (status !== 'granted') {
+      lastPushError = `通知權限未允許 (${status})`;
+      return null;
+    }
 
     const tokenData = await Notifications.getExpoPushTokenAsync({
       projectId: 'c85782b1-d64f-4182-a947-5d8363892f4c',
@@ -35,10 +39,13 @@ export async function getExpoPushTokenSafely(): Promise<string | null> {
 
     if (tokenData?.data) {
       cachedPushToken = tokenData.data;
+      lastPushError = null;
       return tokenData.data;
+    } else {
+      lastPushError = 'Expo 未傳回有效之 Push Token 資料';
     }
-  } catch (err) {
-    // 在模擬器或缺少 Google Play 服務時安靜降級
+  } catch (err: any) {
+    lastPushError = err?.message || String(err);
     console.warn('[PushDispatcher] 獲取 Push Token 失敗或環境不支援:', err);
   }
   return null;
@@ -52,7 +59,7 @@ export async function getPushDiagnostics(): Promise<{
   permissionStatus: string;
   hasToken: boolean;
   pushToken: string | null;
-  error?: string;
+  error?: string | null;
 }> {
   if (Platform.OS === 'web') {
     return { platform: 'web', permissionStatus: 'n/a', hasToken: false, pushToken: null };
@@ -65,6 +72,7 @@ export async function getPushDiagnostics(): Promise<{
       permissionStatus: status,
       hasToken: Boolean(token),
       pushToken: token,
+      error: lastPushError,
     };
   } catch (e: any) {
     return {

@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.15';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.15 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 55;
+export const APP_BUILD_REVISION = 56;
 
 // 完整版本字串 (例如 "1.0.15.16")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -21,9 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.15',
     date: '2026-11-06 ~ 2026-11-11',
-    title: '待辦回報保存、雙軌推播通知與發票直達對獎中心',
+    title: '待辦回報保存、前景去重與遠端推播診斷',
     highlights: [
-      '💌 待辦回報說明雲端保存與雙軌推播通知：完整儲存辦妥留言回報，支援手機後台下拉橫幅推播，徹底消除本機回音泡泡並提供推播一鍵測試。',
+      '💌 待辦回報保存、前景去重與遠端推播診斷：開著 App 專注呈現粉紫泡泡避免雙重干擾，提供連線裝置推播狀態一秒診斷與補登功能。',
       '🧾 首頁發票一鍵直達對獎中心：點選發票按鈕直接進入對獎中心，免去彈出選單二次點擊，頁內無縫串接載具同步與雙月對獎。',
       '🏷️ 折抵帶金額彈性呈現與備註純淨留白：折抵標籤支援緊湊折抵金額動態展示，無備註交易一律清爽留白不印贅字，徹底告別滿版重複文字。',
       '🛡️ 網頁版管理員安全碼無縫切換：修復無生物辨識環境（如電腦網頁版）切換管理員模式時未彈出輸入框之問題，免除阻斷視窗直覺秒速提權。',

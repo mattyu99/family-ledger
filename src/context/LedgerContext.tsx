@@ -1505,8 +1505,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                   createdAt: Date.now(),
                 });
 
-                // 🔔 手機端額外觸發本機系統下拉通知（確保退回桌面或在後台時也能彈出橫幅）
-                if (Platform.OS !== 'web') {
+                // 🔔 手機端退回桌面或在後台時，才觸發本機系統下拉通知（開著 App 時專注顯示粉紫泡泡，不重複轟炸）
+                if (Platform.OS !== 'web' && AppState.currentState !== 'active') {
                   Notifications.scheduleNotificationAsync({
                     content: {
                       title: `💌 ${completerName} 已為您辦妥待辦！`,
@@ -1644,8 +1644,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 createdAt: Date.now(),
               });
 
-              // 🔔 手機端額外觸發本機系統下拉通知（確保退回桌面或在後台時也能彈出橫幅）
-              if (Platform.OS !== 'web') {
+              // 🔔 手機端退回桌面或在後台時，才觸發本機系統下拉通知（開著 App 時專注顯示粉紫泡泡，不重複轟炸）
+              if (Platform.OS !== 'web' && AppState.currentState !== 'active') {
                 Notifications.scheduleNotificationAsync({
                   content: {
                     title: `💌 ${completerName} 已為您辦妥待辦！`,
