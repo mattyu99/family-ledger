@@ -70,10 +70,10 @@ export const LiveToastBanner: React.FC<LiveToastBannerProps> = ({ toast, onDismi
         }),
       ]).start();
 
-      // 4 秒後自動優雅淡出
+      // 7 秒後自動優雅淡出 (充裕閱讀時間，點擊亦可立即關閉)
       timerRef.current = setTimeout(() => {
         handleDismiss();
-      }, 4200);
+      }, 7000);
 
       return () => {
         if (timerRef.current) {

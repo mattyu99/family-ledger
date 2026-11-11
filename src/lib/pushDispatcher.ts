@@ -13,7 +13,11 @@ export async function getExpoPushTokenSafely(): Promise<string | null> {
   if (cachedPushToken) return cachedPushToken;
 
   try {
-    const { status } = await Notifications.getPermissionsAsync();
+    let { status } = await Notifications.getPermissionsAsync();
+    if (status !== 'granted') {
+      const requested = await Notifications.requestPermissionsAsync();
+      status = requested.status;
+    }
     if (status !== 'granted') return null;
 
     const tokenData = await Notifications.getExpoPushTokenAsync({
@@ -46,7 +50,7 @@ export interface PushNotificationPayload {
  * 發送家庭跨裝置即時推播（自動過濾發送者本機，向同帳本其他成員裝置發送）
  */
 export async function sendFamilyPushNotification(payload: PushNotificationPayload): Promise<number> {
-  if (Platform.OS === 'web' || !isConfigured || !payload.ledgerId) {
+  if (!isConfigured || !payload.ledgerId) {
     return 0;
   }
 

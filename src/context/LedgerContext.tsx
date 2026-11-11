@@ -8508,7 +8508,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const memoTitle = parsedMemo.title || '生活待辦';
         const completionNote = (data as any)?.completion_note || targetTx?.completion_note;
         const isNewlyCompleted = !targetTx?.is_settled && effectiveSettled === true;
-        const creatorId = targetTx?.creator_id;
+        const creatorId = targetTx?.creator_id || targetTx?.paid_by;
         const completerId = currentUser?.id;
 
         if (isNewlyCompleted) {
