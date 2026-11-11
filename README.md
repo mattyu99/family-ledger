@@ -142,7 +142,13 @@
 
 ## 📋 歷次功能演進與重大更新記錄 (Changelog)
 
-### 🚀 v1.0.15 (當前最新版本: v1.0.15.59 / Android versionCode 59)
+### 🚀 v1.0.16 (當前最新版本: v1.0.16.0 / Android versionCode 13)
+* **🔔 Android 遠端原生推播與桌面喚醒就緒**：整合 Google 原生推播設定檔，即使手機處於桌面或休眠，也能即時接收辦妥通知與震動喚醒。
+* **🌐 Google 全端服務串接手冊與環境指引**：補齊智慧發票辨識、帳號身分鎖與遠端推播之詳細申請步驟與金鑰配置說明，雲端連線更完整透明。
+
+---
+
+### 📦 v1.0.15
 * **🌐 Google 全端服務串接手冊與跨裝置推播指引**：完整補齊智慧發票辨識、帳號身分鎖與遠端推播之申請步驟與設定教學，全端串接更透明完整。
 * **🏷️ 店家與折抵智慧排版無截斷**：有店家時自動啟用發票與折抵精簡模式，店家名稱完整呈現不再變縮寫或空膠囊，無店家時發票全碼如常舒展。
 * **💌 生活待辦辦妥溫馨即時回報**：家人辦妥公用生活記事時，系統自動向該記事紀錄者發送專屬甜心回報，桌面小工具靜默同步刷新且不打擾其他成員。
@@ -317,9 +323,10 @@
 ```text
 family-ledger/
 ├── App.tsx                     # 根元件 (全域 RootErrorBoundary、隱私鎖 AppLockOverlay、4大導航分頁)
-├── app.json                    # Expo 與 Android 原生配置 (套件名稱、圖示、原生外掛、版本 v1.0.11 / versionCode 8)
+├── app.json                    # Expo 與 Android 原生配置 (套件名稱、圖示、原生外掛、版本 v1.0.16 / versionCode 13)
 ├── eas.json                    # Expo EAS Build 雲端打包與 EAS Update 頻道設定
-├── package.json                # 專案相依性與 npm 快速建置腳本 (v1.0.11)
+├── google-services.json        # Google Firebase 官方原生推播設定檔 (FCM V1 跨裝置通知與桌面喚醒)
+├── package.json                # 專案相依性與 npm 快速建置腳本 (v1.0.16)
 ├── playwright.config.ts        # Playwright Web E2E 測試配置檔
 ├── plugins/
 │   └── withAndroidWidgets.js   # Expo Config Plugin：Android 2x2 / 4x2 桌面小工具原生注入插件
@@ -522,9 +529,9 @@ family-ledger/
   5. **取得伺服器推播私密金鑰**：在 Firebase 控制台左上角點選 ⚙️ **專案設定 ➜ 服務帳戶 (Service accounts) ➜ 產生新的私密金鑰 (Generate new private key)**，下載 `.json` 金鑰檔案。
   6. **綁定金鑰至 Expo 雲端**：在終端機執行 EAS 憑證設定指令：
      ```bash
-     bunx eas-cli credentials
+     npx eas-cli@latest credentials
      ```
-     依終端機提示選擇 **Android ➜ Push Notifications ➜ 上傳剛才下載的私密金鑰 .json 檔案**。
+     依終端機提示選擇 **Android ➜ Google Service Account ➜ Set up a Google Service Account Key for Push Notifications (FCM V1) ➜ 上傳剛才下載的私密金鑰 .json 檔案**。
   7. **重新編譯 APK 並驗收**：
      ```bash
      npm run build:android
