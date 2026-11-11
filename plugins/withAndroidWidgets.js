@@ -126,10 +126,10 @@ function withAndroidWidgets(config) {
             val intent = android.content.Intent("com.mattyu.familyledger.ACTION_UPDATE_WIDGETS")
             intent.setPackage(packageName)
             sendBroadcast(intent)
-        } catch (_: Exception) {}
+        } catch (e: Exception) {}
     }
 
-    override fun onNewIntent(intent: android.content.Intent?) {
+    override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
     }
