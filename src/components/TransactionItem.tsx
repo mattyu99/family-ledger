@@ -453,7 +453,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
     : transactions.find(t => t.type === 'memo' && t.linked_transaction_id === transaction.id);
   const parsedDiscount = isExpense ? parseExpenseDiscount(transaction.note) : null;
   const rawNote = parsedDiscount?.hasDiscount
-    ? parsedDiscount.cleanNote || `${parsedDiscount.discountLabel}折抵消費`
+    ? parsedDiscount.cleanNote || '無備註'
     : transaction.note || '無備註';
   const displayNote = stripInvoiceTag(rawNote) || (rawNote && rawNote !== '無備註' ? '' : '無備註');
 
@@ -612,8 +612,6 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                     ? `🎉 中獎 $${transaction.invoice_prize_amount?.toLocaleString()} (${transaction.invoice_prize_name || '中獎'})`
                     : transaction.invoice_status === 'claimed'
                     ? `✅ 已兌領 $${transaction.invoice_prize_amount?.toLocaleString()}`
-                    : transaction.merchant
-                    ? ((transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported') ? '☁️ 載具' : '🧾 發票')
                     : (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported')
                     ? `☁️ 雲端發票 ${transaction.invoice_number}`
                     : `🧾 ${transaction.invoice_number}`}
