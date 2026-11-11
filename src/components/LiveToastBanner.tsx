@@ -128,7 +128,7 @@ export const LiveToastBanner: React.FC<LiveToastBannerProps> = ({ toast, onDismi
             </Text>
             <Text style={styles.timeTag}>剛剛</Text>
           </View>
-          <Text style={styles.message} numberOfLines={2}>
+          <Text style={styles.message} numberOfLines={3}>
             {toast.message}
           </Text>
         </View>

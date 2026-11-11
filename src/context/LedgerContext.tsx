@@ -3296,10 +3296,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const prevMap = new Map<string, Transaction>();
       prevList.forEach(t => prevMap.set(t.id, t));
 
+      const newlyCompletedList: Array<{
+        memo: Transaction;
+        completerName: string;
+        title: string;
+        note?: string;
+      }> = [];
+
       finalTx.forEach(freshTx => {
         if (freshTx.type === 'memo' && freshTx.is_settled) {
           const prevTx = prevMap.get(freshTx.id);
-          // 若原本在本地是未辦妥，但在雲端變成了已辦妥
+          // 若原本在本地是未辦妥，但在雲端剛變成已辦妥
           if (prevTx && !prevTx.is_settled) {
             const creatorId = freshTx.creator_id || freshTx.paid_by || prevTx.creator_id || prevTx.paid_by;
             const completerId = freshTx.completed_by;
@@ -3310,25 +3317,62 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               const completer = getMemberById(completerId);
               const completerName = completer?.display_name || '家人';
               const memoData = parseMemoNote(freshTx.note);
-              const completionNote = freshTx.completion_note;
-
-              setTimeout(() => {
-                triggerLiveToast({
-                  id: `sync-complete-${freshTx.id}-${Date.now()}`,
-                  type: 'complete',
-                  actorName: completerName,
-                  avatar: '💌',
-                  title: `💌 ${completerName} 已為您辦妥待辦！`,
-                  message: completionNote
-                    ? `「${memoData.title}」\n💬 貼心回報：${completionNote} 🥰`
-                    : `已為您辦妥「${memoData.title}」囉！✨`,
-                  createdAt: Date.now(),
-                });
-              }, 600);
+              newlyCompletedList.push({
+                memo: freshTx,
+                completerName,
+                title: memoData.title || '生活待辦',
+                note: freshTx.completion_note,
+              });
             }
           }
         }
       });
+
+      if (newlyCompletedList.length === 1) {
+        // 🎯 單筆待辦：詳細呈現完整事項標題與貼心留言回報
+        const item = newlyCompletedList[0];
+        setTimeout(() => {
+          triggerLiveToast({
+            id: `sync-complete-${item.memo.id}-${Date.now()}`,
+            type: 'complete',
+            actorName: item.completerName,
+            avatar: '💌',
+            title: `💌 ${item.completerName} 已為您辦妥待辦！`,
+            message: item.note
+              ? `「${item.title}」\n💬 貼心回報：${item.note} 🥰`
+              : `已為您辦妥「${item.title}」囉！✨`,
+            createdAt: Date.now(),
+          });
+        }, 600);
+      } else if (newlyCompletedList.length > 1) {
+        // 🎯 多筆待辦：智慧彙總呈現，一眼掌握所有進度，不覆蓋也不霸屏
+        const first = newlyCompletedList[0];
+        const count = newlyCompletedList.length;
+        const allSameActor = newlyCompletedList.every(i => i.completerName === first.completerName);
+        const actorLabel = allSameActor ? first.completerName : '家人';
+
+        let summaryMsg = '';
+        if (count === 2) {
+          const item1 = newlyCompletedList[0];
+          const item2 = newlyCompletedList[1];
+          summaryMsg = `✓「${item1.title}」${item1.note ? `（${item1.note}）` : ''}\n✓「${item2.title}」${item2.note ? `（${item2.note}）` : ''}`;
+        } else {
+          const sampleTitles = newlyCompletedList.slice(0, 2).map(i => `「${i.title}」`).join('、');
+          summaryMsg = `已一口氣搞定 ${sampleTitles} 等共 ${count} 項生活清單！✨`;
+        }
+
+        setTimeout(() => {
+          triggerLiveToast({
+            id: `sync-multi-complete-${Date.now()}`,
+            type: 'complete',
+            actorName: actorLabel,
+            avatar: '💌',
+            title: `💌 ${actorLabel} 一口氣為您辦妥了 ${count} 筆待辦！`,
+            message: summaryMsg,
+            createdAt: Date.now(),
+          });
+        }, 600);
+      }
     }
 
     finalTx.sort((a, b) => (b.transacted_at > a.transacted_at ? 1 : b.transacted_at < a.transacted_at ? -1 : 0));
