@@ -7,7 +7,7 @@ import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { getCategoryIcon } from '../lib/icons';
 import { formatPaymentLabel, parseExpenseDiscount, isTransferToMember } from '../lib/payment';
-import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned } from '../lib/memo';
+import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, getItemDueDateBadge } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { stripInvoiceTag } from '../lib/invoice';
 
@@ -276,6 +276,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
             <View style={styles.checklistContainer}>
               {checklistData.items.map((item) => {
                 const itemDone = item.completed;
+                const dateBadge = getItemDueDateBadge(item.text, itemDone, new Date(), isDark);
                 return (
                   <TouchableOpacity
                     key={item.index}
@@ -305,6 +306,25 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                     >
                       {itemDone && <Text style={styles.checklistItemCheckIcon}>✓</Text>}
                     </View>
+                    {dateBadge && (
+                      <View
+                        style={[
+                          styles.checklistItemDateBadge,
+                          {
+                            backgroundColor: dateBadge.bgColor,
+                            borderColor: dateBadge.borderColor,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[styles.checklistItemDateBadgeText, { color: dateBadge.color }]}
+                          allowFontScaling={false}
+                          maxFontSizeMultiplier={1.08}
+                        >
+                          {dateBadge.text}
+                        </Text>
+                      </View>
+                    )}
                     <Text
                       style={[
                         styles.checklistItemText,
@@ -1251,6 +1271,19 @@ const styles = StyleSheet.create({
   checklistItemBoxChecked: {
     borderColor: '#10B981',
     backgroundColor: '#10B981',
+  },
+  checklistItemDateBadge: {
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 5,
+    borderWidth: 0.8,
+    marginRight: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checklistItemDateBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
   },
   checklistItemCheckIcon: {
     color: '#FFFFFF',
