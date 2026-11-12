@@ -40,6 +40,49 @@ function isValidDate(year: number, month: number, day: number): boolean {
 }
 
 /**
+ * 針對無年份的月/日簡寫（例如 "11/11"、"1/9"、"12月9號"），推導最合理之年份：
+ * 1. 若該月日在今年為今天或未來日期，直接採用今年 (refYear)；
+ * 2. 若該月日在今年已過去：
+ *    - 若過去天數 <= 90 天（如昨天 11/11、三天前 11/9、上個月 10/17），視為今年已發生或逾期待辦，嚴格維持今年 (refYear)；
+ *    - 若過去天數 > 90 天（例如在年底 11/12 寫 1/9、2/15），且距離明年天數比過去天數更近，則自動跨至隔年 (refYear + 1)！
+ */
+export function inferYearForMonthDay(
+  m: number,
+  d: number,
+  referenceDate: Date = new Date()
+): number {
+  const refYear = referenceDate.getFullYear();
+  const refDayOnly = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate()).getTime();
+
+  // 今年的候選日期
+  const thisYearDate = new Date(refYear, m - 1, d);
+  const diffDays = Math.round((thisYearDate.getTime() - refDayOnly) / (1000 * 60 * 60 * 24));
+
+  // 1. 今天或未來日期：直接採用今年
+  if (diffDays >= 0) {
+    return refYear;
+  }
+
+  // 2. 過去日期：計算過去了多少天
+  const daysPast = Math.abs(diffDays);
+
+  // 若在 90 天內（約三個月），屬於近期待辦/生活記事，保留為今年（呈現逾期狀態）
+  if (daysPast <= 90) {
+    return refYear;
+  }
+
+  // 若過去超過 90 天，檢查明年的這一天
+  const nextYearDate = new Date(refYear + 1, m - 1, d);
+  const daysFuture = Math.round((nextYearDate.getTime() - refDayOnly) / (1000 * 60 * 60 * 24));
+
+  if (daysFuture < daysPast) {
+    return refYear + 1;
+  }
+
+  return refYear;
+}
+
+/**
  * 將指定 YYYY-MM-DD 加上或減去指定天數
  */
 export function offsetDateYmd(ymd: string, offsetDays: number): string {
@@ -151,7 +194,7 @@ export function extractDateFromText(
   }
 
   // -------------------------------------------------------------
-  // 4. 簡易月／日格式：例如 "12/9"、"12-9"、"12.9"、"12月9日"、"12月9號"
+  // 4. 簡易月／日格式：例如 "12/9"、"12.9"、"12月9日"、"12月9號"
   // -------------------------------------------------------------
   // 4-A. 中文格式 "M月D日" 或 "M月D號"
   const cnMonthDayRegex = /(1[0-2]|0?[1-9])\s*月\s*([12]\d|3[01]|0?[1-9])\s*[日號号]/g;
@@ -159,11 +202,7 @@ export function extractDateFromText(
   while ((cnMdMatch = cnMonthDayRegex.exec(trimmed)) !== null) {
     const m = parseInt(cnMdMatch[1], 10);
     const d = parseInt(cnMdMatch[2], 10);
-
-    let targetYear = refYear;
-    if (m < refMonth || (m === refMonth && d < refDay)) {
-      targetYear = refYear + 1;
-    }
+    const targetYear = inferYearForMonthDay(m, d, referenceDate);
 
     if (isValidDate(targetYear, m, d)) {
       const ymd = `${targetYear}-${pad2(m)}-${pad2(d)}`;
@@ -178,28 +217,32 @@ export function extractDateFromText(
     }
   }
 
-  // 4-B. 符號分隔格式 "M/D" 或 "M-D" (如 "12/9"、"1/9")
+  // 4-B. 符號分隔格式 "M/D" 或 "M.D" (例如 "12/9"、"1/9"、"11/11")
+  // 嚴格限制僅接受斜線 / 或點號 . 作為月日分隔符，絕不接受單純的連字號 - (避免與課業、範圍如 "2-3生"、"1-2題" 混淆)
   // 前面不能緊接數字 (避免成為時間如 10/12/9 或金額 100/2)
-  // 後面不能緊接數字或金額單位
-  const symMonthDayRegex = /(?:^|[^\d\$\￥])(1[0-2]|0?[1-9])[\/\-]([12]\d|3[01]|0?[1-9])(?!\d)/g;
+  // 後面不能緊接金額、度量衡或課業章節量詞
+  const symMonthDayRegex = /(?:^|[^\d\$\￥])(1[0-2]|0?[1-9])[\/\.]([12]\d|3[01]|0?[1-9])(?!\d)/g;
   let symMdMatch: RegExpExecArray | null;
   while ((symMdMatch = symMonthDayRegex.exec(trimmed)) !== null) {
     const m = parseInt(symMdMatch[1], 10);
     const d = parseInt(symMdMatch[2], 10);
 
-    // 檢查匹配位置後方是否為金額或量詞單位 (如 "元", "塊", "折", "km")
+    // 檢查匹配位置後方是否為金額、度量衡或課業章節量詞 (如 "元", "塊", "折", "km", "生", "課", "頁", "題", "章", "節", "段", "次", "包", "碗", "個", "條", "張", "台", "斤", "人")
     const matchFullStr = symMdMatch[0];
     const matchStart = symMdMatch.index;
     const matchEndIdx = matchStart + matchFullStr.length;
     const postSnippet = trimmed.slice(matchEndIdx, matchEndIdx + 3);
-    if (/^[元塊度折kmKM]/.test(postSnippet)) {
+    if (/^[元塊度折kmKM生課頁題章節段次包碗個條張台斤人份隻組]/.test(postSnippet)) {
       continue;
     }
 
-    let targetYear = refYear;
-    if (m < refMonth || (m === refMonth && d < refDay)) {
-      targetYear = refYear + 1;
+    // 檢查匹配前方的文字是否為章節頁次前綴 (如 "第", "p", "page")
+    const preSnippet = trimmed.slice(Math.max(0, matchStart - 4), matchStart);
+    if (/(?:第|p\.?|page)$/i.test(preSnippet.trim())) {
+      continue;
     }
+
+    const targetYear = inferYearForMonthDay(m, d, referenceDate);
 
     if (isValidDate(targetYear, m, d)) {
       const ymd = `${targetYear}-${pad2(m)}-${pad2(d)}`;

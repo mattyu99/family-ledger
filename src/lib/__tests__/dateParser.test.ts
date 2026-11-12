@@ -47,7 +47,20 @@ describe('智慧日期解析引擎 (dateParser)', () => {
       expect(res?.formattedYmd).toBe('2026-12-09');
     });
 
-    it('今年已過去的月份自動跨至隔年：1/9回診 ➔ 2027-01-09', () => {
+    it('近期過去的日期應視為逾期而非明年：基準日11/12時 11/11考歷史 ➔ 2026-11-11 (逾期1天)', () => {
+      const res = extractDateFromText('11/11考歷史', baseRefDate);
+      expect(res).not.toBeNull();
+      expect(res?.formattedYmd).toBe('2026-11-11');
+      expect(res?.year).toBe(2026);
+
+      // 驗證倒數標籤為逾期 1 天，絕非還有 364 天
+      const badge = getItemDueDateBadge('11/11考歷史', false, baseRefDate);
+      expect(badge?.diffDays).toBe(-1);
+      expect(badge?.isOverdue).toBe(true);
+      expect(badge?.text).toBe('11/11 逾期1天');
+    });
+
+    it('今年已過去的遠端月份自動跨至隔年：1/9回診 ➔ 2027-01-09', () => {
       const res = extractDateFromText('1/9回診拿藥', baseRefDate);
       expect(res?.formattedYmd).toBe('2027-01-09');
     });
@@ -76,6 +89,25 @@ describe('智慧日期解析引擎 (dateParser)', () => {
   });
 
   describe('防呆與序號排除', () => {
+    it('課業課次與生字範圍絕不誤判為日期：2-3生', () => {
+      const res = extractDateFromText('2-3生', baseRefDate);
+      expect(res).toBeNull();
+
+      const badge = getItemDueDateBadge('2-3生', true, baseRefDate);
+      expect(badge).toBeNull();
+    });
+
+    it('課業頁數與題號範圍不誤判：1-3題、5-6頁', () => {
+      expect(extractDateFromText('1-3題', baseRefDate)).toBeNull();
+      expect(extractDateFromText('5-6頁', baseRefDate)).toBeNull();
+    });
+
+    it('混合日期與作業範圍能精準抓取日期：11/9佳句1-3 ➔ 2026-11-09', () => {
+      const res = extractDateFromText('11/9佳句1-3', baseRefDate);
+      expect(res).not.toBeNull();
+      expect(res?.formattedYmd).toBe('2026-11-09');
+    });
+
     it('純號碼牌或序號不應誤判為日期：門診抽到28號', () => {
       const res = extractDateFromText('門診抽到28號', baseRefDate);
       expect(res).toBeNull();
