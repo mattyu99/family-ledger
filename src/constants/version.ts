@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.16';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.16 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 3;
+export const APP_BUILD_REVISION = 4;
 
 // 完整版本字串 (例如 "1.0.16.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -21,11 +21,12 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.16',
     date: '2026-11-11 ~ 2026-11-12',
-    title: '支付膠囊精簡排版、Google 原生推播喚醒與小工具相容升級',
+    title: '生活記事智慧日期辨識、支付膠囊精簡排版與原生遠端推播架構',
     highlights: [
+      '💡 生活記事智慧日期辨識與自動提醒：打字即時感知民國年、月日與明天等日期，自動預填提醒日並提供當天或提前一鍵微調，記待辦更省心。',
       '💳 支付膠囊精簡排版與空間釋放：純信用卡直接顯示卡名免除冗餘四碼，行動支付精準銜接扣款四碼，備註舒展不再被擠壓截斷。',
       '🔔 Android 遠端原生推播與桌面喚醒就緒：整合 Google 原生推播設定檔，即使手機處於桌面或休眠，也能即時接收辦妥通知與震動喚醒。',
-      '🔧 原生桌面小工具意圖相容性修復：修正應用程式喚醒相容簽名，確保新版系統下穩定編譯與桌面捷徑精準直達。',
+      '🔧 原生桌面小工具相容性修復：修正應用程式喚醒簽名，確保新版系統下穩定運作與桌面捷徑精準直達。',
       '🌐 Google 全端服務串接手冊與環境指引：補齊智慧發票辨識、帳號身分鎖與遠端推播之詳細申請步驟與金鑰配置說明，雲端連線更完整透明。',
     ],
   },

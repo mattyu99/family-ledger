@@ -3,6 +3,7 @@
  */
 
 import { CalendarSystem, MemoRepeatFrequency } from './lunar';
+export * from './dateParser';
 
 export const DEFAULT_MEMO_QUICK_TAGS = [
   '📌 待辦清單',

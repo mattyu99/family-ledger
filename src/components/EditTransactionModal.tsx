@@ -61,6 +61,8 @@ import {
   parseMemoNote,
   isMemoPinned,
   checkMemoPinQuota,
+  extractDateFromText,
+  offsetDateYmd,
 } from '../lib/memo';
 import {
   CalendarSystem,
@@ -295,6 +297,28 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const [reminderDatePickerVisible, setReminderDatePickerVisible] = useState<boolean>(false);
   const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
   const scrollViewRef = useRef<ScrollView>(null);
+  const lastAutoDetectedDateRef = useRef<string>('');
+  const userManuallySetReminderRef = useRef<boolean>(!!(transaction?.reminder_date));
+
+  // 💡 智慧日期即時解析：感知記事文字中蘊含的日期
+  const detectedMemoDate = React.useMemo(() => {
+    if (transaction?.type !== 'memo' || !note) return null;
+    return extractDateFromText(note);
+  }, [transaction?.type, note]);
+
+  // 即時打字感知自動預填：若記事原先未設定提醒日，自動帶入最新辨識之日期
+  useEffect(() => {
+    if (!detectedMemoDate) return;
+    const targetYmd = detectedMemoDate.formattedYmd;
+    if (targetYmd !== lastAutoDetectedDateRef.current) {
+      lastAutoDetectedDateRef.current = targetYmd;
+      if (!memoReminderDate && !userManuallySetReminderRef.current) {
+        setMemoReminderDate(targetYmd);
+        setMemoReminderRepeat('once');
+        setMemoReminderCalendar('solar');
+      }
+    }
+  }, [detectedMemoDate, memoReminderDate]);
 
   // 🎁 點數 / 回饋折抵專用狀態（算在原先支出交易的一環）
   const [showDiscountPanel, setShowDiscountPanel] = useState<boolean>(false);
@@ -1869,6 +1893,96 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   </>
                 )}
 
+                {/* 💡 智慧即時日期辨識膠囊 (感知記事文字自動帶入) */}
+                {canEdit && detectedMemoDate && (
+                  <View style={styles.autoDetectedDateCard}>
+                    <View style={styles.autoDetectedDateHeader}>
+                      <Text style={styles.autoDetectedDateTitle} maxFontSizeMultiplier={1.08}>
+                        💡 辨識到日期：<Text style={{ fontWeight: 'bold', color: isDark ? '#FDE68A' : '#B45309' }}>{detectedMemoDate.formattedYmd}</Text>
+                        {detectedMemoDate.isRocYear ? ` (${detectedMemoDate.rawMatch})` : ''}
+                      </Text>
+                      {memoReminderDate === detectedMemoDate.formattedYmd && (
+                        <View style={styles.autoDetectedAppliedBadge}>
+                          <Text style={styles.autoDetectedAppliedBadgeText}>已自動套用</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.autoDetectedDateBtnsRow}>
+                      <TouchableOpacity
+                        style={[
+                          styles.autoDetectedDateActionBtn,
+                          memoReminderDate === detectedMemoDate.formattedYmd && styles.autoDetectedDateActionBtnActive,
+                        ]}
+                        onPress={() => {
+                          setMemoReminderDate(detectedMemoDate.formattedYmd);
+                          setMemoReminderRepeat('once');
+                          setMemoReminderCalendar('solar');
+                          userManuallySetReminderRef.current = true;
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.autoDetectedDateActionBtnText,
+                            memoReminderDate === detectedMemoDate.formattedYmd && styles.autoDetectedDateActionBtnTextActive,
+                          ]}
+                          maxFontSizeMultiplier={1.08}
+                        >
+                          當天 ({detectedMemoDate.month}/{detectedMemoDate.day})
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.autoDetectedDateActionBtn,
+                          memoReminderDate === offsetDateYmd(detectedMemoDate.formattedYmd, -1) && styles.autoDetectedDateActionBtnActive,
+                        ]}
+                        onPress={() => {
+                          setMemoReminderDate(offsetDateYmd(detectedMemoDate.formattedYmd, -1));
+                          setMemoReminderRepeat('once');
+                          setMemoReminderCalendar('solar');
+                          userManuallySetReminderRef.current = true;
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.autoDetectedDateActionBtnText,
+                            memoReminderDate === offsetDateYmd(detectedMemoDate.formattedYmd, -1) && styles.autoDetectedDateActionBtnTextActive,
+                          ]}
+                          maxFontSizeMultiplier={1.08}
+                        >
+                          提前 1 天
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.autoDetectedDateActionBtn,
+                          memoReminderDate === offsetDateYmd(detectedMemoDate.formattedYmd, -3) && styles.autoDetectedDateActionBtnActive,
+                        ]}
+                        onPress={() => {
+                          setMemoReminderDate(offsetDateYmd(detectedMemoDate.formattedYmd, -3));
+                          setMemoReminderRepeat('once');
+                          setMemoReminderCalendar('solar');
+                          userManuallySetReminderRef.current = true;
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.autoDetectedDateActionBtnText,
+                            memoReminderDate === offsetDateYmd(detectedMemoDate.formattedYmd, -3) && styles.autoDetectedDateActionBtnTextActive,
+                          ]}
+                          maxFontSizeMultiplier={1.08}
+                        >
+                          提前 3 天
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+
                 {/* ⏰ 待辦提醒日期與週期設定 (選填) */}
                 <View style={styles.sectionLabelRow}>
                   <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>⏰ 待辦提醒日期 (選填)</Text>
@@ -1877,6 +1991,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                       onPress={() => {
                         setMemoReminderDate('');
                         setMemoReminderRepeat('once');
+                        userManuallySetReminderRef.current = true;
                       }}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
@@ -1891,6 +2006,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                     onPress={() => {
                       setMemoReminderDate('');
                       setMemoReminderRepeat('once');
+                      userManuallySetReminderRef.current = true;
                     }}
                     activeOpacity={0.7}
                   >
@@ -1901,7 +2017,10 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   <TouchableOpacity
                     disabled={!canEdit}
                     style={[styles.dateChip, memoReminderDate === todayYmd && styles.dateChipActive]}
-                    onPress={() => setMemoReminderDate(todayYmd)}
+                    onPress={() => {
+                      setMemoReminderDate(todayYmd);
+                      userManuallySetReminderRef.current = true;
+                    }}
                     activeOpacity={0.7}
                   >
                     <Text style={[styles.dateChipText, memoReminderDate === todayYmd && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
@@ -1911,7 +2030,10 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   <TouchableOpacity
                     disabled={!canEdit}
                     style={[styles.dateChip, memoReminderDate === tomorrowYmd && styles.dateChipActive]}
-                    onPress={() => setMemoReminderDate(tomorrowYmd)}
+                    onPress={() => {
+                      setMemoReminderDate(tomorrowYmd);
+                      userManuallySetReminderRef.current = true;
+                    }}
                     activeOpacity={0.7}
                   >
                     <Text style={[styles.dateChipText, memoReminderDate === tomorrowYmd && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
@@ -1925,6 +2047,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                         isCustomReminder && memoReminderCalendar === 'solar' && styles.dateMoreBtnSelected,
                       ]}
                       onPress={() => {
+                        userManuallySetReminderRef.current = true;
                         setReminderPickerInitialMode('solar');
                         setReminderDatePickerVisible(true);
                       }}
@@ -4249,6 +4372,68 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   },
   lunarMoreBtnTextSelected: {
     color: isDark ? '#FDE68A' : '#92400E',
+    fontWeight: '800',
+  },
+  autoDetectedDateCard: {
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.12)' : '#FFFBEB',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(245, 158, 11, 0.35)' : '#FDE68A',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+  },
+  autoDetectedDateHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  autoDetectedDateTitle: {
+    fontSize: 12,
+    color: isDark ? '#FDE68A' : '#92400E',
+    fontWeight: '600',
+    flex: 1,
+  },
+  autoDetectedAppliedBadge: {
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#DCFCE7',
+    borderColor: isDark ? '#059669' : '#86EFAC',
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  autoDetectedAppliedBadgeText: {
+    fontSize: 10,
+    color: isDark ? '#34D399' : '#15803D',
+    fontWeight: '700',
+  },
+  autoDetectedDateBtnsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  autoDetectedDateActionBtn: {
+    flex: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(245, 158, 11, 0.4)' : '#FCD34D',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FEF3C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  autoDetectedDateActionBtnActive: {
+    borderColor: '#F59E0B',
+    backgroundColor: '#F59E0B',
+  },
+  autoDetectedDateActionBtnText: {
+    fontSize: 12,
+    color: isDark ? '#FDE68A' : '#B45309',
+    fontWeight: '700',
+  },
+  autoDetectedDateActionBtnTextActive: {
+    color: '#FFFFFF',
     fontWeight: '800',
   },
   memoRepeatCard: {
