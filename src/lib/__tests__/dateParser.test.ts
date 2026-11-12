@@ -82,6 +82,35 @@ describe('智慧日期解析引擎 (dateParser)', () => {
       expect(res?.formattedYmd).toBe('2026-11-14');
     });
 
+    it('時間錨定測試：11/12 寫的「後天」，到了 11/13 看會正確顯示「明天到期」，到了 11/14 顯示「今天到期」，絕不漂移', () => {
+      const anchorDate = '2026-11-12'; // 11/12 記的
+
+      // 1. 11/12 當天看：還有 2 天
+      const badgeDay1 = getItemDueDateBadge('後天記得繳水電費', false, new Date(2026, 10, 12), false, anchorDate);
+      expect(badgeDay1?.formattedYmd).toBe('2026-11-14');
+      expect(badgeDay1?.diffDays).toBe(2);
+      expect(badgeDay1?.text).toBe('11/14 還有2天');
+
+      // 2. 到了隔天 11/13 看：明天到期 (diffDays: 1)
+      const badgeDay2 = getItemDueDateBadge('後天記得繳水電費', false, new Date(2026, 10, 13), false, anchorDate);
+      expect(badgeDay2?.formattedYmd).toBe('2026-11-14');
+      expect(badgeDay2?.diffDays).toBe(1);
+      expect(badgeDay2?.text).toBe('11/14 明天到期');
+
+      // 3. 到了後天 11/14 看：今天到期 (diffDays: 0)
+      const badgeDay3 = getItemDueDateBadge('後天記得繳水電費', false, new Date(2026, 10, 14), false, anchorDate);
+      expect(badgeDay3?.formattedYmd).toBe('2026-11-14');
+      expect(badgeDay3?.diffDays).toBe(0);
+      expect(badgeDay3?.text).toBe('11/14 今天到期');
+
+      // 4. 到了大後天 11/15 看：逾期 1 天 (diffDays: -1)
+      const badgeDay4 = getItemDueDateBadge('後天記得繳水電費', false, new Date(2026, 10, 15), false, anchorDate);
+      expect(badgeDay4?.formattedYmd).toBe('2026-11-14');
+      expect(badgeDay4?.diffDays).toBe(-1);
+      expect(badgeDay4?.isOverdue).toBe(true);
+      expect(badgeDay4?.text).toBe('11/14 逾期1天');
+    });
+
     it('大後天 ➔ 2026-11-15', () => {
       const res = extractDateFromText('大後天全家聚餐', baseRefDate);
       expect(res?.formattedYmd).toBe('2026-11-15');

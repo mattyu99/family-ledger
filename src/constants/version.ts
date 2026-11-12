@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.16';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.16 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 9;
+export const APP_BUILD_REVISION = 10;
 
 // 完整版本字串 (例如 "1.0.16.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -23,7 +23,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
     date: '2026-11-11 ~ 2026-11-12',
     title: '生活記事智慧日期與接力提醒、支付膠囊精簡排版與原生遠端推播架構',
     highlights: [
-      '💡 生活記事智慧日期與接力推進提醒：打字即時感知民國年自動預選，近期待辦精準辨識逾期防誤跨年，作業課次防呆過濾，首頁與待辦總覽同步動態彩色倒數。',
+      '💡 生活記事智慧日期與接力推進提醒：打字即時感知民國年自動預選，近期待辦精準逾期防跨年，相對日期錨定記錄日隨時間遞減不漂移，作業課次防呆過濾。',
       '💳 支付膠囊精簡排版與空間釋放：純信用卡直接顯示卡名免除冗餘四碼，行動支付精準銜接扣款四碼，備註舒展不再被擠壓截斷。',
       '🔔 Android 遠端原生推播與桌面喚醒就緒：整合 Google 原生推播設定檔，即使手機處於桌面或休眠，也能即時接收辦妥通知與震動喚醒。',
       '🔧 原生桌面小工具相容性修復：修正應用程式喚醒簽名，確保新版系統下穩定運作與桌面捷徑精準直達。',

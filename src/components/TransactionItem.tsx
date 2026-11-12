@@ -276,7 +276,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
             <View style={styles.checklistContainer}>
               {checklistData.items.map((item) => {
                 const itemDone = item.completed;
-                const dateBadge = getItemDueDateBadge(item.text, itemDone, new Date(), isDark);
+                const dateBadge = getItemDueDateBadge(item.text, itemDone, new Date(), isDark, transaction.transacted_at || transaction.created_at);
                 return (
                   <TouchableOpacity
                     key={item.index}

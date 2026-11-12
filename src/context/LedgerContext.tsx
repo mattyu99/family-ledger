@@ -8849,7 +8849,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // 嚴格尊重使用者意向：只有在記事「原先就有設定提醒」的前提下，才接力推進至下一期日期；
     // 若使用者當初明確選擇「不設提醒」（reminder_date 為空），則打勾時嚴格維持不提醒，絕不擅自開啟推播！
     const hadReminderOriginally = !!targetTx.reminder_date;
-    const nextRelayDate = hadReminderOriginally ? computeNextRelayReminderDate(nextNote, new Date()) : null;
+    const nextRelayDate = hadReminderOriginally ? computeNextRelayReminderDate(nextNote, new Date(), targetTx.transacted_at || targetTx.created_at) : null;
     const shouldUpdateReminder = hadReminderOriginally && !!nextRelayDate && nextRelayDate !== targetTx.reminder_date;
 
     const updates: Partial<Transaction> = {

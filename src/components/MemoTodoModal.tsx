@@ -617,7 +617,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                         <View style={styles.checklistContainer}>
                           {checklistData.items.map((checkItem) => {
                             const itemDone = checkItem.completed;
-                            const dateBadge = getItemDueDateBadge(checkItem.text, itemDone, new Date(), isDark);
+                            const dateBadge = getItemDueDateBadge(checkItem.text, itemDone, new Date(), isDark, item.transacted_at || item.created_at);
                             return (
                               <TouchableOpacity
                                 key={checkItem.index}

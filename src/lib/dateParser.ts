@@ -83,6 +83,24 @@ export function inferYearForMonthDay(
 }
 
 /**
+ * 將各種格式的日期 (Date, "YYYY-MM-DD", "YYYY-MM-DDTHH:mm:ssZ") 統一轉為安全之 Date 物件 (中午 12:00 避免時區跳日)
+ */
+export function resolveAnchorDate(anchor?: Date | string | null): Date {
+  if (!anchor) return new Date();
+  if (anchor instanceof Date) return anchor;
+  if (typeof anchor === 'string') {
+    const cleanYmd = anchor.slice(0, 10);
+    const parts = cleanYmd.split('-').map(Number);
+    if (parts.length === 3 && !parts.some(isNaN)) {
+      return new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
+    }
+    const parsed = new Date(anchor);
+    if (!isNaN(parsed.getTime())) return parsed;
+  }
+  return new Date();
+}
+
+/**
  * 將指定 YYYY-MM-DD 加上或減去指定天數
  */
 export function offsetDateYmd(ymd: string, offsetDays: number): string {
@@ -273,14 +291,22 @@ export interface ItemDueDateBadge {
 
 /**
  * 依據清單子項目文字與完成狀態，計算其專屬之動態彩色日期倒數標籤
+ *
+ * @param itemText 子項目內文
+ * @param isItemDone 是否已打勾辦妥
+ * @param referenceDate 當前檢視/對比基準時間 (預設為當前系統時間 Today)
+ * @param isDark 是否為深色模式
+ * @param anchorDate 記事記錄/建立日期 (若文字包含相對詞如「明天/後天」，以該日為語意錨點；預設同 referenceDate)
  */
 export function getItemDueDateBadge(
   itemText: string,
   isItemDone: boolean,
   referenceDate: Date = new Date(),
-  isDark: boolean = true
+  isDark: boolean = true,
+  anchorDate?: Date | string | null
 ): ItemDueDateBadge | null {
-  const extracted = extractDateFromText(itemText, referenceDate);
+  const resolvedAnchor = anchorDate ? resolveAnchorDate(anchorDate) : referenceDate;
+  const extracted = extractDateFromText(itemText, resolvedAnchor);
   if (!extracted) return null;
 
   const targetDate = new Date(extracted.year, extracted.month - 1, extracted.day);
@@ -358,13 +384,19 @@ export function getItemDueDateBadge(
  * 接力式推進提醒日計算：
  * 檢查記事中的子任務項目，找出未打勾項目中「最早要到期」的日期；
  * 若所有子項目皆已完成，則推進回主事件/標題日期。
+ *
+ * @param noteText 記事內文
+ * @param referenceDate 當前對比基準時間 (預設為當前系統時間)
+ * @param anchorDate 記事記錄/建立日期 (相對詞推算錨點)
  */
 export function computeNextRelayReminderDate(
   noteText: string,
-  referenceDate: Date = new Date()
+  referenceDate: Date = new Date(),
+  anchorDate?: Date | string | null
 ): string | null {
   if (!noteText || typeof noteText !== 'string') return null;
 
+  const resolvedAnchor = anchorDate ? resolveAnchorDate(anchorDate) : referenceDate;
   const lines = noteText.split('\n');
   const checklistLineRegex = /^\s*(?:[-*•]\s+)?(?:\[([ x✓✔])\]|([☐☑✅]))\s*(.*)$/i;
 
@@ -385,7 +417,7 @@ export function computeNextRelayReminderDate(
         ? ['x', '✓', '✔'].includes(bracketSymbol.toLowerCase())
         : (unicodeSymbol === '☑' || unicodeSymbol === '✅');
 
-      const extracted = extractDateFromText(restText, referenceDate);
+      const extracted = extractDateFromText(restText, resolvedAnchor);
       if (extracted) {
         const itemDt = new Date(extracted.year, extracted.month - 1, extracted.day);
         if (isCompleted) {
@@ -409,7 +441,7 @@ export function computeNextRelayReminderDate(
   // 檢查主標題/前綴是否有日期 (例如 "智116/1/9早28號心臟科")
   if (headerLines.length > 0) {
     const headerText = headerLines.join('\n');
-    const headerExtracted = extractDateFromText(headerText, referenceDate);
+    const headerExtracted = extractDateFromText(headerText, resolvedAnchor);
     if (headerExtracted) {
       return headerExtracted.formattedYmd;
     }
