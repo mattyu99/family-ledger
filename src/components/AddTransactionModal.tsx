@@ -1764,9 +1764,24 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         💡 辨識到日期：<Text style={{ fontWeight: 'bold', color: isDark ? '#FDE68A' : '#B45309' }}>{detectedMemoDate.formattedYmd}</Text>
                         {detectedMemoDate.isRocYear ? ` (${detectedMemoDate.rawMatch})` : ''}
                       </Text>
-                      {memoReminderDate === detectedMemoDate.formattedYmd && (
-                        <View style={styles.autoDetectedAppliedBadge}>
-                          <Text style={styles.autoDetectedAppliedBadgeText}>已自動套用</Text>
+                      {!!memoReminderDate ? (
+                        <TouchableOpacity
+                          style={styles.autoDetectedCancelBtn}
+                          onPress={() => {
+                            setMemoReminderDate('');
+                            setMemoReminderRepeat('once');
+                            userManuallySetReminderRef.current = true;
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.autoDetectedCancelBtnText} maxFontSizeMultiplier={1.08}>
+                            ✕ 取消提醒
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={styles.autoDetectedDismissedBadge}>
+                          <Text style={styles.autoDetectedDismissedBadgeText}>未設提醒</Text>
                         </View>
                       )}
                     </View>
@@ -1849,7 +1864,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 {/* ⏰ 待辦提醒日期與週期設定 (選填) */}
                 <View style={styles.sectionLabelRow}>
                   <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>⏰ 待辦提醒日期 (選填)</Text>
-                  {!!memoReminderDate && (
+                  {!!memoReminderDate && !detectedMemoDate && (
                     <TouchableOpacity
                       onPress={() => {
                         setMemoReminderDate('');
@@ -4432,6 +4447,32 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 10,
     color: isDark ? '#34D399' : '#15803D',
     fontWeight: '700',
+  },
+  autoDetectedCancelBtn: {
+    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2',
+    borderColor: isDark ? '#DC2626' : '#FCA5A5',
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  autoDetectedCancelBtnText: {
+    fontSize: 11,
+    color: isDark ? '#FCA5A5' : '#B91C1C',
+    fontWeight: '700',
+  },
+  autoDetectedDismissedBadge: {
+    backgroundColor: isDark ? 'rgba(156, 163, 175, 0.2)' : '#F3F4F6',
+    borderColor: isDark ? '#6B7280' : '#D1D5DB',
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  autoDetectedDismissedBadgeText: {
+    fontSize: 11,
+    color: isDark ? '#9CA3AF' : '#6B7280',
+    fontWeight: '600',
   },
   autoDetectedDateBtnsRow: {
     flexDirection: 'row',
