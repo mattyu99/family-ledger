@@ -1,4 +1,9 @@
-import { extractDateFromText, offsetDateYmd } from '../dateParser';
+import {
+  extractDateFromText,
+  offsetDateYmd,
+  getItemDueDateBadge,
+  computeNextRelayReminderDate,
+} from '../dateParser';
 
 describe('智慧日期解析引擎 (dateParser)', () => {
   // 固定參考基準日為 2026-11-12 (週四)
@@ -93,6 +98,62 @@ describe('智慧日期解析引擎 (dateParser)', () => {
 
     it('跨月提前：2027-01-01 提前1天 ➔ 2026-12-31', () => {
       expect(offsetDateYmd('2027-01-01', -1)).toBe('2026-12-31');
+    });
+  });
+
+  describe('getItemDueDateBadge 子項目動態彩色倒數標籤', () => {
+    it('逾期項目：115/11/8 (基準日 11/12) ➔ 逾期 4 天 (紅標)', () => {
+      const badge = getItemDueDateBadge('115/11/8第2次慢箋', false, baseRefDate);
+      expect(badge).not.toBeNull();
+      expect(badge?.isOverdue).toBe(true);
+      expect(badge?.text).toContain('逾期4天');
+      expect(badge?.formattedYmd).toBe('2026-11-08');
+    });
+
+    it('今天到期項目', () => {
+      const badge = getItemDueDateBadge('今天回診拿報告', false, baseRefDate);
+      expect(badge).not.toBeNull();
+      expect(badge?.text).toContain('今天到期');
+    });
+
+    it('未來項目：115/12/6 ➔ 還有 24 天', () => {
+      const badge = getItemDueDateBadge('115/12/6第3次慢箋', false, baseRefDate);
+      expect(badge).not.toBeNull();
+      expect(badge?.isOverdue).toBe(false);
+      expect(badge?.text).toContain('還有24天');
+      expect(badge?.formattedYmd).toBe('2026-12-06');
+    });
+
+    it('已完成打勾項目：標示勾選圖示與原日期', () => {
+      const badge = getItemDueDateBadge('115/11/8第2次慢箋', true, baseRefDate);
+      expect(badge).not.toBeNull();
+      expect(badge?.text).toBe('11/8 ✓');
+    });
+
+    it('無日期項目：回傳 null', () => {
+      const badge = getItemDueDateBadge('買一公升鮮乳', false, baseRefDate);
+      expect(badge).toBeNull();
+    });
+  });
+
+  describe('computeNextRelayReminderDate 接力式推進提醒', () => {
+    const rawNote = `智116/1/9早28號心臟科\n[ ] 115/11/8第2次慢箋\n[ ] 115/12/6第3次慢箋`;
+
+    it('子項目皆未打勾時，提醒最早的第2次慢箋 2026-11-08', () => {
+      const nextDate = computeNextRelayReminderDate(rawNote, baseRefDate);
+      expect(nextDate).toBe('2026-11-08');
+    });
+
+    it('第2次慢箋打勾後，自動推進到第3次慢箋 2026-12-06', () => {
+      const noteStep2 = `智116/1/9早28號心臟科\n[x] 115/11/8第2次慢箋\n[ ] 115/12/6第3次慢箋`;
+      const nextDate = computeNextRelayReminderDate(noteStep2, baseRefDate);
+      expect(nextDate).toBe('2026-12-06');
+    });
+
+    it('慢箋全部領完打勾後，自動推進到最終回診看診日 2027-01-09', () => {
+      const noteStep3 = `智116/1/9早28號心臟科\n[x] 115/11/8第2次慢箋\n[x] 115/12/6第3次慢箋`;
+      const nextDate = computeNextRelayReminderDate(noteStep3, baseRefDate);
+      expect(nextDate).toBe('2027-01-09');
     });
   });
 });

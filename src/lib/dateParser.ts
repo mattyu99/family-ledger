@@ -216,3 +216,161 @@ export function extractDateFromText(
 
   return null;
 }
+
+export interface ItemDueDateBadge {
+  hasDate: boolean;
+  formattedYmd: string;
+  diffDays: number;
+  text: string;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+  isOverdue: boolean;
+}
+
+/**
+ * 依據清單子項目文字與完成狀態，計算其專屬之動態彩色日期倒數標籤
+ */
+export function getItemDueDateBadge(
+  itemText: string,
+  isItemDone: boolean,
+  referenceDate: Date = new Date(),
+  isDark: boolean = true
+): ItemDueDateBadge | null {
+  const extracted = extractDateFromText(itemText, referenceDate);
+  if (!extracted) return null;
+
+  const targetDate = new Date(extracted.year, extracted.month - 1, extracted.day);
+  const refDayOnly = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate());
+  const diffTime = targetDate.getTime() - refDayOnly.getTime();
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+  const isOverdue = diffDays < 0;
+
+  if (isItemDone) {
+    return {
+      hasDate: true,
+      formattedYmd: extracted.formattedYmd,
+      diffDays,
+      text: `${extracted.month}/${extracted.day} ✓`,
+      color: isDark ? '#9CA3AF' : '#6B7280',
+      bgColor: isDark ? 'rgba(107, 114, 128, 0.2)' : '#F3F4F6',
+      borderColor: isDark ? '#4B5563' : '#E5E7EB',
+      isOverdue: false,
+    };
+  }
+
+  if (isOverdue) {
+    return {
+      hasDate: true,
+      formattedYmd: extracted.formattedYmd,
+      diffDays,
+      text: `${extracted.month}/${extracted.day} 逾期${Math.abs(diffDays)}天`,
+      color: isDark ? '#FCA5A5' : '#B91C1C',
+      bgColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2',
+      borderColor: isDark ? '#DC2626' : '#FCA5A5',
+      isOverdue: true,
+    };
+  }
+
+  if (diffDays === 0) {
+    return {
+      hasDate: true,
+      formattedYmd: extracted.formattedYmd,
+      diffDays,
+      text: `${extracted.month}/${extracted.day} 今天到期`,
+      color: isDark ? '#FDE68A' : '#B45309',
+      bgColor: isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7',
+      borderColor: isDark ? '#F59E0B' : '#FCD34D',
+      isOverdue: false,
+    };
+  }
+
+  if (diffDays === 1) {
+    return {
+      hasDate: true,
+      formattedYmd: extracted.formattedYmd,
+      diffDays,
+      text: `${extracted.month}/${extracted.day} 明天到期`,
+      color: isDark ? '#FDE68A' : '#B45309',
+      bgColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
+      borderColor: isDark ? '#D97706' : '#FCD34D',
+      isOverdue: false,
+    };
+  }
+
+  // 未來天數
+  return {
+    hasDate: true,
+    formattedYmd: extracted.formattedYmd,
+    diffDays,
+    text: `${extracted.month}/${extracted.day} 還有${diffDays}天`,
+    color: isDark ? '#7DD3FC' : '#0369A1',
+    bgColor: isDark ? 'rgba(14, 165, 233, 0.15)' : '#E0F2FE',
+    borderColor: isDark ? 'rgba(14, 165, 233, 0.4)' : '#BAE6FD',
+    isOverdue: false,
+  };
+}
+
+/**
+ * 接力式推進提醒日計算：
+ * 檢查記事中的子任務項目，找出未打勾項目中「最早要到期」的日期；
+ * 若所有子項目皆已完成，則推進回主事件/標題日期。
+ */
+export function computeNextRelayReminderDate(
+  noteText: string,
+  referenceDate: Date = new Date()
+): string | null {
+  if (!noteText || typeof noteText !== 'string') return null;
+
+  const lines = noteText.split('\n');
+  const checklistLineRegex = /^\s*(?:[-*•]\s+)?(?:\[([ x✓✔])\]|([☐☑✅]))\s*(.*)$/i;
+
+  const pendingItemDates: { ymd: string; dt: Date }[] = [];
+  const completedItemDates: { ymd: string; dt: Date }[] = [];
+  const headerLines: string[] = [];
+  let foundFirstChecklist = false;
+
+  for (const line of lines) {
+    const match = line.match(checklistLineRegex);
+    if (match) {
+      foundFirstChecklist = true;
+      const bracketSymbol = match[1];
+      const unicodeSymbol = match[2];
+      const restText = match[3].trim();
+
+      const isCompleted = bracketSymbol !== undefined
+        ? ['x', '✓', '✔'].includes(bracketSymbol.toLowerCase())
+        : (unicodeSymbol === '☑' || unicodeSymbol === '✅');
+
+      const extracted = extractDateFromText(restText, referenceDate);
+      if (extracted) {
+        const itemDt = new Date(extracted.year, extracted.month - 1, extracted.day);
+        if (isCompleted) {
+          completedItemDates.push({ ymd: extracted.formattedYmd, dt: itemDt });
+        } else {
+          pendingItemDates.push({ ymd: extracted.formattedYmd, dt: itemDt });
+        }
+      }
+    } else if (!foundFirstChecklist && line.trim()) {
+      headerLines.push(line.trim());
+    }
+  }
+
+  // 1. 如果有未完成的子項目且帶有日期：取其中最早的日期
+  if (pendingItemDates.length > 0) {
+    pendingItemDates.sort((a, b) => a.dt.getTime() - b.dt.getTime());
+    return pendingItemDates[0].ymd;
+  }
+
+  // 2. 如果子項目都有日期且全部打勾完成了（或者沒有子項目帶日期）：
+  // 檢查主標題/前綴是否有日期 (例如 "智116/1/9早28號心臟科")
+  if (headerLines.length > 0) {
+    const headerText = headerLines.join('\n');
+    const headerExtracted = extractDateFromText(headerText, referenceDate);
+    if (headerExtracted) {
+      return headerExtracted.formattedYmd;
+    }
+  }
+
+  return null;
+}
