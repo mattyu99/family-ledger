@@ -381,24 +381,24 @@ export const formatPaymentLabel = (
 
   if (account) {
     if (account.type === 'credit_card') {
-      const lastFour = account.last_four_digits ? `*${account.last_four_digits}` : '';
       const isPureCreditCard = !paymentMethod || paymentMethod === 'credit_card';
 
       if (isPureCreditCard) {
+        // 純信用卡：直接顯示卡片名稱（例如「中信熊大卡」），不再附帶後四碼，大幅節省橫向空間
         return {
           icon: '💳',
-          text: `${account.name}${lastFour ? ` (${lastFour})` : ''}`,
+          text: account.name || (account.last_four_digits ? `*${account.last_four_digits}` : '信用卡'),
           color: account.color || '#3B82F6',
         };
       }
 
       // 透過電子支付 (如 全支付, LINE Pay, 悠遊付, 街口 等) 綁定信用卡扣款：
-      // 精簡排版：如「🔵 全支付·國泰*1234」或「🟢 LINE Pay·富邦*8829」
+      // 精簡排版：直接在支付名稱後帶上綁定卡片後四碼（不加贅餘星號），如「LINE Pay·7909」或「全支付·1234」
       const methodName = currentMethod ? currentMethod.name : (paymentMethod || '行動支付');
       const methodIcon = currentMethod ? currentMethod.icon : '📱';
       const methodColor = currentMethod ? currentMethod.color : (account.color || '#3B82F6');
       const shortCard = getShortCardName(account.name);
-      const cardSuffix = lastFour ? `*${account.last_four_digits}` : shortCard;
+      const cardSuffix = account.last_four_digits ? account.last_four_digits : shortCard;
       const combinedText = `${methodName}·${cardSuffix}`;
 
       return {
