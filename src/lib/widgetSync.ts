@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { Transaction, Ledger } from '../types';
-import { getLocalDateYmd, decodeMemoMerchantTag, parseMemoNote, isMemoPinned } from './memo';
+import { getLocalDateYmd, decodeMemoMerchantTag, parseMemoNote, isMemoPinned, getEffectiveMemoReminderDate } from './memo';
 import { QUICK_ACTIONS_CONFIG, QuickActionKind } from './quickActions';
 
 export const WIDGET_SNAPSHOT_STORAGE_KEY = '@family_ledger_widget_snapshot';
@@ -89,8 +89,8 @@ export function extractWidgetSnapshot(
 
   // 篩選與排序：桌面小工具與置頂解除綁定，嚴格依照緊急程度排序（提醒到期日由近至遠、逾期與今日最優先，無設定日期之日常備忘排後方）
   const sortedMemos = [...activeMemos].sort((a, b) => {
-    const rA = a.reminder_date || decodeMemoMerchantTag(a.merchant).reminderDate || '';
-    const rB = b.reminder_date || decodeMemoMerchantTag(b.merchant).reminderDate || '';
+    const rA = getEffectiveMemoReminderDate(a) || '';
+    const rB = getEffectiveMemoReminderDate(b) || '';
     if (!rA && !rB) return (b.transacted_at || '').localeCompare(a.transacted_at || '');
     if (!rA) return 1;
     if (!rB) return -1;
@@ -102,7 +102,7 @@ export function extractWidgetSnapshot(
     const isPinned = isMemoPinned(item);
     const decoded = decodeMemoMerchantTag(item.merchant);
     const parsed = parseMemoNote(item.note);
-    const reminderDate = item.reminder_date || decoded.reminderDate;
+    const reminderDate = getEffectiveMemoReminderDate(item) || undefined;
     const isOverdue = Boolean(reminderDate && reminderDate < todayYmd);
     // 只有當備忘明確設定為「個人專屬待辦」(reminder_target === 'personal') 時，才標註責任人姓名；
     // 若為「全家待辦」(reminder_target !== 'personal') 則為全家人共同事項，不附掛建立人/記錄者姓名

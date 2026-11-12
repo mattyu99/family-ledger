@@ -3,6 +3,7 @@
  */
 
 import { CalendarSystem, MemoRepeatFrequency } from './lunar';
+import { computeNextRelayReminderDate } from './dateParser';
 export * from './dateParser';
 
 export const DEFAULT_MEMO_QUICK_TAGS = [
@@ -901,6 +902,47 @@ export function getRollingMemoDueInfo(reminderYmd?: string | null, referenceYmd?
     badgeColor,
     badgeBg,
   };
+}
+
+/**
+ * 取得生活記事之「有效生效提醒日期（Effective Reminder Date）」
+ * 核心原則：
+ * 1. 嚴格防呆：若該記事本來就沒有設定提醒（reminder_date 為空），嚴格維持 null（不設提醒）！
+ * 2. 接力智慧對齊：
+ *    - 若該記事原先有設定提醒，且包含待辦子清單（Checklist）；
+ *    - 且子清單尚未全部辦妥；
+ *    - 則自動解析未完成子項目中最早到期之日期（或子項目全部完成時的主標題日期）；
+ *    - 若推算出的接力日期存在，則以該最緊急之接力日期為準（解決歷史舊資料提醒日停留在遙遠看診日的脫節現象）！
+ * 3. 一般情況：傳回原始的 reminder_date。
+ */
+export function getEffectiveMemoReminderDate(
+  transaction?: {
+    reminder_date?: string | null;
+    merchant?: string;
+    note?: string;
+    transacted_at?: string;
+    created_at?: string;
+  } | null,
+  referenceDate: Date = new Date()
+): string | null {
+  if (!transaction) return null;
+
+  const decodedMerchant = decodeMemoMerchantTag(transaction.merchant);
+  const rawReminderDate = transaction.reminder_date || decodedMerchant.reminderDate;
+
+  // 1. 若當初明確未設提醒，嚴格維持為 null
+  if (!rawReminderDate) return null;
+
+  // 2. 若有待辦清單，且原先有設提醒：以當前接力推進日期為有效提醒日
+  if (transaction.note) {
+    const anchorDate = transaction.transacted_at || transaction.created_at;
+    const relayDate = computeNextRelayReminderDate(transaction.note, referenceDate, anchorDate);
+    if (relayDate) {
+      return relayDate;
+    }
+  }
+
+  return rawReminderDate;
 }
 
 

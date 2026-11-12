@@ -7,7 +7,7 @@ import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { getCategoryIcon } from '../lib/icons';
 import { formatPaymentLabel, parseExpenseDiscount, isTransferToMember } from '../lib/payment';
-import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, getItemDueDateBadge } from '../lib/memo';
+import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, getItemDueDateBadge, getEffectiveMemoReminderDate } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { stripInvoiceTag } from '../lib/invoice';
 
@@ -71,7 +71,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
     const isCompleted = !!transaction.is_settled;
     const isPinned = isMemoPinned(transaction);
     const decodedMerchant = decodeMemoMerchantTag(transaction.merchant);
-    const reminderDate = transaction.reminder_date || decodedMerchant.reminderDate;
+    const reminderDate = getEffectiveMemoReminderDate(transaction);
     const reminderCal = transaction.reminder_calendar || decodedMerchant.reminderCalendar;
     const reminderRep = transaction.reminder_repeat || decodedMerchant.reminderRepeat;
     const reminderBadge = formatMemoReminderBadge(reminderDate, reminderCal, reminderRep);

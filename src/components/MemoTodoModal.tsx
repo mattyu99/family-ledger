@@ -17,7 +17,7 @@ import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
-import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, checkMemoPinQuota, getItemDueDateBadge } from '../lib/memo';
+import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, checkMemoPinQuota, getItemDueDateBadge, getEffectiveMemoReminderDate } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { HorizontalScrollView } from './HorizontalScrollView';
 
@@ -115,8 +115,12 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
   // 今日或已逾期待辦 (未完成，置頂項目優先排列)
   const todayAndOverdueMemos = useMemo(() => {
     const list = allMemos
-      .filter(t => !t.is_settled && !!t.reminder_date && t.reminder_date <= todayYmd)
-      .sort((a, b) => (a.reminder_date || '').localeCompare(b.reminder_date || ''));
+      .filter(t => {
+        if (t.is_settled) return false;
+        const effDate = getEffectiveMemoReminderDate(t);
+        return !!effDate && effDate <= todayYmd;
+      })
+      .sort((a, b) => (getEffectiveMemoReminderDate(a) || '').localeCompare(getEffectiveMemoReminderDate(b) || ''));
     const pinned = list.filter(m => isMemoPinned(m));
     const unpinned = list.filter(m => !isMemoPinned(m));
     return [...pinned, ...unpinned];
@@ -125,8 +129,12 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
   // 未來到期預告 (未完成，置頂項目優先排列)
   const upcomingMemos = useMemo(() => {
     const list = allMemos
-      .filter(t => !t.is_settled && !!t.reminder_date && t.reminder_date > todayYmd)
-      .sort((a, b) => (a.reminder_date || '').localeCompare(b.reminder_date || ''));
+      .filter(t => {
+        if (t.is_settled) return false;
+        const effDate = getEffectiveMemoReminderDate(t);
+        return !!effDate && effDate > todayYmd;
+      })
+      .sort((a, b) => (getEffectiveMemoReminderDate(a) || '').localeCompare(getEffectiveMemoReminderDate(b) || ''));
     const pinned = list.filter(m => isMemoPinned(m));
     const unpinned = list.filter(m => !isMemoPinned(m));
     return [...pinned, ...unpinned];
@@ -134,7 +142,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
 
   // 日常備忘 (未設提醒日期且未完成，置頂項目優先排列)
   const undatedMemos = useMemo(() => {
-    const list = allMemos.filter(t => !t.is_settled && !t.reminder_date);
+    const list = allMemos.filter(t => !t.is_settled && !getEffectiveMemoReminderDate(t));
     const pinned = list.filter(m => isMemoPinned(m));
     const unpinned = list.filter(m => !isMemoPinned(m));
     return [...pinned, ...unpinned];
@@ -194,7 +202,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
   // 計算距今天數狀態
   const getDueStatus = (item: Transaction) => {
     const decoded = decodeMemoMerchantTag(item.merchant);
-    const reminderDateStr = item.reminder_date || decoded.reminderDate;
+    const reminderDateStr = getEffectiveMemoReminderDate(item);
     if (!reminderDateStr) return null;
     const cal = item.reminder_calendar || decoded.reminderCalendar;
     const rep = item.reminder_repeat || decoded.reminderRepeat;

@@ -41,6 +41,8 @@ import {
   checkMemoPinQuota,
   extractDateFromText,
   offsetDateYmd,
+  computeNextRelayReminderDate,
+  resolveAnchorDate,
 } from '../lib/memo';
 import {
   CalendarSystem,
@@ -293,11 +295,24 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const lastAutoDetectedDateRef = useRef<string>('');
   const userManuallySetReminderRef = useRef<boolean>(false);
 
-  // 💡 智慧日期即時解析：感知記事文字中蘊含的日期 (支援民國年、西元年、月/日、明天等)
+  // 💡 智慧日期即時解析：感知記事文字中蘊含的日期 (支援待辦清單接力推進、民國年、西元年、月/日、明天等)
   const detectedMemoDate = React.useMemo(() => {
     if (mode !== 'memo' || !note) return null;
-    return extractDateFromText(note);
-  }, [mode, note]);
+    const anchor = selectedDate ? resolveAnchorDate(selectedDate) : new Date();
+    const relayYmd = computeNextRelayReminderDate(note, new Date(), anchor);
+    if (relayYmd) {
+      const [y, m, d] = relayYmd.split('-').map(Number);
+      return {
+        rawMatch: `${m}/${d}`,
+        formattedYmd: relayYmd,
+        displayLabel: relayYmd,
+        year: y,
+        month: m,
+        day: d,
+      };
+    }
+    return extractDateFromText(note, anchor);
+  }, [mode, note, selectedDate]);
 
   // 即時打字感知自動預填：若使用者未手動設定其他提醒日，自動無縫帶入最新辨識之日期
   useEffect(() => {

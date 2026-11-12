@@ -14,6 +14,7 @@ import {
   MAX_PINNED_MEMOS_PERSONAL,
   stripMemoInternalTag,
   isValidMerchantName,
+  getEffectiveMemoReminderDate,
 } from '../memo';
 import { hydrateTransactionWithInvoice } from '../ledgerUtils';
 
@@ -398,6 +399,50 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
       };
       const hydrated = hydrateTransactionWithInvoice(dirtyTx);
       expect(hydrated.note).toBe('- [x] 洗碗');
+    });
+
+    describe('getEffectiveMemoReminderDate 智慧接力提醒對齊與自癒', () => {
+      const baseDate = new Date(2026, 10, 12); // 2026-11-12
+
+      it('解決歷史舊資料脫節痛點：慢箋未完成時，有效提醒日自動動態對齊最早子任務 (2026-11-08)', () => {
+        const tx = {
+          reminder_date: '2027-01-09',
+          transacted_at: '2026-10-17',
+          note: `智116/1/9早28號心臟科\n- [ ] 115/11/8第2次慢籤\n- [ ] 115/12/6第3次慢籤`,
+        };
+        const effDate = getEffectiveMemoReminderDate(tx, baseDate);
+        expect(effDate).toBe('2026-11-08');
+      });
+
+      it('領完第2次慢箋打勾後，有效提醒日自動對齊推進至第3次慢箋 (2026-12-06)', () => {
+        const tx = {
+          reminder_date: '2027-01-09',
+          transacted_at: '2026-10-17',
+          note: `智116/1/9早28號心臟科\n- [x] 115/11/8第2次慢籤\n- [ ] 115/12/6第3次慢籤`,
+        };
+        const effDate = getEffectiveMemoReminderDate(tx, baseDate);
+        expect(effDate).toBe('2026-12-06');
+      });
+
+      it('所有慢箋皆已打勾時，有效提醒日自動推進回主事件/看診日 (2027-01-09)', () => {
+        const tx = {
+          reminder_date: '2027-01-09',
+          transacted_at: '2026-10-17',
+          note: `智116/1/9早28號心臟科\n- [x] 115/11/8第2次慢籤\n- [x] 115/12/6第3次慢籤`,
+        };
+        const effDate = getEffectiveMemoReminderDate(tx, baseDate);
+        expect(effDate).toBe('2027-01-09');
+      });
+
+      it('嚴格安全防呆門檻：若原先未設提醒，即便子項目有日期，有效提醒日嚴格維持 null', () => {
+        const tx = {
+          reminder_date: null,
+          transacted_at: '2026-10-17',
+          note: `智116/1/9早28號心臟科\n- [ ] 115/11/8第2次慢籤\n- [ ] 115/12/6第3次慢籤`,
+        };
+        const effDate = getEffectiveMemoReminderDate(tx, baseDate);
+        expect(effDate).toBeNull();
+      });
     });
   });
 });
