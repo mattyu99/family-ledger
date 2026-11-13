@@ -4,6 +4,8 @@ import {
   parseGroupOrderItemLine,
   computeGroupOrderSummary,
   appendGroupOrderItem,
+  isSameOrRelatedStore,
+  extractStoreFamilyFavorites,
 } from '../groupOrder';
 
 describe('groupOrder 工具庫單元測試', () => {
@@ -167,6 +169,67 @@ describe('groupOrder 工具庫單元測試', () => {
         itemName: '排骨便當',
       });
       expect(updated).toBe('- [ ] 洋洋：排骨便當');
+    });
+  });
+
+  describe('isSameOrRelatedStore 店名智慧比對', () => {
+    it('完全相同或包含關係應判定為相符', () => {
+      expect(isSameOrRelatedStore('50嵐', '50嵐')).toBe(true);
+      expect(isSameOrRelatedStore('50嵐', '50嵐、清心福泉')).toBe(true);
+      expect(isSameOrRelatedStore('50嵐、清心福泉', '50嵐')).toBe(true);
+    });
+
+    it('不相關的店名應回傳 false', () => {
+      expect(isSameOrRelatedStore('50嵐', '麻古茶坊')).toBe(false);
+      expect(isSameOrRelatedStore('點餐店家', '50嵐')).toBe(false);
+    });
+  });
+
+  describe('extractStoreFamilyFavorites 全家同步招牌與私房推薦萃取', () => {
+    const mockTransactions = [
+      {
+        id: 'tx-1',
+        category: { name: '生活記事' },
+        note: `[🧋 點餐開團]
+店家：50嵐、清心福泉
+大家直接點右上方【＋我也要】快速報單！
+- [ ] 智爸：冬瓜檸檬（半糖、去冰、加椰果）$45
+- [ ] 瑩媽：波霸紅茶拿鐵（微糖微冰）$60
+- [ ] 洋洋：四季春珍波椰（少冰無糖）$50`,
+      },
+      {
+        id: 'tx-2',
+        category: { name: '生活記事' },
+        note: `【開團】今天喝 50嵐！
+- [x] 智爸：冬瓜檸檬（半糖、去冰、加椰果）$45
+- [ ] 瑩媽：四季春青茶（無糖常溫）$35
+- [ ] 豆豆：冬瓜檸檬（微糖微冰）$45`,
+      },
+    ];
+
+    it('能精準萃取指定成員 (智爸) 的專屬私房招牌與完整規格金額', () => {
+      const favs = extractStoreFamilyFavorites('50嵐', mockTransactions, '智爸');
+      expect(favs.memberFavorites.length).toBeGreaterThan(0);
+      const topMem = favs.memberFavorites[0];
+      expect(topMem.itemName).toBe('冬瓜檸檬');
+      expect(topMem.price).toBe(45);
+      expect(topMem.specs).toBe('半糖、去冰、加椰果');
+      expect(topMem.count).toBe(2);
+    });
+
+    it('切換成員為瑩媽時，專屬招牌能動態切換為瑩媽常點品項', () => {
+      const favs = extractStoreFamilyFavorites('50嵐', mockTransactions, '瑩媽');
+      const itemNames = favs.memberFavorites.map(m => m.itemName);
+      expect(itemNames).toContain('波霸紅茶拿鐵');
+      expect(itemNames).toContain('四季春青茶');
+    });
+
+    it('全家熱銷排行應按累計被點次數排序，且排除已在成員推薦中的品項', () => {
+      const favs = extractStoreFamilyFavorites('50嵐', mockTransactions, '智爸');
+      // 冬瓜檸檬全家點了 3 次，但因智爸專屬已有，全家排行會呈現其他熱門品項
+      const famNames = favs.familyTopFavorites.map(f => f.itemName);
+      expect(famNames).toContain('波霸紅茶拿鐵');
+      expect(famNames).toContain('四季春珍波椰');
     });
   });
 });

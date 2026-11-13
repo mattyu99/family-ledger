@@ -18,6 +18,11 @@ import {
   getStoreFavoriteItems,
   recordStoreFavoriteItem,
 } from '../lib/orderTagsStorage';
+import {
+  extractStoreFamilyFavorites,
+  StoreFavoriteItem,
+  StoreFamilyFavorites,
+} from '../lib/groupOrder';
 
 interface GroupOrderAppendModalProps {
   visible: boolean;
@@ -38,7 +43,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
   onAppend,
 }) => {
   const { colors, isDark } = useTheme();
-  const { currentUser, members } = useLedger();
+  const { currentUser, members, transactions } = useLedger();
 
   const [selectedMember, setSelectedMember] = useState<string>('');
   const [itemName, setItemName] = useState<string>('');
@@ -47,10 +52,19 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [favoriteItems, setFavoriteItems] = useState<string[]>([]);
 
+  // 當選取成員或店家改變時，自全家歷史開團記事中即時萃取專屬私房招牌與全家熱門排行
+  const familyFavorites: StoreFamilyFavorites = React.useMemo(() => {
+    if (!visible || !storeName) {
+      return { memberFavorites: [], familyTopFavorites: [] };
+    }
+    return extractStoreFamilyFavorites(storeName, transactions, selectedMember);
+  }, [visible, storeName, selectedMember, transactions]);
+
   // 開啟彈窗時初始化資料
   useEffect(() => {
     if (visible) {
-      setSelectedMember(currentUser?.display_name || members[0]?.display_name || '家人');
+      const defaultMember = currentUser?.display_name || members[0]?.display_name || '家人';
+      setSelectedMember(defaultMember);
       setItemName('');
       setSpecs('');
       setPriceStr('');
@@ -58,7 +72,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
       // 載入自學習規格標籤
       getMergedOrderTags().then(tags => setAvailableTags(tags));
 
-      // 載入該店家的常點招牌
+      // 載入該店家的本地備援招牌
       if (storeName) {
         getStoreFavoriteItems(storeName).then(items => setFavoriteItems(items));
       }
@@ -77,17 +91,28 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
     }
   };
 
-  // 點擊店家常點招牌時直接帶入
-  const handleFavoriteItemPress = (fav: string) => {
-    // 支援格式如 "波霸紅茶拿鐵 $60"
-    const m = fav.match(/^(.+?)(?:\s*[\$|\$]\s*(\d+))?$/);
-    if (m) {
-      setItemName(m[1].trim());
-      if (m[2]) {
-        setPriceStr(m[2]);
+  // 點擊店家常點招牌時直接秒帶入 (支援一鍵填妥品項、規格與金額)
+  const handleFavoriteItemPress = (fav: StoreFavoriteItem | string) => {
+    if (typeof fav === 'string') {
+      const m = fav.match(/^(.+?)(?:\s*[\$|\$]\s*(\d+))?$/);
+      if (m) {
+        setItemName(m[1].trim());
+        if (m[2]) setPriceStr(m[2]);
+      } else {
+        setItemName(fav);
       }
+      return;
+    }
+
+    // 完整招牌物件：品項名、預估金額與專屬規格一次全自動帶入
+    setItemName(fav.itemName);
+    if (fav.price > 0) {
+      setPriceStr(String(fav.price));
     } else {
-      setItemName(fav);
+      setPriceStr('');
+    }
+    if (fav.specs) {
+      setSpecs(fav.specs);
     }
   };
 
@@ -184,22 +209,89 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
               })}
             </ScrollView>
 
-            {/* 2. 店家歷史常點招牌 (若有) */}
-            {favoriteItems.length > 0 && (
+            {/* 2. 成員專屬私房推薦 (全家同步，點擊一鍵填妥品項、規格與金額) */}
+            {familyFavorites.memberFavorites.length > 0 && (
               <View style={styles.favoriteContainer}>
-                <Text style={[styles.sectionLabel, { color: '#F59E0B' }]}>💡 大家常點的招牌 (點擊秒帶入)：</Text>
+                <Text style={[styles.sectionLabel, { color: isDark ? '#60A5FA' : '#2563EB' }]}>
+                  💡 {selectedMember || '家人'} 常點的口味 (點擊秒帶入)：
+                </Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
-                  {favoriteItems.map((fav, idx) => (
+                  {familyFavorites.memberFavorites.map((fav, idx) => (
                     <TouchableOpacity
-                      key={idx}
+                      key={`mem-${idx}`}
                       onPress={() => handleFavoriteItemPress(fav)}
-                      style={[styles.favoritePill, isDark && { backgroundColor: 'rgba(245, 158, 11, 0.15)', borderColor: '#B45309' }]}
+                      style={[
+                        styles.memberFavoriteCard,
+                        isDark && { backgroundColor: 'rgba(59, 130, 246, 0.15)', borderColor: '#1E40AF' },
+                      ]}
+                      activeOpacity={0.7}
                     >
-                      <Text style={[styles.favoritePillText, isDark && { color: '#FCD34D' }]}>{fav}</Text>
+                      <View style={styles.favoriteCardTop}>
+                        <Text style={[styles.favoriteCardName, isDark && { color: '#93C5FD' }]}>
+                          {fav.itemName}
+                        </Text>
+                        {fav.price > 0 && (
+                          <Text style={[styles.favoriteCardPrice, isDark && { color: '#34D399' }]}>
+                            ${fav.price}
+                          </Text>
+                        )}
+                      </View>
+                      {!!fav.specs && (
+                        <Text style={[styles.favoriteCardSpecs, isDark && { color: '#9CA3AF' }]} numberOfLines={1}>
+                          👉 {fav.specs}
+                        </Text>
+                      )}
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
               </View>
+            )}
+
+            {/* 3. 全家熱銷排行 (全家同步，大家最常點 Top 6) */}
+            {familyFavorites.familyTopFavorites.length > 0 && (
+              <View style={styles.favoriteContainer}>
+                <Text style={[styles.sectionLabel, { color: '#F59E0B' }]}>
+                  🏆 全家常點熱銷榜：
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
+                  {familyFavorites.familyTopFavorites.map((fav, idx) => (
+                    <TouchableOpacity
+                      key={`fam-${idx}`}
+                      onPress={() => handleFavoriteItemPress(fav)}
+                      style={[
+                        styles.favoritePill,
+                        isDark && { backgroundColor: 'rgba(245, 158, 11, 0.15)', borderColor: '#B45309' },
+                      ]}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.favoritePillText, isDark && { color: '#FCD34D' }]}>
+                        {fav.itemName}{fav.price > 0 ? ` $${fav.price}` : ''}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* 4. 本地歷史快取 (新店家無全家開團歷史時之備援) */}
+            {familyFavorites.memberFavorites.length === 0 &&
+              familyFavorites.familyTopFavorites.length === 0 &&
+              favoriteItems.length > 0 && (
+                <View style={styles.favoriteContainer}>
+                  <Text style={[styles.sectionLabel, { color: '#F59E0B' }]}>💡 常點的招牌 (點擊秒帶入)：</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
+                    {favoriteItems.map((fav, idx) => (
+                      <TouchableOpacity
+                        key={idx}
+                        onPress={() => handleFavoriteItemPress(fav)}
+                        style={[styles.favoritePill, isDark && { backgroundColor: 'rgba(245, 158, 11, 0.15)', borderColor: '#B45309' }]}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.favoritePillText, isDark && { color: '#FCD34D' }]}>{fav}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
             )}
 
             {/* 3. 品項名稱與金額 */}
@@ -386,13 +478,45 @@ const styles = StyleSheet.create({
   favoriteContainer: {
     marginBottom: 12,
   },
+  memberFavoriteCard: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    marginRight: 8,
+    minWidth: 110,
+  },
+  favoriteCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  favoriteCardName: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#1D4ED8',
+  },
+  favoriteCardPrice: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#059669',
+  },
+  favoriteCardSpecs: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 2,
+    maxWidth: 160,
+  },
   favoritePill: {
     backgroundColor: '#FEF3C7',
     borderWidth: 1,
     borderColor: '#FDE68A',
     borderRadius: 8,
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 6,
     marginRight: 8,
   },
   favoritePillText: {

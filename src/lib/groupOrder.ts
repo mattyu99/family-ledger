@@ -23,6 +23,19 @@ export interface GroupOrderSummary {
   items: GroupOrderItem[];
 }
 
+export interface StoreFavoriteItem {
+  itemName: string;
+  specs: string;
+  price: number;
+  count: number;
+  memberName?: string;
+}
+
+export interface StoreFamilyFavorites {
+  memberFavorites: StoreFavoriteItem[];
+  familyTopFavorites: StoreFavoriteItem[];
+}
+
 /**
  * 判斷一則生活記事是否為「點餐開團／許願清單」
  */
@@ -238,4 +251,134 @@ export function appendGroupOrderItem(
   }
 
   return `${trimmed}\n${newLine}`;
+}
+
+/**
+ * 智慧比對兩個店名是否相符 (支援多店名如 "50嵐、清心福泉" 或模糊包含)
+ */
+export function isSameOrRelatedStore(storeA?: string, storeB?: string): boolean {
+  if (!storeA || !storeB) return false;
+  const a = storeA.trim().toLowerCase();
+  const b = storeB.trim().toLowerCase();
+  if (a === '點餐店家' || b === '點餐店家') return false;
+  if (a === b) return true;
+  if (a.includes(b) || b.includes(a)) return true;
+
+  // 支援以逗號、頓號、斜線分隔的多店名，例如 "50嵐、清心福泉" 與 "50嵐"
+  const tokensA = a.split(/[,，、\/\s]+/).filter(Boolean);
+  const tokensB = b.split(/[,，、\/\s]+/).filter(Boolean);
+  for (const tA of tokensA) {
+    if (tA.length >= 2 && tokensB.some(tB => tB.includes(tA) || tA.includes(tB))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * 從全家歷史生活記事中，萃取指定店家的「成員專屬私房招牌」與「全家熱銷排行」
+ */
+export function extractStoreFamilyFavorites(
+  targetStore: string,
+  transactions: any[] = [],
+  selectedMemberName?: string
+): StoreFamilyFavorites {
+  if (!targetStore || targetStore === '點餐店家' || !transactions || transactions.length === 0) {
+    return { memberFavorites: [], familyTopFavorites: [] };
+  }
+
+  // 1. 篩選包含開團內容且店名相關的記事
+  const matchingOrders: { note: string; title: string }[] = [];
+  for (const tx of transactions) {
+    const note = tx.note || '';
+    if (!note) continue;
+    // 粗篩是否含開團可能
+    if (
+      !note.includes('點餐') &&
+      !note.includes('開團') &&
+      !note.includes('許願') &&
+      !note.includes('飲料') &&
+      !note.includes('便當') &&
+      !note.includes('外帶')
+    ) {
+      continue;
+    }
+    const store = extractStoreNameFromMemo(tx.category?.name, note);
+    if (isSameOrRelatedStore(targetStore, store)) {
+      matchingOrders.push({ note, title: tx.category?.name || '生活記事' });
+    }
+  }
+
+  // 2. 走訪每筆開團記事的所有合法點餐項目
+  // 成員專屬 key: `${memberName}___${itemName}`
+  const memberItemMap: Map<string, { itemName: string; specs: string; price: number; count: number; memberName: string }> = new Map();
+  // 全家熱門 key: `${itemName}`
+  const familyItemMap: Map<string, { itemName: string; specs: string; price: number; count: number }> = new Map();
+
+  for (const order of matchingOrders) {
+    const summary = computeGroupOrderSummary(order.note, order.title);
+    for (const item of summary.items) {
+      if (!item.itemName) continue;
+
+      // 累計全家熱門
+      const famKey = item.itemName.trim().toLowerCase();
+      const existingFam = familyItemMap.get(famKey);
+      if (existingFam) {
+        existingFam.count++;
+        // 偏好保留有填寫規格或金額的資訊
+        if (!existingFam.specs && item.specs) existingFam.specs = item.specs;
+        if (existingFam.price === 0 && item.price > 0) existingFam.price = item.price;
+      } else {
+        familyItemMap.set(famKey, {
+          itemName: item.itemName.trim(),
+          specs: item.specs || '',
+          price: item.price || 0,
+          count: 1,
+        });
+      }
+
+      // 若有指定成員且匹配
+      const cleanMember = (item.memberName || '').trim();
+      if (cleanMember) {
+        const memKey = `${cleanMember}___${famKey}`;
+        const existingMem = memberItemMap.get(memKey);
+        if (existingMem) {
+          existingMem.count++;
+          if (!existingMem.specs && item.specs) existingMem.specs = item.specs;
+          if (existingMem.price === 0 && item.price > 0) existingMem.price = item.price;
+        } else {
+          memberItemMap.set(memKey, {
+            itemName: item.itemName.trim(),
+            specs: item.specs || '',
+            price: item.price || 0,
+            count: 1,
+            memberName: cleanMember,
+          });
+        }
+      }
+    }
+  }
+
+  // 3. 排序與產出結果
+  // 當前選取成員的專屬招牌
+  let memberFavorites: StoreFavoriteItem[] = [];
+  if (selectedMemberName && selectedMemberName.trim()) {
+    const targetMem = selectedMemberName.trim().toLowerCase();
+    memberFavorites = Array.from(memberItemMap.values())
+      .filter(m => m.memberName.toLowerCase() === targetMem)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
+  }
+
+  // 全家整體排行 (排除已出現在成員專屬第一順位且品項名相同的，避免視覺重複)
+  const memberItemNameSet = new Set(memberFavorites.map(m => m.itemName.toLowerCase()));
+  const familyTopFavorites: StoreFavoriteItem[] = Array.from(familyItemMap.values())
+    .sort((a, b) => b.count - a.count)
+    .filter(f => !memberItemNameSet.has(f.itemName.toLowerCase()))
+    .slice(0, 6);
+
+  return {
+    memberFavorites,
+    familyTopFavorites,
+  };
 }
