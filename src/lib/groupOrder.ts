@@ -27,26 +27,39 @@ export interface GroupOrderSummary {
  * 判斷一則生活記事是否為「點餐開團／許願清單」
  */
 export function isGroupOrderMemo(title?: string, content?: string): boolean {
-  const combined = `${title || ''}\n${content || ''}`.toLowerCase();
-  
-  // 明確標籤
+  const t = (title || '').trim().toLowerCase();
+  const c = (content || '').trim().toLowerCase();
+  const combined = `${t}\n${c}`;
+
+  // 1. 強烈明確標籤優先命中
   const strongKeywords = [
     '【點餐】', '【開團】', '【許願】', '【外帶】',
     '[點餐]', '[開團]', '[許願]',
     '🧋 點餐開團', '🧋 點餐', '🧋 開團',
+    '點餐開團', '點餐許願',
   ];
   for (const kw of strongKeywords) {
     if (combined.includes(kw.toLowerCase())) return true;
   }
 
-  // 語意關鍵字組合
-  const orderKeywords = [
+  // 2. 嚴格防呆排除非餐飲生活清單 (若命中醫藥、出國、清潔等且無明確開團標籤，絕不誤判)
+  const nonOrderExcludes = [
+    '回診', '慢箋', '慢籤', '就醫', '門診', '掛號', '看診', '健保',
+    '出國', '行李', '露營', '大掃除', '拜拜', '祭祀', '打疫苗', '修繕',
+    '生活記事與待辦', '待辦清單', '作業', '考試',
+  ];
+  if (nonOrderExcludes.some(ex => t.includes(ex) || c.includes(ex))) {
+    return false;
+  }
+
+  // 3. 標題語意關鍵字組合 (必須出現在標題中，避免內文隨意聊到「點」或「開」造成誤判)
+  const titleKeywords = [
     '點餐', '開團', '許願池', '手搖飲', '手搖杯', '買飲料',
-    '飲料團', '便當團', '宵夜團', '下午茶', '鹹酥雞', '外帶便當',
-    '菜單', '飲料菜單', '大家要喝什麼', '大家要吃什麼', '想喝什麼',
+    '飲料團', '便當團', '宵夜團', '下午茶團', '鹹酥雞團', '外帶便當',
+    '訂飲料', '訂便當', '團購',
   ];
 
-  return orderKeywords.some(kw => combined.includes(kw));
+  return titleKeywords.some(kw => t.includes(kw));
 }
 
 /**
@@ -168,7 +181,7 @@ export function computeGroupOrderSummary(content: string = '', title?: string): 
   const completedCount = items.filter(i => i.isDone).length;
 
   return {
-    isGroupOrder: isOrder || totalCount >= 2, // 若有 2 筆以上格式符合亦視為開團
+    isGroupOrder: isOrder,
     storeName,
     totalCount,
     completedCount,

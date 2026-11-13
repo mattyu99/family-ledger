@@ -16,13 +16,15 @@ describe('groupOrder 工具庫單元測試', () => {
 
     it('能辨識手搖飲、便當、宵夜等語意關鍵字', () => {
       expect(isGroupOrderMemo('手搖飲許願池', '')).toBe(true);
-      expect(isGroupOrderMemo('今天吃便當', '外帶便當統計')).toBe(true);
-      expect(isGroupOrderMemo('宵夜團', '鹹酥雞')).toBe(true);
+      expect(isGroupOrderMemo('外帶便當團', '')).toBe(true);
+      expect(isGroupOrderMemo('宵夜團', '')).toBe(true);
     });
 
-    it('一般普通記事不誤判為開團記事', () => {
+    it('回診與一般待辦清單即使有多行待辦，也絕不誤判為開團', () => {
       expect(isGroupOrderMemo('出國行李清單', '- [ ] 護照\n- [ ] 簽證')).toBe(false);
-      expect(isGroupOrderMemo('就醫回診', '116/1/9早28號心臟科')).toBe(false);
+      expect(isGroupOrderMemo('回診', '智116/1/9早28號心臟科\n[ ] 115/11/8第2次慢籤\n[ ] 115/12/6第3次慢籤')).toBe(false);
+      expect(isGroupOrderMemo('生活記事', '生活記事與代辦提醒可以選全家或個人\n[✓] 帳本瀏覽畫面會閃爍\n[✓] 信用卡帳單通知應該個人就好')).toBe(false);
+      expect(isGroupOrderMemo('大掃除', '[ ] 客廳\n[ ] 房間')).toBe(false);
     });
   });
 
@@ -96,6 +98,23 @@ describe('groupOrder 工具庫單元測試', () => {
       expect(summary.completedCount).toBe(1);
       expect(summary.totalAmount).toBe(195);
       expect(summary.hasAmount).toBe(true);
+    });
+
+    it('回診與一般待辦清單即使有多行待辦，也絕不誤判為開團', () => {
+      const clinicContent = `智116/1/9早28號心臟科
+[ ] 115/11/8第2次慢籤
+[ ] 115/12/6第3次慢籤`;
+      const clinicSummary = computeGroupOrderSummary(clinicContent, '回診');
+      expect(clinicSummary.isGroupOrder).toBe(false);
+
+      const todoContent = `生活記事與待辦提醒可以選全家或個人
+[✓] 帳本瀏覽畫面會閃爍
+[✓] 信用卡帳單通知應該個人就好
+[✓] 被忘掉的被刪除還會回來
+[✓] 轉零用錢跟轉帳的功能重複
+[✓] 記事連動只能跟支出`;
+      const todoSummary = computeGroupOrderSummary(todoContent, '生活記事');
+      expect(todoSummary.isGroupOrder).toBe(false);
     });
   });
 
