@@ -13,7 +13,17 @@ export interface GroupOrderItem {
   isDone: boolean;
 }
 
-export type CollaborativeOrderMode = 'food' | 'grocery' | 'parcel' | 'chore';
+export type CollaborativeOrderMode = 'food' | 'grocery' | 'parcel' | 'chore' | 'vote';
+
+export interface VoteOptionSummary {
+  rawLine: string;
+  lineIndex: number;
+  title: string;
+  voters: string[];
+  voteCount: number;
+  isDecided: boolean;
+  percentage: number;
+}
 
 export interface MemberEarningSummary {
   memberName: string;
@@ -44,6 +54,9 @@ export interface GroupOrderSummary {
   hasAmount: boolean;
   items: GroupOrderItem[];
   memberEarnings: MemberEarningSummary[];
+  voteOptions?: VoteOptionSummary[];
+  totalVotes?: number;
+  leadingOption?: VoteOptionSummary;
 }
 
 export interface StoreFavoriteItem {
@@ -66,6 +79,15 @@ export function detectCollaborativeOrderMode(title?: string, content?: string): 
   const t = (title || '').toLowerCase();
   const c = (content || '').toLowerCase();
   const text = `${t}\n${c}`;
+
+  const voteKeywords = [
+    '🗳️ 家庭投票', '🗳️ 投票', '【投票】', '[投票]', '【決策】', '[決策]',
+    '家庭投票', '投票看板', '投票決策', '吃什麼投票', '去哪玩投票', '大家投票',
+    '投票', '決策',
+  ];
+  if (voteKeywords.some(kw => text.includes(kw))) {
+    return 'vote';
+  }
 
   const choreKeywords = [
     '🧹 家庭家務', '🧹 家事懸賞', '🧹 家事', '🧹 大掃除', '🧹 打掃', '🧹 清潔',
@@ -126,6 +148,9 @@ export function isGroupOrderMemo(title?: string, content?: string): boolean {
     '【家事】', '【懸賞】', '【大掃除】', '【任務】', '【打掃】', '【清潔】', '【分工】',
     '[家事]', '[懸賞]', '[大掃除]', '[任務]', '[打掃]', '[清潔]', '[分工]',
     '家庭家務', '家事懸賞', '週末家事', '大掃除', '家事分工', '任務懸賞', '打掃清單', '清潔分工', '零用錢任務', '跑腿任務',
+    '🗳️ 家庭投票', '🗳️ 投票',
+    '【投票】', '[投票]', '【決策】', '[決策]',
+    '家庭投票', '投票看板', '投票決策',
   ];
   for (const kw of strongKeywords) {
     if (combined.includes(kw.toLowerCase())) return true;
@@ -152,6 +177,7 @@ export function isGroupOrderMemo(title?: string, content?: string): boolean {
     '網購', '湊單', '湊免運', '包裹', '取貨', '代領', '店到店',
     '蝦皮', 'shopee', '酷澎', 'coupang', 'momo', 'pchome', '淘寶',
     '家務', '家事', '大掃除', '打掃', '清潔', '懸賞', '分工', '跑腿',
+    '投票', '決策',
   ];
 
   return titleKeywords.some(kw => t.includes(kw));
@@ -192,7 +218,7 @@ export function extractStoreNameFromMemo(title?: string, content?: string): stri
 
   // 優先 3: 逐行掃描括弧標題 (形式 2)
   for (const line of lines) {
-    const m2 = line.match(/【(?:點餐|開團|許願|採買|補貨|網購|湊單|湊免運|包裹|取貨|代領|家事|家務|大掃除|懸賞|任務|分工)[：:\s]*([^】]+)】/);
+    const m2 = line.match(/【(?:點餐|開團|許願|採買|補貨|網購|湊單|湊免運|包裹|取貨|代領|家事|家務|大掃除|懸賞|任務|分工|投票|決策)[：:\s]*([^】]+)】/);
     if (m2 && m2[1]) {
       const clean = m2[1].replace(/今天|大家|想喝|請填/g, '').trim();
       if (clean) return clean;
@@ -215,10 +241,76 @@ export function extractStoreNameFromMemo(title?: string, content?: string): stri
   }
 
   const mode = detectCollaborativeOrderMode(title, content);
+  if (mode === 'vote') return '家庭決策';
   if (mode === 'chore') return '家庭任務';
   if (mode === 'parcel') return '網購包裹';
   if (mode === 'grocery') return '採買賣場';
   return '點餐店家';
+}
+
+/**
+ * 從 Markdown 待辦行中解析投票候選項目與投票人名單
+ * 支援格式：
+ * - [ ] 鼎泰豐（智爸、瑩媽、洋洋 +3）
+ * - [x] 藏壽司（洋洋、翔翔 +2）
+ * - [ ] 碳佐麻里（智爸 +1）
+ * - [ ] 義大利麵
+ */
+export function parseVoteOptionLine(line: string, lineIndex: number = 0): VoteOptionSummary | null {
+  const trimmed = line.trim();
+  const checkMatch = trimmed.match(/^[-*]?\s*\[([ xX✓])\]\s*(.+)$/);
+  if (!checkMatch) return null;
+
+  const isDecided = checkMatch[1].toLowerCase() === 'x' || checkMatch[1] === '✓';
+  let body = checkMatch[2].trim();
+
+  // 排除提示說明行
+  if (
+    body.includes('大家直接在下方點') ||
+    body.includes('投票說明') ||
+    body.includes('備註') ||
+    body.includes('點此填寫')
+  ) {
+    return null;
+  }
+
+  let voters: string[] = [];
+  let voteCount = 0;
+  let title = body;
+
+  const parenMatch = body.match(/[\(（]([^\)）]+)[\)）]\s*$/);
+  if (parenMatch) {
+    const inner = parenMatch[1].trim();
+    title = body.slice(0, parenMatch.index).trim();
+
+    // 檢查是否有明確的 +N 或 N票
+    const countMatch = inner.match(/(?:\+)?(\d+)\s*(?:票)?/);
+    let explicitCount = 0;
+    if (countMatch) {
+      explicitCount = parseInt(countMatch[1], 10) || 0;
+    }
+
+    // 分割人名 (支援 、 , ， 以及空白)
+    const rawTokens = inner
+      .replace(/(?:\+)?\d+\s*(?:票)?/g, '') // 移除數字與票
+      .split(/[、,，\s]+/)
+      .map(s => s.trim())
+      .filter(s => s && s.length > 0 && !s.includes('票') && !s.includes('+'));
+
+    // 去重複
+    voters = Array.from(new Set(rawTokens));
+    voteCount = Math.max(explicitCount, voters.length);
+  }
+
+  return {
+    rawLine: line,
+    lineIndex,
+    title,
+    voters,
+    voteCount,
+    isDecided,
+    percentage: 0,
+  };
 }
 
 /**
@@ -367,17 +459,138 @@ export function computeGroupOrderSummary(content: string = '', title?: string): 
     hasAmount = totalAmount > 0;
   }
 
+  // 依投票模式統計各候選項目與總票數
+  const voteOptions: VoteOptionSummary[] = [];
+  let totalVotes = 0;
+  let leadingOption: VoteOptionSummary | undefined;
+
+  if (mode === 'vote') {
+    let voteItemIndex = 0;
+    lines.forEach((line) => {
+      const isChecklist = /^[-*]?\s*\[([ xX✓])\]\s*(.+)$/.test(line.trim());
+      const curIdx = voteItemIndex;
+      if (isChecklist) {
+        voteItemIndex++;
+      }
+      const opt = parseVoteOptionLine(line, curIdx);
+      if (opt && opt.title) {
+        voteOptions.push(opt);
+        totalVotes += opt.voteCount;
+      }
+    });
+
+    // 計算得票百分比
+    voteOptions.forEach((opt) => {
+      opt.percentage = totalVotes > 0 ? Math.round((opt.voteCount / totalVotes) * 100) : 0;
+    });
+
+    // 依票數降冪尋找當前領先項目
+    if (voteOptions.length > 0) {
+      const sorted = [...voteOptions].sort((a, b) => b.voteCount - a.voteCount);
+      leadingOption = sorted[0];
+    }
+  }
+
   return {
     isGroupOrder: isOrder,
     mode,
     storeName,
-    totalCount,
-    completedCount,
+    totalCount: mode === 'vote' ? voteOptions.length : totalCount,
+    completedCount: mode === 'vote' ? voteOptions.filter(o => o.isDecided).length : completedCount,
     totalAmount,
     hasAmount,
     items,
     memberEarnings,
+    voteOptions: mode === 'vote' ? voteOptions : undefined,
+    totalVotes: mode === 'vote' ? totalVotes : undefined,
+    leadingOption: mode === 'vote' ? leadingOption : undefined,
   };
+}
+
+/**
+ * 為指定候選項目投下一票或撤回投票 (支援多選累加與即時更新)
+ */
+export function toggleGroupOrderVote(
+  content: string = '',
+  targetLineIndex: number,
+  voterName: string
+): string {
+  const cleanVoter = (voterName || '').trim();
+  if (!cleanVoter) return content;
+
+  const lines = content.split('\n');
+  let checklistItemIndex = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isChecklist = /^[-*]?\s*\[([ xX✓])\]\s*(.+)$/.test(line.trim());
+    if (isChecklist) {
+      if (checklistItemIndex === targetLineIndex) {
+        const option = parseVoteOptionLine(line, checklistItemIndex);
+        if (option) {
+          let updatedVoters = [...option.voters];
+          const voterIndex = updatedVoters.indexOf(cleanVoter);
+
+          if (voterIndex >= 0) {
+            // 已投過，撤回此票
+            updatedVoters.splice(voterIndex, 1);
+          } else {
+            // 尚未投，加入此票
+            updatedVoters.push(cleanVoter);
+          }
+
+          const checkMark = option.isDecided ? '[x]' : '[ ]';
+          if (updatedVoters.length === 0) {
+            lines[i] = `- ${checkMark} ${option.title}`;
+          } else {
+            lines[i] = `- ${checkMark} ${option.title}（${updatedVoters.join('、')} +${updatedVoters.length}）`;
+          }
+        }
+        break;
+      }
+      checklistItemIndex++;
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * 拍板定案投票結果：將勝出選項標記為已決定 [x]，其他取消 [ ]
+ */
+export function finalizeGroupOrderVote(
+  content: string = '',
+  winningLineIndex: number
+): string {
+  const lines = content.split('\n');
+  let checklistItemIndex = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isChecklist = /^[-*]?\s*\[([ xX✓])\]\s*(.+)$/.test(line.trim());
+    if (isChecklist) {
+      const option = parseVoteOptionLine(line, checklistItemIndex);
+      if (option) {
+        const isWinner = checklistItemIndex === winningLineIndex;
+        const checkMark = isWinner ? '[x]' : '[ ]';
+        const votersPart = option.voters.length > 0 ? `（${option.voters.join('、')} +${option.voters.length}）` : '';
+        lines[i] = `- ${checkMark} ${option.title}${votersPart}`;
+      }
+      checklistItemIndex++;
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * 將勝出的投票結果一鍵轉換為點餐開團記事內容
+ */
+export function convertVoteToFoodOrder(storeName: string): string {
+  const cleanStore = storeName.replace(/^[🍲🍣🥩🍕🍔🍟🍱☕🥤🧋🍜\s]+/, '').trim();
+  return `[🧋 點餐開團] 店家：${cleanStore || '聚餐店家'}
+店家：${cleanStore || '聚餐店家'}
+- [ ] 大家直接在下方點【＋我也要 / 登記品項】快速報單！`;
 }
 
 /**
@@ -635,6 +848,14 @@ export function createGroupOrderPushNotification(params: {
   const { mode, storeName, senderName } = params;
   const sender = (senderName || '家人').trim();
 
+  if (mode === 'vote') {
+    const cleanStore = storeName && storeName !== '家庭決策' ? storeName : '家庭投票';
+    return {
+      title: `🗳️ ${cleanStore} 發起投票囉！`,
+      body: `${sender} 發起了投票決策，大家快來投出你的一票！`,
+    };
+  }
+
   if (mode === 'chore') {
     const cleanStore = storeName && storeName !== '家庭任務' ? storeName : '家事分工';
     return {
@@ -683,6 +904,14 @@ export function createGroupOrderAppendPushNotification(params: {
   const sender = (senderName || '家人').trim();
   const specText = item.specs && item.specs.trim() ? `（${item.specs.trim()}）` : '';
   const priceText = item.price && item.price > 0 ? ` $${item.price}` : '';
+
+  if (mode === 'vote') {
+    const cleanStore = storeName && storeName !== '家庭決策' ? storeName : '投票看板';
+    return {
+      title: `🗳️ ${cleanStore} 收到新提案！`,
+      body: `${sender} 新增了候選方案：${item.itemName}${specText}，快來瞧瞧！`,
+    };
+  }
 
   if (mode === 'chore') {
     const cleanStore = storeName && storeName !== '家庭任務' ? storeName : '家事分工';

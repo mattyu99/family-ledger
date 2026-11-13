@@ -14,6 +14,9 @@ import {
   computeGroupOrderSummary,
   appendGroupOrderItem,
   updateGroupOrderItemMember,
+  toggleGroupOrderVote,
+  finalizeGroupOrderVote,
+  convertVoteToFoodOrder,
   MemberEarningSummary,
 } from '../lib/groupOrder';
 import { GroupOrderAppendModal } from './GroupOrderAppendModal';
@@ -259,25 +262,24 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
           <View style={[styles.groupOrderBar, isDark && { backgroundColor: 'rgba(245, 158, 11, 0.12)', borderColor: '#B45309' }]}>
             <View style={styles.groupOrderInfo}>
               <Text style={styles.groupOrderIcon}>
-                {groupOrderSummary.mode === 'chore'
-                  ? '🧹'
-                  : (groupOrderSummary.mode === 'parcel' ? '📦' : (groupOrderSummary.mode === 'grocery' ? '🛒' : '🧋'))}
+                {groupOrderSummary.mode === 'vote'
+                  ? '🗳️'
+                  : (groupOrderSummary.mode === 'chore'
+                      ? '🧹'
+                      : (groupOrderSummary.mode === 'parcel' ? '📦' : (groupOrderSummary.mode === 'grocery' ? '🛒' : '🧋')))}
               </Text>
               <Text style={[styles.groupOrderText, isDark && { color: '#FCD34D' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                 {groupOrderSummary.storeName &&
                 groupOrderSummary.storeName !== '點餐店家' &&
                 groupOrderSummary.storeName !== '採買賣場' &&
                 groupOrderSummary.storeName !== '網購包裹' &&
-                groupOrderSummary.storeName !== '家庭任務'
+                groupOrderSummary.storeName !== '家庭任務' &&
+                groupOrderSummary.storeName !== '家庭決策'
                   ? `${groupOrderSummary.storeName} · `
                   : ''}
-                累計 {groupOrderSummary.totalCount}{' '}
-                {groupOrderSummary.mode === 'parcel'
-                  ? '件'
-                  : ((groupOrderSummary.mode === 'grocery' || groupOrderSummary.mode === 'chore') ? '項' : '份')}
-                {groupOrderSummary.mode === 'chore'
-                  ? (groupOrderSummary.hasAmount ? ` · 累計獎勵 $${groupOrderSummary.totalAmount}` : '')
-                  : (groupOrderSummary.hasAmount ? ` · 預估 $${groupOrderSummary.totalAmount}` : '')}
+                {groupOrderSummary.mode === 'vote'
+                  ? `累計 ${groupOrderSummary.totalCount} 候選 · 共 ${groupOrderSummary.totalVotes || 0} 票${groupOrderSummary.leadingOption ? ` · 領先：${groupOrderSummary.leadingOption.title}` : ''}`
+                  : `累計 ${groupOrderSummary.totalCount} ${groupOrderSummary.mode === 'parcel' ? '件' : ((groupOrderSummary.mode === 'grocery' || groupOrderSummary.mode === 'chore') ? '項' : '份')}${groupOrderSummary.mode === 'chore' ? (groupOrderSummary.hasAmount ? ` · 累計獎勵 $${groupOrderSummary.totalAmount}` : '') : (groupOrderSummary.hasAmount ? ` · 預估 $${groupOrderSummary.totalAmount}` : '')}`}
               </Text>
             </View>
             <View style={styles.groupOrderActions}>
@@ -290,11 +292,13 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                 style={styles.groupOrderAppendBtn}
               >
                 <Text style={styles.groupOrderAppendBtnText}>
-                  {groupOrderSummary.mode === 'chore'
-                    ? '＋ 認領/加項'
-                    : (groupOrderSummary.mode === 'parcel'
-                        ? '＋ 加湊/代領'
-                        : (groupOrderSummary.mode === 'grocery' ? '＋ 我要買' : '＋ 我也要'))}
+                  {groupOrderSummary.mode === 'vote'
+                    ? '＋ 提案'
+                    : (groupOrderSummary.mode === 'chore'
+                        ? '＋ 認領/加項'
+                        : (groupOrderSummary.mode === 'parcel'
+                            ? '＋ 加湊/代領'
+                            : (groupOrderSummary.mode === 'grocery' ? '＋ 我要買' : '＋ 我也要')))}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -306,11 +310,13 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                 style={[styles.groupOrderCounterBtn, isDark && { backgroundColor: '#374151' }]}
               >
                 <Text style={[styles.groupOrderCounterBtnText, isDark && { color: '#F9FAFB' }]}>
-                  {groupOrderSummary.mode === 'chore'
-                    ? '🧹 任務看板'
-                    : (groupOrderSummary.mode === 'parcel'
-                        ? '📦 包裹看板'
-                        : (groupOrderSummary.mode === 'grocery' ? '🛒 推車看板' : '📋 點餐'))}
+                  {groupOrderSummary.mode === 'vote'
+                    ? '🗳️ 投票看板'
+                    : (groupOrderSummary.mode === 'chore'
+                        ? '🧹 任務看板'
+                        : (groupOrderSummary.mode === 'parcel'
+                            ? '📦 包裹看板'
+                            : (groupOrderSummary.mode === 'grocery' ? '🛒 推車看板' : '📋 點餐')))}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -577,6 +583,23 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
         onUpdateItemMember={(lineIndex, newMemberName) => {
           const updatedNote = updateGroupOrderItemMember(transaction.note || '', lineIndex, newMemberName);
           updateTransaction(transaction.id, { note: updatedNote });
+        }}
+        onToggleVote={(lineIndex, voterName) => {
+          const updatedNote = toggleGroupOrderVote(transaction.note || '', lineIndex, voterName);
+          updateTransaction(transaction.id, { note: updatedNote });
+        }}
+        onFinalizeVote={(winningLineIndex) => {
+          const updatedNote = finalizeGroupOrderVote(transaction.note || '', winningLineIndex);
+          updateTransaction(transaction.id, {
+            note: updatedNote,
+            is_settled: true,
+            completed_by: currentUser?.id,
+            completion_note: '投票決策已敲定拍板',
+          });
+        }}
+        onConvertToFoodOrder={(winningTitle) => {
+          const newOrderNote = convertVoteToFoodOrder(winningTitle);
+          updateTransaction(transaction.id, { note: newOrderNote });
         }}
         onAddQuickItem={() => {
           setIsGroupOrderAppendOpen(true);

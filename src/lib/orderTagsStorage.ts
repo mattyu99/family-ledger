@@ -26,17 +26,22 @@ export const DEFAULT_ORDER_PRESET_TAGS = {
   chores: [
     '客廳', '廚房', '臥室', '浴室', '陽台', '急件', '週末前完成', '加碼獎勵', '每天一次', '已完成驗收'
   ],
+  votes: [
+    '聚餐吃什麼', '假日去哪玩', '時間二選一', '好物挑選', '電影推薦', '需要訂位', '高評價', '小孩最愛', '離家近', '超想去'
+  ],
 };
 
 /**
  * 取得所有合併後的自學習規格標籤 (內建預設 + 使用者歷史輸入)
  */
-export async function getMergedOrderTags(mode: 'food' | 'grocery' | 'parcel' | 'chore' = 'food'): Promise<string[]> {
+export async function getMergedOrderTags(mode: 'food' | 'grocery' | 'parcel' | 'chore' | 'vote' = 'food'): Promise<string[]> {
   try {
     const raw = await AsyncStorage.getItem(ORDER_TAGS_STORAGE_KEY);
     const customTags: string[] = raw ? JSON.parse(raw) : [];
 
-    const pool = mode === 'chore'
+    const pool = mode === 'vote'
+      ? [...DEFAULT_ORDER_PRESET_TAGS.votes]
+      : mode === 'chore'
       ? [...DEFAULT_ORDER_PRESET_TAGS.chores]
       : mode === 'parcel'
       ? [...DEFAULT_ORDER_PRESET_TAGS.parcels]

@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.16';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.16 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 22;
+export const APP_BUILD_REVISION = 23;
 
 // 完整版本字串 (例如 "1.0.16.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.16',
     date: '2026-11-11 ~ 2026-11-13',
-    title: '家事懸賞分工、網購湊單包裹看板、賣場採買與缺貨匯入、點餐推播',
+    title: '家庭民主投票、家事分工懸賞、網購湊單包裹、採買補貨',
     highlights: [
+      '🗳️ 家庭民主投票決策看板：聚餐吃什麼、出遊地點自由提案，支援意願累加投票、即時得票率進度條，最高票一鍵拍板定案並支援無縫轉為點餐開團。',
       '🧹 家事分工與零用錢懸賞引擎：支援任務認領、點擊成員徽章即時指派或釋出，依各成員完成項目精準統計，一鍵批次發放零用錢並連動記帳。',
       '🔔 開團採買自動置頂與即時推播：開團採買與網購湊單自動置頂全家看板防漏單（一般記事維持預設不置頂），即時廣播並回報發起人。',
       '📦 網購湊單與包裹代領看板：支援酷澎、蝦皮等湊免運加單及超商末三碼代領追蹤，結帳或代墊一鍵連動記帳並支援專屬常用標籤。',

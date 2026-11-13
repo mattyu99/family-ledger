@@ -13,6 +13,10 @@ import {
   extractPendingRestockItems,
   mergeRestockItemsIntoNote,
   updateGroupOrderItemMember,
+  parseVoteOptionLine,
+  toggleGroupOrderVote,
+  finalizeGroupOrderVote,
+  convertVoteToFoodOrder,
 } from '../groupOrder';
 
 describe('groupOrder 工具庫單元測試', () => {
@@ -531,6 +535,101 @@ describe('groupOrder 工具庫單元測試', () => {
       const unclaimedNote = updateGroupOrderItemMember(reassignedNote, 2, '');
       expect(unclaimedNote).toContain('- [ ] 擦餐桌 $50');
       expect(unclaimedNote).not.toContain('翔翔：擦餐桌');
+    });
+  });
+
+  describe('家庭民主投票與決策看板引擎測試 (Vote Mode)', () => {
+    it('detectCollaborativeOrderMode 能精準識別家庭投票與決策模式', () => {
+      expect(detectCollaborativeOrderMode('🗳️ 家庭投票', '')).toBe('vote');
+      expect(detectCollaborativeOrderMode('週末聚餐吃什麼投票', '')).toBe('vote');
+      expect(detectCollaborativeOrderMode('連假去哪玩投票決策', '')).toBe('vote');
+      expect(detectCollaborativeOrderMode('空氣清淨機挑選【投票】', '')).toBe('vote');
+    });
+
+    it('parseVoteOptionLine 能解析投票候選方案、得票人名與票數', () => {
+      const opt1 = parseVoteOptionLine('- [ ] 鼎泰豐（智爸、瑩媽、洋洋 +3）', 0);
+      expect(opt1).not.toBeNull();
+      expect(opt1?.title).toBe('鼎泰豐');
+      expect(opt1?.voters).toEqual(['智爸', '瑩媽', '洋洋']);
+      expect(opt1?.voteCount).toBe(3);
+      expect(opt1?.isDecided).toBe(false);
+
+      const opt2 = parseVoteOptionLine('- [x] 藏壽司（洋洋、翔翔 +2）', 1);
+      expect(opt2).not.toBeNull();
+      expect(opt2?.title).toBe('藏壽司');
+      expect(opt2?.voters).toEqual(['洋洋', '翔翔']);
+      expect(opt2?.voteCount).toBe(2);
+      expect(opt2?.isDecided).toBe(true);
+
+      const opt3 = parseVoteOptionLine('- [ ] 碳佐麻里', 2);
+      expect(opt3).not.toBeNull();
+      expect(opt3?.title).toBe('碳佐麻里');
+      expect(opt3?.voters).toEqual([]);
+      expect(opt3?.voteCount).toBe(0);
+    });
+
+    it('computeGroupOrderSummary 正確計算投票總票數、百分比與領先方案', () => {
+      const note = `[🗳️ 週末聚餐投票] 吃哪家好？
+- [ ] 鼎泰豐（智爸、瑩媽、洋洋 +3）
+- [ ] 藏壽司（洋洋、翔翔 +2）
+- [ ] 碳佐麻里（智爸 +1）
+- [ ] 義大利麵`;
+
+      const summary = computeGroupOrderSummary(note, '🗳️ 週末聚餐投票');
+      expect(summary.mode).toBe('vote');
+      expect(summary.totalCount).toBe(4);
+      expect(summary.totalVotes).toBe(6); // 3 + 2 + 1 + 0 = 6
+      expect(summary.voteOptions?.length).toBe(4);
+
+      // 領先方案是鼎泰豐 (3票 · 50%)
+      expect(summary.leadingOption?.title).toBe('鼎泰豐');
+      expect(summary.leadingOption?.voteCount).toBe(3);
+      expect(summary.leadingOption?.percentage).toBe(50);
+
+      // 第二名藏壽司 (2票 · 33%)
+      const sushi = summary.voteOptions?.find(o => o.title === '藏壽司');
+      expect(sushi?.voteCount).toBe(2);
+      expect(sushi?.percentage).toBe(33);
+    });
+
+    it('toggleGroupOrderVote 支援投下一票 (+1) 與撤回投票 (-1)', () => {
+      const initial = `[🗳️ 週末聚餐投票]
+- [ ] 鼎泰豐（智爸 +1）
+- [ ] 藏壽司`;
+
+      // 1. 瑩媽在鼎泰豐投下一票 -> 智爸、瑩媽 +2
+      const step1 = toggleGroupOrderVote(initial, 0, '瑩媽');
+      expect(step1).toContain('- [ ] 鼎泰豐（智爸、瑩媽 +2）');
+
+      // 2. 智爸撤回在鼎泰豐的投票 -> 瑩媽 +1
+      const step2 = toggleGroupOrderVote(step1, 0, '智爸');
+      expect(step2).toContain('- [ ] 鼎泰豐（瑩媽 +1）');
+
+      // 3. 洋洋在未有人投的藏壽司投下一票 -> 洋洋 +1
+      const step3 = toggleGroupOrderVote(step2, 1, '洋洋');
+      expect(step3).toContain('- [ ] 藏壽司（洋洋 +1）');
+
+      // 4. 洋洋撤回在藏壽司的投票 -> 恢復純文字無括弧
+      const step4 = toggleGroupOrderVote(step3, 1, '洋洋');
+      expect(step4).toContain('- [ ] 藏壽司');
+      expect(step4).not.toContain('藏壽司（');
+    });
+
+    it('finalizeGroupOrderVote 拍板定案最高票選項', () => {
+      const note = `[🗳️ 週末聚餐投票]
+- [ ] 鼎泰豐（智爸、瑩媽 +2）
+- [ ] 藏壽司（洋洋 +1）`;
+
+      const finalized = finalizeGroupOrderVote(note, 0);
+      expect(finalized).toContain('- [x] 鼎泰豐（智爸、瑩媽 +2）');
+      expect(finalized).toContain('- [ ] 藏壽司（洋洋 +1）');
+    });
+
+    it('convertVoteToFoodOrder 能將勝出的餐廳無縫轉為點餐開團記事', () => {
+      const foodOrder = convertVoteToFoodOrder('🍲 鼎泰豐小籠包');
+      expect(foodOrder).toContain('[🧋 點餐開團] 店家：鼎泰豐小籠包');
+      expect(foodOrder).toContain('店家：鼎泰豐小籠包');
+      expect(foodOrder).toContain('快速報單');
     });
   });
 });

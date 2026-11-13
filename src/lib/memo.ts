@@ -13,6 +13,7 @@ export const DEFAULT_MEMO_QUICK_TAGS = [
   '📦 網購湊單',
   '🏠 家中缺貨',
   '🧹 家事懸賞',
+  '🗳️ 家庭投票',
   '📅 行程安排',
   '🎒 學校親子',
   '🙏 祭祀拜拜',
@@ -823,6 +824,20 @@ export const BUILTIN_MEMO_TEMPLATES: MemoChecklistTemplate[] = [
       '吸塵拖地整理客廳 $80',
       '曬衣服與收摺衣物 $40',
       '刷洗浴室與整理洗手台 $60',
+    ],
+  },
+  {
+    id: 'family_voting_decision',
+    title: '家庭投票決策',
+    icon: '🗳️',
+    tag: '🗳️ 家庭投票',
+    description: '週末聚餐吃什麼、連假去哪玩、好物挑選，全家人人有票自由表態',
+    headerText: '主題：週末聚餐吃什麼？（可直接修改主題）\n大家直接點右上方【＋提案/投票】投下你的一票！',
+    items: [
+      '🍲 鼎泰豐小籠包',
+      '🍣 藏壽司迴轉壽司',
+      '🥩 碳佐麻里精緻燒肉',
+      '🍕 義大利麵與披薩',
     ],
   },
   {
