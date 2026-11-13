@@ -332,7 +332,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   }, [detectedMemoDate, memoReminderDate]);
 
   // 📌 智慧開團/採買感知自動置頂與全家共享：
-  // 若生活記事命中點餐開團或賣場採買，自動啟用「全家共享」並「置頂全家看板最上方」，防家人漏看
+  // 若生活記事命中點餐開團或賣場採買，自動啟用「全家共享」並「置頂全家看板最上方」，防家人漏看；
+  // 若切換回一般記事且使用者未曾手動切換置頂開關，則自動退回不置頂狀態。
   useEffect(() => {
     if (mode !== 'memo' && type !== 'memo') return;
     if (userManuallyToggledPinRef.current) return;
@@ -340,10 +341,16 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     const parsed = parseMemoNote(note);
     const isOrder = isGroupOrderMemo(parsed.title, note);
     if (isOrder) {
-      setMemoIsPinned(true);
+      const quota = checkMemoPinQuota(transactions, {
+        targetScope: 'family',
+        memberId: paidBy || currentUser?.id,
+      });
+      setMemoIsPinned(quota.canPin);
       setMemoReminderTarget('family');
+    } else {
+      setMemoIsPinned(false);
     }
-  }, [note, mode, type]);
+  }, [note, mode, type, transactions, paidBy, currentUser?.id]);
 
   // 撥零用錢專用狀態
   const [allowanceMode, setAllowanceMode] = useState<'transfer' | 'expense_income'>('transfer');
@@ -899,6 +906,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     setMemoReminderCalendar('solar');
     setMemoReminderRepeat('once');
     setMemoReminderTarget('family');
+    setMemoIsPinned(false);
     lastAutoDetectedDateRef.current = '';
     userManuallySetReminderRef.current = false;
     userManuallyToggledPinRef.current = false;

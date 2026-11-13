@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.16';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.16 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 19;
+export const APP_BUILD_REVISION = 20;
 
 // 完整版本字串 (例如 "1.0.16.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -23,7 +23,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
     date: '2026-11-11 ~ 2026-11-13',
     title: '賣場推車採買、點餐開團自動置頂推播與手冊全功能整編',
     highlights: [
-      '🔔 開團採買自動置頂與即時推播：開團採買自動置頂全家看板防漏單，即時發送手機廣播通知，家人報單自動回報發起人。',
+      '🔔 開團採買自動置頂與即時推播：開團採買自動置頂全家看板防漏單（一般記事維持預設不置頂），即時發送手機廣播通知並回報發起人。',
       '🛒 賣場採買與推車看板：好市多全聯多人補貨追加，推車大字劃線核對與現場隨手加，採買完畢一鍵連動記帳。',
       '🧋 點餐開團與招牌菜單：手搖飲便當多人免衝突報單，全家同步私房口味與熱門排行，點擊秒帶入品項規格金額。',
       '💡 生活記事智慧日期與接力推進提醒：打字即時感知民國年自動預選，歷史待辦自動自癒對齊當前最急進度，相對日期錨定記錄日隨時間遞減不漂移，作業課次防呆過濾。',
