@@ -23,17 +23,22 @@ export const DEFAULT_ORDER_PRESET_TAGS = {
   parcels: [
     '已付款免付', '貨到付款', '7-11取貨', '全家取貨', '蝦皮店到店', '管理室代收', '湊免運', '急件先領', '冷凍包裹', '1箱', '2件'
   ],
+  chores: [
+    '客廳', '廚房', '臥室', '浴室', '陽台', '急件', '週末前完成', '加碼獎勵', '每天一次', '已完成驗收'
+  ],
 };
 
 /**
  * 取得所有合併後的自學習規格標籤 (內建預設 + 使用者歷史輸入)
  */
-export async function getMergedOrderTags(mode: 'food' | 'grocery' | 'parcel' = 'food'): Promise<string[]> {
+export async function getMergedOrderTags(mode: 'food' | 'grocery' | 'parcel' | 'chore' = 'food'): Promise<string[]> {
   try {
     const raw = await AsyncStorage.getItem(ORDER_TAGS_STORAGE_KEY);
     const customTags: string[] = raw ? JSON.parse(raw) : [];
 
-    const pool = mode === 'parcel'
+    const pool = mode === 'chore'
+      ? [...DEFAULT_ORDER_PRESET_TAGS.chores]
+      : mode === 'parcel'
       ? [...DEFAULT_ORDER_PRESET_TAGS.parcels]
       : mode === 'grocery'
         ? [...DEFAULT_ORDER_PRESET_TAGS.groceries]
@@ -65,7 +70,9 @@ export async function getMergedOrderTags(mode: 'food' | 'grocery' | 'parcel' = '
 
     return result;
   } catch {
-    return mode === 'parcel'
+    return mode === 'chore'
+      ? [...DEFAULT_ORDER_PRESET_TAGS.chores]
+      : mode === 'parcel'
       ? [...DEFAULT_ORDER_PRESET_TAGS.parcels]
       : mode === 'grocery'
         ? [...DEFAULT_ORDER_PRESET_TAGS.groceries]

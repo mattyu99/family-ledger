@@ -12,6 +12,7 @@ import {
   isRestockPoolMemo,
   extractPendingRestockItems,
   mergeRestockItemsIntoNote,
+  updateGroupOrderItemMember,
 } from '../groupOrder';
 
 describe('groupOrder 工具庫單元測試', () => {
@@ -32,7 +33,12 @@ describe('groupOrder 工具庫單元測試', () => {
       expect(isGroupOrderMemo('出國行李清單', '- [ ] 護照\n- [ ] 簽證')).toBe(false);
       expect(isGroupOrderMemo('回診', '智116/1/9早28號心臟科\n[ ] 115/11/8第2次慢籤\n[ ] 115/12/6第3次慢籤')).toBe(false);
       expect(isGroupOrderMemo('生活記事', '生活記事與代辦提醒可以選全家或個人\n[✓] 帳本瀏覽畫面會閃爍\n[✓] 信用卡帳單通知應該個人就好')).toBe(false);
-      expect(isGroupOrderMemo('大掃除', '[ ] 客廳\n[ ] 房間')).toBe(false);
+      expect(isGroupOrderMemo('繳費備忘', '[ ] 繳水費\n[ ] 繳電費')).toBe(false);
+    });
+
+    it('能精準辨識家事大掃除與任務懸賞等協同分工記事', () => {
+      expect(isGroupOrderMemo('🧹 週末大掃除分工', '- [ ] 客廳吸地 $50\n- [ ] 倒垃圾 $30')).toBe(true);
+      expect(isGroupOrderMemo('家事懸賞榜', '- [ ] 洋洋：洗碗 $60')).toBe(true);
     });
   });
 
@@ -467,6 +473,64 @@ describe('groupOrder 工具庫單元測試', () => {
       expect(merged.affectedMemoIds).toEqual(['m1']);
       expect(merged.updatedNote).toContain('- [ ] 洋洋：兒童牙膏（草莓口味）');
       expect(merged.updatedNote).not.toContain('鮮奶（缺貨匯入）');
+    });
+  });
+
+  describe('家事零用錢懸賞與通用任務分工引擎測試', () => {
+    it('detectCollaborativeOrderMode 能精準識別家事與任務分工模式', () => {
+      expect(detectCollaborativeOrderMode('🧹 家事懸賞榜', '')).toBe('chore');
+      expect(detectCollaborativeOrderMode('週末大掃除', '- [ ] 客廳吸地')).toBe('chore');
+      expect(detectCollaborativeOrderMode('家庭分工清單', '- [ ] 倒垃圾')).toBe('chore');
+      expect(detectCollaborativeOrderMode('房間大掃除清潔', '')).toBe('chore');
+    });
+
+    it('computeGroupOrderSummary 能針對已完成的家事項目精準計算各認領成員的零用錢總額', () => {
+      const note = `[🧹 家事懸賞]
+- [x] 洋洋：吸地擦窗戶 $100
+- [x] 洋洋：倒垃圾 $20
+- [x] 翔翔：洗碗盤 $50
+- [ ] 翔翔：整理玩具（未完成） $40
+- [x] 澆花（未認領但已做完） $30
+- [ ] 擦沙發（未認領未做完） $50`;
+
+      const summary = computeGroupOrderSummary(note, 'chore');
+      expect(summary.totalCount).toBe(6);
+      expect(summary.completedCount).toBe(4);
+      expect(summary.totalAmount).toBe(170); // 100 + 20 + 50 (只有洋洋與翔翔已完成且有認領者，未認領或未完成不計入發放金額)
+      expect(summary.memberEarnings.length).toBe(2);
+
+      const yang = summary.memberEarnings.find(e => e.memberName === '洋洋');
+      expect(yang).toBeDefined();
+      expect(yang?.completedCount).toBe(2);
+      expect(yang?.totalAmount).toBe(120);
+      expect(yang?.completedItems).toEqual(['吸地擦窗戶', '倒垃圾']);
+
+      const hsiang = summary.memberEarnings.find(e => e.memberName === '翔翔');
+      expect(hsiang).toBeDefined();
+      expect(hsiang?.completedCount).toBe(1);
+      expect(hsiang?.totalAmount).toBe(50);
+      expect(hsiang?.completedItems).toEqual(['洗碗盤']);
+    });
+
+    it('updateGroupOrderItemMember 支援認領、更換認領人與取消認領', () => {
+      const initialNote = `[🧹 家事懸賞]
+- [ ] 倒垃圾 $30
+- [x] 洋洋：吸客廳 $80
+- [ ] 翔翔：擦餐桌 $50`;
+
+      // 1. 認領未指派的項目 (checklist index 0 是 "- [ ] 倒垃圾 $30")
+      const claimedNote = updateGroupOrderItemMember(initialNote, 0, '洋洋');
+      expect(claimedNote).toContain('- [ ] 洋洋：倒垃圾 $30');
+
+      // 2. 更換負責人 (checklist index 1, 洋洋換成智爸，並保留已完成打勾)
+      const reassignedNote = updateGroupOrderItemMember(claimedNote, 1, '智爸');
+      expect(reassignedNote).toContain('- [x] 智爸：吸客廳 $80');
+      expect(reassignedNote).not.toContain('洋洋：吸客廳');
+
+      // 3. 取消認領退回大家搶 (checklist index 2, 翔翔取消認領)
+      const unclaimedNote = updateGroupOrderItemMember(reassignedNote, 2, '');
+      expect(unclaimedNote).toContain('- [ ] 擦餐桌 $50');
+      expect(unclaimedNote).not.toContain('翔翔：擦餐桌');
     });
   });
 });

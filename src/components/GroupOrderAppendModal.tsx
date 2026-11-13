@@ -50,6 +50,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
   onClose,
   onAppend,
 }) => {
+  const isChore = mode === 'chore';
   const isGrocery = mode === 'grocery';
   const isParcel = mode === 'parcel';
   const { colors, isDark } = useTheme();
@@ -162,7 +163,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
     }
 
     onAppend({
-      memberName: selectedMember || currentUser?.display_name || '家人',
+      memberName: isChore && !selectedMember ? '' : (selectedMember || currentUser?.display_name || '家人'),
       itemName: cleanItem,
       specs: specs.trim(),
       price: validPrice,
@@ -193,11 +194,19 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
           {/* 標題列 */}
           <View style={styles.headerRow}>
             <View style={styles.headerTitleGroup}>
-              <Text style={styles.headerIcon}>{isParcel ? '📦' : (isGrocery ? '🛒' : '🧋')}</Text>
+              <Text style={styles.headerIcon}>
+                {isChore ? '🧹' : (isParcel ? '📦' : (isGrocery ? '🛒' : '🧋'))}
+              </Text>
               <Text style={[styles.headerTitle, isDark && { color: colors.text.primary }]}>
-                {storeName && storeName !== '點餐店家' && storeName !== '採買賣場' && storeName !== '網購包裹'
-                  ? `${storeName} · ${isParcel ? '湊單/包裹登記' : (isGrocery ? '採買補貨登記' : '登記點單')}`
-                  : (isParcel ? '網購湊單／包裹登記' : (isGrocery ? '採買補貨登記' : '我要點單 / 許願登記'))}
+                {storeName &&
+                storeName !== '點餐店家' &&
+                storeName !== '採買賣場' &&
+                storeName !== '網購包裹' &&
+                storeName !== '家庭任務'
+                  ? `${storeName} · ${isChore ? '家事分工登記' : (isParcel ? '湊單/包裹登記' : (isGrocery ? '採買補貨登記' : '登記點單'))}`
+                  : (isChore
+                      ? '家事分工／任務懸賞'
+                      : (isParcel ? '網購湊單／包裹登記' : (isGrocery ? '採買補貨登記' : '我要點單 / 許願登記')))}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -208,9 +217,36 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
           <ScrollView style={styles.bodyScroll} keyboardShouldPersistTaps="handled">
             {/* 1. 成員選擇列 */}
             <Text style={[styles.sectionLabel, isDark && { color: colors.text.muted }]}>
-              {isParcel ? '登記人 (誰要買/誰的包裹)：' : (isGrocery ? '採買人 (誰想買/誰需要)：' : '點餐人 (誰要吃/喝)：')}
+              {isChore
+                ? '認領人 (誰來做，或先留空大家搶)：'
+                : (isParcel
+                    ? '登記人 (誰要買/誰的包裹)：'
+                    : (isGrocery ? '採買人 (誰想買/誰需要)：' : '點餐人 (誰要吃/喝)：'))}
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.memberScrollRow}>
+              {isChore && (
+                <TouchableOpacity
+                  onPress={() => setSelectedMember('')}
+                  style={[
+                    styles.memberPill,
+                    selectedMember === '' && styles.memberPillActive,
+                    isDark && {
+                      backgroundColor: selectedMember === '' ? '#F59E0B' : '#374151',
+                      borderColor: selectedMember === '' ? '#FCD34D' : '#4B5563',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.memberPillText,
+                      selectedMember === '' && styles.memberPillTextActive,
+                      isDark && { color: selectedMember === '' ? '#FFFFFF' : '#D1D5DB' },
+                    ]}
+                  >
+                    ✋ 待認領 (大家搶)
+                  </Text>
+                </TouchableOpacity>
+              )}
               {members.map((member: any) => {
                 const isSelected = selectedMember === member.display_name;
                 return (
@@ -358,14 +394,18 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
             {/* 3. 品項名稱與金額 */}
             <View style={styles.inputRow}>
               <View style={{ flex: 1, marginRight: 10 }}>
-                <Text style={[styles.sectionLabel, isDark && { color: colors.text.muted }]}>品項名稱 *：</Text>
+                <Text style={[styles.sectionLabel, isDark && { color: colors.text.muted }]}>
+                  {isChore ? '任務名稱 *：' : '品項名稱 *：'}
+                </Text>
                 <TextInput
                   value={itemName}
                   onChangeText={setItemName}
                   placeholder={
-                    isParcel
-                      ? '例如：全家包裹、濕紙巾箱購、貓砂'
-                      : (isGrocery ? '例如：全脂鮮奶、衛生紙、牛小排' : '例如：波霸紅茶拿鐵、雞排')
+                    isChore
+                      ? '例如：擦窗戶、刷馬桶、洗紗窗、洗車'
+                      : (isParcel
+                          ? '例如：全家包裹、濕紙巾箱購、貓砂'
+                          : (isGrocery ? '例如：全脂鮮奶、衛生紙、牛小排' : '例如：波霸紅茶拿鐵、雞排'))
                   }
                   placeholderTextColor={isDark ? '#6B7280' : '#9CA3AF'}
                   style={[
@@ -377,11 +417,13 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
               </View>
 
               <View style={{ width: 100 }}>
-                <Text style={[styles.sectionLabel, isDark && { color: colors.text.muted }]}>預估金額：</Text>
+                <Text style={[styles.sectionLabel, isDark && { color: colors.text.muted }]}>
+                  {isChore ? '懸賞金額：' : '預估金額：'}
+                </Text>
                 <TextInput
                   value={priceStr}
                   onChangeText={setPriceStr}
-                  placeholder="$ 60"
+                  placeholder={isChore ? '$ 50' : '$ 60'}
                   keyboardType="numeric"
                   placeholderTextColor={isDark ? '#6B7280' : '#9CA3AF'}
                   style={[
@@ -392,21 +434,25 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
               </View>
             </View>
 
-            {/* 4. 客製規格 (甜度/冰塊/辣度 或 數量/容量 或 末三碼/付款狀態) */}
+            {/* 4. 客製規格 */}
             <Text style={[styles.sectionLabel, isDark && { color: colors.text.muted }]}>
-              {isParcel
-                ? '包裹／湊單備註 (末三碼、已付款免付、貨到付款、取貨超商等)：'
-                : (isGrocery
-                    ? '規格備註 (數量、容量、品牌、特價才買等)：'
-                    : '客製規格 (甜度冰塊、辣度加蒜、飯量等)：')}
+              {isChore
+                ? '任務備註 (客廳、浴室、加碼獎勵、週末前完成等)：'
+                : (isParcel
+                    ? '包裹／湊單備註 (末三碼、已付款免付、貨到付款、取貨超商等)：'
+                    : (isGrocery
+                        ? '規格備註 (數量、容量、品牌、特價才買等)：'
+                        : '客製規格 (甜度冰塊、辣度加蒜、飯量等)：'))}
             </Text>
             <TextInput
               value={specs}
               onChangeText={setSpecs}
               placeholder={
-                isParcel
-                  ? '例如：末三碼123、已付款免付、7-11取貨、湊免運...'
-                  : (isGrocery ? '例如：2瓶、家庭號、特價才買、低脂...' : '微糖微冰、中辣加蒜、醬另外放...')
+                isChore
+                  ? '例如：客廳、加碼獎勵、週末前完成...'
+                  : (isParcel
+                      ? '例如：末三碼123、已付款免付、7-11取貨、湊免運...'
+                      : (isGrocery ? '例如：2瓶、家庭號、特價才買、低脂...' : '微糖微冰、中辣加蒜、醬另外放...'))
               }
               placeholderTextColor={isDark ? '#6B7280' : '#9CA3AF'}
               style={[
@@ -449,7 +495,9 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
               ]}
             >
               <Text style={styles.submitBtnText}>
-                {isParcel ? '確認加入看板 ＋' : (isGrocery ? '確認放入清單 ＋' : '確認登記 ＋')}
+                {isChore
+                  ? '確認加入任務 ＋'
+                  : (isParcel ? '確認加入看板 ＋' : (isGrocery ? '確認放入清單 ＋' : '確認登記 ＋'))}
               </Text>
             </TouchableOpacity>
           </View>

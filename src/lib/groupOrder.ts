@@ -13,7 +13,15 @@ export interface GroupOrderItem {
   isDone: boolean;
 }
 
-export type CollaborativeOrderMode = 'food' | 'grocery' | 'parcel';
+export type CollaborativeOrderMode = 'food' | 'grocery' | 'parcel' | 'chore';
+
+export interface MemberEarningSummary {
+  memberName: string;
+  totalAmount: number;
+  completedCount: number;
+  totalCount: number;
+  completedItems: string[];
+}
 
 export interface PendingRestockItem {
   memoId: string;
@@ -35,6 +43,7 @@ export interface GroupOrderSummary {
   totalAmount: number;
   hasAmount: boolean;
   items: GroupOrderItem[];
+  memberEarnings: MemberEarningSummary[];
 }
 
 export interface StoreFavoriteItem {
@@ -51,12 +60,23 @@ export interface StoreFamilyFavorites {
 }
 
 /**
- * 判斷協同模式：網購包裹 (parcel)、賣場採買 (grocery) 或 餐飲開團 (food)
+ * 判斷協同模式：家務懸賞 (chore)、網購包裹 (parcel)、賣場採買 (grocery) 或 餐飲開團 (food)
  */
 export function detectCollaborativeOrderMode(title?: string, content?: string): CollaborativeOrderMode {
   const t = (title || '').toLowerCase();
   const c = (content || '').toLowerCase();
   const text = `${t}\n${c}`;
+
+  const choreKeywords = [
+    '🧹 家庭家務', '🧹 家事懸賞', '🧹 家事', '🧹 大掃除', '🧹 打掃', '🧹 清潔',
+    '【家事】', '【懸賞】', '【大掃除】', '【任務】', '【打掃】', '【清潔】', '【分工】',
+    '[家事]', '[懸賞]', '[大掃除]', '[任務]', '[打掃]', '[清潔]', '[分工]',
+    '家庭家務', '家事懸賞', '週末家事', '大掃除', '家事分工', '任務懸賞', '打掃清單', '清潔分工', '零用錢任務', '跑腿任務',
+    '家庭分工', '分工清單', '家事', '大掃除', '打掃', '清潔', '懸賞',
+  ];
+  if (choreKeywords.some(kw => text.includes(kw))) {
+    return 'chore';
+  }
 
   const parcelKeywords = [
     '📦 網購湊單', '📦 包裹代領', '📦 網購', '📦 包裹', '📦 取貨', '📦 湊免運',
@@ -83,14 +103,14 @@ export function detectCollaborativeOrderMode(title?: string, content?: string): 
 }
 
 /**
- * 判斷一則生活記事是否為「點餐開團／採買補貨／網購包裹看板」
+ * 判斷一則生活記事是否為「點餐開團／採買補貨／網購包裹／家事分工看板」
  */
 export function isGroupOrderMemo(title?: string, content?: string): boolean {
   const t = (title || '').trim().toLowerCase();
   const c = (content || '').trim().toLowerCase();
   const combined = `${t}\n${c}`;
 
-  // 1. 強烈明確標籤優先命中 (餐飲開團 + 賣場採買 + 網購湊單/包裹)
+  // 1. 強烈明確標籤優先命中 (餐飲開團 + 賣場採買 + 網購湊單/包裹 + 家事懸賞)
   const strongKeywords = [
     '【點餐】', '【開團】', '【許願】', '【外帶】',
     '[點餐]', '[開團]', '[許願]',
@@ -102,6 +122,10 @@ export function isGroupOrderMemo(title?: string, content?: string): boolean {
     '【網購】', '【湊單】', '【湊免運】', '【包裹】', '【取貨】', '【代領】',
     '[網購]', '[湊單]', '[湊免運]', '[包裹]', '[取貨]', '[代領]',
     '網購湊單', '包裹代領', '湊免運',
+    '🧹 家庭家務', '🧹 家事懸賞', '🧹 家事', '🧹 大掃除', '🧹 打掃', '🧹 清潔',
+    '【家事】', '【懸賞】', '【大掃除】', '【任務】', '【打掃】', '【清潔】', '【分工】',
+    '[家事]', '[懸賞]', '[大掃除]', '[任務]', '[打掃]', '[清潔]', '[分工]',
+    '家庭家務', '家事懸賞', '週末家事', '大掃除', '家事分工', '任務懸賞', '打掃清單', '清潔分工', '零用錢任務', '跑腿任務',
   ];
   for (const kw of strongKeywords) {
     if (combined.includes(kw.toLowerCase())) return true;
@@ -110,7 +134,7 @@ export function isGroupOrderMemo(title?: string, content?: string): boolean {
   // 2. 嚴格防呆排除非開團/非採買之生活清單 (含日常常駐「家中缺貨隨手記」)
   const nonOrderExcludes = [
     '回診', '慢箋', '慢籤', '就醫', '門診', '掛號', '看診', '健保',
-    '出國', '行李', '露營', '大掃除', '拜拜', '祭祀', '打疫苗', '修繕',
+    '出國', '行李', '露營', '拜拜', '祭祀', '打疫苗', '修繕',
     '生活記事與待辦', '待辦清單', '作業', '考試',
     '家中缺貨', '缺貨隨手記', '缺貨池',
   ];
@@ -127,13 +151,14 @@ export function isGroupOrderMemo(title?: string, content?: string): boolean {
     '好市多', 'costco', '全聯', '家樂福', '大潤發', '愛買', '美廉社',
     '網購', '湊單', '湊免運', '包裹', '取貨', '代領', '店到店',
     '蝦皮', 'shopee', '酷澎', 'coupang', 'momo', 'pchome', '淘寶',
+    '家務', '家事', '大掃除', '打掃', '清潔', '懸賞', '分工', '跑腿',
   ];
 
   return titleKeywords.some(kw => t.includes(kw));
 }
 
 /**
- * 從開團/採買/網購記事內容或標題中智慧推測店家/賣場/平台名稱
+ * 從開團/採買/網購/家事記事內容或標題中智慧推測店家/賣場/平台/任務名稱
  */
 export function extractStoreNameFromMemo(title?: string, content?: string): string {
   const text = `${title || ''}\n${content || ''}`;
@@ -156,9 +181,9 @@ export function extractStoreNameFromMemo(title?: string, content?: string): stri
   if (text.includes('7-11') || text.includes('711') || text.includes('統一超商')) return '7-11';
   if (text.includes('全家取貨') || text.includes('全家包裹') || text.includes('全家店到店')) return '全家';
 
-  // 優先 2: 逐行掃描明確店家/賣場/平台前綴 (形式 1)
+  // 優先 2: 逐行掃描明確店家/賣場/平台/任務前綴 (形式 1)
   for (const line of lines) {
-    const m1 = line.match(/(?:店家|店名|餐廳|飲料店|賣場|超市|平台|電商|超商|通路)[：:\s]+([^（\(\n]+)/i);
+    const m1 = line.match(/(?:店家|店名|餐廳|飲料店|賣場|超市|平台|電商|超商|通路|任務|項目|主題)[：:\s]+([^（\(\n]+)/i);
     if (m1 && m1[1]) {
       const clean = m1[1].replace(/[可換店名|請填|大家].*$/, '').trim();
       if (clean) return clean;
@@ -167,20 +192,20 @@ export function extractStoreNameFromMemo(title?: string, content?: string): stri
 
   // 優先 3: 逐行掃描括弧標題 (形式 2)
   for (const line of lines) {
-    const m2 = line.match(/【(?:點餐|開團|許願|採買|補貨|網購|湊單|湊免運|包裹|取貨|代領)[：:\s]*([^】]+)】/);
+    const m2 = line.match(/【(?:點餐|開團|許願|採買|補貨|網購|湊單|湊免運|包裹|取貨|代領|家事|家務|大掃除|懸賞|任務|分工)[：:\s]*([^】]+)】/);
     if (m2 && m2[1]) {
       const clean = m2[1].replace(/今天|大家|想喝|請填/g, '').trim();
       if (clean) return clean;
     }
   }
 
-  // 優先 4: 喝/買/吃/去 + 店名 (形式 3，嚴格排除清單、項目等生活詞彙)
+  // 優先 4: 做/幫/喝/買/吃/去 + 任務/店名 (形式 3，嚴格排除清單、項目等生活詞彙)
   const excludeWords = [
     '東西', '日常', '生活', '食材', '清單', '項目', '待辦',
     '便當', '飲料', '手搖', '餐點', '午餐', '晚餐', '早餐', '下午茶', '宵夜'
   ];
   for (const line of lines) {
-    const m3 = line.match(/(?:喝|買|吃|去)\s*([A-Za-z0-9\u4e00-\u9fa5]{2,10})/);
+    const m3 = line.match(/(?:做|幫|喝|買|吃|去)\s*([A-Za-z0-9\u4e00-\u9fa5]{2,10})/);
     if (m3 && m3[1]) {
       const candidate = m3[1].trim();
       if (!excludeWords.includes(candidate)) {
@@ -190,6 +215,7 @@ export function extractStoreNameFromMemo(title?: string, content?: string): stri
   }
 
   const mode = detectCollaborativeOrderMode(title, content);
+  if (mode === 'chore') return '家庭任務';
   if (mode === 'parcel') return '網購包裹';
   if (mode === 'grocery') return '採買賣場';
   return '點餐店家';
@@ -307,6 +333,40 @@ export function computeGroupOrderSummary(content: string = '', title?: string): 
   const completedCount = items.filter(i => i.isDone).length;
   const mode = detectCollaborativeOrderMode(title, content);
 
+  // 依成員統計各自完成之項數、金額與工作項目 (家事分工 / 零用錢懸賞模式專用)
+  const memberEarningsMap = new Map<string, MemberEarningSummary>();
+  items.forEach((item) => {
+    if (item.memberName) {
+      const key = item.memberName.trim();
+      let record = memberEarningsMap.get(key);
+      if (!record) {
+        record = {
+          memberName: key,
+          totalAmount: 0,
+          completedCount: 0,
+          totalCount: 0,
+          completedItems: [],
+        };
+        memberEarningsMap.set(key, record);
+      }
+      record.totalCount++;
+      if (item.isDone) {
+        record.completedCount++;
+        record.completedItems.push(item.itemName);
+        if (item.price > 0) {
+          record.totalAmount += item.price;
+        }
+      }
+    }
+  });
+  const memberEarnings = Array.from(memberEarningsMap.values());
+
+  // 若為家事懸賞模式，金額代表實際已完成且有認領者之總發放零用錢獎勵
+  if (mode === 'chore') {
+    totalAmount = memberEarnings.reduce((acc, m) => acc + m.totalAmount, 0);
+    hasAmount = totalAmount > 0;
+  }
+
   return {
     isGroupOrder: isOrder,
     mode,
@@ -316,7 +376,42 @@ export function computeGroupOrderSummary(content: string = '', title?: string): 
     totalAmount,
     hasAmount,
     items,
+    memberEarnings,
   };
+}
+
+/**
+ * 更新指定待辦項目的認領成員 (支援一鍵認領、動態換人或取消認領)
+ */
+export function updateGroupOrderItemMember(
+  content: string = '',
+  targetLineIndex: number,
+  newMemberName?: string
+): string {
+  const lines = content.split('\n');
+  let checklistItemIndex = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isChecklist = /^[-*]?\s*\[([ xX✓])\]\s*(.+)$/.test(line.trim());
+    if (isChecklist) {
+      if (checklistItemIndex === targetLineIndex) {
+        const item = parseGroupOrderItemLine(line, checklistItemIndex);
+        if (item) {
+          const cleanMember = (newMemberName || '').trim();
+          const memberPrefix = cleanMember ? `${cleanMember}：` : '';
+          const specsPart = item.specs ? `（${item.specs}）` : '';
+          const pricePart = item.price > 0 ? ` $${item.price}` : '';
+          const checkMark = item.isDone ? '[x]' : '[ ]';
+          lines[i] = `- ${checkMark} ${memberPrefix}${item.itemName}${specsPart}${pricePart}`;
+        }
+        break;
+      }
+      checklistItemIndex++;
+    }
+  }
+
+  return lines.join('\n');
 }
 
 /**
@@ -540,6 +635,14 @@ export function createGroupOrderPushNotification(params: {
   const { mode, storeName, senderName } = params;
   const sender = (senderName || '家人').trim();
 
+  if (mode === 'chore') {
+    const cleanStore = storeName && storeName !== '家庭任務' ? storeName : '家事分工';
+    return {
+      title: `🧹 ${cleanStore} 任務懸賞發起囉！`,
+      body: `${sender} 發起了家務分工與獎勵清單，大家快來認領賺零用錢！`,
+    };
+  }
+
   if (mode === 'parcel') {
     const cleanStore = storeName && storeName !== '網購包裹' ? storeName : '網購湊單／包裹';
     return {
@@ -580,6 +683,14 @@ export function createGroupOrderAppendPushNotification(params: {
   const sender = (senderName || '家人').trim();
   const specText = item.specs && item.specs.trim() ? `（${item.specs.trim()}）` : '';
   const priceText = item.price && item.price > 0 ? ` $${item.price}` : '';
+
+  if (mode === 'chore') {
+    const cleanStore = storeName && storeName !== '家庭任務' ? storeName : '家事分工';
+    return {
+      title: `🧹 ${cleanStore} 收到任務認領！`,
+      body: `${sender} 認領了：${item.itemName}${specText}${priceText}`,
+    };
+  }
 
   if (mode === 'parcel') {
     const cleanStore = storeName && storeName !== '網購包裹' ? storeName : '網購包裹';

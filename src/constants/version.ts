@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.16';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.16 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 21;
+export const APP_BUILD_REVISION = 22;
 
 // 完整版本字串 (例如 "1.0.16.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.16',
     date: '2026-11-11 ~ 2026-11-13',
-    title: '網購湊單包裹看板、賣場採買與缺貨匯入、點餐自動置頂推播',
+    title: '家事懸賞分工、網購湊單包裹看板、賣場採買與缺貨匯入、點餐推播',
     highlights: [
+      '🧹 家事分工與零用錢懸賞引擎：支援任務認領、點擊成員徽章即時指派或釋出，依各成員完成項目精準統計，一鍵批次發放零用錢並連動記帳。',
       '🔔 開團採買自動置頂與即時推播：開團採買與網購湊單自動置頂全家看板防漏單（一般記事維持預設不置頂），即時廣播並回報發起人。',
       '📦 網購湊單與包裹代領看板：支援酷澎、蝦皮等湊免運加單及超商末三碼代領追蹤，結帳或代墊一鍵連動記帳並支援專屬常用標籤。',
       '🛒 賣場推車採買與缺貨一鍵匯入：平常隨手記家中缺貨耗材，發起賣場採買或網購湊單時自動提示一鍵匯入清單，買齊直接連動記帳。',

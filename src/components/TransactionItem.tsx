@@ -10,7 +10,12 @@ import { formatPaymentLabel, parseExpenseDiscount, isTransferToMember } from '..
 import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, getItemDueDateBadge, getEffectiveMemoReminderDate } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { stripInvoiceTag } from '../lib/invoice';
-import { computeGroupOrderSummary, appendGroupOrderItem } from '../lib/groupOrder';
+import {
+  computeGroupOrderSummary,
+  appendGroupOrderItem,
+  updateGroupOrderItemMember,
+  MemberEarningSummary,
+} from '../lib/groupOrder';
 import { GroupOrderAppendModal } from './GroupOrderAppendModal';
 import { GroupOrderCounterModal } from './GroupOrderCounterModal';
 
@@ -33,7 +38,20 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
   onTogglePinMemo,
   onViewImage,
 }) => {
-  const { getMemberById, getCategoryById, getAccountById, paymentMethods, toggleMemoSettled, toggleMemoChecklistItem, updateTransaction, transactions, members, currentUser } = useLedger();
+  const {
+    getMemberById,
+    getCategoryById,
+    getAccountById,
+    paymentMethods,
+    toggleMemoSettled,
+    toggleMemoChecklistItem,
+    updateTransaction,
+    addTransaction,
+    categories,
+    transactions,
+    members,
+    currentUser,
+  } = useLedger();
   const { isDark, colors } = useTheme();
 
   const [isGroupOrderAppendOpen, setIsGroupOrderAppendOpen] = useState(false);
@@ -241,18 +259,25 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
           <View style={[styles.groupOrderBar, isDark && { backgroundColor: 'rgba(245, 158, 11, 0.12)', borderColor: '#B45309' }]}>
             <View style={styles.groupOrderInfo}>
               <Text style={styles.groupOrderIcon}>
-                {groupOrderSummary.mode === 'parcel' ? '📦' : (groupOrderSummary.mode === 'grocery' ? '🛒' : '🧋')}
+                {groupOrderSummary.mode === 'chore'
+                  ? '🧹'
+                  : (groupOrderSummary.mode === 'parcel' ? '📦' : (groupOrderSummary.mode === 'grocery' ? '🛒' : '🧋'))}
               </Text>
               <Text style={[styles.groupOrderText, isDark && { color: '#FCD34D' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                 {groupOrderSummary.storeName &&
                 groupOrderSummary.storeName !== '點餐店家' &&
                 groupOrderSummary.storeName !== '採買賣場' &&
-                groupOrderSummary.storeName !== '網購包裹'
+                groupOrderSummary.storeName !== '網購包裹' &&
+                groupOrderSummary.storeName !== '家庭任務'
                   ? `${groupOrderSummary.storeName} · `
                   : ''}
                 累計 {groupOrderSummary.totalCount}{' '}
-                {groupOrderSummary.mode === 'parcel' ? '件' : (groupOrderSummary.mode === 'grocery' ? '項' : '份')}
-                {groupOrderSummary.hasAmount ? ` · 預估 $${groupOrderSummary.totalAmount}` : ''}
+                {groupOrderSummary.mode === 'parcel'
+                  ? '件'
+                  : ((groupOrderSummary.mode === 'grocery' || groupOrderSummary.mode === 'chore') ? '項' : '份')}
+                {groupOrderSummary.mode === 'chore'
+                  ? (groupOrderSummary.hasAmount ? ` · 累計獎勵 $${groupOrderSummary.totalAmount}` : '')
+                  : (groupOrderSummary.hasAmount ? ` · 預估 $${groupOrderSummary.totalAmount}` : '')}
               </Text>
             </View>
             <View style={styles.groupOrderActions}>
@@ -265,9 +290,11 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                 style={styles.groupOrderAppendBtn}
               >
                 <Text style={styles.groupOrderAppendBtnText}>
-                  {groupOrderSummary.mode === 'parcel'
-                    ? '＋ 加湊/代領'
-                    : (groupOrderSummary.mode === 'grocery' ? '＋ 我要買' : '＋ 我也要')}
+                  {groupOrderSummary.mode === 'chore'
+                    ? '＋ 認領/加項'
+                    : (groupOrderSummary.mode === 'parcel'
+                        ? '＋ 加湊/代領'
+                        : (groupOrderSummary.mode === 'grocery' ? '＋ 我要買' : '＋ 我也要'))}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -279,9 +306,11 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                 style={[styles.groupOrderCounterBtn, isDark && { backgroundColor: '#374151' }]}
               >
                 <Text style={[styles.groupOrderCounterBtnText, isDark && { color: '#F9FAFB' }]}>
-                  {groupOrderSummary.mode === 'parcel'
-                    ? '📦 包裹看板'
-                    : (groupOrderSummary.mode === 'grocery' ? '🛒 推車看板' : '📋 點餐')}
+                  {groupOrderSummary.mode === 'chore'
+                    ? '🧹 任務看板'
+                    : (groupOrderSummary.mode === 'parcel'
+                        ? '📦 包裹看板'
+                        : (groupOrderSummary.mode === 'grocery' ? '🛒 推車看板' : '📋 點餐'))}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -545,11 +574,41 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
         onToggleItem={(lineIndex) => {
           toggleMemoChecklistItem(transaction.id, lineIndex);
         }}
+        onUpdateItemMember={(lineIndex, newMemberName) => {
+          const updatedNote = updateGroupOrderItemMember(transaction.note || '', lineIndex, newMemberName);
+          updateTransaction(transaction.id, { note: updatedNote });
+        }}
         onAddQuickItem={() => {
           setIsGroupOrderAppendOpen(true);
         }}
         onSettleOrder={() => {
           onCompleteMemo?.(transaction);
+        }}
+        onSettleAllowance={async (earnings: MemberEarningSummary[]) => {
+          const payerId = currentUser?.id || members[0]?.id;
+          const allowanceCat = categories.find((c: any) => c.type === 'expense' && (c.name.includes('零用') || c.name.includes('教育') || c.name.includes('其他'))) || categories[0];
+          
+          for (const earning of earnings) {
+            if (earning.totalAmount > 0) {
+              const recipient = members.find(m => m.display_name === earning.memberName);
+              if (recipient) {
+                await addTransaction({
+                  amount: earning.totalAmount,
+                  type: 'transfer',
+                  paid_by: payerId,
+                  completed_by: recipient.id,
+                  note: `家事獎勵：${earning.completedItems.join('、') || '家事分工'}`,
+                  category_id: allowanceCat?.id || categories[0]?.id,
+                  transacted_at: new Date().toISOString(),
+                });
+              }
+            }
+          }
+          await updateTransaction(transaction.id, {
+            is_settled: true,
+            completed_by: payerId,
+            completion_note: `已核發家事零用錢獎勵 (共 NT$ ${earnings.reduce((s, e) => s + e.totalAmount, 0)})`,
+          });
         }}
       />
     </>
