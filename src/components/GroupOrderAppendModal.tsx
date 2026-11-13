@@ -27,21 +27,27 @@ import {
 interface GroupOrderAppendModalProps {
   visible: boolean;
   storeName: string;
+  mode?: 'food' | 'grocery';
+  initialIsDone?: boolean;
   onClose: () => void;
   onAppend: (item: {
     memberName: string;
     itemName: string;
     specs: string;
     price?: number;
+    isDone?: boolean;
   }) => void;
 }
 
 export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
   visible,
   storeName,
+  mode = 'food',
+  initialIsDone = false,
   onClose,
   onAppend,
 }) => {
+  const isGrocery = mode === 'grocery';
   const { colors, isDark } = useTheme();
   const { currentUser, members, transactions } = useLedger();
 
@@ -69,15 +75,15 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
       setSpecs('');
       setPriceStr('');
 
-      // 載入自學習規格標籤
-      getMergedOrderTags().then(tags => setAvailableTags(tags));
+      // 載入自學習規格標籤 (依據餐飲或採買模式分流)
+      getMergedOrderTags(mode).then(tags => setAvailableTags(tags));
 
       // 載入該店家的本地備援招牌
       if (storeName) {
         getStoreFavoriteItems(storeName).then(items => setFavoriteItems(items));
       }
     }
-  }, [visible, storeName, currentUser, members]);
+  }, [visible, storeName, currentUser, members, mode]);
 
   // 點擊規格標籤時串接
   const handleTagPress = (tag: string) => {
@@ -140,6 +146,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
       itemName: cleanItem,
       specs: specs.trim(),
       price: validPrice,
+      isDone: initialIsDone,
     });
 
     onClose();
@@ -166,9 +173,11 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
           {/* 標題列 */}
           <View style={styles.headerRow}>
             <View style={styles.headerTitleGroup}>
-              <Text style={styles.headerIcon}>🧋</Text>
+              <Text style={styles.headerIcon}>{isGrocery ? '🛒' : '🧋'}</Text>
               <Text style={[styles.headerTitle, isDark && { color: colors.text.primary }]}>
-                {storeName && storeName !== '點餐店家' ? `${storeName} · 登記點單` : '我要點單 / 許願登記'}
+                {storeName && storeName !== '點餐店家' && storeName !== '採買賣場'
+                  ? `${storeName} · ${isGrocery ? '採買補貨登記' : '登記點單'}`
+                  : (isGrocery ? '採買補貨登記' : '我要點單 / 許願登記')}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -178,7 +187,9 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
 
           <ScrollView style={styles.bodyScroll} keyboardShouldPersistTaps="handled">
             {/* 1. 成員選擇列 */}
-            <Text style={[styles.sectionLabel, isDark && { color: colors.text.muted }]}>點餐人 (誰要吃/喝)：</Text>
+            <Text style={[styles.sectionLabel, isDark && { color: colors.text.muted }]}>
+              {isGrocery ? '採買人 (誰想買/誰需要)：' : '點餐人 (誰要吃/喝)：'}
+            </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.memberScrollRow}>
               {members.map((member: any) => {
                 const isSelected = selectedMember === member.display_name;
@@ -213,7 +224,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
             {familyFavorites.memberFavorites.length > 0 && (
               <View style={styles.favoriteContainer}>
                 <Text style={[styles.sectionLabel, { color: isDark ? '#60A5FA' : '#2563EB' }]}>
-                  💡 {selectedMember || '家人'} 常點的口味 (點擊秒帶入)：
+                  💡 {selectedMember || '家人'} {isGrocery ? '常買的補貨 (點擊秒帶入)：' : '常點的口味 (點擊秒帶入)：'}
                 </Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
                   {familyFavorites.memberFavorites.map((fav, idx) => (
@@ -247,11 +258,11 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
               </View>
             )}
 
-            {/* 3. 全家熱銷排行 (全家同步，大家最常點 Top 6) */}
+            {/* 3. 全家熱銷排行 (全家同步，大家最常點/最常買 Top 6) */}
             {familyFavorites.familyTopFavorites.length > 0 && (
               <View style={styles.favoriteContainer}>
                 <Text style={[styles.sectionLabel, { color: '#F59E0B' }]}>
-                  🏆 全家常點熱銷榜：
+                  {isGrocery ? '🏆 全家常買熱銷榜：' : '🏆 全家常點熱銷榜：'}
                 </Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
                   {familyFavorites.familyTopFavorites.map((fav, idx) => (
@@ -278,7 +289,9 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
               familyFavorites.familyTopFavorites.length === 0 &&
               favoriteItems.length > 0 && (
                 <View style={styles.favoriteContainer}>
-                  <Text style={[styles.sectionLabel, { color: '#F59E0B' }]}>💡 常點的招牌 (點擊秒帶入)：</Text>
+                  <Text style={[styles.sectionLabel, { color: '#F59E0B' }]}>
+                    {isGrocery ? '💡 常買的補貨 (點擊秒帶入)：' : '💡 常點的招牌 (點擊秒帶入)：'}
+                  </Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
                     {favoriteItems.map((fav, idx) => (
                       <TouchableOpacity
@@ -301,7 +314,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                 <TextInput
                   value={itemName}
                   onChangeText={setItemName}
-                  placeholder="例如：波霸紅茶拿鐵、雞排"
+                  placeholder={isGrocery ? '例如：全脂鮮奶、衛生紙、牛小排' : '例如：波霸紅茶拿鐵、雞排'}
                   placeholderTextColor={isDark ? '#6B7280' : '#9CA3AF'}
                   style={[
                     styles.textInput,
@@ -327,14 +340,14 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
               </View>
             </View>
 
-            {/* 4. 客製規格 (甜度/冰塊/辣度) */}
+            {/* 4. 客製規格 (甜度/冰塊/辣度 或 數量/容量) */}
             <Text style={[styles.sectionLabel, isDark && { color: colors.text.muted }]}>
-              客製規格 (甜度冰塊、辣度加蒜、飯量等)：
+              {isGrocery ? '規格備註 (數量、容量、品牌、特價才買等)：' : '客製規格 (甜度冰塊、辣度加蒜、飯量等)：'}
             </Text>
             <TextInput
               value={specs}
               onChangeText={setSpecs}
-              placeholder="微糖微冰、中辣加蒜、醬另外放..."
+              placeholder={isGrocery ? '例如：2瓶、家庭號、特價才買、低脂...' : '微糖微冰、中辣加蒜、醬另外放...'}
               placeholderTextColor={isDark ? '#6B7280' : '#9CA3AF'}
               style={[
                 styles.textInput,
@@ -375,7 +388,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                 !itemName.trim() && styles.submitBtnDisabled,
               ]}
             >
-              <Text style={styles.submitBtnText}>確認登記 ＋</Text>
+              <Text style={styles.submitBtnText}>{isGrocery ? '確認放入清單 ＋' : '確認登記 ＋'}</Text>
             </TouchableOpacity>
           </View>
         </View>

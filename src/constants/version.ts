@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.16';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.16 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 17;
+export const APP_BUILD_REVISION = 18;
 
 // 完整版本字串 (例如 "1.0.16.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -21,8 +21,9 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.16',
     date: '2026-11-11 ~ 2026-11-13',
-    title: '生活記事智慧日期與接力提醒、家庭點餐開團許願池與使用手冊全功能整編',
+    title: '賣場推車採買模式、家庭點餐開團許願池與使用手冊全功能整編',
     highlights: [
+      '🛒 賣場推車採買與補貨清單：好市多全聯多人補貨追加，推車大字看板劃線核對，支援現場隨手加自動入車，採買完畢一鍵連動記帳。',
       '🧋 家庭點餐開團與生活許願池：手搖飲宵夜便當多人免衝突報單，全家同步家人私房招牌與熱銷排行，點擊一鍵帶妥品項規格金額，大字看板清晰核對。',
       '💡 生活記事智慧日期與接力推進提醒：打字即時感知民國年自動預選，歷史待辦自動自癒對齊當前最急進度，相對日期錨定記錄日隨時間遞減不漂移，作業課次防呆過濾。',
       '📖 官方使用手冊全面擴充與全功能整編：完整補齊發票 CSV 匯入、載具智慧分流、就醫慢箋接力提醒、重要記事常駐置頂、多卡合併對帳與遠端推播之圖文指南。',

@@ -6,6 +6,7 @@ import {
   appendGroupOrderItem,
   isSameOrRelatedStore,
   extractStoreFamilyFavorites,
+  detectCollaborativeOrderMode,
 } from '../groupOrder';
 
 describe('groupOrder 工具庫單元測試', () => {
@@ -230,6 +231,61 @@ describe('groupOrder 工具庫單元測試', () => {
       const famNames = favs.familyTopFavorites.map(f => f.itemName);
       expect(famNames).toContain('波霸紅茶拿鐵');
       expect(famNames).toContain('四季春珍波椰');
+    });
+  });
+
+  describe('賣場推車採買模式 (Grocery Shopping Mode) 測試', () => {
+    it('detectCollaborativeOrderMode 能精準區分點餐與採買模式', () => {
+      expect(detectCollaborativeOrderMode('【點餐】50嵐', '')).toBe('food');
+      expect(detectCollaborativeOrderMode('下午茶開團', '')).toBe('food');
+      expect(detectCollaborativeOrderMode('好市多採買', '')).toBe('grocery');
+      expect(detectCollaborativeOrderMode('超市生活採買', '[🛒 採買清單]')).toBe('grocery');
+      expect(detectCollaborativeOrderMode('生活備忘', '全聯補貨清單')).toBe('grocery');
+    });
+
+    it('採買清單能被 isGroupOrderMemo 命中，並自動推測賣場名稱', () => {
+      expect(isGroupOrderMemo('好市多採買', '')).toBe(true);
+      expect(isGroupOrderMemo('超市採買', '[🛒 採買清單] 全聯\n- [ ] 鮮奶')).toBe(true);
+      expect(extractStoreNameFromMemo('好市多採買', '')).toBe('好市多');
+      expect(extractStoreNameFromMemo('生活備忘', '賣場：家樂福\n- [ ] 衛生紙')).toBe('家樂福');
+    });
+
+    it('computeGroupOrderSummary 正確計算採買清單模式與項目統計', () => {
+      const groceryNote = `[🛒 採買清單]
+賣場：好市多
+大家直接點【＋我要買】追加補貨！
+- [ ] 瑩媽：科克蘭三層衛生紙（1串）$389
+- [x] 洋洋：義美全脂鮮奶（2瓶組）$249
+- [ ] 智爸：特選無骨牛小排 $1200`;
+
+      const summary = computeGroupOrderSummary(groceryNote, '好市多採買');
+      expect(summary.isGroupOrder).toBe(true);
+      expect(summary.mode).toBe('grocery');
+      expect(summary.storeName).toBe('好市多');
+      expect(summary.totalCount).toBe(3);
+      expect(summary.completedCount).toBe(1);
+      expect(summary.totalAmount).toBe(1838);
+      expect(summary.hasAmount).toBe(true);
+    });
+
+    it('appendGroupOrderItem 支援 isDone: true 現場隨手加直接標記為已放推車', () => {
+      const initial = '[🛒 採買清單]\n- [ ] 瑩媽：鮮奶';
+      const updated = appendGroupOrderItem(initial, {
+        memberName: '智爸',
+        itemName: '特價牛排',
+        price: 500,
+        isDone: true,
+      });
+
+      expect(updated).toBe('[🛒 採買清單]\n- [ ] 瑩媽：鮮奶\n- [x] 智爸：特價牛排 $500');
+    });
+
+    it('好市多與全聯新開團無歷史時，自動提供知名賣場專屬內建熱銷推薦備援', () => {
+      const costcoFavs = extractStoreFamilyFavorites('好市多', []);
+      expect(costcoFavs.familyTopFavorites.length).toBeGreaterThan(0);
+      const itemNames = costcoFavs.familyTopFavorites.map(f => f.itemName);
+      expect(itemNames).toContain('科克蘭三層抽取衛生紙');
+      expect(itemNames).toContain('美國特選無骨牛小排');
     });
   });
 });

@@ -17,21 +17,26 @@ export const DEFAULT_ORDER_PRESET_TAGS = {
   meals: [
     '加飯', '飯少', '不要飯', '不要香菜', '不要蔥', '醬另外放', '菜多', '全熟蛋', '半熟蛋'
   ],
+  groceries: [
+    '1瓶', '2瓶', '1盒', '2盒', '1袋', '大包裝', '家庭號', '特價才買', '低脂', '全脂', '有機', '無糖'
+  ],
 };
 
 /**
  * 取得所有合併後的自學習規格標籤 (內建預設 + 使用者歷史輸入)
  */
-export async function getMergedOrderTags(): Promise<string[]> {
+export async function getMergedOrderTags(mode: 'food' | 'grocery' = 'food'): Promise<string[]> {
   try {
     const raw = await AsyncStorage.getItem(ORDER_TAGS_STORAGE_KEY);
     const customTags: string[] = raw ? JSON.parse(raw) : [];
 
-    const pool = [
-      ...DEFAULT_ORDER_PRESET_TAGS.drinks,
-      ...DEFAULT_ORDER_PRESET_TAGS.snacks,
-      ...DEFAULT_ORDER_PRESET_TAGS.meals,
-    ];
+    const pool = mode === 'grocery'
+      ? [...DEFAULT_ORDER_PRESET_TAGS.groceries]
+      : [
+          ...DEFAULT_ORDER_PRESET_TAGS.drinks,
+          ...DEFAULT_ORDER_PRESET_TAGS.snacks,
+          ...DEFAULT_ORDER_PRESET_TAGS.meals,
+        ];
 
     const seen = new Set<string>();
     const result: string[] = [];
@@ -55,11 +60,13 @@ export async function getMergedOrderTags(): Promise<string[]> {
 
     return result;
   } catch {
-    return [
-      ...DEFAULT_ORDER_PRESET_TAGS.drinks,
-      ...DEFAULT_ORDER_PRESET_TAGS.snacks,
-      ...DEFAULT_ORDER_PRESET_TAGS.meals,
-    ];
+    return mode === 'grocery'
+      ? [...DEFAULT_ORDER_PRESET_TAGS.groceries]
+      : [
+          ...DEFAULT_ORDER_PRESET_TAGS.drinks,
+          ...DEFAULT_ORDER_PRESET_TAGS.snacks,
+          ...DEFAULT_ORDER_PRESET_TAGS.meals,
+        ];
   }
 }
 

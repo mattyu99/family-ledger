@@ -19,6 +19,7 @@ interface GroupOrderCounterModalProps {
   onClose: () => void;
   onToggleItem: (itemIndex: number) => void;
   onSettleOrder: (totalAmount: number, storeName: string) => void;
+  onAddQuickItem?: () => void;
 }
 
 export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
@@ -27,8 +28,13 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
   onClose,
   onToggleItem,
   onSettleOrder,
+  onAddQuickItem,
 }) => {
   const { isDark } = useTheme();
+  const isGrocery = summary.mode === 'grocery';
+  const progressPercent = summary.totalCount > 0
+    ? Math.round((summary.completedCount / summary.totalCount) * 100)
+    : 0;
 
   return (
     <Modal
@@ -41,29 +47,45 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
         <View style={[styles.container, isDark && { backgroundColor: '#111827' }]}>
           {/* 頂部標題與關閉列 */}
           <View style={[styles.header, isDark && { borderBottomColor: '#374151' }]}>
-            <View>
+            <View style={{ flex: 1, marginRight: 8 }}>
               <View style={styles.titleRow}>
-                <Text style={styles.storeIcon}>🧋</Text>
-                <Text style={[styles.storeTitle, isDark && { color: '#F9FAFB' }]}>
-                  {summary.storeName && summary.storeName !== '點餐店家' ? summary.storeName : '點餐開團'}
+                <Text style={styles.storeIcon}>{isGrocery ? '🛒' : '🧋'}</Text>
+                <Text style={[styles.storeTitle, isDark && { color: '#F9FAFB' }]} numberOfLines={1}>
+                  {summary.storeName && summary.storeName !== '點餐店家' && summary.storeName !== '採買賣場'
+                    ? summary.storeName
+                    : (isGrocery ? '賣場採買' : '點餐開團')}
                 </Text>
               </View>
               <Text style={[styles.storeSubtitle, isDark && { color: '#9CA3AF' }]}>
-                櫃檯大字點餐看板 · 點完可直接點擊劃線核對
+                {isGrocery
+                  ? '賣場推車採買看板 · 放入推車可直接劃線核對'
+                  : '櫃檯大字點餐看板 · 點完可直接點擊劃線核對'}
               </Text>
             </View>
 
-            <TouchableOpacity onPress={onClose} style={[styles.closeBtn, isDark && { backgroundColor: '#374151' }]}>
-              <Text style={[styles.closeBtnText, isDark && { color: '#D1D5DB' }]}>關閉</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {onAddQuickItem && (
+                <TouchableOpacity
+                  onPress={onAddQuickItem}
+                  style={[styles.quickAddBtn, isDark && { backgroundColor: '#1E3A8A' }]}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.quickAddBtnText, isDark && { color: '#93C5FD' }]}>＋ 現場追加</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity onPress={onClose} style={[styles.closeBtn, isDark && { backgroundColor: '#374151' }]}>
+                <Text style={[styles.closeBtnText, isDark && { color: '#D1D5DB' }]}>關閉</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* 統計大看板 */}
           <View style={[styles.summaryBoard, isDark && { backgroundColor: '#1F2937', borderColor: '#374151' }]}>
             <View style={styles.summaryCol}>
-              <Text style={styles.summaryLabel}>累計數量</Text>
+              <Text style={styles.summaryLabel}>{isGrocery ? '採買進度' : '累計數量'}</Text>
               <Text style={[styles.summaryBigNumber, { color: '#F59E0B' }]}>
-                {summary.completedCount}/{summary.totalCount} <Text style={{ fontSize: 16 }}>份</Text>
+                {summary.completedCount}/{summary.totalCount} <Text style={{ fontSize: 16 }}>{isGrocery ? '項' : '份'}</Text>
+                {isGrocery && <Text style={{ fontSize: 13, color: '#10B981', fontWeight: '700' }}> ({progressPercent}%)</Text>}
               </Text>
             </View>
 
@@ -72,18 +94,20 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
             <View style={styles.summaryCol}>
               <Text style={styles.summaryLabel}>預估總金額</Text>
               <Text style={[styles.summaryBigNumber, { color: '#10B981' }]}>
-                {summary.hasAmount ? `$${summary.totalAmount}` : '隨喜'}
+                {summary.hasAmount ? `$${summary.totalAmount}` : (isGrocery ? '依發票結算' : '隨喜')}
               </Text>
             </View>
           </View>
 
-          {/* 大字點餐清單 */}
+          {/* 大字點餐/採買清單 */}
           <ScrollView style={styles.listScroll} contentContainerStyle={styles.listContent}>
             {summary.items.length === 0 ? (
               <View style={styles.emptyContainer}>
-                <Text style={styles.emptyIcon}>📝</Text>
+                <Text style={styles.emptyIcon}>{isGrocery ? '🛒' : '📝'}</Text>
                 <Text style={[styles.emptyText, isDark && { color: '#9CA3AF' }]}>
-                  目前還沒有家人登記點單，快通知大家在卡片點「＋我也要」報單！
+                  {isGrocery
+                    ? '目前還沒有登記採買項目，快通知大家在卡片點「＋我要買」！'
+                    : '目前還沒有家人登記點單，快通知大家在卡片點「＋我也要」報單！'}
                 </Text>
               </View>
             ) : (
@@ -108,12 +132,14 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                       {isChecked && <Text style={styles.checkIcon}>✓</Text>}
                     </View>
 
-                    {/* 右側大字餐點內容 */}
+                    {/* 右側大字餐點/物品內容 */}
                     <View style={styles.cardContent}>
                       <View style={styles.cardHeaderRow}>
                         {!!item.memberName && (
-                          <View style={styles.memberBadge}>
-                            <Text style={styles.memberBadgeText}>{item.memberName}</Text>
+                          <View style={[styles.memberBadge, isGrocery && { backgroundColor: '#ECFDF5' }]}>
+                            <Text style={[styles.memberBadgeText, isGrocery && { color: '#059669' }]}>
+                              {item.memberName}{isGrocery ? ' 想買' : ''}
+                            </Text>
                           </View>
                         )}
                         <Text
@@ -138,7 +164,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                             style={[
                               styles.specsText,
                               isChecked && styles.textStrike,
-                              isDark && { color: isChecked ? '#4B5563' : '#FBBF24' },
+                              isDark && { color: isChecked ? '#4B5563' : (isGrocery ? '#34D399' : '#FBBF24') },
                             ]}
                           >
                             👉 {item.specs}
@@ -160,11 +186,13 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                 onClose();
                 onSettleOrder(summary.totalAmount, summary.storeName);
               }}
-              style={styles.settleBtn}
+              style={[styles.settleBtn, isGrocery && { backgroundColor: '#059669' }]}
             >
-              <Text style={styles.settleBtnIcon}>💰</Text>
+              <Text style={styles.settleBtnIcon}>{isGrocery ? '🛒' : '💰'}</Text>
               <Text style={styles.settleBtnText}>
-                買好了！一鍵連動記帳 {summary.hasAmount ? `($${summary.totalAmount})` : ''}
+                {isGrocery
+                  ? `結帳買齊了！一鍵連動記帳 ${summary.hasAmount ? `($${summary.totalAmount})` : ''}`
+                  : `買好了！一鍵連動記帳 ${summary.hasAmount ? `($${summary.totalAmount})` : ''}`}
               </Text>
             </TouchableOpacity>
           </View>
@@ -211,6 +239,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6B7280',
     marginTop: 4,
+  },
+  quickAddBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  quickAddBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2563EB',
   },
   closeBtn: {
     paddingHorizontal: 14,

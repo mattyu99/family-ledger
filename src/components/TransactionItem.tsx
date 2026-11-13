@@ -240,10 +240,10 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
         {groupOrderSummary.isGroupOrder && !isCompleted && (
           <View style={[styles.groupOrderBar, isDark && { backgroundColor: 'rgba(245, 158, 11, 0.12)', borderColor: '#B45309' }]}>
             <View style={styles.groupOrderInfo}>
-              <Text style={styles.groupOrderIcon}>🧋</Text>
+              <Text style={styles.groupOrderIcon}>{groupOrderSummary.mode === 'grocery' ? '🛒' : '🧋'}</Text>
               <Text style={[styles.groupOrderText, isDark && { color: '#FCD34D' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                {groupOrderSummary.storeName && groupOrderSummary.storeName !== '點餐店家' ? `${groupOrderSummary.storeName} · ` : ''}
-                累計 {groupOrderSummary.totalCount} 份{groupOrderSummary.hasAmount ? ` · 預估 $${groupOrderSummary.totalAmount}` : ''}
+                {groupOrderSummary.storeName && groupOrderSummary.storeName !== '點餐店家' && groupOrderSummary.storeName !== '採買賣場' ? `${groupOrderSummary.storeName} · ` : ''}
+                累計 {groupOrderSummary.totalCount} {groupOrderSummary.mode === 'grocery' ? '項' : '份'}{groupOrderSummary.hasAmount ? ` · 預估 $${groupOrderSummary.totalAmount}` : ''}
               </Text>
             </View>
             <View style={styles.groupOrderActions}>
@@ -255,7 +255,9 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                 }}
                 style={styles.groupOrderAppendBtn}
               >
-                <Text style={styles.groupOrderAppendBtnText}>＋ 我也要</Text>
+                <Text style={styles.groupOrderAppendBtnText}>
+                  {groupOrderSummary.mode === 'grocery' ? '＋ 我要買' : '＋ 我也要'}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 activeOpacity={0.7}
@@ -265,7 +267,9 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                 }}
                 style={[styles.groupOrderCounterBtn, isDark && { backgroundColor: '#374151' }]}
               >
-                <Text style={[styles.groupOrderCounterBtnText, isDark && { color: '#F9FAFB' }]}>📋 點餐</Text>
+                <Text style={[styles.groupOrderCounterBtnText, isDark && { color: '#F9FAFB' }]}>
+                  {groupOrderSummary.mode === 'grocery' ? '🛒 推車看板' : '📋 點餐'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -510,6 +514,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
       <GroupOrderAppendModal
         visible={isGroupOrderAppendOpen}
         storeName={groupOrderSummary.storeName}
+        mode={groupOrderSummary.mode}
         onClose={() => setIsGroupOrderAppendOpen(false)}
         onAppend={async (item) => {
           const newNote = appendGroupOrderItem(transaction.note || '', item);
@@ -523,6 +528,9 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
         onClose={() => setIsGroupOrderCounterOpen(false)}
         onToggleItem={(lineIndex) => {
           toggleMemoChecklistItem(transaction.id, lineIndex);
+        }}
+        onAddQuickItem={() => {
+          setIsGroupOrderAppendOpen(true);
         }}
         onSettleOrder={() => {
           onCompleteMemo?.(transaction);
