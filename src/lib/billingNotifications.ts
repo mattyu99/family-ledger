@@ -11,12 +11,36 @@ const MEMO_NOTIFICATIONS_STORAGE_KEY = '@family_ledger_memo_notifications_enable
 if (Platform.OS !== 'web') {
   try {
     Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowBanner: true,
-        shouldShowList: true,
-        shouldPlaySound: true,
-        shouldSetBadge: false,
-      }),
+      handleNotification: async (notification) => {
+        const data = notification?.request?.content?.data as Record<string, any> | undefined;
+        const pushType = data?.type;
+        const isSilent = Boolean(data?.isSilent) || pushType === 'widget_sync';
+
+        // 1. 若為背景靜默小工具同步，或當使用者「正開著 App（前景）」收到跨裝置即時動態推播時：
+        // 開著 App 期間一律只顯示 App 內的頂部泡泡通知（LiveToast），不重複彈出系統推播橫幅，避免雙重轟炸！
+        if (
+          isSilent ||
+          pushType === 'memo_added' ||
+          pushType === 'memo_updated' ||
+          pushType === 'memo_completed' ||
+          pushType === 'transaction_added'
+        ) {
+          return {
+            shouldShowBanner: false,
+            shouldShowList: false,
+            shouldPlaySound: false,
+            shouldSetBadge: false,
+          };
+        }
+
+        // 2. 本機定時鬧鐘（如信用卡繳款日、生活記事到期日早上 9:00 提醒）或手動測試推播，在前景正常彈出
+        return {
+          shouldShowBanner: true,
+          shouldShowList: true,
+          shouldPlaySound: true,
+          shouldSetBadge: false,
+        };
+      },
     });
   } catch (e) {
     console.warn('[Notifications] 初始化通知處理器失敗:', e);

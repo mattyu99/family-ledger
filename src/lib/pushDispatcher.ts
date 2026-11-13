@@ -195,21 +195,29 @@ export async function sendFamilyPushNotification(payload: PushNotificationPayloa
     }
 
     // 2. 組裝 Expo Push API 訊息
-    const messages = pushTokens.map(token => ({
-      to: token,
-      sound: payload.isSilent ? undefined : 'default',
-      title: payload.title,
-      body: payload.body,
-      data: {
-        type: payload.type,
-        ledgerId: payload.ledgerId,
-        senderName: payload.senderName,
-        timestamp: new Date().toISOString(),
-        ...(payload.data || {}),
-      },
-      priority: 'high',
-      _contentAvailable: true, // 核心：喚醒背景以同步桌面小工具快照！
-    }));
+    // 若 isSilent 為 true (如背景小工具同步)，絕不傳送 title 與 body，避免 Android/iOS 系統將其當作可視通知彈出於通知列
+    const isSilentPush = Boolean(payload.isSilent) || payload.type === 'widget_sync';
+    const messages = pushTokens.map(token => {
+      const msg: Record<string, any> = {
+        to: token,
+        data: {
+          type: payload.type,
+          ledgerId: payload.ledgerId,
+          senderName: payload.senderName,
+          isSilent: isSilentPush,
+          timestamp: new Date().toISOString(),
+          ...(payload.data || {}),
+        },
+        priority: isSilentPush ? 'normal' : 'high',
+        _contentAvailable: true, // 核心：喚醒背景以同步桌面小工具快照！
+      };
+      if (!isSilentPush) {
+        msg.sound = 'default';
+        if (payload.title) msg.title = payload.title;
+        if (payload.body) msg.body = payload.body;
+      }
+      return msg;
+    });
 
     // 3. 發送至 Expo Push 閘道 (https://exp.host/--/api/v2/push/send)
     const response = await fetch('https://exp.host/--/api/v2/push/send', {

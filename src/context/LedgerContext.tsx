@@ -1374,15 +1374,25 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             if (resolvedType === 'memo') {
               const memoData = parseMemoNote(parsedNote);
-              setLiveToast({
-                id: `insert-memo-${newRow.id}-${Date.now()}`,
-                type: 'insert',
-                actorName,
-                avatar: memoData.icon || actorAvatar,
-                title: `📝 ${actorName} 留了一則生活記事！`,
-                message: `[${memoData.title}] ${memoData.cleanContent}`,
-                createdAt: Date.now(),
-              });
+              const effectiveTarget = newRow.reminder_target || decodedMemo.reminderTarget || 'family';
+              const isImportantMemo =
+                effectiveTarget !== 'personal' &&
+                (isGroupOrderMemo(memoData.title, parsedNote) ||
+                  Boolean(isPinned) ||
+                  Boolean(reminderDate || newRow.reminder_date));
+
+              // 僅針對重要記事（五大互動看板、置頂記事、或有設定到期提醒）彈出頂部泡泡，一般隨手記事保持安靜不打擾
+              if (isImportantMemo) {
+                setLiveToast({
+                  id: `insert-memo-${newRow.id}-${Date.now()}`,
+                  type: 'insert',
+                  actorName,
+                  avatar: memoData.icon || actorAvatar,
+                  title: `📝 ${actorName} 留了一則生活記事！`,
+                  message: `[${memoData.title}] ${memoData.cleanContent}`,
+                  createdAt: Date.now(),
+                });
+              }
             } else {
               const cat = getCategoryById(newRow.category_id);
               const isIncome = newRow.type === 'income';
@@ -1536,9 +1546,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             } else if (wasSettledBefore && !isSettledNow) {
               // 取消完成（重新開啟待辦）
               const isFromOther = !myId || (effectiveUpdaterId ? effectiveUpdaterId !== myId : (updatedRow.creator_id && updatedRow.creator_id !== myId));
-              if (isFromOther && shouldShowToast(updatedRow.id, 'reopen')) {
+              const effectiveTarget = updatedRow.reminder_target || prevTx?.reminder_target || decodedMemo.reminderTarget || 'family';
+              const effectivePinnedNow = isPinned !== undefined ? isPinned : Boolean(prevTx?.is_pinned);
+              const effectiveReminderNow = reminderDate !== undefined ? reminderDate : prevTx?.reminder_date;
+              const memoData = parseMemoNote(parsedNote || prevTx?.note);
+              const isImportantMemo =
+                effectiveTarget !== 'personal' &&
+                (isGroupOrderMemo(memoData.title, parsedNote || prevTx?.note) ||
+                  Boolean(effectivePinnedNow) ||
+                  Boolean(effectiveReminderNow));
+
+              if (isFromOther && isImportantMemo && shouldShowToast(updatedRow.id, 'reopen')) {
                 const actorName = (isFreshUpdater && recentUpdater.updaterName) || getMemberById(updatedRow.paid_by)?.display_name || getMemberById(updatedRow.creator_id)?.display_name || '家人';
-                const memoData = parseMemoNote(parsedNote || prevTx?.note);
                 setLiveToast({
                   id: `reopen-${updatedRow.id}-${Date.now()}`,
                   type: 'update',
@@ -1550,11 +1569,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 });
               }
             } else {
-              // 生活記事內容更新
+              // 生活記事內容更新：僅重要記事（互動看板、置頂、到期提醒）彈出泡泡，一般記事靜默更新
               const isFromOther = !myId || (effectiveUpdaterId ? effectiveUpdaterId !== myId : (updatedRow.creator_id && updatedRow.creator_id !== myId));
-              if (isFromOther && shouldShowToast(updatedRow.id, 'update-memo')) {
+              const effectiveTarget = updatedRow.reminder_target || prevTx?.reminder_target || decodedMemo.reminderTarget || 'family';
+              const effectivePinnedNow = isPinned !== undefined ? isPinned : Boolean(prevTx?.is_pinned);
+              const effectiveReminderNow = reminderDate !== undefined ? reminderDate : prevTx?.reminder_date;
+              const memoData = parseMemoNote(parsedNote || prevTx?.note);
+              const isImportantMemo =
+                effectiveTarget !== 'personal' &&
+                (isGroupOrderMemo(memoData.title, parsedNote || prevTx?.note) ||
+                  Boolean(effectivePinnedNow) ||
+                  Boolean(effectiveReminderNow));
+
+              if (isFromOther && isImportantMemo && shouldShowToast(updatedRow.id, 'update-memo')) {
                 const actorName = (isFreshUpdater && recentUpdater.updaterName) || getMemberById(updatedRow.paid_by)?.display_name || getMemberById(updatedRow.creator_id)?.display_name || '家人';
-                const memoData = parseMemoNote(parsedNote || prevTx?.note);
                 setLiveToast({
                   id: `update-memo-${updatedRow.id}-${Date.now()}`,
                   type: 'update',
@@ -1617,12 +1645,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           let targetNote = '';
           let targetCreatorId: string | undefined;
           let targetCompletionNote: string | undefined;
+          let isImportantTarget = false;
           setTransactions((prev) => {
             const target = prev.find((t) => t.id === id);
             if (!target) return prev;
             targetNote = target.note || '';
             targetCreatorId = target.creator_id;
             targetCompletionNote = target.completion_note;
+            const parsedTargetMemo = parseMemoNote(targetNote);
+            isImportantTarget =
+              target.reminder_target !== 'personal' &&
+              (isGroupOrderMemo(parsedTargetMemo.title, targetNote) ||
+                Boolean(target.is_pinned) ||
+                Boolean(target.reminder_date));
             const updated = prev.map((t) =>
               t.id === id
                 ? {
@@ -1673,7 +1708,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               }
             }
           } else {
-            if (shouldShowToast(id, 'reopen')) {
+            if (isImportantTarget && shouldShowToast(id, 'reopen')) {
               setLiveToast({
                 id: `memo-reopen-${id}-${Date.now()}`,
                 type: 'update',
@@ -1693,6 +1728,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         async (payload: any) => {
           const deletedId = payload?.payload?.id;
           const actorName = payload?.payload?.actorName || '家人';
+          const broadcastTxType = payload?.payload?.txType;
           if (!deletedId) return;
 
           deletedTxIdsRef.current.add(deletedId);
@@ -1707,24 +1743,29 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
           } catch {}
 
+          let wasMemo = broadcastTxType === 'memo';
           setTransactions((prev) => {
-            if (!prev.some((t) => t.id === deletedId)) return prev;
+            const target = prev.find((t) => t.id === deletedId);
+            if (!target) return prev;
+            if (target.type === 'memo') wasMemo = true;
             const updated = prev.filter((t) => t.id !== deletedId);
             inMemoryLedgerTxCacheRef.current.set(ledgerId, updated);
             persistTransactionsCache(updated, ledgerId);
             return updated;
           });
 
-          // 即時通知泡泡
-          setLiveToast({
-            id: `delete-${deletedId}-${Date.now()}`,
-            type: 'delete',
-            actorName,
-            avatar: '🗑️',
-            title: `🗑️ ${actorName} 刪除了一筆記帳`,
-            message: '該筆明細已從全體裝置同步移除',
-            createdAt: Date.now(),
-          });
+          // 移除生活記事時保持安靜不彈泡泡；僅在移除實際收支記帳時提示
+          if (!wasMemo && shouldShowToast(deletedId, 'delete')) {
+            setLiveToast({
+              id: `delete-${deletedId}-${Date.now()}`,
+              type: 'delete',
+              actorName,
+              avatar: '🗑️',
+              title: `🗑️ ${actorName} 刪除了一筆記帳`,
+              message: '該筆明細已從全體裝置同步移除',
+              createdAt: Date.now(),
+            });
+          }
         }
       )
       .on(
@@ -1750,24 +1791,31 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               }
             } catch {}
 
+            let wasMemo = oldRow?.type === 'memo';
+            let hadTargetInState = false;
             setTransactions((prev) => {
-              if (!prev.some((t) => t.id === deletedId)) return prev;
+              const target = prev.find((t) => t.id === deletedId);
+              if (!target) return prev;
+              hadTargetInState = true;
+              if (target.type === 'memo') wasMemo = true;
               const updated = prev.filter((t) => t.id !== deletedId);
               inMemoryLedgerTxCacheRef.current.set(ledgerId, updated);
               persistTransactionsCache(updated, ledgerId);
               return updated;
             });
 
-            // 即時通知泡泡
-            setLiveToast({
-              id: `delete-${deletedId}-${Date.now()}`,
-              type: 'delete',
-              actorName: '家人',
-              avatar: '🗑️',
-              title: '🗑️ 家人刪除了一筆記帳',
-              message: '該筆明細已從全體裝置同步移除',
-              createdAt: Date.now(),
-            });
+            // 移除生活記事時保持安靜不彈泡泡；僅在實際移除收支記帳時提示
+            if (hadTargetInState && !wasMemo && shouldShowToast(deletedId, 'delete')) {
+              setLiveToast({
+                id: `delete-${deletedId}-${Date.now()}`,
+                type: 'delete',
+                actorName: '家人',
+                avatar: '🗑️',
+                title: '🗑️ 家人刪除了一筆記帳',
+                message: '該筆明細已從全體裝置同步移除',
+                createdAt: Date.now(),
+              });
+            }
           }
         }
       )
@@ -5749,10 +5797,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               [otherL.id]: (prev[otherL.id] || 0) + 1,
             }));
 
-            // 2. 彈出頂部跨帳本即時動態泡泡
+            // 2. 彈出頂部跨帳本即時動態泡泡（若為一般未置頂/無提醒之普通生活記事則保持安靜不彈泡泡）
             let displayMerchant = '記事';
             if (newRow.type === 'memo') {
               const memoData = parseMemoNote(newRow.note);
+              const decodedCrossMemo = decodeMemoMerchantTag(newRow.merchant);
+              const effectiveCrossTarget = newRow.reminder_target || decodedCrossMemo.reminderTarget || 'family';
+              const isImportantCrossMemo =
+                effectiveCrossTarget !== 'personal' &&
+                (isGroupOrderMemo(memoData.title, newRow.note) ||
+                  Boolean(newRow.is_pinned || decodedCrossMemo.isPinned) ||
+                  Boolean(newRow.reminder_date || decodedCrossMemo.reminderDate));
+              if (!isImportantCrossMemo) return;
               displayMerchant = `[${memoData.title}] ${memoData.cleanContent}`;
             } else {
               let parsedMerchant = newRow.merchant;
@@ -7468,6 +7524,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const parsedMemo = parseMemoNote(newTx.note);
         const categoryName = categories.find(c => c.id === newTx.category_id)?.name || parsedMemo.title;
         const isOrder = isGroupOrderMemo(categoryName, newTx.note);
+        const isImportantGeneralMemo = Boolean(newTx.is_pinned) || Boolean(newTx.reminder_date);
         const sender = currentUser.display_name || '家人';
 
         if (isOrder) {
@@ -7483,14 +7540,26 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             type: 'memo_added',
             data: { id: txId, mode, storeName },
           }).catch(() => {});
-        } else {
+        } else if (isImportantGeneralMemo) {
+          // 僅當勾選「置頂 📌」或設定「到期提醒 🔔」的重要家庭記事時，才發送可視系統推播
           sendFamilyPushNotification({
             ledgerId: currentLedger.id,
             senderName: currentUser.display_name || '家庭成員',
-            title: `📋 ${currentLedger.name} 新待辦記事`,
+            title: `📋 ${currentLedger.name} 重要待辦記事`,
             body: `${currentUser.display_name || '家庭成員'} 新增了待辦：${parsedMemo.title || '生活備忘'}`,
             type: 'memo_added',
             data: { id: txId },
+          }).catch(() => {});
+        } else {
+          // 一般未置頂且無提醒之日常記事：僅發送無標題無內文之純背景同步，絕不彈出通知打擾家人
+          sendFamilyPushNotification({
+            ledgerId: currentLedger.id,
+            senderName: currentUser.display_name || '家庭成員',
+            title: '',
+            body: '',
+            type: 'widget_sync',
+            isSilent: true,
+            data: { id: txId, action: 'add_normal_memo' },
           }).catch(() => {});
         }
       }
@@ -7939,6 +8008,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           event: 'TX_DELETED',
           payload: {
             id,
+            txType: targetTx?.type,
             actorName: effectiveCurrentUser?.display_name || '家人',
             ledgerId: currentLedger.id,
           },
@@ -8035,13 +8105,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }).catch(() => {});
     }
 
-    // 若刪除生活待辦記事，通知其他家人小工具背景同步刷新
+    // 若刪除生活待辦記事，發送無標題無內文之純背景同步通知，僅刷新小工具，絕不彈出通知打擾家人
     if (targetTx?.type === 'memo' && isConfigured && !isDemoLedgerId(currentLedger.id)) {
       sendFamilyPushNotification({
         ledgerId: currentLedger.id,
         senderName: currentUser.display_name || '家庭成員',
-        title: `📋 ${currentLedger.name} 待辦記事異動`,
-        body: `${currentUser.display_name || '家庭成員'} 移除了一則待辦記事`,
+        title: '',
+        body: '',
         type: 'widget_sync',
         isSilent: true,
         data: { id, action: 'delete' },
