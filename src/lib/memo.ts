@@ -9,6 +9,7 @@ export * from './dateParser';
 export const DEFAULT_MEMO_QUICK_TAGS = [
   '📌 待辦清單',
   '🛒 採買清單',
+  '🧋 點餐開團',
   '📅 行程安排',
   '🎒 學校親子',
   '🙏 祭祀拜拜',
@@ -742,6 +743,17 @@ export interface MemoChecklistTemplate {
 }
 
 export const BUILTIN_MEMO_TEMPLATES: MemoChecklistTemplate[] = [
+  {
+    id: 'group_order_wishlist',
+    title: '點餐開團／許願',
+    icon: '🧋',
+    tag: '🧋 點餐開團',
+    description: '手搖飲、宵夜點心、便當多人自由登記報單',
+    items: [
+      '店家：50嵐（可換店名）',
+      '大家直接在下方點【＋我也要 / 登記品項】快速報單！',
+    ],
+  },
   {
     id: 'travel_abroad',
     title: '出國必備行李',

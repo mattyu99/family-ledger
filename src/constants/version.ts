@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.16';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.16 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 13;
+export const APP_BUILD_REVISION = 14;
 
 // 完整版本字串 (例如 "1.0.16.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -20,9 +20,10 @@ export interface ChangelogItem {
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.16',
-    date: '2026-11-11 ~ 2026-11-12',
-    title: '生活記事智慧日期與接力提醒、支付膠囊精簡排版與使用手冊全功能整編',
+    date: '2026-11-11 ~ 2026-11-13',
+    title: '生活記事智慧日期與接力提醒、家庭點餐開團許願池與使用手冊全功能整編',
     highlights: [
+      '🧋 家庭點餐開團與生活許願池：手搖飲、宵夜點心與便當多人免衝突追加報單，動態自學習規格標籤隨打隨存，自動統計總杯數與金額，支援櫃檯大字點餐與買完連動記帳。',
       '💡 生活記事智慧日期與接力推進提醒：打字即時感知民國年自動預選，歷史待辦自動自癒對齊當前最急進度，相對日期錨定記錄日隨時間遞減不漂移，作業課次防呆過濾。',
       '📖 官方使用手冊全面擴充與全功能整編：完整補齊發票 CSV 匯入、載具智慧分流、就醫慢箋接力提醒、重要記事常駐置頂、多卡合併對帳與遠端推播之圖文指南。',
       '💳 支付膠囊精簡排版與空間釋放：純信用卡直接顯示卡名免除冗餘四碼，行動支付精準銜接扣款四碼，備註舒展不再被擠壓截斷。',

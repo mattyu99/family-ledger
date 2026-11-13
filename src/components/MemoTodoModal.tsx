@@ -20,6 +20,9 @@ import { ThemeColors } from '../theme/colors';
 import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, checkMemoPinQuota, getItemDueDateBadge, getEffectiveMemoReminderDate } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { HorizontalScrollView } from './HorizontalScrollView';
+import { computeGroupOrderSummary, appendGroupOrderItem } from '../lib/groupOrder';
+import { GroupOrderAppendModal } from './GroupOrderAppendModal';
+import { GroupOrderCounterModal } from './GroupOrderCounterModal';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -47,6 +50,10 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
   const [activeTab, setActiveTab] = useState<TodoTab>('all');
   const [scopeFilter, setScopeFilter] = useState<TodoScope>('all');
   const scrollRef = useRef<ScrollView>(null);
+
+  const [activeGroupOrderTx, setActiveGroupOrderTx] = useState<Transaction | null>(null);
+  const [isGroupOrderAppendOpen, setIsGroupOrderAppendOpen] = useState(false);
+  const [isGroupOrderCounterOpen, setIsGroupOrderCounterOpen] = useState(false);
 
   // 剛才查看高光聚焦錨點（記住最後點開編輯的記事項目，保留 6 秒溫和高光藍框與標籤）
   const [lastViewedMemoId, setLastViewedMemoId] = useState<string | null>(null);
@@ -462,6 +469,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                 const isLastViewed = item.id === lastViewedMemoId;
                 const memoData = parseMemoNote(item.note);
                 const checklistData = parseMemoChecklist(memoData.cleanContent);
+                const groupOrderSummary = computeGroupOrderSummary(item.note || '', memoData.title);
                 const checklistProgressPercent = checklistData.totalCount > 0
                   ? (checklistData.completedCount / checklistData.totalCount) * 100
                   : 0;
@@ -583,6 +591,42 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                         )}
                       </View>
                     </View>
+
+                    {groupOrderSummary.isGroupOrder && !isCompleted && (
+                      <View style={[styles.groupOrderBar, isDark && { backgroundColor: 'rgba(245, 158, 11, 0.12)', borderColor: '#B45309' }]}>
+                        <View style={styles.groupOrderInfo}>
+                          <Text style={styles.groupOrderIcon}>🧋</Text>
+                          <Text style={[styles.groupOrderText, isDark && { color: '#FCD34D' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                            {groupOrderSummary.storeName && groupOrderSummary.storeName !== '點餐店家' ? `${groupOrderSummary.storeName} · ` : ''}
+                            累計 {groupOrderSummary.totalCount} 份{groupOrderSummary.hasAmount ? ` · 預估 $${groupOrderSummary.totalAmount}` : ''}
+                          </Text>
+                        </View>
+                        <View style={styles.groupOrderActions}>
+                          <TouchableOpacity
+                            activeOpacity={0.7}
+                            onPress={(e) => {
+                              e.stopPropagation?.();
+                              setActiveGroupOrderTx(item);
+                              setIsGroupOrderAppendOpen(true);
+                            }}
+                            style={styles.groupOrderAppendBtn}
+                          >
+                            <Text style={styles.groupOrderAppendBtnText}>＋ 我也要</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            activeOpacity={0.7}
+                            onPress={(e) => {
+                              e.stopPropagation?.();
+                              setActiveGroupOrderTx(item);
+                              setIsGroupOrderCounterOpen(true);
+                            }}
+                            style={[styles.groupOrderCounterBtn, isDark && { backgroundColor: '#374151' }]}
+                          >
+                            <Text style={[styles.groupOrderCounterBtnText, isDark && { color: '#F9FAFB' }]}>📋 點餐</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
 
                     {checklistData.isChecklist ? (
                       <View style={{ marginBottom: 8 }}>
@@ -813,6 +857,45 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
           </View>
         </View>
       </View>
+
+      {activeGroupOrderTx && (
+        <>
+          <GroupOrderAppendModal
+            visible={isGroupOrderAppendOpen}
+            storeName={computeGroupOrderSummary(activeGroupOrderTx.note || '').storeName}
+            onClose={() => {
+              setIsGroupOrderAppendOpen(false);
+              setActiveGroupOrderTx(null);
+            }}
+            onAppend={async (appendItem) => {
+              if (!activeGroupOrderTx) return;
+              const newNote = appendGroupOrderItem(activeGroupOrderTx.note || '', appendItem);
+              await updateTransaction(activeGroupOrderTx.id, { note: newNote });
+            }}
+          />
+          <GroupOrderCounterModal
+            visible={isGroupOrderCounterOpen}
+            summary={computeGroupOrderSummary(activeGroupOrderTx.note || '', parseMemoNote(activeGroupOrderTx.note).title)}
+            onClose={() => {
+              setIsGroupOrderCounterOpen(false);
+              setActiveGroupOrderTx(null);
+            }}
+            onToggleItem={(lineIndex) => {
+              if (activeGroupOrderTx) {
+                toggleMemoChecklistItem(activeGroupOrderTx.id, lineIndex);
+              }
+            }}
+            onSettleOrder={() => {
+              if (activeGroupOrderTx) {
+                const target = activeGroupOrderTx;
+                setIsGroupOrderCounterOpen(false);
+                setActiveGroupOrderTx(null);
+                onCompleteMemo?.(target);
+              }
+            }}
+          />
+        </>
+      )}
     </Modal>
   );
 };
@@ -1417,5 +1500,63 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.3,
+  },
+  groupOrderBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    marginBottom: 8,
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  groupOrderInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    minWidth: 140,
+  },
+  groupOrderIcon: {
+    fontSize: 16,
+  },
+  groupOrderText: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#B45309',
+  },
+  groupOrderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  groupOrderAppendBtn: {
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  groupOrderAppendBtnText: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  groupOrderCounterBtn: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    borderRadius: 6,
+  },
+  groupOrderCounterBtnText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#B45309',
   },
 });

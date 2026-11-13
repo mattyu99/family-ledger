@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, StyleSheet, TouchableOpacity, Linking } from 'react-native';
 import { Text } from './common/Text';
 
@@ -10,6 +10,9 @@ import { formatPaymentLabel, parseExpenseDiscount, isTransferToMember } from '..
 import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, getItemDueDateBadge, getEffectiveMemoReminderDate } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { stripInvoiceTag } from '../lib/invoice';
+import { computeGroupOrderSummary, appendGroupOrderItem } from '../lib/groupOrder';
+import { GroupOrderAppendModal } from './GroupOrderAppendModal';
+import { GroupOrderCounterModal } from './GroupOrderCounterModal';
 
 interface TransactionItemProps {
   transaction: Transaction;
@@ -30,8 +33,11 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
   onTogglePinMemo,
   onViewImage,
 }) => {
-  const { getMemberById, getCategoryById, getAccountById, paymentMethods, toggleMemoSettled, toggleMemoChecklistItem, transactions, members, currentUser } = useLedger();
+  const { getMemberById, getCategoryById, getAccountById, paymentMethods, toggleMemoSettled, toggleMemoChecklistItem, updateTransaction, transactions, members, currentUser } = useLedger();
   const { isDark, colors } = useTheme();
+
+  const [isGroupOrderAppendOpen, setIsGroupOrderAppendOpen] = useState(false);
+  const [isGroupOrderCounterOpen, setIsGroupOrderCounterOpen] = useState(false);
 
   const category = getCategoryById(transaction.category_id, transaction.category);
   const payer = getMemberById(transaction.paid_by) || transaction.payer_profile;
@@ -77,6 +83,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
     const reminderBadge = formatMemoReminderBadge(reminderDate, reminderCal, reminderRep);
     const memoData = parseMemoNote(transaction.note, category?.name, getCategoryIcon(category?.icon));
     const checklistData = parseMemoChecklist(memoData.cleanContent);
+    const groupOrderSummary = computeGroupOrderSummary(transaction.note || '', memoData.title);
     const checklistProgressPercent = checklistData.totalCount > 0
       ? (checklistData.completedCount / checklistData.totalCount) * 100
       : 0;
@@ -110,9 +117,10 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
     };
 
     return (
-      <TouchableOpacity
-        activeOpacity={0.7}
-        style={[
+      <>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          style={[
           styles.memoCard,
           isCompleted && styles.memoCardCompleted,
           isPinned && !isCompleted && styles.memoCardPinned,
@@ -228,6 +236,40 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
             </Text>
           </View>
         </View>
+
+        {groupOrderSummary.isGroupOrder && !isCompleted && (
+          <View style={[styles.groupOrderBar, isDark && { backgroundColor: 'rgba(245, 158, 11, 0.12)', borderColor: '#B45309' }]}>
+            <View style={styles.groupOrderInfo}>
+              <Text style={styles.groupOrderIcon}>🧋</Text>
+              <Text style={[styles.groupOrderText, isDark && { color: '#FCD34D' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                {groupOrderSummary.storeName && groupOrderSummary.storeName !== '點餐店家' ? `${groupOrderSummary.storeName} · ` : ''}
+                累計 {groupOrderSummary.totalCount} 份{groupOrderSummary.hasAmount ? ` · 預估 $${groupOrderSummary.totalAmount}` : ''}
+              </Text>
+            </View>
+            <View style={styles.groupOrderActions}>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={(e) => {
+                  e.stopPropagation?.();
+                  setIsGroupOrderAppendOpen(true);
+                }}
+                style={styles.groupOrderAppendBtn}
+              >
+                <Text style={styles.groupOrderAppendBtnText}>＋ 我也要</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={(e) => {
+                  e.stopPropagation?.();
+                  setIsGroupOrderCounterOpen(true);
+                }}
+                style={[styles.groupOrderCounterBtn, isDark && { backgroundColor: '#374151' }]}
+              >
+                <Text style={[styles.groupOrderCounterBtnText, isDark && { color: '#F9FAFB' }]}>📋 點餐</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {checklistData.isChecklist ? (
           <View style={{ marginBottom: 8 }}>
@@ -464,8 +506,31 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
           </Text>
         </View>
       </TouchableOpacity>
-    );
-  }
+
+      <GroupOrderAppendModal
+        visible={isGroupOrderAppendOpen}
+        storeName={groupOrderSummary.storeName}
+        onClose={() => setIsGroupOrderAppendOpen(false)}
+        onAppend={async (item) => {
+          const newNote = appendGroupOrderItem(transaction.note || '', item);
+          await updateTransaction(transaction.id, { note: newNote });
+        }}
+      />
+
+      <GroupOrderCounterModal
+        visible={isGroupOrderCounterOpen}
+        summary={groupOrderSummary}
+        onClose={() => setIsGroupOrderCounterOpen(false)}
+        onToggleItem={(lineIndex) => {
+          toggleMemoChecklistItem(transaction.id, lineIndex);
+        }}
+        onSettleOrder={() => {
+          onCompleteMemo?.(transaction);
+        }}
+      />
+    </>
+  );
+}
 
   const linkedMemo = transaction.linked_transaction_id
     ? (transactions.find(t => t.id === transaction.linked_transaction_id && t.type === 'memo')
@@ -1426,5 +1491,63 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 6,
     elevation: 4,
+  },
+  groupOrderBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    marginBottom: 8,
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  groupOrderInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    minWidth: 140,
+  },
+  groupOrderIcon: {
+    fontSize: 16,
+  },
+  groupOrderText: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#B45309',
+  },
+  groupOrderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  groupOrderAppendBtn: {
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  groupOrderAppendBtnText: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  groupOrderCounterBtn: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    borderRadius: 6,
+  },
+  groupOrderCounterBtnText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#B45309',
   },
 });
