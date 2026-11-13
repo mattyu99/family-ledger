@@ -75,6 +75,13 @@ import { useDeviceAuth } from '../hooks/useDeviceAuth';
 import { useLedgerBackup } from '../hooks/useLedgerBackup';
 import { syncWidgetData } from '../lib/widgetSync';
 import { sendFamilyPushNotification } from '../lib/pushDispatcher';
+import {
+  isGroupOrderMemo,
+  detectCollaborativeOrderMode,
+  extractStoreNameFromMemo,
+  createGroupOrderPushNotification,
+  createGroupOrderAppendPushNotification,
+} from '../lib/groupOrder';
 import * as Notifications from 'expo-notifications';
 
 // 保持 100% 向後相容導出，確保全 App 任何既有 import 完全不壞
@@ -180,6 +187,12 @@ interface LedgerContextType {
       account_id?: string;
       is_reconciled?: boolean;
       is_settled?: boolean;
+      orderAppendInfo?: {
+        memberName: string;
+        itemName: string;
+        specs?: string;
+        price?: number;
+      };
     }
   ) => Promise<boolean>;
   claimInvoicePrize: (transactionId: string) => Promise<boolean>;
@@ -7450,15 +7463,37 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // 若為生活待辦記事，向同公帳其他成員之裝置發送跨裝置即時推播 (含背景喚醒同步小工具)
     if (newTx.type === 'memo' && isConfigured && !isDemoLedgerId(currentLedger.id)) {
-      const parsedMemo = parseMemoNote(newTx.note);
-      sendFamilyPushNotification({
-        ledgerId: currentLedger.id,
-        senderName: currentUser.display_name || '家庭成員',
-        title: `📋 ${currentLedger.name} 新待辦記事`,
-        body: `${currentUser.display_name || '家庭成員'} 新增了待辦：${parsedMemo.title || '生活備忘'}`,
-        type: 'memo_added',
-        data: { id: txId },
-      }).catch(() => {});
+      // 個人專屬私密記事絕不打擾其他家庭成員
+      if (newTx.reminder_target !== 'personal') {
+        const parsedMemo = parseMemoNote(newTx.note);
+        const categoryName = categories.find(c => c.id === newTx.category_id)?.name || parsedMemo.title;
+        const isOrder = isGroupOrderMemo(categoryName, newTx.note);
+        const sender = currentUser.display_name || '家人';
+
+        if (isOrder) {
+          const mode = detectCollaborativeOrderMode(categoryName, newTx.note);
+          const storeName = extractStoreNameFromMemo(categoryName, newTx.note);
+          const pushContent = createGroupOrderPushNotification({ mode, storeName, senderName: sender });
+
+          sendFamilyPushNotification({
+            ledgerId: currentLedger.id,
+            senderName: sender,
+            title: pushContent.title,
+            body: pushContent.body,
+            type: 'memo_added',
+            data: { id: txId, mode, storeName },
+          }).catch(() => {});
+        } else {
+          sendFamilyPushNotification({
+            ledgerId: currentLedger.id,
+            senderName: currentUser.display_name || '家庭成員',
+            title: `📋 ${currentLedger.name} 新待辦記事`,
+            body: `${currentUser.display_name || '家庭成員'} 新增了待辦：${parsedMemo.title || '生活備忘'}`,
+            type: 'memo_added',
+            data: { id: txId },
+          }).catch(() => {});
+        }
+      }
     }
 
     return txId;
@@ -8049,6 +8084,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       account_id?: string;
       is_reconciled?: boolean;
       is_settled?: boolean;
+      orderAppendInfo?: {
+        memberName: string;
+        itemName: string;
+        specs?: string;
+        price?: number;
+      };
     }
   ): Promise<boolean> => {
     if (currentLedger.is_read_only) {
@@ -8681,6 +8722,30 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             isSilent: true,
           }).catch(() => {});
         } else {
+          // 若為家人追加開團/採買品項，精準向開團發起人發送即時報單推播 (不干擾其他家人)
+          if (data.orderAppendInfo && creatorId && creatorId !== currentUser.id) {
+            const noteText = data.note || targetTx?.note || '';
+            const categoryName = targetTx?.category?.name;
+            const mode = detectCollaborativeOrderMode(categoryName, noteText);
+            const storeName = extractStoreNameFromMemo(categoryName, noteText);
+            const push = createGroupOrderAppendPushNotification({
+              mode,
+              storeName,
+              senderName: data.orderAppendInfo.memberName || updaterName,
+              item: data.orderAppendInfo,
+            });
+
+            sendFamilyPushNotification({
+              ledgerId: currentLedger.id,
+              senderName: updaterName,
+              title: push.title,
+              body: push.body,
+              type: 'memo_updated',
+              data: { id, action: 'order_append', mode, storeName },
+              targetMemberId: creatorId,
+            }).catch(() => {});
+          }
+
           // 一般待辦更新：維持靜默桌面小工具同步
           sendFamilyPushNotification({
             ledgerId: currentLedger.id,

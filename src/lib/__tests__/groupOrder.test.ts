@@ -7,6 +7,8 @@ import {
   isSameOrRelatedStore,
   extractStoreFamilyFavorites,
   detectCollaborativeOrderMode,
+  createGroupOrderPushNotification,
+  createGroupOrderAppendPushNotification,
 } from '../groupOrder';
 
 describe('groupOrder 工具庫單元測試', () => {
@@ -286,6 +288,54 @@ describe('groupOrder 工具庫單元測試', () => {
       const itemNames = costcoFavs.familyTopFavorites.map(f => f.itemName);
       expect(itemNames).toContain('科克蘭三層抽取衛生紙');
       expect(itemNames).toContain('美國特選無骨牛小排');
+    });
+
+    describe('方案 B：開團與採買之家庭原生即時推播文案生成', () => {
+      it('發起開團時正確生成賣場採買與餐飲點餐推播內容', () => {
+        const groceryPush = createGroupOrderPushNotification({
+          mode: 'grocery',
+          storeName: '好市多',
+          senderName: '智爸',
+        });
+        expect(groceryPush.title).toBe('🛒 好市多 開團採買囉！');
+        expect(groceryPush.body).toContain('智爸 發起了補貨清單');
+
+        const foodPush = createGroupOrderPushNotification({
+          mode: 'food',
+          storeName: '50嵐',
+          senderName: '瑩媽',
+        });
+        expect(foodPush.title).toBe('🧋 50嵐 下午茶開團啦！');
+        expect(foodPush.body).toContain('瑩媽 發起了點餐許願池');
+      });
+
+      it('家人報單追加時精準生成通知發起人的推播內容', () => {
+        const groceryAppend = createGroupOrderAppendPushNotification({
+          mode: 'grocery',
+          storeName: '好市多',
+          senderName: '洋洋',
+          item: {
+            itemName: '義美全脂鮮奶',
+            specs: '2瓶組',
+            price: 249,
+          },
+        });
+        expect(groceryAppend.title).toBe('🛒 好市多 收到追加補貨！');
+        expect(groceryAppend.body).toBe('洋洋 追加了：義美全脂鮮奶（2瓶組） $249');
+
+        const foodAppend = createGroupOrderAppendPushNotification({
+          mode: 'food',
+          storeName: '50嵐',
+          senderName: '豆豆',
+          item: {
+            itemName: '波霸紅茶拿鐵',
+            specs: '微糖微冰',
+            price: 60,
+          },
+        });
+        expect(foodAppend.title).toBe('🧋 50嵐 收到新點單！');
+        expect(foodAppend.body).toBe('豆豆 登記了：波霸紅茶拿鐵（微糖微冰） $60');
+      });
     });
   });
 });

@@ -33,6 +33,7 @@ import {
   getMergedMemoTags,
   toggleMemoTag,
   isMemoTagActive,
+  parseMemoNote,
   BUILTIN_MEMO_TEMPLATES,
   MemoChecklistTemplate,
   applyChecklistTemplate,
@@ -44,6 +45,7 @@ import {
   computeNextRelayReminderDate,
   resolveAnchorDate,
 } from '../lib/memo';
+import { isGroupOrderMemo } from '../lib/groupOrder';
 import {
   CalendarSystem,
   MemoRepeatFrequency,
@@ -294,6 +296,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const scrollViewRef = useRef<ScrollView>(null);
   const lastAutoDetectedDateRef = useRef<string>('');
   const userManuallySetReminderRef = useRef<boolean>(false);
+  const userManuallyToggledPinRef = useRef<boolean>(false);
 
   // 💡 智慧日期即時解析：感知記事文字中蘊含的日期 (支援待辦清單接力推進、民國年、西元年、月/日、明天等)
   const detectedMemoDate = React.useMemo(() => {
@@ -327,6 +330,20 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       }
     }
   }, [detectedMemoDate, memoReminderDate]);
+
+  // 📌 智慧開團/採買感知自動置頂與全家共享：
+  // 若生活記事命中點餐開團或賣場採買，自動啟用「全家共享」並「置頂全家看板最上方」，防家人漏看
+  useEffect(() => {
+    if (mode !== 'memo' && type !== 'memo') return;
+    if (userManuallyToggledPinRef.current) return;
+
+    const parsed = parseMemoNote(note);
+    const isOrder = isGroupOrderMemo(parsed.title, note);
+    if (isOrder) {
+      setMemoIsPinned(true);
+      setMemoReminderTarget('family');
+    }
+  }, [note, mode, type]);
 
   // 撥零用錢專用狀態
   const [allowanceMode, setAllowanceMode] = useState<'transfer' | 'expense_income'>('transfer');
@@ -884,6 +901,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     setMemoReminderTarget('family');
     lastAutoDetectedDateRef.current = '';
     userManuallySetReminderRef.current = false;
+    userManuallyToggledPinRef.current = false;
     setReminderPickerInitialMode('solar');
     setReminderDatePickerVisible(false);
     setShowDiscountPanel(false);
@@ -1266,6 +1284,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       setMemoReminderTarget('family');
       lastAutoDetectedDateRef.current = '';
       userManuallySetReminderRef.current = false;
+      userManuallyToggledPinRef.current = false;
       setMemoIsPinned(false);
       setSelectedDate(new Date());
       onSuccess?.(createdTxId);
@@ -2226,13 +2245,16 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                           return;
                         }
                       }
+                      userManuallyToggledPinRef.current = true;
                       setMemoIsPinned(!memoIsPinned);
                     }}
                     activeOpacity={0.7}
                   >
                     <Text style={[styles.memoPinToggleText, memoIsPinned && styles.memoPinToggleTextActive]}>
                       {memoIsPinned
-                        ? `📌 已置頂 (${memoReminderTarget === 'personal' ? '個人' : '全家'}看板最上方)`
+                        ? (isGroupOrderMemo(parseMemoNote(note).title, note)
+                            ? `📌 已自動置頂${memoReminderTarget === 'personal' ? '個人' : '全家'}看板最上方 (點擊可取消)`
+                            : `📌 已置頂 (${memoReminderTarget === 'personal' ? '個人' : '全家'}看板最上方)`)
                         : `📌 置頂此記事 (常駐${memoReminderTarget === 'personal' ? '個人' : '全家'}看板最上方)`}
                     </Text>
                   </TouchableOpacity>

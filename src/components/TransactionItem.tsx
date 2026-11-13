@@ -518,7 +518,10 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
         onClose={() => setIsGroupOrderAppendOpen(false)}
         onAppend={async (item) => {
           const newNote = appendGroupOrderItem(transaction.note || '', item);
-          await updateTransaction(transaction.id, { note: newNote });
+          await updateTransaction(transaction.id, {
+            note: newNote,
+            orderAppendInfo: item,
+          });
         }}
       />
 

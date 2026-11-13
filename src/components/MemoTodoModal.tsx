@@ -875,7 +875,10 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
             onAppend={async (appendItem) => {
               if (!activeGroupOrderTx) return;
               const newNote = appendGroupOrderItem(activeGroupOrderTx.note || '', appendItem);
-              await updateTransaction(activeGroupOrderTx.id, { note: newNote });
+              await updateTransaction(activeGroupOrderTx.id, {
+                note: newNote,
+                orderAppendInfo: appendItem,
+              });
             }}
           />
           <GroupOrderCounterModal

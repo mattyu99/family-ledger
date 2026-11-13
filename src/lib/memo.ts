@@ -776,6 +776,7 @@ export const BUILTIN_MEMO_TEMPLATES: MemoChecklistTemplate[] = [
     icon: '🛒',
     tag: '🛒 採買清單',
     description: '生鮮食材、家庭飲品與居家消耗品',
+    headerText: '賣場：全聯（可直接修改賣場）\n大家直接點右上方【＋我要買】追加補貨！',
     items: [
       '鮮奶 / 燕麥奶',
       '新鮮雞蛋 1 盒',

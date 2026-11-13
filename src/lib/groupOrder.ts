@@ -464,3 +464,62 @@ export function extractStoreFamilyFavorites(
     familyTopFavorites,
   };
 }
+
+/**
+ * 產生發起開團/採買時發送給全體家人的原生推播通知內容
+ */
+export function createGroupOrderPushNotification(params: {
+  mode: CollaborativeOrderMode;
+  storeName?: string;
+  senderName?: string;
+}): { title: string; body: string } {
+  const { mode, storeName, senderName } = params;
+  const sender = (senderName || '家人').trim();
+
+  if (mode === 'grocery') {
+    const cleanStore = storeName && storeName !== '採買賣場' ? storeName : '賣場採買';
+    return {
+      title: `🛒 ${cleanStore} 開團採買囉！`,
+      body: `${sender} 發起了補貨清單，快來看看家裡缺什麼，點此快速追加！`,
+    };
+  }
+
+  const cleanStore = storeName && storeName !== '點餐店家' ? storeName : '點餐開團';
+  return {
+    title: `🧋 ${cleanStore} 下午茶開團啦！`,
+    body: `${sender} 發起了點餐許願池，想吃想喝快進來登記～`,
+  };
+}
+
+/**
+ * 產生家人追加點單/補貨時精準通知發起人的原生推播通知內容
+ */
+export function createGroupOrderAppendPushNotification(params: {
+  mode: CollaborativeOrderMode;
+  storeName?: string;
+  senderName?: string;
+  item: {
+    itemName: string;
+    specs?: string;
+    price?: number;
+  };
+}): { title: string; body: string } {
+  const { mode, storeName, senderName, item } = params;
+  const sender = (senderName || '家人').trim();
+  const specText = item.specs && item.specs.trim() ? `（${item.specs.trim()}）` : '';
+  const priceText = item.price && item.price > 0 ? ` $${item.price}` : '';
+
+  if (mode === 'grocery') {
+    const cleanStore = storeName && storeName !== '採買賣場' ? storeName : '推車採買';
+    return {
+      title: `🛒 ${cleanStore} 收到追加補貨！`,
+      body: `${sender} 追加了：${item.itemName}${specText}${priceText}`,
+    };
+  }
+
+  const cleanStore = storeName && storeName !== '點餐店家' ? storeName : '開團點單';
+  return {
+    title: `🧋 ${cleanStore} 收到新點單！`,
+    body: `${sender} 登記了：${item.itemName}${specText}${priceText}`,
+  };
+}
