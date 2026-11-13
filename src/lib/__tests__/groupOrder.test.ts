@@ -80,10 +80,38 @@ describe('groupOrder 工具庫單元測試', () => {
       expect(parseGroupOrderItemLine('今天喝 50嵐！')).toBeNull();
       expect(parseGroupOrderItemLine('店家：50嵐')).toBeNull();
     });
+
+    it('待辦中的店家名稱與引導說明行應自動過濾回傳 null，不計入點餐項目', () => {
+      expect(parseGroupOrderItemLine('- [ ] 店家：50嵐、清心福泉')).toBeNull();
+      expect(parseGroupOrderItemLine('- [ ] 店名：麻古茶坊')).toBeNull();
+      expect(parseGroupOrderItemLine('- [ ] 大家直接在下方點【＋我也要 / 登記品項】快速報單！')).toBeNull();
+      expect(parseGroupOrderItemLine('- [ ] 大家快填想喝什麼')).toBeNull();
+    });
   });
 
   describe('computeGroupOrderSummary 統計開團總結', () => {
-    it('能正確累加總杯數與金額', () => {
+    it('能正確過濾提示引導行，僅計算真實點餐項目', () => {
+      const userUploadedContent = `[🧋 點餐開團]
+- [ ] 店家：50嵐、清心福泉
+- [ ] 大家直接在下方點【＋我也要 / 登記品項】快速報單！
+- [ ] 智爸：冬瓜檸檬（半糖、去冰、加椰果）$45`;
+
+      const summary = computeGroupOrderSummary(userUploadedContent, '點餐開團');
+      expect(summary.isGroupOrder).toBe(true);
+      expect(summary.storeName).toBe('50嵐、清心福泉');
+      expect(summary.totalCount).toBe(1);
+      expect(summary.completedCount).toBe(0);
+      expect(summary.totalAmount).toBe(45);
+      expect(summary.hasAmount).toBe(true);
+      expect(summary.items[0].memberName).toBe('智爸');
+      expect(summary.items[0].itemName).toBe('冬瓜檸檬');
+      expect(summary.items[0].specs).toBe('半糖、去冰、加椰果');
+      expect(summary.items[0].price).toBe(45);
+      // 確保打勾索引對應到記事中的第 2 個待辦 (智爸是第 3 行，index 2)
+      expect(summary.items[0].lineIndex).toBe(2);
+    });
+
+    it('能正確累加多筆點餐總杯數與金額', () => {
       const content = `【開團】50嵐
 店家：50嵐
 - [ ] 瑩媽：波霸紅茶拿鐵（微糖微冰）$60

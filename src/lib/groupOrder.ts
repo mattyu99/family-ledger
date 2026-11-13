@@ -70,9 +70,12 @@ export function extractStoreNameFromMemo(title?: string, content?: string): stri
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
 
   for (const line of lines) {
-    // 形式 1: 店家：50嵐 或 店名: 麻古茶坊
-    const m1 = line.match(/(?:店家|店名|餐廳|飲料店)[：:\s]+([^\s,，。]+)/i);
-    if (m1 && m1[1]) return m1[1].trim();
+    // 形式 1: 店家：50嵐、清心福泉 或 店名: 麻古茶坊
+    const m1 = line.match(/(?:店家|店名|餐廳|飲料店)[：:\s]+([^（\(\n]+)/i);
+    if (m1 && m1[1]) {
+      const clean = m1[1].replace(/[可換店名|請填|大家].*$/, '').trim();
+      if (clean) return clean;
+    }
 
     // 形式 2: 【開團 50嵐】 或 【點餐】老王牛肉麵
     const m2 = line.match(/【(?:點餐|開團|許願)[：:\s]*([^】]+)】/);
@@ -105,6 +108,20 @@ export function parseGroupOrderItemLine(line: string, lineIndex: number = 0): Gr
 
   const isDone = checkMatch[1].toLowerCase() === 'x' || checkMatch[1] === '✓';
   let body = checkMatch[2].trim();
+
+  // 排除非點餐的引導與說明行 (例如舊記事中的 "- [ ] 店家：50嵐"、"- [ ] 大家直接在下方點...")
+  if (
+    /^(?:店家|店名|餐廳|飲料店)[：:\s]/i.test(body) ||
+    /^(?:大家|請大家|點此|菜單|說明|備註)[：:\s]*/i.test(body) ||
+    body.includes('快速報單') ||
+    body.includes('登記品項') ||
+    body.includes('可換店名') ||
+    body.includes('大家快填') ||
+    body.includes('點此填寫') ||
+    body.includes('我也要')
+  ) {
+    return null;
+  }
 
   // 1. 提取結尾金額 (例如 $60, 60元, $ 110)
   let price = 0;
@@ -161,14 +178,17 @@ export function computeGroupOrderSummary(content: string = '', title?: string): 
   const items: GroupOrderItem[] = [];
   let totalAmount = 0;
   let hasAmount = false;
+  let checklistItemIndex = 0;
 
-  lines.forEach((line, idx) => {
-    const item = parseGroupOrderItemLine(line, idx);
+  lines.forEach((line) => {
+    const isChecklist = /^[-*]?\s*\[([ xX✓])\]\s*(.+)$/.test(line.trim());
+    const currentIndex = checklistItemIndex;
+    if (isChecklist) {
+      checklistItemIndex++;
+    }
+
+    const item = parseGroupOrderItemLine(line, currentIndex);
     if (item && item.itemName) {
-      // 排除非餐點的提示行 (如 "店家：50嵐" 或 "大家快填")
-      if (item.itemName.includes('大家快填') || item.itemName.includes('點此填寫') || item.itemName.includes('可換店名')) {
-        return;
-      }
       items.push(item);
       if (item.price > 0) {
         totalAmount += item.price;

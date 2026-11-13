@@ -739,6 +739,7 @@ export interface MemoChecklistTemplate {
   icon: string;
   tag: string;
   description: string;
+  headerText?: string;
   items: string[];
 }
 
@@ -749,10 +750,8 @@ export const BUILTIN_MEMO_TEMPLATES: MemoChecklistTemplate[] = [
     icon: '🧋',
     tag: '🧋 點餐開團',
     description: '手搖飲、宵夜點心、便當多人自由登記報單',
-    items: [
-      '店家：50嵐（可換店名）',
-      '大家直接在下方點【＋我也要 / 登記品項】快速報單！',
-    ],
+    headerText: '店家：50嵐（可直接修改店名）\n大家直接點右上方【＋我也要】快速報單！',
+    items: [],
   },
   {
     id: 'travel_abroad',
@@ -838,10 +837,14 @@ export const BUILTIN_MEMO_TEMPLATES: MemoChecklistTemplate[] = [
  * 產出指定範本之完整記事文字
  */
 export function applyChecklistTemplate(template: MemoChecklistTemplate, existingNote?: string, append: boolean = false): string {
-  const templateBody = [
-    `[${template.tag}]`,
-    ...template.items.map(it => `- [ ] ${it}`),
-  ].join('\n');
+  const parts: string[] = [`[${template.tag}]`];
+  if (template.headerText && template.headerText.trim()) {
+    parts.push(template.headerText.trim());
+  }
+  if (template.items && template.items.length > 0) {
+    parts.push(...template.items.map(it => `- [ ] ${it}`));
+  }
+  const templateBody = parts.join('\n');
 
   if (append && existingNote && existingNote.trim()) {
     return `${existingNote.trim()}\n\n${templateBody}`;

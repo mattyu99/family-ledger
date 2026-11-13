@@ -7,6 +7,8 @@ import {
   ScrollView,
   StyleSheet,
   SafeAreaView,
+  Platform,
+  StatusBar,
 } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { GroupOrderSummary, GroupOrderItem } from '../lib/groupOrder';
@@ -26,7 +28,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
   onToggleItem,
   onSettleOrder,
 }) => {
-  const { colors, isDark } = useTheme();
+  const { isDark } = useTheme();
 
   return (
     <Modal
@@ -176,6 +178,7 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0,
   },
   container: {
     flex: 1,
@@ -186,7 +189,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingTop: Platform.OS === 'android' ? 12 : 16,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },

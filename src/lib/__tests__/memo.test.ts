@@ -15,6 +15,8 @@ import {
   stripMemoInternalTag,
   isValidMerchantName,
   getEffectiveMemoReminderDate,
+  BUILTIN_MEMO_TEMPLATES,
+  applyChecklistTemplate,
 } from '../memo';
 import { hydrateTransactionWithInvoice } from '../ledgerUtils';
 
@@ -442,6 +444,19 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
         };
         const effDate = getEffectiveMemoReminderDate(tx, baseDate);
         expect(effDate).toBeNull();
+      });
+    });
+
+    describe('applyChecklistTemplate 範本支援純文字前綴 headerText', () => {
+      it('點餐開團範本只產出說明純文字，不產生待辦方框', () => {
+        const template = BUILTIN_MEMO_TEMPLATES.find(t => t.id === 'group_order_wishlist')!;
+        expect(template).toBeDefined();
+        const output = applyChecklistTemplate(template);
+        expect(output).toContain('[🧋 點餐開團]');
+        expect(output).toContain('店家：50嵐（可直接修改店名）');
+        expect(output).toContain('大家直接點右上方【＋我也要】快速報單！');
+        // 嚴格確保不包含任何待辦方框 - [ ]
+        expect(output).not.toContain('- [ ]');
       });
     });
   });
