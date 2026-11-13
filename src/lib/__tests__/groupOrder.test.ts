@@ -9,6 +9,9 @@ import {
   detectCollaborativeOrderMode,
   createGroupOrderPushNotification,
   createGroupOrderAppendPushNotification,
+  isRestockPoolMemo,
+  extractPendingRestockItems,
+  mergeRestockItemsIntoNote,
 } from '../groupOrder';
 
 describe('groupOrder 工具庫單元測試', () => {
@@ -336,6 +339,134 @@ describe('groupOrder 工具庫單元測試', () => {
         expect(foodAppend.title).toBe('🧋 50嵐 收到新點單！');
         expect(foodAppend.body).toBe('豆豆 登記了：波霸紅茶拿鐵（微糖微冰） $60');
       });
+    });
+  });
+
+  describe('網購湊免運與家庭包裹代領模式 (parcel mode) 測試', () => {
+    it('detectCollaborativeOrderMode 能精準辨識網購平台與包裹取貨為 parcel 模式', () => {
+      expect(detectCollaborativeOrderMode('📦 網購湊單', '酷澎還差 200 免運')).toBe('parcel');
+      expect(detectCollaborativeOrderMode('蝦皮湊免運', '')).toBe('parcel');
+      expect(detectCollaborativeOrderMode('超商取貨', '7-11 有一件包裹待領')).toBe('parcel');
+      expect(detectCollaborativeOrderMode('momo 補貨團', '')).toBe('parcel');
+    });
+
+    it('isGroupOrderMemo 與 extractStoreNameFromMemo 正確識別電商與超商名稱', () => {
+      expect(isGroupOrderMemo('酷澎湊免運', '- [ ] 瑩媽：濕紙巾 $399')).toBe(true);
+      expect(isGroupOrderMemo('待領包裹看板', '[📦 網購湊單]\n平台：蝦皮店到店')).toBe(true);
+      expect(extractStoreNameFromMemo('酷澎湊單', '')).toBe('酷澎');
+      expect(extractStoreNameFromMemo('待領包裹', '超商：蝦皮店到店')).toBe('蝦皮店到店');
+      expect(extractStoreNameFromMemo('超商包裹', '7-11 取貨末三碼 456')).toBe('7-11');
+      expect(extractStoreNameFromMemo('momo 團', '')).toBe('momo');
+    });
+
+    it('parcel 模式的推播通知文案正確生成', () => {
+      const launchPush = createGroupOrderPushNotification({
+        mode: 'parcel',
+        storeName: '酷澎',
+        senderName: '瑩媽',
+      });
+      expect(launchPush.title).toBe('📦 酷澎 湊單／包裹通知！');
+      expect(launchPush.body).toContain('瑩媽 發起了網購湊免運或待領包裹看板');
+
+      const appendPush = createGroupOrderAppendPushNotification({
+        mode: 'parcel',
+        storeName: '全家',
+        senderName: '智爸',
+        item: {
+          itemName: '貓砂包裹',
+          specs: '末三碼123、貨到付款',
+          price: 450,
+        },
+      });
+      expect(appendPush.title).toBe('📦 全家 收到新登記！');
+      expect(appendPush.body).toBe('智爸 登記了：貓砂包裹（末三碼123、貨到付款） $450');
+    });
+  });
+
+  describe('家中缺貨隨手記與一鍵匯入採買閉環測試', () => {
+    it('isRestockPoolMemo 精準識別缺貨隨手記，且 isGroupOrderMemo 不會將純缺貨池誤當開團廣播', () => {
+      expect(isRestockPoolMemo('🏠 家中缺貨', '- [ ] 兒童牙膏')).toBe(true);
+      expect(isRestockPoolMemo('生活備忘', '[🏠 家中缺貨] 衛生紙快用完了')).toBe(true);
+      expect(isGroupOrderMemo('🏠 家中缺貨', '- [ ] 兒童牙膏')).toBe(false);
+    });
+
+    it('extractPendingRestockItems 能同時萃取待辦清單與純文字缺貨項目，並過濾已打勾或已辦妥記事', () => {
+      const mockTxs = [
+        {
+          id: 'memo-restock-1',
+          type: 'memo',
+          is_settled: false,
+          note: `[🏠 家中缺貨]
+- [ ] 洋洋：兒童牙膏（草莓口味）
+- [x] 智爸：已經買到的洗髮精`,
+        },
+        {
+          id: 'memo-restock-2',
+          type: 'memo',
+          is_settled: false,
+          note: `[🏠 家中缺貨] 濾水壺濾芯 $699`,
+        },
+        {
+          id: 'memo-restock-settled',
+          type: 'memo',
+          is_settled: true,
+          note: `[🏠 家中缺貨]
+- [ ] 已匯入結案的衛生紙`,
+        },
+        {
+          id: 'memo-normal',
+          type: 'memo',
+          is_settled: false,
+          note: `[📌 待辦清單] 繳水電費`,
+        },
+      ];
+
+      const items = extractPendingRestockItems(mockTxs);
+      expect(items.length).toBe(2);
+      expect(items[0]).toMatchObject({
+        memoId: 'memo-restock-1',
+        memberName: '洋洋',
+        itemName: '兒童牙膏',
+        specs: '草莓口味',
+      });
+      expect(items[1]).toMatchObject({
+        memoId: 'memo-restock-2',
+        itemName: '濾水壺濾芯',
+        price: 699,
+      });
+    });
+
+    it('mergeRestockItemsIntoNote 能將缺貨項目匯入採買記事並自動略過重複品項', () => {
+      const pending = [
+        {
+          memoId: 'm1',
+          memoTitle: '家中缺貨',
+          lineIndex: 0,
+          rawText: '洋洋：兒童牙膏',
+          memberName: '洋洋',
+          itemName: '兒童牙膏',
+          specs: '草莓口味',
+          price: 0,
+        },
+        {
+          memoId: 'm2',
+          memoTitle: '家中缺貨',
+          lineIndex: 0,
+          rawText: '鮮奶',
+          memberName: '',
+          itemName: '鮮奶',
+          specs: '',
+          price: 165,
+        },
+      ];
+
+      const currentNote = `[🛒 採買清單]\n賣場：全聯\n- [ ] 瑩媽：鮮奶`;
+      const merged = mergeRestockItemsIntoNote(currentNote, pending);
+
+      expect(merged.addedCount).toBe(1);
+      expect(merged.affectedMemoIds).toEqual(['m1']);
+      expect(merged.updatedNote).toContain('- [ ] 洋洋：兒童牙膏（草莓口味）');
+      expect(merged.updatedNote).not.toContain('鮮奶（缺貨匯入）');
     });
   });
 });

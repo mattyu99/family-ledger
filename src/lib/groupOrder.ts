@@ -13,7 +13,18 @@ export interface GroupOrderItem {
   isDone: boolean;
 }
 
-export type CollaborativeOrderMode = 'food' | 'grocery';
+export type CollaborativeOrderMode = 'food' | 'grocery' | 'parcel';
+
+export interface PendingRestockItem {
+  memoId: string;
+  memoTitle: string;
+  lineIndex: number;
+  rawText: string;
+  memberName: string;
+  itemName: string;
+  specs: string;
+  price: number;
+}
 
 export interface GroupOrderSummary {
   isGroupOrder: boolean;
@@ -40,12 +51,23 @@ export interface StoreFamilyFavorites {
 }
 
 /**
- * 判斷協同模式：餐飲開團 (food) 或 賣場採買 (grocery)
+ * 判斷協同模式：網購包裹 (parcel)、賣場採買 (grocery) 或 餐飲開團 (food)
  */
 export function detectCollaborativeOrderMode(title?: string, content?: string): CollaborativeOrderMode {
   const t = (title || '').toLowerCase();
   const c = (content || '').toLowerCase();
   const text = `${t}\n${c}`;
+
+  const parcelKeywords = [
+    '📦 網購湊單', '📦 包裹代領', '📦 網購', '📦 包裹', '📦 取貨', '📦 湊免運',
+    '【網購】', '【湊單】', '【湊免運】', '【包裹】', '【取貨】', '【代領】',
+    '[網購]', '[湊單]', '[湊免運]', '[包裹]', '[取貨]', '[代領]',
+    '網購湊單', '湊免運', '包裹代領', '超商取貨', '待領包裹', '取貨清單',
+    '蝦皮', 'shopee', '酷澎', 'coupang', 'momo', 'pchome', '淘寶', '店到店',
+  ];
+  if (parcelKeywords.some(kw => text.includes(kw))) {
+    return 'parcel';
+  }
 
   const groceryKeywords = [
     '🛒 採買清單', '🛒 補貨清單', '🛒 採買', '🛒 補貨',
@@ -61,14 +83,14 @@ export function detectCollaborativeOrderMode(title?: string, content?: string): 
 }
 
 /**
- * 判斷一則生活記事是否為「點餐開團／採買補貨清單」
+ * 判斷一則生活記事是否為「點餐開團／採買補貨／網購包裹看板」
  */
 export function isGroupOrderMemo(title?: string, content?: string): boolean {
   const t = (title || '').trim().toLowerCase();
   const c = (content || '').trim().toLowerCase();
   const combined = `${t}\n${c}`;
 
-  // 1. 強烈明確標籤優先命中 (餐飲開團 + 賣場採買)
+  // 1. 強烈明確標籤優先命中 (餐飲開團 + 賣場採買 + 網購湊單/包裹)
   const strongKeywords = [
     '【點餐】', '【開團】', '【許願】', '【外帶】',
     '[點餐]', '[開團]', '[許願]',
@@ -76,16 +98,21 @@ export function isGroupOrderMemo(title?: string, content?: string): boolean {
     '點餐開團', '點餐許願',
     '🛒 採買清單', '🛒 補貨清單', '🛒 採買', '🛒 補貨',
     '【採買】', '【補貨】', '[採買]', '[補貨]',
+    '📦 網購湊單', '📦 包裹代領', '📦 網購', '📦 包裹', '📦 取貨', '📦 湊免運',
+    '【網購】', '【湊單】', '【湊免運】', '【包裹】', '【取貨】', '【代領】',
+    '[網購]', '[湊單]', '[湊免運]', '[包裹]', '[取貨]', '[代領]',
+    '網購湊單', '包裹代領', '湊免運',
   ];
   for (const kw of strongKeywords) {
     if (combined.includes(kw.toLowerCase())) return true;
   }
 
-  // 2. 嚴格防呆排除非餐飲/非採買之生活清單 (若命中醫藥、出國、清潔等且無明確標籤，絕不誤判)
+  // 2. 嚴格防呆排除非開團/非採買之生活清單 (含日常常駐「家中缺貨隨手記」)
   const nonOrderExcludes = [
     '回診', '慢箋', '慢籤', '就醫', '門診', '掛號', '看診', '健保',
     '出國', '行李', '露營', '大掃除', '拜拜', '祭祀', '打疫苗', '修繕',
     '生活記事與待辦', '待辦清單', '作業', '考試',
+    '家中缺貨', '缺貨隨手記', '缺貨池',
   ];
   if (nonOrderExcludes.some(ex => t.includes(ex) || c.includes(ex))) {
     return false;
@@ -98,29 +125,40 @@ export function isGroupOrderMemo(title?: string, content?: string): boolean {
     '訂飲料', '訂便當', '團購',
     '採買清單', '補貨清單', '超市採買', '賣場採買',
     '好市多', 'costco', '全聯', '家樂福', '大潤發', '愛買', '美廉社',
+    '網購', '湊單', '湊免運', '包裹', '取貨', '代領', '店到店',
+    '蝦皮', 'shopee', '酷澎', 'coupang', 'momo', 'pchome', '淘寶',
   ];
 
   return titleKeywords.some(kw => t.includes(kw));
 }
 
 /**
- * 從開團/採買記事內容或標題中智慧推測店家/賣場名稱
+ * 從開團/採買/網購記事內容或標題中智慧推測店家/賣場/平台名稱
  */
 export function extractStoreNameFromMemo(title?: string, content?: string): string {
   const text = `${title || ''}\n${content || ''}`;
+  const lowerText = text.toLowerCase();
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
 
-  // 優先 1: 全文快速識別知名賣場與連鎖關鍵字
-  if (text.includes('好市多') || text.toLowerCase().includes('costco')) return '好市多';
+  // 優先 1: 全文快速識別知名賣場、電商平台與超商取貨關鍵字
+  if (text.includes('好市多') || lowerText.includes('costco')) return '好市多';
   if (text.includes('全聯')) return '全聯';
   if (text.includes('家樂福')) return '家樂福';
   if (text.includes('大潤發')) return '大潤發';
   if (text.includes('愛買')) return '愛買';
   if (text.includes('美廉社')) return '美廉社';
+  if (text.includes('酷澎') || lowerText.includes('coupang')) return '酷澎';
+  if (text.includes('蝦皮店到店')) return '蝦皮店到店';
+  if (text.includes('蝦皮') || lowerText.includes('shopee')) return '蝦皮';
+  if (lowerText.includes('momo')) return 'momo';
+  if (lowerText.includes('pchome')) return 'PChome';
+  if (text.includes('淘寶')) return '淘寶';
+  if (text.includes('7-11') || text.includes('711') || text.includes('統一超商')) return '7-11';
+  if (text.includes('全家取貨') || text.includes('全家包裹') || text.includes('全家店到店')) return '全家';
 
-  // 優先 2: 逐行掃描明確店家/賣場前綴 (形式 1)
+  // 優先 2: 逐行掃描明確店家/賣場/平台前綴 (形式 1)
   for (const line of lines) {
-    const m1 = line.match(/(?:店家|店名|餐廳|飲料店|賣場|超市)[：:\s]+([^（\(\n]+)/i);
+    const m1 = line.match(/(?:店家|店名|餐廳|飲料店|賣場|超市|平台|電商|超商|通路)[：:\s]+([^（\(\n]+)/i);
     if (m1 && m1[1]) {
       const clean = m1[1].replace(/[可換店名|請填|大家].*$/, '').trim();
       if (clean) return clean;
@@ -129,7 +167,7 @@ export function extractStoreNameFromMemo(title?: string, content?: string): stri
 
   // 優先 3: 逐行掃描括弧標題 (形式 2)
   for (const line of lines) {
-    const m2 = line.match(/【(?:點餐|開團|許願|採買|補貨)[：:\s]*([^】]+)】/);
+    const m2 = line.match(/【(?:點餐|開團|許願|採買|補貨|網購|湊單|湊免運|包裹|取貨|代領)[：:\s]*([^】]+)】/);
     if (m2 && m2[1]) {
       const clean = m2[1].replace(/今天|大家|想喝|請填/g, '').trim();
       if (clean) return clean;
@@ -151,8 +189,10 @@ export function extractStoreNameFromMemo(title?: string, content?: string): stri
     }
   }
 
-  const isGrocery = detectCollaborativeOrderMode(title, content) === 'grocery';
-  return isGrocery ? '採買賣場' : '點餐店家';
+  const mode = detectCollaborativeOrderMode(title, content);
+  if (mode === 'parcel') return '網購包裹';
+  if (mode === 'grocery') return '採買賣場';
+  return '點餐店家';
 }
 
 /**
@@ -174,14 +214,17 @@ export function parseGroupOrderItemLine(line: string, lineIndex: number = 0): Gr
 
   // 排除非點餐的引導與說明行 (例如舊記事中的 "- [ ] 店家：50嵐"、"- [ ] 大家直接在下方點...")
   if (
-    /^(?:店家|店名|餐廳|飲料店)[：:\s]/i.test(body) ||
+    /^(?:店家|店名|餐廳|飲料店|賣場|超市|平台|電商|超商|通路)[：:\s]/i.test(body) ||
     /^(?:大家|請大家|點此|菜單|說明|備註)[：:\s]*/i.test(body) ||
     body.includes('快速報單') ||
     body.includes('登記品項') ||
     body.includes('可換店名') ||
     body.includes('大家快填') ||
     body.includes('點此填寫') ||
-    body.includes('我也要')
+    body.includes('我也要') ||
+    body.includes('加湊') ||
+    body.includes('代領') ||
+    body.includes('末三碼！')
   ) {
     return null;
   }
@@ -337,7 +380,7 @@ export function extractStoreFamilyFavorites(
   transactions: any[] = [],
   selectedMemberName?: string
 ): StoreFamilyFavorites {
-  if (!targetStore || targetStore === '點餐店家' || targetStore === '採買賣場') {
+  if (!targetStore || targetStore === '點餐店家' || targetStore === '採買賣場' || targetStore === '網購包裹') {
     return { memberFavorites: [], familyTopFavorites: [] };
   }
 
@@ -347,7 +390,7 @@ export function extractStoreFamilyFavorites(
   for (const tx of safeTransactions) {
     const note = tx.note || '';
     if (!note) continue;
-    // 粗篩是否含開團或採買可能
+    // 粗篩是否含開團、採買或網購包裹可能
     if (
       !note.includes('點餐') &&
       !note.includes('開團') &&
@@ -358,7 +401,15 @@ export function extractStoreFamilyFavorites(
       !note.includes('採買') &&
       !note.includes('補貨') &&
       !note.includes('超市') &&
-      !note.includes('賣場')
+      !note.includes('賣場') &&
+      !note.includes('網購') &&
+      !note.includes('湊單') &&
+      !note.includes('湊免運') &&
+      !note.includes('包裹') &&
+      !note.includes('取貨') &&
+      !note.includes('蝦皮') &&
+      !note.includes('酷澎') &&
+      !note.toLowerCase().includes('momo')
     ) {
       continue;
     }
@@ -456,6 +507,19 @@ export function extractStoreFamilyFavorites(
         { itemName: '抽取式衛生紙', specs: '1串', price: 149, count: 1 },
         { itemName: '特級初榨橄欖油', specs: '1瓶', price: 289, count: 1 }
       );
+    } else if (
+      sLower.includes('酷澎') ||
+      sLower.includes('coupang') ||
+      sLower.includes('momo') ||
+      sLower.includes('蝦皮')
+    ) {
+      familyTopFavorites.push(
+        { itemName: '嬰兒純水濕紙巾', specs: '箱購湊免運', price: 399, count: 1 },
+        { itemName: '抽取式衛生紙箱購', specs: '1箱', price: 699, count: 1 },
+        { itemName: '天然洗衣膠囊補充包', specs: '大容量', price: 450, count: 1 },
+        { itemName: '無糖氣泡水', specs: '1箱24瓶', price: 360, count: 1 },
+        { itemName: '超商待領包裹', specs: '末三碼000、已付款免付', price: 0, count: 1 }
+      );
     }
   }
 
@@ -466,7 +530,7 @@ export function extractStoreFamilyFavorites(
 }
 
 /**
- * 產生發起開團/採買時發送給全體家人的原生推播通知內容
+ * 產生發起開團/採買/網購包裹時發送給全體家人的原生推播通知內容
  */
 export function createGroupOrderPushNotification(params: {
   mode: CollaborativeOrderMode;
@@ -475,6 +539,14 @@ export function createGroupOrderPushNotification(params: {
 }): { title: string; body: string } {
   const { mode, storeName, senderName } = params;
   const sender = (senderName || '家人').trim();
+
+  if (mode === 'parcel') {
+    const cleanStore = storeName && storeName !== '網購包裹' ? storeName : '網購湊單／包裹';
+    return {
+      title: `📦 ${cleanStore} 湊單／包裹通知！`,
+      body: `${sender} 發起了網購湊免運或待領包裹看板，快來加湊或順路幫忙領！`,
+    };
+  }
 
   if (mode === 'grocery') {
     const cleanStore = storeName && storeName !== '採買賣場' ? storeName : '賣場採買';
@@ -492,7 +564,7 @@ export function createGroupOrderPushNotification(params: {
 }
 
 /**
- * 產生家人追加點單/補貨時精準通知發起人的原生推播通知內容
+ * 產生家人追加點單/補貨/網購包裹時精準通知發起人的原生推播通知內容
  */
 export function createGroupOrderAppendPushNotification(params: {
   mode: CollaborativeOrderMode;
@@ -509,6 +581,14 @@ export function createGroupOrderAppendPushNotification(params: {
   const specText = item.specs && item.specs.trim() ? `（${item.specs.trim()}）` : '';
   const priceText = item.price && item.price > 0 ? ` $${item.price}` : '';
 
+  if (mode === 'parcel') {
+    const cleanStore = storeName && storeName !== '網購包裹' ? storeName : '網購包裹';
+    return {
+      title: `📦 ${cleanStore} 收到新登記！`,
+      body: `${sender} 登記了：${item.itemName}${specText}${priceText}`,
+    };
+  }
+
   if (mode === 'grocery') {
     const cleanStore = storeName && storeName !== '採買賣場' ? storeName : '推車採買';
     return {
@@ -521,5 +601,144 @@ export function createGroupOrderAppendPushNotification(params: {
   return {
     title: `🧋 ${cleanStore} 收到新點單！`,
     body: `${sender} 登記了：${item.itemName}${specText}${priceText}`,
+  };
+}
+
+/**
+ * 判斷一則生活記事是否為「🏠 家中缺貨／待補貨隨手記」
+ */
+export function isRestockPoolMemo(title?: string, content?: string): boolean {
+  const t = (title || '').trim().toLowerCase();
+  const c = (content || '').trim().toLowerCase();
+  const combined = `${t}\n${c}`;
+
+  const restockKeywords = [
+    '🏠 家中缺貨',
+    '家中缺貨',
+    '缺貨隨手記',
+    '缺貨清單',
+    '缺貨登記',
+    '缺貨池',
+    '待補貨',
+    '【缺貨】',
+    '[缺貨]',
+  ];
+  return restockKeywords.some(kw => combined.includes(kw.toLowerCase()));
+}
+
+/**
+ * 從交易與生活記事列表中，萃取所有尚未辦妥的「🏠 家中缺貨」待買項目
+ */
+export function extractPendingRestockItems(transactions: any[] = []): PendingRestockItem[] {
+  const safeTx = Array.isArray(transactions) ? transactions : [];
+  const results: PendingRestockItem[] = [];
+  const seenKeys = new Set<string>();
+
+  for (const tx of safeTx) {
+    if (!tx || tx.type !== 'memo' || tx.is_settled) continue;
+    const rawNote = String(tx.note || '').trim();
+    if (!rawNote) continue;
+
+    // 簡易剝除開頭標籤以檢查標題
+    const tagMatch = rawNote.match(/^[\[［【]([^\[\]［］【】\n]{1,16})[\]］】]/);
+    const memoTitle = tagMatch ? tagMatch[1].trim() : (tx.category?.name || '家中缺貨');
+    if (!isRestockPoolMemo(memoTitle, rawNote)) continue;
+
+    const lines = rawNote.split('\n');
+    let hasChecklist = false;
+    let checklistIdx = 0;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const isChecklist = /^[-*]?\s*\[([ xX✓])\]\s*(.+)$/.test(trimmed);
+      if (isChecklist) {
+        hasChecklist = true;
+        const currentIdx = checklistIdx++;
+        const parsed = parseGroupOrderItemLine(trimmed, currentIdx);
+        if (parsed && !parsed.isDone && parsed.itemName) {
+          const dedupKey = parsed.itemName.toLowerCase();
+          if (!seenKeys.has(dedupKey)) {
+            seenKeys.add(dedupKey);
+            results.push({
+              memoId: tx.id,
+              memoTitle,
+              lineIndex: currentIdx,
+              rawText: trimmed.replace(/^[-*]?\s*\[[ xX✓]\]\s*/, '').trim(),
+              memberName: parsed.memberName,
+              itemName: parsed.itemName,
+              specs: parsed.specs,
+              price: parsed.price,
+            });
+          }
+        }
+      }
+    }
+
+    // 若該筆缺貨記事未使用待辦方框，而是直接打字（如 "[🏠 家中缺貨] 兒童牙膏快沒了"）
+    if (!hasChecklist) {
+      const cleanBody = rawNote
+        .replace(/^[\[［【][^\[\]［］【】\n]{1,16}[\]］】]\s*/, '')
+        .trim();
+      const textLines = cleanBody.split('\n').map(l => l.trim()).filter(Boolean);
+      for (const tl of textLines) {
+        const fakeLine = `- [ ] ${tl}`;
+        const parsed = parseGroupOrderItemLine(fakeLine, -1);
+        if (parsed && parsed.itemName) {
+          const dedupKey = parsed.itemName.toLowerCase();
+          if (!seenKeys.has(dedupKey)) {
+            seenKeys.add(dedupKey);
+            results.push({
+              memoId: tx.id,
+              memoTitle,
+              lineIndex: -1,
+              rawText: tl,
+              memberName: parsed.memberName,
+              itemName: parsed.itemName,
+              specs: parsed.specs,
+              price: parsed.price,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return results;
+}
+
+/**
+ * 將家中缺貨項目一鍵匯入至當前的採買／湊單記事內容中（自動略過已存在的同名品項）
+ */
+export function mergeRestockItemsIntoNote(
+  currentNote: string = '',
+  restockItems: PendingRestockItem[] = []
+): { updatedNote: string; addedCount: number; affectedMemoIds: string[] } {
+  let note = currentNote;
+  let addedCount = 0;
+  const affectedMemoIdSet = new Set<string>();
+  const lowerNote = note.toLowerCase();
+
+  for (const item of restockItems) {
+    if (!item.itemName) continue;
+    if (lowerNote.includes(item.itemName.toLowerCase())) {
+      continue;
+    }
+    note = appendGroupOrderItem(note, {
+      memberName: item.memberName,
+      itemName: item.itemName,
+      specs: item.specs || '缺貨匯入',
+      price: item.price > 0 ? item.price : undefined,
+      isDone: false,
+    });
+    addedCount++;
+    if (item.memoId) {
+      affectedMemoIdSet.add(item.memoId);
+    }
+  }
+
+  return {
+    updatedNote: note,
+    addedCount,
+    affectedMemoIds: Array.from(affectedMemoIdSet),
   };
 }

@@ -45,7 +45,12 @@ import {
   computeNextRelayReminderDate,
   resolveAnchorDate,
 } from '../lib/memo';
-import { isGroupOrderMemo } from '../lib/groupOrder';
+import {
+  isGroupOrderMemo,
+  detectCollaborativeOrderMode,
+  extractPendingRestockItems,
+  mergeRestockItemsIntoNote,
+} from '../lib/groupOrder';
 import {
   CalendarSystem,
   MemoRepeatFrequency,
@@ -290,6 +295,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [memoReminderRepeat, setMemoReminderRepeat] = useState<MemoRepeatFrequency>('once');
   const [memoReminderTarget, setMemoReminderTarget] = useState<'family' | 'personal'>('family');
   const [memoIsPinned, setMemoIsPinned] = useState<boolean>(false);
+  const [importedRestockMemoIds, setImportedRestockMemoIds] = useState<string[]>([]);
   const [reminderPickerInitialMode, setReminderPickerInitialMode] = useState<CalendarSystem>('solar');
   const [reminderDatePickerVisible, setReminderDatePickerVisible] = useState<boolean>(false);
   const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
@@ -351,6 +357,18 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       setMemoIsPinned(false);
     }
   }, [note, mode, type, transactions, paidBy, currentUser?.id]);
+
+  // 🏠 家中缺貨隨手記自動感知：當處於賣場採買或網購湊單模式時，偵測尚未結案的家中缺貨項目
+  const pendingRestockForCurrentMemo = useMemo(() => {
+    if (mode !== 'memo' && type !== 'memo') return [];
+    const parsed = parseMemoNote(note);
+    if (!isGroupOrderMemo(parsed.title, note)) return [];
+    const orderMode = detectCollaborativeOrderMode(parsed.title, note);
+    if (orderMode !== 'grocery' && orderMode !== 'parcel') return [];
+    const allRestock = extractPendingRestockItems(transactions);
+    const lowerNote = (note || '').toLowerCase();
+    return allRestock.filter(item => !lowerNote.includes(item.itemName.toLowerCase()));
+  }, [mode, type, note, transactions]);
 
   // 撥零用錢專用狀態
   const [allowanceMode, setAllowanceMode] = useState<'transfer' | 'expense_income'>('transfer');
@@ -907,6 +925,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     setMemoReminderRepeat('once');
     setMemoReminderTarget('family');
     setMemoIsPinned(false);
+    setImportedRestockMemoIds([]);
     lastAutoDetectedDateRef.current = '';
     userManuallySetReminderRef.current = false;
     userManuallyToggledPinRef.current = false;
@@ -1283,6 +1302,19 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         });
       }
 
+      if (createdTxId && importedRestockMemoIds.length > 0) {
+        for (const restockMemoId of importedRestockMemoIds) {
+          if (restockMemoId && restockMemoId !== linkedMemoId) {
+            await updateTransaction(restockMemoId, {
+              linked_transaction_id: createdTxId,
+              is_settled: true,
+              completed_by: targetPayer,
+              completion_note: '已一鍵匯入採買清單',
+            });
+          }
+        }
+      }
+
       setAmount('');
       setMerchant('');
       setNote('');
@@ -1294,6 +1326,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       userManuallySetReminderRef.current = false;
       userManuallyToggledPinRef.current = false;
       setMemoIsPinned(false);
+      setImportedRestockMemoIds([]);
       setSelectedDate(new Date());
       onSuccess?.(createdTxId);
       onClose();
@@ -1725,6 +1758,43 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     maxFontSizeMultiplier={1.15}
                   />
                 </View>
+
+                {/* 🏠 家中缺貨隨手記一鍵匯入提示卡 (僅在發起賣場採買或網購湊單時自動感應現身) */}
+                {(pendingRestockForCurrentMemo.length > 0 || importedRestockMemoIds.length > 0) && (
+                  <View style={styles.restockImportCard}>
+                    {pendingRestockForCurrentMemo.length > 0 ? (
+                      <>
+                        <View style={styles.restockImportHeader}>
+                          <Text style={styles.restockImportTitle} maxFontSizeMultiplier={1.08}>
+                            🏠 發現家中缺貨隨手記共 {pendingRestockForCurrentMemo.length} 項
+                          </Text>
+                          <TouchableOpacity
+                            style={styles.restockImportBtn}
+                            activeOpacity={0.75}
+                            onPress={() => {
+                              const res = mergeRestockItemsIntoNote(note, pendingRestockForCurrentMemo);
+                              if (res.addedCount > 0) {
+                                setNote(res.updatedNote);
+                                setImportedRestockMemoIds(prev => Array.from(new Set([...prev, ...res.affectedMemoIds])));
+                              }
+                            }}
+                          >
+                            <Text style={styles.restockImportBtnText} maxFontSizeMultiplier={1.08}>
+                              📥 一鍵匯入本次清單
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                        <Text style={styles.restockImportPreview} maxFontSizeMultiplier={1.08} numberOfLines={2}>
+                          待補項目：{pendingRestockForCurrentMemo.map(r => r.itemName).join('、')}
+                        </Text>
+                      </>
+                    ) : (
+                      <Text style={styles.restockImportDoneText} maxFontSizeMultiplier={1.08}>
+                        ✅ 已將家中缺貨項目匯入清單（儲存後將自動把原缺貨筆記標記為已匯入結案）
+                      </Text>
+                    )}
+                  </View>
+                )}
 
                 {/* 快捷情境標籤（方式 1：自動換行全顯；策略 1：依頻率智慧動態排序；長按可移除） */}
                 <View style={styles.quickNoteRow}>
@@ -5098,5 +5168,46 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: isDark ? colors.text.secondary : '#475569',
+  },
+  restockImportCard: {
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.12)' : '#ECFDF5',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#A7F3D0',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+  },
+  restockImportHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 4,
+  },
+  restockImportTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: isDark ? '#6EE7B7' : '#065F46',
+    flex: 1,
+  },
+  restockImportBtn: {
+    backgroundColor: '#059669',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  restockImportBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  restockImportPreview: {
+    fontSize: 11.5,
+    color: isDark ? '#A7F3D0' : '#047857',
+  },
+  restockImportDoneText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: isDark ? '#6EE7B7' : '#065F46',
   },
 });

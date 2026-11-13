@@ -19,7 +19,10 @@ import {
   recordStoreFavoriteItem,
 } from '../lib/orderTagsStorage';
 import {
+  CollaborativeOrderMode,
   extractStoreFamilyFavorites,
+  extractPendingRestockItems,
+  PendingRestockItem,
   StoreFavoriteItem,
   StoreFamilyFavorites,
 } from '../lib/groupOrder';
@@ -27,7 +30,7 @@ import {
 interface GroupOrderAppendModalProps {
   visible: boolean;
   storeName: string;
-  mode?: 'food' | 'grocery';
+  mode?: CollaborativeOrderMode;
   initialIsDone?: boolean;
   onClose: () => void;
   onAppend: (item: {
@@ -48,6 +51,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
   onAppend,
 }) => {
   const isGrocery = mode === 'grocery';
+  const isParcel = mode === 'parcel';
   const { colors, isDark } = useTheme();
   const { currentUser, members, transactions } = useLedger();
 
@@ -65,6 +69,22 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
     }
     return extractStoreFamilyFavorites(storeName, transactions, selectedMember);
   }, [visible, storeName, selectedMember, transactions]);
+
+  // 當處於賣場採買或網購湊單模式時，萃取家中尚未結案的「🏠 家中缺貨」待補項目
+  const pendingRestockItems: PendingRestockItem[] = React.useMemo(() => {
+    if (!visible || (!isGrocery && !isParcel)) return [];
+    return extractPendingRestockItems(transactions);
+  }, [visible, isGrocery, isParcel, transactions]);
+
+  // 點擊家中缺貨膠囊一鍵帶入品項與規格
+  const handleRestockItemPress = (item: PendingRestockItem) => {
+    setItemName(item.itemName);
+    setSpecs(item.specs || '缺貨補貨');
+    setPriceStr(item.price > 0 ? String(item.price) : '');
+    if (item.memberName && members.some((m: any) => m.display_name === item.memberName)) {
+      setSelectedMember(item.memberName);
+    }
+  };
 
   // 開啟彈窗時初始化資料
   useEffect(() => {
@@ -136,7 +156,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
     }
 
     // 記憶為該店家的常點招牌
-    if (storeName && storeName !== '點餐店家') {
+    if (storeName && storeName !== '點餐店家' && storeName !== '採買賣場' && storeName !== '網購包裹') {
       const favText = validPrice ? `${cleanItem} $${validPrice}` : cleanItem;
       recordStoreFavoriteItem(storeName, favText);
     }
@@ -173,11 +193,11 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
           {/* 標題列 */}
           <View style={styles.headerRow}>
             <View style={styles.headerTitleGroup}>
-              <Text style={styles.headerIcon}>{isGrocery ? '🛒' : '🧋'}</Text>
+              <Text style={styles.headerIcon}>{isParcel ? '📦' : (isGrocery ? '🛒' : '🧋')}</Text>
               <Text style={[styles.headerTitle, isDark && { color: colors.text.primary }]}>
-                {storeName && storeName !== '點餐店家' && storeName !== '採買賣場'
-                  ? `${storeName} · ${isGrocery ? '採買補貨登記' : '登記點單'}`
-                  : (isGrocery ? '採買補貨登記' : '我要點單 / 許願登記')}
+                {storeName && storeName !== '點餐店家' && storeName !== '採買賣場' && storeName !== '網購包裹'
+                  ? `${storeName} · ${isParcel ? '湊單/包裹登記' : (isGrocery ? '採買補貨登記' : '登記點單')}`
+                  : (isParcel ? '網購湊單／包裹登記' : (isGrocery ? '採買補貨登記' : '我要點單 / 許願登記'))}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -188,7 +208,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
           <ScrollView style={styles.bodyScroll} keyboardShouldPersistTaps="handled">
             {/* 1. 成員選擇列 */}
             <Text style={[styles.sectionLabel, isDark && { color: colors.text.muted }]}>
-              {isGrocery ? '採買人 (誰想買/誰需要)：' : '點餐人 (誰要吃/喝)：'}
+              {isParcel ? '登記人 (誰要買/誰的包裹)：' : (isGrocery ? '採買人 (誰想買/誰需要)：' : '點餐人 (誰要吃/喝)：')}
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.memberScrollRow}>
               {members.map((member: any) => {
@@ -220,11 +240,39 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
               })}
             </ScrollView>
 
+            {/* 1.5 家中缺貨待補快捷帶入 (賣場採買 / 網購湊單專用) */}
+            {pendingRestockItems.length > 0 && (
+              <View style={styles.favoriteContainer}>
+                <Text style={[styles.sectionLabel, { color: isDark ? '#34D399' : '#059669' }]}>
+                  🏠 家中缺貨待補 (點擊秒帶入)：
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
+                  {pendingRestockItems.map((rItem, idx) => (
+                    <TouchableOpacity
+                      key={`restock-${idx}`}
+                      onPress={() => handleRestockItemPress(rItem)}
+                      style={[
+                        styles.restockPill,
+                        isDark && { backgroundColor: 'rgba(16, 185, 129, 0.16)', borderColor: '#059669' },
+                      ]}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.restockPillText, isDark && { color: '#6EE7B7' }]}>
+                        🏠 {rItem.itemName}
+                        {rItem.memberName ? ` (${rItem.memberName})` : ''}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
             {/* 2. 成員專屬私房推薦 (全家同步，點擊一鍵填妥品項、規格與金額) */}
             {familyFavorites.memberFavorites.length > 0 && (
               <View style={styles.favoriteContainer}>
                 <Text style={[styles.sectionLabel, { color: isDark ? '#60A5FA' : '#2563EB' }]}>
-                  💡 {selectedMember || '家人'} {isGrocery ? '常買的補貨 (點擊秒帶入)：' : '常點的口味 (點擊秒帶入)：'}
+                  💡 {selectedMember || '家人'}{' '}
+                  {isParcel ? '常買的網購 (點擊秒帶入)：' : (isGrocery ? '常買的補貨 (點擊秒帶入)：' : '常點的口味 (點擊秒帶入)：')}
                 </Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
                   {familyFavorites.memberFavorites.map((fav, idx) => (
@@ -262,7 +310,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
             {familyFavorites.familyTopFavorites.length > 0 && (
               <View style={styles.favoriteContainer}>
                 <Text style={[styles.sectionLabel, { color: '#F59E0B' }]}>
-                  {isGrocery ? '🏆 全家常買熱銷榜：' : '🏆 全家常點熱銷榜：'}
+                  {isParcel ? '🏆 全家常購/包裹範本：' : (isGrocery ? '🏆 全家常買熱銷榜：' : '🏆 全家常點熱銷榜：')}
                 </Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
                   {familyFavorites.familyTopFavorites.map((fav, idx) => (
@@ -314,7 +362,11 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                 <TextInput
                   value={itemName}
                   onChangeText={setItemName}
-                  placeholder={isGrocery ? '例如：全脂鮮奶、衛生紙、牛小排' : '例如：波霸紅茶拿鐵、雞排'}
+                  placeholder={
+                    isParcel
+                      ? '例如：全家包裹、濕紙巾箱購、貓砂'
+                      : (isGrocery ? '例如：全脂鮮奶、衛生紙、牛小排' : '例如：波霸紅茶拿鐵、雞排')
+                  }
                   placeholderTextColor={isDark ? '#6B7280' : '#9CA3AF'}
                   style={[
                     styles.textInput,
@@ -340,14 +392,22 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
               </View>
             </View>
 
-            {/* 4. 客製規格 (甜度/冰塊/辣度 或 數量/容量) */}
+            {/* 4. 客製規格 (甜度/冰塊/辣度 或 數量/容量 或 末三碼/付款狀態) */}
             <Text style={[styles.sectionLabel, isDark && { color: colors.text.muted }]}>
-              {isGrocery ? '規格備註 (數量、容量、品牌、特價才買等)：' : '客製規格 (甜度冰塊、辣度加蒜、飯量等)：'}
+              {isParcel
+                ? '包裹／湊單備註 (末三碼、已付款免付、貨到付款、取貨超商等)：'
+                : (isGrocery
+                    ? '規格備註 (數量、容量、品牌、特價才買等)：'
+                    : '客製規格 (甜度冰塊、辣度加蒜、飯量等)：')}
             </Text>
             <TextInput
               value={specs}
               onChangeText={setSpecs}
-              placeholder={isGrocery ? '例如：2瓶、家庭號、特價才買、低脂...' : '微糖微冰、中辣加蒜、醬另外放...'}
+              placeholder={
+                isParcel
+                  ? '例如：末三碼123、已付款免付、7-11取貨、湊免運...'
+                  : (isGrocery ? '例如：2瓶、家庭號、特價才買、低脂...' : '微糖微冰、中辣加蒜、醬另外放...')
+              }
               placeholderTextColor={isDark ? '#6B7280' : '#9CA3AF'}
               style={[
                 styles.textInput,
@@ -388,7 +448,9 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                 !itemName.trim() && styles.submitBtnDisabled,
               ]}
             >
-              <Text style={styles.submitBtnText}>{isGrocery ? '確認放入清單 ＋' : '確認登記 ＋'}</Text>
+              <Text style={styles.submitBtnText}>
+                {isParcel ? '確認加入看板 ＋' : (isGrocery ? '確認放入清單 ＋' : '確認登記 ＋')}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -536,6 +598,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#B45309',
+  },
+  restockPill: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#6EE7B7',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginRight: 8,
+  },
+  restockPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#047857',
   },
   inputRow: {
     flexDirection: 'row',

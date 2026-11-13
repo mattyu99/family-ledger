@@ -32,6 +32,8 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
 }) => {
   const { isDark } = useTheme();
   const isGrocery = summary.mode === 'grocery';
+  const isParcel = summary.mode === 'parcel';
+  const isShoppingLike = isGrocery || isParcel;
   const progressPercent = summary.totalCount > 0
     ? Math.round((summary.completedCount / summary.totalCount) * 100)
     : 0;
@@ -49,17 +51,22 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
           <View style={[styles.header, isDark && { borderBottomColor: '#374151' }]}>
             <View style={{ flex: 1, marginRight: 8 }}>
               <View style={styles.titleRow}>
-                <Text style={styles.storeIcon}>{isGrocery ? '🛒' : '🧋'}</Text>
+                <Text style={styles.storeIcon}>{isParcel ? '📦' : (isGrocery ? '🛒' : '🧋')}</Text>
                 <Text style={[styles.storeTitle, isDark && { color: '#F9FAFB' }]} numberOfLines={1}>
-                  {summary.storeName && summary.storeName !== '點餐店家' && summary.storeName !== '採買賣場'
+                  {summary.storeName &&
+                  summary.storeName !== '點餐店家' &&
+                  summary.storeName !== '採買賣場' &&
+                  summary.storeName !== '網購包裹'
                     ? summary.storeName
-                    : (isGrocery ? '賣場採買' : '點餐開團')}
+                    : (isParcel ? '網購湊單／包裹' : (isGrocery ? '賣場採買' : '點餐開團'))}
                 </Text>
               </View>
               <Text style={[styles.storeSubtitle, isDark && { color: '#9CA3AF' }]}>
-                {isGrocery
-                  ? '賣場推車採買看板 · 放入推車可直接劃線核對'
-                  : '櫃檯大字點餐看板 · 點完可直接點擊劃線核對'}
+                {isParcel
+                  ? '網購湊單與包裹代領看板 · 買妥或領完可直接點擊劃線'
+                  : (isGrocery
+                      ? '賣場推車採買看板 · 放入推車可直接劃線核對'
+                      : '櫃檯大字點餐看板 · 點完可直接點擊劃線核對')}
               </Text>
             </View>
 
@@ -82,10 +89,15 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
           {/* 統計大看板 */}
           <View style={[styles.summaryBoard, isDark && { backgroundColor: '#1F2937', borderColor: '#374151' }]}>
             <View style={styles.summaryCol}>
-              <Text style={styles.summaryLabel}>{isGrocery ? '採買進度' : '累計數量'}</Text>
+              <Text style={styles.summaryLabel}>
+                {isParcel ? '處理進度' : (isGrocery ? '採買進度' : '累計數量')}
+              </Text>
               <Text style={[styles.summaryBigNumber, { color: '#F59E0B' }]}>
-                {summary.completedCount}/{summary.totalCount} <Text style={{ fontSize: 16 }}>{isGrocery ? '項' : '份'}</Text>
-                {isGrocery && <Text style={{ fontSize: 13, color: '#10B981', fontWeight: '700' }}> ({progressPercent}%)</Text>}
+                {summary.completedCount}/{summary.totalCount}{' '}
+                <Text style={{ fontSize: 16 }}>
+                  {isParcel ? '件' : (isGrocery ? '項' : '份')}
+                </Text>
+                {isShoppingLike && <Text style={{ fontSize: 13, color: '#10B981', fontWeight: '700' }}> ({progressPercent}%)</Text>}
               </Text>
             </View>
 
@@ -94,20 +106,24 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
             <View style={styles.summaryCol}>
               <Text style={styles.summaryLabel}>預估總金額</Text>
               <Text style={[styles.summaryBigNumber, { color: '#10B981' }]}>
-                {summary.hasAmount ? `$${summary.totalAmount}` : (isGrocery ? '依發票結算' : '隨喜')}
+                {summary.hasAmount
+                  ? `$${summary.totalAmount}`
+                  : (isParcel ? '免付/依結帳' : (isGrocery ? '依發票結算' : '隨喜'))}
               </Text>
             </View>
           </View>
 
-          {/* 大字點餐/採買清單 */}
+          {/* 大字點餐/採買/包裹清單 */}
           <ScrollView style={styles.listScroll} contentContainerStyle={styles.listContent}>
             {summary.items.length === 0 ? (
               <View style={styles.emptyContainer}>
-                <Text style={styles.emptyIcon}>{isGrocery ? '🛒' : '📝'}</Text>
+                <Text style={styles.emptyIcon}>{isParcel ? '📦' : (isGrocery ? '🛒' : '📝')}</Text>
                 <Text style={[styles.emptyText, isDark && { color: '#9CA3AF' }]}>
-                  {isGrocery
-                    ? '目前還沒有登記採買項目，快通知大家在卡片點「＋我要買」！'
-                    : '目前還沒有家人登記點單，快通知大家在卡片點「＋我也要」報單！'}
+                  {isParcel
+                    ? '目前還沒有登記湊單或待領包裹，快點「＋加湊/代領」新增！'
+                    : (isGrocery
+                        ? '目前還沒有登記採買項目，快通知大家在卡片點「＋我要買」！'
+                        : '目前還沒有家人登記點單，快通知大家在卡片點「＋我也要」報單！')}
                 </Text>
               </View>
             ) : (
@@ -136,9 +152,21 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                     <View style={styles.cardContent}>
                       <View style={styles.cardHeaderRow}>
                         {!!item.memberName && (
-                          <View style={[styles.memberBadge, isGrocery && { backgroundColor: '#ECFDF5' }]}>
-                            <Text style={[styles.memberBadgeText, isGrocery && { color: '#059669' }]}>
-                              {item.memberName}{isGrocery ? ' 想買' : ''}
+                          <View
+                            style={[
+                              styles.memberBadge,
+                              isGrocery && { backgroundColor: '#ECFDF5' },
+                              isParcel && { backgroundColor: '#EFF6FF' },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.memberBadgeText,
+                                isGrocery && { color: '#059669' },
+                                isParcel && { color: '#2563EB' },
+                              ]}
+                            >
+                              {item.memberName}{isParcel ? ' 登記' : (isGrocery ? ' 想買' : '')}
                             </Text>
                           </View>
                         )}
@@ -186,13 +214,19 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                 onClose();
                 onSettleOrder(summary.totalAmount, summary.storeName);
               }}
-              style={[styles.settleBtn, isGrocery && { backgroundColor: '#059669' }]}
+              style={[
+                styles.settleBtn,
+                isGrocery && { backgroundColor: '#059669' },
+                isParcel && { backgroundColor: '#2563EB' },
+              ]}
             >
-              <Text style={styles.settleBtnIcon}>{isGrocery ? '🛒' : '💰'}</Text>
+              <Text style={styles.settleBtnIcon}>{isParcel ? '📦' : (isGrocery ? '🛒' : '💰')}</Text>
               <Text style={styles.settleBtnText}>
-                {isGrocery
-                  ? `結帳買齊了！一鍵連動記帳 ${summary.hasAmount ? `($${summary.totalAmount})` : ''}`
-                  : `買好了！一鍵連動記帳 ${summary.hasAmount ? `($${summary.totalAmount})` : ''}`}
+                {isParcel
+                  ? `結單／領齊了！一鍵連動記帳 ${summary.hasAmount ? `($${summary.totalAmount})` : ''}`
+                  : (isGrocery
+                      ? `結帳買齊了！一鍵連動記帳 ${summary.hasAmount ? `($${summary.totalAmount})` : ''}`
+                      : `買好了！一鍵連動記帳 ${summary.hasAmount ? `($${summary.totalAmount})` : ''}`)}
               </Text>
             </TouchableOpacity>
           </View>

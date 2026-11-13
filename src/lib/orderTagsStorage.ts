@@ -20,23 +20,28 @@ export const DEFAULT_ORDER_PRESET_TAGS = {
   groceries: [
     '1瓶', '2瓶', '1盒', '2盒', '1袋', '大包裝', '家庭號', '特價才買', '低脂', '全脂', '有機', '無糖'
   ],
+  parcels: [
+    '已付款免付', '貨到付款', '7-11取貨', '全家取貨', '蝦皮店到店', '管理室代收', '湊免運', '急件先領', '冷凍包裹', '1箱', '2件'
+  ],
 };
 
 /**
  * 取得所有合併後的自學習規格標籤 (內建預設 + 使用者歷史輸入)
  */
-export async function getMergedOrderTags(mode: 'food' | 'grocery' = 'food'): Promise<string[]> {
+export async function getMergedOrderTags(mode: 'food' | 'grocery' | 'parcel' = 'food'): Promise<string[]> {
   try {
     const raw = await AsyncStorage.getItem(ORDER_TAGS_STORAGE_KEY);
     const customTags: string[] = raw ? JSON.parse(raw) : [];
 
-    const pool = mode === 'grocery'
-      ? [...DEFAULT_ORDER_PRESET_TAGS.groceries]
-      : [
-          ...DEFAULT_ORDER_PRESET_TAGS.drinks,
-          ...DEFAULT_ORDER_PRESET_TAGS.snacks,
-          ...DEFAULT_ORDER_PRESET_TAGS.meals,
-        ];
+    const pool = mode === 'parcel'
+      ? [...DEFAULT_ORDER_PRESET_TAGS.parcels]
+      : mode === 'grocery'
+        ? [...DEFAULT_ORDER_PRESET_TAGS.groceries]
+        : [
+            ...DEFAULT_ORDER_PRESET_TAGS.drinks,
+            ...DEFAULT_ORDER_PRESET_TAGS.snacks,
+            ...DEFAULT_ORDER_PRESET_TAGS.meals,
+          ];
 
     const seen = new Set<string>();
     const result: string[] = [];
@@ -60,13 +65,15 @@ export async function getMergedOrderTags(mode: 'food' | 'grocery' = 'food'): Pro
 
     return result;
   } catch {
-    return mode === 'grocery'
-      ? [...DEFAULT_ORDER_PRESET_TAGS.groceries]
-      : [
-          ...DEFAULT_ORDER_PRESET_TAGS.drinks,
-          ...DEFAULT_ORDER_PRESET_TAGS.snacks,
-          ...DEFAULT_ORDER_PRESET_TAGS.meals,
-        ];
+    return mode === 'parcel'
+      ? [...DEFAULT_ORDER_PRESET_TAGS.parcels]
+      : mode === 'grocery'
+        ? [...DEFAULT_ORDER_PRESET_TAGS.groceries]
+        : [
+            ...DEFAULT_ORDER_PRESET_TAGS.drinks,
+            ...DEFAULT_ORDER_PRESET_TAGS.snacks,
+            ...DEFAULT_ORDER_PRESET_TAGS.meals,
+          ];
   }
 }
 
