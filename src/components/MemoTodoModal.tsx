@@ -20,7 +20,13 @@ import { ThemeColors } from '../theme/colors';
 import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, checkMemoPinQuota, getItemDueDateBadge, getEffectiveMemoReminderDate } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { HorizontalScrollView } from './HorizontalScrollView';
-import { computeGroupOrderSummary, appendGroupOrderItem } from '../lib/groupOrder';
+import {
+  computeGroupOrderSummary,
+  appendGroupOrderItem,
+  updateGroupOrderItem,
+  deleteGroupOrderItem,
+  updateGroupOrderItemMember,
+} from '../lib/groupOrder';
 import { GroupOrderAppendModal } from './GroupOrderAppendModal';
 import { GroupOrderCounterModal } from './GroupOrderCounterModal';
 
@@ -891,6 +897,24 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
             onToggleItem={(lineIndex) => {
               if (activeGroupOrderTx) {
                 toggleMemoChecklistItem(activeGroupOrderTx.id, lineIndex);
+              }
+            }}
+            onUpdateItemMember={(lineIndex, newMemberName) => {
+              if (activeGroupOrderTx) {
+                const updatedNote = updateGroupOrderItemMember(activeGroupOrderTx.note || '', lineIndex, newMemberName);
+                updateTransaction(activeGroupOrderTx.id, { note: updatedNote });
+              }
+            }}
+            onUpdateItem={(lineIndex, updatedItem) => {
+              if (activeGroupOrderTx) {
+                const updatedNote = updateGroupOrderItem(activeGroupOrderTx.note || '', lineIndex, updatedItem);
+                updateTransaction(activeGroupOrderTx.id, { note: updatedNote });
+              }
+            }}
+            onDeleteItem={(lineIndex) => {
+              if (activeGroupOrderTx) {
+                const updatedNote = deleteGroupOrderItem(activeGroupOrderTx.note || '', lineIndex);
+                updateTransaction(activeGroupOrderTx.id, { note: updatedNote });
               }
             }}
             onAddQuickItem={() => {

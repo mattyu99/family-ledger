@@ -628,6 +628,76 @@ export function updateGroupOrderItemMember(
 }
 
 /**
+ * 更新指定點餐待辦項目的品項名稱、規格、金額或點餐成員
+ */
+export function updateGroupOrderItem(
+  content: string = '',
+  targetLineIndex: number,
+  updated: {
+    memberName?: string;
+    itemName: string;
+    specs?: string;
+    price?: number;
+    isDone?: boolean;
+  }
+): string {
+  const lines = content.split('\n');
+  let checklistItemIndex = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isChecklist = /^[-*]?\s*\[([ xX✓])\]\s*(.+)$/.test(line.trim());
+    if (isChecklist) {
+      if (checklistItemIndex === targetLineIndex) {
+        const item = parseGroupOrderItemLine(line, checklistItemIndex);
+        const cleanMember = (updated.memberName !== undefined ? updated.memberName : (item?.memberName || '')).trim();
+        const cleanItem = (updated.itemName || item?.itemName || '').trim();
+        const cleanSpecs = (updated.specs !== undefined ? updated.specs : (item?.specs || '')).trim();
+        const price = updated.price !== undefined ? updated.price : (item?.price || 0);
+        const isDone = updated.isDone !== undefined ? updated.isDone : (item?.isDone || false);
+
+        const memberPrefix = cleanMember ? `${cleanMember}：` : '';
+        const specsPart = cleanSpecs ? `（${cleanSpecs}）` : '';
+        const pricePart = typeof price === 'number' && price > 0 ? ` $${price}` : '';
+        const checkMark = isDone ? '[x]' : '[ ]';
+        lines[i] = `- ${checkMark} ${memberPrefix}${cleanItem}${specsPart}${pricePart}`;
+        break;
+      }
+      checklistItemIndex++;
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * 刪除指定點餐待辦項目
+ */
+export function deleteGroupOrderItem(
+  content: string = '',
+  targetLineIndex: number
+): string {
+  const lines = content.split('\n');
+  let checklistItemIndex = 0;
+  const newLines: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isChecklist = /^[-*]?\s*\[([ xX✓])\]\s*(.+)$/.test(line.trim());
+    if (isChecklist) {
+      if (checklistItemIndex === targetLineIndex) {
+        checklistItemIndex++;
+        continue;
+      }
+      checklistItemIndex++;
+    }
+    newLines.push(line);
+  }
+
+  return newLines.join('\n');
+}
+
+/**
  * 追加一筆新的點餐品項到現有記事末尾
  */
 export function appendGroupOrderItem(

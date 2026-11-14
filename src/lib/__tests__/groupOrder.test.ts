@@ -13,6 +13,8 @@ import {
   extractPendingRestockItems,
   mergeRestockItemsIntoNote,
   updateGroupOrderItemMember,
+  updateGroupOrderItem,
+  deleteGroupOrderItem,
   parseVoteOptionLine,
   toggleGroupOrderVote,
   finalizeGroupOrderVote,
@@ -535,6 +537,47 @@ describe('groupOrder 工具庫單元測試', () => {
       const unclaimedNote = updateGroupOrderItemMember(reassignedNote, 2, '');
       expect(unclaimedNote).toContain('- [ ] 擦餐桌 $50');
       expect(unclaimedNote).not.toContain('翔翔：擦餐桌');
+    });
+
+    it('updateGroupOrderItem 能精準修改品名、規格、金額並保留狀態', () => {
+      const initialNote = `[ 🧋 點餐開團]
+- [ ] 智爸：豆花
+- [ ] 瑩媽：蛋 $36`;
+
+      // 瑩媽將「蛋 $36」修改為「茶葉蛋（2顆）$40」 (checklist index 1)
+      const updatedNote = updateGroupOrderItem(initialNote, 1, {
+        memberName: '瑩媽',
+        itemName: '茶葉蛋',
+        specs: '2顆',
+        price: 40,
+      });
+
+      expect(updatedNote).toContain('- [ ] 智爸：豆花');
+      expect(updatedNote).toContain('- [ ] 瑩媽：茶葉蛋（2顆） $40');
+      expect(updatedNote).not.toContain('蛋 $36');
+
+      // 測試已打勾項目修改後維持 [x] 打勾狀態
+      const checkedNote = `[ 🧋 點餐開團]
+- [x] 洋洋：波霸紅茶 $35`;
+      const modifiedChecked = updateGroupOrderItem(checkedNote, 0, {
+        itemName: '波霸奶茶',
+        specs: '微糖微冰',
+        price: 55,
+      });
+      expect(modifiedChecked).toContain('- [x] 洋洋：波霸奶茶（微糖微冰） $55');
+    });
+
+    it('deleteGroupOrderItem 能精準刪除指定點餐待辦項目', () => {
+      const initialNote = `[ 🧋 點餐開團]
+- [ ] 智爸：豆花
+- [ ] 瑩媽：蛋 $36
+- [ ] 豆豆：布丁 $25`;
+
+      // 刪除瑩媽的項目 (checklist index 1)
+      const deletedNote = deleteGroupOrderItem(initialNote, 1);
+      expect(deletedNote).toContain('- [ ] 智爸：豆花');
+      expect(deletedNote).toContain('- [ ] 豆豆：布丁 $25');
+      expect(deletedNote).not.toContain('瑩媽：蛋 $36');
     });
   });
 

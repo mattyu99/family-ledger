@@ -3,6 +3,7 @@ import {
   Modal,
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
@@ -10,6 +11,7 @@ import {
   Platform,
   StatusBar,
   Alert,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { useLedger } from '../context/LedgerContext';
@@ -22,6 +24,16 @@ interface GroupOrderCounterModalProps {
   onToggleItem: (itemIndex: number) => void;
   onSettleOrder: (totalAmount: number, storeName: string) => void;
   onUpdateItemMember?: (lineIndex: number, newMemberName?: string) => void;
+  onUpdateItem?: (
+    lineIndex: number,
+    updatedItem: {
+      memberName: string;
+      itemName: string;
+      specs: string;
+      price?: number;
+    }
+  ) => void;
+  onDeleteItem?: (lineIndex: number) => void;
   onSettleAllowance?: (earnings: MemberEarningSummary[]) => void;
   onToggleVote?: (lineIndex: number, voterName: string) => void;
   onFinalizeVote?: (winningLineIndex: number) => void;
@@ -36,6 +48,8 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
   onToggleItem,
   onSettleOrder,
   onUpdateItemMember,
+  onUpdateItem,
+  onDeleteItem,
   onSettleAllowance,
   onToggleVote,
   onFinalizeVote,
@@ -45,6 +59,21 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
   const { isDark } = useTheme();
   const { currentUser, members } = useLedger();
   const [pickingItem, setPickingItem] = useState<GroupOrderItem | null>(null);
+
+  // 編輯單一餐點品項與金額狀態 (方案 1：全家皆可自由修改任何人的項目)
+  const [editingItem, setEditingItem] = useState<GroupOrderItem | null>(null);
+  const [editMember, setEditMember] = useState<string>('');
+  const [editItemName, setEditItemName] = useState<string>('');
+  const [editSpecs, setEditSpecs] = useState<string>('');
+  const [editPriceStr, setEditPriceStr] = useState<string>('');
+
+  const handleOpenEdit = (item: GroupOrderItem) => {
+    setEditMember(item.memberName || currentUser?.display_name || members[0]?.display_name || '家人');
+    setEditItemName(item.itemName || '');
+    setEditSpecs(item.specs || '');
+    setEditPriceStr(item.price > 0 ? String(item.price) : '');
+    setEditingItem(item);
+  };
 
   const isVote = summary.mode === 'vote';
   const isChore = summary.mode === 'chore';
@@ -297,6 +326,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                     key={idx}
                     activeOpacity={0.7}
                     onPress={() => onToggleItem(item.lineIndex)}
+                    onLongPress={() => handleOpenEdit(item)}
                     style={[
                       styles.orderCard,
                       isChecked && styles.orderCardChecked,
@@ -369,6 +399,18 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                             ${item.price}
                           </Text>
                         )}
+                        {/* ✏️ 快捷修改品項與金額按鈕 */}
+                        <TouchableOpacity
+                          activeOpacity={0.7}
+                          onPress={(e) => {
+                            e.stopPropagation?.();
+                            handleOpenEdit(item);
+                          }}
+                          style={[styles.itemEditBtn, isDark && { backgroundColor: '#374151', borderColor: '#4B5563' }]}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Text style={styles.itemEditBtnText}>✏️</Text>
+                        </TouchableOpacity>
                       </View>
 
                       {!!item.specs && (
@@ -578,6 +620,26 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
             </Text>
 
             <View style={styles.pickerMemberList}>
+              {/* 快捷直達修改品項與金額 */}
+              <TouchableOpacity
+                onPress={() => {
+                  const target = pickingItem;
+                  setPickingItem(null);
+                  if (target) {
+                    handleOpenEdit(target);
+                  }
+                }}
+                style={[
+                  styles.pickerMemberItem,
+                  { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE', borderWidth: 1, marginBottom: 10 },
+                  isDark && { backgroundColor: '#1E3A8A', borderColor: '#3B82F6' },
+                ]}
+              >
+                <Text style={[styles.pickerMemberText, { color: '#4F46E5', fontWeight: '700' }, isDark && { color: '#93C5FD' }]}>
+                  ✏️ 修改此項餐點品名、規格或金額 ›
+                </Text>
+              </TouchableOpacity>
+
               {members.map((member: any) => {
                 const isCurrent = pickingItem?.memberName === member.display_name;
                 return (
@@ -689,6 +751,171 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
+      {/* 修改餐點品項與金額彈窗 (方案 1：全家皆可自由修改任何人的項目) */}
+      <Modal
+        visible={editingItem !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditingItem(null)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.editOverlay}
+        >
+          <TouchableOpacity
+            style={styles.pickerBackdrop}
+            activeOpacity={1}
+            onPress={() => setEditingItem(null)}
+          />
+          <View style={[styles.editDialog, isDark && { backgroundColor: '#1F2937', borderColor: '#374151' }]}>
+            {/* 標題列 */}
+            <View style={styles.editHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.editTitle, isDark && { color: '#F9FAFB' }]} numberOfLines={1}>
+                  ✏️ 修改點單 · {editingItem?.itemName}
+                </Text>
+                <Text style={[styles.editSubtitle, isDark && { color: '#9CA3AF' }]}>
+                  修改餐點品名、規格或金額，儲存後全家即時同步
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setEditingItem(null)} style={styles.editCloseIconBtn}>
+                <Text style={styles.editCloseIconText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.editBodyScroll} keyboardShouldPersistTaps="handled">
+              {/* 1. 點餐人切換 */}
+              <Text style={[styles.editLabel, isDark && { color: '#D1D5DB' }]}>
+                點餐人／負責人：
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.memberScrollRow}>
+                {members.map((member: any) => {
+                  const isSelected = editMember === member.display_name;
+                  return (
+                    <TouchableOpacity
+                      key={member.id}
+                      onPress={() => setEditMember(member.display_name)}
+                      style={[
+                        styles.memberPill,
+                        isSelected && styles.memberPillActive,
+                        isDark && !isSelected && { backgroundColor: '#374151', borderColor: '#4B5563' },
+                      ]}
+                    >
+                      <Text style={[styles.memberPillText, isSelected && styles.memberPillTextActive]}>
+                        👤 {member.display_name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              {/* 2. 餐點品名 */}
+              <Text style={[styles.editLabel, isDark && { color: '#D1D5DB' }]}>
+                餐點品項名稱：
+              </Text>
+              <TextInput
+                style={[styles.editInput, isDark && styles.editInputDark]}
+                value={editItemName}
+                onChangeText={setEditItemName}
+                placeholder="例如：蛋、波霸紅茶拿鐵、排骨便當"
+                placeholderTextColor={isDark ? '#6B7280' : '#9CA3AF'}
+              />
+
+              {/* 3. 規格／備註 */}
+              <Text style={[styles.editLabel, isDark && { color: '#D1D5DB' }]}>
+                規格／甜度冰塊／備註：
+              </Text>
+              <TextInput
+                style={[styles.editInput, isDark && styles.editInputDark]}
+                value={editSpecs}
+                onChangeText={setEditSpecs}
+                placeholder="例如：微糖微冰、大杯、加辣"
+                placeholderTextColor={isDark ? '#6B7280' : '#9CA3AF'}
+              />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickTagsRow}>
+                {['微糖微冰', '無糖微冰', '無糖少冰', '全糖正常冰', '大杯', '中杯', '熱飲', '加辣', '不要辣', '不要蔥', '加飯'].map((tag) => (
+                  <TouchableOpacity
+                    key={tag}
+                    onPress={() => {
+                      if (!editSpecs) setEditSpecs(tag);
+                      else if (!editSpecs.includes(tag)) setEditSpecs(`${editSpecs}、${tag}`);
+                    }}
+                    style={[styles.quickTagBtn, isDark && { backgroundColor: '#374151', borderColor: '#4B5563' }]}
+                  >
+                    <Text style={[styles.quickTagBtnText, isDark && { color: '#D1D5DB' }]}>+{tag}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* 4. 金額 */}
+              <Text style={[styles.editLabel, isDark && { color: '#D1D5DB' }]}>
+                預估金額 (新台幣元)：
+              </Text>
+              <TextInput
+                style={[styles.editInput, isDark && styles.editInputDark]}
+                value={editPriceStr}
+                onChangeText={setEditPriceStr}
+                placeholder="例如：36、60 (未填則預設為 0)"
+                keyboardType="numeric"
+                placeholderTextColor={isDark ? '#6B7280' : '#9CA3AF'}
+              />
+            </ScrollView>
+
+            {/* 底部按鈕：刪除此項 / 儲存修改 */}
+            <View style={styles.editFooterRow}>
+              <TouchableOpacity
+                onPress={() => {
+                  Alert.alert(
+                    '刪除點單項目',
+                    `確定要刪除「${editingItem?.memberName ? `${editingItem.memberName}：` : ''}${editingItem?.itemName}」嗎？`,
+                    [
+                      { text: '取消', style: 'cancel' },
+                      {
+                        text: '確定刪除',
+                        style: 'destructive',
+                        onPress: () => {
+                          if (editingItem) {
+                            onDeleteItem?.(editingItem.lineIndex);
+                          }
+                          setEditingItem(null);
+                        },
+                      },
+                    ]
+                  );
+                }}
+                style={styles.editDeleteBtn}
+              >
+                <Text style={styles.editDeleteBtnText}>🗑️ 刪除此項</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  const cleanName = editItemName.trim();
+                  if (!cleanName) {
+                    Alert.alert('請輸入品項名稱', '餐點品項名稱不能為空白喔！');
+                    return;
+                  }
+                  const priceVal = parseInt(editPriceStr, 10);
+                  const validPrice = !isNaN(priceVal) && priceVal > 0 ? priceVal : 0;
+
+                  if (editingItem) {
+                    onUpdateItem?.(editingItem.lineIndex, {
+                      memberName: editMember,
+                      itemName: cleanName,
+                      specs: editSpecs.trim(),
+                      price: validPrice,
+                    });
+                  }
+                  setEditingItem(null);
+                }}
+                style={styles.editSaveBtn}
+              >
+                <Text style={styles.editSaveBtnText}>💾 儲存修改</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
       </Modal>
     </Modal>
   );
@@ -1187,5 +1414,174 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#4B5563',
     textAlign: 'center',
+  },
+  itemEditBtn: {
+    marginLeft: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  itemEditBtnText: {
+    fontSize: 13,
+  },
+  editOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  editDialog: {
+    width: '100%',
+    maxWidth: 440,
+    maxHeight: '85%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  editHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  editTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  editSubtitle: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  editCloseIconBtn: {
+    padding: 6,
+    marginLeft: 8,
+  },
+  editCloseIconText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#9CA3AF',
+  },
+  editBodyScroll: {
+    maxHeight: 380,
+  },
+  editLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#374151',
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  memberScrollRow: {
+    flexDirection: 'row',
+    marginBottom: 6,
+  },
+  memberPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginRight: 8,
+  },
+  memberPillActive: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#3B82F6',
+  },
+  memberPillText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#4B5563',
+  },
+  memberPillTextActive: {
+    color: '#2563EB',
+  },
+  editInput: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: '#111827',
+    marginBottom: 4,
+  },
+  editInputDark: {
+    backgroundColor: '#374151',
+    borderColor: '#4B5563',
+    color: '#F9FAFB',
+  },
+  quickTagsRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  quickTagBtn: {
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginRight: 6,
+  },
+  quickTagBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  editFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 14,
+    marginTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    gap: 12,
+  },
+  editDeleteBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 12,
+    backgroundColor: '#FEE2E2',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  editDeleteBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
+  editSaveBtn: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 12,
+    backgroundColor: '#2563EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  editSaveBtnText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 });

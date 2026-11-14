@@ -14,6 +14,8 @@ import {
   computeGroupOrderSummary,
   appendGroupOrderItem,
   updateGroupOrderItemMember,
+  updateGroupOrderItem,
+  deleteGroupOrderItem,
   toggleGroupOrderVote,
   finalizeGroupOrderVote,
   convertVoteToFoodOrder,
@@ -582,6 +584,14 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
         }}
         onUpdateItemMember={(lineIndex, newMemberName) => {
           const updatedNote = updateGroupOrderItemMember(transaction.note || '', lineIndex, newMemberName);
+          updateTransaction(transaction.id, { note: updatedNote });
+        }}
+        onUpdateItem={(lineIndex, updatedItem) => {
+          const updatedNote = updateGroupOrderItem(transaction.note || '', lineIndex, updatedItem);
+          updateTransaction(transaction.id, { note: updatedNote });
+        }}
+        onDeleteItem={(lineIndex) => {
+          const updatedNote = deleteGroupOrderItem(transaction.note || '', lineIndex);
           updateTransaction(transaction.id, { note: updatedNote });
         }}
         onToggleVote={(lineIndex, voterName) => {
