@@ -178,6 +178,22 @@ export async function sendFamilyPushNotification(payload: PushNotificationPayloa
       } catch {}
     }
 
+    // 若以 targetMemberId 精準查詢未果 (例如開團發起人裝置尚未對齊 member_id)，安全降級查詢同帳本名下其他成員裝置 (排除發送者本機)
+    if ((!devices || devices.length === 0) && payload.targetMemberId) {
+      try {
+        const { data: fallbackDevs } = await supabase
+          .from('member_devices')
+          .select('device_id, push_token')
+          .eq('ledger_id', payload.ledgerId)
+          .neq('device_id', currentDeviceId)
+          .not('push_token', 'is', null);
+
+        if (Array.isArray(fallbackDevs) && fallbackDevs.length > 0) {
+          devices = fallbackDevs;
+        }
+      } catch {}
+    }
+
     if (!devices || devices.length === 0) {
       return 0;
     }

@@ -77,6 +77,7 @@ import { syncWidgetData } from '../lib/widgetSync';
 import { sendFamilyPushNotification } from '../lib/pushDispatcher';
 import {
   isGroupOrderMemo,
+  computeGroupOrderSummary,
   detectCollaborativeOrderMode,
   extractStoreNameFromMemo,
   createGroupOrderPushNotification,
@@ -1583,15 +1584,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               const effectiveTarget = updatedRow.reminder_target || prevTx?.reminder_target || decodedMemo.reminderTarget || 'family';
               const effectivePinnedNow = isPinned !== undefined ? isPinned : Boolean(prevTx?.is_pinned);
               const effectiveReminderNow = reminderDate !== undefined ? reminderDate : prevTx?.reminder_date;
-              const memoData = parseMemoNote(parsedNote || prevTx?.note);
+              const memoNoteText = parsedNote || prevTx?.note || '';
+              const memoData = parseMemoNote(memoNoteText);
+              const groupSummary = computeGroupOrderSummary(memoNoteText, memoData.title);
+              const isGroupOrder = isGroupOrderMemo(memoData.title, memoNoteText) || groupSummary.isGroupOrder;
               const isImportantMemo =
                 effectiveTarget !== 'personal' &&
-                (isGroupOrderMemo(memoData.title, parsedNote || prevTx?.note) ||
+                (isGroupOrder ||
                   Boolean(effectivePinnedNow) ||
                   Boolean(effectiveReminderNow));
 
               if (isFromOther && isImportantMemo && shouldShowToast(updatedRow.id, 'update-memo')) {
-                const isGroupOrder = isGroupOrderMemo(memoData.title, parsedNote || prevTx?.note);
                 const actorName = (isFreshUpdater && recentUpdater.updaterName) || (effectiveUpdaterId ? getMemberById(effectiveUpdaterId)?.display_name : undefined) || '家人';
                 setLiveToast({
                   id: `update-memo-${updatedRow.id}-${Date.now()}`,
@@ -1640,6 +1643,59 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             updaterAvatar: data.updaterAvatar || '✏️',
             timestamp: Date.now(),
           });
+
+          const myId = currentUserRef.current?.id;
+          const isFromOther = !myId || data.updaterId !== myId;
+          if (!isFromOther) return;
+
+          // 若附帶新 note，即刻同步更新本機 state (零延遲無縫刷新畫面與看板)
+          if (data.note !== undefined) {
+            setTransactions((prev) => {
+              const target = prev.find((t) => t.id === data.id);
+              if (!target) return prev;
+              const updated = prev.map((t) => (t.id === data.id ? { ...t, note: data.note } : t));
+              inMemoryLedgerTxCacheRef.current.set(ledgerId, updated);
+              persistTransactionsCache(updated, ledgerId);
+              return updated;
+            });
+          }
+
+          // 🎯 若為點餐/開團的異動（修改、更正或取消），精準彈出粉紫色通知泡泡
+          if (data.orderMutationInfo && shouldShowToast(data.id, `mutation-${data.orderMutationInfo.action}`)) {
+            const mut = data.orderMutationInfo;
+            const isDel = mut.action === 'delete';
+            const titleText = isDel
+              ? `🗑️ ${data.updaterName} 取消了點單`
+              : `🧋 ${data.updaterName} 更正了點單！`;
+            const detailSpecs = mut.specs ? ` (${mut.specs})` : '';
+            const detailPrice = mut.price > 0 ? ` $${mut.price}` : '';
+            const messageText = isDel
+              ? `已為您取消「${mut.memberName ? `${mut.memberName}：` : ''}${mut.itemName}」`
+              : `「${mut.memberName ? `${mut.memberName}：` : ''}${mut.itemName}${detailSpecs}${detailPrice}」`;
+
+            setLiveToast({
+              id: `broadcast-mutation-${data.id}-${Date.now()}`,
+              type: isDel ? 'delete' : 'update',
+              actorName: data.updaterName,
+              avatar: isDel ? '🗑️' : '🧋',
+              title: titleText,
+              message: messageText,
+              createdAt: Date.now(),
+            });
+          } else if (data.orderAppendInfo && shouldShowToast(data.id, 'mutation-append')) {
+            const appItem = data.orderAppendInfo;
+            const detailSpecs = appItem.specs ? ` (${appItem.specs})` : '';
+            const detailPrice = appItem.price > 0 ? ` $${appItem.price}` : '';
+            setLiveToast({
+              id: `broadcast-append-${data.id}-${Date.now()}`,
+              type: 'insert',
+              actorName: data.updaterName,
+              avatar: '🧋',
+              title: `🧋 ${data.updaterName} 報單加一！`,
+              message: `「${appItem.memberName ? `${appItem.memberName}：` : ''}${appItem.itemName}${detailSpecs}${detailPrice}」`,
+              createdAt: Date.now(),
+            });
+          }
         }
       )
       .on(
@@ -8754,6 +8810,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 updaterName,
                 updaterAvatar,
                 ledgerId: currentLedger.id,
+                orderMutationInfo: data.orderMutationInfo,
+                orderAppendInfo: data.orderAppendInfo,
+                note: effectiveNote || data.note,
+                txType: isTargetMemo ? 'memo' : (data.type || targetTx?.type),
+                memoTitle: isTargetMemo ? parseMemoNote(data.note || targetTx?.note).title : undefined,
               },
             });
           }

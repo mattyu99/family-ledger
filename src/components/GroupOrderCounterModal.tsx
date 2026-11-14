@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { useLedger } from '../context/LedgerContext';
+import { LiveToastBanner } from './LiveToastBanner';
 import { GroupOrderSummary, GroupOrderItem, MemberEarningSummary } from '../lib/groupOrder';
 
 interface GroupOrderCounterModalProps {
@@ -57,7 +58,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
   onAddQuickItem,
 }) => {
   const { isDark } = useTheme();
-  const { currentUser, members } = useLedger();
+  const { currentUser, members, liveToast, dismissLiveToast } = useLedger();
   const [pickingItem, setPickingItem] = useState<GroupOrderItem | null>(null);
 
   // 編輯單一餐點品項與金額狀態 (方案 1：全家皆可自由修改任何人的項目)
@@ -102,6 +103,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
       onRequestClose={onClose}
     >
       <SafeAreaView style={[styles.safeArea, isDark && { backgroundColor: '#111827' }]}>
+        <LiveToastBanner toast={liveToast} onDismiss={dismissLiveToast} />
         <View style={[styles.container, isDark && { backgroundColor: '#111827' }]}>
           {/* 頂部標題與關閉列 */}
           <View style={[styles.header, isDark && { borderBottomColor: '#374151' }]}>
