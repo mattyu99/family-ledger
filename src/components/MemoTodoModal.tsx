@@ -908,13 +908,33 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
             onUpdateItem={(lineIndex, updatedItem) => {
               if (activeGroupOrderTx) {
                 const updatedNote = updateGroupOrderItem(activeGroupOrderTx.note || '', lineIndex, updatedItem);
-                updateTransaction(activeGroupOrderTx.id, { note: updatedNote });
+                updateTransaction(activeGroupOrderTx.id, {
+                  note: updatedNote,
+                  orderMutationInfo: {
+                    action: 'update',
+                    memberName: updatedItem.memberName,
+                    itemName: updatedItem.itemName,
+                    specs: updatedItem.specs,
+                    price: updatedItem.price,
+                  },
+                });
               }
             }}
             onDeleteItem={(lineIndex) => {
               if (activeGroupOrderTx) {
+                const summary = computeGroupOrderSummary(activeGroupOrderTx.note || '', parseMemoNote(activeGroupOrderTx.note).title);
+                const targetItem = summary.items.find((i) => i.lineIndex === lineIndex);
                 const updatedNote = deleteGroupOrderItem(activeGroupOrderTx.note || '', lineIndex);
-                updateTransaction(activeGroupOrderTx.id, { note: updatedNote });
+                updateTransaction(activeGroupOrderTx.id, {
+                  note: updatedNote,
+                  orderMutationInfo: {
+                    action: 'delete',
+                    memberName: targetItem?.memberName || currentUser?.display_name || '家人',
+                    itemName: targetItem?.itemName || '餐點',
+                    specs: targetItem?.specs,
+                    price: targetItem?.price,
+                  },
+                });
               }
             }}
             onAddQuickItem={() => {

@@ -588,11 +588,30 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
         }}
         onUpdateItem={(lineIndex, updatedItem) => {
           const updatedNote = updateGroupOrderItem(transaction.note || '', lineIndex, updatedItem);
-          updateTransaction(transaction.id, { note: updatedNote });
+          updateTransaction(transaction.id, {
+            note: updatedNote,
+            orderMutationInfo: {
+              action: 'update',
+              memberName: updatedItem.memberName,
+              itemName: updatedItem.itemName,
+              specs: updatedItem.specs,
+              price: updatedItem.price,
+            },
+          });
         }}
         onDeleteItem={(lineIndex) => {
+          const targetItem = groupOrderSummary.items.find((i) => i.lineIndex === lineIndex);
           const updatedNote = deleteGroupOrderItem(transaction.note || '', lineIndex);
-          updateTransaction(transaction.id, { note: updatedNote });
+          updateTransaction(transaction.id, {
+            note: updatedNote,
+            orderMutationInfo: {
+              action: 'delete',
+              memberName: targetItem?.memberName || currentUser?.display_name || '家人',
+              itemName: targetItem?.itemName || '餐點',
+              specs: targetItem?.specs,
+              price: targetItem?.price,
+            },
+          });
         }}
         onToggleVote={(lineIndex, voterName) => {
           const updatedNote = toggleGroupOrderVote(transaction.note || '', lineIndex, voterName);

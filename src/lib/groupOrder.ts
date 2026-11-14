@@ -1015,6 +1015,55 @@ export function createGroupOrderAppendPushNotification(params: {
 }
 
 /**
+ * 產生家人修改或取消點單/補貨項目時精準通知發起人的原生推播通知內容
+ */
+export function createGroupOrderUpdatePushNotification(params: {
+  mode: CollaborativeOrderMode;
+  storeName?: string;
+  senderName?: string;
+  action: 'update' | 'delete';
+  item: {
+    itemName: string;
+    specs?: string;
+    price?: number;
+  };
+}): { title: string; body: string } {
+  const { mode, storeName, senderName, action, item } = params;
+  const sender = (senderName || '家人').trim();
+  const specText = item.specs && item.specs.trim() ? `（${item.specs.trim()}）` : '';
+  const priceText = item.price && item.price > 0 ? ` $${item.price}` : '';
+  const isDelete = action === 'delete';
+
+  if (mode === 'grocery') {
+    const cleanStore = storeName && storeName !== '採買賣場' ? storeName : '推車採買';
+    return {
+      title: isDelete ? `🛒 ${cleanStore} 採買項目已移除` : `🛒 ${cleanStore} 採買項目已更正`,
+      body: isDelete
+        ? `${sender} 移除了採買項目：${item.itemName}${specText}`
+        : `${sender} 將採買項目更正為：${item.itemName}${specText}${priceText}`,
+    };
+  }
+
+  if (mode === 'parcel') {
+    const cleanStore = storeName && storeName !== '網購包裹' ? storeName : '網購包裹';
+    return {
+      title: isDelete ? `📦 ${cleanStore} 登記已取消` : `📦 ${cleanStore} 登記已更正`,
+      body: isDelete
+        ? `${sender} 取消了登記：${item.itemName}${specText}`
+        : `${sender} 將登記更正為：${item.itemName}${specText}${priceText}`,
+    };
+  }
+
+  const cleanStore = storeName && storeName !== '點餐店家' ? storeName : '開團點單';
+  return {
+    title: isDelete ? `🧋 ${cleanStore} 點單已取消` : `🧋 ${cleanStore} 點單更正通知`,
+    body: isDelete
+      ? `${sender} 取消了點單：${item.itemName}${specText}`
+      : `${sender} 將點單更正為：${item.itemName}${specText}${priceText}`,
+  };
+}
+
+/**
  * 判斷一則生活記事是否為「🏠 家中缺貨／待補貨隨手記」
  */
 export function isRestockPoolMemo(title?: string, content?: string): boolean {

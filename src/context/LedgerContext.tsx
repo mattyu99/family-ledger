@@ -81,6 +81,7 @@ import {
   extractStoreNameFromMemo,
   createGroupOrderPushNotification,
   createGroupOrderAppendPushNotification,
+  createGroupOrderUpdatePushNotification,
 } from '../lib/groupOrder';
 import * as Notifications from 'expo-notifications';
 
@@ -188,6 +189,13 @@ interface LedgerContextType {
       is_reconciled?: boolean;
       is_settled?: boolean;
       orderAppendInfo?: {
+        memberName: string;
+        itemName: string;
+        specs?: string;
+        price?: number;
+      };
+      orderMutationInfo?: {
+        action: 'update' | 'delete';
         memberName: string;
         itemName: string;
         specs?: string;
@@ -1570,7 +1578,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               }
             } else {
               // 生活記事內容更新：僅重要記事（互動看板、置頂、到期提醒）彈出泡泡，一般記事靜默更新
-              const isFromOther = !myId || (effectiveUpdaterId ? effectiveUpdaterId !== myId : (updatedRow.creator_id && updatedRow.creator_id !== myId));
+              const isLocalMutated = localMutatedTxIdsRef.current.has(updatedRow.id) && (Date.now() - (localMutatedTxIdsRef.current.get(updatedRow.id) || 0) < 15000);
+              const isFromOther = !isLocalMutated && (!effectiveUpdaterId || effectiveUpdaterId !== myId);
               const effectiveTarget = updatedRow.reminder_target || prevTx?.reminder_target || decodedMemo.reminderTarget || 'family';
               const effectivePinnedNow = isPinned !== undefined ? isPinned : Boolean(prevTx?.is_pinned);
               const effectiveReminderNow = reminderDate !== undefined ? reminderDate : prevTx?.reminder_date;
@@ -1582,13 +1591,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                   Boolean(effectiveReminderNow));
 
               if (isFromOther && isImportantMemo && shouldShowToast(updatedRow.id, 'update-memo')) {
-                const actorName = (isFreshUpdater && recentUpdater.updaterName) || getMemberById(updatedRow.paid_by)?.display_name || getMemberById(updatedRow.creator_id)?.display_name || '家人';
+                const isGroupOrder = isGroupOrderMemo(memoData.title, parsedNote || prevTx?.note);
+                const actorName = (isFreshUpdater && recentUpdater.updaterName) || (effectiveUpdaterId ? getMemberById(effectiveUpdaterId)?.display_name : undefined) || '家人';
                 setLiveToast({
                   id: `update-memo-${updatedRow.id}-${Date.now()}`,
                   type: 'update',
                   actorName,
-                  avatar: memoData.icon || '📝',
-                  title: `📝 ${actorName} 更新了生活記事`,
+                  avatar: memoData.icon || (isGroupOrder ? '🧋' : '📝'),
+                  title: isGroupOrder ? `🧋 ${actorName} 更新了點餐開團` : `📝 ${actorName} 更新了生活記事`,
                   message: `[${memoData.title}] ${memoData.cleanContent}`,
                   createdAt: Date.now(),
                 });
@@ -8160,6 +8170,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         specs?: string;
         price?: number;
       };
+      orderMutationInfo?: {
+        action: 'update' | 'delete';
+        memberName: string;
+        itemName: string;
+        specs?: string;
+        price?: number;
+      };
     }
   ): Promise<boolean> => {
     if (currentLedger.is_read_only) {
@@ -8812,6 +8829,31 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               body: push.body,
               type: 'memo_updated',
               data: { id, action: 'order_append', mode, storeName },
+              targetMemberId: creatorId,
+            }).catch(() => {});
+          }
+
+          // 若為家人修改/更正/取消點單品項，精準向開團發起人發送即時異動推播
+          if (data.orderMutationInfo && creatorId && creatorId !== currentUser.id) {
+            const noteText = data.note || targetTx?.note || '';
+            const categoryName = targetTx?.category?.name;
+            const mode = detectCollaborativeOrderMode(categoryName, noteText);
+            const storeName = extractStoreNameFromMemo(categoryName, noteText);
+            const push = createGroupOrderUpdatePushNotification({
+              mode,
+              storeName,
+              senderName: data.orderMutationInfo.memberName || updaterName,
+              action: data.orderMutationInfo.action,
+              item: data.orderMutationInfo,
+            });
+
+            sendFamilyPushNotification({
+              ledgerId: currentLedger.id,
+              senderName: updaterName,
+              title: push.title,
+              body: push.body,
+              type: 'memo_updated',
+              data: { id, action: `order_${data.orderMutationInfo.action}`, mode, storeName },
               targetMemberId: creatorId,
             }).catch(() => {});
           }

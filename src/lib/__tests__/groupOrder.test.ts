@@ -9,6 +9,7 @@ import {
   detectCollaborativeOrderMode,
   createGroupOrderPushNotification,
   createGroupOrderAppendPushNotification,
+  createGroupOrderUpdatePushNotification,
   isRestockPoolMemo,
   extractPendingRestockItems,
   mergeRestockItemsIntoNote,
@@ -350,6 +351,34 @@ describe('groupOrder 工具庫單元測試', () => {
         });
         expect(foodAppend.title).toBe('🧋 50嵐 收到新點單！');
         expect(foodAppend.body).toBe('豆豆 登記了：波霸紅茶拿鐵（微糖微冰） $60');
+      });
+
+      it('家人修改或取消點單時精準生成更正/取消推播內容', () => {
+        const updatePush = createGroupOrderUpdatePushNotification({
+          mode: 'food',
+          storeName: '50嵐',
+          senderName: '瑩媽',
+          action: 'update',
+          item: {
+            itemName: '茶葉蛋',
+            specs: '2顆',
+            price: 40,
+          },
+        });
+        expect(updatePush.title).toBe('🧋 50嵐 點單更正通知');
+        expect(updatePush.body).toBe('瑩媽 將點單更正為：茶葉蛋（2顆） $40');
+
+        const deletePush = createGroupOrderUpdatePushNotification({
+          mode: 'food',
+          storeName: '50嵐',
+          senderName: '瑩媽',
+          action: 'delete',
+          item: {
+            itemName: '蛋',
+          },
+        });
+        expect(deletePush.title).toBe('🧋 50嵐 點單已取消');
+        expect(deletePush.body).toBe('瑩媽 取消了點單：蛋');
       });
     });
   });
