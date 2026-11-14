@@ -751,6 +751,8 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
+      </Modal>
+
       {/* 修改餐點品項與金額彈窗 (方案 1：全家皆可自由修改任何人的項目) */}
       <Modal
         visible={editingItem !== null}
@@ -915,7 +917,6 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
             </View>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
       </Modal>
     </Modal>
   );
