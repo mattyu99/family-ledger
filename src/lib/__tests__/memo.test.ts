@@ -6,6 +6,7 @@ import {
   decodeMemoMerchantTag,
   parseMemoChecklist,
   toggleChecklistItem,
+  isChecklistOnlyChange,
   getRollingMemoDueInfo,
   isMemoPinned,
   toggleMemoPinnedMerchant,
@@ -114,6 +115,18 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
       const toggled = toggleChecklistItem(rawNote, 1); // 取消土司
       const checklist = parseMemoChecklist(toggled);
       expect(checklist.items[1].completed).toBe(false);
+    });
+
+    it('isChecklistOnlyChange 應正確判斷純打勾切換為 true，文字變更為 false', () => {
+      const toggled = toggleChecklistItem(rawNote, 0); // 切換鮮奶
+      expect(isChecklistOnlyChange(rawNote, toggled)).toBe(true);
+      expect(isChecklistOnlyChange(rawNote, rawNote)).toBe(true);
+
+      const modifiedText = rawNote.replace('全脂鮮奶', '低脂鮮奶');
+      expect(isChecklistOnlyChange(rawNote, modifiedText)).toBe(false);
+
+      const addedLine = rawNote + '\n- [ ] 蘋果';
+      expect(isChecklistOnlyChange(rawNote, addedLine)).toBe(false);
     });
   });
 

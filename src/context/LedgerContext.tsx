@@ -8,7 +8,7 @@ const getStorageServiceToken = (): string => SUPABASE_ANON_KEY;
 import { generateUUID } from '../lib/uuid';
 import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS, isAccountBelongingToMember, KNOWN_PAYMENT_METHOD_UUIDS } from '../lib/payment';
 import { DEFAULT_RECURRING_PRESETS, getCurrentPeriodKey, getBillPeriodLabel, getInstallmentInfo, appendPeriodKey } from '../lib/recurring';
-import { parseMemoNote, encodeMemoMerchantTag, decodeMemoMerchantTag, DEFAULT_MEMO_QUICK_TAGS, extractMemoTag, toggleChecklistItem, stripMemoInternalTag, isValidMerchantName, computeNextRelayReminderDate } from '../lib/memo';
+import { parseMemoNote, encodeMemoMerchantTag, decodeMemoMerchantTag, DEFAULT_MEMO_QUICK_TAGS, extractMemoTag, toggleChecklistItem, isChecklistOnlyChange, stripMemoInternalTag, isValidMerchantName, computeNextRelayReminderDate } from '../lib/memo';
 import { CalendarSystem, MemoRepeatFrequency, getNextMemoReminderDate, formatMemoReminderBadge } from '../lib/lunar';
 import { formatInvoiceNumber, getInvoicePeriodKey, encodeInvoiceTag, decodeInvoiceTag, stripInvoiceTag } from '../lib/invoice';
 import { checkInvoiceWinning, syncLotteryDrawsAsync } from '../lib/lottery';
@@ -612,6 +612,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const recentUpdatersRef = useRef<Map<string, { updaterId: string; updaterName: string; updaterAvatar: string; timestamp: number }>>(new Map());
   // 本機發起變更之短期快取（防回音：本機自己操作的變更，收到 Realtime 廣播時絕不對自己彈出通知泡泡）
   const localMutatedTxIdsRef = useRef<Map<string, number>>(new Map());
+  // 記錄最近發生的核取清單打勾微操作（防泡泡轟炸：打勾純屬微進度，雙方畫面秒級劃線跳變，徹底靜默不彈泡泡）
+  const recentChecklistToggleTxIdsRef = useRef<Map<string, number>>(new Map());
 
   const shouldShowToast = React.useCallback((id: string, actionType: string): boolean => {
     // 若該筆更新為本機 15 秒內剛剛發起的操作，一律靜默同步，絕不對自己彈泡泡
@@ -1594,7 +1596,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                   Boolean(effectivePinnedNow) ||
                   Boolean(effectiveReminderNow));
 
-              if (isFromOther && isImportantMemo && shouldShowToast(updatedRow.id, 'update-memo')) {
+              // 🎯 方案 A：核取清單微進度過濾器
+              // 若此筆更新「純粹僅為勾選/取消打勾品項」，僅即時同步畫面劃線與進度，雙方徹底靜默不彈泡泡打擾！
+              const isChecklistToggleFresh = recentChecklistToggleTxIdsRef.current.has(updatedRow.id) &&
+                (Date.now() - (recentChecklistToggleTxIdsRef.current.get(updatedRow.id) || 0) < 15000);
+              const isChecklistOnly = Boolean(prevTx?.note && parsedNote && isChecklistOnlyChange(prevTx.note, parsedNote));
+              const isMicroProgress = isChecklistToggleFresh || isChecklistOnly;
+
+              if (isFromOther && isImportantMemo && !isMicroProgress && shouldShowToast(updatedRow.id, 'update-memo')) {
                 const actorName = (isFreshUpdater && recentUpdater.updaterName) || (effectiveUpdaterId ? getMemberById(effectiveUpdaterId)?.display_name : undefined) || '家人';
                 setLiveToast({
                   id: `update-memo-${updatedRow.id}-${Date.now()}`,
@@ -1643,6 +1652,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             updaterAvatar: data.updaterAvatar || '✏️',
             timestamp: Date.now(),
           });
+
+          if (data.isChecklistToggle) {
+            recentChecklistToggleTxIdsRef.current.set(data.id, Date.now());
+          }
 
           const myId = currentUserRef.current?.id;
           const isFromOther = !myId || data.updaterId !== myId;
@@ -8233,6 +8246,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         specs?: string;
         price?: number;
       };
+      isChecklistToggle?: boolean;
     }
   ): Promise<boolean> => {
     if (currentLedger.is_read_only) {
@@ -8242,6 +8256,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       // 標記本機剛剛發起變更，避免收到 Realtime 回傳時產生自發自收之回音泡泡
       localMutatedTxIdsRef.current.set(id, Date.now());
+      if (data.isChecklistToggle) {
+        recentChecklistToggleTxIdsRef.current.set(id, Date.now());
+      }
       const currentList = transactionsRef.current && transactionsRef.current.length > 0 ? transactionsRef.current : transactions;
       const targetTx = currentList.find(t => t.id === id);
       const isTargetMemo = data.type === 'memo' || targetTx?.type === 'memo';
@@ -8812,6 +8829,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 ledgerId: currentLedger.id,
                 orderMutationInfo: data.orderMutationInfo,
                 orderAppendInfo: data.orderAppendInfo,
+                isChecklistToggle: data.isChecklistToggle,
                 note: effectiveNote || data.note,
                 txType: isTargetMemo ? 'memo' : (data.type || targetTx?.type),
                 memoTitle: isTargetMemo ? parseMemoNote(data.note || targetTx?.note).title : undefined,
@@ -9090,8 +9108,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const nextRelayDate = hadReminderOriginally ? computeNextRelayReminderDate(nextNote, new Date(), targetTx.transacted_at || targetTx.created_at) : null;
     const shouldUpdateReminder = hadReminderOriginally && !!nextRelayDate && nextRelayDate !== targetTx.reminder_date;
 
-    const updates: Partial<Transaction> = {
+    const updates: any = {
       note: nextNote,
+      isChecklistToggle: true,
       ...(shouldUpdateReminder ? { reminder_date: nextRelayDate } : {}),
     };
 

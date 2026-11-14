@@ -705,6 +705,33 @@ export function toggleChecklistItem(noteText: string, targetIndex: number): stri
 }
 
 /**
+ * 判斷兩篇筆記內容的差異是否「純粹僅為核取方塊的勾選或取消打勾」
+ * （用於即時協同通知過濾，避免發起人備餐連續打勾時對全家造成重複泡泡轟炸）
+ */
+export function isChecklistOnlyChange(oldNote: string | undefined | null, newNote: string | undefined | null): boolean {
+  if (!oldNote || !newNote) return false;
+  if (oldNote === newNote) return true;
+
+  const normalize = (text: string) => {
+    return text
+      .split('\n')
+      .map(line => {
+        const match = line.match(CHECKLIST_LINE_REGEX);
+        if (match) {
+          const prefix = match[1];
+          const rest = match[4];
+          return `${prefix}[ ]${rest}`;
+        }
+        return line;
+      })
+      .join('\n')
+      .trim();
+  };
+
+  return normalize(oldNote) === normalize(newNote);
+}
+
+/**
  * 智慧清單輸入處理：按下 Enter 時自動為下一行補上 `- [ ] `
  */
 export function handleChecklistInput(prevText: string, newText: string): string {
