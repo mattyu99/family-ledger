@@ -613,10 +613,22 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
         >
           <View style={[styles.pickerDialog, isDark && { backgroundColor: '#1F2937', borderColor: '#374151' }]}>
             <Text style={[styles.pickerTitle, isDark && { color: '#F9FAFB' }]} numberOfLines={1}>
-              指派負責人 · {pickingItem?.itemName}
+              {isChore
+                ? `🧹 指派負責人 · ${pickingItem?.itemName}`
+                : isGrocery
+                ? `🛒 登記採買人 · ${pickingItem?.itemName}`
+                : isParcel
+                ? `📦 包裹所屬人 · ${pickingItem?.itemName}`
+                : `🧋 點餐人 · ${pickingItem?.itemName}`}
             </Text>
             <Text style={[styles.pickerSubtitle, isDark && { color: '#9CA3AF' }]}>
-              選擇此項目的認領成員（完成後獎勵將計入該成員）：
+              {isChore
+                ? '選擇此項目的認領成員（完成後獎勵將計入該成員）：'
+                : isGrocery
+                ? '選擇這是誰想買或由誰負責採買：'
+                : isParcel
+                ? '選擇此包裹是誰的或由誰代領：'
+                : '選擇這份餐點是哪位家人的，也可以點下方按鈕直接修改餐點：'}
             </Text>
 
             <View style={styles.pickerMemberList}>
@@ -636,12 +648,27 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                 ]}
               >
                 <Text style={[styles.pickerMemberText, { color: '#4F46E5', fontWeight: '700' }, isDark && { color: '#93C5FD' }]}>
-                  ✏️ 修改此項餐點品名、規格或金額 ›
+                  {isChore
+                    ? '✏️ 修改任務名稱或獎勵金額 ›'
+                    : isGrocery
+                    ? '✏️ 修改採買品名、規格或金額 ›'
+                    : isParcel
+                    ? '✏️ 修改包裹名稱、備註或金額 ›'
+                    : '✏️ 修改此項餐點品名、規格、金額或刪除 ›'}
                 </Text>
               </TouchableOpacity>
 
               {members.map((member: any) => {
                 const isCurrent = pickingItem?.memberName === member.display_name;
+                const roleSuffix = isCurrent
+                  ? isChore
+                    ? '（目前負責人）'
+                    : isGrocery
+                    ? '（目前登記人）'
+                    : isParcel
+                    ? '（目前所屬人）'
+                    : '（目前點餐人）'
+                  : '';
                 return (
                   <TouchableOpacity
                     key={member.id}
@@ -664,7 +691,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                         isDark && { color: isCurrent ? '#93C5FD' : '#D1D5DB' },
                       ]}
                     >
-                      👤 {member.display_name} {isCurrent ? '（目前負責人）' : ''}
+                      👤 {member.display_name} {roleSuffix}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -679,7 +706,15 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                 }}
                 style={[styles.pickerMemberItem, styles.pickerUnclaimItem]}
               >
-                <Text style={styles.pickerUnclaimText}>❌ 取消認領（退回未分配大家搶）</Text>
+                <Text style={styles.pickerUnclaimText}>
+                  {isChore
+                    ? '❌ 取消認領（退回未分配大家搶）'
+                    : isGrocery
+                    ? '👥 設為全家採買（公用）'
+                    : isParcel
+                    ? '👥 設為家庭共用包裹'
+                    : '👥 設為全家共享（不綁特定人）'}
+                </Text>
               </TouchableOpacity>
             </View>
 
