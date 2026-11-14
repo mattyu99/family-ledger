@@ -2901,9 +2901,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     placeholderTextColor="#9CA3AF"
                     value={note}
                     onChangeText={setNote}
+                    multiline={true}
+                    textAlignVertical="top"
                     onFocus={() => scrollToInput(allowanceNoteSectionY, 300)}
-                    returnKeyType="done"
-                    onSubmitEditing={Keyboard.dismiss}
                     maxFontSizeMultiplier={1.15}
                   />
                 </View>
@@ -3108,8 +3108,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   placeholderTextColor="#9CA3AF"
                   value={note}
                   onChangeText={setNote}
-                  returnKeyType="done"
-                  onSubmitEditing={Keyboard.dismiss}
+                  multiline={true}
+                  textAlignVertical="top"
                   maxFontSizeMultiplier={1.15}
                 />
               </>
@@ -3501,9 +3501,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     placeholderTextColor="#9CA3AF"
                     value={note}
                     onChangeText={setNote}
+                    multiline={true}
+                    textAlignVertical="top"
                     onFocus={() => scrollToInput(noteSectionY, 450)}
-                    returnKeyType="done"
-                    onSubmitEditing={Keyboard.dismiss}
                     maxFontSizeMultiplier={1.15}
                   />
                 </View>
@@ -4124,12 +4124,15 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     borderWidth: 1,
     borderColor: isDark ? colors.border.default : '#E5E7EB',
     paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingTop: Platform.OS === 'ios' ? 9 : 8,
+    paddingBottom: Platform.OS === 'ios' ? 9 : 8,
     fontSize: 13,
+    lineHeight: 19,
     color: colors.text.primary,
     marginBottom: 14,
     width: '100%',
     minHeight: 38,
+    maxHeight: 120,
   },
   submitBtn: {
     backgroundColor: '#4F46E5',

@@ -3078,9 +3078,9 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 value={note}
                 onChangeText={setNote}
                 editable={canEdit}
+                multiline={true}
+                textAlignVertical="top"
                 onFocus={() => scrollToInput(noteSectionY, 450)}
-                returnKeyType="done"
-                onSubmitEditing={Keyboard.dismiss}
                 maxFontSizeMultiplier={1.15}
               />
             </View>
@@ -3875,12 +3875,15 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     borderWidth: 1,
     borderColor: isDark ? colors.border.default : '#E5E7EB',
     paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingTop: Platform.OS === 'ios' ? 9 : 8,
+    paddingBottom: Platform.OS === 'ios' ? 9 : 8,
     fontSize: 13,
+    lineHeight: 19,
     color: colors.text.primary,
     marginBottom: 14,
     width: '100%',
     minHeight: 38,
+    maxHeight: 120,
   },
   btnRow: {
     flexDirection: 'row',
@@ -4050,6 +4053,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderColor: isDark ? colors.border.default : '#E2E8F0',
     color: colors.text.primary,
+    lineHeight: 19,
   },
   readOnlyBtnRow: {
     marginTop: 20,
