@@ -590,10 +590,10 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                 <Text style={styles.settleBtnIcon}>{isParcel ? '📦' : (isGrocery ? '🛒' : '💰')}</Text>
                 <Text style={styles.settleBtnText}>
                   {isParcel
-                    ? `結單／領齊了！一鍵連動記帳 ${summary.hasAmount ? `($${summary.totalAmount})` : ''}`
+                    ? `結單／領齊了！前往辦妥與核對 ${summary.hasAmount ? `($${summary.totalAmount})` : ''}`
                     : (isGrocery
-                        ? `結帳買齊了！一鍵連動記帳 ${summary.hasAmount ? `($${summary.totalAmount})` : ''}`
-                        : `買好了！一鍵連動記帳 ${summary.hasAmount ? `($${summary.totalAmount})` : ''}`)}
+                        ? `結帳買齊了！前往辦妥與結算 ${summary.hasAmount ? `($${summary.totalAmount})` : ''}`
+                        : `買好了！前往辦妥與結算 ${summary.hasAmount ? `($${summary.totalAmount})` : ''}`)}
                 </Text>
               </TouchableOpacity>
             )}

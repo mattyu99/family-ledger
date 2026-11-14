@@ -143,6 +143,8 @@ interface AddTransactionModalProps {
   defaultRecipientId?: string;
   defaultPayerId?: string;
   defaultNote?: string;
+  defaultAmount?: number | string;
+  defaultMerchant?: string;
   linkedMemoId?: string;
   linkedCompletionNote?: string;
   autoOpenScanner?: boolean;
@@ -158,6 +160,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   defaultRecipientId,
   defaultPayerId,
   defaultNote,
+  defaultAmount,
+  defaultMerchant,
   linkedMemoId,
   linkedCompletionNote,
   autoOpenScanner = false,
@@ -913,10 +917,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const resetForm = React.useCallback(() => {
     setSelectedDate(new Date());
     setDatePickerVisible(false);
-    setAmount('');
+    setAmount(defaultAmount !== undefined && defaultAmount !== null && defaultAmount !== '' ? String(defaultAmount) : '');
     setPaymentMethod('cash');
     setSelectedAccountId('');
-    setMerchant('');
+    setMerchant(defaultMerchant || '');
     setInvoiceNumber('');
     setInvoiceRandomCode('');
     setInvoiceSellerTaxId('');
@@ -1008,7 +1012,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     } else {
       setSelectedCategoryId('');
     }
-  }, [initialMode, defaultNote, defaultPayerId, defaultRecipientId, currentUser, members, categories, getMemberById, paymentAccounts]);
+  }, [initialMode, defaultNote, defaultPayerId, defaultRecipientId, defaultAmount, defaultMerchant, currentUser, members, categories, getMemberById, paymentAccounts]);
 
   // 當彈窗開啟時，全面執行 resetForm 確保畫面乾淨無前次殘留；若指定 autoOpenScanner 則自動喚起發票相機
   const prevVisibleRef = React.useRef(false);

@@ -78,6 +78,7 @@ import { LiveToastBanner } from './src/components/LiveToastBanner';
 import { AppLockOverlay } from './src/components/AppLockOverlay';
 import { DemoQuestBanner } from './src/components/DemoQuestBanner';
 import { getLatestDrawnPeriodKey } from './src/lib/invoice';
+import { computeGroupOrderSummary } from './src/lib/groupOrder';
 
 // Web 專用重設樣式注入
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -237,6 +238,8 @@ const AppContent: React.FC = () => {
   const [modalRecipientId, setModalRecipientId] = useState<string | undefined>(undefined);
   const [modalDefaultPayerId, setModalDefaultPayerId] = useState<string | undefined>(undefined);
   const [modalDefaultNote, setModalDefaultNote] = useState<string | undefined>(undefined);
+  const [modalDefaultAmount, setModalDefaultAmount] = useState<string | undefined>(undefined);
+  const [modalDefaultMerchant, setModalDefaultMerchant] = useState<string | undefined>(undefined);
   const [modalLinkedMemoId, setModalLinkedMemoId] = useState<string | undefined>(undefined);
   const [modalLinkedCompletionNote, setModalLinkedCompletionNote] = useState<string | undefined>(undefined);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -454,6 +457,24 @@ const AppContent: React.FC = () => {
     setModalLinkedMemoId(memo.id);
     setModalDefaultPayerId(completedBy || currentUser?.id);
     const memoData = parseMemoNote(memo.note);
+    const groupSummary = computeGroupOrderSummary(memo.note || '', memoData.title);
+    if (groupSummary.hasAmount && groupSummary.totalAmount > 0) {
+      setModalDefaultAmount(String(groupSummary.totalAmount));
+    } else {
+      setModalDefaultAmount(undefined);
+    }
+    if (
+      groupSummary.storeName &&
+      groupSummary.storeName !== '點餐店家' &&
+      groupSummary.storeName !== '採買賣場' &&
+      groupSummary.storeName !== '網購包裹' &&
+      groupSummary.storeName !== '家庭任務' &&
+      groupSummary.storeName !== '家庭決策'
+    ) {
+      setModalDefaultMerchant(groupSummary.storeName);
+    } else {
+      setModalDefaultMerchant(undefined);
+    }
     setModalDefaultNote(`[辦妥] ${memoData.title || memo.note}`);
     setModalLinkedCompletionNote(note);
     setCompletionTempCompleter(completedBy);
@@ -1170,6 +1191,8 @@ const AppContent: React.FC = () => {
         defaultRecipientId={modalRecipientId}
         defaultPayerId={modalDefaultPayerId}
         defaultNote={modalDefaultNote}
+        defaultAmount={modalDefaultAmount}
+        defaultMerchant={modalDefaultMerchant}
         linkedMemoId={modalLinkedMemoId}
         linkedCompletionNote={modalLinkedCompletionNote}
         autoOpenScanner={modalAutoOpenScanner}
@@ -1179,12 +1202,16 @@ const AppContent: React.FC = () => {
           setCompletingMemo(null);
           setCompletionTempNote('');
           setCompletionTempCompleter('');
+          setModalDefaultAmount(undefined);
+          setModalDefaultMerchant(undefined);
         }}
         onClose={() => {
           setModalVisible(false);
           setModalRecipientId(undefined);
           setModalDefaultPayerId(undefined);
           setModalDefaultNote(undefined);
+          setModalDefaultAmount(undefined);
+          setModalDefaultMerchant(undefined);
           setModalLinkedMemoId(undefined);
           setModalLinkedCompletionNote(undefined);
           setModalAutoOpenScanner(false);
@@ -1208,6 +1235,24 @@ const AppContent: React.FC = () => {
           setModalLinkedMemoId(memoTx.id);
           setModalDefaultPayerId(memoTx.completed_by || currentUser?.id);
           const memoData = parseMemoNote(memoTx.note);
+          const groupSummary = computeGroupOrderSummary(memoTx.note || '', memoData.title);
+          if (groupSummary.hasAmount && groupSummary.totalAmount > 0) {
+            setModalDefaultAmount(String(groupSummary.totalAmount));
+          } else {
+            setModalDefaultAmount(undefined);
+          }
+          if (
+            groupSummary.storeName &&
+            groupSummary.storeName !== '點餐店家' &&
+            groupSummary.storeName !== '採買賣場' &&
+            groupSummary.storeName !== '網購包裹' &&
+            groupSummary.storeName !== '家庭任務' &&
+            groupSummary.storeName !== '家庭決策'
+          ) {
+            setModalDefaultMerchant(groupSummary.storeName);
+          } else {
+            setModalDefaultMerchant(undefined);
+          }
           setModalDefaultNote(`[辦妥] ${memoData.title || memoTx.note}`);
           setModalLinkedCompletionNote(memoTx.completion_note);
           setModalVisible(true);
