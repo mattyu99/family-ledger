@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, Linking } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Linking, Alert, Platform } from 'react-native';
 import { Text } from './common/Text';
 
 import { Transaction } from '../types/database';
@@ -19,6 +19,7 @@ import {
   toggleGroupOrderVote,
   finalizeGroupOrderVote,
   convertVoteToFoodOrder,
+  extendOrderDeadline,
   MemberEarningSummary,
 } from '../lib/groupOrder';
 import { GroupOrderAppendModal } from './GroupOrderAppendModal';
@@ -106,7 +107,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
     const reminderBadge = formatMemoReminderBadge(reminderDate, reminderCal, reminderRep);
     const memoData = parseMemoNote(transaction.note, category?.name, getCategoryIcon(category?.icon));
     const checklistData = parseMemoChecklist(memoData.cleanContent);
-    const groupOrderSummary = computeGroupOrderSummary(transaction.note || '', memoData.title);
+    const groupOrderSummary = computeGroupOrderSummary(transaction.note || '', memoData.title, transaction.transacted_at || transaction.created_at);
     const checklistProgressPercent = checklistData.totalCount > 0
       ? (checklistData.completedCount / checklistData.totalCount) * 100
       : 0;
@@ -270,37 +271,79 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                       ? '🧹'
                       : (groupOrderSummary.mode === 'parcel' ? '📦' : (groupOrderSummary.mode === 'grocery' ? '🛒' : '🧋')))}
               </Text>
-              <Text style={[styles.groupOrderText, isDark && { color: '#FCD34D' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                {groupOrderSummary.storeName &&
-                groupOrderSummary.storeName !== '點餐店家' &&
-                groupOrderSummary.storeName !== '採買賣場' &&
-                groupOrderSummary.storeName !== '網購包裹' &&
-                groupOrderSummary.storeName !== '家庭任務' &&
-                groupOrderSummary.storeName !== '家庭決策'
-                  ? `${groupOrderSummary.storeName} · `
-                  : ''}
-                {groupOrderSummary.mode === 'vote'
-                  ? `累計 ${groupOrderSummary.totalCount} 候選 · 共 ${groupOrderSummary.totalVotes || 0} 票${groupOrderSummary.leadingOption ? ` · 領先：${groupOrderSummary.leadingOption.title}` : ''}`
-                  : `累計 ${groupOrderSummary.totalCount} ${groupOrderSummary.mode === 'parcel' ? '件' : ((groupOrderSummary.mode === 'grocery' || groupOrderSummary.mode === 'chore') ? '項' : '份')}${groupOrderSummary.mode === 'chore' ? (groupOrderSummary.hasAmount ? ` · 累計獎勵 $${groupOrderSummary.totalAmount}` : '') : (groupOrderSummary.hasAmount ? ` · 預估 $${groupOrderSummary.totalAmount}` : '')}`}
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.groupOrderText, isDark && { color: '#FCD34D' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                  {groupOrderSummary.storeName &&
+                  groupOrderSummary.storeName !== '點餐店家' &&
+                  groupOrderSummary.storeName !== '採買賣場' &&
+                  groupOrderSummary.storeName !== '網購包裹' &&
+                  groupOrderSummary.storeName !== '家庭任務' &&
+                  groupOrderSummary.storeName !== '家庭決策'
+                    ? `${groupOrderSummary.storeName} · `
+                    : ''}
+                  {groupOrderSummary.mode === 'vote'
+                    ? `累計 ${groupOrderSummary.totalCount} 候選 · 共 ${groupOrderSummary.totalVotes || 0} 票${groupOrderSummary.leadingOption ? ` · 領先：${groupOrderSummary.leadingOption.title}` : ''}`
+                    : `累計 ${groupOrderSummary.totalCount} ${groupOrderSummary.mode === 'parcel' ? '件' : ((groupOrderSummary.mode === 'grocery' || groupOrderSummary.mode === 'chore') ? '項' : '份')}${groupOrderSummary.mode === 'chore' ? (groupOrderSummary.hasAmount ? ` · 累計獎勵 $${groupOrderSummary.totalAmount}` : '') : (groupOrderSummary.hasAmount ? ` · 預估 $${groupOrderSummary.totalAmount}` : '')}`}
+                </Text>
+                {groupOrderSummary.deadlineInfo?.hasDeadline && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3 }}>
+                    <View
+                      style={[
+                        styles.groupOrderDeadlineBadge,
+                        groupOrderSummary.deadlineInfo.badgeColorType === 'urgent' && styles.groupOrderDeadlineBadgeUrgent,
+                        groupOrderSummary.deadlineInfo.badgeColorType === 'expired' && styles.groupOrderDeadlineBadgeExpired,
+                        isDark && { backgroundColor: groupOrderSummary.deadlineInfo.badgeColorType === 'expired' ? '#374151' : (groupOrderSummary.deadlineInfo.badgeColorType === 'urgent' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(59, 130, 246, 0.2)') },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.groupOrderDeadlineText,
+                          groupOrderSummary.deadlineInfo.badgeColorType === 'urgent' && styles.groupOrderDeadlineTextUrgent,
+                          groupOrderSummary.deadlineInfo.badgeColorType === 'expired' && styles.groupOrderDeadlineTextExpired,
+                          isDark && { color: groupOrderSummary.deadlineInfo.badgeColorType === 'expired' ? '#9CA3AF' : (groupOrderSummary.deadlineInfo.badgeColorType === 'urgent' ? '#F87171' : '#93C5FD') },
+                        ]}
+                        allowFontScaling={false}
+                        maxFontSizeMultiplier={1.08}
+                      >
+                        {groupOrderSummary.deadlineInfo.badgeText}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
             </View>
             <View style={styles.groupOrderActions}>
               <TouchableOpacity
                 activeOpacity={0.7}
                 onPress={(e) => {
                   e.stopPropagation?.();
+                  const isCreator = transaction.creator_id === currentUser?.id || transaction.paid_by === currentUser?.id;
+                  if (groupOrderSummary.deadlineInfo?.isExpired && !isCreator) {
+                    const msg = `開團時間已過截止時限 (${groupOrderSummary.deadlineInfo.rawText} 截止) 囉！\n若仍有加點需求，請直接跟發起人確認。`;
+                    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                      window.alert(msg);
+                    } else {
+                      Alert.alert('開團已截止收單', msg);
+                    }
+                    return;
+                  }
                   setIsGroupOrderAppendOpen(true);
                 }}
-                style={styles.groupOrderAppendBtn}
+                style={[
+                  styles.groupOrderAppendBtn,
+                  groupOrderSummary.deadlineInfo?.isExpired && (transaction.creator_id !== currentUser?.id && transaction.paid_by !== currentUser?.id) && { backgroundColor: '#9CA3AF' },
+                ]}
               >
                 <Text style={styles.groupOrderAppendBtnText}>
-                  {groupOrderSummary.mode === 'vote'
-                    ? '＋ 提案'
-                    : (groupOrderSummary.mode === 'chore'
-                        ? '＋ 認領/加項'
-                        : (groupOrderSummary.mode === 'parcel'
-                            ? '＋ 加湊/代領'
-                            : (groupOrderSummary.mode === 'grocery' ? '＋ 我要買' : '＋ 我也要')))}
+                  {groupOrderSummary.deadlineInfo?.isExpired && (transaction.creator_id !== currentUser?.id && transaction.paid_by !== currentUser?.id)
+                    ? '🔒 已截止'
+                    : (groupOrderSummary.mode === 'vote'
+                        ? '＋ 提案'
+                        : (groupOrderSummary.mode === 'chore'
+                            ? '＋ 認領/加項'
+                            : (groupOrderSummary.mode === 'parcel'
+                                ? '＋ 加湊/代領'
+                                : (groupOrderSummary.mode === 'grocery' ? '＋ 我要買' : '＋ 我也要'))))}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -632,6 +675,10 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
         }}
         onAddQuickItem={() => {
           setIsGroupOrderAppendOpen(true);
+        }}
+        onExtendDeadline={(addMinutes) => {
+          const updatedNote = extendOrderDeadline(transaction.note || '', addMinutes, transaction.transacted_at || transaction.created_at);
+          updateTransaction(transaction.id, { note: updatedNote });
         }}
         onSettleOrder={() => {
           onCompleteMemo?.(transaction);
@@ -1684,5 +1731,34 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     fontWeight: '700',
     color: '#B45309',
+  },
+  groupOrderDeadlineBadge: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  groupOrderDeadlineBadgeUrgent: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+  },
+  groupOrderDeadlineBadgeExpired: {
+    backgroundColor: '#F3F4F6',
+    borderColor: '#E5E7EB',
+  },
+  groupOrderDeadlineText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#2563EB',
+  },
+  groupOrderDeadlineTextUrgent: {
+    color: '#DC2626',
+    fontWeight: '900',
+  },
+  groupOrderDeadlineTextExpired: {
+    color: '#6B7280',
+    fontWeight: '700',
   },
 });

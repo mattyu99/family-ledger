@@ -20,6 +20,9 @@ import {
   toggleGroupOrderVote,
   finalizeGroupOrderVote,
   convertVoteToFoodOrder,
+  extractOrderDeadline,
+  extendOrderDeadline,
+  setOrderDeadlineInNote,
 } from '../groupOrder';
 
 describe('groupOrder 工具庫單元測試', () => {
@@ -702,6 +705,69 @@ describe('groupOrder 工具庫單元測試', () => {
       expect(foodOrder).toContain('[🧋 點餐開團] 店家：鼎泰豐小籠包');
       expect(foodOrder).toContain('店家：鼎泰豐小籠包');
       expect(foodOrder).toContain('快速報單');
+    });
+  });
+
+  describe('開團與投票截止時間管理 (extractOrderDeadline & extendOrderDeadline)', () => {
+    const baseDate = new Date('2026-11-15T10:00:00');
+
+    it('能精準解析「截止時間：11:30」日常繁體中文語法', () => {
+      const note = `[🧋 點餐開團] 店家：50嵐
+截止時間：11:30
+- [ ] 智爸：四季春 $35`;
+
+      const nowBefore = new Date('2026-11-15T11:00:00');
+      const deadline = extractOrderDeadline(note, baseDate, nowBefore);
+      expect(deadline.hasDeadline).toBe(true);
+      expect(deadline.rawText).toBe('11:30');
+      expect(deadline.isExpired).toBe(false);
+      expect(deadline.remainingMinutes).toBe(30);
+      expect(deadline.badgeColorType).toBe('normal');
+      expect(deadline.badgeText).toContain('11:30 截止 (剩 30分)');
+    });
+
+    it('即將截止 (小於 10 分鐘) 應標註為 urgent 警示色與倒數文字', () => {
+      const note = `店家：老王牛肉麵\n11:30 截止\n- [ ] 瑩媽：牛肉麵 $160`;
+      const nowUrgent = new Date('2026-11-15T11:25:00');
+      const deadline = extractOrderDeadline(note, baseDate, nowUrgent);
+      expect(deadline.isExpired).toBe(false);
+      expect(deadline.remainingMinutes).toBe(5);
+      expect(deadline.badgeColorType).toBe('urgent');
+      expect(deadline.badgeText).toContain('剩 5 分鐘！即將截止');
+    });
+
+    it('逾期應精準判定為 isExpired: true 與 expired 標記', () => {
+      const note = `店家：清心福全\n截止：11:30\n- [ ] 洋洋：多多綠 $45`;
+      const nowAfter = new Date('2026-11-15T11:35:00');
+      const deadline = extractOrderDeadline(note, baseDate, nowAfter);
+      expect(deadline.isExpired).toBe(true);
+      expect(deadline.remainingMinutes).toBe(0);
+      expect(deadline.badgeColorType).toBe('expired');
+      expect(deadline.badgeText).toBe('🔒 已截止收單 (11:30)');
+    });
+
+    it('extendOrderDeadline 應能將截止時間自動順延 15 分鐘', () => {
+      const note = `[🧋 點餐開團] 店家：50嵐\n截止時間：11:30\n- [ ] 智爸：四季春`;
+      const extended = extendOrderDeadline(note, 15, baseDate);
+      expect(extended).toContain('截止時間：11:45');
+    });
+
+    it('setOrderDeadlineInNote 能在無截止時間之記事中插入截止時間，且空字串能正確清除', () => {
+      const note = `[🧋 點餐開團] 店家：50嵐\n- [ ] 智爸：四季春`;
+      const withDeadline = setOrderDeadlineInNote(note, '12:30');
+      expect(withDeadline).toContain('截止時間：12:30');
+
+      const cleared = setOrderDeadlineInNote(withDeadline, '');
+      expect(cleared).not.toContain('截止時間');
+      expect(cleared).toContain('- [ ] 智爸：四季春');
+    });
+
+    it('computeGroupOrderSummary 應自動包含 deadlineInfo', () => {
+      const note = `店家：迷客夏\n截止時間：15:00\n- [ ] 豆豆：紅茶拿鐵 $65`;
+      const summary = computeGroupOrderSummary(note, '點餐開團', '2026-11-15T10:00:00');
+      expect(summary.deadlineInfo).toBeDefined();
+      expect(summary.deadlineInfo?.hasDeadline).toBe(true);
+      expect(summary.deadlineInfo?.rawText).toBe('15:00');
     });
   });
 });

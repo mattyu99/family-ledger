@@ -40,6 +40,7 @@ interface GroupOrderCounterModalProps {
   onFinalizeVote?: (winningLineIndex: number) => void;
   onConvertToFoodOrder?: (winningTitle: string) => void;
   onAddQuickItem?: () => void;
+  onExtendDeadline?: (addMinutes: number) => void;
 }
 
 export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
@@ -56,6 +57,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
   onFinalizeVote,
   onConvertToFoodOrder,
   onAddQuickItem,
+  onExtendDeadline,
 }) => {
   const { isDark } = useTheme();
   const { currentUser, members, liveToast, dismissLiveToast } = useLedger();
@@ -196,6 +198,66 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
               </Text>
             </View>
           </View>
+
+          {/* 截止時間提示與延長控制條 */}
+          {summary.deadlineInfo?.hasDeadline && (
+            <View
+              style={[
+                styles.deadlineBar,
+                summary.deadlineInfo.badgeColorType === 'urgent' && styles.deadlineBarUrgent,
+                summary.deadlineInfo.badgeColorType === 'expired' && styles.deadlineBarExpired,
+                isDark && {
+                  backgroundColor: summary.deadlineInfo.badgeColorType === 'expired'
+                    ? '#1F2937'
+                    : (summary.deadlineInfo.badgeColorType === 'urgent' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(59, 130, 246, 0.15)'),
+                  borderColor: summary.deadlineInfo.badgeColorType === 'expired'
+                    ? '#374151'
+                    : (summary.deadlineInfo.badgeColorType === 'urgent' ? '#EF4444' : '#3B82F6'),
+                },
+              ]}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                <Text style={{ fontSize: 16 }}>
+                  {summary.deadlineInfo.badgeColorType === 'expired' ? '🔒' : (summary.deadlineInfo.badgeColorType === 'urgent' ? '🔥' : '⏰')}
+                </Text>
+                <Text
+                  style={[
+                    styles.deadlineBarText,
+                    summary.deadlineInfo.badgeColorType === 'urgent' && styles.deadlineBarTextUrgent,
+                    summary.deadlineInfo.badgeColorType === 'expired' && styles.deadlineBarTextExpired,
+                    isDark && {
+                      color: summary.deadlineInfo.badgeColorType === 'expired'
+                        ? '#9CA3AF'
+                        : (summary.deadlineInfo.badgeColorType === 'urgent' ? '#FCA5A5' : '#93C5FD'),
+                    },
+                  ]}
+                  allowFontScaling={false}
+                  maxFontSizeMultiplier={1.08}
+                >
+                  {summary.deadlineInfo.badgeText}
+                </Text>
+              </View>
+
+              {onExtendDeadline && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <TouchableOpacity
+                    onPress={() => onExtendDeadline(15)}
+                    style={[styles.extendDeadlineBtn, isDark && { backgroundColor: '#374151' }]}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.extendDeadlineBtnText, isDark && { color: '#D1D5DB' }]}>+15分</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => onExtendDeadline(30)}
+                    style={[styles.extendDeadlineBtn, isDark && { backgroundColor: '#374151' }]}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.extendDeadlineBtnText, isDark && { color: '#D1D5DB' }]}>+30分</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          )}
 
           {/* 投票身分切換條 */}
           {isVote && (
@@ -1298,6 +1360,54 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#6B7280',
+  },
+  deadlineBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: 16,
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    gap: 8,
+  },
+  deadlineBarUrgent: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+  },
+  deadlineBarExpired: {
+    backgroundColor: '#F3F4F6',
+    borderColor: '#E5E7EB',
+  },
+  deadlineBarText: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#2563EB',
+  },
+  deadlineBarTextUrgent: {
+    color: '#DC2626',
+    fontWeight: '900',
+  },
+  deadlineBarTextExpired: {
+    color: '#6B7280',
+    fontWeight: '700',
+  },
+  extendDeadlineBtn: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    borderRadius: 6,
+  },
+  extendDeadlineBtnText: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#374151',
   },
   voteIdentityBar: {
     flexDirection: 'row',

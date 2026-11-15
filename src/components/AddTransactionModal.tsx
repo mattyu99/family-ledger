@@ -50,6 +50,8 @@ import {
   detectCollaborativeOrderMode,
   extractPendingRestockItems,
   mergeRestockItemsIntoNote,
+  setOrderDeadlineInNote,
+  extractOrderDeadline,
 } from '../lib/groupOrder';
 import {
   CalendarSystem,
@@ -373,6 +375,34 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     const lowerNote = (note || '').toLowerCase();
     return allRestock.filter(item => !lowerNote.includes(item.itemName.toLowerCase()));
   }, [mode, type, note, transactions]);
+
+  // ⏰ 協同開團/投票截止時間感知與快捷操作
+  const currentOrderDeadline = useMemo(() => {
+    if (mode !== 'memo' && type !== 'memo') return null;
+    return extractOrderDeadline(note);
+  }, [mode, type, note]);
+
+  const isCollabOrderOrVoting = useMemo(() => {
+    if (mode !== 'memo' && type !== 'memo') return false;
+    const parsed = parseMemoNote(note);
+    const orderMode = detectCollaborativeOrderMode(parsed.title, note);
+    return orderMode === 'food' || orderMode === 'vote' || isGroupOrderMemo(parsed.title, note);
+  }, [mode, type, note]);
+
+  const handleSetQuickDeadlineMinutes = (minutes: number) => {
+    const target = new Date(Date.now() + minutes * 60000);
+    const hh = String(target.getHours()).padStart(2, '0');
+    const mm = String(target.getMinutes()).padStart(2, '0');
+    setNote(prev => setOrderDeadlineInNote(prev, `${hh}:${mm}`));
+  };
+
+  const handleSetFixedDeadline = (timeStr: string) => {
+    setNote(prev => setOrderDeadlineInNote(prev, timeStr));
+  };
+
+  const handleClearDeadline = () => {
+    setNote(prev => setOrderDeadlineInNote(prev, ''));
+  };
 
   // 撥零用錢專用狀態
   const [allowanceMode, setAllowanceMode] = useState<'transfer' | 'expense_income'>('transfer');
@@ -1761,6 +1791,67 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     textAlignVertical="top"
                     maxFontSizeMultiplier={1.15}
                   />
+
+                  {/* ⏰ 點餐開團 / 家庭投票 截止時間快捷設定列 */}
+                  {(isCollabOrderOrVoting || currentOrderDeadline?.hasDeadline) && (
+                    <View style={styles.orderDeadlineSettingBox}>
+                      <View style={styles.orderDeadlineSettingHeader}>
+                        <Text style={styles.orderDeadlineSettingTitle} maxFontSizeMultiplier={1.08}>
+                          ⏰ 截止收單時間
+                        </Text>
+                        {currentOrderDeadline?.hasDeadline ? (
+                          <View style={styles.orderDeadlineCurrentBadge}>
+                            <Text style={styles.orderDeadlineCurrentBadgeText} maxFontSizeMultiplier={1.08}>
+                              {currentOrderDeadline.rawText} 截止 ({currentOrderDeadline.badgeText})
+                            </Text>
+                            <TouchableOpacity
+                              style={styles.orderDeadlineClearBtn}
+                              activeOpacity={0.7}
+                              onPress={handleClearDeadline}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Text style={styles.orderDeadlineClearBtnText}>✕ 移除</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : (
+                          <Text style={styles.orderDeadlineSettingSubtitle} maxFontSizeMultiplier={1.05}>
+                            設定後將自動倒數並於逾期時停止加單
+                          </Text>
+                        )}
+                      </View>
+
+                      <View style={styles.orderDeadlineQuickRow}>
+                        <TouchableOpacity
+                          style={styles.orderDeadlineQuickChip}
+                          activeOpacity={0.75}
+                          onPress={() => handleSetQuickDeadlineMinutes(30)}
+                        >
+                          <Text style={styles.orderDeadlineQuickChipText}>+30 分鐘</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.orderDeadlineQuickChip}
+                          activeOpacity={0.75}
+                          onPress={() => handleSetQuickDeadlineMinutes(60)}
+                        >
+                          <Text style={styles.orderDeadlineQuickChipText}>+1 小時</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.orderDeadlineQuickChip}
+                          activeOpacity={0.75}
+                          onPress={() => handleSetFixedDeadline('12:00')}
+                        >
+                          <Text style={styles.orderDeadlineQuickChipText}>12:00</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.orderDeadlineQuickChip}
+                          activeOpacity={0.75}
+                          onPress={() => handleSetFixedDeadline('18:00')}
+                        >
+                          <Text style={styles.orderDeadlineQuickChipText}>18:00</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
                 </View>
 
                 {/* 🏠 家中缺貨隨手記一鍵匯入提示卡 (僅在發起賣場採買或網購湊單時自動感應現身) */}
@@ -5216,5 +5307,73 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: isDark ? '#6EE7B7' : '#065F46',
+  },
+  orderDeadlineSettingBox: {
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.12)' : '#FEF3C7',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(245, 158, 11, 0.35)' : '#FDE68A',
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 8,
+    marginBottom: 6,
+  },
+  orderDeadlineSettingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 6,
+  },
+  orderDeadlineSettingTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: isDark ? '#FCD34D' : '#92400E',
+  },
+  orderDeadlineSettingSubtitle: {
+    fontSize: 11,
+    color: isDark ? '#9CA3AF' : '#6B7280',
+  },
+  orderDeadlineCurrentBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.25)' : '#FDE68A',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    gap: 6,
+  },
+  orderDeadlineCurrentBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: isDark ? '#FDE68A' : '#78350F',
+  },
+  orderDeadlineClearBtn: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  orderDeadlineClearBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: isDark ? '#EF4444' : '#DC2626',
+  },
+  orderDeadlineQuickRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  orderDeadlineQuickChip: {
+    backgroundColor: isDark ? '#374151' : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: isDark ? '#4B5563' : '#D1D5DB',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  orderDeadlineQuickChipText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: isDark ? '#F3F4F6' : '#374151',
   },
 });

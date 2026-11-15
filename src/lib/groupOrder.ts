@@ -44,6 +44,16 @@ export interface PendingRestockItem {
   price: number;
 }
 
+export interface OrderDeadlineInfo {
+  hasDeadline: boolean;
+  rawText: string;
+  targetDate: Date | null;
+  isExpired: boolean;
+  remainingMinutes: number;
+  badgeText: string;
+  badgeColorType: 'normal' | 'urgent' | 'expired';
+}
+
 export interface GroupOrderSummary {
   isGroupOrder: boolean;
   mode: CollaborativeOrderMode;
@@ -57,6 +67,7 @@ export interface GroupOrderSummary {
   voteOptions?: VoteOptionSummary[];
   totalVotes?: number;
   leadingOption?: VoteOptionSummary;
+  deadlineInfo?: OrderDeadlineInfo;
 }
 
 export interface StoreFavoriteItem {
@@ -392,9 +403,226 @@ export function parseGroupOrderItemLine(line: string, lineIndex: number = 0): Gr
 }
 
 /**
+ * 解析開團或投票的截止時間資訊
+ */
+export function extractOrderDeadline(
+  noteText: string = '',
+  baseDateInput?: string | Date,
+  nowInput?: Date
+): OrderDeadlineInfo {
+  const defaultRes: OrderDeadlineInfo = {
+    hasDeadline: false,
+    rawText: '',
+    targetDate: null,
+    isExpired: false,
+    remainingMinutes: 0,
+    badgeText: '',
+    badgeColorType: 'normal',
+  };
+
+  if (!noteText) return defaultRes;
+
+  const now = nowInput || new Date();
+  let baseDate = new Date();
+  if (baseDateInput) {
+    const parsedBase = new Date(baseDateInput);
+    if (!isNaN(parsedBase.getTime())) {
+      baseDate = parsedBase;
+    }
+  }
+
+  // 1. 優先檢查中繼標籤 [dl:YYYY-MM-DDTHH:mm:ss] 或 [dl:HH:mm]
+  const tagMatch = noteText.match(/\[dl:([^\]]+)\]/i);
+  let timeStr = '';
+  let fullIsoDate: Date | null = null;
+
+  if (tagMatch) {
+    const val = tagMatch[1].trim();
+    if (val.includes('T') || val.includes('-')) {
+      const d = new Date(val);
+      if (!isNaN(d.getTime())) {
+        fullIsoDate = d;
+        timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      }
+    } else {
+      timeStr = val;
+    }
+  }
+
+  // 2. 正則表達式掃描內文中的日常繁體中文語法
+  // 例如：截止時間：11:30、截止：12:00、11:30 截止、12:00 前收單、下午 5:30 截止
+  if (!timeStr) {
+    const lines = noteText.split('\n');
+    for (const line of lines) {
+      if (line.trim().startsWith('- [') || line.trim().startsWith('* [')) continue;
+
+      // 格式一：截止時間：11:30、截止：12:00、收單：18:00
+      const m1 = line.match(/(?:截止(?:時間)?|收單(?:時間)?|結單(?:時間)?)\s*[:：]?\s*([0-2]?[0-9][:：][0-5][0-9]|(?:上午|下午|中午|晚上)?\s*[0-2]?[0-9]\s*(?:點|時)(?:\s*[0-5]?[0-9]\s*分?)?)/i);
+      if (m1) {
+        timeStr = m1[1].trim();
+        break;
+      }
+      // 格式二：11:30 截止、12:00 前收單、下午 5:30 結單
+      const m2 = line.match(/([0-2]?[0-9][:：][0-5][0-9]|(?:上午|下午|中午|晚上)?\s*[0-2]?[0-9]\s*(?:點|時)(?:\s*[0-5]?[0-9]\s*分?)?)\s*(?:截止|收單|結單|前(?:截止|收單)?)/i);
+      if (m2) {
+        timeStr = m2[1].trim();
+        break;
+      }
+    }
+  }
+
+  if (!timeStr && !fullIsoDate) {
+    return defaultRes;
+  }
+
+  let targetDate: Date;
+  if (fullIsoDate) {
+    targetDate = fullIsoDate;
+  } else {
+    let hours = 0;
+    let minutes = 0;
+    const colonMatch = timeStr.match(/^([0-2]?[0-9])[:：]([0-5][0-9])$/);
+    if (colonMatch) {
+      hours = parseInt(colonMatch[1], 10);
+      minutes = parseInt(colonMatch[2], 10);
+    } else {
+      const zhMatch = timeStr.match(/(上午|下午|中午|晚上)?\s*([0-2]?[0-9])\s*(?:點|時)(?:\s*([0-5]?[0-9])\s*分?)?/);
+      if (zhMatch) {
+        const period = zhMatch[1] || '';
+        hours = parseInt(zhMatch[2], 10);
+        minutes = zhMatch[3] ? parseInt(zhMatch[3], 10) : 0;
+        if ((period === '下午' || period === '晚上') && hours < 12) {
+          hours += 12;
+        }
+      } else {
+        return defaultRes;
+      }
+    }
+
+    targetDate = new Date(baseDate.getTime());
+    targetDate.setHours(hours, minutes, 0, 0);
+
+    // 智慧跨日判斷：若 targetDate 比發起時間還早超過 4 小時，且 hours < 12，可能是下午（如下午 2 點寫成 2:30）
+    if (targetDate.getTime() < baseDate.getTime() - 4 * 3600000 && hours < 12) {
+      targetDate.setHours(hours + 12, minutes, 0, 0);
+    }
+  }
+
+  const diffMs = targetDate.getTime() - now.getTime();
+  const remainingMinutes = Math.floor(diffMs / 60000);
+  const isExpired = diffMs <= 0;
+  const formattedTime = `${String(targetDate.getHours()).padStart(2, '0')}:${String(targetDate.getMinutes()).padStart(2, '0')}`;
+
+  let badgeText = '';
+  let badgeColorType: 'normal' | 'urgent' | 'expired' = 'normal';
+
+  if (isExpired) {
+    badgeText = `🔒 已截止收單 (${formattedTime})`;
+    badgeColorType = 'expired';
+  } else if (remainingMinutes <= 10) {
+    badgeText = `🔥 剩 ${remainingMinutes <= 0 ? 1 : remainingMinutes} 分鐘！即將截止`;
+    badgeColorType = 'urgent';
+  } else {
+    const hoursPart = Math.floor(remainingMinutes / 60);
+    const minsPart = remainingMinutes % 60;
+    const remainStr = hoursPart > 0 ? `${hoursPart}小時${minsPart > 0 ? `${minsPart}分` : ''}` : `${minsPart}分`;
+    badgeText = `⏰ ${formattedTime} 截止 (剩 ${remainStr})`;
+    badgeColorType = 'normal';
+  }
+
+  return {
+    hasDeadline: true,
+    rawText: formattedTime,
+    targetDate,
+    isExpired,
+    remainingMinutes: Math.max(0, remainingMinutes),
+    badgeText,
+    badgeColorType,
+  };
+}
+
+/**
+ * 延長開團或投票的截止時間（例如延長 15 分鐘、30 分鐘）
+ */
+export function extendOrderDeadline(
+  noteText: string = '',
+  addMinutes: number = 15,
+  baseDate?: string | Date
+): string {
+  const currentDeadline = extractOrderDeadline(noteText, baseDate);
+  const now = new Date();
+  const baseTarget = (currentDeadline.hasDeadline && currentDeadline.targetDate && currentDeadline.targetDate.getTime() > now.getTime())
+    ? new Date(currentDeadline.targetDate.getTime())
+    : new Date(now.getTime());
+
+  baseTarget.setMinutes(baseTarget.getMinutes() + addMinutes);
+  const newH = String(baseTarget.getHours()).padStart(2, '0');
+  const newM = String(baseTarget.getMinutes()).padStart(2, '0');
+  const newDeadlineStr = `截止時間：${newH}:${newM}`;
+
+  if (currentDeadline.hasDeadline) {
+    const lines = noteText.split('\n');
+    let replaced = false;
+    const newLines = lines.map(line => {
+      if (!replaced && !line.trim().startsWith('- [') && /(?:截止|收單|結單)/i.test(line)) {
+        replaced = true;
+        return line.replace(/(?:(?:截止(?:時間)?|收單(?:時間)?)\s*[:：]?\s*[0-2]?[0-9][:：][0-5][0-9]|(?:[0-2]?[0-9][:：][0-5][0-9])\s*(?:截止|收單|結單))/i, newDeadlineStr);
+      }
+      return line;
+    });
+    if (replaced) return newLines.join('\n');
+  }
+
+  return setOrderDeadlineInNote(noteText, `${newH}:${newM}`);
+}
+
+/**
+ * 在記事內文中設定或更新截止時間字串 (例如 "12:00")
+ * 若傳入空字串或調用 remove，則自動移除現有的截止時間行
+ */
+export function removeOrderDeadlineFromNote(noteText: string = ''): string {
+  return noteText
+    .split('\n')
+    .filter(line => line.trim().startsWith('- [') || !/(?:截止|收單|結單)/i.test(line))
+    .join('\n');
+}
+
+export function setOrderDeadlineInNote(noteText: string = '', timeStr: string): string {
+  const cleanTime = timeStr.trim();
+  if (!cleanTime) {
+    return removeOrderDeadlineFromNote(noteText);
+  }
+  const deadlineLine = `截止時間：${cleanTime}`;
+
+  const lines = noteText.split('\n');
+  let replaced = false;
+  const newLines = lines.map(line => {
+    if (!replaced && !line.trim().startsWith('- [') && /(?:截止|收單|結單)/i.test(line)) {
+      replaced = true;
+      return deadlineLine;
+    }
+    return line;
+  });
+
+  if (replaced) return newLines.join('\n');
+
+  if (lines.length > 0) {
+    const firstLine = lines[0];
+    if (firstLine.startsWith('[') && firstLine.includes(']')) {
+      return [firstLine, deadlineLine, ...lines.slice(1)].join('\n');
+    }
+  }
+  return [deadlineLine, noteText].join('\n');
+}
+
+/**
  * 完整計算開團記事的統計摘要
  */
-export function computeGroupOrderSummary(content: string = '', title?: string): GroupOrderSummary {
+export function computeGroupOrderSummary(
+  content: string = '',
+  title?: string,
+  transactedAt?: string
+): GroupOrderSummary {
   const isOrder = isGroupOrderMemo(title, content);
   const storeName = extractStoreNameFromMemo(title, content);
 
@@ -491,6 +719,8 @@ export function computeGroupOrderSummary(content: string = '', title?: string): 
     }
   }
 
+  const deadlineInfo = extractOrderDeadline(content, transactedAt);
+
   return {
     isGroupOrder: isOrder,
     mode,
@@ -504,6 +734,7 @@ export function computeGroupOrderSummary(content: string = '', title?: string): 
     voteOptions: mode === 'vote' ? voteOptions : undefined,
     totalVotes: mode === 'vote' ? totalVotes : undefined,
     leadingOption: mode === 'vote' ? leadingOption : undefined,
+    deadlineInfo: deadlineInfo.hasDeadline ? deadlineInfo : undefined,
   };
 }
 

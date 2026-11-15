@@ -781,7 +781,7 @@ export const BUILTIN_MEMO_TEMPLATES: MemoChecklistTemplate[] = [
     icon: '🧋',
     tag: '🧋 點餐開團',
     description: '手搖飲、宵夜點心、便當多人自由登記報單',
-    headerText: '店家：50嵐（可直接修改店名）\n大家直接點右上方【＋我也要】快速報單！',
+    headerText: '店家：50嵐（可直接修改店名）\n截止時間：12:00（可修改時間）\n大家直接點右上方【＋我也要】快速報單！',
     items: [],
   },
   {
@@ -859,7 +859,7 @@ export const BUILTIN_MEMO_TEMPLATES: MemoChecklistTemplate[] = [
     icon: '🗳️',
     tag: '🗳️ 家庭投票',
     description: '週末聚餐吃什麼、連假去哪玩、好物挑選，全家人人有票自由表態',
-    headerText: '主題：週末聚餐吃什麼？（可直接修改主題）\n大家直接點右上方【＋提案/投票】投下你的一票！',
+    headerText: '主題：週末聚餐吃什麼？（可直接修改主題）\n截止時間：18:00（可修改時間）\n大家直接點右上方【＋提案/投票】投下你的一票！',
     items: [
       '🍲 鼎泰豐小籠包',
       '🍣 藏壽司迴轉壽司',
