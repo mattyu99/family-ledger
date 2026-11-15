@@ -231,6 +231,18 @@ const GUIDE_ITEMS: GuideItem[] = [
       '慢箋多期接力自癒：記事自動對齊未完成的最早子任務（如第2次慢箋），打勾後自動推進至下一期或最終看診日！',
     ],
   },
+  {
+    icon: '🧋',
+    title: '18. 五大記事協作看板與零用錢懸賞分流',
+    tag: '協作看板',
+    tagBg: '#FCE7F3',
+    tagColor: '#9D174D',
+    steps: [
+      '支援「🧋點餐開團、🛒賣場採買、📦網購包裹、🧹家事懸賞、🗳️家庭投票」五大專屬互動看板與子項目藍色留言泡泡。',
+      '點餐與採買支援櫃檯/推車大字看板、家中缺貨一鍵匯入，標註賣完缺貨自動扣除結算金額並轉記帳。',
+      '家事懸賞支援孩子認領任務並一鍵分流核發零用錢；家庭投票最高票拍板後可一鍵無縫轉為點餐開團！',
+    ],
+  },
 ];
 
 export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, onClose }) => {
@@ -264,7 +276,7 @@ export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, o
             <View style={{ flex: 1 }}>
               <Text style={styles.title}>📖 產品介紹與操作指南</Text>
               <Text style={styles.subtitle}>
-                甜心記帳本 • 16 大家庭生活與理財操作速查
+                甜心記帳本 • 18 大家庭生活與理財操作速查
               </Text>
             </View>
             <TouchableOpacity
@@ -293,9 +305,9 @@ export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, o
               </Text>
             </View>
 
-            {/* 16 大常用操作指引 */}
+            {/* 18 大常用操作指引 */}
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>📌 16 大家庭日常操作速查</Text>
+              <Text style={styles.sectionTitle}>📌 18 大家庭日常操作速查</Text>
               <Text style={styles.sectionDesc}>點選下方項目快速熟悉各項貼心功能</Text>
             </View>
 
