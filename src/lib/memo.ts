@@ -4,6 +4,7 @@
 
 import { CalendarSystem, MemoRepeatFrequency } from './lunar';
 import { computeNextRelayReminderDate } from './dateParser';
+import { stripInvoiceTag } from './invoice';
 export * from './dateParser';
 
 export const DEFAULT_MEMO_QUICK_TAGS = [
@@ -1040,6 +1041,75 @@ export function getEffectiveMemoReminderDate(
   }
 
   return rawReminderDate;
+}
+
+/**
+ * 格式化連動交易於卡片或生活待辦膠囊上的精簡摘要文字
+ * 徹底剔除 [🧾 ...] 發票中繼標籤、[rem:...] 提醒中繼標籤與換行，絕不外洩系統編碼亂碼
+ */
+export function formatLinkedTransactionSummary(tx?: {
+  type?: string;
+  amount?: number;
+  note?: string;
+  merchant?: string;
+} | null): string {
+  if (!tx) return '';
+  const type = tx.type || 'expense';
+  const amountStr = `NT$ ${Number(tx.amount || 0).toLocaleString()}`;
+
+  // 深度淨化 note：去除發票標籤與系統中繼標籤
+  const cleanNote = stripMemoInternalTag(stripInvoiceTag(tx.note || '')).trim();
+
+  // 1. 若為支出
+  if (type === 'expense') {
+    let desc = '';
+    // 優先 1: 店家名稱 (若合法且非通用標籤)
+    if (isValidMerchantName(tx.merchant)) {
+      desc = tx.merchant!.trim();
+    }
+    // 優先 2: 乾淨備註的第一行 (移除 [辦妥] 等前綴)
+    if (!desc && cleanNote) {
+      const firstLine = cleanNote.split('\n')[0].replace(/^\[(?:辦妥|完成)\]\s*/, '').trim();
+      if (firstLine) {
+        desc = firstLine.length > 16 ? `${firstLine.slice(0, 15)}…` : firstLine;
+      }
+    }
+    const suffix = desc ? ` (${desc})` : ' (支出)';
+    return `🔗 連動支出：${amountStr}${suffix} ›`;
+  }
+
+  // 2. 若為轉帳
+  if (type === 'transfer') {
+    let desc = '';
+    if (isValidMerchantName(tx.merchant)) {
+      desc = tx.merchant!.trim();
+    }
+    if (!desc && cleanNote) {
+      const firstLine = cleanNote.split('\n')[0].trim();
+      desc = firstLine.length > 16 ? `${firstLine.slice(0, 15)}…` : firstLine;
+    }
+    const suffix = desc ? ` (${desc})` : ' (轉帳)';
+    return `🔗 連動轉帳：${amountStr}${suffix} ›`;
+  }
+
+  // 3. 若為收入
+  if (type === 'income') {
+    let desc = '';
+    if (cleanNote) {
+      const firstLine = cleanNote.split('\n')[0].trim();
+      desc = firstLine.length > 16 ? `${firstLine.slice(0, 15)}…` : firstLine;
+    }
+    const suffix = desc ? ` (${desc})` : ' (收入)';
+    return `🔗 連動收入：${amountStr}${suffix} ›`;
+  }
+
+  // 4. 若為接力待辦 (memo)
+  const parsed = parseMemoNote(tx.note);
+  const title = (parsed.title && parsed.title !== '生活記事' && parsed.title !== '生活待辦')
+    ? parsed.title
+    : (cleanNote.split('\n')[0] || '生活待辦');
+  const shortTitle = title.length > 16 ? `${title.slice(0, 15)}…` : title;
+  return `🔗 接力待辦：${shortTitle} ›`;
 }
 
 

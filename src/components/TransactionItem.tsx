@@ -7,7 +7,7 @@ import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { getCategoryIcon } from '../lib/icons';
 import { formatPaymentLabel, parseExpenseDiscount, isTransferToMember } from '../lib/payment';
-import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, getItemDueDateBadge, getEffectiveMemoReminderDate } from '../lib/memo';
+import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, getItemDueDateBadge, getEffectiveMemoReminderDate, formatLinkedTransactionSummary } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { stripInvoiceTag } from '../lib/invoice';
 import {
@@ -551,13 +551,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
               allowFontScaling={false}
               maxFontSizeMultiplier={1.08}
             >
-              {linkedTarget.type === 'income'
-                ? `🔗 連動收入：NT$ ${Number(linkedTarget.amount).toLocaleString()} (${linkedTarget.note || '收入'}) ›`
-                : linkedTarget.type === 'transfer'
-                ? `🔗 連動轉帳：NT$ ${Number(linkedTarget.amount).toLocaleString()} (${linkedTarget.merchant || linkedTarget.note || '轉帳'}) ›`
-                : linkedTarget.type === 'memo'
-                ? `🔗 接力待辦：${parseMemoNote(linkedTarget.note).title || linkedTarget.note} ›`
-                : `🔗 連動支出：NT$ ${Number(linkedTarget.amount).toLocaleString()} (${linkedTarget.note || '支出'}) ›`}
+              {formatLinkedTransactionSummary(linkedTarget)}
             </Text>
           </TouchableOpacity>
         )}

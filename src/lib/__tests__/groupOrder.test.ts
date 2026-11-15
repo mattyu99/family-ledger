@@ -23,6 +23,7 @@ import {
   extractOrderDeadline,
   extendOrderDeadline,
   setOrderDeadlineInNote,
+  generateGroupOrderSettlementNote,
 } from '../groupOrder';
 
 describe('groupOrder 工具庫單元測試', () => {
@@ -768,6 +769,40 @@ describe('groupOrder 工具庫單元測試', () => {
       expect(summary.deadlineInfo).toBeDefined();
       expect(summary.deadlineInfo?.hasDeadline).toBe(true);
       expect(summary.deadlineInfo?.rawText).toBe('15:00');
+    });
+  });
+
+  describe('generateGroupOrderSettlementNote 產生人話記帳備註', () => {
+    it('點餐開團應自動生成店名與餐點名稱摘要，絕不夾帶 markdown 原始碼', () => {
+      const note = `[🧋 點餐開團] 店家：CoCo
+截止時間：11:30
+- [ ] 智爸：珍珠奶茶（無糖、去冰）$55
+- [ ] 洋洋：百香雙響炮（微糖去冰）$75
+- [ ] 豆豆：百香雙響炮（微糖、少冰）$75
+- [ ] 瑩媽：粉角檸檬冬瓜 $50`;
+      const summary = computeGroupOrderSummary(note, '點餐開團');
+      const settlementNote = generateGroupOrderSettlementNote(summary, '點餐開團');
+      expect(settlementNote).toBe('CoCo · 珍珠奶茶、百香雙響炮、粉角檸檬冬瓜 (共4杯)');
+      expect(settlementNote).not.toContain('- [ ]');
+      expect(settlementNote).not.toContain('截止時間');
+    });
+
+    it('賣場採買應自動生成賣場與採買項目摘要', () => {
+      const note = `[🛒 採買清單] 賣場：好市多
+- [ ] 鮮奶 2 瓶
+- [ ] 牛肉捲
+- [ ] 三層厚抽取衛生紙`;
+      const summary = computeGroupOrderSummary(note, '採買清單');
+      const settlementNote = generateGroupOrderSettlementNote(summary, '採買清單');
+      expect(settlementNote).toBe('好市多 · 鮮奶 2 瓶、牛肉捲、三層厚抽取衛生紙 (共3項)');
+    });
+
+    it('一般生活記事應生成純淨辦妥標題，絕不塞入整篇備忘內容', () => {
+      const note = `[重要提醒] 帶健保卡去郵局\n別忘了印身分證影本`;
+      const summary = computeGroupOrderSummary(note, '重要提醒');
+      const settlementNote = generateGroupOrderSettlementNote(summary, '重要提醒');
+      expect(settlementNote).toBe('[辦妥] 重要提醒');
+      expect(settlementNote).not.toContain('印身分證影本');
     });
   });
 });

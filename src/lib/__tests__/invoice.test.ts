@@ -146,6 +146,19 @@ describe('台灣統一發票與條碼解析核心模組測試 (invoice.ts)', () 
     it('自動閉合未封口括號', () => {
       expect(cleanInvoiceItemName('綜合維他命組(100')).toBe('綜合維他命組(100)');
     });
+
+    it('條碼編碼破損亂碼應自動過濾為空字串，絕不污染備註', () => {
+      expect(cleanInvoiceItemName('????¡±???¡M?????????')).toBe('');
+      expect(cleanInvoiceItemName('?????')).toBe('');
+      expect(cleanInvoiceItemName('商品\uFFFD')).toBe('');
+    });
+
+    it('stripInvoiceTag 應支援 🧾 與 📄 等多種發票中繼標籤格式', () => {
+      const note1 = 'CoCo 飲料 [🧾 HV-79049445|2026-12|2903|pending|0|]';
+      const note2 = 'CoCo 飲料 [📄 HV-79049445|2026-12|2903|pending|0|]';
+      expect(stripInvoiceTag(note1)).toBe('CoCo 飲料');
+      expect(stripInvoiceTag(note2)).toBe('CoCo 飲料');
+    });
   });
 
   describe('QR Code 品項解析與溢位合併', () => {

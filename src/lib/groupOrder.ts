@@ -1432,3 +1432,64 @@ export function mergeRestockItemsIntoNote(
     affectedMemoIds: Array.from(affectedMemoIdSet),
   };
 }
+
+/**
+ * 根據開團或生活待辦統計摘要，產生親切自然的記帳結算備註文字
+ * 徹底告別包含 Markdown 待辦語法或中繼代碼的原始碼亂碼
+ */
+export function generateGroupOrderSettlementNote(
+  summary: GroupOrderSummary,
+  memoTitle?: string
+): string {
+  // 1. 若為投票模式
+  if (summary.mode === 'vote') {
+    const winning = summary.leadingOption?.title;
+    return winning ? `家庭決策拍板 · ${winning}` : '家庭民主投票決策';
+  }
+
+  // 2. 若為家事零用錢懸賞模式
+  if (summary.mode === 'chore') {
+    const doneCount = summary.items.filter(it => it.isDone).length;
+    return `家事任務獎勵 (共完成 ${doneCount || summary.totalCount} 項)`;
+  }
+
+  // 3. 若為點餐開團、賣場採買或網購湊單 (必須確實為開團或擁有品項)
+  if (summary.isGroupOrder || summary.items.length > 0) {
+    const rawStore = summary.storeName;
+    const isGenericStore = !rawStore || ['點餐店家', '採買賣場', '網購包裹', '家庭任務', '家庭決策'].includes(rawStore);
+    const storePrefix = isGenericStore ? '' : `${rawStore} · `;
+
+    // 萃取品項名稱 (過濾空值並去重)
+    const validItems = summary.items.map(it => it.itemName.trim()).filter(Boolean);
+    const uniqueItemNames = Array.from(new Set(validItems));
+
+    let itemsSnippet = '';
+    if (uniqueItemNames.length > 0) {
+      if (uniqueItemNames.length <= 3) {
+        itemsSnippet = uniqueItemNames.join('、');
+      } else {
+        itemsSnippet = `${uniqueItemNames.slice(0, 2).join('、')}等`;
+      }
+    }
+
+    const unit = summary.mode === 'food' ? '杯' : '項';
+    const countSuffix = summary.totalCount > 0 ? ` (共${summary.totalCount}${unit})` : '';
+
+    if (itemsSnippet) {
+      return `${storePrefix}${itemsSnippet}${countSuffix}`;
+    }
+
+    if (!isGenericStore) {
+      return `${rawStore}${summary.mode === 'food' ? '點餐開團' : (summary.mode === 'grocery' ? '賣場採買' : '網購湊單')}${countSuffix}`;
+    }
+
+    return `點餐開團${countSuffix}`;
+  }
+
+  // 4. 一般生活記事：取純淨標題，絕不夾帶原始全文
+  const cleanTitle = (memoTitle || '').trim();
+  if (cleanTitle && cleanTitle !== '生活記事' && cleanTitle !== '生活待辦') {
+    return `[辦妥] ${cleanTitle}`;
+  }
+  return '[辦妥] 生活待辦';
+}

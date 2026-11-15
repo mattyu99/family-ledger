@@ -78,7 +78,7 @@ import { LiveToastBanner } from './src/components/LiveToastBanner';
 import { AppLockOverlay } from './src/components/AppLockOverlay';
 import { DemoQuestBanner } from './src/components/DemoQuestBanner';
 import { getLatestDrawnPeriodKey } from './src/lib/invoice';
-import { computeGroupOrderSummary } from './src/lib/groupOrder';
+import { computeGroupOrderSummary, generateGroupOrderSettlementNote } from './src/lib/groupOrder';
 
 // Web 專用重設樣式注入
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -475,7 +475,7 @@ const AppContent: React.FC = () => {
     } else {
       setModalDefaultMerchant(undefined);
     }
-    setModalDefaultNote(`[辦妥] ${memoData.title || memo.note}`);
+    setModalDefaultNote(generateGroupOrderSettlementNote(groupSummary, memoData.title));
     setModalLinkedCompletionNote(note);
     setCompletionTempCompleter(completedBy);
     setCompletionTempNote(note || '');
@@ -1253,7 +1253,7 @@ const AppContent: React.FC = () => {
           } else {
             setModalDefaultMerchant(undefined);
           }
-          setModalDefaultNote(`[辦妥] ${memoData.title || memoTx.note}`);
+          setModalDefaultNote(generateGroupOrderSettlementNote(groupSummary, memoData.title));
           setModalLinkedCompletionNote(memoTx.completion_note);
           setModalVisible(true);
         }}

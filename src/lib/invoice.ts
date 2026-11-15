@@ -598,12 +598,38 @@ export const cleanInvoiceItemName = (rawName: string, unitPrice?: number): strin
   name = closeUnmatchedParentheses(name);
 
   const trimmed = name.trim();
-  // 若清理後為純數字或星號，視為無效品名返回空字串
-  if (/^\*+$/.test(trimmed) || /^\d+(\.\d+)?$/.test(trimmed)) {
+  // 若清理後為純數字、純星號或條碼解碼破損之亂碼 (如 "???¡±???")，視為無效品名返回空字串
+  if (/^\*+$/.test(trimmed) || /^\d+(\.\d+)?$/.test(trimmed) || isCorruptedInvoiceItemName(trimmed)) {
     return '';
   }
 
   return trimmed;
+};
+
+/**
+ * 判斷發票商品品名是否為破損亂碼 (例如 Big5 轉 UTF-8 失敗產生的連續問號與破損字元)
+ */
+export const isCorruptedInvoiceItemName = (name: string): boolean => {
+  if (!name) return true;
+  const trimmed = name.trim();
+  // 1. 包含替代字元 (Unicode Replacement Character)
+  if (trimmed.includes('\uFFFD')) return true;
+
+  // 2. 問號過多 (例如 "???", "????¡±???¡M?????????")
+  const questionCount = (trimmed.match(/\?/g) || []).length;
+  if (questionCount >= 3 && questionCount / trimmed.length >= 0.3) {
+    return true;
+  }
+  if (/\?{3,}/.test(trimmed)) {
+    return true;
+  }
+
+  // 3. 包含常見 Mojibake / Latin-1 破損符號且不含正常中文字
+  if (/[¡±¿§¤\^~]/.test(trimmed) && !/[\u4e00-\u9fa5]/.test(trimmed) && trimmed.includes('?')) {
+    return true;
+  }
+
+  return false;
 };
 
 /**
@@ -1128,10 +1154,13 @@ export const decodeInvoiceTag = (note: string | undefined): {
 };
 
 /**
- * 剔除 note 中的發票標籤，取得乾淨的使用者備註文字
+ * 剔除 note 中的發票標籤，取得乾淨的使用者備註文字 (支援 🧾, 📄 與各式空白變體)
  */
 export const stripInvoiceTag = (note: string | undefined): string => {
   if (!note) return '';
-  return note.replace(/\[🧾\s*[^\]]+\]/g, '').trim();
+  return note
+    .replace(/\[[🧾📄]\s*[^\]]+\]/g, '')
+    .replace(/\[\s*(?:inv|invoice)[:\s][^\]]+\]/gi, '')
+    .trim();
 };
 

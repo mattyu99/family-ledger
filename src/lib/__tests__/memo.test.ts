@@ -18,6 +18,7 @@ import {
   getEffectiveMemoReminderDate,
   BUILTIN_MEMO_TEMPLATES,
   applyChecklistTemplate,
+  formatLinkedTransactionSummary,
 } from '../memo';
 import { hydrateTransactionWithInvoice } from '../ledgerUtils';
 
@@ -157,24 +158,26 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
 
   describe('生活待辦全模式連動邏輯 (Multi-Mode Memo Linkage)', () => {
     it('應支援支出、收入、轉帳與接力待辦各類型之文字與標籤顯示', () => {
-      const formatLinkedBadge = (target: { type: string; amount?: number; note?: string; merchant?: string }) => {
-        if (target.type === 'income') {
-          return `🔗 連動收入：NT$ ${Number(target.amount || 0).toLocaleString()} (${target.note || '收入'}) ›`;
-        }
-        if (target.type === 'transfer') {
-          return `🔗 連動轉帳：NT$ ${Number(target.amount || 0).toLocaleString()} (${target.merchant || target.note || '轉帳'}) ›`;
-        }
-        if (target.type === 'memo') {
-          const parsed = parseMemoNote(target.note || '');
-          return `🔗 接力待辦：${parsed.title || target.note} ›`;
-        }
-        return `🔗 連動支出：NT$ ${Number(target.amount || 0).toLocaleString()} (${target.note || '支出'}) ›`;
-      };
+      expect(formatLinkedTransactionSummary({ type: 'expense', amount: 350, note: '超市採買' })).toBe('🔗 連動支出：NT$ 350 (超市採買) ›');
+      expect(formatLinkedTransactionSummary({ type: 'income', amount: 5000, note: '兼職收入' })).toBe('🔗 連動收入：NT$ 5,000 (兼職收入) ›');
+      expect(formatLinkedTransactionSummary({ type: 'transfer', amount: 500, merchant: '存入【智悠遊卡】' })).toBe('🔗 連動轉帳：NT$ 500 (存入【智悠遊卡】) ›');
+      expect(formatLinkedTransactionSummary({ type: 'memo', note: '[🛒 第二階段] 採買生活耗材' })).toBe('🔗 接力待辦：第二階段 ›');
+    });
 
-      expect(formatLinkedBadge({ type: 'expense', amount: 350, note: '超市採買' })).toBe('🔗 連動支出：NT$ 350 (超市採買) ›');
-      expect(formatLinkedBadge({ type: 'income', amount: 5000, note: '兼職收入' })).toBe('🔗 連動收入：NT$ 5,000 (兼職收入) ›');
-      expect(formatLinkedBadge({ type: 'transfer', amount: 500, merchant: '存入【智悠遊卡】' })).toBe('🔗 連動轉帳：NT$ 500 (存入【智悠遊卡】) ›');
-      expect(formatLinkedBadge({ type: 'memo', note: '[🛒 第二階段] 採買生活耗材' })).toBe('🔗 接力待辦：第二階段 ›');
+    it('formatLinkedTransactionSummary 應徹底過濾發票中繼標籤與換行，優先顯示商家名稱', () => {
+      // 模擬截圖真實場景：含有發票中繼標籤、[辦妥] 前綴與換行備註
+      const dirtyTx = {
+        type: 'expense',
+        amount: 370,
+        merchant: 'CoCo',
+        note: `[辦妥] 點餐開團\n珍珠奶茶 x1 $55\n[📄 HV-79049445|2026-12|2903|pending|0|]`,
+      };
+      const formatted = formatLinkedTransactionSummary(dirtyTx);
+      expect(formatted).toBe('🔗 連動支出：NT$ 370 (CoCo) ›');
+      expect(formatted).not.toContain('HV-79049445');
+      expect(formatted).not.toContain('pending');
+      expect(formatted).not.toContain('📄');
+      expect(formatted).not.toContain('\n');
     });
 
     it('雙向正反向查找應能精準配對生活待辦與記帳交易', () => {

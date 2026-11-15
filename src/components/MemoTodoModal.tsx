@@ -17,7 +17,7 @@ import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
-import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, checkMemoPinQuota, getItemDueDateBadge, getEffectiveMemoReminderDate } from '../lib/memo';
+import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, checkMemoPinQuota, getItemDueDateBadge, getEffectiveMemoReminderDate, formatLinkedTransactionSummary } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { HorizontalScrollView } from './HorizontalScrollView';
 import {
@@ -838,13 +838,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                           ]}
                           maxFontSizeMultiplier={1.08}
                         >
-                          {linkedTx.type === 'income'
-                            ? `🔗 連動收入：NT$ ${Number(linkedTx.amount).toLocaleString()} (${linkedTx.note || '收入'}) ›`
-                            : linkedTx.type === 'transfer'
-                            ? `🔗 連動轉帳：NT$ ${Number(linkedTx.amount).toLocaleString()} (${linkedTx.merchant || linkedTx.note || '轉帳'}) ›`
-                            : linkedTx.type === 'memo'
-                            ? `🔗 接力待辦：${parseMemoNote(linkedTx.note).title || linkedTx.note} ›`
-                            : `🔗 連動支出：NT$ ${Number(linkedTx.amount).toLocaleString()} (${linkedTx.note || '支出'}) ›`}
+                          {formatLinkedTransactionSummary(linkedTx)}
                         </Text>
                       </TouchableOpacity>
                     )}
