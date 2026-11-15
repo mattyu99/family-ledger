@@ -1734,7 +1734,7 @@ export function generateGroupOrderSettlementNote(
       }
     }
 
-    const unit = summary.mode === 'food' ? '杯' : '項';
+    const unit = summary.mode === 'food' ? '份' : (summary.mode === 'parcel' ? '件' : '項');
     const countSuffix = summary.totalCount > 0 ? ` (共${summary.totalCount}${unit})` : '';
 
     if (itemsSnippet) {

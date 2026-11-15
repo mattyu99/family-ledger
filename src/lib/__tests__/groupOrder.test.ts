@@ -991,9 +991,18 @@ describe('groupOrder 工具庫單元測試', () => {
 - [ ] 瑩媽：粉角檸檬冬瓜 $50`;
       const summary = computeGroupOrderSummary(note, '點餐開團');
       const settlementNote = generateGroupOrderSettlementNote(summary, '點餐開團');
-      expect(settlementNote).toBe('CoCo · 珍珠奶茶、百香雙響炮、粉角檸檬冬瓜 (共4杯)');
+      expect(settlementNote).toBe('CoCo · 珍珠奶茶、百香雙響炮、粉角檸檬冬瓜 (共4份)');
       expect(settlementNote).not.toContain('- [ ]');
       expect(settlementNote).not.toContain('截止時間');
+    });
+
+    it('網購湊單／包裹應自動生成平台與包裹件數摘要 (共N件)', () => {
+      const note = `[📦 網購湊單] 平台：momo
+- [ ] 智爸：抽取式衛生紙箱購 $699
+- [ ] 瑩媽：純水濕紙巾 $399`;
+      const summary = computeGroupOrderSummary(note, '網購湊單');
+      const settlementNote = generateGroupOrderSettlementNote(summary, '網購湊單');
+      expect(settlementNote).toBe('momo · 抽取式衛生紙箱購、純水濕紙巾 (共2件)');
     });
 
     it('賣場採買應自動生成賣場與採買項目摘要', () => {
