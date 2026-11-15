@@ -164,9 +164,9 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
     {
       id: 'quest_memo',
       tag: '📝 任務 6',
-      title: '共享備忘錄打勾採買',
-      desc: '在露營採買清單打勾劃掉「買鮮奶」',
-      actionText: '看備忘',
+      title: '體驗五大記事協作看板',
+      desc: '試玩點餐開團、家事懸賞發零用錢、家庭投票與推車採買',
+      actionText: '看看板',
       action: () => handleQuestAction('quest_memo', onOpenMemos),
     },
   ];

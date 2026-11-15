@@ -28,6 +28,7 @@ import {
   generateGroupOrderSettlementNote,
   getGroupOrderSettlementStats,
 } from '../groupOrder';
+import { getSweethomeInitialTransactions } from '../../constants/sweethomeDemo';
 
 describe('groupOrder 工具庫單元測試', () => {
   describe('isGroupOrderMemo 辨識開團記事', () => {
@@ -1052,6 +1053,33 @@ describe('groupOrder 工具庫單元測試', () => {
       expect(statsB.effectiveCount).toBe(2);
       expect(statsB.effectiveAmount).toBe(90);
       expect(generateGroupOrderSettlementNote(summaryB, '點餐開團')).toBe('開源社 · 雞排、薯條 (共2份)');
+    });
+
+    it('SWEETHOME 示範帳本內建五大記事協作看板範例應完整解析各模式與結算統計', () => {
+      const txs = getSweethomeInitialTransactions();
+      const memos = txs.filter(t => t.type === 'memo');
+
+      const modesFound = new Set<string>();
+      for (const m of memos) {
+        const summary = computeGroupOrderSummary(m.note, m.merchant);
+        if (summary.isGroupOrder) {
+          modesFound.add(summary.mode);
+        }
+      }
+
+      expect(modesFound.has('food')).toBe(true);
+      expect(modesFound.has('chore')).toBe(true);
+      expect(modesFound.has('vote')).toBe(true);
+      expect(modesFound.has('grocery')).toBe(true);
+      expect(modesFound.has('parcel')).toBe(true);
+
+      // 驗證家事懸賞範例的已認領核發金額 ($50 + $30 = $80)
+      const choreTx = memos.find(t => t.id === 'ee400000-0000-4000-8000-000000000032');
+      expect(choreTx).toBeDefined();
+      const choreSummary = computeGroupOrderSummary(choreTx!.note, choreTx!.merchant);
+      const choreStats = getGroupOrderSettlementStats(choreSummary);
+      expect(choreStats.effectiveCount).toBe(2);
+      expect(choreStats.effectiveAmount).toBe(80);
     });
   });
 });
