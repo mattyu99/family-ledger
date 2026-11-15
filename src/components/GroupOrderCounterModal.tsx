@@ -16,7 +16,7 @@ import {
 import { useTheme } from '../theme/ThemeContext';
 import { useLedger } from '../context/LedgerContext';
 import { LiveToastBanner } from './LiveToastBanner';
-import { GroupOrderSummary, GroupOrderItem, MemberEarningSummary } from '../lib/groupOrder';
+import { GroupOrderSummary, GroupOrderItem, MemberEarningSummary, VoteOptionSummary } from '../lib/groupOrder';
 
 interface GroupOrderCounterModalProps {
   visible: boolean;
@@ -40,6 +40,8 @@ interface GroupOrderCounterModalProps {
   onToggleVote?: (lineIndex: number, voterName: string) => void;
   onFinalizeVote?: (winningLineIndex: number) => void;
   onConvertToFoodOrder?: (winningTitle: string) => void;
+  onUpdateVoteOption?: (lineIndex: number, newTitle: string) => void;
+  onDeleteVoteOption?: (lineIndex: number) => void;
   onAddQuickItem?: () => void;
   onExtendDeadline?: (addMinutes: number) => void;
 }
@@ -58,6 +60,8 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
   onToggleVote,
   onFinalizeVote,
   onConvertToFoodOrder,
+  onUpdateVoteOption,
+  onDeleteVoteOption,
   onAddQuickItem,
   onExtendDeadline,
 }) => {
@@ -66,6 +70,10 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
   const [pickingItem, setPickingItem] = useState<GroupOrderItem | null>(null);
 
   const isExpired = Boolean(summary.deadlineInfo?.isExpired || summary.deadlineInfo?.badgeColorType === 'expired');
+
+  // 編輯投票方案名稱狀態
+  const [editingVoteOption, setEditingVoteOption] = useState<VoteOptionSummary | null>(null);
+  const [editVoteTitle, setEditVoteTitle] = useState<string>('');
 
   // 編輯單一餐點品項與金額狀態 (方案 1：全家皆可自由修改任何人的項目)
   const [editingItem, setEditingItem] = useState<GroupOrderItem | null>(null);
@@ -80,6 +88,85 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
     setEditSpecs(item.specs || '');
     setEditPriceStr(item.price > 0 ? String(item.price) : '');
     setEditingItem(item);
+  };
+
+  // 發起人長按方案卡片進行修改名稱或下架刪除 (支援已有人投票防呆)
+  const handleVoteOptionLongPress = (opt: VoteOptionSummary, idx: number) => {
+    if (opt.isDecided) {
+      Alert.alert('已敲定方案', '此候選方案已拍板敲定為最終決策，無法再修改或下架刪除囉！');
+      return;
+    }
+
+    if (!isOrganizer) {
+      Alert.alert(
+        '方案管理權限',
+        '只有發起人可以修改或下架刪除此候選方案喔！若需調整，請聯繫發起人。'
+      );
+      return;
+    }
+
+    if (opt.voteCount === 0) {
+      // 0 票：尚無人投票，完全自由修改或直接刪除
+      Alert.alert(
+        `管理方案 · ${opt.title}`,
+        '目前尚無家人投票，您可以直接修改名稱或刪除此方案：',
+        [
+          { text: '取消', style: 'cancel' },
+          {
+            text: '✏️ 修改名稱',
+            onPress: () => {
+              setEditingVoteOption(opt);
+              setEditVoteTitle(opt.title);
+            },
+          },
+          {
+            text: '🗑️ 刪除此方案',
+            style: 'destructive',
+            onPress: () => {
+              (onDeleteVoteOption || onDeleteItem)?.(opt.lineIndex);
+            },
+          },
+        ]
+      );
+    } else {
+      // > 0 票：已有家人投票，嚴格防呆
+      Alert.alert(
+        `管理方案 · ${opt.title}`,
+        `此方案已有 ${opt.voteCount} 位家人投票（${opt.voters.join('、')}）。`,
+        [
+          { text: '取消', style: 'cancel' },
+          {
+            text: '✏️ 修改名稱 (已鎖定)',
+            onPress: () => {
+              Alert.alert(
+                '無法直接修改名稱',
+                `為確保投票公平性，已有家人投過票的方案不可直接更改名稱。\n\n若店家有變動（例如公休），請點選「下架刪除」，方案移除後選票將會退回，家人可重新改投其他方案。`
+              );
+            },
+          },
+          {
+            text: '🗑️ 下架刪除此方案',
+            style: 'destructive',
+            onPress: () => {
+              Alert.alert(
+                '確定下架刪除方案？',
+                `「${opt.title}」已有 ${opt.voteCount} 位家人投票（${opt.voters.join('、')}）。\n\n刪除後將會移除該方案並退回這些選票，家人可重新改投其他方案，確定要下架嗎？`,
+                [
+                  { text: '取消', style: 'cancel' },
+                  {
+                    text: '確定下架',
+                    style: 'destructive',
+                    onPress: () => {
+                      (onDeleteVoteOption || onDeleteItem)?.(opt.lineIndex);
+                    },
+                  },
+                ]
+              );
+            },
+          },
+        ]
+      );
+    }
   };
 
   const isVote = summary.mode === 'vote';
@@ -345,116 +432,128 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                   </Text>
                 </View>
               ) : (
-                summary.voteOptions.map((opt, idx) => {
-                  const isLeading = summary.leadingOption && opt.voteCount > 0 && opt.voteCount === summary.leadingOption.voteCount;
-                  const hasVoted = opt.voters.includes(activeVoter);
-                  return (
-                    <View
-                      key={idx}
-                      style={[
-                        styles.voteCard,
-                        opt.isDecided && styles.voteCardDecided,
-                        isDark && {
-                          backgroundColor: opt.isDecided ? 'rgba(16, 185, 129, 0.15)' : '#1E293B',
-                          borderColor: opt.isDecided ? '#10B981' : '#334155',
-                        },
-                      ]}
-                    >
-                      {/* 平滑進度條底色填充層 (YouTube / Twitter 投票風格，省去獨立一行進度條空間) */}
-                      {opt.percentage > 0 && (
-                        <View
-                          style={[
-                            styles.voteProgressFillBg,
-                            {
-                              width: `${opt.percentage}%`,
-                              backgroundColor: opt.isDecided
-                                ? (isDark ? 'rgba(16, 185, 129, 0.25)' : 'rgba(209, 250, 229, 0.8)')
-                                : (isLeading
-                                    ? (isDark ? 'rgba(245, 158, 11, 0.25)' : 'rgba(254, 243, 199, 0.85)')
-                                    : (isDark ? 'rgba(59, 130, 246, 0.2)' : 'rgba(239, 246, 255, 0.9)')),
-                            },
-                          ]}
-                        />
-                      )}
-
-                      <View style={styles.voteCardTopRow}>
-                        <View
-                          style={[
-                            styles.voteRankTag,
-                            isLeading && { backgroundColor: '#FEF3C7' },
-                            opt.isDecided && { backgroundColor: '#D1FAE5' },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.voteRankText,
-                              isLeading && { color: '#D97706' },
-                              opt.isDecided && { color: '#059669' },
-                            ]}
-                          >
-                            {opt.isDecided ? '🏆 敲定' : (isLeading ? '🥇 領先' : `#${idx + 1}`)}
-                          </Text>
-                        </View>
-                        <Text style={[styles.voteTitleText, isDark && { color: '#F9FAFB' }]} numberOfLines={2}>
-                          {opt.title}
-                        </Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <Text style={[styles.compactVoteScoreText, isDark && { color: '#9CA3AF' }]}>
-                            {opt.voteCount}票 ({opt.percentage}%)
-                          </Text>
-                          <TouchableOpacity
-                            activeOpacity={0.7}
-                            onPress={() => {
-                              if (isExpired) {
-                                if (isOrganizer) {
-                                  Alert.alert('投票已截止', '投票已超過截止時間。身為發起人，您可以點選上方的「+15分」順延截止時間，或點選下方進行拍板敲定！');
-                                } else {
-                                  Alert.alert('投票已截止', `投票已於 ${summary.deadlineInfo?.badgeText || '先前'} 截止，無法再投票囉！如需繼續參與，請聯繫發起人順延截止時間。`);
-                                }
-                                return;
-                              }
-                              onToggleVote?.(opt.lineIndex, activeVoter);
-                            }}
-                            style={[
-                              styles.voteBtn,
-                              hasVoted && styles.voteBtnActive,
-                              isExpired && { opacity: 0.6, borderColor: '#9CA3AF' },
-                              isDark && !hasVoted && { backgroundColor: '#374151', borderColor: '#4B5563' },
-                            ]}
-                          >
-                            <Text style={[styles.voteBtnText, hasVoted && styles.voteBtnTextActive]}>
-                              {hasVoted ? '✓ 已投' : (isExpired ? '🔒 +1' : '👍 +1')}
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-
-                      {/* 投票人名單 (緊湊微型膠囊，尚無人投票時不佔任何高度) */}
-                      {opt.voters.length > 0 && (
-                        <View style={styles.compactVotersRow}>
-                          {opt.voters.map((v, vIdx) => (
-                            <View key={vIdx} style={[styles.compactVoterPill, isDark && { backgroundColor: '#374151' }]}>
-                              <Text style={[styles.compactVoterPillText, isDark && { color: '#D1D5DB' }]}>👤 {v}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-
-                      {/* 子項目留言氣泡展示 (若有家人對該方案回覆) */}
-                      {opt.replies && opt.replies.length > 0 && (
-                        <View style={styles.voteRepliesWrapper}>
-                          {opt.replies.map((reply, rIdx) => (
-                            <View key={rIdx} style={[styles.voteReplyBubble, isDark && { backgroundColor: '#334155' }]}>
-                              <Text style={[styles.voteReplyText, isDark && { color: '#E2E8F0' }]}>
-                                💬 <Text style={{ fontWeight: '700' }}>{reply.memberName}</Text>：{reply.text}
-                              </Text>
-                            </View>
-                          ))}
-                        </View>
-                      )}
+                <>
+                  {isOrganizer && (
+                    <View style={styles.organizerHintRow}>
+                      <Text style={[styles.organizerHintText, isDark && { color: '#9CA3AF' }]}>
+                        💡 發起人可長按方案卡片進行修改名稱（0票時）或下架刪除
+                      </Text>
                     </View>
-                  );
-                })
+                  )}
+                  {summary.voteOptions.map((opt, idx) => {
+                    const isLeading = summary.leadingOption && opt.voteCount > 0 && opt.voteCount === summary.leadingOption.voteCount;
+                    const hasVoted = opt.voters.includes(activeVoter);
+                    return (
+                      <TouchableOpacity
+                        key={idx}
+                        activeOpacity={0.85}
+                        delayLongPress={350}
+                        onLongPress={() => handleVoteOptionLongPress(opt, idx)}
+                        style={[
+                          styles.voteCard,
+                          opt.isDecided && styles.voteCardDecided,
+                          isDark && {
+                            backgroundColor: opt.isDecided ? 'rgba(16, 185, 129, 0.15)' : '#1E293B',
+                            borderColor: opt.isDecided ? '#10B981' : '#334155',
+                          },
+                        ]}
+                      >
+                        {/* 平滑進度條底色填充層 (YouTube / Twitter 投票風格，省去獨立一行進度條空間) */}
+                        {opt.percentage > 0 && (
+                          <View
+                            style={[
+                              styles.voteProgressFillBg,
+                              {
+                                width: `${opt.percentage}%`,
+                                backgroundColor: opt.isDecided
+                                  ? (isDark ? 'rgba(16, 185, 129, 0.25)' : 'rgba(209, 250, 229, 0.8)')
+                                  : (isLeading
+                                      ? (isDark ? 'rgba(245, 158, 11, 0.25)' : 'rgba(254, 243, 199, 0.85)')
+                                      : (isDark ? 'rgba(59, 130, 246, 0.2)' : 'rgba(239, 246, 255, 0.9)')),
+                              },
+                            ]}
+                          />
+                        )}
+
+                        <View style={styles.voteCardTopRow}>
+                          <View
+                            style={[
+                              styles.voteRankTag,
+                              isLeading && { backgroundColor: '#FEF3C7' },
+                              opt.isDecided && { backgroundColor: '#D1FAE5' },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.voteRankText,
+                                isLeading && { color: '#D97706' },
+                                opt.isDecided && { color: '#059669' },
+                              ]}
+                            >
+                              {opt.isDecided ? '🏆 敲定' : (isLeading ? '🥇 領先' : `#${idx + 1}`)}
+                            </Text>
+                          </View>
+                          <Text style={[styles.voteTitleText, isDark && { color: '#F9FAFB' }]} numberOfLines={2}>
+                            {opt.title}
+                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <Text style={[styles.compactVoteScoreText, isDark && { color: '#9CA3AF' }]}>
+                              {opt.voteCount}票 ({opt.percentage}%)
+                            </Text>
+                            <TouchableOpacity
+                              activeOpacity={0.7}
+                              onPress={() => {
+                                if (isExpired) {
+                                  if (isOrganizer) {
+                                    Alert.alert('投票已截止', '投票已超過截止時間。身為發起人，您可以點選上方的「+15分」順延截止時間，或點選下方進行拍板敲定！');
+                                  } else {
+                                    Alert.alert('投票已截止', `投票已於 ${summary.deadlineInfo?.badgeText || '先前'} 截止，無法再投票囉！如需繼續參與，請聯繫發起人順延截止時間。`);
+                                  }
+                                  return;
+                                }
+                                onToggleVote?.(opt.lineIndex, activeVoter);
+                              }}
+                              style={[
+                                styles.voteBtn,
+                                hasVoted && styles.voteBtnActive,
+                                isExpired && { opacity: 0.6, borderColor: '#9CA3AF' },
+                                isDark && !hasVoted && { backgroundColor: '#374151', borderColor: '#4B5563' },
+                              ]}
+                            >
+                              <Text style={[styles.voteBtnText, hasVoted && styles.voteBtnTextActive]}>
+                                {hasVoted ? '✓ 已投' : (isExpired ? '🔒 +1' : '👍 +1')}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+
+                        {/* 投票人名單 (緊湊微型膠囊，尚無人投票時不佔任何高度) */}
+                        {opt.voters.length > 0 && (
+                          <View style={styles.compactVotersRow}>
+                            {opt.voters.map((v, vIdx) => (
+                              <View key={vIdx} style={[styles.compactVoterPill, isDark && { backgroundColor: '#374151' }]}>
+                                <Text style={[styles.compactVoterPillText, isDark && { color: '#D1D5DB' }]}>👤 {v}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+
+                        {/* 子項目留言氣泡展示 (若有家人對該方案回覆) */}
+                        {opt.replies && opt.replies.length > 0 && (
+                          <View style={styles.voteRepliesWrapper}>
+                            {opt.replies.map((reply, rIdx) => (
+                              <View key={rIdx} style={[styles.voteReplyBubble, isDark && { backgroundColor: '#334155' }]}>
+                                <Text style={[styles.voteReplyText, isDark && { color: '#E2E8F0' }]}>
+                                  💬 <Text style={{ fontWeight: '700' }}>{reply.memberName}</Text>：{reply.text}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </>
               )
             ) : summary.items.length === 0 ? (
               <View style={styles.emptyContainer}>
@@ -1104,11 +1203,97 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* 修改投票方案名稱彈窗 (僅限發起人於無人投票時或防呆確認後修改) */}
+      <Modal
+        visible={editingVoteOption !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditingVoteOption(null)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.editOverlay}
+        >
+          <TouchableOpacity
+            style={styles.pickerBackdrop}
+            activeOpacity={1}
+            onPress={() => setEditingVoteOption(null)}
+          />
+          <View style={[styles.editDialog, isDark && { backgroundColor: '#1F2937', borderColor: '#374151' }]}>
+            <View style={styles.editHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.editTitle, isDark && { color: '#F9FAFB' }]} numberOfLines={1}>
+                  ✏️ 修改方案名稱
+                </Text>
+                <Text style={[styles.editSubtitle, isDark && { color: '#9CA3AF' }]}>
+                  修正方案錯別字或調整店家名稱
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setEditingVoteOption(null)} style={styles.editCloseIconBtn}>
+                <Text style={styles.editCloseIconText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ marginVertical: 18 }}>
+              <Text style={[styles.editLabel, isDark && { color: '#D1D5DB' }]}>
+                候選方案名稱 *：
+              </Text>
+              <TextInput
+                style={[styles.editInput, isDark && styles.editInputDark]}
+                value={editVoteTitle}
+                onChangeText={setEditVoteTitle}
+                placeholder="例如：阿婆壽司、麥當勞"
+                placeholderTextColor={isDark ? '#6B7280' : '#9CA3AF'}
+                autoFocus
+              />
+            </View>
+
+            <View style={styles.editFooterRow}>
+              <TouchableOpacity
+                onPress={() => setEditingVoteOption(null)}
+                style={[styles.editDeleteBtn, { backgroundColor: isDark ? '#374151' : '#F3F4F6' }]}
+              >
+                <Text style={[styles.editDeleteBtnText, { color: isDark ? '#9CA3AF' : '#4B5563' }]}>取消</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  const cleanTitle = editVoteTitle.trim();
+                  if (!cleanTitle) {
+                    Alert.alert('請輸入方案名稱', '方案名稱不能為空白喔！');
+                    return;
+                  }
+                  if (editingVoteOption) {
+                    onUpdateVoteOption?.(editingVoteOption.lineIndex, cleanTitle);
+                  }
+                  setEditingVoteOption(null);
+                }}
+                style={styles.editSaveBtn}
+              >
+                <Text style={styles.editSaveBtnText}>💾 儲存修改</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
+  organizerHintRow: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  organizerHintText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
   safeArea: {
     flex: 1,
     backgroundColor: '#FFFFFF',

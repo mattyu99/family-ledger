@@ -19,6 +19,7 @@ import {
   deleteGroupOrderItem,
   toggleGroupOrderVote,
   finalizeGroupOrderVote,
+  updateGroupOrderVoteOption,
   convertVoteToFoodOrder,
   extendOrderDeadline,
   MemberEarningSummary,
@@ -722,6 +723,14 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
         onConvertToFoodOrder={(winningTitle) => {
           const newOrderNote = convertVoteToFoodOrder(winningTitle);
           updateTransaction(transaction.id, { note: newOrderNote });
+        }}
+        onUpdateVoteOption={(lineIndex, newTitle) => {
+          const updatedNote = updateGroupOrderVoteOption(transaction.note || '', lineIndex, newTitle);
+          updateTransaction(transaction.id, { note: updatedNote });
+        }}
+        onDeleteVoteOption={(lineIndex) => {
+          const updatedNote = deleteGroupOrderItem(transaction.note || '', lineIndex);
+          updateTransaction(transaction.id, { note: updatedNote });
         }}
         onAddQuickItem={() => {
           setIsGroupOrderAppendOpen(true);

@@ -892,6 +892,43 @@ export function finalizeGroupOrderVote(
 }
 
 /**
+ * 修改指定投票候選方案之名稱 (保留既有投票人與留言)
+ */
+export function updateGroupOrderVoteOption(
+  content: string = '',
+  targetLineIndex: number,
+  newTitle: string
+): string {
+  const cleanTitle = (newTitle || '').trim();
+  if (!cleanTitle) return content;
+
+  const lines = content.split('\n');
+  let checklistItemIndex = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isChecklist = /^[-*]?\s*\[([ xX✓])\]\s*(.+)$/.test(line.trim());
+    if (isChecklist) {
+      if (checklistItemIndex === targetLineIndex) {
+        const option = parseVoteOptionLine(line, checklistItemIndex);
+        if (option) {
+          const checkMark = option.isDecided ? '[x]' : '[ ]';
+          const votersPart = option.voters.length > 0 ? `（${option.voters.join('、')} +${option.voters.length}）` : '';
+          const repliesPart = (option.replies && option.replies.length > 0)
+            ? `（${option.replies.map(r => `${r.memberName}：${r.text}`).join('；')}）`
+            : '';
+          lines[i] = `- ${checkMark} ${cleanTitle}${votersPart}${repliesPart}`;
+        }
+        break;
+      }
+      checklistItemIndex++;
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/**
  * 將勝出的投票結果一鍵轉換為點餐開團記事內容
  */
 export function convertVoteToFoodOrder(storeName: string): string {

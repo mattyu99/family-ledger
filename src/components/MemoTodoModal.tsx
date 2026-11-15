@@ -28,6 +28,10 @@ import {
   deleteGroupOrderItem,
   updateGroupOrderItemMember,
   extendOrderDeadline,
+  toggleGroupOrderVote,
+  finalizeGroupOrderVote,
+  convertVoteToFoodOrder,
+  updateGroupOrderVoteOption,
 } from '../lib/groupOrder';
 import { GroupOrderAppendModal } from './GroupOrderAppendModal';
 import { GroupOrderCounterModal } from './GroupOrderCounterModal';
@@ -1041,6 +1045,41 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
             }}
             onAddQuickItem={() => {
               setIsGroupOrderAppendOpen(true);
+            }}
+            onToggleVote={(lineIndex, voterName) => {
+              if (activeGroupOrderTx) {
+                const updatedNote = toggleGroupOrderVote(activeGroupOrderTx.note || '', lineIndex, voterName);
+                updateTransaction(activeGroupOrderTx.id, { note: updatedNote });
+              }
+            }}
+            onFinalizeVote={(winningLineIndex) => {
+              if (activeGroupOrderTx) {
+                const updatedNote = finalizeGroupOrderVote(activeGroupOrderTx.note || '', winningLineIndex);
+                updateTransaction(activeGroupOrderTx.id, {
+                  note: updatedNote,
+                  is_settled: true,
+                  completed_by: currentUser?.id,
+                  completion_note: '投票決策已敲定拍板',
+                });
+              }
+            }}
+            onConvertToFoodOrder={(winningTitle) => {
+              if (activeGroupOrderTx) {
+                const newOrderNote = convertVoteToFoodOrder(winningTitle);
+                updateTransaction(activeGroupOrderTx.id, { note: newOrderNote });
+              }
+            }}
+            onUpdateVoteOption={(lineIndex, newTitle) => {
+              if (activeGroupOrderTx) {
+                const updatedNote = updateGroupOrderVoteOption(activeGroupOrderTx.note || '', lineIndex, newTitle);
+                updateTransaction(activeGroupOrderTx.id, { note: updatedNote });
+              }
+            }}
+            onDeleteVoteOption={(lineIndex) => {
+              if (activeGroupOrderTx) {
+                const updatedNote = deleteGroupOrderItem(activeGroupOrderTx.note || '', lineIndex);
+                updateTransaction(activeGroupOrderTx.id, { note: updatedNote });
+              }
             }}
             onExtendDeadline={(addMinutes) => {
               if (activeGroupOrderTx) {

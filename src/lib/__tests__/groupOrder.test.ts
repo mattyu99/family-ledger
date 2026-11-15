@@ -20,6 +20,7 @@ import {
   parseVoteOptionLine,
   toggleGroupOrderVote,
   finalizeGroupOrderVote,
+  updateGroupOrderVoteOption,
   convertVoteToFoodOrder,
   extractOrderDeadline,
   extendOrderDeadline,
@@ -836,6 +837,40 @@ describe('groupOrder 工具庫單元測試', () => {
       // 拍板定案阿婆壽司
       const finalized = finalizeGroupOrderVote(step1, 0);
       expect(finalized).toContain('- [x] 🍣 阿婆壽司（瑩媽 +1）（智爸：怎麼沒有人選...）');
+    });
+
+    it('updateGroupOrderVoteOption 支援修改候選方案名稱並完整保留選票與留言', () => {
+      const note = `[🗳️ 早餐吃什麼？]
+- [ ] 永和豆漿（瑩媽、智爸 +2）（智爸：這家好吃）
+- [ ] 麥當佬`;
+
+      // 1. 修改有選票與留言的方案名稱（例如更正全名為「永和豆漿大王」）
+      const updated1 = updateGroupOrderVoteOption(note, 0, '永和豆漿大王');
+      expect(updated1).toContain('- [ ] 永和豆漿大王（瑩媽、智爸 +2）（智爸：這家好吃）');
+      expect(updated1).toContain('- [ ] 麥當佬');
+
+      // 2. 修改 0 票之錯字方案（麥當佬 -> 麥當勞）
+      const updated2 = updateGroupOrderVoteOption(updated1, 1, '麥當勞');
+      expect(updated2).toContain('- [ ] 麥當勞');
+      expect(updated2).not.toContain('麥當佬');
+    });
+
+    it('deleteGroupOrderItem 支援刪除指定的投票候選方案', () => {
+      const note = `[🗳️ 早餐吃什麼？]
+- [ ] 永和豆漿（瑩媽、智爸 +2）
+- [ ] 高價股（智爸 +1）
+- [ ] 吃藥`;
+
+      // 刪除惡搞/手滑項目「高價股」(checklist index 1)
+      const afterDelete1 = deleteGroupOrderItem(note, 1);
+      expect(afterDelete1).toContain('- [ ] 永和豆漿（瑩媽、智爸 +2）');
+      expect(afterDelete1).toContain('- [ ] 吃藥');
+      expect(afterDelete1).not.toContain('高價股');
+
+      // 刪除「吃藥」(此時 index 1 為吃藥)
+      const afterDelete2 = deleteGroupOrderItem(afterDelete1, 1);
+      expect(afterDelete2).toContain('- [ ] 永和豆漿（瑩媽、智爸 +2）');
+      expect(afterDelete2).not.toContain('吃藥');
     });
 
     it('convertVoteToFoodOrder 能將勝出的餐廳無縫轉為點餐開團記事', () => {
