@@ -241,7 +241,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
               </View>
               <Text style={[styles.storeSubtitle, isDark && { color: '#9CA3AF' }]} numberOfLines={1}>
                 {isVote
-                  ? '家庭民主投票 · 點擊「+1」投票表達意願，最高票可一鍵拍板敲定'
+                  ? (isOrganizer ? '家庭民主投票 · 長按方案可修改或下架' : '家庭民主投票 · 點擊「+1」投票表達意願')
                   : (isChore
                       ? '家庭家事與懸賞分工 · 做完可直接打勾劃線，點人名隨時換人'
                       : (isParcel
@@ -280,12 +280,20 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                       isDark && !isExpired && { color: '#93C5FD' },
                     ]}
                   >
-                    {isExpired ? '🔒 已截止' : '＋ 現場追加'}
+                    {isExpired
+                      ? '🔒 已截止'
+                      : (isVote
+                          ? '＋ 提案'
+                          : (isChore ? '＋ 任務' : (isGrocery ? '＋ 我要買' : (isParcel ? '＋ 包裹' : '＋ 追加'))))}
                   </Text>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity onPress={onClose} style={[styles.closeBtn, isDark && { backgroundColor: '#374151' }]}>
-                <Text style={[styles.closeBtnText, isDark && { color: '#D1D5DB' }]}>關閉</Text>
+              <TouchableOpacity
+                onPress={onClose}
+                style={[styles.headerCloseIconBtn, isDark && { backgroundColor: '#374151' }]}
+                accessibilityLabel="關閉"
+              >
+                <Text style={[styles.headerCloseIconText, isDark && { color: '#D1D5DB' }]}>✕</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -496,10 +504,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                           <Text style={[styles.voteTitleText, isDark && { color: '#F9FAFB' }]} numberOfLines={2}>
                             {opt.title}
                           </Text>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            <Text style={[styles.compactVoteScoreText, isDark && { color: '#9CA3AF' }]}>
-                              {opt.voteCount}票 ({opt.percentage}%)
-                            </Text>
+                          <View style={styles.voteRightActionCol}>
                             <TouchableOpacity
                               activeOpacity={0.7}
                               onPress={() => {
@@ -524,6 +529,9 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                                 {hasVoted ? '✓ 已投' : (isExpired ? '🔒 +1' : '👍 +1')}
                               </Text>
                             </TouchableOpacity>
+                            <Text style={[styles.compactVoteScoreBelowText, isDark && { color: '#9CA3AF' }]}>
+                              {opt.voteCount}票 ({opt.percentage}%)
+                            </Text>
                           </View>
                         </View>
 
@@ -1355,6 +1363,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#374151',
   },
+  headerCloseIconBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerCloseIconText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#4B5563',
+    lineHeight: 18,
+  },
   summaryBoard: {
     flexDirection: 'row',
     marginHorizontal: 16,
@@ -1800,15 +1822,27 @@ const styles = StyleSheet.create({
     color: '#4B5563',
   },
   voteTitleText: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '800',
     color: '#111827',
     flex: 1,
   },
+  voteRightActionCol: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 64,
+  },
+  compactVoteScoreBelowText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6B7280',
+    marginTop: 4,
+    textAlign: 'center',
+  },
   voteBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
     backgroundColor: '#F3F4F6',
     borderWidth: 1,
     borderColor: '#D1D5DB',
