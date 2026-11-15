@@ -483,27 +483,58 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                           />
                         )}
 
-                        <View style={styles.voteCardTopRow}>
-                          <View
-                            style={[
-                              styles.voteRankTag,
-                              isLeading && { backgroundColor: '#FEF3C7' },
-                              opt.isDecided && { backgroundColor: '#D1FAE5' },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.voteRankText,
-                                isLeading && { color: '#D97706' },
-                                opt.isDecided && { color: '#059669' },
-                              ]}
-                            >
-                              {opt.isDecided ? '🏆 敲定' : (isLeading ? '🥇 領先' : `#${idx + 1}`)}
-                            </Text>
+                        <View style={styles.voteCardBodyRow}>
+                          {/* 左側資訊欄：排名+店名方案、投票人名單膠囊、留言氣泡 */}
+                          <View style={styles.voteLeftInfoCol}>
+                            <View style={styles.voteTitleRow}>
+                              <View
+                                style={[
+                                  styles.voteRankTag,
+                                  isLeading && { backgroundColor: '#FEF3C7' },
+                                  opt.isDecided && { backgroundColor: '#D1FAE5' },
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.voteRankText,
+                                    isLeading && { color: '#D97706' },
+                                    opt.isDecided && { color: '#059669' },
+                                  ]}
+                                >
+                                  {opt.isDecided ? '🏆 敲定' : (isLeading ? '🥇 領先' : `#${idx + 1}`)}
+                                </Text>
+                              </View>
+                              <Text style={[styles.voteTitleText, isDark && { color: '#F9FAFB' }]} numberOfLines={1}>
+                                {opt.title}
+                              </Text>
+                            </View>
+
+                            {/* 投票人名單 (緊湊微型膠囊，緊貼在方案名稱下方，尚無人投票時不佔任何高度) */}
+                            {opt.voters.length > 0 && (
+                              <View style={styles.compactVotersRow}>
+                                {opt.voters.map((v, vIdx) => (
+                                  <View key={vIdx} style={[styles.compactVoterPill, isDark && { backgroundColor: '#374151' }]}>
+                                    <Text style={[styles.compactVoterPillText, isDark && { color: '#D1D5DB' }]}>👤 {v}</Text>
+                                  </View>
+                                ))}
+                              </View>
+                            )}
+
+                            {/* 子項目留言氣泡展示 (若有家人對該方案回覆) */}
+                            {opt.replies && opt.replies.length > 0 && (
+                              <View style={styles.voteRepliesWrapper}>
+                                {opt.replies.map((reply, rIdx) => (
+                                  <View key={rIdx} style={[styles.voteReplyBubble, isDark && { backgroundColor: '#334155' }]}>
+                                    <Text style={[styles.voteReplyText, isDark && { color: '#E2E8F0' }]}>
+                                      💬 <Text style={{ fontWeight: '700' }}>{reply.memberName}</Text>：{reply.text}
+                                    </Text>
+                                  </View>
+                                ))}
+                              </View>
+                            )}
                           </View>
-                          <Text style={[styles.voteTitleText, isDark && { color: '#F9FAFB' }]} numberOfLines={2}>
-                            {opt.title}
-                          </Text>
+
+                          {/* 右側動作欄：投票按鈕 + 票數百分比 */}
                           <View style={styles.voteRightActionCol}>
                             <TouchableOpacity
                               activeOpacity={0.7}
@@ -534,30 +565,6 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                             </Text>
                           </View>
                         </View>
-
-                        {/* 投票人名單 (緊湊微型膠囊，尚無人投票時不佔任何高度) */}
-                        {opt.voters.length > 0 && (
-                          <View style={styles.compactVotersRow}>
-                            {opt.voters.map((v, vIdx) => (
-                              <View key={vIdx} style={[styles.compactVoterPill, isDark && { backgroundColor: '#374151' }]}>
-                                <Text style={[styles.compactVoterPillText, isDark && { color: '#D1D5DB' }]}>👤 {v}</Text>
-                              </View>
-                            ))}
-                          </View>
-                        )}
-
-                        {/* 子項目留言氣泡展示 (若有家人對該方案回覆) */}
-                        {opt.replies && opt.replies.length > 0 && (
-                          <View style={styles.voteRepliesWrapper}>
-                            {opt.replies.map((reply, rIdx) => (
-                              <View key={rIdx} style={[styles.voteReplyBubble, isDark && { backgroundColor: '#334155' }]}>
-                                <Text style={[styles.voteReplyText, isDark && { color: '#E2E8F0' }]}>
-                                  💬 <Text style={{ fontWeight: '700' }}>{reply.memberName}</Text>：{reply.text}
-                                </Text>
-                              </View>
-                            ))}
-                          </View>
-                        )}
                       </TouchableOpacity>
                     );
                   })}
@@ -1292,8 +1299,8 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
 const styles = StyleSheet.create({
   organizerHintRow: {
     paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 2,
+    paddingTop: 4,
+    paddingBottom: 4,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1380,17 +1387,17 @@ const styles = StyleSheet.create({
   summaryBoard: {
     flexDirection: 'row',
     marginHorizontal: 16,
-    marginVertical: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    marginVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     backgroundColor: '#FFFFFF',
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E5E7EB',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
-    shadowRadius: 4,
+    shadowRadius: 3,
     elevation: 1,
   },
   summaryCol: {
@@ -1403,13 +1410,13 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
   },
   summaryLabel: {
-    fontSize: 12,
+    fontSize: 11.5,
     color: '#6B7280',
-    marginBottom: 4,
+    marginBottom: 2,
     fontWeight: '600',
   },
   summaryBigNumber: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '900',
   },
   listScroll: {
@@ -1662,11 +1669,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginHorizontal: 16,
-    marginBottom: 10,
+    marginBottom: 6,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 5,
     backgroundColor: '#EFF6FF',
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#BFDBFE',
     gap: 8,
@@ -1680,7 +1687,7 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
   },
   deadlineBarText: {
-    fontSize: 12.5,
+    fontSize: 12,
     fontWeight: '800',
     color: '#2563EB',
   },
@@ -1709,46 +1716,46 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: 16,
-    marginBottom: 8,
+    marginBottom: 6,
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: 4.5,
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#E5E7EB',
     gap: 8,
   },
   voteIdentityText: {
-    fontSize: 13,
+    fontSize: 12.5,
     color: '#6B7280',
     fontWeight: '600',
   },
   voteIdentityBadge: {
     backgroundColor: '#EFF6FF',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 7,
     borderWidth: 1,
     borderColor: '#BFDBFE',
   },
   voteIdentityBadgeText: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '800',
     color: '#2563EB',
   },
   voteCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    padding: 10,
-    marginBottom: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    marginBottom: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
     elevation: 2,
-    gap: 6,
     position: 'relative',
     overflow: 'hidden',
   },
@@ -1757,10 +1764,10 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     left: 0,
-    borderRadius: 14,
+    borderRadius: 12,
   },
   compactVoteScoreText: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '800',
     color: '#6B7280',
   },
@@ -1769,60 +1776,70 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 4,
     alignItems: 'center',
-    marginTop: 2,
+    marginTop: 3,
   },
   compactVoterPill: {
     backgroundColor: 'rgba(243, 244, 246, 0.85)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 5,
     borderWidth: 0.5,
     borderColor: 'rgba(209, 213, 219, 0.6)',
   },
   compactVoterPillText: {
-    fontSize: 10.5,
+    fontSize: 10,
     fontWeight: '700',
     color: '#4B5563',
   },
   voteRepliesWrapper: {
-    marginTop: 4,
-    gap: 4,
+    marginTop: 3,
+    gap: 3,
   },
   voteReplyBubble: {
     backgroundColor: 'rgba(241, 245, 249, 0.85)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: 5,
     borderLeftWidth: 2.5,
     borderLeftColor: '#3B82F6',
     alignSelf: 'flex-start',
   },
   voteReplyText: {
-    fontSize: 11.5,
+    fontSize: 11,
     color: '#475569',
   },
   voteCardDecided: {
     borderColor: '#10B981',
     backgroundColor: '#F0FDF4',
   },
-  voteCardTopRow: {
+  voteCardBodyRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'space-between',
+  },
+  voteLeftInfoCol: {
+    flex: 1,
+    marginRight: 8,
+    justifyContent: 'center',
+  },
+  voteTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   voteRankTag: {
     backgroundColor: '#F3F4F6',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2.5,
+    borderRadius: 6,
   },
   voteRankText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '900',
     color: '#4B5563',
   },
   voteTitleText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     color: '#111827',
     flex: 1,
@@ -1830,19 +1847,19 @@ const styles = StyleSheet.create({
   voteRightActionCol: {
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 64,
+    minWidth: 62,
   },
   compactVoteScoreBelowText: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '700',
     color: '#6B7280',
-    marginTop: 4,
+    marginTop: 2,
     textAlign: 'center',
   },
   voteBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4.5,
+    borderRadius: 7,
     backgroundColor: '#F3F4F6',
     borderWidth: 1,
     borderColor: '#D1D5DB',
@@ -1852,7 +1869,7 @@ const styles = StyleSheet.create({
     borderColor: '#3B82F6',
   },
   voteBtnText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
     color: '#374151',
   },
