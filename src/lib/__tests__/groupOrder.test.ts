@@ -644,6 +644,23 @@ describe('groupOrder 工具庫單元測試', () => {
       expect(opt3?.voteCount).toBe(0);
     });
 
+    it('parseVoteOptionLine 能解析人名帶括號 (如 爸爸 (我))，且能自癒歷史重複疊加括號髒資料', () => {
+      // 1. 單層人名帶括號 (例如 爸爸 (我))
+      const singleBracket = parseVoteOptionLine('- [ ] 🍩 永和豆漿（爸爸 (我) +1）', 0);
+      expect(singleBracket).not.toBeNull();
+      expect(singleBracket?.title).toBe('🍩 永和豆漿');
+      expect(singleBracket?.voteCount).toBe(1);
+      expect(singleBracket?.voters).toEqual(['爸爸 (我)']);
+
+      // 2. 歷史多次重複點擊導致的巢狀疊加標籤自癒修復 (使用者回報之永和豆漿真實案例)
+      const corruptedLine = '- [ ] 🍩 永和豆漿（爸爸 (我) +1）（爸爸 (我) +1）（爸爸 (我) +1）';
+      const healed = parseVoteOptionLine(corruptedLine, 0);
+      expect(healed).not.toBeNull();
+      expect(healed?.title).toBe('🍩 永和豆漿');
+      expect(healed?.voteCount).toBe(1);
+      expect(healed?.voters).toEqual(['爸爸 (我)']);
+    });
+
     it('computeGroupOrderSummary 正確計算投票總票數、百分比與領先方案', () => {
       const note = `[🗳️ 週末聚餐投票] 吃哪家好？
 - [ ] 鼎泰豐（智爸、瑩媽、洋洋 +3）
@@ -689,6 +706,16 @@ describe('groupOrder 工具庫單元測試', () => {
       const step4 = toggleGroupOrderVote(step3, 1, '洋洋');
       expect(step4).toContain('- [ ] 藏壽司');
       expect(step4).not.toContain('藏壽司（');
+
+      // 5. 測試帶有 (我) 的身分投票自動純淨化，並能正確與純人名比對撤銷
+      const step5 = toggleGroupOrderVote(step4, 1, '智爸 (我)');
+      expect(step5).toContain('- [ ] 藏壽司（智爸 +1）');
+      expect(step5).not.toContain('(我)');
+
+      // 再次以「智爸」投票時，能認出並撤銷原先投的票
+      const step6 = toggleGroupOrderVote(step5, 1, '智爸');
+      expect(step6).toContain('- [ ] 藏壽司');
+      expect(step6).not.toContain('智爸');
     });
 
     it('finalizeGroupOrderVote 拍板定案最高票選項', () => {

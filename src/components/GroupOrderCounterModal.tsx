@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -87,11 +87,30 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
     ? Math.round((summary.completedCount / summary.totalCount) * 100)
     : 0;
 
-  // 投票代表身份切換
-  const [activeVoter, setActiveVoter] = useState<string>(
-    currentUser?.display_name || members[0]?.display_name || '家人'
-  );
+  // 投票代表身份切換 (預設為當前登入者或首位成員)
+  const [activeVoter, setActiveVoter] = useState<string>(() => {
+    const raw = currentUser?.display_name || members[0]?.display_name || '家人';
+    return raw.replace(/\s*[\(（]我[\)）]\s*$/, '').trim() || raw;
+  });
   const [isVoterPickerOpen, setIsVoterPickerOpen] = useState(false);
+
+  // 確保彈窗開啟或成員載入時，投票身分即時同步至當前帳本之真實成員，杜絕開機未載入時的「爸爸 (我)」幽靈成員
+  useEffect(() => {
+    if (visible) {
+      const validMembers = (members || [])
+        .map(m => (m?.display_name || '').replace(/\s*[\(（]我[\)）]\s*$/, '').trim())
+        .filter(Boolean);
+      const myName = (currentUser?.display_name || '').replace(/\s*[\(（]我[\)）]\s*$/, '').trim();
+
+      if (myName && validMembers.includes(myName)) {
+        setActiveVoter(myName);
+      } else if (validMembers.length > 0) {
+        if (!activeVoter || !validMembers.includes(activeVoter)) {
+          setActiveVoter(validMembers[0]);
+        }
+      }
+    }
+  }, [visible, currentUser?.display_name, members]);
 
   // 家事懸賞模式中，已有完成工作且有獎勵的成員清單
   const earnedMembers = (summary.memberEarnings || []).filter(e => e.totalAmount > 0 && e.completedCount > 0);
@@ -129,7 +148,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                             : (isParcel ? '網購湊單／包裹' : (isGrocery ? '賣場採買' : '點餐開團'))))}
                 </Text>
               </View>
-              <Text style={[styles.storeSubtitle, isDark && { color: '#9CA3AF' }]}>
+              <Text style={[styles.storeSubtitle, isDark && { color: '#9CA3AF' }]} numberOfLines={1}>
                 {isVote
                   ? '家庭民主投票 · 點擊「+1」投票表達意願，最高票可一鍵拍板敲定'
                   : (isChore
@@ -164,7 +183,15 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
               <Text style={styles.summaryLabel}>
                 {isVote ? '累計總票數' : (isChore ? '任務進度' : (isParcel ? '處理進度' : (isGrocery ? '採買進度' : '累計數量')))}
               </Text>
-              <Text style={[styles.summaryBigNumber, { color: '#F59E0B' }]}>
+              <Text
+                style={[
+                  styles.summaryBigNumber,
+                  { color: '#F59E0B' },
+                  isVote && { fontSize: 18 },
+                ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
                 {isVote ? (
                   `${summary.totalVotes || 0} 票 (${summary.totalCount} 候選)`
                 ) : (
@@ -185,7 +212,11 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
               <Text style={styles.summaryLabel}>
                 {isVote ? '目前領先方案' : (isChore ? '累計懸賞獎勵' : '預估總金額')}
               </Text>
-              <Text style={[styles.summaryBigNumber, { color: '#10B981', fontSize: isVote ? 17 : 24 }]} numberOfLines={1}>
+              <Text
+                style={[styles.summaryBigNumber, { color: '#10B981', fontSize: isVote ? 17 : 24 }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
                 {isVote
                   ? (summary.leadingOption && summary.leadingOption.voteCount > 0
                       ? `🥇 ${summary.leadingOption.title} (${summary.leadingOption.voteCount}票)`
@@ -270,7 +301,8 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                 style={[styles.voteIdentityBadge, isDark && { backgroundColor: '#1E3A8A', borderColor: '#3B82F6' }]}
               >
                 <Text style={[styles.voteIdentityBadgeText, isDark && { color: '#93C5FD' }]}>
-                  👤 {activeVoter} ▾
+                  👤 {activeVoter}
+                  {(currentUser?.display_name || '').replace(/\s*[\(（]我[\)）]\s*$/, '').trim() === activeVoter ? ' (我)' : ''} ▾
                 </Text>
               </TouchableOpacity>
             </View>
@@ -504,7 +536,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                 {summary.leadingOption && summary.leadingOption.voteCount > 0 ? (
                   <>
                     {!summary.leadingOption.isDecided ? (
-                      <View style={{ gap: 8 }}>
+                      <View style={styles.voteFooterRow}>
                         <TouchableOpacity
                           activeOpacity={0.8}
                           onPress={() => {
@@ -522,11 +554,11 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                               ]
                             );
                           }}
-                          style={[styles.settleBtn, { backgroundColor: '#10B981' }]}
+                          style={[styles.voteFooterBtn, { backgroundColor: '#10B981' }]}
                         >
-                          <Text style={styles.settleBtnIcon}>🏆</Text>
-                          <Text style={styles.settleBtnText}>
-                            拍板敲定最高票：{summary.leadingOption.title}
+                          <Text style={styles.voteFooterBtnIcon}>🏆</Text>
+                          <Text style={styles.voteFooterBtnText} numberOfLines={1}>
+                            拍板最高票
                           </Text>
                         </TouchableOpacity>
 
@@ -548,11 +580,11 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                               ]
                             );
                           }}
-                          style={[styles.settleBtn, { backgroundColor: '#2563EB' }]}
+                          style={[styles.voteFooterBtn, { backgroundColor: '#2563EB' }]}
                         >
-                          <Text style={styles.settleBtnIcon}>🧋</Text>
-                          <Text style={styles.settleBtnText}>
-                            直接轉為此店點餐開團 ›
+                          <Text style={styles.voteFooterBtnIcon}>🧋</Text>
+                          <Text style={styles.voteFooterBtnText} numberOfLines={1}>
+                            轉點餐開團
                           </Text>
                         </TouchableOpacity>
                       </View>
@@ -814,12 +846,14 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
 
             <View style={styles.pickerMemberList}>
               {members.map((member: any) => {
-                const isCurrent = activeVoter === member.display_name;
+                const cleanName = (member?.display_name || '').replace(/\s*[\(（]我[\)）]\s*$/, '').trim();
+                const isCurrent = activeVoter === cleanName;
+                const isMe = (currentUser?.display_name || '').replace(/\s*[\(（]我[\)）]\s*$/, '').trim() === cleanName;
                 return (
                   <TouchableOpacity
                     key={member.id}
                     onPress={() => {
-                      setActiveVoter(member.display_name);
+                      setActiveVoter(cleanName);
                       setIsVoterPickerOpen(false);
                     }}
                     style={[
@@ -835,7 +869,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                         isDark && { color: isCurrent ? '#93C5FD' : '#D1D5DB' },
                       ]}
                     >
-                      👤 {member.display_name} {isCurrent ? '（目前代表）' : ''}
+                      👤 {cleanName} {isMe ? '(我)' : ''} {isCurrent ? '（目前代表）' : ''}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -1035,9 +1069,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? 12 : 16,
-    paddingBottom: 16,
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'android' ? 8 : 12,
+    paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
@@ -1047,55 +1081,57 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   storeIcon: {
-    fontSize: 26,
+    fontSize: 24,
   },
   storeTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '900',
     color: '#111827',
   },
   storeSubtitle: {
     fontSize: 12,
     color: '#6B7280',
-    marginTop: 4,
+    marginTop: 2,
   },
   quickAddBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 8,
     backgroundColor: '#EFF6FF',
     borderWidth: 1,
     borderColor: '#BFDBFE',
   },
   quickAddBtnText: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '700',
     color: '#2563EB',
   },
   closeBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 8,
     backgroundColor: '#E5E7EB',
   },
   closeBtnText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: '#374151',
   },
   summaryBoard: {
     flexDirection: 'row',
-    margin: 16,
-    padding: 16,
+    marginHorizontal: 16,
+    marginVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#E5E7EB',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
   summaryCol: {
     flex: 1,
@@ -1413,9 +1449,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: 16,
-    marginBottom: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     borderWidth: 1,
@@ -1442,11 +1478,11 @@ const styles = StyleSheet.create({
   },
   voteCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    padding: 16,
-    marginBottom: 12,
+    padding: 12,
+    marginBottom: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -1549,6 +1585,28 @@ const styles = StyleSheet.create({
   },
   voteFooterContent: {
     gap: 8,
+  },
+  voteFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  voteFooterBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 6,
+  },
+  voteFooterBtnIcon: {
+    fontSize: 18,
+  },
+  voteFooterBtnText: {
+    fontSize: 14.5,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   voteWaitingBox: {
     backgroundColor: '#F3F4F6',

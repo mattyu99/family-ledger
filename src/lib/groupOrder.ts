@@ -273,7 +273,7 @@ export function parseVoteOptionLine(line: string, lineIndex: number = 0): VoteOp
   if (!checkMatch) return null;
 
   const isDecided = checkMatch[1].toLowerCase() === 'x' || checkMatch[1] === '✓';
-  let body = checkMatch[2].trim();
+  const body = checkMatch[2].trim();
 
   // 排除提示說明行
   if (
@@ -285,38 +285,60 @@ export function parseVoteOptionLine(line: string, lineIndex: number = 0): VoteOp
     return null;
   }
 
-  let voters: string[] = [];
-  let voteCount = 0;
-  let title = body;
+  let cur = body;
+  const allTokens: string[] = [];
+  let explicitCount = 0;
 
-  const parenMatch = body.match(/[\(（]([^\)）]+)[\)）]\s*$/);
-  if (parenMatch) {
-    const inner = parenMatch[1].trim();
-    title = body.slice(0, parenMatch.index).trim();
+  const isRightParen = (c: string) => c === ')' || c === '）';
+  const isLeftParen = (c: string) => c === '(' || c === '（';
 
-    // 檢查是否有明確的 +N 或 N票
-    const countMatch = inner.match(/(?:\+)?(\d+)\s*(?:票)?/);
-    let explicitCount = 0;
-    if (countMatch) {
-      explicitCount = parseInt(countMatch[1], 10) || 0;
+  // 智慧括號深度解析 + 歷史重複髒資料自癒 (支援巢狀括號如 "爸爸 (我) +1")
+  while (cur.length > 0) {
+    const lastChar = cur.slice(-1);
+    if (!isRightParen(lastChar)) break;
+
+    let depth = 0;
+    let openIdx = -1;
+    for (let i = cur.length - 1; i >= 0; i--) {
+      const char = cur[i];
+      if (isRightParen(char)) {
+        depth++;
+      } else if (isLeftParen(char)) {
+        depth--;
+        if (depth === 0) {
+          openIdx = i;
+          break;
+        }
+      }
     }
 
-    // 分割人名 (支援 、 , ， 以及空白)
-    const rawTokens = inner
-      .replace(/(?:\+)?\d+\s*(?:票)?/g, '') // 移除數字與票
-      .split(/[、,，\s]+/)
-      .map(s => s.trim())
-      .filter(s => s && s.length > 0 && !s.includes('票') && !s.includes('+'));
-
-    // 去重複
-    voters = Array.from(new Set(rawTokens));
-    voteCount = Math.max(explicitCount, voters.length);
+    if (openIdx !== -1) {
+      const inner = cur.slice(openIdx + 1, cur.length - 1).trim();
+      // 檢查是否具有投票標籤特徵 (+N 或 N票 或 人名)
+      if (/(?:\+|\b)\d+\s*(?:票)?/.test(inner) || inner.includes('票') || inner.includes('+')) {
+        const countMatch = inner.match(/(?:\+)?(\d+)\s*(?:票)?$/) || inner.match(/(?:\+)?(\d+)\s*(?:票)?/);
+        if (countMatch) {
+          explicitCount = Math.max(explicitCount, parseInt(countMatch[1], 10) || 0);
+        }
+        const namePart = inner.replace(/(?:\+)?\d+\s*(?:票)?$/g, '').trim();
+        const tokens = namePart.split(/[、,，]+/).map(s => s.trim()).filter(Boolean);
+        allTokens.push(...tokens);
+        cur = cur.slice(0, openIdx).trim();
+        // 繼續檢查前面是否還有重複疊加的髒標籤，直到 title 純淨為止
+        continue;
+      }
+    }
+    break;
   }
+
+  // 人名去重複
+  const voters = Array.from(new Set(allTokens));
+  const voteCount = Math.max(explicitCount, voters.length);
 
   return {
     rawLine: line,
     lineIndex,
-    title,
+    title: cur || body,
     voters,
     voteCount,
     isDecided,
@@ -746,8 +768,11 @@ export function toggleGroupOrderVote(
   targetLineIndex: number,
   voterName: string
 ): string {
-  const cleanVoter = (voterName || '').trim();
-  if (!cleanVoter) return content;
+  const pureVoter = (voterName || '').trim();
+  if (!pureVoter) return content;
+
+  // 投票人名儲存至共享筆記時，一律去除「(我)」，確保全家查看時語意清晰一致
+  const cleanVoter = pureVoter.replace(/\s*[\(（]我[\)）]\s*$/, '').trim() || pureVoter;
 
   const lines = content.split('\n');
   let checklistItemIndex = 0;
@@ -760,7 +785,11 @@ export function toggleGroupOrderVote(
         const option = parseVoteOptionLine(line, checklistItemIndex);
         if (option) {
           let updatedVoters = [...option.voters];
-          const voterIndex = updatedVoters.indexOf(cleanVoter);
+          const normClean = cleanVoter.toLowerCase();
+          const voterIndex = updatedVoters.findIndex(v => {
+            const normV = v.replace(/\s*[\(（]我[\)）]\s*$/, '').trim().toLowerCase();
+            return normV === normClean;
+          });
 
           if (voterIndex >= 0) {
             // 已投過，撤回此票
@@ -769,6 +798,15 @@ export function toggleGroupOrderVote(
             // 尚未投，加入此票
             updatedVoters.push(cleanVoter);
           }
+
+          // 對現有投票人也做一次清理，去除歷史資料中的「 (我)」
+          updatedVoters = Array.from(
+            new Set(
+              updatedVoters
+                .map(v => v.replace(/\s*[\(（]我[\)）]\s*$/, '').trim())
+                .filter(Boolean)
+            )
+          );
 
           const checkMark = option.isDecided ? '[x]' : '[ ]';
           if (updatedVoters.length === 0) {
