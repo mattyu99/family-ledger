@@ -13,6 +13,7 @@ export interface GroupOrderItem {
   specs: string;
   price: number;
   isDone: boolean;
+  replies?: MemoItemReply[];
 }
 
 export type CollaborativeOrderMode = 'food' | 'grocery' | 'parcel' | 'chore' | 'vote';
@@ -430,6 +431,11 @@ export function parseGroupOrderItemLine(line: string, lineIndex: number = 0): Gr
     return null;
   }
 
+  // 0. 優先剝離成員留言回覆 (例如 （智爸：賣完了）、（智爸：各一份嗎？），避免與客製規格 specs 或結尾金額混淆)
+  const parsedReplies = parseMemoItemReplies(body);
+  const replies = parsedReplies.replies;
+  body = parsedReplies.cleanText;
+
   // 1. 提取結尾金額 (例如 $60, 60元, $ 110)
   let price = 0;
   const priceMatch = body.match(/[\$|\$]?\s*(\d+)\s*(?:元)?\s*$/);
@@ -471,6 +477,7 @@ export function parseGroupOrderItemLine(line: string, lineIndex: number = 0): Gr
     specs,
     price,
     isDone,
+    replies: replies.length > 0 ? replies : undefined,
   };
 }
 
@@ -975,8 +982,11 @@ export function updateGroupOrderItemMember(
           const memberPrefix = cleanMember ? `${cleanMember}：` : '';
           const specsPart = item.specs ? `（${item.specs}）` : '';
           const pricePart = item.price > 0 ? ` $${item.price}` : '';
+          const repliesPart = item.replies && item.replies.length > 0
+            ? `（${item.replies.map(r => `${r.memberName}：${r.text}`).join('；')}）`
+            : '';
           const checkMark = item.isDone ? '[x]' : '[ ]';
-          lines[i] = `- ${checkMark} ${memberPrefix}${item.itemName}${specsPart}${pricePart}`;
+          lines[i] = `- ${checkMark} ${memberPrefix}${item.itemName}${specsPart}${pricePart}${repliesPart}`;
         }
         break;
       }
@@ -1019,8 +1029,11 @@ export function updateGroupOrderItem(
         const memberPrefix = cleanMember ? `${cleanMember}：` : '';
         const specsPart = cleanSpecs ? `（${cleanSpecs}）` : '';
         const pricePart = typeof price === 'number' && price > 0 ? ` $${price}` : '';
+        const repliesPart = item?.replies && item.replies.length > 0
+          ? `（${item.replies.map(r => `${r.memberName}：${r.text}`).join('；')}）`
+          : '';
         const checkMark = isDone ? '[x]' : '[ ]';
-        lines[i] = `- ${checkMark} ${memberPrefix}${cleanItem}${specsPart}${pricePart}`;
+        lines[i] = `- ${checkMark} ${memberPrefix}${cleanItem}${specsPart}${pricePart}${repliesPart}`;
         break;
       }
       checklistItemIndex++;

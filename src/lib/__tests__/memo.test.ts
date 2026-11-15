@@ -188,6 +188,11 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
       const price = parseMemoItemReplies('排骨便當 ($100)');
       expect(price.cleanText).toBe('排骨便當 ($100)');
       expect(price.replies).toEqual([]);
+
+      // 5. 當回覆括號後面仍有金額 $30 時（例如先留言後補金額），仍能精準萃取成員回覆並還原項目與金額
+      const replyBeforePrice = parseMemoItemReplies('洋洋：薯條 (智爸：各一份嗎？) $30');
+      expect(replyBeforePrice.cleanText).toBe('洋洋：薯條 $30');
+      expect(replyBeforePrice.replies).toEqual([{ memberName: '智爸', text: '各一份嗎？' }]);
     });
 
     it('updateChecklistItemReply 支援新增、更新與刪除回覆，並正確組裝分號多人語法', () => {

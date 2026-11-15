@@ -650,32 +650,63 @@ export function parseMemoItemReplies(lineContent: string): {
     return { cleanText: '', replies: [] };
   }
 
-  // 尋找結尾處的括號 (支援全形 （） 與半形 ())
-  const match = trimmed.match(/[\(（]([^\)）]+)[\)）]\s*$/);
-  if (!match) {
-    return { cleanText: trimmed, replies: [] };
-  }
+  const excludedKeywords = [
+    '店家', '餐廳', '規格', '備註', '說明', '提示',
+    '甜度', '冰塊', '辣度', '溫度', '尺寸', '份量', '數量', '加料',
+    '時間', '地址', '電話', '網址', 'http', 'https',
+  ];
 
-  const inner = match[1].trim();
-  // 檢查是否具有回覆特徵 (包含成員人名 + 冒號/分隔符號)
-  const segments = inner.split(/[;；]+/).map(s => s.trim()).filter(Boolean);
-  const replies: MemoItemReply[] = [];
+  const allReplies: MemoItemReply[] = [];
+  const parenRegex = /[\(（]([^\)）]+)[\)）]/g;
+  const rangesToRemove: { start: number; end: number }[] = [];
 
-  for (const seg of segments) {
-    const segMatch = seg.match(/^([^：:\-—]{1,10})[：:\-—]\s*(.+)$/);
-    if (segMatch) {
-      const member = segMatch[1].trim();
-      const text = segMatch[2].trim();
-      // 排除非成員稱謂的系統保留字
-      if (!['店家', '餐廳', '規格', '備註', '說明', '提示'].includes(member) && text) {
-        replies.push({ memberName: member, text });
+  let match: RegExpExecArray | null;
+  while ((match = parenRegex.exec(trimmed)) !== null) {
+    const inner = match[1].trim();
+    if (!inner) continue;
+
+    const segments = inner.split(/[;；]+/).map(s => s.trim()).filter(Boolean);
+    if (segments.length === 0) continue;
+
+    const candidateReplies: MemoItemReply[] = [];
+    let allValid = true;
+
+    for (const seg of segments) {
+      const segMatch = seg.match(/^([^：:\-—]{1,10})[：:\-—]\s*(.+)$/);
+      if (segMatch) {
+        const member = segMatch[1].trim();
+        const text = segMatch[2].trim();
+        if (!excludedKeywords.includes(member.toLowerCase()) && !excludedKeywords.includes(member) && text) {
+          candidateReplies.push({ memberName: member, text });
+        } else {
+          allValid = false;
+          break;
+        }
+      } else {
+        allValid = false;
+        break;
       }
+    }
+
+    if (allValid && candidateReplies.length > 0) {
+      allReplies.push(...candidateReplies);
+      rangesToRemove.push({
+        start: match.index,
+        end: match.index + match[0].length,
+      });
     }
   }
 
-  if (replies.length > 0) {
-    const cleanText = trimmed.slice(0, match.index).trim();
-    return { cleanText: cleanText || trimmed, replies };
+  if (allReplies.length > 0 && rangesToRemove.length > 0) {
+    let result = '';
+    let lastIdx = 0;
+    for (const range of rangesToRemove) {
+      result += trimmed.slice(lastIdx, range.start);
+      lastIdx = range.end;
+    }
+    result += trimmed.slice(lastIdx);
+    const cleanText = result.replace(/\s{2,}/g, ' ').trim();
+    return { cleanText: cleanText || trimmed, replies: allReplies };
   }
 
   return { cleanText: trimmed, replies: [] };

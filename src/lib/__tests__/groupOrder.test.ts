@@ -118,6 +118,37 @@ describe('groupOrder 工具庫單元測試', () => {
       expect(parseGroupOrderItemLine('- [ ] 大家直接在下方點【＋我也要 / 登記品項】快速報單！')).toBeNull();
       expect(parseGroupOrderItemLine('- [ ] 大家快填想喝什麼')).toBeNull();
     });
+
+    it('能精準區分點餐規格括號 (specs) 與成員回覆括號 (replies)，且編輯品項時保留成員回覆', () => {
+      // 案例 1：既有規格又有金額與結尾成員回覆
+      const line1 = '- [ ] 洋洋：雞排（酥炸 不辣） $60（智爸：賣完了）';
+      const item1 = parseGroupOrderItemLine(line1, 1);
+      expect(item1).not.toBeNull();
+      expect(item1?.memberName).toBe('洋洋');
+      expect(item1?.itemName).toBe('雞排');
+      expect(item1?.specs).toBe('酥炸 不辣');
+      expect(item1?.price).toBe(60);
+      expect(item1?.replies).toEqual([{ memberName: '智爸', text: '賣完了' }]);
+
+      // 案例 2：先有成員回覆再補上金額（金額在回覆後面）
+      const line2 = '- [ ] 洋洋：薯條 (智爸：各一份嗎？) $30';
+      const item2 = parseGroupOrderItemLine(line2, 2);
+      expect(item2).not.toBeNull();
+      expect(item2?.memberName).toBe('洋洋');
+      expect(item2?.itemName).toBe('薯條');
+      expect(item2?.specs).toBe('');
+      expect(item2?.price).toBe(30);
+      expect(item2?.replies).toEqual([{ memberName: '智爸', text: '各一份嗎？' }]);
+
+      // 案例 3：編輯品項時應保留成員回覆並正規化至行尾
+      const updatedNote = updateGroupOrderItem(line2, 0, {
+        memberName: '洋洋',
+        itemName: '薯條',
+        specs: '梅粉',
+        price: 35,
+      });
+      expect(updatedNote).toBe('- [ ] 洋洋：薯條（梅粉） $35（智爸：各一份嗎？）');
+    });
   });
 
   describe('computeGroupOrderSummary 統計開團總結', () => {

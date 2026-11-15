@@ -689,6 +689,27 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                           </Text>
                         </View>
                       )}
+
+                      {item.replies && item.replies.length > 0 && (
+                        <View style={styles.repliesList}>
+                          {item.replies.map((reply, rIdx) => (
+                            <View
+                              key={rIdx}
+                              style={[
+                                styles.replyBubble,
+                                isDark && { backgroundColor: '#1E3A8A', borderColor: '#3B82F6' },
+                              ]}
+                            >
+                              <Text style={[styles.replyMember, isDark && { color: '#93C5FD' }]}>
+                                💬 {reply.memberName}：
+                              </Text>
+                              <Text style={[styles.replyText, isDark && { color: '#E0F2FE' }]}>
+                                {reply.text}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
                     </View>
                   </TouchableOpacity>
                 );
@@ -1518,6 +1539,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#D97706',
+  },
+  repliesList: {
+    marginTop: 6,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  replyBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  replyMember: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#2563EB',
+  },
+  replyText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#1E40AF',
   },
   textStrike: {
     textDecorationLine: 'line-through',
