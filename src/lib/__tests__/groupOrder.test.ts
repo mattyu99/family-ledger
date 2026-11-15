@@ -728,6 +728,38 @@ describe('groupOrder 工具庫單元測試', () => {
       expect(finalized).toContain('- [ ] 藏壽司（洋洋 +1）');
     });
 
+    it('parseVoteOptionLine 能精準區分「子項目留言回覆」與「投票標籤」，方案名稱保持純淨且留言完整提取', () => {
+      // 1. 純留言回覆無投票 (使用者截圖回報案例：阿婆壽司被留言污染)
+      const lineWithReplyOnly = '- [ ] 🍣 阿婆壽司（智爸：怎麼沒有人選...）';
+      const opt1 = parseVoteOptionLine(lineWithReplyOnly, 0);
+      expect(opt1).not.toBeNull();
+      expect(opt1?.title).toBe('🍣 阿婆壽司');
+      expect(opt1?.voteCount).toBe(0);
+      expect(opt1?.replies).toEqual([{ memberName: '智爸', text: '怎麼沒有人選...' }]);
+
+      // 2. 投票標籤與子項目留言並存
+      const lineWithVoteAndReply = '- [ ] 🍣 阿婆壽司（智爸 +1）（智爸：怎麼沒有人選...）';
+      const opt2 = parseVoteOptionLine(lineWithVoteAndReply, 0);
+      expect(opt2).not.toBeNull();
+      expect(opt2?.title).toBe('🍣 阿婆壽司');
+      expect(opt2?.voteCount).toBe(1);
+      expect(opt2?.voters).toEqual(['智爸']);
+      expect(opt2?.replies).toEqual([{ memberName: '智爸', text: '怎麼沒有人選...' }]);
+    });
+
+    it('toggleGroupOrderVote 與 finalizeGroupOrderVote 在操作計票與拍板時能完整保留子項目留言', () => {
+      const initial = `[🗳️ 早餐吃什麼？]
+- [ ] 🍣 阿婆壽司（智爸：怎麼沒有人選...）`;
+
+      // 瑩媽投下一票
+      const step1 = toggleGroupOrderVote(initial, 0, '瑩媽');
+      expect(step1).toContain('🍣 阿婆壽司（瑩媽 +1）（智爸：怎麼沒有人選...）');
+
+      // 拍板定案阿婆壽司
+      const finalized = finalizeGroupOrderVote(step1, 0);
+      expect(finalized).toContain('- [x] 🍣 阿婆壽司（瑩媽 +1）（智爸：怎麼沒有人選...）');
+    });
+
     it('convertVoteToFoodOrder 能將勝出的餐廳無縫轉為點餐開團記事', () => {
       const foodOrder = convertVoteToFoodOrder('🍲 鼎泰豐小籠包');
       expect(foodOrder).toContain('[🧋 點餐開團] 店家：鼎泰豐小籠包');

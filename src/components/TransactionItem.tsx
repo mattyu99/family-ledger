@@ -670,6 +670,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
       <GroupOrderCounterModal
         visible={isGroupOrderCounterOpen}
         summary={groupOrderSummary}
+        isOrganizer={Boolean(currentUser?.id && (transaction.creator_id === currentUser.id || transaction.paid_by === currentUser.id))}
         onClose={() => setIsGroupOrderCounterOpen(false)}
         onToggleItem={(lineIndex) => {
           toggleMemoChecklistItem(transaction.id, lineIndex);

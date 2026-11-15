@@ -21,6 +21,7 @@ import { GroupOrderSummary, GroupOrderItem, MemberEarningSummary } from '../lib/
 interface GroupOrderCounterModalProps {
   visible: boolean;
   summary: GroupOrderSummary;
+  isOrganizer?: boolean;
   onClose: () => void;
   onToggleItem: (itemIndex: number) => void;
   onSettleOrder: (totalAmount: number, storeName: string) => void;
@@ -46,6 +47,7 @@ interface GroupOrderCounterModalProps {
 export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
   visible,
   summary,
+  isOrganizer = false,
   onClose,
   onToggleItem,
   onSettleOrder,
@@ -62,6 +64,8 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
   const { isDark } = useTheme();
   const { currentUser, members, liveToast, dismissLiveToast } = useLedger();
   const [pickingItem, setPickingItem] = useState<GroupOrderItem | null>(null);
+
+  const isExpired = Boolean(summary.deadlineInfo?.isExpired || summary.deadlineInfo?.badgeColorType === 'expired');
 
   // 編輯單一餐點品項與金額狀態 (方案 1：全家皆可自由修改任何人的項目)
   const [editingItem, setEditingItem] = useState<GroupOrderItem | null>(null);
@@ -164,11 +168,33 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               {onAddQuickItem && (
                 <TouchableOpacity
-                  onPress={onAddQuickItem}
-                  style={[styles.quickAddBtn, isDark && { backgroundColor: '#1E3A8A' }]}
+                  onPress={() => {
+                    if (isExpired) {
+                      if (isOrganizer) {
+                        Alert.alert('已截止收單', '目前已超過截止時間。身為發起人，您可以點選下方的「+15分」順延截止時間，或點選下方進行拍板敲定！');
+                      } else {
+                        Alert.alert('已截止收單', '目前已超過截止時間，無法再追加提案囉！如需繼續參與，請聯繫發起人順延截止時間。');
+                      }
+                      return;
+                    }
+                    onAddQuickItem();
+                  }}
+                  style={[
+                    styles.quickAddBtn,
+                    isExpired && { opacity: 0.6, backgroundColor: isDark ? '#374151' : '#E5E7EB' },
+                    isDark && !isExpired && { backgroundColor: '#1E3A8A' },
+                  ]}
                   activeOpacity={0.7}
                 >
-                  <Text style={[styles.quickAddBtnText, isDark && { color: '#93C5FD' }]}>＋ 現場追加</Text>
+                  <Text
+                    style={[
+                      styles.quickAddBtnText,
+                      isExpired && { color: isDark ? '#9CA3AF' : '#6B7280' },
+                      isDark && !isExpired && { color: '#93C5FD' },
+                    ]}
+                  >
+                    {isExpired ? '🔒 已截止' : '＋ 現場追加'}
+                  </Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity onPress={onClose} style={[styles.closeBtn, isDark && { backgroundColor: '#374151' }]}>
@@ -269,7 +295,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                 </Text>
               </View>
 
-              {onExtendDeadline && (
+              {isOrganizer && onExtendDeadline && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <TouchableOpacity
                     onPress={() => onExtendDeadline(15)}
@@ -334,6 +360,23 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                         },
                       ]}
                     >
+                      {/* 平滑進度條底色填充層 (YouTube / Twitter 投票風格，省去獨立一行進度條空間) */}
+                      {opt.percentage > 0 && (
+                        <View
+                          style={[
+                            styles.voteProgressFillBg,
+                            {
+                              width: `${opt.percentage}%`,
+                              backgroundColor: opt.isDecided
+                                ? (isDark ? 'rgba(16, 185, 129, 0.25)' : 'rgba(209, 250, 229, 0.8)')
+                                : (isLeading
+                                    ? (isDark ? 'rgba(245, 158, 11, 0.25)' : 'rgba(254, 243, 199, 0.85)')
+                                    : (isDark ? 'rgba(59, 130, 246, 0.2)' : 'rgba(239, 246, 255, 0.9)')),
+                            },
+                          ]}
+                        />
+                      )}
+
                       <View style={styles.voteCardTopRow}>
                         <View
                           style={[
@@ -355,50 +398,60 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                         <Text style={[styles.voteTitleText, isDark && { color: '#F9FAFB' }]} numberOfLines={2}>
                           {opt.title}
                         </Text>
-                        <TouchableOpacity
-                          activeOpacity={0.7}
-                          onPress={() => onToggleVote?.(opt.lineIndex, activeVoter)}
-                          style={[
-                            styles.voteBtn,
-                            hasVoted && styles.voteBtnActive,
-                            isDark && !hasVoted && { backgroundColor: '#374151', borderColor: '#4B5563' },
-                          ]}
-                        >
-                          <Text style={[styles.voteBtnText, hasVoted && styles.voteBtnTextActive]}>
-                            {hasVoted ? '✓ 已投' : '👍 +1'}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Text style={[styles.compactVoteScoreText, isDark && { color: '#9CA3AF' }]}>
+                            {opt.voteCount}票 ({opt.percentage}%)
                           </Text>
-                        </TouchableOpacity>
-                      </View>
-
-                      {/* 投票比例進度條 */}
-                      <View style={styles.voteProgressRow}>
-                        <View style={[styles.voteProgressBarBg, isDark && { backgroundColor: '#374151' }]}>
-                          <View
+                          <TouchableOpacity
+                            activeOpacity={0.7}
+                            onPress={() => {
+                              if (isExpired) {
+                                if (isOrganizer) {
+                                  Alert.alert('投票已截止', '投票已超過截止時間。身為發起人，您可以點選上方的「+15分」順延截止時間，或點選下方進行拍板敲定！');
+                                } else {
+                                  Alert.alert('投票已截止', `投票已於 ${summary.deadlineInfo?.badgeText || '先前'} 截止，無法再投票囉！如需繼續參與，請聯繫發起人順延截止時間。`);
+                                }
+                                return;
+                              }
+                              onToggleVote?.(opt.lineIndex, activeVoter);
+                            }}
                             style={[
-                              styles.voteProgressBarFill,
-                              { width: `${opt.percentage}%` },
-                              isLeading && { backgroundColor: '#F59E0B' },
-                              opt.isDecided && { backgroundColor: '#10B981' },
+                              styles.voteBtn,
+                              hasVoted && styles.voteBtnActive,
+                              isExpired && { opacity: 0.6, borderColor: '#9CA3AF' },
+                              isDark && !hasVoted && { backgroundColor: '#374151', borderColor: '#4B5563' },
                             ]}
-                          />
+                          >
+                            <Text style={[styles.voteBtnText, hasVoted && styles.voteBtnTextActive]}>
+                              {hasVoted ? '✓ 已投' : (isExpired ? '🔒 +1' : '👍 +1')}
+                            </Text>
+                          </TouchableOpacity>
                         </View>
-                        <Text style={[styles.voteProgressText, isDark && { color: '#9CA3AF' }]}>
-                          {opt.voteCount} 票 ({opt.percentage}%)
-                        </Text>
                       </View>
 
-                      {/* 投票人名單 */}
-                      <View style={styles.votersRow}>
-                        {opt.voters.length > 0 ? (
-                          opt.voters.map((v, vIdx) => (
-                            <View key={vIdx} style={[styles.voterPill, isDark && { backgroundColor: '#374151' }]}>
-                              <Text style={[styles.voterPillText, isDark && { color: '#D1D5DB' }]}>👤 {v}</Text>
+                      {/* 投票人名單 (緊湊微型膠囊，尚無人投票時不佔任何高度) */}
+                      {opt.voters.length > 0 && (
+                        <View style={styles.compactVotersRow}>
+                          {opt.voters.map((v, vIdx) => (
+                            <View key={vIdx} style={[styles.compactVoterPill, isDark && { backgroundColor: '#374151' }]}>
+                              <Text style={[styles.compactVoterPillText, isDark && { color: '#D1D5DB' }]}>👤 {v}</Text>
                             </View>
-                          ))
-                        ) : (
-                          <Text style={[styles.votersEmptyText, isDark && { color: '#6B7280' }]}>尚無人投票，快來投下第 1 票！</Text>
-                        )}
-                      </View>
+                          ))}
+                        </View>
+                      )}
+
+                      {/* 子項目留言氣泡展示 (若有家人對該方案回覆) */}
+                      {opt.replies && opt.replies.length > 0 && (
+                        <View style={styles.voteRepliesWrapper}>
+                          {opt.replies.map((reply, rIdx) => (
+                            <View key={rIdx} style={[styles.voteReplyBubble, isDark && { backgroundColor: '#334155' }]}>
+                              <Text style={[styles.voteReplyText, isDark && { color: '#E2E8F0' }]}>
+                                💬 <Text style={{ fontWeight: '700' }}>{reply.memberName}</Text>：{reply.text}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
                     </View>
                   );
                 })
@@ -1481,14 +1534,65 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    padding: 12,
-    marginBottom: 10,
+    padding: 10,
+    marginBottom: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 2,
-    gap: 10,
+    gap: 6,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  voteProgressFillBg: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    borderRadius: 14,
+  },
+  compactVoteScoreText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#6B7280',
+  },
+  compactVotersRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  compactVoterPill: {
+    backgroundColor: 'rgba(243, 244, 246, 0.85)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 0.5,
+    borderColor: 'rgba(209, 213, 219, 0.6)',
+  },
+  compactVoterPillText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#4B5563',
+  },
+  voteRepliesWrapper: {
+    marginTop: 4,
+    gap: 4,
+  },
+  voteReplyBubble: {
+    backgroundColor: 'rgba(241, 245, 249, 0.85)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderLeftWidth: 2.5,
+    borderLeftColor: '#3B82F6',
+    alignSelf: 'flex-start',
+  },
+  voteReplyText: {
+    fontSize: 11.5,
+    color: '#475569',
   },
   voteCardDecided: {
     borderColor: '#10B981',

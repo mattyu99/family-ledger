@@ -3,6 +3,8 @@
  * 支援多人追加式點餐、手搖飲/便當/宵夜規格解析、自動統計杯數與金額、免衝突登記
  */
 
+import { parseMemoItemReplies, MemoItemReply } from './memo';
+
 export interface GroupOrderItem {
   rawLine: string;
   lineIndex: number;
@@ -23,6 +25,7 @@ export interface VoteOptionSummary {
   voteCount: number;
   isDecided: boolean;
   percentage: number;
+  replies?: MemoItemReply[];
 }
 
 export interface MemberEarningSummary {
@@ -287,12 +290,13 @@ export function parseVoteOptionLine(line: string, lineIndex: number = 0): VoteOp
 
   let cur = body;
   const allTokens: string[] = [];
+  const allReplies: MemoItemReply[] = [];
   let explicitCount = 0;
 
   const isRightParen = (c: string) => c === ')' || c === '）';
   const isLeftParen = (c: string) => c === '(' || c === '（';
 
-  // 智慧括號深度解析 + 歷史重複髒資料自癒 (支援巢狀括號如 "爸爸 (我) +1")
+  // 智慧括號深度解析 + 歷史重複髒資料自癒 (支援巢狀括號、子項目留言回覆與人名累加)
   while (cur.length > 0) {
     const lastChar = cur.slice(-1);
     if (!isRightParen(lastChar)) break;
@@ -314,7 +318,16 @@ export function parseVoteOptionLine(line: string, lineIndex: number = 0): VoteOp
 
     if (openIdx !== -1) {
       const inner = cur.slice(openIdx + 1, cur.length - 1).trim();
-      // 檢查是否具有投票標籤特徵 (+N 或 N票 或 人名)
+
+      // 1. 檢查是否為子項目留言回覆 (如 "智爸：怎麼沒有人選..." 或 "瑩媽: +1；洋洋: 想吃這個")
+      const parsedReplies = parseMemoItemReplies(`方案（${inner}）`);
+      if (parsedReplies.replies.length > 0) {
+        allReplies.unshift(...parsedReplies.replies);
+        cur = cur.slice(0, openIdx).trim();
+        continue;
+      }
+
+      // 2. 檢查是否具有投票標籤特徵 (+N 或 N票 或 人名)
       if (/(?:\+|\b)\d+\s*(?:票)?/.test(inner) || inner.includes('票') || inner.includes('+')) {
         const countMatch = inner.match(/(?:\+)?(\d+)\s*(?:票)?$/) || inner.match(/(?:\+)?(\d+)\s*(?:票)?/);
         if (countMatch) {
@@ -343,6 +356,7 @@ export function parseVoteOptionLine(line: string, lineIndex: number = 0): VoteOp
     voteCount,
     isDecided,
     percentage: 0,
+    replies: allReplies.length > 0 ? allReplies : undefined,
   };
 }
 
@@ -810,11 +824,11 @@ export function toggleGroupOrderVote(
           );
 
           const checkMark = option.isDecided ? '[x]' : '[ ]';
-          if (updatedVoters.length === 0) {
-            lines[i] = `- ${checkMark} ${option.title}`;
-          } else {
-            lines[i] = `- ${checkMark} ${option.title}（${updatedVoters.join('、')} +${updatedVoters.length}）`;
-          }
+          const votersPart = updatedVoters.length > 0 ? `（${updatedVoters.join('、')} +${updatedVoters.length}）` : '';
+          const repliesPart = (option.replies && option.replies.length > 0)
+            ? `（${option.replies.map(r => `${r.memberName}：${r.text}`).join('；')}）`
+            : '';
+          lines[i] = `- ${checkMark} ${option.title}${votersPart}${repliesPart}`;
         }
         break;
       }
@@ -844,7 +858,10 @@ export function finalizeGroupOrderVote(
         const isWinner = checklistItemIndex === winningLineIndex;
         const checkMark = isWinner ? '[x]' : '[ ]';
         const votersPart = option.voters.length > 0 ? `（${option.voters.join('、')} +${option.voters.length}）` : '';
-        lines[i] = `- ${checkMark} ${option.title}${votersPart}`;
+        const repliesPart = (option.replies && option.replies.length > 0)
+          ? `（${option.replies.map(r => `${r.memberName}：${r.text}`).join('；')}）`
+          : '';
+        lines[i] = `- ${checkMark} ${option.title}${votersPart}${repliesPart}`;
       }
       checklistItemIndex++;
     }

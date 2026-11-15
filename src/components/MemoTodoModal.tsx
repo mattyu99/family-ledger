@@ -991,6 +991,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
           <GroupOrderCounterModal
             visible={isGroupOrderCounterOpen}
             summary={computeGroupOrderSummary(activeGroupOrderTx.note || '', parseMemoNote(activeGroupOrderTx.note).title)}
+            isOrganizer={Boolean(currentUser?.id && (activeGroupOrderTx.creator_id === currentUser.id || activeGroupOrderTx.paid_by === currentUser.id))}
             onClose={() => {
               setIsGroupOrderCounterOpen(false);
               setActiveGroupOrderTx(null);
