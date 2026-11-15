@@ -128,6 +128,9 @@ export function detectCollaborativeOrderMode(title?: string, content?: string): 
   const groceryKeywords = [
     '🛒 採買清單', '🛒 補貨清單', '🛒 採買', '🛒 補貨',
     '【採買】', '【補貨】', '[採買]', '[補貨]',
+    '【我要買】', '[我要買]', '【+我要買】', '[+我要買]',
+    '我要買', '+我要買', '＋我要買', '追加補貨', '採買補貨',
+    '賣場：', '賣場:', '超市：', '超市:',
     '採買清單', '補貨清單', '賣場採買', '超市採買',
     '好市多', 'costco', '全聯', '家樂福', '大潤發', '愛買', '美廉社',
     '超市生活採買', '超市採買', '市場採買',
@@ -146,7 +149,20 @@ export function isGroupOrderMemo(title?: string, content?: string): boolean {
   const c = (content || '').trim().toLowerCase();
   const combined = `${t}\n${c}`;
 
-  // 1. 強烈明確標籤優先命中 (餐飲開團 + 賣場採買 + 網購湊單/包裹 + 家事懸賞)
+  // 1. 嚴格防呆排除非開團/非採買之生活清單 (含日常常駐「家中缺貨隨手記」)
+  if (isRestockPoolMemo(t, c)) {
+    return false;
+  }
+  const nonOrderExcludes = [
+    '回診', '慢箋', '慢籤', '就醫', '門診', '掛號', '看診', '健保',
+    '出國', '行李', '露營', '拜拜', '祭祀', '打疫苗', '修繕',
+    '生活記事與待辦', '待辦清單', '作業', '考試',
+  ];
+  if (nonOrderExcludes.some(ex => t.includes(ex) || c.includes(ex))) {
+    return false;
+  }
+
+  // 2. 強烈明確標籤優先命中 (餐飲開團 + 賣場採買 + 網購湊單/包裹 + 家事懸賞)
   const strongKeywords = [
     '【點餐】', '【開團】', '【許願】', '【外帶】',
     '[點餐]', '[開團]', '[許願]',
@@ -154,6 +170,9 @@ export function isGroupOrderMemo(title?: string, content?: string): boolean {
     '點餐開團', '點餐許願',
     '🛒 採買清單', '🛒 補貨清單', '🛒 採買', '🛒 補貨',
     '【採買】', '【補貨】', '[採買]', '[補貨]',
+    '【我要買】', '[我要買]', '【+我要買】', '[+我要買]',
+    '我要買', '+我要買', '＋我要買', '追加補貨', '採買補貨',
+    '賣場：', '賣場:', '超市：', '超市:',
     '📦 網購湊單', '📦 包裹代領', '📦 網購', '📦 包裹', '📦 取貨', '📦 湊免運',
     '【網購】', '【湊單】', '【湊免運】', '【包裹】', '【取貨】', '【代領】',
     '[網購]', '[湊單]', '[湊免運]', '[包裹]', '[取貨]', '[代領]',
@@ -170,23 +189,25 @@ export function isGroupOrderMemo(title?: string, content?: string): boolean {
     if (combined.includes(kw.toLowerCase())) return true;
   }
 
-  // 2. 嚴格防呆排除非開團/非採買之生活清單 (含日常常駐「家中缺貨隨手記」)
-  const nonOrderExcludes = [
-    '回診', '慢箋', '慢籤', '就醫', '門診', '掛號', '看診', '健保',
-    '出國', '行李', '露營', '拜拜', '祭祀', '打疫苗', '修繕',
-    '生活記事與待辦', '待辦清單', '作業', '考試',
-    '家中缺貨', '缺貨隨手記', '缺貨池',
-  ];
-  if (nonOrderExcludes.some(ex => t.includes(ex) || c.includes(ex))) {
-    return false;
+  // 3. 內文若包含知名賣場、超商或平台，且含有待辦方框清單，自動識別為採買/取貨看板
+  const hasChecklist = /^[-*]?\s*\[([ xX✓])\]/m.test(c);
+  if (hasChecklist) {
+    const shoppingPlaces = [
+      '好市多', 'costco', '全聯', '家樂福', '大潤發', '愛買', '美廉社',
+      '酷澎', 'coupang', '蝦皮', 'shopee', 'momo', 'pchome', '淘寶',
+      '7-11', '711', '全家取貨', '全家包裹',
+    ];
+    if (shoppingPlaces.some(place => combined.includes(place))) {
+      return true;
+    }
   }
 
-  // 3. 標題語意關鍵字組合 (必須出現在標題中)
+  // 4. 標題語意關鍵字組合 (必須出現在標題中)
   const titleKeywords = [
     '點餐', '開團', '許願池', '手搖飲', '手搖杯', '買飲料',
     '飲料團', '便當團', '宵夜團', '下午茶團', '鹹酥雞團', '外帶便當',
     '訂飲料', '訂便當', '團購',
-    '採買清單', '補貨清單', '超市採買', '賣場採買',
+    '採買清單', '補貨清單', '超市採買', '賣場採買', '我要買', '+我要買', '＋我要買', '買菜', '補貨',
     '好市多', 'costco', '全聯', '家樂福', '大潤發', '愛買', '美廉社',
     '網購', '湊單', '湊免運', '包裹', '取貨', '代領', '店到店',
     '蝦皮', 'shopee', '酷澎', 'coupang', 'momo', 'pchome', '淘寶',

@@ -272,6 +272,28 @@ describe('groupOrder 工具庫單元測試', () => {
       expect(extractStoreNameFromMemo('生活備忘', '賣場：家樂福\n- [ ] 衛生紙')).toBe('家樂福');
     });
 
+    it('使用者回報案例：標題為 +我要買 且內文為「賣場：全聯」時，能正確識別為採買看板', () => {
+      const userContent = `賣場：全聯
+大家直接點右上方追加補貨！
+- [ ] 鮮奶 / 燕麥奶
+- [ ] 新鮮雞蛋 1 盒
+- [ ] 當季新鮮蔬菜與水果
+- [ ] 抽取式衛生紙 / 廚房紙巾
+- [ ] 天然洗衣精 / 洗碗精補充包
+- [ ] 家庭點心與休閒零食
+- [ ] 兒童牙膏 (缺貨匯入)`;
+
+      expect(isGroupOrderMemo('+我要買', userContent)).toBe(true);
+      expect(detectCollaborativeOrderMode('+我要買', userContent)).toBe('grocery');
+      expect(extractStoreNameFromMemo('+我要買', userContent)).toBe('全聯');
+
+      const summary = computeGroupOrderSummary(userContent, '+我要買');
+      expect(summary.isGroupOrder).toBe(true);
+      expect(summary.mode).toBe('grocery');
+      expect(summary.storeName).toBe('全聯');
+      expect(summary.totalCount).toBe(7);
+    });
+
     it('computeGroupOrderSummary 正確計算採買清單模式與項目統計', () => {
       const groceryNote = `[🛒 採買清單]
 賣場：好市多
