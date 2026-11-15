@@ -159,6 +159,17 @@ describe('台灣統一發票與條碼解析核心模組測試 (invoice.ts)', () 
       expect(stripInvoiceTag(note1)).toBe('CoCo 飲料');
       expect(stripInvoiceTag(note2)).toBe('CoCo 飲料');
     });
+
+    it('stripInvoiceTag 絕不可誤刪含有 Emoji 之生活記事主題標籤 (UTF-16 Surrogate Pair 防護)', () => {
+      const groceryMemo = `[🛒 採買清單]\n賣場：全聯（可直接修改賣場）\n大家直接點右上方「＋我要買」追加補貨！\n- [ ] 鮮奶 / 燕麥奶`;
+      expect(stripInvoiceTag(groceryMemo)).toBe(groceryMemo);
+
+      const parcelMemo = `[📦 網購湊單]\n平台：酷澎 / 超商取貨`;
+      expect(stripInvoiceTag(parcelMemo)).toBe(parcelMemo);
+
+      const todoMemo = `[📌 待辦清單] 記得繳水電費`;
+      expect(stripInvoiceTag(todoMemo)).toBe(todoMemo);
+    });
   });
 
   describe('QR Code 品項解析與溢位合併', () => {

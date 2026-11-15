@@ -1159,7 +1159,7 @@ export const decodeInvoiceTag = (note: string | undefined): {
 export const stripInvoiceTag = (note: string | undefined): string => {
   if (!note) return '';
   return note
-    .replace(/\[[🧾📄]\s*[^\]]+\]/g, '')
+    .replace(/\[(?:🧾|📄)\s*[^\]]+\]/gu, '')
     .replace(/\[\s*(?:inv|invoice)[:\s][^\]]+\]/gi, '')
     .trim();
 };

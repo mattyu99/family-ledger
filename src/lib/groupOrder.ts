@@ -947,10 +947,10 @@ export function updateGroupOrderVoteOption(
  * 將勝出的投票結果一鍵轉換為點餐開團記事內容
  */
 export function convertVoteToFoodOrder(storeName: string): string {
-  const cleanStore = storeName.replace(/^[🍲🍣🥩🍕🍔🍟🍱☕🥤🧋🍜\s]+/, '').trim();
+  const cleanStore = storeName.replace(/^(?:🍲|🍣|🥩|🍕|🍔|🍟|🍱|☕|🥤|🧋|🍜|\s)+/u, '').trim();
   return `[🧋 點餐開團] 店家：${cleanStore || '聚餐店家'}
 店家：${cleanStore || '聚餐店家'}
-- [ ] 大家直接在下方點【＋我也要 / 登記品項】快速報單！`;
+- [ ] 大家直接在下方點「＋我也要 / 登記品項」快速報單！`;
 }
 
 /**
