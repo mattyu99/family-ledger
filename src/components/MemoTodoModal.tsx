@@ -17,7 +17,7 @@ import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
-import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, checkMemoPinQuota, getItemDueDateBadge, getEffectiveMemoReminderDate, formatLinkedTransactionSummary } from '../lib/memo';
+import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, checkMemoPinQuota, getItemDueDateBadge, getEffectiveMemoReminderDate, formatLinkedTransactionSummary, updateChecklistItemReply, MemoChecklistItem } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { HorizontalScrollView } from './HorizontalScrollView';
 import {
@@ -30,6 +30,7 @@ import {
 } from '../lib/groupOrder';
 import { GroupOrderAppendModal } from './GroupOrderAppendModal';
 import { GroupOrderCounterModal } from './GroupOrderCounterModal';
+import { MemoItemReplyModal } from './MemoItemReplyModal';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -61,6 +62,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
   const [activeGroupOrderTx, setActiveGroupOrderTx] = useState<Transaction | null>(null);
   const [isGroupOrderAppendOpen, setIsGroupOrderAppendOpen] = useState(false);
   const [isGroupOrderCounterOpen, setIsGroupOrderCounterOpen] = useState(false);
+  const [replyingTarget, setReplyingTarget] = useState<{ tx: Transaction; item: MemoChecklistItem } | null>(null);
 
   // 剛才查看高光聚焦錨點（記住最後點開編輯的記事項目，保留 6 秒溫和高光藍框與標籤）
   const [lastViewedMemoId, setLastViewedMemoId] = useState<string | null>(null);
@@ -754,12 +756,65 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                                     </Text>
                                   </View>
                                 )}
-                                <Text
-                                  style={[styles.checklistItemText, itemDone && styles.checklistItemTextCompleted]}
-                                  maxFontSizeMultiplier={1.1}
+                                <View style={styles.checklistItemBody}>
+                                  <Text
+                                    style={[styles.checklistItemText, itemDone && styles.checklistItemTextCompleted]}
+                                    maxFontSizeMultiplier={1.1}
+                                  >
+                                    {checkItem.text}
+                                  </Text>
+                                  {checkItem.replies && checkItem.replies.length > 0 && (
+                                    <View style={styles.itemRepliesRow}>
+                                      {checkItem.replies.map((r, rIdx) => (
+                                        <View
+                                          key={rIdx}
+                                          style={[
+                                            styles.itemReplyPill,
+                                            isDark && { backgroundColor: '#1E3A8A', borderColor: '#3B82F6' },
+                                          ]}
+                                        >
+                                          <Text
+                                            style={[
+                                              styles.itemReplyPillText,
+                                              isDark && { color: '#93C5FD' },
+                                            ]}
+                                            numberOfLines={1}
+                                          >
+                                            💬 {r.memberName}：{r.text}
+                                          </Text>
+                                        </View>
+                                      ))}
+                                    </View>
+                                  )}
+                                </View>
+
+                                {/* 右側 💬 回覆按鈕 */}
+                                <TouchableOpacity
+                                  activeOpacity={0.7}
+                                  onPress={(e) => {
+                                    e.stopPropagation?.();
+                                    setReplyingTarget({ tx: item, item: checkItem });
+                                  }}
+                                  style={[
+                                    styles.itemReplyBtn,
+                                    checkItem.replies?.length > 0 && styles.itemReplyBtnActive,
+                                    isDark && {
+                                      backgroundColor: checkItem.replies?.length > 0 ? '#1E3A8A' : '#374151',
+                                      borderColor: checkItem.replies?.length > 0 ? '#3B82F6' : '#4B5563',
+                                    },
+                                  ]}
+                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                                 >
-                                  {checkItem.text}
-                                </Text>
+                                  <Text
+                                    style={[
+                                      styles.itemReplyBtnText,
+                                      checkItem.replies?.length > 0 && styles.itemReplyBtnTextActive,
+                                      isDark && { color: checkItem.replies?.length > 0 ? '#93C5FD' : '#9CA3AF' },
+                                    ]}
+                                  >
+                                    💬{checkItem.replies?.length > 0 ? ` ${checkItem.replies.length}` : ''}
+                                  </Text>
+                                </TouchableOpacity>
                               </TouchableOpacity>
                             );
                           })}
@@ -993,6 +1048,24 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
             }}
           />
         </>
+      )}
+
+      {replyingTarget && (
+        <MemoItemReplyModal
+          visible={replyingTarget !== null}
+          itemText={replyingTarget.item.text || ''}
+          replies={replyingTarget.item.replies || []}
+          onClose={() => setReplyingTarget(null)}
+          onSaveReply={(memberName, replyText) => {
+            const updatedNote = updateChecklistItemReply(
+              replyingTarget.tx.note || '',
+              replyingTarget.item.index,
+              memberName,
+              replyText
+            );
+            updateTransaction(replyingTarget.tx.id, { note: updatedNote });
+          }}
+        />
       )}
     </Modal>
   );
@@ -1551,12 +1624,59 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   checklistItemText: {
     fontSize: 13.5,
     color: colors.text.primary,
-    flex: 1,
     lineHeight: 18,
   },
   checklistItemTextCompleted: {
     color: colors.text.muted,
     textDecorationLine: 'line-through',
+  },
+  checklistItemBody: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  itemRepliesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginTop: 3,
+  },
+  itemReplyPill: {
+    backgroundColor: isDark ? '#1E3A8A' : '#EFF6FF',
+    borderWidth: 0.5,
+    borderColor: isDark ? '#3B82F6' : '#BFDBFE',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    maxWidth: '100%',
+  },
+  itemReplyPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: isDark ? '#93C5FD' : '#2563EB',
+  },
+  itemReplyBtn: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: isDark ? '#374151' : '#F1F5F9',
+    borderWidth: 0.8,
+    borderColor: isDark ? '#4B5563' : '#CBD5E1',
+    marginLeft: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  itemReplyBtnActive: {
+    backgroundColor: isDark ? '#1E3A8A' : '#EFF6FF',
+    borderColor: isDark ? '#3B82F6' : '#93C5FD',
+  },
+  itemReplyBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: isDark ? '#9CA3AF' : '#64748B',
+  },
+  itemReplyBtnTextActive: {
+    color: isDark ? '#93C5FD' : '#2563EB',
+    fontWeight: '800',
   },
   checklistAllDoneHint: {
     alignSelf: 'flex-start',

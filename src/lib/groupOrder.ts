@@ -569,10 +569,11 @@ export function extractOrderDeadline(
 export function extendOrderDeadline(
   noteText: string = '',
   addMinutes: number = 15,
-  baseDate?: string | Date
+  baseDate?: string | Date,
+  nowOverride?: Date
 ): string {
-  const currentDeadline = extractOrderDeadline(noteText, baseDate);
-  const now = new Date();
+  const now = nowOverride || new Date();
+  const currentDeadline = extractOrderDeadline(noteText, baseDate, now);
   const baseTarget = (currentDeadline.hasDeadline && currentDeadline.targetDate && currentDeadline.targetDate.getTime() > now.getTime())
     ? new Date(currentDeadline.targetDate.getTime())
     : new Date(now.getTime());

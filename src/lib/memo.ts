@@ -581,10 +581,17 @@ export function formatMemoCompletedTime(completedAt?: string, fallbackTimestamp?
 
 export const CHECKLIST_LINE_REGEX = /^(\s*(?:[-*]\s*)?)(?:\[([ xX✓✔])\]|([☐☑✅]))(\s*.*)$/;
 
+export interface MemoItemReply {
+  memberName: string;
+  text: string;
+}
+
 export interface MemoChecklistItem {
   index: number;
   completed: boolean;
-  text: string;
+  text: string; // 純淨項目標題 (已自動剝離結尾回覆括號)
+  fullText?: string; // 完整項目文字 (含回覆括號)
+  replies: MemoItemReply[]; // 結構化成員回覆清單
   rawLine: string;
 }
 
@@ -595,6 +602,53 @@ export interface ParsedMemoChecklist {
   totalCount: number;
   prefixText?: string;
   suffixText?: string;
+}
+
+/**
+ * 解析單行待辦項目中的成員回覆 (支援單人或分號分隔之同行多人回覆)
+ * 格式範例：
+ * - 鮮奶（智爸：已買全脂2瓶）
+ * - 學校問卷（洋洋：已交給老師；瑩媽：我也簽聯絡簿了）
+ * 避開一般規格括號 (例如「冬瓜檸檬（半糖微冰）」不含冒號人名特徵，不會被誤判為回覆)
+ */
+export function parseMemoItemReplies(lineContent: string): {
+  cleanText: string;
+  replies: MemoItemReply[];
+} {
+  const trimmed = (lineContent || '').trim();
+  if (!trimmed) {
+    return { cleanText: '', replies: [] };
+  }
+
+  // 尋找結尾處的括號 (支援全形 （） 與半形 ())
+  const match = trimmed.match(/[\(（]([^\)）]+)[\)）]\s*$/);
+  if (!match) {
+    return { cleanText: trimmed, replies: [] };
+  }
+
+  const inner = match[1].trim();
+  // 檢查是否具有回覆特徵 (包含成員人名 + 冒號/分隔符號)
+  const segments = inner.split(/[;；]+/).map(s => s.trim()).filter(Boolean);
+  const replies: MemoItemReply[] = [];
+
+  for (const seg of segments) {
+    const segMatch = seg.match(/^([^：:\-—]{1,10})[：:\-—]\s*(.+)$/);
+    if (segMatch) {
+      const member = segMatch[1].trim();
+      const text = segMatch[2].trim();
+      // 排除非成員稱謂的系統保留字
+      if (!['店家', '餐廳', '規格', '備註', '說明', '提示'].includes(member) && text) {
+        replies.push({ memberName: member, text });
+      }
+    }
+  }
+
+  if (replies.length > 0) {
+    const cleanText = trimmed.slice(0, match.index).trim();
+    return { cleanText: cleanText || trimmed, replies };
+  }
+
+  return { cleanText: trimmed, replies: [] };
 }
 
 /**
@@ -639,10 +693,14 @@ export function parseMemoChecklist(noteText?: string): ParsedMemoChecklist {
         ? ['x', '✓', '✔'].includes(bracketSymbol.toLowerCase())
         : (unicodeSymbol === '☑' || unicodeSymbol === '✅');
 
+      const { cleanText, replies } = parseMemoItemReplies(rest);
+
       items.push({
         index: items.length,
         completed,
-        text: rest,
+        text: cleanText,
+        fullText: rest,
+        replies,
         rawLine: line,
       });
     } else {
@@ -693,6 +751,79 @@ export function toggleChecklistItem(noteText: string, targetIndex: number): stri
         } else {
           newLines.push(line);
         }
+      } else {
+        newLines.push(line);
+      }
+      itemCounter++;
+    } else {
+      newLines.push(line);
+    }
+  }
+
+  return newLines.join('\n');
+}
+
+/**
+ * 新增、修改或清除指定待辦項目的成員回覆
+ * - 若 replyText 為空字串，則移除該 memberName 的回覆
+ * - 若已有該 memberName 的回覆，更新其內容
+ * - 若尚未有該 memberName 的回覆，追加在後方（以分號分隔）
+ */
+export function updateChecklistItemReply(
+  noteText: string,
+  targetIndex: number,
+  memberName: string,
+  replyText: string
+): string {
+  if (!noteText) return noteText;
+  const cleanMember = (memberName || '').replace(/\s*[\(（]我[\)）]\s*$/, '').trim();
+  if (!cleanMember) return noteText;
+
+  const lines = noteText.split('\n');
+  let itemCounter = 0;
+  const newLines: string[] = [];
+
+  for (const line of lines) {
+    const match = line.match(CHECKLIST_LINE_REGEX);
+    if (match) {
+      if (itemCounter === targetIndex) {
+        const prefix = match[1];
+        const bracketSymbol = match[2];
+        const unicodeSymbol = match[3];
+        const rest = match[4].trim();
+
+        // 取得目前的純淨項目文字與回覆
+        const { cleanText, replies } = parseMemoItemReplies(rest);
+        const newReplies = [...replies];
+
+        const trimmedReply = replyText.trim();
+        const existingIdx = newReplies.findIndex(
+          r => r.memberName.toLowerCase() === cleanMember.toLowerCase()
+        );
+
+        if (!trimmedReply) {
+          // 清除此人的回覆
+          if (existingIdx >= 0) {
+            newReplies.splice(existingIdx, 1);
+          }
+        } else {
+          // 新增或更新回覆
+          if (existingIdx >= 0) {
+            newReplies[existingIdx] = { memberName: cleanMember, text: trimmedReply };
+          } else {
+            newReplies.push({ memberName: cleanMember, text: trimmedReply });
+          }
+        }
+
+        // 重新組裝該行後綴
+        let newRest = cleanText;
+        if (newReplies.length > 0) {
+          const repliesStr = newReplies.map(r => `${r.memberName}：${r.text}`).join('；');
+          newRest = `${cleanText}（${repliesStr}）`;
+        }
+
+        const symbol = bracketSymbol !== undefined ? `[${bracketSymbol}]` : (unicodeSymbol || '[ ]');
+        newLines.push(`${prefix}${symbol} ${newRest}`);
       } else {
         newLines.push(line);
       }

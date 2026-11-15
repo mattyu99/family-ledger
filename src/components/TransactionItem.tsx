@@ -7,7 +7,8 @@ import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { getCategoryIcon } from '../lib/icons';
 import { formatPaymentLabel, parseExpenseDiscount, isTransferToMember } from '../lib/payment';
-import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, getItemDueDateBadge, getEffectiveMemoReminderDate, formatLinkedTransactionSummary } from '../lib/memo';
+import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, getItemDueDateBadge, getEffectiveMemoReminderDate, formatLinkedTransactionSummary, updateChecklistItemReply, MemoChecklistItem } from '../lib/memo';
+import { MemoItemReplyModal } from './MemoItemReplyModal';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { stripInvoiceTag } from '../lib/invoice';
 import {
@@ -62,6 +63,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
 
   const [isGroupOrderAppendOpen, setIsGroupOrderAppendOpen] = useState(false);
   const [isGroupOrderCounterOpen, setIsGroupOrderCounterOpen] = useState(false);
+  const [replyingItem, setReplyingItem] = useState<MemoChecklistItem | null>(null);
 
   const category = getCategoryById(transaction.category_id, transaction.category);
   const payer = getMemberById(transaction.paid_by) || transaction.payer_profile;
@@ -464,17 +466,70 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                         </Text>
                       </View>
                     )}
-                    <Text
+                    <View style={styles.checklistItemBody}>
+                      <Text
+                        style={[
+                          styles.checklistItemText,
+                          itemDone && styles.checklistItemTextCompleted,
+                          isDark && { color: itemDone ? colors.text.muted : colors.text.primary },
+                        ]}
+                        allowFontScaling={false}
+                        maxFontSizeMultiplier={1.1}
+                      >
+                        {item.text}
+                      </Text>
+                      {item.replies && item.replies.length > 0 && (
+                        <View style={styles.itemRepliesRow}>
+                          {item.replies.map((r, rIdx) => (
+                            <View
+                              key={rIdx}
+                              style={[
+                                styles.itemReplyPill,
+                                isDark && { backgroundColor: '#1E3A8A', borderColor: '#3B82F6' },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.itemReplyPillText,
+                                  isDark && { color: '#93C5FD' },
+                                ]}
+                                numberOfLines={1}
+                              >
+                                💬 {r.memberName}：{r.text}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+
+                    {/* 右側 💬 回覆按鈕 */}
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={(e) => {
+                        e.stopPropagation?.();
+                        setReplyingItem(item);
+                      }}
                       style={[
-                        styles.checklistItemText,
-                        itemDone && styles.checklistItemTextCompleted,
-                        isDark && { color: itemDone ? colors.text.muted : colors.text.primary },
+                        styles.itemReplyBtn,
+                        item.replies?.length > 0 && styles.itemReplyBtnActive,
+                        isDark && {
+                          backgroundColor: item.replies?.length > 0 ? '#1E3A8A' : '#374151',
+                          borderColor: item.replies?.length > 0 ? '#3B82F6' : '#4B5563',
+                        },
                       ]}
-                      allowFontScaling={false}
-                      maxFontSizeMultiplier={1.1}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      {item.text}
-                    </Text>
+                      <Text
+                        style={[
+                          styles.itemReplyBtnText,
+                          item.replies?.length > 0 && styles.itemReplyBtnTextActive,
+                          isDark && { color: item.replies?.length > 0 ? '#93C5FD' : '#9CA3AF' },
+                        ]}
+                      >
+                        💬{item.replies?.length > 0 ? ` ${item.replies.length}` : ''}
+                      </Text>
+                    </TouchableOpacity>
                   </TouchableOpacity>
                 );
               })}
@@ -702,6 +757,23 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
             completed_by: payerId,
             completion_note: `已核發家事零用錢獎勵 (共 NT$ ${earnings.reduce((s, e) => s + e.totalAmount, 0)})`,
           });
+        }}
+      />
+
+      <MemoItemReplyModal
+        visible={replyingItem !== null}
+        itemText={replyingItem?.text || ''}
+        replies={replyingItem?.replies || []}
+        onClose={() => setReplyingItem(null)}
+        onSaveReply={(memberName, replyText) => {
+          if (!replyingItem) return;
+          const updatedNote = updateChecklistItemReply(
+            transaction.note || '',
+            replyingItem.index,
+            memberName,
+            replyText
+          );
+          updateTransaction(transaction.id, { note: updatedNote });
         }}
       />
     </>
@@ -1535,12 +1607,59 @@ const styles = StyleSheet.create({
   checklistItemText: {
     fontSize: 13.5,
     color: '#1E293B',
-    flex: 1,
     lineHeight: 18,
   },
   checklistItemTextCompleted: {
     color: '#94A3B8',
     textDecorationLine: 'line-through',
+  },
+  checklistItemBody: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  itemRepliesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginTop: 3,
+  },
+  itemReplyPill: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 0.5,
+    borderColor: '#BFDBFE',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    maxWidth: '100%',
+  },
+  itemReplyPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#2563EB',
+  },
+  itemReplyBtn: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 0.8,
+    borderColor: '#CBD5E1',
+    marginLeft: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  itemReplyBtnActive: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#93C5FD',
+  },
+  itemReplyBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  itemReplyBtnTextActive: {
+    color: '#2563EB',
+    fontWeight: '800',
   },
   checklistAllDoneHint: {
     alignSelf: 'flex-start',

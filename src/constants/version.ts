@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.16';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.16 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 36;
+export const APP_BUILD_REVISION = 37;
 
 // 完整版本字串 (例如 "1.0.16.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -23,6 +23,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
     date: '2026-11-11 ~ 2026-11-15',
     title: '家庭民主投票、家事分工懸賞、網購湊單包裹、採買補貨',
     highlights: [
+      '💬 備忘待辦子項目回覆與全家留言：各子項目支援單人與多人追加回報，文字下方輕巧呈現討論氣泡，點擊圖示隨時補充說明與辦妥回報。',
       '🧋 點餐開團智慧結算與純淨人話摘要：結算自動彙整餐點名稱與杯數、徹底消除發票中繼代碼與條碼亂碼，連動支出膠囊精簡直觀。',
       '⏰ 點餐開團與投票截止時限管理：支援設定截止收單時間與醒目倒數標籤，逾期自動收單防呆，發起人隨時可一鍵順延時間。',
       '🗳️ 家庭民主投票決策看板：聚餐吃什麼、出遊地點自由提案，優化看板空間釋放清單視野，修復括號人名計票與歷史重複標籤自癒，即時同步家庭身分，最高票一鍵拍板定案並支援無縫轉為點餐開團。',

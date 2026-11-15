@@ -6,6 +6,8 @@ import {
   decodeMemoMerchantTag,
   parseMemoChecklist,
   toggleChecklistItem,
+  parseMemoItemReplies,
+  updateChecklistItemReply,
   isChecklistOnlyChange,
   getRollingMemoDueInfo,
   isMemoPinned,
@@ -101,9 +103,9 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
       const checklist = parseMemoChecklist(rawNote);
       expect(checklist.isChecklist).toBe(true);
       expect(checklist.items.length).toBe(3);
-      expect(checklist.items[0]).toEqual({ index: 0, completed: false, text: '全脂鮮奶', rawLine: '- [ ] 全脂鮮奶' });
-      expect(checklist.items[1]).toEqual({ index: 1, completed: true, text: '土司', rawLine: '- [x] 土司' });
-      expect(checklist.items[2]).toEqual({ index: 2, completed: false, text: '雞蛋一盒', rawLine: '- [ ] 雞蛋一盒' });
+      expect(checklist.items[0]).toMatchObject({ index: 0, completed: false, text: '全脂鮮奶', rawLine: '- [ ] 全脂鮮奶' });
+      expect(checklist.items[1]).toMatchObject({ index: 1, completed: true, text: '土司', rawLine: '- [x] 土司' });
+      expect(checklist.items[2]).toMatchObject({ index: 2, completed: false, text: '雞蛋一盒', rawLine: '- [ ] 雞蛋一盒' });
     });
 
     it('toggleChecklistItem 應能將未完成項目切換為已完成 [x]', () => {
@@ -128,6 +130,61 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
 
       const addedLine = rawNote + '\n- [ ] 蘋果';
       expect(isChecklistOnlyChange(rawNote, addedLine)).toBe(false);
+    });
+  });
+
+  describe('待辦子項目成員回覆與留言解析 (parseMemoItemReplies & updateChecklistItemReply)', () => {
+    it('parseMemoItemReplies 能精準解析單人回覆與多人分號回覆，並還原純淨項目文字', () => {
+      // 1. 單人回覆
+      const single = parseMemoItemReplies('鮮奶（智爸：已買全脂2瓶）');
+      expect(single.cleanText).toBe('鮮奶');
+      expect(single.replies).toEqual([{ memberName: '智爸', text: '已買全脂2瓶' }]);
+
+      // 2. 多人分號回覆
+      const multi = parseMemoItemReplies('學校問卷（洋洋：已交給老師；瑩媽：我也簽聯絡簿了）');
+      expect(multi.cleanText).toBe('學校問卷');
+      expect(multi.replies).toEqual([
+        { memberName: '洋洋', text: '已交給老師' },
+        { memberName: '瑩媽', text: '我也簽聯絡簿了' },
+      ]);
+
+      // 3. 避開一般規格括號（不含人名冒號者不誤判為回覆）
+      const spec = parseMemoItemReplies('波霸紅茶拿鐵（微糖微冰）');
+      expect(spec.cleanText).toBe('波霸紅茶拿鐵（微糖微冰）');
+      expect(spec.replies).toEqual([]);
+
+      // 4. 避開一般金額括號
+      const price = parseMemoItemReplies('排骨便當 ($100)');
+      expect(price.cleanText).toBe('排骨便當 ($100)');
+      expect(price.replies).toEqual([]);
+    });
+
+    it('updateChecklistItemReply 支援新增、更新與刪除回覆，並正確組裝分號多人語法', () => {
+      const note = `[🛒 採買清單]
+- [ ] 全脂鮮奶
+- [ ] 雞蛋一盒`;
+
+      // 1. 智爸為全脂鮮奶新增回覆 (index 0)
+      const step1 = updateChecklistItemReply(note, 0, '智爸', '全聯賣完了');
+      expect(step1).toContain('- [ ] 全脂鮮奶（智爸：全聯賣完了）');
+
+      // 2. 瑩媽為全脂鮮奶追加同行回覆 (index 0) -> 自動以分號串接
+      const step2 = updateChecklistItemReply(step1, 0, '瑩媽', '好那我下班順路買');
+      expect(step2).toContain('- [ ] 全脂鮮奶（智爸：全聯賣完了；瑩媽：好那我下班順路買）');
+
+      // 3. 智爸更新自己的回覆為最新狀態
+      const step3 = updateChecklistItemReply(step2, 0, '智爸', '家樂福買到了！');
+      expect(step3).toContain('- [ ] 全脂鮮奶（智爸：家樂福買到了！；瑩媽：好那我下班順路買）');
+
+      // 4. 瑩媽清除自己的回覆 (傳入空字串)
+      const step4 = updateChecklistItemReply(step3, 0, '瑩媽', '');
+      expect(step4).toContain('- [ ] 全脂鮮奶（智爸：家樂福買到了！）');
+      expect(step4).not.toContain('瑩媽');
+
+      // 5. 智爸清除自己的回覆 -> 完全還原純文字無括號
+      const step5 = updateChecklistItemReply(step4, 0, '智爸', '');
+      expect(step5).toContain('- [ ] 全脂鮮奶');
+      expect(step5).not.toContain('（');
     });
   });
 

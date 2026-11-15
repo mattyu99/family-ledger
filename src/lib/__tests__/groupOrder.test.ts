@@ -776,7 +776,8 @@ describe('groupOrder 工具庫單元測試', () => {
 
     it('extendOrderDeadline 應能將截止時間自動順延 15 分鐘', () => {
       const note = `[🧋 點餐開團] 店家：50嵐\n截止時間：11:30\n- [ ] 智爸：四季春`;
-      const extended = extendOrderDeadline(note, 15, baseDate);
+      const nowBefore = new Date('2026-11-15T11:00:00');
+      const extended = extendOrderDeadline(note, 15, baseDate, nowBefore);
       expect(extended).toContain('截止時間：11:45');
     });
 
