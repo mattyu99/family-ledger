@@ -24,7 +24,8 @@ import { StoredValueWidget } from '../components/StoredValueWidget';
 import { HorizontalScrollView } from '../components/HorizontalScrollView';
 import { isTransferToMember } from '../lib/payment';
 import { getRollingPendingBills } from '../lib/recurring';
-import { getLocalDateYmd, parseMemoNote, getRollingMemoDueInfo, isMemoPinned, checkMemoPinQuota, isValidMerchantName } from '../lib/memo';
+import { getLocalDateYmd, getRollingMemoDueInfo, isMemoPinned, checkMemoPinQuota, isValidMerchantName } from '../lib/memo';
+import { isGroupOrderMemo, computeGroupOrderSummary } from '../lib/groupOrder';
 import { checkInvoiceWinning } from '../lib/lottery';
 import { getInvoicePeriodKey } from '../lib/invoice';
 
@@ -1097,8 +1098,44 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         const hasOverdueMemo = pendingMemos.some(t => t.reminder_date && t.reminder_date < todayYmd);
         const hasTodayMemo = pendingMemos.some(t => t.reminder_date && t.reminder_date === todayYmd);
 
+        // 檢查全家是否有進行中的開團、投票或採買 (不論發起人是否有手動置頂，皆以動態高光喚醒)
+        const activeInteractiveMemos = transactions.filter(
+          t => t.type === 'memo' && !t.is_settled && isGroupOrderMemo(t.category?.name, t.note)
+        );
+        const hasInteractiveOrder = activeInteractiveMemos.length > 0;
+        let interactiveIcon = '🧋';
+        let interactiveLabel = '點餐開團中';
+
+        if (hasInteractiveOrder) {
+          const topOrder = activeInteractiveMemos[0];
+          const summary = computeGroupOrderSummary(topOrder.note || '', topOrder.category?.name);
+          if (summary.mode === 'vote') {
+            interactiveIcon = '🗳️';
+            interactiveLabel = `投票中 (${summary.totalVotes || 0}票)`;
+          } else if (summary.mode === 'grocery') {
+            interactiveIcon = '🛒';
+            interactiveLabel = `${summary.storeName && summary.storeName !== '採買賣場' ? summary.storeName : '賣場'}採買中`;
+          } else if (summary.mode === 'chore') {
+            interactiveIcon = '🧹';
+            interactiveLabel = '家事分工中';
+          } else if (summary.mode === 'parcel') {
+            interactiveIcon = '📦';
+            interactiveLabel = '包裹代領中';
+          } else {
+            interactiveIcon = '🧋';
+            interactiveLabel = `${summary.storeName && summary.storeName !== '點餐店家' ? summary.storeName : '點餐'}開團中`;
+          }
+        }
+
         let memoPrefix = '今日待辦';
-        if (hasOverdueMemo) {
+        let chipIcon = hasPendingMemos
+          ? (pendingMemos.length > 0 ? '🔔' : (upcoming7DaysMemos.length > 0 ? '🗓️' : '📌'))
+          : '☕';
+
+        if (hasInteractiveOrder) {
+          memoPrefix = interactiveLabel;
+          chipIcon = interactiveIcon;
+        } else if (hasOverdueMemo) {
           memoPrefix = '待辦/逾期';
         } else if (hasTodayMemo) {
           memoPrefix = '今日待辦';
@@ -1112,11 +1149,15 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         const activeMemoList = pendingMemos.length > 0 ? pendingMemos : (upcoming7DaysMemos.length > 0 ? upcoming7DaysMemos : upcomingMemos);
         const memoCount = activeMemoList.length;
 
-        const memoTitle = hasPendingMemos
+        let memoTitle = hasPendingMemos
           ? `${memoPrefix} (${memoCount})`
           : '今日無待辦';
 
-        const isUrgentMemo = pendingMemos.length > 0 || upcoming7DaysMemos.length > 0;
+        if (hasInteractiveOrder) {
+          memoTitle = hasPendingMemos ? `${interactiveLabel} · 待辦(${memoCount})` : interactiveLabel;
+        }
+
+        const isUrgentMemo = hasInteractiveOrder || pendingMemos.length > 0 || upcoming7DaysMemos.length > 0;
 
         return (
           <View style={styles.compactNoticeRow}>
@@ -1181,9 +1222,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
               onPress={onOpenMemoTodoModal}
             >
               <Text style={styles.compactNoticeChipIcon}>
-                {hasPendingMemos
-                  ? (pendingMemos.length > 0 ? '🔔' : (upcoming7DaysMemos.length > 0 ? '🗓️' : '📌'))
-                  : '☕'}
+                {chipIcon}
               </Text>
               <Text
                 style={[

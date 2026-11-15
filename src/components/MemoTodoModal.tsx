@@ -21,6 +21,7 @@ import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag, parseMemoCheckli
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { HorizontalScrollView } from './HorizontalScrollView';
 import {
+  isGroupOrderMemo,
   computeGroupOrderSummary,
   appendGroupOrderItem,
   updateGroupOrderItem,
@@ -128,7 +129,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
     });
   }, [transactions, scopeFilter, currentUser?.id]);
 
-  // 今日或已逾期待辦 (未完成，置頂項目優先排列)
+  // 今日或已逾期待辦 (未完成，置頂項目最先，進行中開團/投票次之)
   const todayAndOverdueMemos = useMemo(() => {
     const list = allMemos
       .filter(t => {
@@ -139,10 +140,12 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
       .sort((a, b) => (getEffectiveMemoReminderDate(a) || '').localeCompare(getEffectiveMemoReminderDate(b) || ''));
     const pinned = list.filter(m => isMemoPinned(m));
     const unpinned = list.filter(m => !isMemoPinned(m));
-    return [...pinned, ...unpinned];
+    const unpinnedInteractive = unpinned.filter(m => isGroupOrderMemo(m.category?.name, m.note));
+    const normalUnpinned = unpinned.filter(m => !isGroupOrderMemo(m.category?.name, m.note));
+    return [...pinned, ...unpinnedInteractive, ...normalUnpinned];
   }, [allMemos, todayYmd]);
 
-  // 未來到期預告 (未完成，置頂項目優先排列)
+  // 未來到期預告 (未完成，置頂項目最先，進行中開團/投票次之)
   const upcomingMemos = useMemo(() => {
     const list = allMemos
       .filter(t => {
@@ -153,15 +156,19 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
       .sort((a, b) => (getEffectiveMemoReminderDate(a) || '').localeCompare(getEffectiveMemoReminderDate(b) || ''));
     const pinned = list.filter(m => isMemoPinned(m));
     const unpinned = list.filter(m => !isMemoPinned(m));
-    return [...pinned, ...unpinned];
+    const unpinnedInteractive = unpinned.filter(m => isGroupOrderMemo(m.category?.name, m.note));
+    const normalUnpinned = unpinned.filter(m => !isGroupOrderMemo(m.category?.name, m.note));
+    return [...pinned, ...unpinnedInteractive, ...normalUnpinned];
   }, [allMemos, todayYmd]);
 
-  // 日常備忘 (未設提醒日期且未完成，置頂項目優先排列)
+  // 日常備忘 (未設提醒日期且未完成，置頂項目最先，進行中開團/投票/採買時效活動次之，一般雜記在後)
   const undatedMemos = useMemo(() => {
     const list = allMemos.filter(t => !t.is_settled && !getEffectiveMemoReminderDate(t));
     const pinned = list.filter(m => isMemoPinned(m));
     const unpinned = list.filter(m => !isMemoPinned(m));
-    return [...pinned, ...unpinned];
+    const unpinnedInteractive = unpinned.filter(m => isGroupOrderMemo(m.category?.name, m.note));
+    const normalUnpinned = unpinned.filter(m => !isGroupOrderMemo(m.category?.name, m.note));
+    return [...pinned, ...unpinnedInteractive, ...normalUnpinned];
   }, [allMemos]);
 
   // 已完成辦妥記事 (依辦妥時間 completed_at 降序排序，最新辦妥排在最上方；辦妥事項完全不置頂)
@@ -183,7 +190,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
       });
   }, [allMemos]);
 
-  // 全部未完成待辦 (所有未完成之置頂事項統一置頂於榜首)
+  // 全部未完成待辦 (所有未完成之置頂事項統一置頂於榜首，進行中開團/投票/採買活動次之，一般待辦在後)
   const activeMemos = useMemo(() => {
     const raw = [...todayAndOverdueMemos, ...upcomingMemos, ...undatedMemos];
     // 依 id 去重並將置頂項目統一拉至最頂部
@@ -195,7 +202,9 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
     });
     const pinned = deduplicated.filter(m => isMemoPinned(m));
     const unpinned = deduplicated.filter(m => !isMemoPinned(m));
-    return [...pinned, ...unpinned];
+    const unpinnedInteractive = unpinned.filter(m => isGroupOrderMemo(m.category?.name, m.note));
+    const normalUnpinned = unpinned.filter(m => !isGroupOrderMemo(m.category?.name, m.note));
+    return [...pinned, ...unpinnedInteractive, ...normalUnpinned];
   }, [todayAndOverdueMemos, upcomingMemos, undatedMemos]);
 
   // 當前分頁顯示之項目清單
