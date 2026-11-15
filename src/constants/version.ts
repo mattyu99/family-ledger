@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.16';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.16 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 46;
+export const APP_BUILD_REVISION = 47;
 
 // 完整版本字串 (例如 "1.0.16.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -23,6 +23,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
     date: '2026-11-11 ~ 2026-11-15',
     title: '家庭民主投票、家事分工懸賞、網購湊單包裹、採買補貨',
     highlights: [
+      '🏷️ 生活備忘標籤防誤刪與按鈕文字淨化：標籤點擊鎖定選取絕不誤刪既有主題，常用範本說明文字改採防誤判引號，並主動剔除幽靈操作按鈕，標籤排版乾淨俐落。',
       '🛒 賣場採買與包裹看板精準防誤觸：嚴格限定專屬開團採買標題與標籤才喚醒看板，一般生活記事待辦絕不誤判，超商包裹代領精準分流。',
       '🗳️ 投票看板極致瘦身與雙欄平行對稱：方案名稱與投票人名單平行呼應按鈕與票數，消除上下大空白讓高度大幅縮減，一屏輕鬆縱覽全數候選方案。',
       '🛒 家中缺貨自由挑選匯入與精準識別：採買支援彈窗自由勾選待買品項與精準結案，缺貨池嚴格辨識標題與專屬標籤，徹底杜絕一般討論待辦誤判。',

@@ -8,7 +8,7 @@ const getStorageServiceToken = (): string => SUPABASE_ANON_KEY;
 import { generateUUID } from '../lib/uuid';
 import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS, isAccountBelongingToMember, KNOWN_PAYMENT_METHOD_UUIDS } from '../lib/payment';
 import { DEFAULT_RECURRING_PRESETS, getCurrentPeriodKey, getBillPeriodLabel, getInstallmentInfo, appendPeriodKey } from '../lib/recurring';
-import { parseMemoNote, encodeMemoMerchantTag, decodeMemoMerchantTag, DEFAULT_MEMO_QUICK_TAGS, extractMemoTag, toggleChecklistItem, isChecklistOnlyChange, stripMemoInternalTag, isValidMerchantName, computeNextRelayReminderDate } from '../lib/memo';
+import { parseMemoNote, encodeMemoMerchantTag, decodeMemoMerchantTag, DEFAULT_MEMO_QUICK_TAGS, extractMemoTag, toggleChecklistItem, isChecklistOnlyChange, stripMemoInternalTag, isValidMerchantName, computeNextRelayReminderDate, isMemoActionTag } from '../lib/memo';
 import { CalendarSystem, MemoRepeatFrequency, getNextMemoReminderDate, formatMemoReminderBadge } from '../lib/lunar';
 import { formatInvoiceNumber, getInvoicePeriodKey, encodeInvoiceTag, decodeInvoiceTag, stripInvoiceTag } from '../lib/invoice';
 import { checkInvoiceWinning, syncLotteryDrawsAsync } from '../lib/lottery';
@@ -659,6 +659,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const recordMemoTag = React.useCallback(async (tag: string, isManual = false) => {
     const clean = (tag || '').trim();
     if (!clean) return;
+    if (isMemoActionTag(clean)) return;
     const lower = clean.toLowerCase();
 
     // 若非使用者手動點擊/輸入，且已被使用者主動移除過，嚴格阻絕歷史交易載入時自動加回
@@ -1172,7 +1173,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           try {
             const parsed = JSON.parse(savedRecentMemoTags);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              setRecentMemoTags(parsed);
+              const cleaned = parsed.filter(t => typeof t === 'string' && !isMemoActionTag(t));
+              setRecentMemoTags(cleaned);
+              if (cleaned.length !== parsed.length) {
+                AsyncStorage.setItem(STORAGE_KEYS.RECENT_MEMO_TAGS, JSON.stringify(cleaned)).catch(() => {});
+              }
             }
           } catch {}
         }

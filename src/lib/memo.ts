@@ -36,8 +36,32 @@ export const MAX_PINNED_MEMOS_FAMILY = 5;
 export const MAX_PINNED_MEMOS_PERSONAL = 5;
 
 /**
+ * 判斷指定字串是否為開團/看板快捷動作按鈕標籤 (如 +我要買、＋加湊/代領、＋提案/投票、我要點)
+ * 此類動詞屬面板操作指引，嚴格禁止作為生活記事主題標籤或快捷標籤
+ */
+export function isMemoActionTag(tagText?: string): boolean {
+  if (!tagText) return false;
+  const trimmed = tagText.trim();
+  if (!trimmed) return false;
+
+  // 1. 以半形 + 或全形 ＋ 開頭 (如 +我要買, ＋加湊/代領, ＋提案/投票, ＋ 認領/新任務)
+  if (/^[+＋]/.test(trimmed)) {
+    return true;
+  }
+
+  // 2. 包含按鈕操作動詞特徵
+  if (/(?:我要買|加湊|代領|我也要|我要點|認領|加單|提案|投票)/.test(trimmed)) {
+    // 例外：內建主題標籤「🗳️ 家庭投票」並非操作按鈕
+    if (trimmed.includes('家庭投票')) return false;
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * 智慧合併生活記事標籤：固定內建核心項目在最前面維持位置穩定，使用者自訂或歷史常用標籤接在後面
- * 嚴格排除已被使用者長按主動移除的黑名單標籤 (dismissedTags)
+ * 嚴格排除已被使用者長按主動移除的黑名單標籤 (dismissedTags) 與動作操作標籤
  */
 export function getMergedMemoTags(recentTags: string[] = [], dismissedTags: string[] = []): string[] {
   const pool: string[] = [];
@@ -53,10 +77,11 @@ export function getMergedMemoTags(recentTags: string[] = [], dismissedTags: stri
     }
   }
 
-  // 2. 使用者自訂/新增的歷史常用標籤排在後面 (排除已包含的內建項目，且排除已被使用者移除之項目)
+  // 2. 使用者自訂/新增的歷史常用標籤排在後面 (排除已包含的內建項目，且排除動作標籤與黑名單項目)
   for (const t of recentTags) {
     const clean = (t || '').trim();
     if (!clean) continue;
+    if (isMemoActionTag(clean)) continue;
     const key = clean.toLowerCase();
     if (!seen.has(key) && !dismissedSet.has(key)) {
       seen.add(key);
@@ -152,6 +177,11 @@ export function findMemoTopicTagMatch(text?: string): RegExpExecArray | null {
       trimmed.startsWith('linked:') ||
       trimmed.includes('|')
     ) {
+      continue;
+    }
+
+    // 3. 排除開團與看板快捷動作按鈕提示 (如 【＋我要買】、【＋加湊/代領】、【＋提案/投票】)
+    if (isMemoActionTag(trimmed)) {
       continue;
     }
 
@@ -258,7 +288,7 @@ export function isMemoTagActive(currentNote: string, tag: string): boolean {
 
 /**
  * 快捷切換備忘標籤：
- * - 點擊相同標籤：取消選取 (移除)
+ * - 點擊相同標籤：鎖定選取，保留不變（防止誤觸刪除開頭標籤）
  * - 點擊不同標籤：替換既有括號標籤
  * - 原本無標籤：加到文字字首 (若已有清單則以換行隔開)
  */
@@ -270,9 +300,9 @@ export function toggleMemoTag(currentNote: string, tag: string): string {
     const existingRaw = match[1].trim();
     const existingCore = existingRaw.replace(EMOJI_REGEX, '').trim();
 
-    // 點擊同一個標籤 -> 取消選取 (移除標籤)
+    // 點擊同一個標籤 -> 維持鎖定選取，安全保留既有標籤不被誤刪
     if (existingRaw === tag || (existingCore && existingCore === tagCore)) {
-      return currentNote.replace(match[0], '').trim();
+      return currentNote;
     }
 
     // 點擊不同標籤 -> 替換既有標籤
@@ -913,7 +943,7 @@ export const BUILTIN_MEMO_TEMPLATES: MemoChecklistTemplate[] = [
     icon: '🧋',
     tag: '🧋 點餐開團',
     description: '手搖飲、宵夜點心、便當多人自由登記報單',
-    headerText: '店家：50嵐（可直接修改店名）\n截止時間：12:00（可修改時間）\n大家直接點右上方【＋我也要】快速報單！',
+    headerText: '店家：50嵐（可直接修改店名）\n截止時間：12:00（可修改時間）\n大家直接點右上方「＋我也要」快速報單！',
     items: [],
   },
   {
@@ -939,7 +969,7 @@ export const BUILTIN_MEMO_TEMPLATES: MemoChecklistTemplate[] = [
     icon: '🛒',
     tag: '🛒 採買清單',
     description: '生鮮食材、家庭飲品與居家消耗品',
-    headerText: '賣場：全聯（可直接修改賣場）\n大家直接點右上方【＋我要買】追加補貨！',
+    headerText: '賣場：全聯（可直接修改賣場）\n大家直接點右上方「＋我要買」追加補貨！',
     items: [
       '鮮奶 / 燕麥奶',
       '新鮮雞蛋 1 盒',
@@ -955,7 +985,7 @@ export const BUILTIN_MEMO_TEMPLATES: MemoChecklistTemplate[] = [
     icon: '📦',
     tag: '📦 網購湊單',
     description: '酷澎/蝦皮/momo湊免運，或超商/管理室待領包裹順路代領',
-    headerText: '平台：酷澎 / 超商取貨（可直接修改）\n大家直接點右上方【＋加湊/代領】登記品項或末三碼！',
+    headerText: '平台：酷澎 / 超商取貨（可直接修改）\n大家直接點右上方「＋加湊/代領」登記品項或末三碼！',
     items: [],
   },
   {
@@ -976,7 +1006,7 @@ export const BUILTIN_MEMO_TEMPLATES: MemoChecklistTemplate[] = [
     icon: '🧹',
     tag: '🧹 家事懸賞',
     description: '週末大掃除與家事分工，小朋友認領做完一鍵核發零用錢',
-    headerText: '任務：週末家庭大掃除（可直接修改）\n大家直接點右上方【＋ 認領/新任務】認領工作！',
+    headerText: '任務：週末家庭大掃除（可直接修改）\n大家直接點右上方「＋ 認領/新任務」認領工作！',
     items: [
       '倒垃圾與分類資源回收 $30',
       '洗碗與收拾擦拭餐桌 $50',
@@ -991,7 +1021,7 @@ export const BUILTIN_MEMO_TEMPLATES: MemoChecklistTemplate[] = [
     icon: '🗳️',
     tag: '🗳️ 家庭投票',
     description: '週末聚餐吃什麼、連假去哪玩、好物挑選，全家人人有票自由表態',
-    headerText: '主題：週末聚餐吃什麼？（可直接修改主題）\n截止時間：18:00（可修改時間）\n大家直接點右上方【＋提案/投票】投下你的一票！',
+    headerText: '主題：週末聚餐吃什麼？（可直接修改主題）\n截止時間：18:00（可修改時間）\n大家直接點右上方「＋提案/投票」投下你的一票！',
     items: [
       '🍲 鼎泰豐小籠包',
       '🍣 藏壽司迴轉壽司',

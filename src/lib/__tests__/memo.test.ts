@@ -21,6 +21,9 @@ import {
   BUILTIN_MEMO_TEMPLATES,
   applyChecklistTemplate,
   formatLinkedTransactionSummary,
+  isMemoActionTag,
+  getMergedMemoTags,
+  findMemoTopicTagMatch,
 } from '../memo';
 import { hydrateTransactionWithInvoice } from '../ledgerUtils';
 
@@ -49,10 +52,10 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
       expect(isMemoTagActive(note, '🛒 採買清單')).toBe(false);
     });
 
-    it('點擊同一個標籤應取消標籤 (移除)', () => {
+    it('點擊同一個標籤應維持鎖定選取，安全保留既有標籤不被誤刪除', () => {
       const note = '[🛒 採買清單] 鮮奶';
       const toggled = toggleMemoTag(note, '🛒 採買清單');
-      expect(toggled).toBe('鮮奶');
+      expect(toggled).toBe('[🛒 採買清單] 鮮奶');
     });
 
     it('點擊不同標籤應直接替換既有標籤', () => {
@@ -65,6 +68,34 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
       const note = '買衛生紙';
       const toggled = toggleMemoTag(note, '🛒 採買清單');
       expect(toggled).toBe('[🛒 採買清單]\n買衛生紙');
+    });
+
+    it('動作指引按鈕標籤 (+我要買、＋加湊/代領、＋提案/投票) 嚴格禁止被辨識為生活備忘主題標籤', () => {
+      expect(isMemoActionTag('+我要買')).toBe(true);
+      expect(isMemoActionTag('＋加湊/代領')).toBe(true);
+      expect(isMemoActionTag('＋提案/投票')).toBe(true);
+      expect(isMemoActionTag('＋ 認領/新任務')).toBe(true);
+      expect(isMemoActionTag('🗳️ 家庭投票')).toBe(false);
+      expect(isMemoActionTag('🛒 採買清單')).toBe(false);
+
+      // 內文第二行帶有動作指引提示時，絕不可誤判為主題標籤
+      const noteWithoutHeaderTag = `賣場：全聯
+大家直接點右上方【＋我要買】追加補貨！
+- [ ] 鮮奶 / 燕麥奶`;
+      const match = findMemoTopicTagMatch(noteWithoutHeaderTag);
+      expect(match).toBeNull();
+
+      const parsed = parseMemoNote(noteWithoutHeaderTag);
+      expect(parsed.title).toBe('生活記事');
+    });
+
+    it('常用標籤合併清單 (getMergedMemoTags) 應主動淨化排除歷史殘留的動作標籤', () => {
+      const recent = ['+我要買', '＋加湊/代領', '週末戶外活動', '+提案/投票'];
+      const merged = getMergedMemoTags(recent);
+      expect(merged).toContain('週末戶外活動');
+      expect(merged).not.toContain('+我要買');
+      expect(merged).not.toContain('＋加湊/代領');
+      expect(merged).not.toContain('+提案/投票');
     });
   });
 
@@ -527,7 +558,7 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
         const output = applyChecklistTemplate(template);
         expect(output).toContain('[🧋 點餐開團]');
         expect(output).toContain('店家：50嵐（可直接修改店名）');
-        expect(output).toContain('大家直接點右上方【＋我也要】快速報單！');
+        expect(output).toContain('大家直接點右上方「＋我也要」快速報單！');
         // 嚴格確保不包含任何待辦方框 - [ ]
         expect(output).not.toContain('- [ ]');
       });
