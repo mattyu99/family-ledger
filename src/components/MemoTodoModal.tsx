@@ -32,6 +32,7 @@ import {
   finalizeGroupOrderVote,
   convertVoteToFoodOrder,
   updateGroupOrderVoteOption,
+  MemberEarningSummary,
 } from '../lib/groupOrder';
 import { GroupOrderAppendModal } from './GroupOrderAppendModal';
 import { GroupOrderCounterModal } from './GroupOrderCounterModal';
@@ -59,12 +60,16 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
 }) => {
   const { isDark, colors } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-  const { transactions, getMemberById, toggleMemoSettled, toggleMemoChecklistItem, updateTransaction, currentUser } = useLedger();
+  const { transactions, getMemberById, toggleMemoSettled, toggleMemoChecklistItem, updateTransaction, addTransaction, transferAllowance, categories, members, currentUser } = useLedger();
   const [activeTab, setActiveTab] = useState<TodoTab>('all');
   const [scopeFilter, setScopeFilter] = useState<TodoScope>('all');
   const scrollRef = useRef<ScrollView>(null);
 
   const [activeGroupOrderTx, setActiveGroupOrderTx] = useState<Transaction | null>(null);
+  const liveActiveGroupOrderTx = useMemo(
+    () => (activeGroupOrderTx ? (transactions.find(t => t.id === activeGroupOrderTx.id) || activeGroupOrderTx) : null),
+    [transactions, activeGroupOrderTx]
+  );
   const [isGroupOrderAppendOpen, setIsGroupOrderAppendOpen] = useState(false);
   const [isGroupOrderCounterOpen, setIsGroupOrderCounterOpen] = useState(false);
   const [replyingTarget, setReplyingTarget] = useState<{ tx: Transaction; item: MemoChecklistItem } | null>(null);
@@ -501,9 +506,16 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                 const date = new Date(item.transacted_at);
                 const dateFormatted = `${date.getMonth() + 1}/${date.getDate()}`;
 
-                const linkedTx = item.linked_transaction_id
-                  ? transactions.find(t => t.id === item.linked_transaction_id)
-                  : undefined;
+                const linkedTxs: Transaction[] = [];
+                if (item.linked_transaction_id) {
+                  const direct = transactions.find(t => t.id === item.linked_transaction_id);
+                  if (direct) linkedTxs.push(direct);
+                }
+                transactions.forEach(t => {
+                  if (t.id !== item.id && t.linked_transaction_id === item.id && !linkedTxs.some(existing => existing.id === t.id)) {
+                    linkedTxs.push(t);
+                  }
+                });
                 const isPinned = isMemoPinned(item);
 
                 return (
@@ -882,8 +894,9 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                     )}
 
                     {/* 連動明細卡片 (支援支出、收入、轉帳與接力待辦) */}
-                    {isCompleted && !!linkedTx && (
+                    {isCompleted && linkedTxs.length > 0 && linkedTxs.map((linkedTx) => (
                       <TouchableOpacity
+                        key={linkedTx.id}
                         style={[
                           styles.itemLinkedExpenseBadge,
                           linkedTx.type === 'income' && { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5', borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#A7F3D0' },
@@ -909,7 +922,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                           {formatLinkedTransactionSummary(linkedTx)}
                         </Text>
                       </TouchableOpacity>
-                    )}
+                    ))}
 
                     {/* 底部資訊 */}
                     <View style={styles.itemFooterRow}>
@@ -973,20 +986,22 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
         </View>
       </View>
 
-      {activeGroupOrderTx && (
+      {liveActiveGroupOrderTx && (
         <>
           <GroupOrderAppendModal
             visible={isGroupOrderAppendOpen}
-            storeName={computeGroupOrderSummary(activeGroupOrderTx.note || '', parseMemoNote(activeGroupOrderTx.note).title).storeName}
-            mode={computeGroupOrderSummary(activeGroupOrderTx.note || '', parseMemoNote(activeGroupOrderTx.note).title).mode}
+            storeName={computeGroupOrderSummary(liveActiveGroupOrderTx.note || '', parseMemoNote(liveActiveGroupOrderTx.note).title).storeName}
+            mode={computeGroupOrderSummary(liveActiveGroupOrderTx.note || '', parseMemoNote(liveActiveGroupOrderTx.note).title).mode}
             onClose={() => {
               setIsGroupOrderAppendOpen(false);
-              setActiveGroupOrderTx(null);
+              if (!isGroupOrderCounterOpen) {
+                setActiveGroupOrderTx(null);
+              }
             }}
             onAppend={async (appendItem) => {
-              if (!activeGroupOrderTx) return;
-              const newNote = appendGroupOrderItem(activeGroupOrderTx.note || '', appendItem);
-              await updateTransaction(activeGroupOrderTx.id, {
+              if (!liveActiveGroupOrderTx) return;
+              const newNote = appendGroupOrderItem(liveActiveGroupOrderTx.note || '', appendItem);
+              await updateTransaction(liveActiveGroupOrderTx.id, {
                 note: newNote,
                 orderAppendInfo: appendItem,
               });
@@ -994,27 +1009,27 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
           />
           <GroupOrderCounterModal
             visible={isGroupOrderCounterOpen}
-            summary={computeGroupOrderSummary(activeGroupOrderTx.note || '', parseMemoNote(activeGroupOrderTx.note).title)}
-            isOrganizer={Boolean(currentUser?.id && (activeGroupOrderTx.creator_id === currentUser.id || activeGroupOrderTx.paid_by === currentUser.id))}
+            summary={computeGroupOrderSummary(liveActiveGroupOrderTx.note || '', parseMemoNote(liveActiveGroupOrderTx.note).title, liveActiveGroupOrderTx.transacted_at || liveActiveGroupOrderTx.created_at)}
+            isOrganizer={Boolean(currentUser?.id && (liveActiveGroupOrderTx.creator_id === currentUser.id || liveActiveGroupOrderTx.paid_by === currentUser.id))}
             onClose={() => {
               setIsGroupOrderCounterOpen(false);
               setActiveGroupOrderTx(null);
             }}
             onToggleItem={(lineIndex) => {
-              if (activeGroupOrderTx) {
-                toggleMemoChecklistItem(activeGroupOrderTx.id, lineIndex);
+              if (liveActiveGroupOrderTx) {
+                toggleMemoChecklistItem(liveActiveGroupOrderTx.id, lineIndex);
               }
             }}
             onUpdateItemMember={(lineIndex, newMemberName) => {
-              if (activeGroupOrderTx) {
-                const updatedNote = updateGroupOrderItemMember(activeGroupOrderTx.note || '', lineIndex, newMemberName);
-                updateTransaction(activeGroupOrderTx.id, { note: updatedNote });
+              if (liveActiveGroupOrderTx) {
+                const updatedNote = updateGroupOrderItemMember(liveActiveGroupOrderTx.note || '', lineIndex, newMemberName);
+                updateTransaction(liveActiveGroupOrderTx.id, { note: updatedNote });
               }
             }}
             onUpdateItem={(lineIndex, updatedItem) => {
-              if (activeGroupOrderTx) {
-                const updatedNote = updateGroupOrderItem(activeGroupOrderTx.note || '', lineIndex, updatedItem);
-                updateTransaction(activeGroupOrderTx.id, {
+              if (liveActiveGroupOrderTx) {
+                const updatedNote = updateGroupOrderItem(liveActiveGroupOrderTx.note || '', lineIndex, updatedItem);
+                updateTransaction(liveActiveGroupOrderTx.id, {
                   note: updatedNote,
                   orderMutationInfo: {
                     action: 'update',
@@ -1027,11 +1042,11 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
               }
             }}
             onDeleteItem={(lineIndex) => {
-              if (activeGroupOrderTx) {
-                const summary = computeGroupOrderSummary(activeGroupOrderTx.note || '', parseMemoNote(activeGroupOrderTx.note).title);
+              if (liveActiveGroupOrderTx) {
+                const summary = computeGroupOrderSummary(liveActiveGroupOrderTx.note || '', parseMemoNote(liveActiveGroupOrderTx.note).title);
                 const targetItem = summary.items.find((i) => i.lineIndex === lineIndex);
-                const updatedNote = deleteGroupOrderItem(activeGroupOrderTx.note || '', lineIndex);
-                updateTransaction(activeGroupOrderTx.id, {
+                const updatedNote = deleteGroupOrderItem(liveActiveGroupOrderTx.note || '', lineIndex);
+                updateTransaction(liveActiveGroupOrderTx.id, {
                   note: updatedNote,
                   orderMutationInfo: {
                     action: 'delete',
@@ -1047,15 +1062,15 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
               setIsGroupOrderAppendOpen(true);
             }}
             onToggleVote={(lineIndex, voterName) => {
-              if (activeGroupOrderTx) {
-                const updatedNote = toggleGroupOrderVote(activeGroupOrderTx.note || '', lineIndex, voterName);
-                updateTransaction(activeGroupOrderTx.id, { note: updatedNote });
+              if (liveActiveGroupOrderTx) {
+                const updatedNote = toggleGroupOrderVote(liveActiveGroupOrderTx.note || '', lineIndex, voterName);
+                updateTransaction(liveActiveGroupOrderTx.id, { note: updatedNote });
               }
             }}
             onFinalizeVote={(winningLineIndex) => {
-              if (activeGroupOrderTx) {
-                const updatedNote = finalizeGroupOrderVote(activeGroupOrderTx.note || '', winningLineIndex);
-                updateTransaction(activeGroupOrderTx.id, {
+              if (liveActiveGroupOrderTx) {
+                const updatedNote = finalizeGroupOrderVote(liveActiveGroupOrderTx.note || '', winningLineIndex);
+                updateTransaction(liveActiveGroupOrderTx.id, {
                   note: updatedNote,
                   is_settled: true,
                   completed_by: currentUser?.id,
@@ -1064,36 +1079,98 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
               }
             }}
             onConvertToFoodOrder={(winningTitle) => {
-              if (activeGroupOrderTx) {
-                const newOrderNote = convertVoteToFoodOrder(winningTitle);
-                updateTransaction(activeGroupOrderTx.id, { note: newOrderNote });
+              if (liveActiveGroupOrderTx) {
+                const newOrderNote = convertVoteToFoodOrder(winningTitle, liveActiveGroupOrderTx.note || '');
+                updateTransaction(liveActiveGroupOrderTx.id, {
+                  note: newOrderNote,
+                  is_settled: false,
+                  completed_by: undefined,
+                  completion_note: undefined,
+                });
               }
             }}
             onUpdateVoteOption={(lineIndex, newTitle) => {
-              if (activeGroupOrderTx) {
-                const updatedNote = updateGroupOrderVoteOption(activeGroupOrderTx.note || '', lineIndex, newTitle);
-                updateTransaction(activeGroupOrderTx.id, { note: updatedNote });
+              if (liveActiveGroupOrderTx) {
+                const updatedNote = updateGroupOrderVoteOption(liveActiveGroupOrderTx.note || '', lineIndex, newTitle);
+                updateTransaction(liveActiveGroupOrderTx.id, { note: updatedNote });
               }
             }}
             onDeleteVoteOption={(lineIndex) => {
-              if (activeGroupOrderTx) {
-                const updatedNote = deleteGroupOrderItem(activeGroupOrderTx.note || '', lineIndex);
-                updateTransaction(activeGroupOrderTx.id, { note: updatedNote });
+              if (liveActiveGroupOrderTx) {
+                const updatedNote = deleteGroupOrderItem(liveActiveGroupOrderTx.note || '', lineIndex);
+                updateTransaction(liveActiveGroupOrderTx.id, { note: updatedNote });
               }
             }}
             onExtendDeadline={(addMinutes) => {
-              if (activeGroupOrderTx) {
-                const updatedNote = extendOrderDeadline(activeGroupOrderTx.note || '', addMinutes, activeGroupOrderTx.transacted_at || activeGroupOrderTx.created_at);
-                updateTransaction(activeGroupOrderTx.id, { note: updatedNote });
+              if (liveActiveGroupOrderTx) {
+                const updatedNote = extendOrderDeadline(liveActiveGroupOrderTx.note || '', addMinutes, liveActiveGroupOrderTx.transacted_at || liveActiveGroupOrderTx.created_at);
+                updateTransaction(liveActiveGroupOrderTx.id, { note: updatedNote });
               }
             }}
             onSettleOrder={() => {
-              if (activeGroupOrderTx) {
-                const target = activeGroupOrderTx;
+              if (liveActiveGroupOrderTx) {
+                const target = liveActiveGroupOrderTx;
                 setIsGroupOrderCounterOpen(false);
                 setActiveGroupOrderTx(null);
                 onCompleteMemo?.(target);
               }
+            }}
+            onSettleAllowance={async (earnings: MemberEarningSummary[]) => {
+              if (!liveActiveGroupOrderTx) return;
+              const targetTx = liveActiveGroupOrderTx;
+              const basePayerId = currentUser?.id || targetTx.paid_by || targetTx.creator_id || members[0]?.id;
+              const allowanceCat = categories.find((c: any) => c.type === 'expense' && (c.name.includes('零用') || c.name.includes('教育') || c.name.includes('其他'))) || categories[0];
+              let firstCreatedTxId: string | undefined;
+
+              for (const earning of earnings) {
+                if (earning.totalAmount > 0) {
+                  const recipient = members.find(m => m.display_name === earning.memberName);
+                  if (recipient) {
+                    const effectivePayerId = (recipient.id === basePayerId && members.length > 1)
+                      ? (members.find(m => m.id !== recipient.id)?.id || basePayerId)
+                      : basePayerId;
+                    const itemDesc = earning.completedItems.join('、') || '家事分工';
+
+                    if (effectivePayerId && effectivePayerId !== recipient.id) {
+                      const res = await transferAllowance({
+                        amount: earning.totalAmount,
+                        fromMemberId: effectivePayerId,
+                        toMemberId: recipient.id,
+                        mode: 'transfer',
+                        expenseCategoryId: allowanceCat?.id,
+                        note: `家事獎勵（${itemDesc}）`,
+                        linked_transaction_id: targetTx.id,
+                      });
+                      const createdId = res.transferTxId || res.parentTxId;
+                      if (createdId && !firstCreatedTxId) {
+                        firstCreatedTxId = createdId;
+                      }
+                    } else {
+                      const createdId = await addTransaction({
+                        amount: earning.totalAmount,
+                        type: 'transfer',
+                        paid_by: effectivePayerId,
+                        completed_by: recipient.id,
+                        merchant: recipient.display_name,
+                        note: `給${recipient.display_name}零用錢: 家事獎勵（${itemDesc}）`,
+                        category_id: allowanceCat?.id || categories[0]?.id,
+                        linked_transaction_id: targetTx.id,
+                        transacted_at: new Date().toISOString(),
+                      });
+                      if (createdId && !firstCreatedTxId) {
+                        firstCreatedTxId = createdId;
+                      }
+                    }
+                  }
+                }
+              }
+              await updateTransaction(targetTx.id, {
+                is_settled: true,
+                completed_by: basePayerId,
+                completed_at: new Date().toISOString(),
+                linked_transaction_id: firstCreatedTxId,
+                completion_note: `已核發家事零用錢獎勵 (共 NT$ ${earnings.reduce((s, e) => s + e.totalAmount, 0)})`,
+              });
             }}
           />
         </>
@@ -1106,13 +1183,14 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
           replies={replyingTarget.item.replies || []}
           onClose={() => setReplyingTarget(null)}
           onSaveReply={(memberName, replyText) => {
+            const latestTx = transactions.find(t => t.id === replyingTarget.tx.id) || replyingTarget.tx;
             const updatedNote = updateChecklistItemReply(
-              replyingTarget.tx.note || '',
+              latestTx.note || '',
               replyingTarget.item.index,
               memberName,
               replyText
             );
-            updateTransaction(replyingTarget.tx.id, { note: updatedNote });
+            updateTransaction(latestTx.id, { note: updatedNote });
           }}
         />
       )}

@@ -16,7 +16,7 @@ import {
 import { useTheme } from '../theme/ThemeContext';
 import { useLedger } from '../context/LedgerContext';
 import { LiveToastBanner } from './LiveToastBanner';
-import { GroupOrderSummary, GroupOrderItem, MemberEarningSummary, VoteOptionSummary } from '../lib/groupOrder';
+import { GroupOrderSummary, GroupOrderItem, MemberEarningSummary, VoteOptionSummary, getGroupOrderSettlementStats } from '../lib/groupOrder';
 
 interface GroupOrderCounterModalProps {
   visible: boolean;
@@ -777,19 +777,47 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                         </TouchableOpacity>
                       </View>
                     ) : (
-                      <TouchableOpacity
-                        activeOpacity={0.8}
-                        onPress={() => {
-                          onClose();
-                          onSettleOrder(0, summary.storeName);
-                        }}
-                        style={[styles.settleBtn, { backgroundColor: '#059669' }]}
-                      >
-                        <Text style={styles.settleBtnIcon}>✓</Text>
-                        <Text style={styles.settleBtnText}>
-                          決策已拍板（{summary.leadingOption.title}）！一鍵歸檔
-                        </Text>
-                      </TouchableOpacity>
+                      <View style={styles.voteFooterRow}>
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={() => {
+                            onClose();
+                            onSettleOrder(0, summary.storeName);
+                          }}
+                          style={[styles.voteFooterBtn, { backgroundColor: '#059669' }]}
+                        >
+                          <Text style={styles.voteFooterBtnIcon}>✓</Text>
+                          <Text style={styles.voteFooterBtnText} numberOfLines={1}>
+                            已拍板！一鍵歸檔
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={() => {
+                            Alert.alert(
+                              '轉為點餐開團',
+                              `確定將「${summary.leadingOption?.title}」直接轉為全家點餐開團，讓大家開始報單登記嗎？`,
+                              [
+                                { text: '取消', style: 'cancel' },
+                                {
+                                  text: '轉為點餐開團',
+                                  onPress: () => {
+                                    onClose();
+                                    onConvertToFoodOrder?.(summary.leadingOption!.title);
+                                  },
+                                },
+                              ]
+                            );
+                          }}
+                          style={[styles.voteFooterBtn, { backgroundColor: '#2563EB' }]}
+                        >
+                          <Text style={styles.voteFooterBtnIcon}>🧋</Text>
+                          <Text style={styles.voteFooterBtnText} numberOfLines={1}>
+                            轉點餐開團
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
                     )}
                   </>
                 ) : (
@@ -857,27 +885,32 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                 )}
               </View>
             ) : (
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => {
-                  onClose();
-                  onSettleOrder(summary.totalAmount, summary.storeName);
-                }}
-                style={[
-                  styles.settleBtn,
-                  isGrocery && { backgroundColor: '#059669' },
-                  isParcel && { backgroundColor: '#2563EB' },
-                ]}
-              >
-                <Text style={styles.settleBtnIcon}>{isParcel ? '📦' : (isGrocery ? '🛒' : '💰')}</Text>
-                <Text style={styles.settleBtnText}>
-                  {isParcel
-                    ? `結單／領齊了！前往辦妥與核對 ${summary.hasAmount ? `($${summary.totalAmount})` : ''}`
-                    : (isGrocery
-                        ? `結帳買齊了！前往辦妥與結算 ${summary.hasAmount ? `($${summary.totalAmount})` : ''}`
-                        : `買好了！前往辦妥與結算 ${summary.hasAmount ? `($${summary.totalAmount})` : ''}`)}
-                </Text>
-              </TouchableOpacity>
+              (() => {
+                const settleStats = getGroupOrderSettlementStats(summary);
+                return (
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      onClose();
+                      onSettleOrder(settleStats.effectiveAmount, summary.storeName);
+                    }}
+                    style={[
+                      styles.settleBtn,
+                      isGrocery && { backgroundColor: '#059669' },
+                      isParcel && { backgroundColor: '#2563EB' },
+                    ]}
+                  >
+                    <Text style={styles.settleBtnIcon}>{isParcel ? '📦' : (isGrocery ? '🛒' : '💰')}</Text>
+                    <Text style={styles.settleBtnText}>
+                      {isParcel
+                        ? `結單／領齊了！前往辦妥與核對 ${settleStats.hasEffectiveAmount ? `($${settleStats.effectiveAmount})` : ''}`
+                        : (isGrocery
+                            ? `結帳買齊了！前往辦妥與結算 ${settleStats.hasEffectiveAmount ? `($${settleStats.effectiveAmount})` : ''}`
+                            : `買好了！前往辦妥與結算 ${settleStats.hasEffectiveAmount ? `($${settleStats.effectiveAmount})` : ''}`)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })()
             )}
           </View>
         </View>

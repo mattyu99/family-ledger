@@ -78,7 +78,7 @@ import { LiveToastBanner } from './src/components/LiveToastBanner';
 import { AppLockOverlay } from './src/components/AppLockOverlay';
 import { DemoQuestBanner } from './src/components/DemoQuestBanner';
 import { getLatestDrawnPeriodKey } from './src/lib/invoice';
-import { computeGroupOrderSummary, generateGroupOrderSettlementNote } from './src/lib/groupOrder';
+import { computeGroupOrderSummary, generateGroupOrderSettlementNote, getGroupOrderSettlementStats } from './src/lib/groupOrder';
 
 // Web 專用重設樣式注入
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -446,6 +446,7 @@ const AppContent: React.FC = () => {
       completed_by: completedBy,
       completed_at: new Date().toISOString(),
       completion_note: note || undefined,
+      linked_transaction_id: undefined,
     });
     setCompletingMemo(null);
     setCompletionTempNote('');
@@ -458,7 +459,10 @@ const AppContent: React.FC = () => {
     setModalDefaultPayerId(completedBy || currentUser?.id);
     const memoData = parseMemoNote(memo.note);
     const groupSummary = computeGroupOrderSummary(memo.note || '', memoData.title);
-    if (groupSummary.hasAmount && groupSummary.totalAmount > 0) {
+    const settleStats = getGroupOrderSettlementStats(groupSummary);
+    if (settleStats.hasEffectiveAmount && settleStats.effectiveAmount > 0) {
+      setModalDefaultAmount(String(settleStats.effectiveAmount));
+    } else if (groupSummary.hasAmount && groupSummary.totalAmount > 0) {
       setModalDefaultAmount(String(groupSummary.totalAmount));
     } else {
       setModalDefaultAmount(undefined);
@@ -1236,7 +1240,10 @@ const AppContent: React.FC = () => {
           setModalDefaultPayerId(memoTx.completed_by || currentUser?.id);
           const memoData = parseMemoNote(memoTx.note);
           const groupSummary = computeGroupOrderSummary(memoTx.note || '', memoData.title);
-          if (groupSummary.hasAmount && groupSummary.totalAmount > 0) {
+          const settleStats = getGroupOrderSettlementStats(groupSummary);
+          if (settleStats.hasEffectiveAmount && settleStats.effectiveAmount > 0) {
+            setModalDefaultAmount(String(settleStats.effectiveAmount));
+          } else if (groupSummary.hasAmount && groupSummary.totalAmount > 0) {
             setModalDefaultAmount(String(groupSummary.totalAmount));
           } else {
             setModalDefaultAmount(undefined);

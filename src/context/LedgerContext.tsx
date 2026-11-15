@@ -8060,10 +8060,22 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
 
-    // 1. 本地立即清除
-    const updated = transactions.filter(t => t.id !== id);
+    // 1. 本地立即清除，並同步解除指向此已刪除交易的孤兒連動 ID (linked_transaction_id)
+    const hasLinkedPeers = transactions.some(t => t.id !== id && t.linked_transaction_id === id);
+    const updated = transactions
+      .filter(t => t.id !== id)
+      .map(t => (t.linked_transaction_id === id ? { ...t, linked_transaction_id: undefined } : t));
     setTransactions(updated);
     await saveTransactionsToStorage(updated);
+
+    if (hasLinkedPeers && isConfigured && !isDemoLedgerId(currentLedger.id)) {
+      supabase
+        .from('transactions')
+        .update({ linked_transaction_id: null })
+        .eq('ledger_id', currentLedger.id)
+        .eq('linked_transaction_id', id)
+        .then(() => {}, () => {});
+    }
 
     if (targetTx?.type === 'memo') {
       scheduleMemoReminderNotifications(updated, members, currentUser?.id).catch(() => {});

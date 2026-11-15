@@ -55,6 +55,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
     toggleMemoChecklistItem,
     updateTransaction,
     addTransaction,
+    transferAllowance,
     categories,
     transactions,
     members,
@@ -115,7 +116,16 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
       ? (checklistData.completedCount / checklistData.totalCount) * 100
       : 0;
     const completer = transaction.completed_by ? getMemberById(transaction.completed_by) : undefined;
-    const linkedTarget = transaction.linked_transaction_id ? transactions.find(t => t.id === transaction.linked_transaction_id) : undefined;
+    const linkedTargets: Transaction[] = [];
+    if (transaction.linked_transaction_id) {
+      const direct = transactions.find(t => t.id === transaction.linked_transaction_id);
+      if (direct) linkedTargets.push(direct);
+    }
+    transactions.forEach(t => {
+      if (t.id !== transaction.id && t.linked_transaction_id === transaction.id && !linkedTargets.some(existing => existing.id === t.id)) {
+        linkedTargets.push(t);
+      }
+    });
 
     // 正文超連結自動識別與點擊開啟支援
     const renderContentWithLinks = (content: string, isCompleted: boolean) => {
@@ -583,8 +593,9 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
           </View>
         )}
 
-        {isCompleted && !!linkedTarget && (
+        {isCompleted && linkedTargets.length > 0 && linkedTargets.map((linkedTarget) => (
           <TouchableOpacity
+            key={linkedTarget.id}
             style={[
               styles.memoLinkedExpenseBadge,
               linkedTarget.type === 'income' && { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5', borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#A7F3D0' },
@@ -610,7 +621,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
               {formatLinkedTransactionSummary(linkedTarget)}
             </Text>
           </TouchableOpacity>
-        )}
+        ))}
 
         <View style={styles.memoFooterRow}>
           <View style={styles.memoFooterLeft}>
@@ -721,8 +732,13 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
           });
         }}
         onConvertToFoodOrder={(winningTitle) => {
-          const newOrderNote = convertVoteToFoodOrder(winningTitle);
-          updateTransaction(transaction.id, { note: newOrderNote });
+          const newOrderNote = convertVoteToFoodOrder(winningTitle, transaction.note || '');
+          updateTransaction(transaction.id, {
+            note: newOrderNote,
+            is_settled: false,
+            completed_by: undefined,
+            completion_note: undefined,
+          });
         }}
         onUpdateVoteOption={(lineIndex, newTitle) => {
           const updatedNote = updateGroupOrderVoteOption(transaction.note || '', lineIndex, newTitle);
@@ -743,28 +759,57 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
           onCompleteMemo?.(transaction);
         }}
         onSettleAllowance={async (earnings: MemberEarningSummary[]) => {
-          const payerId = currentUser?.id || members[0]?.id;
+          const basePayerId = currentUser?.id || transaction.paid_by || transaction.creator_id || members[0]?.id;
           const allowanceCat = categories.find((c: any) => c.type === 'expense' && (c.name.includes('零用') || c.name.includes('教育') || c.name.includes('其他'))) || categories[0];
-          
+          let firstCreatedTxId: string | undefined;
+
           for (const earning of earnings) {
             if (earning.totalAmount > 0) {
               const recipient = members.find(m => m.display_name === earning.memberName);
               if (recipient) {
-                await addTransaction({
-                  amount: earning.totalAmount,
-                  type: 'transfer',
-                  paid_by: payerId,
-                  completed_by: recipient.id,
-                  note: `家事獎勵：${earning.completedItems.join('、') || '家事分工'}`,
-                  category_id: allowanceCat?.id || categories[0]?.id,
-                  transacted_at: new Date().toISOString(),
-                });
+                const effectivePayerId = (recipient.id === basePayerId && members.length > 1)
+                  ? (members.find(m => m.id !== recipient.id)?.id || basePayerId)
+                  : basePayerId;
+                const itemDesc = earning.completedItems.join('、') || '家事分工';
+
+                if (effectivePayerId && effectivePayerId !== recipient.id) {
+                  const res = await transferAllowance({
+                    amount: earning.totalAmount,
+                    fromMemberId: effectivePayerId,
+                    toMemberId: recipient.id,
+                    mode: 'transfer',
+                    expenseCategoryId: allowanceCat?.id,
+                    note: `家事獎勵（${itemDesc}）`,
+                    linked_transaction_id: transaction.id,
+                  });
+                  const createdId = res.transferTxId || res.parentTxId;
+                  if (createdId && !firstCreatedTxId) {
+                    firstCreatedTxId = createdId;
+                  }
+                } else {
+                  const createdId = await addTransaction({
+                    amount: earning.totalAmount,
+                    type: 'transfer',
+                    paid_by: effectivePayerId,
+                    completed_by: recipient.id,
+                    merchant: recipient.display_name,
+                    note: `給${recipient.display_name}零用錢: 家事獎勵（${itemDesc}）`,
+                    category_id: allowanceCat?.id || categories[0]?.id,
+                    linked_transaction_id: transaction.id,
+                    transacted_at: new Date().toISOString(),
+                  });
+                  if (createdId && !firstCreatedTxId) {
+                    firstCreatedTxId = createdId;
+                  }
+                }
               }
             }
           }
           await updateTransaction(transaction.id, {
             is_settled: true,
-            completed_by: payerId,
+            completed_by: basePayerId,
+            completed_at: new Date().toISOString(),
+            linked_transaction_id: firstCreatedTxId,
             completion_note: `已核發家事零用錢獎勵 (共 NT$ ${earnings.reduce((s, e) => s + e.totalAmount, 0)})`,
           });
         }}
@@ -832,7 +877,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
       >
         <Text style={styles.iconText}>
           {isTransferIn && !isSelfTransfer
-            ? (transaction.merchant?.includes('儲值') || transaction.linked_transaction_id ? '🚌' : '🎁')
+            ? (transaction.merchant?.includes('儲值') || transaction.merchant?.includes('加值') || !!linkedCard ? '🚌' : '🎁')
             : isTransferOut
             ? '📤'
             : isTransfer
@@ -896,7 +941,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                   {isSelfTransfer
                     ? '🚌 自有卡片儲值'
                     : isTransferIn
-                    ? (transaction.merchant?.includes('儲值') || transaction.linked_transaction_id ? '🚌 卡片加值入帳' : (transaction.note?.includes('零用') || category?.name?.includes('零用') ? '🎁 零用錢轉入' : '📥 轉入入帳'))
+                    ? (transaction.merchant?.includes('儲值') || transaction.merchant?.includes('加值') || !!linkedCard ? '🚌 卡片加值入帳' : (transaction.note?.includes('零用') || category?.name?.includes('零用') ? '🎁 零用錢轉入' : '📥 轉入入帳'))
                     : isTransferOut
                     ? '📤 轉出款項'
                     : '⇄ 內部轉帳'}

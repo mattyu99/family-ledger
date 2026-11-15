@@ -951,12 +951,32 @@ export function updateGroupOrderVoteOption(
 }
 
 /**
- * 將勝出的投票結果一鍵轉換為點餐開團記事內容
+ * 將勝出的投票結果一鍵轉換為點餐開團記事內容（若有傳入原投票記事，自動保留得票共識紀錄）
  */
-export function convertVoteToFoodOrder(storeName: string): string {
-  const cleanStore = storeName.replace(/^(?:🍲|🍣|🥩|🍕|🍔|🍟|🍱|☕|🥤|🧋|🍜|\s)+/u, '').trim();
-  return `[🧋 點餐開團] 店家：${cleanStore || '聚餐店家'}
-店家：${cleanStore || '聚餐店家'}
+export function convertVoteToFoodOrder(storeName: string, originalVoteNote?: string): string {
+  const cleanStore = storeName.replace(/^(?:🍲|🍣|🥩|🍕|🍔|🍟|🍱|☕|🥤|🧋|🍜|\s)+/u, '').trim() || '聚餐店家';
+  let consensusLine = '';
+  if (originalVoteNote) {
+    const lines = originalVoteNote.split('\n');
+    const options: VoteOptionSummary[] = [];
+    let idx = 0;
+    for (const line of lines) {
+      if (/^[-*]?\s*\[([ xX✓])\]\s*(.+)$/.test(line.trim())) {
+        const opt = parseVoteOptionLine(line, idx++);
+        if (opt && opt.title) options.push(opt);
+      }
+    }
+    const matched = options.find((o) => {
+      const cleanOptTitle = o.title.replace(/^(?:🍲|🍣|🥩|🍕|🍔|🍟|🍱|☕|🥤|🧋|🍜|\s)+/u, '').trim();
+      return cleanOptTitle === cleanStore || o.title.includes(cleanStore) || cleanStore.includes(cleanOptTitle);
+    }) || [...options].sort((a, b) => b.voteCount - a.voteCount)[0];
+
+    if (matched && matched.voters.length > 0) {
+      consensusLine = `\n🎉 全家共識：${cleanStore}（${matched.voters.join('、')} 贊成）`;
+    }
+  }
+  return `[🧋 點餐開團] 店家：${cleanStore}
+店家：${cleanStore}${consensusLine}
 - [ ] 大家直接在下方點「＋我也要 / 登記品項」快速報單！`;
 }
 
@@ -1696,6 +1716,53 @@ export function applyRestockImportToSourceMemos(
 }
 
 /**
+ * 判斷單一點餐/採買/包裹項目是否因缺貨、賣完或取消而未實際購入
+ */
+export function isGroupOrderItemSoldOut(item: GroupOrderItem): boolean {
+  if (item.isDone) return false;
+  const soldOutPattern = /(?:賣完|售完|缺貨|沒貨|沒買到|買不到|停售|已售罄|取消)/;
+  if (item.specs && soldOutPattern.test(item.specs)) {
+    return true;
+  }
+  if (item.replies && item.replies.some(r => soldOutPattern.test(r.text))) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 計算結算轉記帳時的實際有效品項、數量與總金額：
+ * 1. 若使用者已於看板勾選部分買到的項目 (completedCount > 0)，則以「已打勾 [x]」的實際買到項目為準。
+ * 2. 若使用者完全未逐一打勾 (completedCount === 0) 直接點結算，則自動剔除留言或規格標註「賣完/缺貨/取消」之項目。
+ */
+export function getGroupOrderSettlementStats(summary: GroupOrderSummary): {
+  effectiveItems: GroupOrderItem[];
+  effectiveCount: number;
+  effectiveAmount: number;
+  hasEffectiveAmount: boolean;
+} {
+  const checkedItems = summary.items.filter(it => it.isDone);
+  const nonSoldOutItems = summary.items.filter(it => !isGroupOrderItemSoldOut(it));
+
+  let effectiveItems: GroupOrderItem[];
+  if (checkedItems.length > 0) {
+    effectiveItems = checkedItems;
+  } else if (nonSoldOutItems.length > 0) {
+    effectiveItems = nonSoldOutItems;
+  } else {
+    effectiveItems = summary.items;
+  }
+
+  const effectiveAmount = effectiveItems.reduce((sum, it) => sum + (it.price > 0 ? it.price : 0), 0);
+  return {
+    effectiveItems,
+    effectiveCount: effectiveItems.length,
+    effectiveAmount,
+    hasEffectiveAmount: effectiveAmount > 0,
+  };
+}
+
+/**
  * 根據開團或生活待辦統計摘要，產生親切自然的記帳結算備註文字
  * 徹底告別包含 Markdown 待辦語法或中繼代碼的原始碼亂碼
  */
@@ -1721,8 +1788,10 @@ export function generateGroupOrderSettlementNote(
     const isGenericStore = !rawStore || ['點餐店家', '採買賣場', '網購包裹', '家庭任務', '家庭決策'].includes(rawStore);
     const storePrefix = isGenericStore ? '' : `${rawStore} · `;
 
-    // 萃取品項名稱 (過濾空值並去重)
-    const validItems = summary.items.map(it => it.itemName.trim()).filter(Boolean);
+    const { effectiveItems, effectiveCount } = getGroupOrderSettlementStats(summary);
+
+    // 萃取實際結算之品項名稱 (過濾空值並去重)
+    const validItems = effectiveItems.map(it => it.itemName.trim()).filter(Boolean);
     const uniqueItemNames = Array.from(new Set(validItems));
 
     let itemsSnippet = '';
@@ -1735,7 +1804,7 @@ export function generateGroupOrderSettlementNote(
     }
 
     const unit = summary.mode === 'food' ? '份' : (summary.mode === 'parcel' ? '件' : '項');
-    const countSuffix = summary.totalCount > 0 ? ` (共${summary.totalCount}${unit})` : '';
+    const countSuffix = effectiveCount > 0 ? ` (共${effectiveCount}${unit})` : '';
 
     if (itemsSnippet) {
       return `${storePrefix}${itemsSnippet}${countSuffix}`;

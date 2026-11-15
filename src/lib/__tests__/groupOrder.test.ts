@@ -26,6 +26,7 @@ import {
   extendOrderDeadline,
   setOrderDeadlineInNote,
   generateGroupOrderSettlementNote,
+  getGroupOrderSettlementStats,
 } from '../groupOrder';
 
 describe('groupOrder 工具庫單元測試', () => {
@@ -909,11 +910,15 @@ describe('groupOrder 工具庫單元測試', () => {
       expect(afterDelete2).not.toContain('吃藥');
     });
 
-    it('convertVoteToFoodOrder 能將勝出的餐廳無縫轉為點餐開團記事', () => {
-      const foodOrder = convertVoteToFoodOrder('🍲 鼎泰豐小籠包');
+    it('convertVoteToFoodOrder 能將勝出的餐廳無縫轉為點餐開團記事，並保留得票共識且不誤判回投票模式', () => {
+      const voteNote = `[🗳️ 家庭投票] 晚餐吃什麼
+- [ ] 🍲 鼎泰豐小籠包（智爸、瑩媽、洋洋 +3）
+- [ ] 🍣 藏壽司（豆豆 +1）`;
+      const foodOrder = convertVoteToFoodOrder('🍲 鼎泰豐小籠包', voteNote);
       expect(foodOrder).toContain('[🧋 點餐開團] 店家：鼎泰豐小籠包');
-      expect(foodOrder).toContain('店家：鼎泰豐小籠包');
+      expect(foodOrder).toContain('🎉 全家共識：鼎泰豐小籠包（智爸、瑩媽、洋洋 贊成）');
       expect(foodOrder).toContain('快速報單');
+      expect(detectCollaborativeOrderMode('點餐開團', foodOrder)).toBe('food');
     });
   });
 
@@ -1021,6 +1026,32 @@ describe('groupOrder 工具庫單元測試', () => {
       const settlementNote = generateGroupOrderSettlementNote(summary, '重要提醒');
       expect(settlementNote).toBe('[辦妥] 重要提醒');
       expect(settlementNote).not.toContain('印身分證影本');
+    });
+
+    it('當點餐或採買項目含有「賣完了／缺貨」回覆或僅部分打勾時，結算金額與份數應智慧扣除未買到品項', () => {
+      // 情境 A：全部未打勾，但其中一項留言「智爸：賣完了」
+      const noteWithSoldOut = `[🧋 點餐開團]
+店家：開源社
+- [ ] 智爸：雞排（微辣） $60
+- [ ] 洋洋：雞排（酥炸 不辣） $60（智爸：賣完了）
+- [ ] 洋洋：薯條（智爸：各一份嗎？） $30`;
+      const summaryA = computeGroupOrderSummary(noteWithSoldOut, '點餐開團');
+      const statsA = getGroupOrderSettlementStats(summaryA);
+      expect(statsA.effectiveCount).toBe(2);
+      expect(statsA.effectiveAmount).toBe(90);
+      expect(generateGroupOrderSettlementNote(summaryA, '點餐開團')).toBe('開源社 · 雞排、薯條 (共2份)');
+
+      // 情境 B：使用者在現場將實際買到的 2 項打勾 [x]，未買到的 1 項維持 [ ]
+      const notePartialChecked = `[🧋 點餐開團]
+店家：開源社
+- [x] 智爸：雞排 $60
+- [ ] 洋洋：甜不辣 $30
+- [x] 豆豆：薯條 $30`;
+      const summaryB = computeGroupOrderSummary(notePartialChecked, '點餐開團');
+      const statsB = getGroupOrderSettlementStats(summaryB);
+      expect(statsB.effectiveCount).toBe(2);
+      expect(statsB.effectiveAmount).toBe(90);
+      expect(generateGroupOrderSettlementNote(summaryB, '點餐開團')).toBe('開源社 · 雞排、薯條 (共2份)');
     });
   });
 });
