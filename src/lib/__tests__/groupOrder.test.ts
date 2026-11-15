@@ -47,6 +47,10 @@ describe('groupOrder 工具庫單元測試', () => {
       expect(isGroupOrderMemo('回診', '智116/1/9早28號心臟科\n[ ] 115/11/8第2次慢籤\n[ ] 115/12/6第3次慢籤')).toBe(false);
       expect(isGroupOrderMemo('生活記事', '生活記事與代辦提醒可以選全家或個人\n[✓] 帳本瀏覽畫面會閃爍\n[✓] 信用卡帳單通知應該個人就好')).toBe(false);
       expect(isGroupOrderMemo('繳費備忘', '[ ] 繳水費\n[ ] 繳電費')).toBe(false);
+
+      // 使用者截圖回報案例：生活記事中隨手記 711 領包裹與洋蔥，絕不誤判為開團
+      expect(isGroupOrderMemo('生活記事', '- [ ] 711領包裹鮮奶早餐\n- [ ] 洋蔥\n- [ ] ')).toBe(false);
+      expect(isGroupOrderMemo('待辦清單', '- [ ] 去全聯買醬油\n- [ ] 繳瓦斯費')).toBe(false);
     });
 
     it('能精準辨識家事大掃除與任務懸賞等協同分工記事', () => {
@@ -416,6 +420,7 @@ describe('groupOrder 工具庫單元測試', () => {
       expect(detectCollaborativeOrderMode('📦 網購湊單', '酷澎還差 200 免運')).toBe('parcel');
       expect(detectCollaborativeOrderMode('蝦皮湊免運', '')).toBe('parcel');
       expect(detectCollaborativeOrderMode('超商取貨', '7-11 有一件包裹待領')).toBe('parcel');
+      expect(detectCollaborativeOrderMode('超商包裹代領', '7-11 領包裹末三碼 123')).toBe('parcel');
       expect(detectCollaborativeOrderMode('momo 補貨團', '')).toBe('parcel');
     });
 

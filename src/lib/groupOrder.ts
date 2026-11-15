@@ -119,6 +119,7 @@ export function detectCollaborativeOrderMode(title?: string, content?: string): 
     '【網購】', '【湊單】', '【湊免運】', '【包裹】', '【取貨】', '【代領】',
     '[網購]', '[湊單]', '[湊免運]', '[包裹]', '[取貨]', '[代領]',
     '網購湊單', '湊免運', '包裹代領', '超商取貨', '待領包裹', '取貨清單',
+    '領包裹', '取包裹', '拿包裹', '代領包裹', '超商代領', '超商取貨',
     '蝦皮', 'shopee', '酷澎', 'coupang', 'momo', 'pchome', '淘寶', '店到店',
   ];
   if (parcelKeywords.some(kw => text.includes(kw))) {
@@ -172,7 +173,7 @@ export function isGroupOrderMemo(title?: string, content?: string): boolean {
     '【採買】', '【補貨】', '[採買]', '[補貨]',
     '【我要買】', '[我要買]', '【+我要買】', '[+我要買]',
     '我要買', '+我要買', '＋我要買', '追加補貨', '採買補貨',
-    '賣場：', '賣場:', '超市：', '超市:',
+    '賣場：', '賣場:', '超市：', '超市:', '超商：', '超商:', '店家：', '店家:', '平台：', '平台:',
     '📦 網購湊單', '📦 包裹代領', '📦 網購', '📦 包裹', '📦 取貨', '📦 湊免運',
     '【網購】', '【湊單】', '【湊免運】', '【包裹】', '【取貨】', '【代領】',
     '[網購]', '[湊單]', '[湊免運]', '[包裹]', '[取貨]', '[代領]',
@@ -189,17 +190,12 @@ export function isGroupOrderMemo(title?: string, content?: string): boolean {
     if (combined.includes(kw.toLowerCase())) return true;
   }
 
-  // 3. 內文若包含知名賣場、超商或平台，且含有待辦方框清單，自動識別為採買/取貨看板
-  const hasChecklist = /^[-*]?\s*\[([ xX✓])\]/m.test(c);
-  if (hasChecklist) {
-    const shoppingPlaces = [
-      '好市多', 'costco', '全聯', '家樂福', '大潤發', '愛買', '美廉社',
-      '酷澎', 'coupang', '蝦皮', 'shopee', 'momo', 'pchome', '淘寶',
-      '7-11', '711', '全家取貨', '全家包裹',
-    ];
-    if (shoppingPlaces.some(place => combined.includes(place))) {
-      return true;
-    }
+  // 3. 一般日常生活記事嚴格防呆：若標題只是一般備忘名詞且無上述明確開團標籤，絕不因內文待辦隨口提到超商/賣場而誤判
+  const genericMemoTitles = [
+    '生活記事', '生活備忘', '日常備忘', '日常記事', '個人備忘', '個人記事', '隨手記', '隨手筆記', '代辦提醒', '待辦事項', '待辦清單', '備忘錄',
+  ];
+  if (genericMemoTitles.some(gt => t.includes(gt))) {
+    return false;
   }
 
   // 4. 標題語意關鍵字組合 (必須出現在標題中)
@@ -215,7 +211,26 @@ export function isGroupOrderMemo(title?: string, content?: string): boolean {
     '投票', '決策',
   ];
 
-  return titleKeywords.some(kw => t.includes(kw));
+  if (titleKeywords.some(kw => t.includes(kw))) {
+    return true;
+  }
+
+  // 5. 若無明確標題，僅當內文非待辦行之首行主題明确為賣場/電商，且含有待辦清單時才判定 (絕不在待辦子項目中泛搜)
+  const firstLine = (c.split('\n')[0] || '').trim();
+  const isFirstLineChecklist = /^[-*]?\s*\[([ xX✓])\]/.test(firstLine);
+  if (!isFirstLineChecklist && firstLine) {
+    const shoppingPlaces = [
+      '好市多', 'costco', '全聯', '家樂福', '大潤發', '愛買', '美廉社',
+      '酷澎', 'coupang', '蝦皮', 'shopee', 'momo', 'pchome', '淘寶',
+      '7-11', '711', '全家取貨', '全家包裹',
+    ];
+    if (shoppingPlaces.some(place => firstLine.includes(place))) {
+      const hasChecklist = /^[-*]?\s*\[([ xX✓])\]/m.test(c);
+      if (hasChecklist) return true;
+    }
+  }
+
+  return false;
 }
 
 /**
