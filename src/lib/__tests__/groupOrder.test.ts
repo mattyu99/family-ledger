@@ -456,6 +456,11 @@ describe('groupOrder 工具庫單元測試', () => {
       expect(isRestockPoolMemo('🏠 家中缺貨', '- [ ] 兒童牙膏')).toBe(true);
       expect(isRestockPoolMemo('生活備忘', '[🏠 家中缺貨] 衛生紙快用完了')).toBe(true);
       expect(isGroupOrderMemo('🏠 家中缺貨', '- [ ] 兒童牙膏')).toBe(false);
+
+      // 防呆測試：若僅在內文提及缺貨字眼（如問題反映記事），絕不誤判為缺貨池
+      expect(isRestockPoolMemo('問題反映', '- [ ] 開團或投票要有截止時間\n- [ ] 家中缺貨可以有多則嗎？採買時如何決定帶入哪一個？')).toBe(false);
+      expect(isRestockPoolMemo('工作待辦', '- [ ] 詢問家中缺貨進度')).toBe(false);
+      expect(isRestockPoolMemo('日常生活', '[問題反映]\n- [ ] 開團要有截止時間\n- [ ] 家中缺貨問題')).toBe(false);
     });
 
     it('extractPendingRestockItems 能同時萃取待辦清單與純文字缺貨項目，並過濾已打勾或已辦妥記事', () => {
@@ -486,6 +491,15 @@ describe('groupOrder 工具庫單元測試', () => {
           type: 'memo',
           is_settled: false,
           note: `[📌 待辦清單] 繳水電費`,
+        },
+        {
+          id: 'memo-feedback',
+          type: 'memo',
+          is_settled: false,
+          category: { name: '問題反映' },
+          note: `[問題反映]
+- [ ] 開團或投票要有截止時間
+- [ ] 家中缺貨可以有多則嗎？採買時如何決定帶入哪一個？`,
         },
       ];
 

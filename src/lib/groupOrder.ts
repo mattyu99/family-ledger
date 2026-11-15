@@ -1373,11 +1373,12 @@ export function createGroupOrderUpdatePushNotification(params: {
 
 /**
  * 判斷一則生活記事是否為「🏠 家中缺貨／待補貨隨手記」
+ * 注意：僅檢查標題、分類名稱、開頭前綴標籤或第一行主題，嚴禁全內文泛搜，避免一般記事（如問題反映、工作待辦）因內文提及而誤判
  */
 export function isRestockPoolMemo(title?: string, content?: string): boolean {
   const t = (title || '').trim().toLowerCase();
-  const c = (content || '').trim().toLowerCase();
-  const combined = `${t}\n${c}`;
+  const c = (content || '').trim();
+  if (!t && !c) return false;
 
   const restockKeywords = [
     '🏠 家中缺貨',
@@ -1387,10 +1388,48 @@ export function isRestockPoolMemo(title?: string, content?: string): boolean {
     '缺貨登記',
     '缺貨池',
     '待補貨',
+    '缺貨待補',
     '【缺貨】',
     '[缺貨]',
+    '【待補】',
+    '[待補]',
   ];
-  return restockKeywords.some(kw => combined.includes(kw.toLowerCase()));
+
+  // 1. 若標題 / 分類名稱已直接命中缺貨關鍵字
+  if (restockKeywords.some(kw => t.includes(kw.toLowerCase()))) {
+    return true;
+  }
+
+  // 2. 檢查內文的第一行或開頭標籤
+  const firstLine = c.split('\n')[0]?.trim() || '';
+  if (!firstLine) return false;
+
+  // 2.1 檢查開頭標籤，如 [🏠 家中缺貨]、[待補貨]、[缺貨] 等
+  const tagMatch = firstLine.match(/^[\[［【]([^\[\]［］【】]{1,20})[\]］】]/);
+  if (tagMatch) {
+    const tagContent = tagMatch[1].trim().toLowerCase();
+    if (restockKeywords.some(kw => tagContent.includes(kw.toLowerCase().replace(/[\[\]［］【】]/g, '')))) {
+      return true;
+    }
+  }
+
+  // 2.2 若第一行本身就是待辦項目（如 - [ ] ...），則它不是整篇主題標題，不可作為全篇主題判定
+  if (/^[-*]?\s*\[[ xX✓]\]/.test(firstLine)) {
+    return false;
+  }
+
+  // 2.3 檢查第一行純文字主題是否以缺貨關鍵字開頭
+  const cleanFirstLine = firstLine.replace(/^[\[［【][^\[\]［］【】]{1,20}[\]］】]\s*/, '').toLowerCase();
+  if (
+    restockKeywords.some(kw => {
+      const cleanKw = kw.toLowerCase().replace(/[\[\]［］【】]/g, '');
+      return cleanFirstLine.startsWith(cleanKw);
+    })
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -1408,7 +1447,7 @@ export function extractPendingRestockItems(transactions: any[] = []): PendingRes
 
     // 簡易剝除開頭標籤以檢查標題
     const tagMatch = rawNote.match(/^[\[［【]([^\[\]［］【】\n]{1,16})[\]］】]/);
-    const memoTitle = tagMatch ? tagMatch[1].trim() : (tx.category?.name || '家中缺貨');
+    const memoTitle = tagMatch ? tagMatch[1].trim() : (tx.category?.name || '');
     if (!isRestockPoolMemo(memoTitle, rawNote)) continue;
 
     const lines = rawNote.split('\n');
@@ -1428,7 +1467,7 @@ export function extractPendingRestockItems(transactions: any[] = []): PendingRes
             seenKeys.add(dedupKey);
             results.push({
               memoId: tx.id,
-              memoTitle,
+              memoTitle: memoTitle || '家中缺貨',
               lineIndex: currentIdx,
               rawText: trimmed.replace(/^[-*]?\s*\[[ xX✓]\]\s*/, '').trim(),
               memberName: parsed.memberName,
@@ -1456,7 +1495,7 @@ export function extractPendingRestockItems(transactions: any[] = []): PendingRes
             seenKeys.add(dedupKey);
             results.push({
               memoId: tx.id,
-              memoTitle,
+              memoTitle: memoTitle || '家中缺貨',
               lineIndex: -1,
               rawText: tl,
               memberName: parsed.memberName,

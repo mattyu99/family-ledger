@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.16';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.16 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 41;
+export const APP_BUILD_REVISION = 42;
 
 // 完整版本字串 (例如 "1.0.16.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -23,7 +23,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
     date: '2026-11-11 ~ 2026-11-15',
     title: '家庭民主投票、家事分工懸賞、網購湊單包裹、採買補貨',
     highlights: [
-      '🛒 家中缺貨自由挑選匯入推車：發起採買可自由打勾挑選本次要買的品項，未買項目自動保留於缺貨池，全數買齊智慧自動結案。',
+      '🛒 家中缺貨自由挑選匯入與精準識別：採買支援彈窗自由勾選待買品項與精準結案，缺貨池嚴格辨識標題與專屬標籤，徹底杜絕一般討論待辦誤判。',
       '🛒 賣場採買看板全方位智慧感知：標題自訂我要買或內文提及各大賣場即刻自動喚醒推車看板，隨手記缺貨一鍵匯入買齊連動記帳。',
       '🗳️ 投票看板瘦身與平滑進度填充：進度條背景化釋放雙倍視野，子項目回覆分離為獨立對話氣泡，緊湊名單排版一屏縱覽更多方案。',
       '⏰ 開團與投票主揪權限與截止防呆：截止自動鎖定追加與投票，順延時間專屬發起人掌控，逾期拍板定案依然流暢不受限。',
