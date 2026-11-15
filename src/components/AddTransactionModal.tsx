@@ -52,6 +52,8 @@ import {
   mergeRestockItemsIntoNote,
   setOrderDeadlineInNote,
   extractOrderDeadline,
+  PendingRestockItem,
+  applyRestockImportToSourceMemos,
 } from '../lib/groupOrder';
 import {
   CalendarSystem,
@@ -75,6 +77,7 @@ import { checkInvoiceWinning } from '../lib/lottery';
 import { DatePickerModal } from './DatePickerModal';
 import { InvoiceScannerModal } from './InvoiceScannerModal';
 import { ImageViewerModal } from './ImageViewerModal';
+import { RestockPickerModal } from './RestockPickerModal';
 import { uploadReceiptPhoto } from '../lib/receiptStorage';
 import { DEMO_USER_DAD } from '../constants/ledgerDefaults';
 
@@ -302,6 +305,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [memoReminderTarget, setMemoReminderTarget] = useState<'family' | 'personal'>('family');
   const [memoIsPinned, setMemoIsPinned] = useState<boolean>(false);
   const [importedRestockMemoIds, setImportedRestockMemoIds] = useState<string[]>([]);
+  const [importedRestockItems, setImportedRestockItems] = useState<PendingRestockItem[]>([]);
+  const [isRestockPickerVisible, setIsRestockPickerVisible] = useState<boolean>(false);
   const [reminderPickerInitialMode, setReminderPickerInitialMode] = useState<CalendarSystem>('solar');
   const [reminderDatePickerVisible, setReminderDatePickerVisible] = useState<boolean>(false);
   const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
@@ -1336,7 +1341,20 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         });
       }
 
-      if (createdTxId && importedRestockMemoIds.length > 0) {
+      if (createdTxId && importedRestockItems.length > 0) {
+        const plans = applyRestockImportToSourceMemos(importedRestockItems, transactions);
+        for (const plan of plans) {
+          if (plan.memoId && plan.memoId !== linkedMemoId) {
+            await updateTransaction(plan.memoId, {
+              note: plan.updatedNote,
+              is_settled: plan.shouldSettle,
+              completed_by: plan.shouldSettle ? targetPayer : undefined,
+              completion_note: plan.completionNote,
+              linked_transaction_id: plan.shouldSettle ? createdTxId : undefined,
+            });
+          }
+        }
+      } else if (createdTxId && importedRestockMemoIds.length > 0) {
         for (const restockMemoId of importedRestockMemoIds) {
           if (restockMemoId && restockMemoId !== linkedMemoId) {
             await updateTransaction(restockMemoId, {
@@ -1348,6 +1366,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           }
         }
       }
+
+      setImportedRestockItems([]);
+      setImportedRestockMemoIds([]);
 
       setAmount('');
       setMerchant('');
@@ -1854,8 +1875,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   )}
                 </View>
 
-                {/* 🏠 家中缺貨隨手記一鍵匯入提示卡 (僅在發起賣場採買或網購湊單時自動感應現身) */}
-                {(pendingRestockForCurrentMemo.length > 0 || importedRestockMemoIds.length > 0) && (
+                {/* 🏠 家中缺貨隨手記挑選匯入提示卡 (僅在發起賣場採買或網購湊單時自動感應現身) */}
+                {(pendingRestockForCurrentMemo.length > 0 || importedRestockItems.length > 0 || importedRestockMemoIds.length > 0) && (
                   <View style={styles.restockImportCard}>
                     {pendingRestockForCurrentMemo.length > 0 ? (
                       <>
@@ -1866,16 +1887,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                           <TouchableOpacity
                             style={styles.restockImportBtn}
                             activeOpacity={0.75}
-                            onPress={() => {
-                              const res = mergeRestockItemsIntoNote(note, pendingRestockForCurrentMemo);
-                              if (res.addedCount > 0) {
-                                setNote(res.updatedNote);
-                                setImportedRestockMemoIds(prev => Array.from(new Set([...prev, ...res.affectedMemoIds])));
-                              }
-                            }}
+                            onPress={() => setIsRestockPickerVisible(true)}
                           >
                             <Text style={styles.restockImportBtnText} maxFontSizeMultiplier={1.08}>
-                              📥 一鍵匯入本次清單
+                              📥 挑選匯入推車
                             </Text>
                           </TouchableOpacity>
                         </View>
@@ -1885,7 +1900,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       </>
                     ) : (
                       <Text style={styles.restockImportDoneText} maxFontSizeMultiplier={1.08}>
-                        ✅ 已將家中缺貨項目匯入清單（儲存後將自動把原缺貨筆記標記為已匯入結案）
+                        ✅ 已挑選並匯入缺貨品項（儲存後將自動將匯入項目標記已買）
                       </Text>
                     )}
                   </View>
@@ -3833,6 +3848,20 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     onDelete={() => {
       setReceiptPhotoUri('');
       setReceiptPhotoBase64('');
+    }}
+  />
+
+  <RestockPickerModal
+    visible={isRestockPickerVisible}
+    pendingItems={pendingRestockForCurrentMemo}
+    onClose={() => setIsRestockPickerVisible(false)}
+    onConfirm={(selected) => {
+      const res = mergeRestockItemsIntoNote(note, selected);
+      if (res.addedCount > 0) {
+        setNote(res.updatedNote);
+        setImportedRestockItems(prev => [...prev, ...selected]);
+        setImportedRestockMemoIds(prev => Array.from(new Set([...prev, ...res.affectedMemoIds])));
+      }
     }}
   />
 </Modal>

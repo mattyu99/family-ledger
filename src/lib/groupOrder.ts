@@ -1510,6 +1510,87 @@ export function mergeRestockItemsIntoNote(
   };
 }
 
+export interface RestockMemoUpdatePlan {
+  memoId: string;
+  updatedNote: string;
+  shouldSettle: boolean;
+  completionNote?: string;
+}
+
+/**
+ * 當缺貨品項被選定並匯入採買清單時，精準更新來源缺貨隨手記：
+ * 1. 將被選中的品項在原筆記中標記為已完成 [x]
+ * 2. 檢查該筆記是否還有其他未完成待辦：
+ *    - 若所有項目皆已完成，將 shouldSettle 設為 true（自動結案歸檔）
+ *    - 若尚有其他品項未買（如好市多品項留給下次），則保持 shouldSettle: false，更新筆記保留未買項目
+ */
+export function applyRestockImportToSourceMemos(
+  importedItems: PendingRestockItem[],
+  allTransactions: any[]
+): RestockMemoUpdatePlan[] {
+  if (!Array.isArray(importedItems) || importedItems.length === 0) return [];
+
+  // 依 memoId 分組已匯入的項目
+  const importedByMemoId = new Map<string, PendingRestockItem[]>();
+  for (const item of importedItems) {
+    if (!item.memoId) continue;
+    const list = importedByMemoId.get(item.memoId) || [];
+    list.push(item);
+    importedByMemoId.set(item.memoId, list);
+  }
+
+  const plans: RestockMemoUpdatePlan[] = [];
+
+  importedByMemoId.forEach((items, memoId) => {
+    const tx = allTransactions.find(t => t.id === memoId);
+    if (!tx || !tx.note) return;
+
+    const rawNote = String(tx.note);
+    const lines = rawNote.split('\n');
+    const importedItemNames = new Set(items.map(i => i.itemName.toLowerCase()));
+
+    let hasChecklist = false;
+    let anyIncompleteRemaining = false;
+
+    const newLines = lines.map(line => {
+      const match = line.match(/^([-*]?\s*)\[([ xX✓])\](\s*.+)$/);
+      if (match) {
+        hasChecklist = true;
+        const prefix = match[1];
+        const status = match[2];
+        const rest = match[3];
+
+        const isDone = ['x', 'X', '✓'].includes(status);
+        const parsed = parseGroupOrderItemLine(line, 0);
+        const nameKey = (parsed?.itemName || '').toLowerCase();
+
+        if (importedItemNames.has(nameKey)) {
+          // 將被匯入的項目標記為已完成 [x]
+          return `${prefix}[x]${rest}`;
+        } else if (!isDone) {
+          anyIncompleteRemaining = true;
+        }
+        return line;
+      }
+
+      return line;
+    });
+
+    const updatedNote = newLines.join('\n');
+    // 若原本有 checklist 且全部項目都已經完成，則標記結案；若還有未完成品項則不結案
+    const shouldSettle = hasChecklist ? !anyIncompleteRemaining : true;
+
+    plans.push({
+      memoId,
+      updatedNote,
+      shouldSettle,
+      completionNote: shouldSettle ? '缺貨品項已全數匯入採買清單' : undefined,
+    });
+  });
+
+  return plans;
+}
+
 /**
  * 根據開團或生活待辦統計摘要，產生親切自然的記帳結算備註文字
  * 徹底告別包含 Markdown 待辦語法或中繼代碼的原始碼亂碼

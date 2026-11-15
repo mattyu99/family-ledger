@@ -13,6 +13,7 @@ import {
   isRestockPoolMemo,
   extractPendingRestockItems,
   mergeRestockItemsIntoNote,
+  applyRestockImportToSourceMemos,
   updateGroupOrderItemMember,
   updateGroupOrderItem,
   deleteGroupOrderItem,
@@ -534,6 +535,47 @@ describe('groupOrder 工具庫單元測試', () => {
       expect(merged.affectedMemoIds).toEqual(['m1']);
       expect(merged.updatedNote).toContain('- [ ] 洋洋：兒童牙膏（草莓口味）');
       expect(merged.updatedNote).not.toContain('鮮奶（缺貨匯入）');
+    });
+
+    it('applyRestockImportToSourceMemos 支援部分挑選匯入：已匯入項目打勾，未匯入品項繼續保留在缺貨池不結案', () => {
+      const mockTxs = [
+        {
+          id: 'memo-home-restock',
+          type: 'memo',
+          is_settled: false,
+          note: `[🏠 家中缺貨]
+- [ ] 鮮奶
+- [ ] 衛生紙
+- [ ] 好市多大包牛排`,
+        },
+      ];
+
+      // 使用者在全聯採買時，挑選只帶入「鮮奶」與「衛生紙」（未勾選好市多牛排）
+      const selectedItems: any[] = [
+        { memoId: 'memo-home-restock', itemName: '鮮奶' },
+        { memoId: 'memo-home-restock', itemName: '衛生紙' },
+      ];
+
+      const plans = applyRestockImportToSourceMemos(selectedItems, mockTxs);
+      expect(plans.length).toBe(1);
+      const plan = plans[0];
+      expect(plan.memoId).toBe('memo-home-restock');
+      expect(plan.updatedNote).toContain('- [x] 鮮奶');
+      expect(plan.updatedNote).toContain('- [x] 衛生紙');
+      expect(plan.updatedNote).toContain('- [ ] 好市多大包牛排');
+      // 因為還有牛排未買，所以不結案
+      expect(plan.shouldSettle).toBe(false);
+
+      // 當下次去好市多，將剩下的「好市多大包牛排」也帶入推車時
+      const remainingItems: any[] = [
+        { memoId: 'memo-home-restock', itemName: '好市多大包牛排' },
+      ];
+      const updatedTx = [{ ...mockTxs[0], note: plan.updatedNote }];
+      const finalPlans = applyRestockImportToSourceMemos(remainingItems, updatedTx);
+      expect(finalPlans.length).toBe(1);
+      expect(finalPlans[0].updatedNote).toContain('- [x] 好市多大包牛排');
+      // 全部品項買齊匯入，自動圓滿結案！
+      expect(finalPlans[0].shouldSettle).toBe(true);
     });
   });
 
