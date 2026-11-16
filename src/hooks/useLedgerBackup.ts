@@ -185,6 +185,7 @@ export function useLedgerBackup({
         custom_avatar: m.custom_avatar,
         mof_barcode: m.mof_barcode,
         mof_sync_enabled: m.mof_sync_enabled,
+        mof_last_synced_at: m.mof_last_synced_at,
       })),
       categories: categories.map(c => ({
         id: c.id,
@@ -217,8 +218,10 @@ export function useLedgerBackup({
               reminderDate: t.reminder_date,
               reminderCalendar: t.reminder_calendar,
               reminderRepeat: t.reminder_repeat,
+              reminderTarget: t.reminder_target,
               completedBy: t.completed_by,
               completedAt: t.completed_at,
+              isPinned: t.is_pinned,
             }))
           : t.merchant;
 
@@ -232,6 +235,7 @@ export function useLedgerBackup({
           reminder_calendar: t.reminder_calendar,
           reminder_repeat: t.reminder_repeat,
           reminder_target: t.reminder_target,
+          is_pinned: t.is_pinned,
           completed_by: t.completed_by,
           completed_at: t.completed_at,
           completion_note: t.completion_note,
@@ -430,6 +434,9 @@ export function useLedgerBackup({
               if (bm.mof_sync_enabled !== undefined && existing.mof_sync_enabled === undefined) {
                 existing.mof_sync_enabled = bm.mof_sync_enabled;
               }
+              if (bm.mof_last_synced_at && !existing.mof_last_synced_at) {
+                existing.mof_last_synced_at = bm.mof_last_synced_at;
+              }
             } else {
               const isDemoConst = backupId?.startsWith('20000000');
               const targetId = (backupId && isValidUUID(backupId) && !isCrossLedgerRestore && (!isRealCloud || !isDemoConst))
@@ -446,6 +453,7 @@ export function useLedgerBackup({
                 custom_avatar: bm.custom_avatar || null,
                 mof_barcode: bm.mof_barcode || undefined,
                 mof_sync_enabled: bm.mof_sync_enabled !== undefined ? bm.mof_sync_enabled : undefined,
+                mof_last_synced_at: bm.mof_last_synced_at || undefined,
               };
               newMemberList.push(restoredProf);
               if (backupId) {
@@ -484,6 +492,9 @@ export function useLedgerBackup({
               if (bm.mof_sync_enabled !== undefined && existing.mof_sync_enabled === undefined) {
                 existing.mof_sync_enabled = bm.mof_sync_enabled;
               }
+              if (bm.mof_last_synced_at && !existing.mof_last_synced_at) {
+                existing.mof_last_synced_at = bm.mof_last_synced_at;
+              }
             } else {
               const isDemoConst = backupId?.startsWith('20000000');
               const targetId = (backupId && isValidUUID(backupId) && !isCrossLedgerRestore && (!isRealCloud || !isDemoConst))
@@ -500,6 +511,7 @@ export function useLedgerBackup({
                 custom_avatar: bm.custom_avatar || null,
                 mof_barcode: bm.mof_barcode || undefined,
                 mof_sync_enabled: bm.mof_sync_enabled !== undefined ? bm.mof_sync_enabled : undefined,
+                mof_last_synced_at: bm.mof_last_synced_at || undefined,
               };
               nextMembers.push(newProf);
               if (backupId) {
@@ -1101,11 +1113,22 @@ export function useLedgerBackup({
             }
             // 🌟 生活待辦與提醒延伸欄位寫入雲端
             if (t.reminder_date) p.reminder_date = t.reminder_date;
+            if (t.reminder_calendar) p.reminder_calendar = t.reminder_calendar;
+            if (t.reminder_repeat) p.reminder_repeat = t.reminder_repeat;
             if (t.reminder_target) p.reminder_target = t.reminder_target;
+            if (t.is_pinned !== undefined) p.is_pinned = t.is_pinned;
             if (t.completed_by && isValidUUID(t.completed_by)) p.completed_by = t.completed_by;
             if (t.completed_at) p.completed_at = t.completed_at;
             if (t.completion_note) p.completion_note = t.completion_note;
             if (t.linked_transaction_id && isValidUUID(t.linked_transaction_id)) p.linked_transaction_id = t.linked_transaction_id;
+
+            // 🧾 統一發票延伸明細寫入雲端
+            if (t.invoice_number) p.invoice_number = t.invoice_number;
+            if (t.invoice_period) p.invoice_period = t.invoice_period;
+            if (t.invoice_random_code) p.invoice_random_code = t.invoice_random_code;
+            if (t.invoice_status) p.invoice_status = t.invoice_status;
+            if (t.invoice_prize_amount !== undefined) p.invoice_prize_amount = t.invoice_prize_amount;
+            if (t.invoice_prize_name) p.invoice_prize_name = t.invoice_prize_name;
             return p;
           });
 
@@ -1113,16 +1136,25 @@ export function useLedgerBackup({
             const batch = txsToUpsert.slice(i, i + 500);
             const { error: batchErr } = await supabase.from('transactions').upsert(batch);
             if (batchErr) {
-              // 若因資料庫尚未加新欄位 (42703)，移除生活備忘延伸欄位後重試
+              // 若因資料庫尚未加新欄位 (42703)，移除生活備忘與發票延伸欄位後重試
               if (batchErr.code === '42703' || batchErr.message?.includes('column')) {
                 const compatBatch = batch.map((item: any) => {
                   const copy = { ...item };
                   delete copy.reminder_date;
+                  delete copy.reminder_calendar;
+                  delete copy.reminder_repeat;
                   delete copy.reminder_target;
+                  delete copy.is_pinned;
                   delete copy.completed_by;
                   delete copy.completed_at;
                   delete copy.completion_note;
                   delete copy.linked_transaction_id;
+                  delete copy.invoice_number;
+                  delete copy.invoice_period;
+                  delete copy.invoice_random_code;
+                  delete copy.invoice_status;
+                  delete copy.invoice_prize_amount;
+                  delete copy.invoice_prize_name;
                   return copy;
                 });
                 const { error: compatErr } = await supabase.from('transactions').upsert(compatBatch);
@@ -1134,6 +1166,33 @@ export function useLedgerBackup({
               }
             }
           }
+
+          // 同步還原多人分攤明細至 Supabase 雲端 (若有分攤記錄)
+          const allSplitsToSync: any[] = [];
+          for (const st of sanitizedTxs) {
+            if (Array.isArray(st.splits) && st.splits.length > 0) {
+              for (const sp of st.splits) {
+                allSplitsToSync.push({
+                  id: sp.id,
+                  transaction_id: sp.transaction_id,
+                  user_id: sp.user_id,
+                  split_amount: sp.split_amount,
+                  is_settled: sp.is_settled ?? false,
+                  settled_at: sp.settled_at || null,
+                });
+              }
+            }
+          }
+          if (allSplitsToSync.length > 0) {
+            try {
+              for (let i = 0; i < allSplitsToSync.length; i += 500) {
+                const splitBatch = allSplitsToSync.slice(i, i + 500);
+                await supabase.from('transaction_splits').upsert(splitBatch);
+              }
+            } catch (splitErr) {
+              console.warn('雲端還原同步分攤明細失敗 (非阻斷):', splitErr);
+            }
+          }
         } catch (cloudErr) {
           console.warn('雲端還原同步交易失敗:', cloudErr);
         }
@@ -1143,11 +1202,22 @@ export function useLedgerBackup({
       const stmtsFromBackup = backup.statement_attachments || backup.statements;
       if (Array.isArray(stmtsFromBackup) && stmtsFromBackup.length > 0) {
         try {
+          const mappedStmts: StatementFile[] = stmtsFromBackup.map((bs: StatementFile) => {
+            if (!bs) return bs;
+            const mappedCardId = (bs.cardId && accountIdMap[bs.cardId]) ? accountIdMap[bs.cardId] : bs.cardId;
+            const mappedTargetId = (bs.targetId && accountIdMap[bs.targetId]) ? accountIdMap[bs.targetId] : (mappedCardId || bs.targetId);
+            return {
+              ...bs,
+              cardId: mappedCardId,
+              targetId: mappedTargetId,
+            };
+          });
+
           let mergedStatements = [...cachedStatementsRef.current];
           if (mode === 'overwrite') {
-            mergedStatements = stmtsFromBackup;
+            mergedStatements = mappedStmts;
           } else {
-            stmtsFromBackup.forEach((bs: StatementFile) => {
+            mappedStmts.forEach((bs: StatementFile) => {
               if (!bs || !bs.path) return;
               if (!mergedStatements.some(s => s.path === bs.path)) {
                 mergedStatements.push(bs);

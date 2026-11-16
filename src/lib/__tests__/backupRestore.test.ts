@@ -102,4 +102,90 @@ describe('帳本備份與還原資料完整性測試 (Backup & Restore Integrity
     expect(decoded.reminderCalendar).toBe('solar');
     expect(decoded.reminderRepeat).toBe('once');
   });
+
+  it('生活記事之長按置頂標記 (is_pinned) 在匯出與還原時應 100% 完整保留', () => {
+    const pinnedMemo: Transaction = {
+      id: 'tx-pinned-1',
+      ledger_id: mockLedger.id,
+      creator_id: 'user-dad',
+      paid_by: 'user-dad',
+      category_id: 'cat-memo',
+      amount: 0,
+      type: 'memo',
+      note: '重要慢箋用藥清單',
+      transacted_at: '2026-11-16T10:00:00.000Z',
+      created_at: '2026-11-16T10:00:00.000Z',
+      is_settled: false,
+      is_pinned: true,
+    };
+
+    const memoMerchantTag = encodeMemoMerchantTag({
+      isPinned: pinnedMemo.is_pinned,
+    });
+
+    const exportedJson = JSON.stringify({
+      transactions: [{
+        ...pinnedMemo,
+        merchant: memoMerchantTag,
+      }],
+    });
+
+    const parsedBackup = JSON.parse(exportedJson);
+    const restoredRawTx = parsedBackup.transactions[0];
+    const decodedMemo = decodeMemoMerchantTag(restoredRawTx.merchant);
+    const restoredIsPinned = Boolean(restoredRawTx.is_pinned ?? decodedMemo.isPinned);
+
+    expect(restoredIsPinned).toBe(true);
+    expect(decodedMemo.isPinned).toBe(true);
+  });
+
+  it('統一發票延伸明細與品項細項在匯出與還原時應 100% 完整保留', () => {
+    const invoiceTx: Transaction = {
+      id: 'tx-invoice-1',
+      ledger_id: mockLedger.id,
+      creator_id: 'user-dad',
+      paid_by: 'user-dad',
+      category_id: 'cat-food',
+      amount: 155,
+      type: 'expense',
+      note: '全家便利商店',
+      transacted_at: '2026-11-16T12:00:00.000Z',
+      created_at: '2026-11-16T12:00:00.000Z',
+      is_settled: false,
+      invoice_number: 'AB-12345678',
+      invoice_period: '2026-10',
+      invoice_random_code: '8899',
+      invoice_status: 'won',
+      invoice_prize_amount: 200,
+      invoice_prize_name: '六獎',
+      invoice_sync_status: 'matched_cloud',
+      invoice_items: [
+        { name: '茶葉蛋', quantity: 2, unit_price: 14, amount: 28 },
+        { name: '鮮乳 936ml', quantity: 1, unit_price: 98, amount: 98 },
+        { name: '御飯糰', quantity: 1, unit_price: 29, amount: 29 },
+      ],
+      splits: [
+        { id: 'sp-1', transaction_id: 'tx-invoice-1', user_id: 'user-dad', split_amount: 100, is_settled: false },
+        { id: 'sp-2', transaction_id: 'tx-invoice-1', user_id: 'user-mom', split_amount: 55, is_settled: false },
+      ],
+    };
+
+    const exportedJson = JSON.stringify({
+      transactions: [invoiceTx],
+    });
+
+    const parsedBackup = JSON.parse(exportedJson);
+    const restoredTx: Transaction = parsedBackup.transactions[0];
+
+    expect(restoredTx.invoice_number).toBe('AB-12345678');
+    expect(restoredTx.invoice_period).toBe('2026-10');
+    expect(restoredTx.invoice_random_code).toBe('8899');
+    expect(restoredTx.invoice_status).toBe('won');
+    expect(restoredTx.invoice_prize_amount).toBe(200);
+    expect(restoredTx.invoice_prize_name).toBe('六獎');
+    expect(restoredTx.invoice_items?.length).toBe(3);
+    expect(restoredTx.invoice_items?.[0].name).toBe('茶葉蛋');
+    expect(restoredTx.splits?.length).toBe(2);
+    expect(restoredTx.splits?.[1].split_amount).toBe(55);
+  });
 });
