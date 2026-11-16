@@ -707,29 +707,39 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
         expect(healthCfg?.subjects).toEqual(['智爸', '瑩媽', '洋洋', '豆豆', '長輩', '全家']);
         expect(healthCfg?.tasks).toContain('早餐後藥');
 
-        // 3. 祭祀拜拜
-        const worshipCfg = detectMemoQuickBuilderConfig('[🙏 祭祀拜拜]');
+        // 3. 祭祀拜拜（依選中對象動態切換專屬禮俗供品）
+        const worshipCfg = detectMemoQuickBuilderConfig('[🙏 祭祀拜拜]', [], '神明');
         expect(worshipCfg?.domain).toBe('worship');
         expect(worshipCfg?.subjects).toContain('地基主');
         expect(worshipCfg?.tasks).toContain('三牲');
 
-        // 4. 家居修繕與汽機車定保
-        const homeCfg = detectMemoQuickBuilderConfig('[🏠 家居修繕]');
-        expect(homeCfg?.domain).toBe('home');
-        expect(homeCfg?.subjects).toContain('汽車');
-        expect(homeCfg?.tasks).toContain('換機油');
+        const diJiZhuCfg = detectMemoQuickBuilderConfig('[🙏 祭祀拜拜]', [], '地基主');
+        expect(diJiZhuCfg?.tasks).toContain('雞腿便當(不切)');
+
+        // 4. 家居修繕與汽機車定保（依選中設備動態聯動專屬保養項目，杜絕「除濕機驗車」等違和組合）
+        const carCfg = detectMemoQuickBuilderConfig('[🏠 家居修繕]', [], '汽車');
+        expect(carCfg?.domain).toBe('home');
+        expect(carCfg?.subjects).toContain('汽車');
+        expect(carCfg?.tasks).toContain('定期保養換機油');
+        expect(carCfg?.tasks).toContain('驗車');
+
+        const dehumidifierCfg = detectMemoQuickBuilderConfig('[🏠 家居修繕]', [], '除濕機');
+        expect(dehumidifierCfg?.tasks).toContain('倒水與清洗水箱');
+        expect(dehumidifierCfg?.tasks).toContain('清洗進風濾網');
+        expect(dehumidifierCfg?.tasks).not.toContain('驗車');
+        expect(dehumidifierCfg?.tasks).not.toContain('定期保養換機油');
 
         // 5. 出遊與返鄉防忘
-        const travelCfg = detectMemoQuickBuilderConfig('[✈️ 出國必備]');
+        const travelCfg = detectMemoQuickBuilderConfig('[✈️ 出國必備]', [], '小孩');
         expect(travelCfg?.domain).toBe('travel');
         expect(travelCfg?.subjects).toContain('小孩');
-        expect(travelCfg?.tasks).toContain('換洗衣物');
+        expect(travelCfg?.tasks).toContain('多套備用換洗衣物');
 
         // 6. 公司工作交辦與代墊報支
-        const workCfg = detectMemoQuickBuilderConfig('[💼 重要備忘]');
+        const workCfg = detectMemoQuickBuilderConfig('[💼 重要備忘]', [], '報支');
         expect(workCfg?.domain).toBe('work');
         expect(workCfg?.subjects).toContain('追蹤');
-        expect(workCfg?.tasks).toContain('廠商請款');
+        expect(workCfg?.tasks).toContain('計程車收據');
         expect(workCfg?.routines).toContain('索取公司統編發票');
 
         // 7. 一般採買或點餐不觸發此面板

@@ -1218,16 +1218,18 @@ export interface MemoQuickBuilderConfig {
   step3Label: string;
   subjects: string[];
   tasks: string[];
+  subjectTasksMap?: Record<string, string[]>;
   routines: string[];
 }
 
 /**
  * 依據當前記事標籤或內容，智慧感知並回傳對應情境的「三排點選式快選組裝面板」設定
- * 涵蓋：學校聯絡簿、健康用藥照護、居家與汽機車定保、祭祀拜拜供品、出遊防忘快檢、公司工作交辦與報支
+ * 支援依選中主詞 (selectedSubject) 精準聯動專屬的合理項目，徹底杜絕「除濕機驗車」等不合邏輯組合
  */
 export function detectMemoQuickBuilderConfig(
   noteText?: string,
-  memberNames?: string[]
+  memberNames?: string[],
+  selectedSubject?: string
 ): MemoQuickBuilderConfig | null {
   if (!noteText) return null;
 
@@ -1237,6 +1239,19 @@ export function detectMemoQuickBuilderConfig(
     noteText.includes('學校親子') ||
     noteText.includes('聯絡簿')
   ) {
+    const subjectTasksMap: Record<string, string[]> = {
+      國文: ['習作', '講義', '生字語詞本', '課文注釋', '成語造句', '默寫背誦', '作文學習單', '小考複習', '考卷訂正'],
+      英文: ['習作', '講義', '背單字', '課文默寫', '聽力練習', '文法學習單', '小考複習', '考卷訂正'],
+      數學: ['習作', '講義', '課本題目', '考卷訂正', '每日刷題', '小考複習', '帶圓規量角器'],
+      理化: ['習作', '講義', '實驗紀錄本', '公式週期表', '考卷訂正', '小考複習', '帶實驗衣'],
+      生物: ['習作', '講義', '實驗紀錄本', '圖表重點複習', '考卷訂正', '小考複習'],
+      歷史: ['習作', '講義', '年代重點統整', '考卷訂正', '小考複習'],
+      地理: ['習作', '講義', '地圖圖表統整', '考卷訂正', '小考複習'],
+      公民: ['習作', '講義', '重點觀念複習', '考卷訂正', '小考複習'],
+      社會: ['習作', '講義', '學習單', '考卷訂正', '小考複習'],
+      自然: ['習作', '講義', '實驗觀察紀錄', '考卷訂正', '小考複習'],
+    };
+    const activeSubj = selectedSubject && SCHOOL_SUBJECTS.includes(selectedSubject) ? selectedSubject : SCHOOL_SUBJECTS[0];
     return {
       domain: 'school',
       defaultTag: '🎒 學校親子',
@@ -1246,7 +1261,8 @@ export function detectMemoQuickBuilderConfig(
       step2LabelPrefix: '2. 點一下立即加入',
       step3Label: '3. 常態必備與簽名（點一下直接加入）：',
       subjects: SCHOOL_SUBJECTS,
-      tasks: SCHOOL_TASK_TYPES,
+      tasks: subjectTasksMap[activeSubj] || SCHOOL_TASK_TYPES,
+      subjectTasksMap,
       routines: SCHOOL_DAILY_ITEMS,
     };
   }
@@ -1263,6 +1279,13 @@ export function detectMemoQuickBuilderConfig(
       cleanMembers.length > 0
         ? [...cleanMembers, '長輩', '全家']
         : ['爸爸', '媽媽', '小孩', '長輩', '全家'];
+    const personalTasks = ['早餐後藥', '午餐後藥', '晚餐後藥', '睡前藥', '退燒藥', '量體溫', '點眼藥水', '塗藥膏', '洗鼻吸鼻', '益生菌'];
+    const familyTasks = ['補充常備醫藥箱', '買口罩與酒精快篩', '清洗寢具防塵蟎', '預約牙科洗牙', '預約流感疫苗'];
+    const subjectTasksMap: Record<string, string[]> = {};
+    for (const s of healthSubjects) {
+      subjectTasksMap[s] = s === '全家' ? familyTasks : personalTasks;
+    }
+    const activeSubj = selectedSubject && healthSubjects.includes(selectedSubject) ? selectedSubject : healthSubjects[0];
     return {
       domain: 'health',
       defaultTag: '🩺 健康用藥',
@@ -1272,8 +1295,9 @@ export function detectMemoQuickBuilderConfig(
       step2LabelPrefix: '2. 點一下立即加入',
       step3Label: '3. 就醫與慢箋常態準備（點一下直接加入）：',
       subjects: healthSubjects,
-      tasks: ['早餐後藥', '午餐後藥', '晚餐後藥', '睡前藥', '退燒藥', '量體溫', '點眼藥水', '塗藥膏', '洗鼻吸鼻', '益生菌'],
-      routines: ['帶健保卡', '空腹抽血', '領慢箋', '預約回診', '申請診斷書', '收據留存理賠', '買口罩快篩', '記錄體溫變化'],
+      tasks: subjectTasksMap[activeSubj] || personalTasks,
+      subjectTasksMap,
+      routines: ['帶健保卡', '空腹抽血', '領慢箋', '預約回診', '申請診斷書', '收據留存理賠', '記錄體溫變化'],
     };
   }
 
@@ -1282,16 +1306,28 @@ export function detectMemoQuickBuilderConfig(
     isMemoTagActive(noteText, '🙏 祭祀拜拜') ||
     noteText.includes('祭祀拜拜')
   ) {
+    const worshipSubjects = ['神明', '祖先', '地基主', '土地公', '床母', '普渡好兄弟', '天公'];
+    const subjectTasksMap: Record<string, string[]> = {
+      神明: ['三牲', '四果(奇數水果)', '鮮花一對', '清茶三杯', '發糕紅龜粿', '壽金與刈金', '甜食餅乾'],
+      祖先: ['家常菜餚', '白飯與湯品', '四果水果', '湯圓或應景節食', '清茶酒水', '刈金與銀紙', '傳統糕餅'],
+      地基主: ['雞腿便當(不切)', '滷蛋與青菜', '白飯兩碗與湯', '水果與飲料', '刈金與小銀', '矮桌向屋內擺放'],
+      土地公: ['麻糬與花生', '甜食餅乾與飲料', '四果水果', '三牲(初二/十六)', '土地公金'],
+      床母: ['麻油雞與油飯', '雞酒', '床母衣與刈金'],
+      普渡好兄弟: ['整箱泡麵與餅乾', '罐頭與耐放乾糧', '三牲與四果', '臉盆毛巾', '普渡旗與插香', '普渡金與更衣'],
+      天公: ['五果或四果', '鮮花與清茶', '發糕與壽桃麵線', '天公金與壽金', '齋菜六碗'],
+    };
+    const activeSubj = selectedSubject && worshipSubjects.includes(selectedSubject) ? selectedSubject : worshipSubjects[0];
     return {
       domain: 'worship',
       defaultTag: '🙏 祭祀拜拜',
       title: '🙏 祭祀拜拜供品快選',
-      subtitle: '先選祭拜對象，再點供品即自動列好準備清單',
+      subtitle: '先選祭拜對象，自動切換專屬禮俗供品',
       step1Label: '1. 點選祭拜對象',
       step2LabelPrefix: '2. 點一下立即加入',
       step3Label: '3. 祭拜流程與備品（點一下直接加入）：',
-      subjects: ['神明', '祖先', '地基主', '土地公', '床母', '普渡好兄弟', '天公'],
-      tasks: ['三牲', '四果', '金紙香燭', '雞腿便當', '發糕紅龜粿', '湯圓潤餅', '粽子月餅', '鮮花', '茶酒水', '餅乾飲料'],
+      subjects: worshipSubjects,
+      tasks: subjectTasksMap[activeSubj] || subjectTasksMap['神明'],
+      subjectTasksMap,
       routines: ['整理供桌與酒杯', '準備打火機與香', '擲筊請示順遂', '燒化金紙注意安全', '供品收整惜福'],
     };
   }
@@ -1303,16 +1339,29 @@ export function detectMemoQuickBuilderConfig(
     noteText.includes('家居修繕') ||
     noteText.includes('居家生活')
   ) {
+    const homeSubjects = ['汽車', '機車', '冷氣', '濾水器', '洗衣機', '除濕機', '空氣清淨機', '廚房衛浴'];
+    const subjectTasksMap: Record<string, string[]> = {
+      汽車: ['定期保養換機油', '驗車', '強制險與車險續保', '輪胎胎壓檢查', '電瓶與雨刷更換', '洗車打蠟', 'eTag儲值', '繳牌照燃料稅'],
+      機車: ['換機油與齒輪油', '排氣定檢', '強制險續保', '輪胎與煞車檢查', '換電瓶或火星塞', '洗車'],
+      冷氣: ['清洗濾網', '預約專人洗冷氣', '遙控器換電池', '排水管與冷媒檢查'],
+      濾水器: ['換第一道PP濾芯', '換活性碳濾芯', '換RO膜濾芯', '熱水膽檸檬酸除垢', '水質檢測'],
+      洗衣機: ['槽洗淨消毒', '清理棉絮濾網', '檢查進排水管', '擦拭門圈防黴'],
+      除濕機: ['倒水與清洗水箱', '清洗進風濾網', '外殼擦拭保養', '收納前內部風乾'],
+      空氣清淨機: ['吸塵清潔前置濾網', '更換HEPA濾網', '更換活性碳濾網', '擦拭灰塵感應器'],
+      廚房衛浴: ['抽油煙機洗濾網油杯', '流理台排水孔疏通', '浴室矽利康除黴', '蓮蓬頭除水垢', '熱水器換電池', '更換照明燈泡'],
+    };
+    const activeSubj = selectedSubject && homeSubjects.includes(selectedSubject) ? selectedSubject : homeSubjects[0];
     return {
       domain: 'home',
       defaultTag: '🏠 家居修繕',
       title: '🏠 居家與汽機車定保快選',
-      subtitle: '先選設備，再點保養項目，定期維護不漏接',
+      subtitle: '先選設備，自動切換該設備專屬保養項目',
       step1Label: '1. 點選設備或區域',
       step2LabelPrefix: '2. 點一下立即加入',
       step3Label: '3. 出門前安全與日常檢查（點一下直接加入）：',
-      subjects: ['汽車', '機車', '冷氣', '濾水器', '洗衣機', '除濕機', '空氣清淨機', '廚房衛浴'],
-      tasks: ['換機油', '驗車保險', '輪胎電瓶檢查', '洗濾網', '換濾芯', '槽洗淨', '除黴去垢', '換燈泡電池'],
+      subjects: homeSubjects,
+      tasks: subjectTasksMap[activeSubj] || subjectTasksMap['汽車'],
+      subjectTasksMap,
       routines: ['關瓦斯爐火', '關冷氣電扇', '鎖好門窗', '拔熱水瓶插頭', '倒垃圾廚餘', '繳水電瓦斯費', '領管理室包裹'],
     };
   }
@@ -1324,16 +1373,26 @@ export function detectMemoQuickBuilderConfig(
     noteText.includes('出國必備') ||
     noteText.includes('行程安排')
   ) {
+    const travelSubjects = ['大人', '小孩', '全家共用', '隨身背包', '車上備用'];
+    const subjectTasksMap: Record<string, string[]> = {
+      大人: ['身分證健保卡駕照', '換洗衣物與外套', '手機充電線與行充', '個人常備藥保健品', '隱形眼鏡保養液', '錢包現鈔信用卡'],
+      小孩: ['健保卡與兒童手冊', '多套備用換洗衣物', '水壺與環保餐具', '退燒藥與防蚊止癢膏', '繪本桌遊或安撫物', '隨身小零食濕紙巾'],
+      全家共用: ['多孔充電器延長線', '牙刷毛巾盥洗包', '防曬乳與防蚊液', '雨傘與輕便雨衣', '髒衣收納袋', '隨身急救醫藥包'],
+      隨身背包: ['行動電源與充電線', '面紙與酒精濕紙巾', '水壺與雨具', '薄外套(防冷氣)', '暈車藥與OK繃'],
+      車上備用: ['車充線與手機架', '遮陽簾與頸枕薄毯', '備用零錢與大鈔', '嘔吐袋與衛生紙', '野餐墊或折疊傘'],
+    };
+    const activeSubj = selectedSubject && travelSubjects.includes(selectedSubject) ? selectedSubject : travelSubjects[0];
     return {
       domain: 'travel',
       defaultTag: '✈️ 出國必備',
       title: '✈️ 出遊與返鄉防忘快選',
-      subtitle: '先選對象，再點行李物品，出門前逐一打勾不漏帶',
-      step1Label: '1. 點選攜帶對象',
+      subtitle: '先選對象或位置，自動切換專屬必帶清單',
+      step1Label: '1. 點選對象或位置',
       step2LabelPrefix: '2. 點一下立即加入',
       step3Label: '3. 出門前最後確認（點一下直接加入）：',
-      subjects: ['大人', '小孩', '全家共用', '隨身背包', '車上備用'],
-      tasks: ['換洗衣物', '保暖外套', '充電線與行充', '水壺與環保袋', '常備感冒腸胃藥', '牙刷盥洗包', '防蚊液與防曬', '雨具與拖鞋'],
+      subjects: travelSubjects,
+      tasks: subjectTasksMap[activeSubj] || subjectTasksMap['大人'],
+      subjectTasksMap,
       routines: ['護照身分證健保卡', '錢包現鈔與信用卡', '關瓦斯與總電源', '鎖門窗與倒廚餘', '確認訂房與車票憑證'],
     };
   }
@@ -1343,16 +1402,28 @@ export function detectMemoQuickBuilderConfig(
     isMemoTagActive(noteText, '💼 重要備忘') ||
     noteText.includes('重要備忘')
   ) {
+    const workSubjects = ['回覆', '追蹤', '準備', '確認', '提交', '催收', '報支'];
+    const subjectTasksMap: Record<string, string[]> = {
+      回覆: ['客戶報價詢價', '廠商合作信件', '主管交辦事項', '會議時間確認', '同仁詢問訊息'],
+      追蹤: ['客戶訂單簽回', '廠商出貨交期', '專案開發進度', '請款撥款進度', '跨部門協作進度'],
+      準備: ['週會與專案簡報', '客戶提案合約', '會議室與視訊連結', '展示樣品型錄', '月度績效報表'],
+      確認: ['合約條款審閱', '報價單金額毛利', '系統驗收測試', '活動出席名單', '發票抬頭與統編'],
+      提交: ['費用報支申請單', '請假出差申請', '專案結案報告', '採購請購單', '主管簽核文件'],
+      催收: ['客戶應收帳款', '廠商欠交發票憑證', '外包交付物原始檔', '未簽回合約正本'],
+      報支: ['高鐵大眾運輸車資', '計程車收據', '客戶餐敘統編發票', '辦公耗材代墊款', '出差住宿發票', '油資與停車費'],
+    };
+    const activeSubj = selectedSubject && workSubjects.includes(selectedSubject) ? selectedSubject : workSubjects[0];
     return {
       domain: 'work',
       defaultTag: '💼 重要備忘',
       title: '💼 工作交辦與代墊報支快選',
-      subtitle: '點選動作＋事項，秒速記下會議交辦與費用核銷',
+      subtitle: '先選動作，自動切換對應之商務交辦或報帳項目',
       step1Label: '1. 點選工作動作',
       step2LabelPrefix: '2. 點一下立即加入',
       step3Label: '3. 公司代墊與報帳核銷（點一下直接加入）：',
-      subjects: ['回覆', '追蹤', '準備', '確認', '提交', '催收', '報支'],
-      tasks: ['客戶報價', '會議簡報', '合約審閱', '專案進度', '廠商請款', '主管簽核', '發票統編', '出差車資住宿'],
+      subjects: workSubjects,
+      tasks: subjectTasksMap[activeSubj] || subjectTasksMap['回覆'],
+      subjectTasksMap,
       routines: ['索取公司統編發票', '填寫費用報支單', '送交財務簽核', '確認代墊款已入帳', '寄出客戶文件包裹', '備份重要工作檔案'],
     };
   }

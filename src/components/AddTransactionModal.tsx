@@ -268,8 +268,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [selectedSchoolSubject, setSelectedSchoolSubject] = useState<string>('國文');
 
   const activeQuickBuilder = React.useMemo(
-    () => detectMemoQuickBuilderConfig(note, (members || []).map(m => m.display_name)),
-    [note, members]
+    () => detectMemoQuickBuilderConfig(note, (members || []).map(m => m.display_name), selectedSchoolSubject),
+    [note, members, selectedSchoolSubject]
   );
 
   const effectiveQuickSubject = React.useMemo(() => {
