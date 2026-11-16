@@ -13,6 +13,7 @@ import {
 import { useTheme } from '../theme/ThemeContext';
 import { useLedger } from '../context/LedgerContext';
 import { MemoItemReply } from '../lib/memo';
+import { HorizontalScrollView } from './HorizontalScrollView';
 
 interface MemoItemReplyModalProps {
   visible: boolean;
@@ -194,7 +195,7 @@ export const MemoItemReplyModal: React.FC<MemoItemReplyModalProps> = ({
             <Text style={[styles.sectionLabel, isDark && { color: '#9CA3AF' }]}>
               以誰的身分回覆：
             </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.memberScrollRow}>
+            <HorizontalScrollView showsHorizontalScrollIndicator={false} style={styles.memberScrollRow}>
               {(members || []).map((m: any) => {
                 const cleanName = (m?.display_name || '').replace(/\s*[\(（]我[\)）]\s*$/, '').trim();
                 const isSelected = selectedMember === cleanName;
@@ -221,7 +222,7 @@ export const MemoItemReplyModal: React.FC<MemoItemReplyModalProps> = ({
                   </TouchableOpacity>
                 );
               })}
-            </ScrollView>
+            </HorizontalScrollView>
 
             {/* 回覆輸入框 */}
             <Text style={[styles.sectionLabel, isDark && { color: '#9CA3AF' }]}>

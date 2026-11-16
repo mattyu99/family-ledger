@@ -17,6 +17,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { useLedger } from '../context/LedgerContext';
 import { LiveToastBanner } from './LiveToastBanner';
 import { GroupOrderSummary, GroupOrderItem, MemberEarningSummary, VoteOptionSummary, getGroupOrderSettlementStats } from '../lib/groupOrder';
+import { HorizontalScrollView } from './HorizontalScrollView';
 
 interface GroupOrderCounterModalProps {
   visible: boolean;
@@ -1144,7 +1145,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
               <Text style={[styles.editLabel, isDark && { color: '#D1D5DB' }]}>
                 點餐人／負責人：
               </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.memberScrollRow}>
+              <HorizontalScrollView showsHorizontalScrollIndicator={false} style={styles.memberScrollRow}>
                 {members.map((member: any) => {
                   const isSelected = editMember === member.display_name;
                   return (
@@ -1163,7 +1164,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                     </TouchableOpacity>
                   );
                 })}
-              </ScrollView>
+              </HorizontalScrollView>
 
               {/* 2. 餐點品名 */}
               <Text style={[styles.editLabel, isDark && { color: '#D1D5DB' }]}>
@@ -1188,7 +1189,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                 placeholder="例如：微糖微冰、大杯、加辣"
                 placeholderTextColor={isDark ? '#6B7280' : '#9CA3AF'}
               />
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickTagsRow}>
+              <HorizontalScrollView showsHorizontalScrollIndicator={false} style={styles.quickTagsRow}>
                 {['微糖微冰', '無糖微冰', '無糖少冰', '全糖正常冰', '大杯', '中杯', '熱飲', '加辣', '不要辣', '不要蔥', '加飯'].map((tag) => (
                   <TouchableOpacity
                     key={tag}
@@ -1201,7 +1202,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                     <Text style={[styles.quickTagBtnText, isDark && { color: '#D1D5DB' }]}>+{tag}</Text>
                   </TouchableOpacity>
                 ))}
-              </ScrollView>
+              </HorizontalScrollView>
 
               {/* 4. 金額 */}
               <Text style={[styles.editLabel, isDark && { color: '#D1D5DB' }]}>

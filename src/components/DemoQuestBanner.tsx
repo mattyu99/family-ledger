@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,11 +7,14 @@ import {
   Modal,
   Linking,
   ScrollView,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Profile } from '../types/database';
 import { SWEETHOME_MEMBERS } from '../constants/sweethomeDemo';
 import { showConfirm } from '../lib/alert';
+import { HorizontalScrollView } from './HorizontalScrollView';
 
 export interface DemoQuestBannerProps {
   isDark: boolean;
@@ -61,6 +64,24 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
   const [showCelebration, setShowCelebration] = useState(false);
   const [hasShownCelebration, setHasShownCelebration] = useState(false);
   const [showPhilosophyModal, setShowPhilosophyModal] = useState(false);
+
+  // 任務卡片滾動導航與左右切換狀態
+  const questScrollRef = useRef<ScrollView | null>(null);
+  const scrollPosRef = useRef(0);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+
+  const handleQuestScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+    scrollPosRef.current = contentOffset.x;
+    setCanScrollLeft(contentOffset.x > 8);
+    setCanScrollRight(contentOffset.x < contentSize.width - layoutMeasurement.width - 8);
+  };
+
+  const scrollQuestsBy = (offset: number) => {
+    const nextX = Math.max(0, scrollPosRef.current + offset);
+    questScrollRef.current?.scrollTo({ x: nextX, animated: true });
+  };
 
   // 切換至「統計 / 帳單支付 / 家庭設定」分頁時自動收合，避免佔據頁面空間
   if (activeTab !== prevActiveTab) {
@@ -271,8 +292,7 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
             >
               👤 視角
             </Text>
-            <ScrollView
-              horizontal
+            <HorizontalScrollView
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.memberChipsScroll}
             >
@@ -318,81 +338,112 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
                   </TouchableOpacity>
                 );
               })}
-            </ScrollView>
+            </HorizontalScrollView>
           </View>
 
-          {/* 🎯 橫向滑動任務卡片列（單排高度 ~64px，徹底釋放主畫面垂直空間） */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.questsHorizontalList}
-          >
-            {quests.map((q, idx) => {
-              const isDone = completedQuestIds.includes(q.id);
-              return (
-                <View
-                  key={q.id}
-                  style={[
-                    styles.questCard,
-                    isDark && styles.questCardDark,
-                    isDone && styles.questCardDone,
-                  ]}
-                >
-                  <View style={styles.questInfo}>
-                    <View style={styles.questTagRow}>
-                      <Text style={styles.questTag} maxFontSizeMultiplier={1.1}>
-                        {q.tag}
-                      </Text>
-                      {isDone ? (
-                        <Text style={styles.doneBadge} maxFontSizeMultiplier={1.1}>
-                          ✅ 已完成
-                        </Text>
-                      ) : idx === 0 ? (
-                        <Text
-                          style={[styles.swipeHintText, isDark && styles.textMutedDark]}
-                          maxFontSizeMultiplier={1}
-                        >
-                          左右滑動 ➔
-                        </Text>
-                      ) : null}
-                    </View>
-                    <Text
-                      style={[styles.questTitle, isDark && styles.textDark]}
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={1.15}
-                    >
-                      {q.title}
-                    </Text>
-                    <Text
-                      style={[styles.questDesc, isDark && styles.textMutedDark]}
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={1.1}
-                    >
-                      {q.desc}
-                    </Text>
-                  </View>
+          {/* 🎯 橫向滑動任務卡片列（單排高度 ~64px，支援滑鼠滾輪/按住拖曳/左右導航鈕） */}
+          <View style={styles.questsWrapper}>
+            {canScrollLeft && (
+              <TouchableOpacity
+                style={[styles.scrollNavBtn, styles.scrollNavBtnLeft, isDark && styles.scrollNavBtnDark]}
+                onPress={() => scrollQuestsBy(-253)}
+                activeOpacity={0.8}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={[styles.scrollNavBtnText, isDark && styles.scrollNavBtnTextDark]}>‹</Text>
+              </TouchableOpacity>
+            )}
 
-                  <TouchableOpacity
+            <HorizontalScrollView
+              ref={questScrollRef}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.questsHorizontalList}
+              onScroll={handleQuestScroll}
+              scrollEventThrottle={16}
+            >
+              {quests.map((q, idx) => {
+                const isDone = completedQuestIds.includes(q.id);
+                return (
+                  <View
+                    key={q.id}
                     style={[
-                      styles.actionBtn,
-                      isDone ? styles.actionBtnDone : styles.actionBtnActive,
+                      styles.questCard,
+                      isDark && styles.questCardDark,
+                      isDone && styles.questCardDone,
                     ]}
-                    onPress={q.action}
                   >
-                    <Text
+                    <View style={styles.questInfo}>
+                      <View style={styles.questTagRow}>
+                        <Text style={styles.questTag} maxFontSizeMultiplier={1.1}>
+                          {q.tag}
+                        </Text>
+                        {isDone ? (
+                          <Text style={styles.doneBadge} maxFontSizeMultiplier={1.1}>
+                            ✅ 已完成
+                          </Text>
+                        ) : idx === 0 ? (
+                          <TouchableOpacity
+                            activeOpacity={0.7}
+                            onPress={() => scrollQuestsBy(253)}
+                          >
+                            <Text
+                              style={[styles.swipeHintText, isDark && styles.textMutedDark]}
+                              maxFontSizeMultiplier={1}
+                            >
+                              左右滑動 ➔
+                            </Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                      <Text
+                        style={[styles.questTitle, isDark && styles.textDark]}
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={1.15}
+                      >
+                        {q.title}
+                      </Text>
+                      <Text
+                        style={[styles.questDesc, isDark && styles.textMutedDark]}
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={1.1}
+                      >
+                        {q.desc}
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
                       style={[
-                        styles.actionBtnText,
-                        isDone ? styles.actionBtnTextDone : styles.actionBtnTextActive,
+                        styles.actionBtn,
+                        isDone ? styles.actionBtnDone : styles.actionBtnActive,
                       ]}
-                      maxFontSizeMultiplier={1.1}
+                      onPress={q.action}
                     >
-                      {isDone ? '再試' : `👉 ${q.actionText}`}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              );
-            })}
-          </ScrollView>
+                      <Text
+                        style={[
+                          styles.actionBtnText,
+                          isDone ? styles.actionBtnTextDone : styles.actionBtnTextActive,
+                        ]}
+                        maxFontSizeMultiplier={1.1}
+                      >
+                        {isDone ? '再試' : `👉 ${q.actionText}`}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </HorizontalScrollView>
+
+            {canScrollRight && (
+              <TouchableOpacity
+                style={[styles.scrollNavBtn, styles.scrollNavBtnRight, isDark && styles.scrollNavBtnDark]}
+                onPress={() => scrollQuestsBy(253)}
+                activeOpacity={0.8}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={[styles.scrollNavBtnText, isDark && styles.scrollNavBtnTextDark]}>›</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
           {/* 底部單行理念與官方手冊捷徑 */}
           <View style={[styles.footerNoteRow, isDark && styles.footerNoteRowDark]}>
@@ -690,6 +741,49 @@ const styles = StyleSheet.create({
     fontSize: 9.5,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  questsWrapper: {
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  scrollNavBtn: {
+    position: 'absolute',
+    top: '50%',
+    marginTop: -14,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderWidth: 1,
+    borderColor: '#E9D5FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  scrollNavBtnDark: {
+    backgroundColor: 'rgba(30, 21, 45, 0.95)',
+    borderColor: '#6B21A8',
+  },
+  scrollNavBtnLeft: {
+    left: 2,
+  },
+  scrollNavBtnRight: {
+    right: 2,
+  },
+  scrollNavBtnText: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#7E22CE',
+    marginTop: -2,
+    lineHeight: 22,
+  },
+  scrollNavBtnTextDark: {
+    color: '#D8B4FE',
   },
   questsHorizontalList: {
     gap: 8,

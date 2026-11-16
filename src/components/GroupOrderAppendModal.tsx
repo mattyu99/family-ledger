@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { HorizontalScrollView } from './HorizontalScrollView';
 import { useTheme } from '../theme/ThemeContext';
 import { useLedger } from '../context/LedgerContext';
 import {
@@ -241,7 +242,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                         ? '登記人 (誰要買/誰的包裹)：'
                         : (isGrocery ? '採買人 (誰想買/誰需要)：' : '點餐人 (誰要吃/喝)：')))}
             </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.memberScrollRow}>
+            <HorizontalScrollView showsHorizontalScrollIndicator={false} style={styles.memberScrollRow}>
               {isChore && (
                 <TouchableOpacity
                   onPress={() => setSelectedMember('')}
@@ -292,7 +293,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                   </TouchableOpacity>
                 );
               })}
-            </ScrollView>
+            </HorizontalScrollView>
 
             {/* 1.5 家中缺貨待補快捷帶入 (賣場採買 / 網購湊單專用) */}
             {pendingRestockItems.length > 0 && (
@@ -300,7 +301,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                 <Text style={[styles.sectionLabel, { color: isDark ? '#34D399' : '#059669' }]}>
                   🏠 家中缺貨待補 (點擊秒帶入)：
                 </Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
+                <HorizontalScrollView showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
                   {pendingRestockItems.map((rItem, idx) => (
                     <TouchableOpacity
                       key={`restock-${idx}`}
@@ -317,7 +318,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                       </Text>
                     </TouchableOpacity>
                   ))}
-                </ScrollView>
+                </HorizontalScrollView>
               </View>
             )}
 
@@ -328,7 +329,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                   💡 {selectedMember || '家人'}{' '}
                   {isParcel ? '常買的網購 (點擊秒帶入)：' : (isGrocery ? '常買的補貨 (點擊秒帶入)：' : '常點的口味 (點擊秒帶入)：')}
                 </Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
+                <HorizontalScrollView showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
                   {familyFavorites.memberFavorites.map((fav, idx) => (
                     <TouchableOpacity
                       key={`mem-${idx}`}
@@ -356,7 +357,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                       )}
                     </TouchableOpacity>
                   ))}
-                </ScrollView>
+                </HorizontalScrollView>
               </View>
             )}
 
@@ -366,7 +367,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                 <Text style={[styles.sectionLabel, { color: '#F59E0B' }]}>
                   {isParcel ? '🏆 全家常購/包裹範本：' : (isGrocery ? '🏆 全家常買熱銷榜：' : '🏆 全家常點熱銷榜：')}
                 </Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
+                <HorizontalScrollView showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
                   {familyFavorites.familyTopFavorites.map((fav, idx) => (
                     <TouchableOpacity
                       key={`fam-${idx}`}
@@ -382,7 +383,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                       </Text>
                     </TouchableOpacity>
                   ))}
-                </ScrollView>
+                </HorizontalScrollView>
               </View>
             )}
 
@@ -394,7 +395,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                   <Text style={[styles.sectionLabel, { color: '#F59E0B' }]}>
                     {isGrocery ? '💡 常買的補貨 (點擊秒帶入)：' : '💡 常點的招牌 (點擊秒帶入)：'}
                   </Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
+                  <HorizontalScrollView showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
                     {favoriteItems.map((fav, idx) => (
                       <TouchableOpacity
                         key={idx}
@@ -405,7 +406,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                         <Text style={[styles.favoritePillText, isDark && { color: '#FCD34D' }]}>{fav}</Text>
                       </TouchableOpacity>
                     ))}
-                  </ScrollView>
+                  </HorizontalScrollView>
                 </View>
             )}
 
@@ -488,7 +489,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
 
             {/* 5. 常用動態記憶膠囊 */}
             <Text style={[styles.hintText, isDark && { color: '#9CA3AF' }]}>常用快捷標籤 (點選即串接)：</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
+            <HorizontalScrollView showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
               {availableTags.slice(0, 18).map((t, idx) => (
                 <TouchableOpacity
                   key={idx}
@@ -501,7 +502,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                   <Text style={[styles.specTagPillText, isDark && { color: '#D1D5DB' }]}>{t}</Text>
                 </TouchableOpacity>
               ))}
-            </ScrollView>
+            </HorizontalScrollView>
           </ScrollView>
 
           {/* 底部操作按鈕 */}
