@@ -277,15 +277,57 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
   }, [transactions, recentMerchants]);
 
   // 計算各類型數量（全部 / 僅看收支 / 僅看生活備忘）
-  // 必須與列表篩選邏輯完全一致，包含置頂記事跨月常駐與個人隱私隔離
+  // 必須與列表篩選邏輯完全一致，包含五大進行中活動與置頂記事跨月常駐與全家/個人視角隔離
   const typeCountStats = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
 
-    // 1. 符合條件的未完成置頂記事 (跨月常駐，不受 filterMonth 限制)
+    // 1. 未結案之五大協作看板 (點餐、投票、懸賞、採買、包裹) - 跨月常駐，全家共享人人可見
+    const collabActivities = transactions.filter(t => {
+      if (t.type !== 'memo' || t.is_settled) return false;
+      const parsed = parseMemoNote(t.note);
+      if (!isGroupOrderMemo(parsed.title || t.category?.name, t.note)) return false;
+
+      // 成員過濾 (全家共享人人可見；個人專屬視角隔離)
+      if (filterMemberId !== 'all') {
+        const isFamily = !t.reminder_target || t.reminder_target === 'family';
+        if (!isFamily) {
+          const payer = getMemberById(t.paid_by) || t.payer_profile;
+          const targetMember = members.find(m => m.id === filterMemberId) || (currentUser?.id === filterMemberId ? currentUser : undefined);
+          const isMatch =
+            (payer && payer.id === filterMemberId) ||
+            t.paid_by === filterMemberId ||
+            (targetMember && (payer?.display_name === targetMember.display_name || (t as any).payer_name === targetMember.display_name));
+          if (!isMatch) return false;
+        }
+      } else {
+        if (t.reminder_target === 'personal') {
+          const isMine =
+            (t.paid_by && t.paid_by === currentUser?.id) ||
+            (t.creator_id && t.creator_id === currentUser?.id) ||
+            (t.paid_by && currentUser?.display_name && (getMemberById(t.paid_by)?.display_name === currentUser.display_name));
+          if (!isMine) return false;
+        }
+      }
+
+      if (q) {
+        const mMatch = t.merchant && t.merchant.toLowerCase().includes(q);
+        const nMatch = t.note && t.note.toLowerCase().includes(q);
+        const cat = getCategoryById(t.category_id, t.category);
+        const cMatch = cat && cat.name.toLowerCase().includes(q);
+        if (!mMatch && !nMatch && !cMatch) return false;
+      }
+
+      return true;
+    });
+
+    const collabIds = new Set(collabActivities.map(c => c.id));
+
+    // 2. 符合條件的未完成置頂記事 (排除五大協作活動後，跨月常駐，不受 filterMonth 限制)
     const pinnedMemos = transactions.filter(t => {
+      if (collabIds.has(t.id)) return false;
       if (!isMemoPinned(t)) return false;
 
-      // 成員過濾 (方案 1: 全家共享人人可見；個人專屬視角隔離)
+      // 成員過濾 (全家共享人人可見；個人專屬視角隔離)
       if (filterMemberId !== 'all') {
         const isFamily = !t.reminder_target || t.reminder_target === 'family';
         if (!isFamily) {
@@ -319,13 +361,13 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
       return true;
     });
 
-    const pinnedIds = new Set(pinnedMemos.map(p => p.id));
+    const topIds = new Set([...collabIds, ...pinnedMemos.map(p => p.id)]);
     let normalMemoCount = 0;
     let financial = 0;
 
-    // 2. 常規紀錄過濾 (排除已置頂者，受 filterMonth 限制)
+    // 3. 常規紀錄過濾 (排除已在頂部常駐之協作看板與置頂備忘，受 filterMonth 限制)
     transactions.forEach(t => {
-      if (pinnedIds.has(t.id)) return;
+      if (topIds.has(t.id)) return;
 
       if (filterMonth !== 'all') {
         if (!t.transacted_at) return;
@@ -374,7 +416,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
       }
     });
 
-    const memo = pinnedMemos.length + normalMemoCount;
+    const memo = collabActivities.length + pinnedMemos.length + normalMemoCount;
     const all = financial + memo;
 
     return { all, financial, memo };

@@ -2473,16 +2473,25 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               if (idx !== -1 && matching[idx].invoice_status !== 'claimed' && matching[idx].invoice_period !== freshFirstTx.invoice_period) {
                 matching[idx] = { ...matching[idx], ...freshFirstTx };
               }
-              // 🛡️ 示範快取版本自動升級：若本機快取為舊版（缺少五大協作看板或筆數少於母本），自動升級補入五大協作看板
-              const hasCollabMemos = matching.some((t: any) => t.id === 'ee400000-0000-4000-8000-000000000031');
-              if (!hasCollabMemos || matching.length < freshDemoTxs.length) {
-                const existingIds = new Set(matching.map((t: any) => t.id));
-                const missingTxs = freshDemoTxs.filter(t => !existingIds.has(t.id));
-                if (missingTxs.length > 0) {
-                  matching = [...missingTxs, ...matching];
-                  persistTransactionsCache(matching, SWEETHOME_LEDGER_ID).catch(() => {});
-                }
+              // 🛡️ 示範快取版本自動升級：若本機快取為舊版（缺少五大協作看板、採買記事為舊露營版、或殘留舊置頂標籤）
+              const fresh0026 = freshDemoTxs.find(t => t.id === 'ee400000-0000-4000-8000-000000000026');
+              const idx0026 = matching.findIndex((t: any) => t.id === 'ee400000-0000-4000-8000-000000000026');
+              if (idx0026 !== -1 && fresh0026 && (!matching[idx0026].note?.includes('Costco') && !matching[idx0026].note?.includes('好市多'))) {
+                matching[idx0026] = { ...fresh0026 };
               }
+              // 清理協作看板舊版置頂殘留 (協作活動天然常駐首頁最上方，不需也不佔置頂名額)
+              matching = matching.map((t: any) => {
+                if (t.id === 'ee400000-0000-4000-8000-000000000031' || t.id === 'ee400000-0000-4000-8000-000000000032') {
+                  return { ...t, is_pinned: false, merchant: t.merchant === '📌 置頂' ? (t.id === 'ee400000-0000-4000-8000-000000000031' ? '🧋 宵夜點餐' : '🧹 家事挑戰') : t.merchant };
+                }
+                return t;
+              });
+              const existingIds = new Set(matching.map((t: any) => t.id));
+              const missingTxs = freshDemoTxs.filter(t => !existingIds.has(t.id));
+              if (missingTxs.length > 0) {
+                matching = [...missingTxs, ...matching];
+              }
+              persistTransactionsCache(matching, SWEETHOME_LEDGER_ID).catch(() => {});
             }
             if (matching.length > 0) {
               hasLocalCache = true;
@@ -3416,15 +3425,23 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
       if (targetLedger.id === SWEETHOME_LEDGER_ID) {
         const freshDemoTxs = getSweethomeInitialTransactions();
-        const hasCollab = finalTx.some(t => t.id === 'ee400000-0000-4000-8000-000000000031');
-        if (!hasCollab || finalTx.length < freshDemoTxs.length) {
-          const existingIds = new Set(finalTx.map(t => t.id));
-          const missingTxs = freshDemoTxs.filter(t => !existingIds.has(t.id)).map(transformSingleTx);
-          if (missingTxs.length > 0) {
-            finalTx = [...missingTxs, ...finalTx];
-            persistTransactionsCache(finalTx, SWEETHOME_LEDGER_ID).catch(() => {});
-          }
+        const fresh0026 = freshDemoTxs.find(t => t.id === 'ee400000-0000-4000-8000-000000000026');
+        const idx0026 = finalTx.findIndex(t => t.id === 'ee400000-0000-4000-8000-000000000026');
+        if (idx0026 !== -1 && fresh0026 && (!finalTx[idx0026].note?.includes('Costco') && !finalTx[idx0026].note?.includes('好市多'))) {
+          finalTx[idx0026] = transformSingleTx(fresh0026);
         }
+        finalTx = finalTx.map(t => {
+          if (t.id === 'ee400000-0000-4000-8000-000000000031' || t.id === 'ee400000-0000-4000-8000-000000000032') {
+            return { ...t, is_pinned: false, merchant: t.merchant === '📌 置頂' ? (t.id === 'ee400000-0000-4000-8000-000000000031' ? '🧋 宵夜點餐' : '🧹 家事挑戰') : t.merchant };
+          }
+          return t;
+        });
+        const existingIds = new Set(finalTx.map(t => t.id));
+        const missingTxs = freshDemoTxs.filter(t => !existingIds.has(t.id)).map(transformSingleTx);
+        if (missingTxs.length > 0) {
+          finalTx = [...missingTxs, ...finalTx];
+        }
+        persistTransactionsCache(finalTx, SWEETHOME_LEDGER_ID).catch(() => {});
       }
       if (finalTx.length === 0) {
         const initialDemoRaw =

@@ -674,7 +674,8 @@ async function seed() {
       paid_by: DEMO_MEMBERS[0].id,
       type: 'memo',
       amount: 0,
-      merchant: '📌 置頂',
+      merchant: '🧋 宵夜點餐',
+      reminder_target: 'family',
       category_id: DEMO_CATEGORIES[12].id, // 生活備忘
       note: '[🧋 點餐開團] 週末宵夜開源社香雞排\n店家：開源社香雞排\n截止時間：21:30 (可修改時間)\n大家直接點右上方【＋我也要】快速報單！\n- [ ] 智爸：香雞排 (小辣 切塊) $65\n- [ ] 瑩媽：四季豆＋甜不辣 (椒鹽多) $75\n- [ ] 洋洋：無骨鹽酥雞 (不辣) $60 (💬 智爸：要加九層塔嗎？)\n- [ ] 豆豆：甘梅薯條 (梅粉分開) $40',
       transacted_at: new Date(txBaseTime - 3600000 * 1).toISOString(),
@@ -688,7 +689,8 @@ async function seed() {
       paid_by: DEMO_MEMBERS[1].id,
       type: 'memo',
       amount: 0,
-      merchant: '📌 置頂',
+      merchant: '🧹 家事挑戰',
+      reminder_target: 'family',
       category_id: DEMO_CATEGORIES[12].id, // 生活備忘
       note: '[🧹 家事懸賞] 週末大掃除零用錢任務榜\n任務主題：週末大掃除零用錢挑戰\n孩子完成後打勾，爸媽點擊【💰 核發零用錢】一鍵分流入帳！\n- [x] 洋洋：吸客廳地板＋擦餐桌 $50\n- [x] 豆豆：幫忙摺衣服＋收玩具 $30\n- [ ] 待認領：幫忙倒垃圾與分類回收 $30\n- [ ] 待認領：刷洗前陽台與澆花 $50',
       transacted_at: new Date(txBaseTime - 3600000 * 2).toISOString(),
