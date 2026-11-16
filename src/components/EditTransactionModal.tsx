@@ -1805,7 +1805,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   <TextInput
                     style={[styles.memoContentInput, !canEdit && styles.readOnlyInput]}
                     multiline
-                    numberOfLines={4}
+                    numberOfLines={6}
                     placeholder="記錄今天的事情、靈感、採買備忘或家庭待辦..."
                     placeholderTextColor="#9CA3AF"
                     value={note}
@@ -4172,7 +4172,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     padding: 12,
     fontSize: 15,
     color: colors.text.primary,
-    minHeight: 96,
+    minHeight: 140,
     marginBottom: 10,
   },
   readOnlyInput: {

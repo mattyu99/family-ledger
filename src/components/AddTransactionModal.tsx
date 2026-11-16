@@ -384,8 +384,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const isCollabOrderOrVoting = useMemo(() => {
     if (mode !== 'memo' && type !== 'memo') return false;
     const parsed = parseMemoNote(note);
+    if (!isGroupOrderMemo(parsed.title, note)) return false;
     const orderMode = detectCollaborativeOrderMode(parsed.title, note);
-    return orderMode === 'food' || orderMode === 'vote' || isGroupOrderMemo(parsed.title, note);
+    return orderMode === 'food' || orderMode === 'vote';
   }, [mode, type, note]);
 
   const handleSetQuickDeadlineMinutes = (minutes: number) => {
@@ -1799,7 +1800,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   <TextInput
                     style={styles.memoContentInput}
                     multiline
-                    numberOfLines={4}
+                    numberOfLines={6}
                     placeholder="記錄今天的事情、靈感、採買備忘或家庭待辦..."
                     placeholderTextColor="#9CA3AF"
                     value={note}
@@ -4627,7 +4628,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     padding: 12,
     fontSize: 15,
     color: colors.text.primary,
-    minHeight: 96,
+    minHeight: 140,
     marginBottom: 10,
   },
   linkedMemoBanner: {

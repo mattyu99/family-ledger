@@ -31,7 +31,7 @@ if (!hasMessage) {
 
     defaultMessage = commitMsg ? `v${fullVersion}: ${commitMsg}` : `v${fullVersion} OTA update`;
   } catch (err) {
-    defaultMessage = 'v1.0.17.8 OTA update';
+    defaultMessage = 'v1.0.17.9 OTA update';
   }
 }
 
