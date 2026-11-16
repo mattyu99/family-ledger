@@ -49,10 +49,10 @@ export function isMemoActionTag(tagText?: string): boolean {
     return true;
   }
 
-  // 2. 包含按鈕操作動詞特徵
-  if (/(?:我要買|加湊|代領|我也要|我要點|認領|加單|提案|投票)/.test(trimmed)) {
-    // 例外：內建主題標籤「🗳️ 家庭投票」並非操作按鈕
-    if (trimmed.includes('家庭投票')) return false;
+  // 2. 快捷引導按鈕專用提示字樣 (如 提案/投票, 加湊/代領, 我要買, 認領/新任務 等操作動詞)
+  // 排除使用者正常建立的各種主題標籤 (如 🗳️ 家庭投票, 晚餐投票, 去哪玩投票, 50嵐開團 等)
+  const core = trimmed.replace(EMOJI_REGEX, '').trim();
+  if (/^(?:我要買|加湊\/代領|我也要|我要點|認領\/新任務|加單|提案\/投票)$/.test(core)) {
     return true;
   }
 
@@ -1297,10 +1297,19 @@ export function formatLinkedTransactionSummary(tx?: {
 
   // 4. 若為接力待辦 (memo)
   const parsed = parseMemoNote(tx.note);
-  const title = (parsed.title && parsed.title !== '生活記事' && parsed.title !== '生活待辦')
+  const rawTitle = (parsed.title && parsed.title !== '生活記事' && parsed.title !== '生活待辦')
     ? parsed.title
     : (cleanNote.split('\n')[0] || '生活待辦');
-  const shortTitle = title.length > 16 ? `${title.slice(0, 15)}…` : title;
+  const cleanTitle = rawTitle.replace(/^\[(?:.*?)]\s*/, '').trim() || rawTitle;
+  const shortTitle = cleanTitle.length > 16 ? `${cleanTitle.slice(0, 15)}…` : cleanTitle;
+
+  const noteLower = (tx.note || '').toLowerCase();
+  if (noteLower.includes('投票') || noteLower.includes('決策')) {
+    return `🗳️ 來自投票：${shortTitle} ›`;
+  }
+  if (noteLower.includes('點餐') || noteLower.includes('開團')) {
+    return `🧋 連動開團：${shortTitle} ›`;
+  }
   return `🔗 接力待辦：${shortTitle} ›`;
 }
 

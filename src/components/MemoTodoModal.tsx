@@ -894,35 +894,40 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                     )}
 
                     {/* 連動明細卡片 (支援支出、收入、轉帳與接力待辦) */}
-                    {isCompleted && linkedTxs.length > 0 && linkedTxs.map((linkedTx) => (
-                      <TouchableOpacity
-                        key={linkedTx.id}
-                        style={[
-                          styles.itemLinkedExpenseBadge,
-                          linkedTx.type === 'income' && { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5', borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#A7F3D0' },
-                          linkedTx.type === 'transfer' && { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF', borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE' },
-                          linkedTx.type === 'memo' && { backgroundColor: isDark ? 'rgba(168, 85, 247, 0.15)' : '#F5F3FF', borderColor: isDark ? 'rgba(168, 85, 247, 0.35)' : '#DDD6FE' },
-                        ]}
-                        activeOpacity={0.7}
-                        onPress={(e) => {
-                          e.stopPropagation?.();
-                          setLastViewedMemoId(linkedTx.id);
-                          onEditMemo(linkedTx);
-                        }}
-                      >
-                        <Text
+                    {linkedTxs.length > 0 && linkedTxs.map((linkedTx) => {
+                      // 支出/轉帳/收入等結算交易在辦妥 (isCompleted) 後展示；
+                      // 但 memo 類型的接力/前導記事（如投票轉開團），無論進行中或已完成皆展示，確保雙向互通無阻
+                      if (!isCompleted && linkedTx.type !== 'memo') return null;
+                      return (
+                        <TouchableOpacity
+                          key={linkedTx.id}
                           style={[
-                            styles.itemLinkedExpenseBadgeText,
-                            linkedTx.type === 'income' && { color: isDark ? '#6EE7B7' : '#059669' },
-                            linkedTx.type === 'transfer' && { color: isDark ? '#A5B4FC' : '#4F46E5' },
-                            linkedTx.type === 'memo' && { color: isDark ? '#C4B5FD' : '#7C3AED' },
+                            styles.itemLinkedExpenseBadge,
+                            linkedTx.type === 'income' && { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5', borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#A7F3D0' },
+                            linkedTx.type === 'transfer' && { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF', borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE' },
+                            linkedTx.type === 'memo' && { backgroundColor: isDark ? 'rgba(168, 85, 247, 0.15)' : '#F5F3FF', borderColor: isDark ? 'rgba(168, 85, 247, 0.35)' : '#DDD6FE' },
                           ]}
-                          maxFontSizeMultiplier={1.08}
+                          activeOpacity={0.7}
+                          onPress={(e) => {
+                            e.stopPropagation?.();
+                            setLastViewedMemoId(linkedTx.id);
+                            onEditMemo(linkedTx);
+                          }}
                         >
-                          {formatLinkedTransactionSummary(linkedTx)}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+                          <Text
+                            style={[
+                              styles.itemLinkedExpenseBadgeText,
+                              linkedTx.type === 'income' && { color: isDark ? '#6EE7B7' : '#059669' },
+                              linkedTx.type === 'transfer' && { color: isDark ? '#A5B4FC' : '#4F46E5' },
+                              linkedTx.type === 'memo' && { color: isDark ? '#C4B5FD' : '#7C3AED' },
+                            ]}
+                            maxFontSizeMultiplier={1.08}
+                          >
+                            {formatLinkedTransactionSummary(linkedTx)}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
 
                     {/* 底部資訊 */}
                     <View style={styles.itemFooterRow}>
@@ -1078,14 +1083,41 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                 });
               }
             }}
-            onConvertToFoodOrder={(winningTitle) => {
+            onConvertToFoodOrder={async (winningTitle) => {
               if (liveActiveGroupOrderTx) {
-                const newOrderNote = convertVoteToFoodOrder(winningTitle, liveActiveGroupOrderTx.note || '');
-                updateTransaction(liveActiveGroupOrderTx.id, {
+                const targetTx = liveActiveGroupOrderTx;
+                const cleanStore = winningTitle.replace(/^(?:🍲|🍣|🥩|🍕|🍔|🍟|🍱|☕|🥤|🧋|🍜|\s)+/u, '').trim() || '聚餐店家';
+                const newOrderNote = convertVoteToFoodOrder(cleanStore, targetTx.note || '');
+
+                // 1. 若原投票記事尚未打勾勝出項目，順便將勝出項目標記為 [x] 打勾
+                let finalizedNote = targetTx.note || '';
+                const summary = computeGroupOrderSummary(finalizedNote, targetTx.merchant);
+                if (summary.leadingOption) {
+                  finalizedNote = finalizeGroupOrderVote(finalizedNote, summary.leadingOption.lineIndex);
+                }
+
+                // 2. 另開全新點餐開團記事，並反向關聯原投票記事 (保留完整投票歷程)
+                const newOrderId = await addTransaction({
+                  amount: 0,
+                  type: 'memo',
+                  merchant: `🧋 點餐開團 · ${cleanStore}`,
+                  category_id: targetTx.category_id,
+                  paid_by: currentUser?.id || targetTx.paid_by,
                   note: newOrderNote,
-                  is_settled: false,
-                  completed_by: undefined,
-                  completion_note: undefined,
+                  reminder_target: targetTx.reminder_target || 'family',
+                  is_pinned: true,
+                  transacted_at: new Date().toISOString(),
+                  linked_transaction_id: targetTx.id,
+                });
+
+                // 3. 原投票記事確保拍板定案歸檔 (is_settled: true)，雙向關聯新開團，並解除置頂由新開團接棒
+                await updateTransaction(targetTx.id, {
+                  note: finalizedNote,
+                  is_settled: true,
+                  completed_by: currentUser?.id || targetTx.completed_by,
+                  completion_note: targetTx.completion_note || `投票共識拍板：${cleanStore}，已轉為點餐開團`,
+                  is_pinned: false,
+                  linked_transaction_id: newOrderId || undefined,
                 });
               }
             }}

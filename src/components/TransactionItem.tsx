@@ -593,35 +593,40 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
           </View>
         )}
 
-        {isCompleted && linkedTargets.length > 0 && linkedTargets.map((linkedTarget) => (
-          <TouchableOpacity
-            key={linkedTarget.id}
-            style={[
-              styles.memoLinkedExpenseBadge,
-              linkedTarget.type === 'income' && { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5', borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#A7F3D0' },
-              linkedTarget.type === 'transfer' && { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF', borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE' },
-              linkedTarget.type === 'memo' && { backgroundColor: isDark ? 'rgba(168, 85, 247, 0.15)' : '#F5F3FF', borderColor: isDark ? 'rgba(168, 85, 247, 0.35)' : '#DDD6FE' },
-            ]}
-            activeOpacity={0.7}
-            onPress={(e) => {
-              e.stopPropagation?.();
-              onPress?.(linkedTarget);
-            }}
-          >
-            <Text
+        {linkedTargets.length > 0 && linkedTargets.map((linkedTarget) => {
+          // 支出/轉帳/收入等結算交易在辦妥 (isCompleted) 後展示；
+          // 但 memo 類型的接力/前導記事（如投票轉開團），無論進行中或已完成皆展示，確保雙向互通無阻
+          if (!isCompleted && linkedTarget.type !== 'memo') return null;
+          return (
+            <TouchableOpacity
+              key={linkedTarget.id}
               style={[
-                styles.memoLinkedExpenseBadgeText,
-                linkedTarget.type === 'income' && { color: isDark ? '#6EE7B7' : '#059669' },
-                linkedTarget.type === 'transfer' && { color: isDark ? '#A5B4FC' : '#4F46E5' },
-                linkedTarget.type === 'memo' && { color: isDark ? '#C4B5FD' : '#7C3AED' },
+                styles.memoLinkedExpenseBadge,
+                linkedTarget.type === 'income' && { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5', borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#A7F3D0' },
+                linkedTarget.type === 'transfer' && { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF', borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE' },
+                linkedTarget.type === 'memo' && { backgroundColor: isDark ? 'rgba(168, 85, 247, 0.15)' : '#F5F3FF', borderColor: isDark ? 'rgba(168, 85, 247, 0.35)' : '#DDD6FE' },
               ]}
-              allowFontScaling={false}
-              maxFontSizeMultiplier={1.08}
+              activeOpacity={0.7}
+              onPress={(e) => {
+                e.stopPropagation?.();
+                onPress?.(linkedTarget);
+              }}
             >
-              {formatLinkedTransactionSummary(linkedTarget)}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Text
+                style={[
+                  styles.memoLinkedExpenseBadgeText,
+                  linkedTarget.type === 'income' && { color: isDark ? '#6EE7B7' : '#059669' },
+                  linkedTarget.type === 'transfer' && { color: isDark ? '#A5B4FC' : '#4F46E5' },
+                  linkedTarget.type === 'memo' && { color: isDark ? '#C4B5FD' : '#7C3AED' },
+                ]}
+                allowFontScaling={false}
+                maxFontSizeMultiplier={1.08}
+              >
+                {formatLinkedTransactionSummary(linkedTarget)}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
 
         <View style={styles.memoFooterRow}>
           <View style={styles.memoFooterLeft}>
@@ -731,13 +736,39 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
             completion_note: '投票決策已敲定拍板',
           });
         }}
-        onConvertToFoodOrder={(winningTitle) => {
-          const newOrderNote = convertVoteToFoodOrder(winningTitle, transaction.note || '');
-          updateTransaction(transaction.id, {
+        onConvertToFoodOrder={async (winningTitle) => {
+          const cleanStore = winningTitle.replace(/^(?:🍲|🍣|🥩|🍕|🍔|🍟|🍱|☕|🥤|🧋|🍜|\s)+/u, '').trim() || '聚餐店家';
+          const newOrderNote = convertVoteToFoodOrder(cleanStore, transaction.note || '');
+
+          // 1. 若原投票記事尚未打勾勝出選項，順便將勝出選項標記為 [x] 打勾
+          let finalizedNote = transaction.note || '';
+          const summary = computeGroupOrderSummary(finalizedNote, transaction.merchant);
+          if (summary.leadingOption) {
+            finalizedNote = finalizeGroupOrderVote(finalizedNote, summary.leadingOption.lineIndex);
+          }
+
+          // 2. 另開全新點餐開團記事，並反向關聯原投票記事 (保留完整投票歷程)
+          const newOrderId = await addTransaction({
+            amount: 0,
+            type: 'memo',
+            merchant: `🧋 點餐開團 · ${cleanStore}`,
+            category_id: transaction.category_id,
+            paid_by: currentUser?.id || transaction.paid_by,
             note: newOrderNote,
-            is_settled: false,
-            completed_by: undefined,
-            completion_note: undefined,
+            reminder_target: transaction.reminder_target || 'family',
+            is_pinned: true,
+            transacted_at: new Date().toISOString(),
+            linked_transaction_id: transaction.id,
+          });
+
+          // 3. 原投票記事確保拍板定案歸檔 (is_settled: true)，雙向關聯新開團，並解除置頂由新開團接棒
+          await updateTransaction(transaction.id, {
+            note: finalizedNote,
+            is_settled: true,
+            completed_by: currentUser?.id || transaction.completed_by,
+            completion_note: transaction.completion_note || `投票共識拍板：${cleanStore}，已轉為點餐開團`,
+            is_pinned: false,
+            linked_transaction_id: newOrderId || undefined,
           });
         }}
         onUpdateVoteOption={(lineIndex, newTitle) => {

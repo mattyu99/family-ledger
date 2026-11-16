@@ -754,12 +754,12 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                           activeOpacity={0.8}
                           onPress={() => {
                             Alert.alert(
-                              '轉為點餐開團',
-                              `確定將「${summary.leadingOption?.title}」直接轉為全家點餐開團，讓大家開始報單登記嗎？`,
+                              '發起點餐開團',
+                              `確定依投票共識「${summary.leadingOption?.title}」發起全家點餐開團嗎？原投票記錄將完好保存歸檔，並自動建立雙向連動。`,
                               [
                                 { text: '取消', style: 'cancel' },
                                 {
-                                  text: '轉為點餐開團',
+                                  text: '發起開團',
                                   onPress: () => {
                                     onClose();
                                     onConvertToFoodOrder?.(summary.leadingOption!.title);
@@ -796,12 +796,12 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                           activeOpacity={0.8}
                           onPress={() => {
                             Alert.alert(
-                              '轉為點餐開團',
-                              `確定將「${summary.leadingOption?.title}」直接轉為全家點餐開團，讓大家開始報單登記嗎？`,
+                              '發起點餐開團',
+                              `確定依投票共識「${summary.leadingOption?.title}」發起全家點餐開團嗎？原投票記錄將完好保存歸檔，並自動建立雙向連動。`,
                               [
                                 { text: '取消', style: 'cancel' },
                                 {
-                                  text: '轉為點餐開團',
+                                  text: '發起開團',
                                   onPress: () => {
                                     onClose();
                                     onConvertToFoodOrder?.(summary.leadingOption!.title);

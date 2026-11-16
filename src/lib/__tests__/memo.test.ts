@@ -255,6 +255,8 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
       expect(formatLinkedTransactionSummary({ type: 'income', amount: 5000, note: '兼職收入' })).toBe('🔗 連動收入：NT$ 5,000 (兼職收入) ›');
       expect(formatLinkedTransactionSummary({ type: 'transfer', amount: 500, merchant: '存入【智悠遊卡】' })).toBe('🔗 連動轉帳：NT$ 500 (存入【智悠遊卡】) ›');
       expect(formatLinkedTransactionSummary({ type: 'memo', note: '[🛒 第二階段] 採買生活耗材' })).toBe('🔗 接力待辦：第二階段 ›');
+      expect(formatLinkedTransactionSummary({ type: 'memo', note: '[🗳️ 晚餐投票] 投票決定今晚吃什麼' })).toBe('🗳️ 來自投票：晚餐投票 ›');
+      expect(formatLinkedTransactionSummary({ type: 'memo', note: '[🧋 點餐開團] 50嵐飲料開團' })).toBe('🧋 連動開團：點餐開團 ›');
     });
 
     it('formatLinkedTransactionSummary 應徹底過濾發票中繼標籤與換行，優先顯示商家名稱', () => {
