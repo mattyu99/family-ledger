@@ -1057,7 +1057,12 @@ describe('groupOrder 工具庫單元測試', () => {
 
     it('SWEETHOME 示範帳本內建五大記事協作看板範例應完整解析各模式與結算統計', () => {
       const txs = getSweethomeInitialTransactions();
+      expect(txs.length).toBe(35);
+
       const memos = txs.filter(t => t.type === 'memo');
+      expect(memos.length).toBe(8);
+      // 驗證 8 筆備忘（包含五大協作看板）初始皆為未辦妥，可立即供使用者體驗
+      expect(memos.filter(m => !m.is_settled).length).toBe(8);
 
       const modesFound = new Set<string>();
       for (const m of memos) {

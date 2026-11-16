@@ -2467,10 +2467,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (Array.isArray(parsed) && parsed.length > 0) {
             let matching = parsed.filter((t: any) => t && t.ledger_id === targetLedger.id);
             if (targetLedger.id === SWEETHOME_LEDGER_ID) {
-              const freshFirstTx = getSweethomeInitialTransactions()[0];
+              const freshDemoTxs = getSweethomeInitialTransactions();
+              const freshFirstTx = freshDemoTxs[0];
               const idx = matching.findIndex((t: any) => t.id === freshFirstTx.id);
               if (idx !== -1 && matching[idx].invoice_status !== 'claimed' && matching[idx].invoice_period !== freshFirstTx.invoice_period) {
                 matching[idx] = { ...matching[idx], ...freshFirstTx };
+              }
+              // 🛡️ 示範快取版本自動升級：若本機快取為舊版（缺少五大協作看板或筆數少於母本），自動升級補入五大協作看板
+              const hasCollabMemos = matching.some((t: any) => t.id === 'ee400000-0000-4000-8000-000000000031');
+              if (!hasCollabMemos || matching.length < freshDemoTxs.length) {
+                const existingIds = new Set(matching.map((t: any) => t.id));
+                const missingTxs = freshDemoTxs.filter(t => !existingIds.has(t.id));
+                if (missingTxs.length > 0) {
+                  matching = [...missingTxs, ...matching];
+                  persistTransactionsCache(matching, SWEETHOME_LEDGER_ID).catch(() => {});
+                }
               }
             }
             if (matching.length > 0) {
@@ -3402,6 +3413,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         finalTx = localCachedTransactions
           .filter(t => t && t.ledger_id === targetLedger.id)
           .map(transformSingleTx);
+      }
+      if (targetLedger.id === SWEETHOME_LEDGER_ID) {
+        const freshDemoTxs = getSweethomeInitialTransactions();
+        const hasCollab = finalTx.some(t => t.id === 'ee400000-0000-4000-8000-000000000031');
+        if (!hasCollab || finalTx.length < freshDemoTxs.length) {
+          const existingIds = new Set(finalTx.map(t => t.id));
+          const missingTxs = freshDemoTxs.filter(t => !existingIds.has(t.id)).map(transformSingleTx);
+          if (missingTxs.length > 0) {
+            finalTx = [...missingTxs, ...finalTx];
+            persistTransactionsCache(finalTx, SWEETHOME_LEDGER_ID).catch(() => {});
+          }
+        }
       }
       if (finalTx.length === 0) {
         const initialDemoRaw =
@@ -4342,7 +4365,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         actorName: '示範帳本',
         avatar: '🔄',
         title: '示範資料已還原！',
-        message: 'SWEETHOME 已恢復至初始乾淨的 30 筆家庭紀錄。',
+        message: `SWEETHOME 已恢復至初始乾淨的 ${demoTxs.length} 筆家庭紀錄。`,
         createdAt: Date.now(),
       });
     } catch (e) {
