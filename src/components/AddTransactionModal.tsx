@@ -44,6 +44,11 @@ import {
   offsetDateYmd,
   computeNextRelayReminderDate,
   resolveAnchorDate,
+  SCHOOL_SUBJECTS,
+  SCHOOL_TASK_TYPES,
+  SCHOOL_DAILY_ITEMS,
+  isSchoolMemoMode,
+  appendSchoolChecklistItem,
 } from '../lib/memo';
 import {
   isGroupOrderMemo,
@@ -263,8 +268,18 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [viewingPhotoModal, setViewingPhotoModal] = useState<boolean>(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [selectedSchoolSubject, setSelectedSchoolSubject] = useState<string>('國文');
 
   const handleSelectTemplate = React.useCallback((template: MemoChecklistTemplate) => {
+    if (template.id === 'school_contact_book') {
+      if (!note || !note.trim()) {
+        setNote('[🎒 學校親子]');
+      } else if (!isMemoTagActive(note, '🎒 學校親子')) {
+        setNote(toggleMemoTag(note, '🎒 學校親子'));
+      }
+      return;
+    }
+
     if (!note || !note.trim()) {
       setNote(applyChecklistTemplate(template));
       return;
@@ -1809,6 +1824,90 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     textAlignVertical="top"
                     maxFontSizeMultiplier={1.15}
                   />
+
+                  {/* 🎒 學校聯絡簿點選式快捷詞膠囊組合面板 (方式二) */}
+                  {isSchoolMemoMode(note) && (
+                    <View style={styles.schoolQuickBuilderBox}>
+                      <View style={styles.schoolQuickBuilderHeader}>
+                        <Text style={styles.schoolQuickBuilderTitle} maxFontSizeMultiplier={1.08}>
+                          🎒 聯絡簿快選組裝
+                        </Text>
+                        <Text style={styles.schoolQuickBuilderSubtitle} maxFontSizeMultiplier={1.05}>
+                          先選科目，再點作業即自動加一行待辦
+                        </Text>
+                      </View>
+
+                      <Text style={styles.schoolQuickRowLabel} maxFontSizeMultiplier={1.05}>
+                        1. 點選科目（目前：{selectedSchoolSubject}）：
+                      </Text>
+                      <View style={styles.schoolQuickChipsRow}>
+                        {SCHOOL_SUBJECTS.map((subj) => {
+                          const isSelected = selectedSchoolSubject === subj;
+                          return (
+                            <TouchableOpacity
+                              key={subj}
+                              style={[
+                                styles.schoolSubjectChip,
+                                isSelected && styles.schoolSubjectChipActive,
+                              ]}
+                              activeOpacity={0.75}
+                              onPress={() => setSelectedSchoolSubject(subj)}
+                            >
+                              <Text
+                                style={[
+                                  styles.schoolSubjectChipText,
+                                  isSelected && styles.schoolSubjectChipTextActive,
+                                ]}
+                                maxFontSizeMultiplier={1.08}
+                              >
+                                {subj}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+
+                      <Text style={[styles.schoolQuickRowLabel, { marginTop: 8 }]} maxFontSizeMultiplier={1.05}>
+                        2. 點一下立即加入「{selectedSchoolSubject}」待辦：
+                      </Text>
+                      <View style={styles.schoolQuickChipsRow}>
+                        {SCHOOL_TASK_TYPES.map((task) => (
+                          <TouchableOpacity
+                            key={task}
+                            style={styles.schoolActionChip}
+                            activeOpacity={0.75}
+                            onPress={() =>
+                              setNote((prev) => appendSchoolChecklistItem(prev, selectedSchoolSubject, task))
+                            }
+                          >
+                            <Text style={styles.schoolActionChipText} maxFontSizeMultiplier={1.08}>
+                              ＋{selectedSchoolSubject}{task}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+
+                      <Text style={[styles.schoolQuickRowLabel, { marginTop: 8 }]} maxFontSizeMultiplier={1.05}>
+                        3. 常態必備與簽名（點一下直接加入）：
+                      </Text>
+                      <View style={styles.schoolQuickChipsRow}>
+                        {SCHOOL_DAILY_ITEMS.map((item) => (
+                          <TouchableOpacity
+                            key={item}
+                            style={styles.schoolRoutineChip}
+                            activeOpacity={0.75}
+                            onPress={() =>
+                              setNote((prev) => appendSchoolChecklistItem(prev, null, item))
+                            }
+                          >
+                            <Text style={styles.schoolRoutineChipText} maxFontSizeMultiplier={1.08}>
+                              ＋{item}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  )}
 
                   {/* ⏰ 點餐開團 / 家庭投票 截止時間快捷設定列 */}
                   {(isCollabOrderOrVoting || currentOrderDeadline?.hasDeadline) && (
@@ -5407,5 +5506,90 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 11.5,
     fontWeight: '600',
     color: isDark ? '#F3F4F6' : '#374151',
+  },
+  schoolQuickBuilderBox: {
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.12)' : '#EEF2FF',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 8,
+    marginBottom: 6,
+  },
+  schoolQuickBuilderHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 6,
+  },
+  schoolQuickBuilderTitle: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: isDark ? '#A5B4FC' : '#4338CA',
+  },
+  schoolQuickBuilderSubtitle: {
+    fontSize: 11,
+    color: isDark ? '#9CA3AF' : '#6B7280',
+  },
+  schoolQuickRowLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: isDark ? '#C7D2FE' : '#4F46E5',
+    marginBottom: 4,
+  },
+  schoolQuickChipsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  schoolSubjectChip: {
+    backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: isDark ? '#4B5563' : '#D1D5DB',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  schoolSubjectChipActive: {
+    backgroundColor: isDark ? '#4F46E5' : '#4F46E5',
+    borderColor: isDark ? '#818CF8' : '#4338CA',
+  },
+  schoolSubjectChipText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: isDark ? '#E5E7EB' : '#374151',
+  },
+  schoolSubjectChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  schoolActionChip: {
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.18)' : '#FEF3C7',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(245, 158, 11, 0.45)' : '#FCD34D',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  schoolActionChipText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: isDark ? '#FDE68A' : '#92400E',
+  },
+  schoolRoutineChip: {
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.4)' : '#6EE7B7',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  schoolRoutineChipText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: isDark ? '#6EE7B7' : '#065F46',
   },
 });

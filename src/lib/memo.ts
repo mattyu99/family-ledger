@@ -696,6 +696,7 @@ export function parseMemoItemReplies(lineContent: string): {
     '店家', '餐廳', '規格', '備註', '說明', '提示',
     '甜度', '冰塊', '辣度', '溫度', '尺寸', '份量', '數量', '加料',
     '時間', '地址', '電話', '網址', 'http', 'https',
+    '如', '例', '例如', '譬如', '包含', '包括', '注意', '重點', '範圍', '頁數', '頁碼', '科目',
   ];
 
   const allReplies: MemoItemReply[] = [];
@@ -1021,6 +1022,14 @@ export const BUILTIN_MEMO_TEMPLATES: MemoChecklistTemplate[] = [
     items: [],
   },
   {
+    id: 'school_contact_book',
+    title: '學校聯絡簿快選',
+    icon: '🎒',
+    tag: '🎒 學校親子',
+    description: '點選科目與作業類型，免打字秒速組裝今日聯絡簿清單',
+    items: [],
+  },
+  {
     id: 'travel_abroad',
     title: '出國必備行李',
     icon: '✈️',
@@ -1150,6 +1159,84 @@ export const BUILTIN_MEMO_TEMPLATES: MemoChecklistTemplate[] = [
     ],
   },
 ];
+
+/**
+ * 學校聯絡簿快選組裝面板：常用科目清單
+ */
+export const SCHOOL_SUBJECTS = [
+  '國文',
+  '英文',
+  '數學',
+  '理化',
+  '生物',
+  '歷史',
+  '地理',
+  '公民',
+  '社會',
+  '自然',
+];
+
+/**
+ * 學校聯絡簿快選組裝面板：作業與考試類型（搭配科目組合）
+ */
+export const SCHOOL_TASK_TYPES = [
+  '習作',
+  '講義',
+  '學習單',
+  '課本',
+  '考卷訂正',
+  '小考',
+  '單字',
+  '注釋',
+  '默寫',
+  '複習',
+];
+
+/**
+ * 學校聯絡簿快選組裝面板：日常必備與簽名（一鍵單獨加入）
+ */
+export const SCHOOL_DAILY_ITEMS = [
+  '聯絡簿簽名',
+  '考卷簽名',
+  '通知單回條',
+  '實驗衣',
+  '體育服',
+  '美勞用具',
+  '餐袋水壺',
+  '收書包',
+];
+
+/**
+ * 判斷當前記事是否處於「🎒 學校親子 / 聯絡簿」模式
+ */
+export function isSchoolMemoMode(noteText?: string): boolean {
+  if (!noteText) return false;
+  return (
+    isMemoTagActive(noteText, '🎒 學校親子') ||
+    noteText.includes('學校親子') ||
+    noteText.includes('聯絡簿')
+  );
+}
+
+/**
+ * 點選科目與作業類型，自動組裝並追加一行純淨的 `- [ ] 項目` 到記事中
+ */
+export function appendSchoolChecklistItem(
+  currentNote: string,
+  subject: string | null,
+  taskOrItem: string
+): string {
+  const itemText = subject ? `${subject}${taskOrItem}` : taskOrItem;
+  const trimmed = (currentNote || '').trim();
+  if (!trimmed) {
+    return `[🎒 學校親子]\n- [ ] ${itemText}`;
+  }
+  // 若最後一行是空的待辦方框 `- [ ]`，直接填入該行
+  if (/[-*]\s*\[\s*\]\s*$/.test(trimmed)) {
+    return trimmed.replace(/[-*]\s*\[\s*\]\s*$/, `- [ ] ${itemText}`);
+  }
+  return `${trimmed}\n- [ ] ${itemText}`;
+}
 
 /**
  * 產出指定範本之完整記事文字

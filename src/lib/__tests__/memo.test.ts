@@ -24,6 +24,8 @@ import {
   isMemoActionTag,
   getMergedMemoTags,
   findMemoTopicTagMatch,
+  isSchoolMemoMode,
+  appendSchoolChecklistItem,
 } from '../memo';
 import { hydrateTransactionWithInvoice } from '../ledgerUtils';
 
@@ -656,6 +658,40 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
         expect(output).toContain('大家直接點右上方「＋我也要」快速報單！');
         // 嚴格確保不包含任何待辦方框 - [ ]
         expect(output).not.toContain('- [ ]');
+      });
+    });
+
+    describe('學校聯絡簿快選組裝器 (School Quick Checklist Builder)', () => {
+      it('isSchoolMemoMode 應能識別學校親子與聯絡簿主題', () => {
+        expect(isSchoolMemoMode('[🎒 學校親子]')).toBe(true);
+        expect(isSchoolMemoMode('洋洋今日聯絡簿')).toBe(true);
+        expect(isSchoolMemoMode('[🛒 採買清單] 買鮮奶')).toBe(false);
+      });
+
+      it('appendSchoolChecklistItem 應能按順序追加科目＋作業類型與常態項目', () => {
+        let note = '';
+        note = appendSchoolChecklistItem(note, '數學', '講義');
+        expect(note).toBe('[🎒 學校親子]\n- [ ] 數學講義');
+
+        note = appendSchoolChecklistItem(note, '理化', '習作');
+        expect(note).toBe('[🎒 學校親子]\n- [ ] 數學講義\n- [ ] 理化習作');
+
+        note = appendSchoolChecklistItem(note, '英文', '單字');
+        note = appendSchoolChecklistItem(note, '國文', '注釋');
+        note = appendSchoolChecklistItem(note, null, '聯絡簿簽名');
+        expect(note).toBe(
+          '[🎒 學校親子]\n- [ ] 數學講義\n- [ ] 理化習作\n- [ ] 英文單字\n- [ ] 國文注釋\n- [ ] 聯絡簿簽名'
+        );
+      });
+
+      it('parseMemoItemReplies 不應將（如：...）或（範圍：...）誤判為成員留言', () => {
+        const parsed1 = parseMemoItemReplies('1. 課表特定用具（如：理化實驗衣、體育服、美勞用具）');
+        expect(parsed1.replies).toHaveLength(0);
+        expect(parsed1.cleanText).toBe('1. 課表特定用具（如：理化實驗衣、體育服、美勞用具）');
+
+        const parsed2 = parseMemoItemReplies('數學小考（範圍：第1-3章）');
+        expect(parsed2.replies).toHaveLength(0);
+        expect(parsed2.cleanText).toBe('數學小考（範圍：第1-3章）');
       });
     });
   });
