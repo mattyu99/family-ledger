@@ -1465,9 +1465,12 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
             onSubmitEditing={Keyboard.dismiss}
             onFocus={() => {
               setIsSearchFocused(true);
-              setTimeout(() => {
-                activeScrollRef.current?.scrollTo({ y: 260, animated: true });
-              }, 120);
+              // Web 版（電腦/手機瀏覽器）具有自然視窗佈局，點擊輸入框嚴禁強制捲動避免將搜尋框頂出可視畫面外
+              if (Platform.OS !== 'web') {
+                setTimeout(() => {
+                  activeScrollRef.current?.scrollTo({ y: 260, animated: true });
+                }, 120);
+              }
             }}
             onBlur={() => {
               setIsSearchFocused(false);
