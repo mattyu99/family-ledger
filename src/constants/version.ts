@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.17';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.17 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 9;
+export const APP_BUILD_REVISION = 10;
 
 // 完整版本字串 (例如 "1.0.17.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -31,6 +31,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
       '💬 協作活動全家第一焦點常駐：五大進行中活動天然常駐首頁榜首且不佔靜態置頂名額，子項目支援留言討論與結案自動歸檔。',
       '🎮 示範看板純淨化與膠囊精準統計：協作活動回歸純淨無置頂標記，對話留言圖示精準淨化，修復舊版採買看板自癒，且篩選膠囊精準對齊真實明細筆數。',
       '📝 記事編輯窗格擴增與收單智慧感知：記事輸入高度全面擴展一倍，視野更充裕，且截止收單僅在點餐投票時智慧顯現，一般記事保持清爽。',
+      '💳 選定卡片首位置頂與平穩選取：點開已記錄之刷卡或轉帳明細時，已選定卡片自動置頂於首位，開窗立即可見免滑動，切換其他卡片亦穩定不跳位。',
       '📖 官方使用手冊與操作指南升級：全面補齊五大記事協作看板、子項目留言與零用錢分流之完整圖文操作指南。',
     ],
   },

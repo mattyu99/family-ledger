@@ -150,6 +150,43 @@ describe('Account Member Alias Resolution Tests', () => {
       expect(res.length).toBeGreaterThan(0);
       expect(res.some(a => a.id === 'card-public')).toBe(true);
     });
+
+    test('prioritizes selected or priority card to position #1 in horizontal selector', () => {
+      const cardA: PaymentAccount = {
+        id: 'card-a',
+        ledger_id: 'ledger-test',
+        name: '富邦數位生活卡',
+        type: 'credit_card',
+        user_id: zhiProfile.id,
+        sort_order: 1,
+        balance: 0,
+        created_at: '2026-10-10T12:30:00Z',
+      };
+      const cardB: PaymentAccount = {
+        id: 'card-b',
+        ledger_id: 'ledger-test',
+        name: '玉山 Pi 卡',
+        type: 'credit_card',
+        user_id: zhiProfile.id,
+        sort_order: 10, // 原本排序在很後面
+        balance: 0,
+        created_at: '2026-10-10T12:30:00Z',
+      };
+      const zhiCards = [cardA, cardB];
+
+      // 當開窗檢視一筆當初選了 card-b (玉山 Pi 卡) 的刷卡明細時：
+      const res = filterAccountsForUser(zhiCards, {
+        type: 'credit_card',
+        currentUser: zhiProfile,
+        selectedAccountId: 'card-b',
+        priorityAccountId: 'card-b',
+        getMemberById,
+      });
+
+      // 玉山 Pi 卡必須被自動置頂在第 1 位 (index 0)，無需手動往右滑即可直接看見
+      expect(res[0].id).toBe('card-b');
+      expect(res[1].id).toBe('card-a');
+    });
   });
 
   describe('buildMemberAliasMap Prefix & Substring Matching', () => {

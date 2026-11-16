@@ -462,14 +462,26 @@ export const formatPaymentLabel = (
 };
 
 /**
- * 將支付卡片/帳戶列表排序：優先將本機使用成員 (或當前選定付款人) 的卡片排在最前面以利優先選取
+ * 將支付卡片/帳戶列表排序：
+ * 1. 優先將指定置頂 (priorityAccountId) 的卡片置頂於第 1 位，確保開窗即直接可見無需手動橫向滑動
+ * 2. 其次將本機使用成員 (或當前選定付款人) 的卡片排在前面以利優先選取
+ * 3. 最後依自訂排序序號 (sort_order) 排序
  */
 export const sortAccountsByUser = (
   accounts: PaymentAccount[],
-  preferredUserId?: string
+  preferredUserId?: string,
+  priorityAccountId?: string
 ): PaymentAccount[] => {
   if (!accounts || accounts.length === 0) return [];
   return [...accounts].sort((a, b) => {
+    // 1. 若有指定置頂卡片/帳戶，優先排在最前面，確保開窗即直接可見
+    if (priorityAccountId) {
+      const aIsPriority = a.id === priorityAccountId ? 1 : 0;
+      const bIsPriority = b.id === priorityAccountId ? 1 : 0;
+      if (aIsPriority !== bIsPriority) {
+        return bIsPriority - aIsPriority;
+      }
+    }
     const aIsPreferred = preferredUserId && a.user_id === preferredUserId ? 1 : 0;
     const bIsPreferred = preferredUserId && b.user_id === preferredUserId ? 1 : 0;
     if (aIsPreferred !== bIsPreferred) {
@@ -492,6 +504,7 @@ export const filterAccountsForUser = (
     currentUser?: Profile | null;
     inAdminMode?: boolean;
     selectedAccountId?: string;
+    priorityAccountId?: string;
     getMemberById?: (id?: string) => Profile | undefined;
     targetPayerId?: string;
   }
@@ -502,9 +515,13 @@ export const filterAccountsForUser = (
     currentUser,
     inAdminMode = false,
     selectedAccountId,
+    priorityAccountId,
     getMemberById,
     targetPayerId,
   } = options;
+
+  // 決定置頂卡片：若有明確傳入 priorityAccountId 則使用；若無但有 selectedAccountId 亦一併置頂
+  const targetPriorityId = priorityAccountId !== undefined ? priorityAccountId : selectedAccountId;
 
   // 1. 先依帳戶類型過濾（'all' 模式專供記帳扣款帳戶選單，預設排除純網購載具 'carrier'）
   const ofType = type === 'all'
@@ -516,7 +533,7 @@ export const filterAccountsForUser = (
 
   // 2. 若為管理員模式，顯示全部帳戶（依優先成員排序）
   if (inAdminMode) {
-    return sortAccountsByUser(ofType, preferredUser);
+    return sortAccountsByUser(ofType, preferredUser, targetPriorityId);
   }
 
   // 3. 非管理員模式（日常成員模式）：
@@ -560,12 +577,12 @@ export const filterAccountsForUser = (
   if (filtered.length === 0 && ofType.length > 0) {
     const publicCards = ofType.filter(a => !a.user_id);
     if (publicCards.length > 0) {
-      return sortAccountsByUser(publicCards, preferredUser);
+      return sortAccountsByUser(publicCards, preferredUser, targetPriorityId);
     }
-    return sortAccountsByUser(ofType, preferredUser);
+    return sortAccountsByUser(ofType, preferredUser, targetPriorityId);
   }
 
-  return sortAccountsByUser(filtered, preferredUser);
+  return sortAccountsByUser(filtered, preferredUser, targetPriorityId);
 };
 
 /**

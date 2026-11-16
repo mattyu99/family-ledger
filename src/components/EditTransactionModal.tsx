@@ -720,16 +720,20 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
   const availableCategories = categories.filter(c => c.type === (type === 'transfer' ? 'expense' : type));
   const targetPayerId = paidBy || currentUser?.id;
+  // 記錄開啟此明細時原本關聯的卡片或帳戶 ID，確保若該卡在較後方，開窗時自動置頂於首位；若手動切換選取其他卡片，順序保持平穩不跳動
+  const initialAccountId = React.useMemo(() => transaction?.account_id || '', [transaction?.id]);
+
   const creditCards = React.useMemo(
     () => filterAccountsForUser(paymentAccounts, {
       type: 'credit_card',
       currentUser,
       inAdminMode,
       selectedAccountId,
+      priorityAccountId: initialAccountId,
       getMemberById,
       targetPayerId,
     }),
-    [paymentAccounts, currentUser, inAdminMode, selectedAccountId, getMemberById, targetPayerId]
+    [paymentAccounts, currentUser, inAdminMode, selectedAccountId, initialAccountId, getMemberById, targetPayerId]
   );
   const storedValueCards = React.useMemo(
     () => filterAccountsForUser(paymentAccounts, {
@@ -737,10 +741,11 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       currentUser,
       inAdminMode,
       selectedAccountId,
+      priorityAccountId: initialAccountId,
       getMemberById,
       targetPayerId,
     }),
-    [paymentAccounts, currentUser, inAdminMode, selectedAccountId, getMemberById, targetPayerId]
+    [paymentAccounts, currentUser, inAdminMode, selectedAccountId, initialAccountId, getMemberById, targetPayerId]
   );
   const bankAccounts = React.useMemo(
     () => filterAccountsForUser(paymentAccounts, {
@@ -748,10 +753,11 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       currentUser,
       inAdminMode,
       selectedAccountId,
+      priorityAccountId: initialAccountId,
       getMemberById,
       targetPayerId,
     }),
-    [paymentAccounts, currentUser, inAdminMode, selectedAccountId, getMemberById, targetPayerId]
+    [paymentAccounts, currentUser, inAdminMode, selectedAccountId, initialAccountId, getMemberById, targetPayerId]
   );
 
   // 取得有效啟用的付款方式清單（現金永遠保留，若當前交易的付款方式被停用，仍保留顯示）
