@@ -260,8 +260,72 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
       expect(formatLinkedTransactionSummary({ type: 'income', amount: 5000, note: '兼職收入' })).toBe('🔗 連動收入：NT$ 5,000 (兼職收入) ›');
       expect(formatLinkedTransactionSummary({ type: 'transfer', amount: 500, merchant: '存入【智悠遊卡】' })).toBe('🔗 連動轉帳：NT$ 500 (存入【智悠遊卡】) ›');
       expect(formatLinkedTransactionSummary({ type: 'memo', note: '[🛒 第二階段] 採買生活耗材' })).toBe('🔗 接力待辦：第二階段 ›');
-      expect(formatLinkedTransactionSummary({ type: 'memo', note: '[🗳️ 晚餐投票] 投票決定今晚吃什麼' })).toBe('🗳️ 來自投票：晚餐投票 ›');
-      expect(formatLinkedTransactionSummary({ type: 'memo', note: '[🧋 點餐開團] 50嵐飲料開團' })).toBe('🧋 連動開團：點餐開團 ›');
+      expect(formatLinkedTransactionSummary({ type: 'memo', note: '[🗳️ 晚餐投票] 投票決定今晚吃什麼' })).toBe('🗳️ 來自投票：晚餐投票 (投票進行中) ›');
+      expect(formatLinkedTransactionSummary({ type: 'memo', note: '[🧋 點餐開團] 50嵐飲料開團' })).toBe('🧋 連動開團：50嵐 (等待報單中) ›');
+    });
+
+    it('連動開團應支援提取店名與動態報單進度（份數與金額）', () => {
+      // 1. 剛開團無人報單
+      const newOrder = {
+        type: 'memo',
+        note: `[🧋 點餐開團] 店家：鮮堡漢堡\n- [ ] 大家直接在下方點「＋我也要 / 登記品項」快速報單！`,
+      };
+      expect(formatLinkedTransactionSummary(newOrder)).toBe('🧋 連動開團：鮮堡漢堡 (等待報單中) ›');
+
+      // 2. 有人報單且有金額
+      const activeOrder = {
+        type: 'memo',
+        note: `[🧋 點餐開團] 店家：鮮堡漢堡\n- [ ] 智爸：卡啦雞腿堡加蛋 $65\n- [ ] 瑩媽：鮮奶茶大杯微糖 $45`,
+      };
+      expect(formatLinkedTransactionSummary(activeOrder)).toBe('🧋 連動開團：鮮堡漢堡 (累計 2 份·NT$ 110) ›');
+
+      // 3. 已結案
+      const settledOrder = {
+        type: 'memo',
+        is_settled: true,
+        note: `[🧋 點餐開團] 店家：鮮堡漢堡\n- [x] 智爸：卡啦雞腿堡加蛋 $65`,
+      };
+      expect(formatLinkedTransactionSummary(settledOrder)).toBe('🧋 連動開團：鮮堡漢堡 (已結案) ›');
+    });
+
+    it('來自投票應支援提取主題與拍板共識方案', () => {
+      // 1. 投票進行中
+      const voting = {
+        type: 'memo',
+        note: `[🗳️ 家庭投票]\n主題：週末聚餐吃什麼？（可直接修改主題）\n- [ ] 🍲 鼎泰豐（智爸 +1）\n- [ ] 🍔 鮮堡漢堡（豆豆、洋洋 +2）`,
+      };
+      expect(formatLinkedTransactionSummary(voting)).toBe('🗳️ 來自投票：週末聚餐吃什麼？ (領先：鮮堡漢堡 2票) ›');
+
+      // 2. 投票共識拍板結案
+      const decided = {
+        type: 'memo',
+        is_settled: true,
+        note: `[🗳️ 家庭投票]\n主題：週末聚餐吃什麼？（可直接修改主題）\n- [x] 🍔 鮮堡漢堡（豆豆、智爸、洋洋 +3）`,
+      };
+      expect(formatLinkedTransactionSummary(decided)).toBe('🗳️ 來自投票：週末聚餐吃什麼？ (鮮堡漢堡 3票拍板) ›');
+    });
+
+    it('協作看板（賣場採買、網購包裹、家事懸賞）連動進度文字呈現', () => {
+      // 賣場推車採買
+      const grocery = {
+        type: 'memo',
+        note: `[🛒 採買清單] 賣場：全聯\n- [ ] 鮮奶 2 瓶\n- [ ] 雞蛋 1 盒\n- [x] 吐司 1 條`,
+      };
+      expect(formatLinkedTransactionSummary(grocery)).toBe('🛒 連動採買：全聯 (待買 2 件) ›');
+
+      // 網購超商包裹
+      const parcel = {
+        type: 'memo',
+        note: `[📦 網購湊單] 超商：蝦皮/7-11\n- [ ] 智爸：手機殼\n- [x] 瑩媽：保溫杯`,
+      };
+      expect(formatLinkedTransactionSummary(parcel)).toBe('📦 連動包裹：蝦皮/7-11 (待取 1 件) ›');
+
+      // 家事分工
+      const chore = {
+        type: 'memo',
+        note: `[🧹 家事懸賞] 客廳大掃除\n- [ ] 擦桌子 $20\n- [x] 掃地拖地 $50（洋洋）`,
+      };
+      expect(formatLinkedTransactionSummary(chore)).toBe('🧹 連動家事：客廳大掃除 (1項待認領) ›');
     });
 
     it('formatLinkedTransactionSummary 應徹底過濾發票中繼標籤與換行，優先顯示商家名稱', () => {

@@ -5,6 +5,12 @@
 import { CalendarSystem, MemoRepeatFrequency } from './lunar';
 import { computeNextRelayReminderDate } from './dateParser';
 import { stripInvoiceTag } from './invoice';
+import {
+  isGroupOrderMemo,
+  detectCollaborativeOrderMode,
+  extractStoreNameFromMemo,
+  computeGroupOrderSummary,
+} from './groupOrder';
 export * from './dateParser';
 
 export const DEFAULT_MEMO_QUICK_TAGS = [
@@ -1281,6 +1287,7 @@ export function formatLinkedTransactionSummary(tx?: {
   amount?: number;
   note?: string;
   merchant?: string;
+  is_settled?: boolean | number;
 } | null): string {
   if (!tx) return '';
   const type = tx.type || 'expense';
@@ -1332,22 +1339,165 @@ export function formatLinkedTransactionSummary(tx?: {
     return `🔗 連動收入：${amountStr}${suffix} ›`;
   }
 
-  // 4. 若為接力待辦 (memo)
+  // 4. 若為接力待辦或協作看板記事 (memo)
+  const isSettled = !!tx.is_settled;
   const parsed = parseMemoNote(tx.note);
   const rawTitle = (parsed.title && parsed.title !== '生活記事' && parsed.title !== '生活待辦')
     ? parsed.title
     : (cleanNote.split('\n')[0] || '生活待辦');
   const cleanTitle = rawTitle.replace(/^\[(?:.*?)]\s*/, '').trim() || rawTitle;
-  const shortTitle = cleanTitle.length > 16 ? `${cleanTitle.slice(0, 15)}…` : cleanTitle;
 
-  const noteLower = (tx.note || '').toLowerCase();
-  if (noteLower.includes('投票') || noteLower.includes('決策')) {
-    return `🗳️ 來自投票：${shortTitle} ›`;
+  const isOrder = isGroupOrderMemo(cleanTitle, cleanNote);
+
+  // 4.0 若非五大協作看板，則為一般接力待辦
+  if (!isOrder) {
+    const shortTitle = cleanTitle.length > 14 ? `${cleanTitle.slice(0, 13)}…` : cleanTitle;
+    const statusText = isSettled ? ' (已辦妥)' : '';
+    return `🔗 接力待辦：${shortTitle}${statusText} ›`;
   }
-  if (noteLower.includes('點餐') || noteLower.includes('開團')) {
-    return `🧋 連動開團：${shortTitle} ›`;
+
+  const mode = detectCollaborativeOrderMode(cleanTitle, cleanNote);
+  const summary = computeGroupOrderSummary(cleanNote, cleanTitle);
+
+  // 4.1 點餐開團 (food mode)
+  if (mode === 'food') {
+    const rawStore = extractStoreNameFromMemo(cleanTitle, cleanNote);
+    const cleanStore = rawStore.replace(/^(?:🍲|🍣|🥩|🍕|🍔|🍟|🍱|☕|🥤|🧋|🍜|\s)+/u, '').trim();
+    const store = cleanStore.length > 12 ? `${cleanStore.slice(0, 11)}…` : (cleanStore || '餐飲開團');
+
+    let statusText = '';
+    if (isSettled) {
+      statusText = ' (已結案)';
+    } else if (summary.totalCount === 0) {
+      statusText = ' (等待報單中)';
+    } else if (summary.totalAmount > 0) {
+      statusText = ` (累計 ${summary.totalCount} 份·NT$ ${Math.round(summary.totalAmount).toLocaleString()})`;
+    } else {
+      statusText = ` (累計 ${summary.totalCount} 份)`;
+    }
+    return `🧋 連動開團：${store}${statusText} ›`;
   }
-  return `🔗 接力待辦：${shortTitle} ›`;
+
+  // 4.2 家庭民主投票 (vote mode)
+  if (mode === 'vote') {
+    // 優先從內文提取明確的「主題：xxx」
+    const topicMatch = cleanNote.match(/(?:主題|問題|議題|投票主題)[：:\s]+([^（\(\n\r]+)/i);
+    let topic = topicMatch ? topicMatch[1].replace(/[可直接修改|大家投].*$/, '').trim() : '';
+    if (!topic && cleanTitle && !['家庭投票', '投票', '決策', '投票看板'].includes(cleanTitle)) {
+      topic = cleanTitle;
+    }
+    if (topic && topic.length > 10) {
+      topic = `${topic.slice(0, 9)}…`;
+    }
+
+    const leading = summary.leadingOption;
+    let statusText = '';
+
+    if (isSettled) {
+      if (leading?.title) {
+        const cleanLead = leading.title.replace(/^(?:🍲|🍣|🥩|🍕|🍔|🍟|🍱|☕|🥤|🧋|🍜|\s)+/u, '').trim();
+        const shortLead = cleanLead.length > 8 ? `${cleanLead.slice(0, 7)}…` : cleanLead;
+        statusText = leading.voteCount > 0 ? ` (${shortLead} ${leading.voteCount}票拍板)` : ` (拍板：${shortLead})`;
+      } else {
+        statusText = ' (已拍板結案)';
+      }
+    } else if (leading && leading.voteCount > 0) {
+      const cleanLead = leading.title.replace(/^(?:🍲|🍣|🥩|🍕|🍔|🍟|🍱|☕|🥤|🧋|🍜|\s)+/u, '').trim();
+      const shortLead = cleanLead.length > 8 ? `${cleanLead.slice(0, 7)}…` : cleanLead;
+      statusText = ` (領先：${shortLead} ${leading.voteCount}票)`;
+    } else if ((summary.totalVotes || 0) > 0) {
+      statusText = ` (投票中·累計 ${summary.totalVotes} 票)`;
+    } else {
+      statusText = ' (投票進行中)';
+    }
+
+    if (topic) {
+      return `🗳️ 來自投票：${topic}${statusText} ›`;
+    }
+    if (leading?.title) {
+      const cleanLead = leading.title.replace(/^(?:🍲|🍣|🥩|🍕|🍔|🍟|🍱|☕|🥤|🧋|🍜|\s)+/u, '').trim();
+      const shortLead = cleanLead.length > 10 ? `${cleanLead.slice(0, 9)}…` : cleanLead;
+      return `🗳️ 來自投票：${shortLead}${statusText} ›`;
+    }
+    return `🗳️ 來自投票：家庭投票${statusText} ›`;
+  }
+
+  // 4.3 賣場推車採買 (grocery mode)
+  if (mode === 'grocery') {
+    const rawStore = extractStoreNameFromMemo(cleanTitle, cleanNote);
+    const cleanStore = rawStore.replace(/^(?:🛒|🛍️|\s)+/u, '').trim();
+    const store = cleanStore.length > 10 ? `${cleanStore.slice(0, 9)}…` : (cleanStore || '採買推車');
+    const unDoneCount = summary.totalCount - summary.completedCount;
+
+    let statusText = '';
+    if (isSettled) {
+      statusText = ' (已買妥結案)';
+    } else if (summary.totalCount === 0) {
+      statusText = ' (推車準備中)';
+    } else if (unDoneCount > 0) {
+      statusText = ` (待買 ${unDoneCount} 件)`;
+    } else {
+      statusText = ' (已全數放推車)';
+    }
+    return `🛒 連動採買：${store}${statusText} ›`;
+  }
+
+  // 4.4 網購湊單與超商包裹 (parcel mode)
+  if (mode === 'parcel') {
+    const rawStore = extractStoreNameFromMemo(cleanTitle, cleanNote);
+    const cleanStore = rawStore.replace(/^(?:📦|🚚|\s)+/u, '').trim();
+    const store = cleanStore.length > 10 ? `${cleanStore.slice(0, 9)}…` : (cleanStore || '包裹湊單');
+    const unDoneCount = summary.totalCount - summary.completedCount;
+
+    let statusText = '';
+    if (isSettled) {
+      statusText = ' (已取件結案)';
+    } else if (summary.totalCount === 0) {
+      statusText = ' (湊單進行中)';
+    } else if (unDoneCount > 0) {
+      statusText = ` (待取 ${unDoneCount} 件)`;
+    } else {
+      statusText = ' (已全數取件)';
+    }
+    return `📦 連動包裹：${store}${statusText} ›`;
+  }
+
+  // 4.5 家事零用錢懸賞 (chore mode)
+  if (mode === 'chore') {
+    let choreName = cleanTitle.replace(/^(?:🧹|🧽|🏠|\s)+/u, '').trim();
+    const isGeneric = !choreName || ['家事懸賞', '家事分工', '家事', '任務懸賞', '分工', '生活待辦', '生活記事'].includes(choreName);
+    if (isGeneric) {
+      // 嘗試從第一行去除中括號後的剩餘文字提取 (如 [🧹 家事懸賞] 客廳大掃除 -> 客廳大掃除)
+      const firstLine = cleanNote.split('\n')[0] || '';
+      const afterTag = firstLine.replace(/^[\[［【][^\]］】]+[\]］】]\s*/, '').trim();
+      if (afterTag && !afterTag.startsWith('- [') && !afterTag.startsWith('* [')) {
+        choreName = afterTag;
+      } else {
+        const rawStore = extractStoreNameFromMemo(cleanTitle, cleanNote);
+        if (rawStore && rawStore !== '家庭任務') {
+          choreName = rawStore;
+        }
+      }
+    }
+    const cleanChore = (choreName || '家事分工').replace(/^(?:🧹|🧽|🏠|\s)+/u, '').trim();
+    const shortChore = cleanChore.length > 10 ? `${cleanChore.slice(0, 9)}…` : cleanChore;
+    const unDoneCount = summary.totalCount - summary.completedCount;
+
+    let statusText = '';
+    if (isSettled) {
+      statusText = ' (已全數完成)';
+    } else if (unDoneCount > 0) {
+      statusText = ` (${unDoneCount}項待認領)`;
+    } else {
+      statusText = ' (進行中)';
+    }
+    return `🧹 連動家事：${shortChore}${statusText} ›`;
+  }
+
+  // 4.6 一般接力待辦 (custom / default memo)
+  const shortTitle = cleanTitle.length > 14 ? `${cleanTitle.slice(0, 13)}…` : cleanTitle;
+  const statusText = isSettled ? ' (已辦妥)' : '';
+  return `🔗 接力待辦：${shortTitle}${statusText} ›`;
 }
 
 

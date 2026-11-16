@@ -242,7 +242,25 @@ export function extractStoreNameFromMemo(title?: string, content?: string): stri
   const lowerText = text.toLowerCase();
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
 
-  // 優先 1: 全文快速識別知名賣場、電商平台與超商取貨關鍵字
+  // 優先 1: 逐行掃描明確店家/賣場/平台/任務前綴 (最高精準度，如 店家：鮮堡漢堡, 超商：蝦皮/7-11)
+  for (const line of lines) {
+    const m1 = line.match(/(?:店家|店名|餐廳|飲料店|賣場|超市|平台|電商|超商|通路|任務|項目|主題)[：:\s]+([^（\(\n]+)/i);
+    if (m1 && m1[1]) {
+      const clean = m1[1].replace(/(?:可換店名|請填|大家).*$/, '').trim();
+      if (clean) return clean;
+    }
+  }
+
+  // 優先 2: 逐行掃描括弧標題 (形式 2，如 【點餐：50嵐】)
+  for (const line of lines) {
+    const m2 = line.match(/【(?:點餐|開團|許願|採買|補貨|網購|湊單|湊免運|包裹|取貨|代領|家事|家務|大掃除|懸賞|任務|分工|投票|決策)[：:\s]*([^】]+)】/);
+    if (m2 && m2[1]) {
+      const clean = m2[1].replace(/今天|大家|想喝|請填/g, '').trim();
+      if (clean) return clean;
+    }
+  }
+
+  // 優先 3: 全文快速識別知名連鎖店、賣場、電商平台與超商關鍵字
   if (text.includes('好市多') || lowerText.includes('costco')) return '好市多';
   if (text.includes('全聯')) return '全聯';
   if (text.includes('家樂福')) return '家樂福';
@@ -257,24 +275,18 @@ export function extractStoreNameFromMemo(title?: string, content?: string): stri
   if (text.includes('淘寶')) return '淘寶';
   if (text.includes('7-11') || text.includes('711') || text.includes('統一超商')) return '7-11';
   if (text.includes('全家取貨') || text.includes('全家包裹') || text.includes('全家店到店')) return '全家';
-
-  // 優先 2: 逐行掃描明確店家/賣場/平台/任務前綴 (形式 1)
-  for (const line of lines) {
-    const m1 = line.match(/(?:店家|店名|餐廳|飲料店|賣場|超市|平台|電商|超商|通路|任務|項目|主題)[：:\s]+([^（\(\n]+)/i);
-    if (m1 && m1[1]) {
-      const clean = m1[1].replace(/[可換店名|請填|大家].*$/, '').trim();
-      if (clean) return clean;
-    }
-  }
-
-  // 優先 3: 逐行掃描括弧標題 (形式 2)
-  for (const line of lines) {
-    const m2 = line.match(/【(?:點餐|開團|許願|採買|補貨|網購|湊單|湊免運|包裹|取貨|代領|家事|家務|大掃除|懸賞|任務|分工|投票|決策)[：:\s]*([^】]+)】/);
-    if (m2 && m2[1]) {
-      const clean = m2[1].replace(/今天|大家|想喝|請填/g, '').trim();
-      if (clean) return clean;
-    }
-  }
+  if (text.includes('50嵐')) return '50嵐';
+  if (text.includes('清心福全') || text.includes('清心')) return '清心';
+  if (text.includes('麻古茶坊') || text.includes('麻古')) return '麻古';
+  if (text.includes('可不可')) return '可不可';
+  if (text.includes('迷客夏')) return '迷客夏';
+  if (text.includes('得正')) return '得正';
+  if (text.includes('五桐號')) return '五桐號';
+  if (text.includes('麥當勞')) return '麥當勞';
+  if (text.includes('肯德基')) return '肯德基';
+  if (text.includes('摩斯')) return '摩斯漢堡';
+  if (text.includes('八方雲集') || text.includes('八方')) return '八方雲集';
+  if (text.includes('鼎泰豐')) return '鼎泰豐';
 
   // 優先 4: 做/幫/喝/買/吃/去 + 任務/店名 (形式 3，嚴格排除清單、項目等生活詞彙)
   const excludeWords = [
