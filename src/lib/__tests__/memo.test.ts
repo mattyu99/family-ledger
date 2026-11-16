@@ -193,6 +193,11 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
       const replyBeforePrice = parseMemoItemReplies('洋洋：薯條 (智爸：各一份嗎？) $30');
       expect(replyBeforePrice.cleanText).toBe('洋洋：薯條 $30');
       expect(replyBeforePrice.replies).toEqual([{ memberName: '智爸', text: '各一份嗎？' }]);
+
+      // 6. 若回覆括號內帶有歷史殘留或自帶的對話框圖示 (💬/🗨️/🗯️)，應主動淨化剔除，避免 UI 產生重複雙圖示
+      const bubbleReply = parseMemoItemReplies('鼎泰豐小籠包 (智爸、瑩媽) (💬 瑩媽：想吃排骨蛋炒飯！)');
+      expect(bubbleReply.cleanText).toBe('鼎泰豐小籠包 (智爸、瑩媽)');
+      expect(bubbleReply.replies).toEqual([{ memberName: '瑩媽', text: '想吃排骨蛋炒飯！' }]);
     });
 
     it('updateChecklistItemReply 支援新增、更新與刪除回覆，並正確組裝分號多人語法', () => {

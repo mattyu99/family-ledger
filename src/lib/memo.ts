@@ -710,7 +710,8 @@ export function parseMemoItemReplies(lineContent: string): {
     for (const seg of segments) {
       const segMatch = seg.match(/^([^：:\-—]{1,10})[：:\-—]\s*(.+)$/);
       if (segMatch) {
-        const member = segMatch[1].trim();
+        const rawMember = segMatch[1].trim();
+        const member = rawMember.replace(/^[💬🗨️🗯️\s]+/, '').trim();
         const text = segMatch[2].trim();
         if (!excludedKeywords.includes(member.toLowerCase()) && !excludedKeywords.includes(member) && text) {
           candidateReplies.push({ memberName: member, text });

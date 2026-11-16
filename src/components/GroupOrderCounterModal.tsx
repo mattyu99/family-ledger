@@ -702,7 +702,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                               ]}
                             >
                               <Text style={[styles.replyMember, isDark && { color: '#93C5FD' }]}>
-                                💬 {reply.memberName}：
+                                💬 {reply.memberName.replace(/^[💬🗨️🗯️\s]+/, '')}：
                               </Text>
                               <Text style={[styles.replyText, isDark && { color: '#E0F2FE' }]}>
                                 {reply.text}

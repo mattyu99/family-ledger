@@ -506,7 +506,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                                 ]}
                                 numberOfLines={1}
                               >
-                                💬 {r.memberName}：{r.text}
+                                💬 {r.memberName.replace(/^[💬🗨️🗯️\s]+/, '')}：{r.text}
                               </Text>
                             </View>
                           ))}
