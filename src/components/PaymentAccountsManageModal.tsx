@@ -130,6 +130,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   }, []);
 
   const handleInputFocus = (field: 'name' | 'lastFour' | 'cycleDate' | 'balance' | 'cardNumber' | 'issuerBank') => {
+    // Web 版具有自然視窗佈局，點擊輸入框嚴禁強制捲動避免將輸入框頂出視野
+    if (Platform.OS === 'web') return;
     const scrollMap: Record<string, number> = {
       name: 0,
       issuerBank: 80,

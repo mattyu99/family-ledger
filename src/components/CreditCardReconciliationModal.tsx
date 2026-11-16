@@ -258,6 +258,8 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
   }, []);
 
   const scrollToRebateInput = () => {
+    // Web 版具有自然視窗佈局，點擊輸入框嚴禁強制捲動避免將輸入框頂出視野
+    if (Platform.OS === 'web') return;
     activeRebateFocusRef.current = true;
     setTimeout(() => {
       scrollViewRef.current?.scrollTo({ y: 310, animated: true });

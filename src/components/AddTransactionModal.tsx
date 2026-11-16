@@ -752,6 +752,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
   // 點選輸入框時，平滑滑動至該輸入框所在位置，避免強行 scrollToEnd 導致上方輸入框被頂出可見範圍
   const scrollToInput = (targetY: number, defaultY = 0, delay = 80) => {
+    // Web 版具有自然視窗佈局，點擊輸入框嚴禁強制捲動避免將輸入框頂出視野
+    if (Platform.OS === 'web') return;
     const scrollY = Math.max(0, (targetY > 0 ? targetY : defaultY) - 15);
     activeInputScrollYRef.current = scrollY;
     setTimeout(() => {
