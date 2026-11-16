@@ -91,19 +91,92 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
     setEditingItem(item);
   };
 
+  // 跨平台確認對話框：Web 端相容 window.confirm，Native 端使用 Alert.alert
+  const showCrossPlatformConfirm = (
+    title: string,
+    message: string,
+    onConfirm: () => void,
+    confirmText: string = '確定'
+  ) => {
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm(`${title}\n\n${message}`)) {
+        onConfirm();
+      }
+    } else {
+      Alert.alert(title, message, [
+        { text: '取消', style: 'cancel' },
+        { text: confirmText, onPress: onConfirm },
+      ]);
+    }
+  };
+
+  const handleFinalizeVotePress = () => {
+    if (!summary.leadingOption) return;
+    showCrossPlatformConfirm(
+      '敲定拍板此方案',
+      `確定將「${summary.leadingOption.title}」（獲得 ${summary.leadingOption.voteCount} 票）敲定為最終決策嗎？`,
+      () => {
+        onClose();
+        onFinalizeVote?.(summary.leadingOption!.lineIndex);
+      },
+      '確定拍板'
+    );
+  };
+
+  const handleConvertToFoodOrderPress = () => {
+    if (!summary.leadingOption) return;
+    showCrossPlatformConfirm(
+      '發起點餐開團',
+      `確定依投票共識「${summary.leadingOption.title}」發起全家點餐開團嗎？原投票記錄將完好保存歸檔，並自動建立雙向連動。`,
+      () => {
+        onClose();
+        onConvertToFoodOrder?.(summary.leadingOption!.title);
+      },
+      '發起開團'
+    );
+  };
+
   // 發起人長按方案卡片進行修改名稱或下架刪除 (支援已有人投票防呆)
   const handleVoteOptionLongPress = (opt: VoteOptionSummary, idx: number) => {
     if (opt.isDecided) {
-      Alert.alert('已敲定方案', '此候選方案已拍板敲定為最終決策，無法再修改或下架刪除囉！');
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined') window.alert('此候選方案已拍板敲定為最終決策，無法再修改或下架刪除囉！');
+      } else {
+        Alert.alert('已敲定方案', '此候選方案已拍板敲定為最終決策，無法再修改或下架刪除囉！');
+      }
       return;
     }
 
     if (!isOrganizer) {
-      Alert.alert(
-        '方案管理權限',
-        '只有發起人可以修改或下架刪除此候選方案喔！若需調整，請聯繫發起人。'
-      );
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined') window.alert('只有發起人可以修改或下架刪除此候選方案喔！若需調整，請聯繫發起人。');
+      } else {
+        Alert.alert('方案管理權限', '只有發起人可以修改或下架刪除此候選方案喔！若需調整，請聯繫發起人。');
+      }
       return;
+    }
+
+    if (Platform.OS === 'web') {
+      if (opt.voteCount === 0) {
+        if (typeof window !== 'undefined') {
+          const wantDelete = window.confirm(`管理方案 · ${opt.title}\n\n目前尚無家人投票。\n【確定】：直接刪除此方案\n【取消】：開啟修改方案名稱`);
+          if (wantDelete) {
+            (onDeleteVoteOption || onDeleteItem)?.(opt.lineIndex);
+          } else {
+            setEditingVoteOption(opt);
+            setEditVoteTitle(opt.title);
+          }
+        }
+        return;
+      } else {
+        if (typeof window !== 'undefined') {
+          const wantDelete = window.confirm(`確定下架刪除方案？\n\n「${opt.title}」已有 ${opt.voteCount} 位家人投票（${opt.voters.join('、')}）。\n\n刪除後將會移除該方案並退回這些選票，家人可重新改投其他方案，確定要下架嗎？`);
+          if (wantDelete) {
+            (onDeleteVoteOption || onDeleteItem)?.(opt.lineIndex);
+          }
+        }
+        return;
+      }
     }
 
     if (opt.voteCount === 0) {
@@ -370,9 +443,6 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
               ]}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-                <Text style={{ fontSize: 16 }}>
-                  {summary.deadlineInfo.badgeColorType === 'expired' ? '🔒' : (summary.deadlineInfo.badgeColorType === 'urgent' ? '🔥' : '⏰')}
-                </Text>
                 <Text
                   style={[
                     styles.deadlineBarText,
@@ -728,21 +798,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                       <View style={styles.voteFooterRow}>
                         <TouchableOpacity
                           activeOpacity={0.8}
-                          onPress={() => {
-                            Alert.alert(
-                              '敲定拍板此方案',
-                              `確定將「${summary.leadingOption?.title}」（獲得 ${summary.leadingOption?.voteCount} 票）敲定為最終決策嗎？`,
-                              [
-                                { text: '取消', style: 'cancel' },
-                                {
-                                  text: '確定拍板',
-                                  onPress: () => {
-                                    onFinalizeVote?.(summary.leadingOption!.lineIndex);
-                                  },
-                                },
-                              ]
-                            );
-                          }}
+                          onPress={handleFinalizeVotePress}
                           style={[styles.voteFooterBtn, { backgroundColor: '#10B981' }]}
                         >
                           <Text style={styles.voteFooterBtnIcon}>🏆</Text>
@@ -753,22 +809,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
 
                         <TouchableOpacity
                           activeOpacity={0.8}
-                          onPress={() => {
-                            Alert.alert(
-                              '發起點餐開團',
-                              `確定依投票共識「${summary.leadingOption?.title}」發起全家點餐開團嗎？原投票記錄將完好保存歸檔，並自動建立雙向連動。`,
-                              [
-                                { text: '取消', style: 'cancel' },
-                                {
-                                  text: '發起開團',
-                                  onPress: () => {
-                                    onClose();
-                                    onConvertToFoodOrder?.(summary.leadingOption!.title);
-                                  },
-                                },
-                              ]
-                            );
-                          }}
+                          onPress={handleConvertToFoodOrderPress}
                           style={[styles.voteFooterBtn, { backgroundColor: '#2563EB' }]}
                         >
                           <Text style={styles.voteFooterBtnIcon}>🧋</Text>
@@ -795,22 +836,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
 
                         <TouchableOpacity
                           activeOpacity={0.8}
-                          onPress={() => {
-                            Alert.alert(
-                              '發起點餐開團',
-                              `確定依投票共識「${summary.leadingOption?.title}」發起全家點餐開團嗎？原投票記錄將完好保存歸檔，並自動建立雙向連動。`,
-                              [
-                                { text: '取消', style: 'cancel' },
-                                {
-                                  text: '發起開團',
-                                  onPress: () => {
-                                    onClose();
-                                    onConvertToFoodOrder?.(summary.leadingOption!.title);
-                                  },
-                                },
-                              ]
-                            );
-                          }}
+                          onPress={handleConvertToFoodOrderPress}
                           style={[styles.voteFooterBtn, { backgroundColor: '#2563EB' }]}
                         >
                           <Text style={styles.voteFooterBtnIcon}>🧋</Text>
@@ -846,19 +872,14 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                     <TouchableOpacity
                       activeOpacity={0.8}
                       onPress={() => {
-                        Alert.alert(
+                        showCrossPlatformConfirm(
                           '核發零用錢獎勵',
                           `確定為 ${earnedMembers.map(e => `${e.memberName} (NT$ ${e.totalAmount})`).join('、')} 建立零用錢記帳嗎？`,
-                          [
-                            { text: '取消', style: 'cancel' },
-                            {
-                              text: '確定發放',
-                              onPress: () => {
-                                onClose();
-                                onSettleAllowance?.(earnedMembers);
-                              },
-                            },
-                          ]
+                          () => {
+                            onClose();
+                            onSettleAllowance?.(earnedMembers);
+                          },
+                          '確定發放'
                         );
                       }}
                       style={[styles.settleBtn, { backgroundColor: '#F59E0B' }]}
@@ -1222,22 +1243,16 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
             <View style={styles.editFooterRow}>
               <TouchableOpacity
                 onPress={() => {
-                  Alert.alert(
+                  showCrossPlatformConfirm(
                     '刪除點單項目',
                     `確定要刪除「${editingItem?.memberName ? `${editingItem.memberName}：` : ''}${editingItem?.itemName}」嗎？`,
-                    [
-                      { text: '取消', style: 'cancel' },
-                      {
-                        text: '確定刪除',
-                        style: 'destructive',
-                        onPress: () => {
-                          if (editingItem) {
-                            onDeleteItem?.(editingItem.lineIndex);
-                          }
-                          setEditingItem(null);
-                        },
-                      },
-                    ]
+                    () => {
+                      if (editingItem) {
+                        onDeleteItem?.(editingItem.lineIndex);
+                      }
+                      setEditingItem(null);
+                    },
+                    '確定刪除'
                   );
                 }}
                 style={styles.editDeleteBtn}
