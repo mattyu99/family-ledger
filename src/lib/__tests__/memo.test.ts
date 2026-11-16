@@ -729,11 +729,27 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
         expect(dehumidifierCfg?.tasks).not.toContain('驗車');
         expect(dehumidifierCfg?.tasks).not.toContain('定期保養換機油');
 
-        // 5. 出遊與返鄉防忘
+        // 5. 出遊行李與返鄉防忘
         const travelCfg = detectMemoQuickBuilderConfig('[✈️ 出國必備]', [], '小孩');
         expect(travelCfg?.domain).toBe('travel');
         expect(travelCfg?.subjects).toContain('小孩');
         expect(travelCfg?.tasks).toContain('多套備用換洗衣物');
+
+        // 5.5 行程安排（時間軸規畫：09:00 出門、09:30 搭火車、10:00 遊湖）
+        const scheduleCfg = detectMemoQuickBuilderConfig('[📅 行程安排]', [], '10:00');
+        expect(scheduleCfg?.domain).toBe('schedule');
+        expect(scheduleCfg?.subjects).toContain('09:00');
+        expect(scheduleCfg?.subjects).toContain('09:30');
+        expect(scheduleCfg?.subjects).toContain('10:00');
+        expect(scheduleCfg?.tasks).toContain('遊湖與景點漫步');
+
+        let scheduleNote = '[📅 行程安排]';
+        scheduleNote = appendSchoolChecklistItem(scheduleNote, '09:00', '出門出發', '📅 行程安排');
+        scheduleNote = appendSchoolChecklistItem(scheduleNote, '09:30', '搭乘火車/高鐵', '📅 行程安排');
+        scheduleNote = appendSchoolChecklistItem(scheduleNote, '10:00', '遊湖與景點漫步', '📅 行程安排');
+        expect(scheduleNote).toBe(
+          '[📅 行程安排]\n- [ ] 09:00 出門出發\n- [ ] 09:30 搭乘火車/高鐵\n- [ ] 10:00 遊湖與景點漫步'
+        );
 
         // 6. 公司工作交辦與代墊報支
         const workCfg = detectMemoQuickBuilderConfig('[💼 重要備忘]', [], '報支');

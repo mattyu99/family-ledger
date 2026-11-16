@@ -278,6 +278,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     if (activeQuickBuilder.subjects.includes(selectedSchoolSubject)) {
       return selectedSchoolSubject;
     }
+    if (activeQuickBuilder.domain === 'schedule') {
+      return '09:00';
+    }
     return activeQuickBuilder.subjects[0] || '';
   }, [activeQuickBuilder, selectedSchoolSubject]);
 
@@ -1920,7 +1923,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             }
                           >
                             <Text style={styles.schoolActionChipText} maxFontSizeMultiplier={1.08}>
-                              ＋{effectiveQuickSubject}{task}
+                              ＋{effectiveQuickSubject}{/^\d{1,2}:\d{2}/.test(effectiveQuickSubject) ? ' ' : ''}{task}
                             </Text>
                           </TouchableOpacity>
                         ))}

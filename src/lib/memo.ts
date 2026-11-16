@@ -1214,7 +1214,7 @@ export const SCHOOL_DAILY_ITEMS = [
   '收書包',
 ];
 
-export type QuickBuilderDomain = 'school' | 'health' | 'home' | 'worship' | 'travel' | 'work';
+export type QuickBuilderDomain = 'school' | 'health' | 'home' | 'worship' | 'travel' | 'schedule' | 'work';
 
 export interface MemoQuickBuilderConfig {
   domain: QuickBuilderDomain;
@@ -1379,12 +1379,10 @@ export function detectMemoQuickBuilderConfig(
     };
   }
 
-  // 5. ✈️ 出國必備 / 行程安排 / 出遊防忘快檢
+  // 5. ✈️ 出國必備 / 出遊與返鄉防忘快檢 (僅針對出門前行李與防忘準備)
   if (
     isMemoTagActive(noteText, '✈️ 出國必備') ||
-    isMemoTagActive(noteText, '📅 行程安排') ||
-    noteText.includes('出國必備') ||
-    noteText.includes('行程安排')
+    noteText.includes('出國必備')
   ) {
     const travelSubjects = ['大人', '小孩', '全家共用', '隨身背包', '車上備用'];
     const subjectTasksMap: Record<string, string[]> = {
@@ -1398,8 +1396,8 @@ export function detectMemoQuickBuilderConfig(
     return {
       domain: 'travel',
       defaultTag: '✈️ 出國必備',
-      shortToggleLabel: '⚡ 出遊快選',
-      title: '✈️ 出遊與返鄉防忘快選',
+      shortToggleLabel: '⚡ 行李快選',
+      title: '✈️ 出遊行李與返鄉防忘快選',
       subtitle: '先選對象或位置，自動切換專屬必帶清單',
       step1Label: '1. 點選對象或位置',
       step2LabelPrefix: '2. 點一下立即加入',
@@ -1411,7 +1409,41 @@ export function detectMemoQuickBuilderConfig(
     };
   }
 
-  // 6. 💼 重要備忘 / 公司職場交辦與代墊報支
+  // 6. 📅 行程安排 (時間軸行程規畫：09:00 出門、09:30 搭火車、10:00 遊湖...)
+  if (
+    isMemoTagActive(noteText, '📅 行程安排') ||
+    noteText.includes('行程安排')
+  ) {
+    const scheduleSubjects = ['08:00', '09:00', '09:30', '10:00', '12:00', '14:00', '15:00', '18:00', '20:00'];
+    const subjectTasksMap: Record<string, string[]> = {
+      '08:00': ['起床梳洗與早餐', '整理隨身行李出門', '集合上車出發', '買咖啡與早餐'],
+      '09:00': ['出門出發', '搭乘火車/高鐵', '集合上車出發', '抵達第一站景點', '買咖啡與早點'],
+      '09:30': ['搭乘火車/高鐵', '抵達車站轉乘', '高速公路休息站小憩', '抵達園區入口'],
+      '10:00': ['遊湖與景點漫步', '博物館/展覽參觀', '步道健行拍照', '親子園區體驗活動', '逛老街與伴手禮'],
+      '12:00': ['餐廳午餐聚餐', '品嚐在地老街美食', '景觀餐廳用餐休息', '前往下一站景點'],
+      '14:00': ['下午茶與甜點休息', '風景區遊覽拍照', '手作DIY體驗活動', '逛文創園區/市集'],
+      '15:00': ['辦理飯店入住 Check-in', '民宿休息放行李', '享用下午茶點心', '飯店設施/泳池放鬆'],
+      '18:00': ['特色餐廳晚餐聚會', '逛在地觀光夜市', '觀賞夕陽與夜景', '親友聚餐敘舊'],
+      '20:00': ['準備搭車/開車返程', '平安返抵家門', '回飯店梳洗休息', '夜間散步與宵夜'],
+    };
+    const activeSubj = selectedSubject && scheduleSubjects.includes(selectedSubject) ? selectedSubject : '09:00';
+    return {
+      domain: 'schedule',
+      defaultTag: '📅 行程安排',
+      shortToggleLabel: '⚡ 行程快選',
+      title: '📅 行程時間軸規畫快選',
+      subtitle: '先選時段，再點行程活動即自動串接時間表',
+      step1Label: '1. 點選行程時段',
+      step2LabelPrefix: '2. 點一下立即加入',
+      step3Label: '3. 行前預訂與確認（點一下直接加入）：',
+      subjects: scheduleSubjects,
+      tasks: subjectTasksMap[activeSubj] || subjectTasksMap['09:00'],
+      subjectTasksMap,
+      routines: ['預訂高鐵/火車票', '確認餐廳訂位時間', '確認飯店訂房憑證', '查詢景點門票與營業時間', '確認停車場位置與路線'],
+    };
+  }
+
+  // 7. 💼 重要備忘 / 公司職場交辦與代墊報支
   if (
     isMemoTagActive(noteText, '💼 重要備忘') ||
     noteText.includes('重要備忘')
@@ -1467,7 +1499,8 @@ export function appendSchoolChecklistItem(
   taskOrItem: string,
   defaultTag: string = '🎒 學校親子'
 ): string {
-  const itemText = subject ? `${subject}${taskOrItem}` : taskOrItem;
+  const needSpace = subject && /^\d{1,2}:\d{2}/.test(subject);
+  const itemText = subject ? `${subject}${needSpace ? ' ' : ''}${taskOrItem}` : taskOrItem;
   const trimmed = (currentNote || '').trim();
   if (!trimmed) {
     return `[${defaultTag}]\n- [ ] ${itemText}`;
