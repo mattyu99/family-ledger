@@ -348,9 +348,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     }
   }, [detectedMemoDate, memoReminderDate]);
 
-  // 📌 智慧開團/採買感知自動置頂與全家共享：
-  // 若生活記事命中點餐開團或賣場採買，自動啟用「全家共享」並「置頂全家看板最上方」，防家人漏看；
-  // 若切換回一般記事且使用者未曾手動切換置頂開關，則自動退回不置頂狀態。
+  // 📌 智慧開團/採買感知自動全家共享：
+  // 若生活記事命中五大協作活動（點餐/採買/投票/懸賞/包裹），自動啟用「全家共享」；
+  // 協作看板在進行中天然常駐首頁最上方，不佔用也不受限於常態置頂 5 筆配額。
   useEffect(() => {
     if (mode !== 'memo' && type !== 'memo') return;
     if (userManuallyToggledPinRef.current) return;
@@ -358,16 +358,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     const parsed = parseMemoNote(note);
     const isOrder = isGroupOrderMemo(parsed.title, note);
     if (isOrder) {
-      const quota = checkMemoPinQuota(transactions, {
-        targetScope: 'family',
-        memberId: paidBy || currentUser?.id,
-      });
-      setMemoIsPinned(quota.canPin);
-      setMemoReminderTarget('family');
-    } else {
       setMemoIsPinned(false);
+      setMemoReminderTarget('family');
     }
-  }, [note, mode, type, transactions, paidBy, currentUser?.id]);
+  }, [note, mode, type]);
 
   // 🏠 家中缺貨隨手記自動感知：當處於賣場採買或網購湊單模式時，偵測尚未結案的家中缺貨項目
   const pendingRestockForCurrentMemo = useMemo(() => {
@@ -2415,37 +2409,43 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   })}
                 </View>
 
-                {/* 📌 置頂重要記事切換 (含全家 5 筆 / 個人 5 筆配額防呆) */}
+                {/* 📌 置頂重要記事切換 (五大協作看板天然常駐最上方，不佔靜態置頂名額；一般記事享 5 筆配額防呆) */}
                 <View style={styles.memoPinContainer}>
-                  <TouchableOpacity
-                    style={[styles.memoPinToggleBtn, memoIsPinned && styles.memoPinToggleBtnActive]}
-                    onPress={() => {
-                      if (!memoIsPinned) {
-                        const quota = checkMemoPinQuota(transactions, {
-                          targetScope: memoReminderTarget,
-                          memberId: effectivePaidBy || currentUser?.id,
-                        });
-                        if (!quota.canPin) {
-                          Alert.alert(
-                            memoReminderTarget === 'personal' ? '個人置頂已達上限' : '全家置頂已達上限',
-                            quota.errorMessage || '置頂已達 5 筆上限，請先辦妥或取消現有置頂事項。'
-                          );
-                          return;
+                  {isGroupOrderMemo(parseMemoNote(note).title, note) ? (
+                    <View style={[styles.memoPinToggleBtn, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF', borderColor: isDark ? '#6366F1' : '#A5B4FC' }]}>
+                      <Text style={[styles.memoPinToggleText, { color: isDark ? '#C7D2FE' : '#4338CA', fontWeight: '700' }]}>
+                        ⚡ 協作活動進行中自動常駐首頁最上方 (拍板結案後自動歸檔，不佔置頂名額)
+                      </Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.memoPinToggleBtn, memoIsPinned && styles.memoPinToggleBtnActive]}
+                      onPress={() => {
+                        if (!memoIsPinned) {
+                          const quota = checkMemoPinQuota(transactions, {
+                            targetScope: memoReminderTarget,
+                            memberId: effectivePaidBy || currentUser?.id,
+                          });
+                          if (!quota.canPin) {
+                            Alert.alert(
+                              memoReminderTarget === 'personal' ? '個人置頂已達上限' : '全家置頂已達上限',
+                              quota.errorMessage || '置頂已達 5 筆上限，請先辦妥或取消現有置頂事項。'
+                            );
+                            return;
+                          }
                         }
-                      }
-                      userManuallyToggledPinRef.current = true;
-                      setMemoIsPinned(!memoIsPinned);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.memoPinToggleText, memoIsPinned && styles.memoPinToggleTextActive]}>
-                      {memoIsPinned
-                        ? (isGroupOrderMemo(parseMemoNote(note).title, note)
-                            ? `📌 已自動置頂${memoReminderTarget === 'personal' ? '個人' : '全家'}看板最上方 (點擊可取消)`
-                            : `📌 已置頂 (${memoReminderTarget === 'personal' ? '個人' : '全家'}看板最上方)`)
-                        : `📌 置頂此記事 (常駐${memoReminderTarget === 'personal' ? '個人' : '全家'}看板最上方)`}
-                    </Text>
-                  </TouchableOpacity>
+                        userManuallyToggledPinRef.current = true;
+                        setMemoIsPinned(!memoIsPinned);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.memoPinToggleText, memoIsPinned && styles.memoPinToggleTextActive]}>
+                        {memoIsPinned
+                          ? `📌 已置頂 (${memoReminderTarget === 'personal' ? '個人' : '全家'}看板最上方)`
+                          : `📌 置頂此記事 (常駐${memoReminderTarget === 'personal' ? '個人' : '全家'}看板最上方)`}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </>
             ) : (

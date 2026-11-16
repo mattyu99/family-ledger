@@ -199,21 +199,21 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
       });
   }, [allMemos]);
 
-  // 全部未完成待辦 (所有未完成之置頂事項統一置頂於榜首，進行中開團/投票/採買活動次之，一般待辦在後)
+  // 全部未完成待辦 (進行中開團/投票/採買等五大協作活動天然常駐榜首，其餘置頂事項次之，一般待辦在後)
   const activeMemos = useMemo(() => {
     const raw = [...todayAndOverdueMemos, ...upcomingMemos, ...undatedMemos];
-    // 依 id 去重並將置頂項目統一拉至最頂部
+    // 依 id 去重並將協作活動與置頂項目統一拉至最頂部
     const seen = new Set<string>();
     const deduplicated = raw.filter(m => {
       if (seen.has(m.id)) return false;
       seen.add(m.id);
       return true;
     });
-    const pinned = deduplicated.filter(m => isMemoPinned(m));
-    const unpinned = deduplicated.filter(m => !isMemoPinned(m));
-    const unpinnedInteractive = unpinned.filter(m => isGroupOrderMemo(m.category?.name, m.note));
-    const normalUnpinned = unpinned.filter(m => !isGroupOrderMemo(m.category?.name, m.note));
-    return [...pinned, ...unpinnedInteractive, ...normalUnpinned];
+    const activeCollab = deduplicated.filter(m => isGroupOrderMemo(m.category?.name, m.note));
+    const otherMemos = deduplicated.filter(m => !isGroupOrderMemo(m.category?.name, m.note));
+    const pinned = otherMemos.filter(m => isMemoPinned(m));
+    const normal = otherMemos.filter(m => !isMemoPinned(m));
+    return [...activeCollab, ...pinned, ...normal];
   }, [todayAndOverdueMemos, upcomingMemos, undatedMemos]);
 
   // 當前分頁顯示之項目清單
@@ -539,6 +539,13 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                     }}
                     onLongPress={async () => {
                       if (!isCompleted) {
+                        if (isGroupOrderMemo(item.category?.name, item.note)) {
+                          Alert.alert(
+                            '協作活動進行中',
+                            '此為進行中之家庭協作活動看板，系統已自動常駐於首頁最上方，拍板結案後將自動歸檔，不需也不佔用置頂名額。'
+                          );
+                          return;
+                        }
                         const newPinned = !isPinned;
                         if (newPinned) {
                           const targetScope = item.reminder_target === 'personal' ? 'personal' : 'family';

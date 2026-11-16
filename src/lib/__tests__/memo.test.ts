@@ -451,6 +451,25 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
       expect(familyCheck.canPin).toBe(true);
       expect(familyCheck.currentCount).toBe(0);
     });
+
+    it('進行中之五大協作活動 (點餐/開團/投票/懸賞/採買/包裹) 享有配額豁免，完全不佔用常態置頂的 5 筆額度', () => {
+      // 構造 3 筆常規靜態置頂備忘 + 3 筆進行中協作看板 (點餐、投票、採買)
+      const mockTxs = [
+        { id: '1', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'family', note: '慢箋領藥第2次' },
+        { id: '2', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'family', note: '繳水費電費' },
+        { id: '3', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'family', note: '日常固定備忘' },
+        // 以下 3 筆為進行中協作看板，即便帶有 is_pinned 也完全不計入靜態置頂配額
+        { id: 'c1', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'family', note: '[🧋 點餐開團] 50嵐' },
+        { id: 'c2', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'family', note: '[🗳️ 家庭投票] 晚餐吃什麼' },
+        { id: 'c3', type: 'memo', is_settled: false, is_pinned: true, reminder_target: 'family', note: '[🛒 採買清單] 全聯採買補貨' },
+      ];
+
+      const res = checkMemoPinQuota(mockTxs, { targetScope: 'family' });
+      expect(res.canPin).toBe(true);
+      // 僅計算 3 筆常態備忘，3 筆協作看板豁免不計入
+      expect(res.currentCount).toBe(3);
+      expect(res.maxLimit).toBe(MAX_PINNED_MEMOS_FAMILY);
+    });
   });
 
   describe('系統內部中繼標籤剝除與商家合法性過濾 (自癒與防污染機制)', () => {

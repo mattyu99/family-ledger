@@ -24,7 +24,7 @@ import { StoredValueWidget } from '../components/StoredValueWidget';
 import { HorizontalScrollView } from '../components/HorizontalScrollView';
 import { isTransferToMember } from '../lib/payment';
 import { getRollingPendingBills } from '../lib/recurring';
-import { getLocalDateYmd, getRollingMemoDueInfo, isMemoPinned, checkMemoPinQuota, isValidMerchantName } from '../lib/memo';
+import { getLocalDateYmd, getRollingMemoDueInfo, isMemoPinned, checkMemoPinQuota, isValidMerchantName, parseMemoNote } from '../lib/memo';
 import { isGroupOrderMemo, computeGroupOrderSummary } from '../lib/groupOrder';
 import { checkInvoiceWinning } from '../lib/lottery';
 import { getInvoicePeriodKey } from '../lib/invoice';
@@ -423,12 +423,55 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
 
         return true;
       });
-      return { pinnedMemos: [], normalTransactions: list, all: list };
+      return { collabActivities: [], pinnedMemos: [], normalTransactions: list, all: list };
     }
 
     // 2. 篩選「全部記錄」或「僅看記事」：
-    // (A) 尋找未完成的置頂記事 (跨月常駐 + 方案 1 全家共享/個人隔離)
+    // (A) 尋找未結案之五大協作看板 (點餐、投票、懸賞、採買、包裹)
+    // 關鍵架構分流：進行中協作活動天然保證常駐於首頁最上方，不佔用也不受限於常態置頂 5 筆上限！
+    const collabActivities = transactions.filter(t => {
+      if (t.type !== 'memo' || t.is_settled) return false;
+      const parsed = parseMemoNote(t.note);
+      if (!isGroupOrderMemo(parsed.title || t.category?.name, t.note)) return false;
+
+      // 成員過濾 (全家共享人人可見；個人專屬視角隔離)
+      if (filterMemberId !== 'all') {
+        const isFamily = !t.reminder_target || t.reminder_target === 'family';
+        if (!isFamily) {
+          const payer = getMemberById(t.paid_by) || t.payer_profile;
+          const targetMember = members.find(m => m.id === filterMemberId) || (currentUser?.id === filterMemberId ? currentUser : undefined);
+          const isMatch =
+            (payer && payer.id === filterMemberId) ||
+            t.paid_by === filterMemberId ||
+            (targetMember && (payer?.display_name === targetMember.display_name || (t as any).payer_name === targetMember.display_name));
+          if (!isMatch) return false;
+        }
+      } else {
+        if (t.reminder_target === 'personal') {
+          const isMine =
+            (t.paid_by && t.paid_by === currentUser?.id) ||
+            (t.creator_id && t.creator_id === currentUser?.id) ||
+            (t.paid_by && currentUser?.display_name && (getMemberById(t.paid_by)?.display_name === currentUser.display_name));
+          if (!isMine) return false;
+        }
+      }
+
+      if (q) {
+        const mMatch = t.merchant && t.merchant.toLowerCase().includes(q);
+        const nMatch = t.note && t.note.toLowerCase().includes(q);
+        const cat = getCategoryById(t.category_id, t.category);
+        const cMatch = cat && cat.name.toLowerCase().includes(q);
+        if (!mMatch && !nMatch && !cMatch) return false;
+      }
+
+      return true;
+    }).sort((a, b) => (b.transacted_at || '').localeCompare(a.transacted_at || ''));
+
+    const collabIds = new Set(collabActivities.map(c => c.id));
+
+    // (B) 尋找未完成的常態置頂記事 (排除五大協作活動後，專屬於慢箋藥單、日常備忘等，享有獨立 5 筆全家額度)
     const pinnedMemos = transactions.filter(t => {
+      if (collabIds.has(t.id)) return false;
       if (!isMemoPinned(t)) return false;
 
       // 成員過濾 (方案 1: 全家共享人人可見；個人專屬視角隔離)
@@ -468,11 +511,11 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
       return true;
     }).sort((a, b) => (b.transacted_at || '').localeCompare(a.transacted_at || ''));
 
-    const pinnedIds = new Set(pinnedMemos.map(p => p.id));
+    const topIds = new Set([...collabIds, ...pinnedMemos.map(p => p.id)]);
 
-    // (B) 一般時間序列常規過濾 (排除已在上方置頂者，避免重複渲染)
+    // (C) 一般時間序列常規過濾 (排除已在上方展示之協作活動與置頂備忘，避免重複渲染)
     const normalTransactions = transactions.filter(t => {
-      if (pinnedIds.has(t.id)) return false;
+      if (topIds.has(t.id)) return false;
       if (transactionTypeFilter === 'memo' && t.type !== 'memo') return false;
 
       if (filterMonth !== 'all') {
@@ -520,14 +563,19 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
     });
 
     return {
+      collabActivities,
       pinnedMemos,
       normalTransactions,
-      all: [...pinnedMemos, ...normalTransactions],
+      all: [...collabActivities, ...pinnedMemos, ...normalTransactions],
     };
   }, [transactions, transactionTypeFilter, filterMonth, filterMemberId, searchQuery, getMemberById, getCategoryById, members, currentUser, paymentAccounts]);
 
   const filteredTransactions = useMemo(() => {
     return groupedFilteredTransactions.all || [];
+  }, [groupedFilteredTransactions]);
+
+  const collabActivitiesList = useMemo(() => {
+    return groupedFilteredTransactions.collabActivities || [];
   }, [groupedFilteredTransactions]);
 
   const pinnedMemosList = useMemo(() => {
@@ -551,8 +599,8 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
   }, [normalTransactionsList, displayCount]);
 
   const displayedTransactions = useMemo(() => {
-    return [...visiblePinnedMemos, ...displayedNormalTransactions];
-  }, [visiblePinnedMemos, displayedNormalTransactions]);
+    return [...collabActivitiesList, ...visiblePinnedMemos, ...displayedNormalTransactions];
+  }, [collabActivitiesList, visiblePinnedMemos, displayedNormalTransactions]);
 
   const defaultMemberId = currentUser?.id || 'all';
   const isFiltered = filterMonth !== currentMonthYm || filterMemberId !== defaultMemberId || !!searchQuery.trim() || transactionTypeFilter !== 'all';
@@ -1643,7 +1691,32 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         </View>
       ) : (
         <>
-          {/* 置頂生活記事卡片清單 (常駐最上方，預設展開最新 2 筆) */}
+          {/* ⚡ 進行中之五大協作活動看板 (全家最高優先級，天然常駐首頁最上方，不佔用靜態置頂名額) */}
+          {collabActivitiesList.map(item => (
+            <TransactionItem
+              key={item.id}
+              transaction={item}
+              viewingMemberId={filterMemberId}
+              isLastViewed={item.id === lastViewedTxId}
+              onPress={tx => {
+                setLastViewedTxId(tx.id);
+                onOpenEditTransaction(tx);
+              }}
+              onCompleteMemo={tx => {
+                setLastViewedTxId(tx.id);
+                onOpenMemoCompletion(tx);
+              }}
+              onTogglePinMemo={() => {
+                Alert.alert(
+                  '協作活動進行中',
+                  '此為進行中之家庭協作活動看板，系統已自動常駐於首頁最上方，拍板結案後將自動歸檔，不需也不佔用置頂名額。'
+                );
+              }}
+              onViewImage={(url, title) => onViewImage(url, title || '消費收據 / 保固憑證')}
+            />
+          ))}
+
+          {/* 📌 常態置頂生活記事卡片清單 (慢箋藥單、日常備忘，享有獨立 5 筆全家配額，預設展開最新 2 筆) */}
           {visiblePinnedMemos.map(item => (
             <TransactionItem
               key={item.id}
@@ -1659,6 +1732,14 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
                 onOpenMemoCompletion(tx);
               }}
               onTogglePinMemo={async tx => {
+                const parsed = parseMemoNote(tx.note);
+                if (isGroupOrderMemo(parsed.title || tx.category?.name, tx.note)) {
+                  Alert.alert(
+                    '協作活動進行中',
+                    '此為進行中之家庭協作活動看板，系統已自動常駐於首頁最上方，拍板結案後將自動歸檔，不需也不佔用置頂名額。'
+                  );
+                  return;
+                }
                 const currentlyPinned = isMemoPinned(tx);
                 if (!currentlyPinned) {
                   const targetScope = tx.reminder_target === 'personal' ? 'personal' : 'family';
@@ -1712,6 +1793,14 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
                 onOpenMemoCompletion(tx);
               }}
               onTogglePinMemo={async tx => {
+                const parsed = parseMemoNote(tx.note);
+                if (isGroupOrderMemo(parsed.title || tx.category?.name, tx.note)) {
+                  Alert.alert(
+                    '協作活動進行中',
+                    '此為進行中之家庭協作活動看板，系統已自動常駐於首頁最上方，拍板結案後將自動歸檔，不需也不佔用置頂名額。'
+                  );
+                  return;
+                }
                 const currentlyPinned = isMemoPinned(tx);
                 if (!currentlyPinned) {
                   const targetScope = tx.reminder_target === 'personal' ? 'personal' : 'family';

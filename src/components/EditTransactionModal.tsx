@@ -90,6 +90,7 @@ import { DatePickerModal } from './DatePickerModal';
 import { InvoiceScannerModal } from './InvoiceScannerModal';
 import { ImageViewerModal } from './ImageViewerModal';
 import { uploadReceiptPhoto } from '../lib/receiptStorage';
+import { isGroupOrderMemo } from '../lib/groupOrder';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -1570,36 +1571,44 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   )}
                 </View>
 
-                {/* 📌 置頂重要記事切換 (含全家 5 筆 / 個人 5 筆配額防呆) */}
+                {/* 📌 置頂重要記事切換 (五大協作看板天然常駐最上方，不佔靜態置頂名額；一般記事享 5 筆配額防呆) */}
                 {canEdit && !isSettled && (
                   <View style={styles.memoPinContainer}>
-                    <TouchableOpacity
-                      style={[styles.memoPinToggleBtn, isPinned && styles.memoPinToggleBtnActive]}
-                      onPress={() => {
-                        if (!isPinned) {
-                          const quota = checkMemoPinQuota(transactions, {
-                            targetScope: memoReminderTarget,
-                            memberId: (paidBy || transaction.paid_by) || currentUser?.id,
-                            excludeTxId: transaction.id,
-                          });
-                          if (!quota.canPin) {
-                            safeAlert(
-                              memoReminderTarget === 'personal' ? '個人置頂已達上限' : '全家置頂已達上限',
-                              quota.errorMessage || '置頂已達 5 筆上限，請先辦妥或取消現有置頂事項。'
-                            );
-                            return;
+                    {isGroupOrderMemo(parseMemoNote(note).title, note) ? (
+                      <View style={[styles.memoPinToggleBtn, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF', borderColor: isDark ? '#6366F1' : '#A5B4FC' }]}>
+                        <Text style={[styles.memoPinToggleText, { color: isDark ? '#C7D2FE' : '#4338CA', fontWeight: '700' }]}>
+                          ⚡ 協作活動進行中自動常駐首頁最上方 (拍板結案後自動歸檔，不佔置頂名額)
+                        </Text>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        style={[styles.memoPinToggleBtn, isPinned && styles.memoPinToggleBtnActive]}
+                        onPress={() => {
+                          if (!isPinned) {
+                            const quota = checkMemoPinQuota(transactions, {
+                              targetScope: memoReminderTarget,
+                              memberId: (paidBy || transaction.paid_by) || currentUser?.id,
+                              excludeTxId: transaction.id,
+                            });
+                            if (!quota.canPin) {
+                              safeAlert(
+                                memoReminderTarget === 'personal' ? '個人置頂已達上限' : '全家置頂已達上限',
+                                quota.errorMessage || '置頂已達 5 筆上限，請先辦妥或取消現有置頂事項。'
+                              );
+                              return;
+                            }
                           }
-                        }
-                        setIsPinned(!isPinned);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.memoPinToggleText, isPinned && styles.memoPinToggleTextActive]}>
-                        {isPinned
-                          ? `📌 已置頂 (${memoReminderTarget === 'personal' ? '個人' : '全家'}看板最上方)`
-                          : `📌 置頂此記事 (常駐${memoReminderTarget === 'personal' ? '個人' : '全家'}看板最上方)`}
-                      </Text>
-                    </TouchableOpacity>
+                          setIsPinned(!isPinned);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.memoPinToggleText, isPinned && styles.memoPinToggleTextActive]}>
+                          {isPinned
+                            ? `📌 已置頂 (${memoReminderTarget === 'personal' ? '個人' : '全家'}看板最上方)`
+                            : `📌 置頂此記事 (常駐${memoReminderTarget === 'personal' ? '個人' : '全家'}看板最上方)`}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 )}
 

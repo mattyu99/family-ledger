@@ -60,6 +60,35 @@ export function isMemoActionTag(tagText?: string): boolean {
 }
 
 /**
+ * 判斷一則記事是否屬於「五大協作看板」（點餐開團、家事懸賞、家庭投票、賣場採買、網購湊單）
+ * 協作看板在進行中時天然保證常駐於首頁最上方，不佔用也不受限於常態靜態置頂配額（5 筆）
+ */
+export function isCollabActivityMemo(title?: string, content?: string): boolean {
+  const t = (title || '').trim().toLowerCase();
+  const c = (content || '').trim().toLowerCase();
+  const text = `${t}\n${c}`;
+
+  // 1. 嚴格排除非協作活動（日常備忘、慢箋、就醫、家中缺貨等）
+  if (t.includes('家中缺貨') || c.includes('家中缺貨') || c.includes('缺貨待補')) {
+    return false;
+  }
+  const excludes = ['回診', '慢箋', '慢籤', '就醫', '門診', '掛號', '看診', '健保', '生活記事與待辦', '待辦清單'];
+  if (excludes.some(ex => t.includes(ex) || c.includes(ex))) {
+    return false;
+  }
+
+  // 2. 命中五大協作主題關鍵字
+  const collabKeywords = [
+    '點餐開團', '點餐', '開團', '🧋',
+    '家事懸賞', '家庭家務', '大掃除', '家事分工', '任務懸賞', '🧹',
+    '家庭投票', '投票看板', '投票決策', '🗳️',
+    '採買清單', '採買補貨', '賣場採買', '我要買', '🛒',
+    '網購湊單', '包裹代領', '湊免運', '📦',
+  ];
+  return collabKeywords.some(kw => text.includes(kw));
+}
+
+/**
  * 智慧合併生活記事標籤：固定內建核心項目在最前面維持位置穩定，使用者自訂或歷史常用標籤接在後面
  * 嚴格排除已被使用者長按主動移除的黑名單標籤 (dismissedTags) 與動作操作標籤
  */
@@ -501,6 +530,7 @@ export function checkMemoPinQuota(
     reminder_target?: string | null;
     paid_by?: string | null;
     creator_id?: string | null;
+    note?: string | null;
   }[],
   options: {
     targetScope?: 'family' | 'personal';
@@ -518,6 +548,12 @@ export function checkMemoPinQuota(
     if (t.is_settled) continue;
     if (!isMemoPinned(t)) continue;
     if (excludeTxId && t.id === excludeTxId) continue;
+
+    // 關鍵架構分流：進行中五大協作看板天然常駐首頁頂部，完全不佔用常態置頂的 5 筆額度！
+    const parsed = parseMemoNote(t.note || undefined);
+    if (isCollabActivityMemo(parsed.title, t.note || undefined)) {
+      continue;
+    }
 
     const decoded = decodeMemoMerchantTag(t.merchant);
     const resolvedTarget = t.reminder_target || decoded.reminderTarget || 'family';
