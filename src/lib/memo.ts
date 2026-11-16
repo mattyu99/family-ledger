@@ -1206,6 +1206,160 @@ export const SCHOOL_DAILY_ITEMS = [
   '收書包',
 ];
 
+export type QuickBuilderDomain = 'school' | 'health' | 'home' | 'worship' | 'travel' | 'work';
+
+export interface MemoQuickBuilderConfig {
+  domain: QuickBuilderDomain;
+  defaultTag: string;
+  title: string;
+  subtitle: string;
+  step1Label: string;
+  step2LabelPrefix: string;
+  step3Label: string;
+  subjects: string[];
+  tasks: string[];
+  routines: string[];
+}
+
+/**
+ * 依據當前記事標籤或內容，智慧感知並回傳對應情境的「三排點選式快選組裝面板」設定
+ * 涵蓋：學校聯絡簿、健康用藥照護、居家與汽機車定保、祭祀拜拜供品、出遊防忘快檢、公司工作交辦與報支
+ */
+export function detectMemoQuickBuilderConfig(
+  noteText?: string,
+  memberNames?: string[]
+): MemoQuickBuilderConfig | null {
+  if (!noteText) return null;
+
+  // 1. 🎒 學校親子 / 聯絡簿
+  if (
+    isMemoTagActive(noteText, '🎒 學校親子') ||
+    noteText.includes('學校親子') ||
+    noteText.includes('聯絡簿')
+  ) {
+    return {
+      domain: 'school',
+      defaultTag: '🎒 學校親子',
+      title: '🎒 聯絡簿快選組裝',
+      subtitle: '先選科目，再點作業即自動加一行待辦',
+      step1Label: '1. 點選科目',
+      step2LabelPrefix: '2. 點一下立即加入',
+      step3Label: '3. 常態必備與簽名（點一下直接加入）：',
+      subjects: SCHOOL_SUBJECTS,
+      tasks: SCHOOL_TASK_TYPES,
+      routines: SCHOOL_DAILY_ITEMS,
+    };
+  }
+
+  // 2. 🩺 健康用藥 / 生病照護 / 回診
+  if (
+    isMemoTagActive(noteText, '🩺 健康用藥') ||
+    isMemoTagActive(noteText, '🩺 回診') ||
+    noteText.includes('健康用藥') ||
+    noteText.includes('回診')
+  ) {
+    const cleanMembers = (memberNames || []).map(n => n.trim()).filter(Boolean);
+    const healthSubjects =
+      cleanMembers.length > 0
+        ? [...cleanMembers, '長輩', '全家']
+        : ['爸爸', '媽媽', '小孩', '長輩', '全家'];
+    return {
+      domain: 'health',
+      defaultTag: '🩺 健康用藥',
+      title: '🩺 健康用藥與照護快選',
+      subtitle: '先選家人，再點用藥或檢查即自動加入清單',
+      step1Label: '1. 點選家人對象',
+      step2LabelPrefix: '2. 點一下立即加入',
+      step3Label: '3. 就醫與慢箋常態準備（點一下直接加入）：',
+      subjects: healthSubjects,
+      tasks: ['早餐後藥', '午餐後藥', '晚餐後藥', '睡前藥', '退燒藥', '量體溫', '點眼藥水', '塗藥膏', '洗鼻吸鼻', '益生菌'],
+      routines: ['帶健保卡', '空腹抽血', '領慢箋', '預約回診', '申請診斷書', '收據留存理賠', '買口罩快篩', '記錄體溫變化'],
+    };
+  }
+
+  // 3. 🙏 祭祀拜拜 / 節慶供品
+  if (
+    isMemoTagActive(noteText, '🙏 祭祀拜拜') ||
+    noteText.includes('祭祀拜拜')
+  ) {
+    return {
+      domain: 'worship',
+      defaultTag: '🙏 祭祀拜拜',
+      title: '🙏 祭祀拜拜供品快選',
+      subtitle: '先選祭拜對象，再點供品即自動列好準備清單',
+      step1Label: '1. 點選祭拜對象',
+      step2LabelPrefix: '2. 點一下立即加入',
+      step3Label: '3. 祭拜流程與備品（點一下直接加入）：',
+      subjects: ['神明', '祖先', '地基主', '土地公', '床母', '普渡好兄弟', '天公'],
+      tasks: ['三牲', '四果', '金紙香燭', '雞腿便當', '發糕紅龜粿', '湯圓潤餅', '粽子月餅', '鮮花', '茶酒水', '餅乾飲料'],
+      routines: ['整理供桌與酒杯', '準備打火機與香', '擲筊請示順遂', '燒化金紙注意安全', '供品收整惜福'],
+    };
+  }
+
+  // 4. 🏠 家居修繕 / 居家生活 / 汽機車與家電定保
+  if (
+    isMemoTagActive(noteText, '🏠 家居修繕') ||
+    isMemoTagActive(noteText, '🧹 居家生活') ||
+    noteText.includes('家居修繕') ||
+    noteText.includes('居家生活')
+  ) {
+    return {
+      domain: 'home',
+      defaultTag: '🏠 家居修繕',
+      title: '🏠 居家與汽機車定保快選',
+      subtitle: '先選設備，再點保養項目，定期維護不漏接',
+      step1Label: '1. 點選設備或區域',
+      step2LabelPrefix: '2. 點一下立即加入',
+      step3Label: '3. 出門前安全與日常檢查（點一下直接加入）：',
+      subjects: ['汽車', '機車', '冷氣', '濾水器', '洗衣機', '除濕機', '空氣清淨機', '廚房衛浴'],
+      tasks: ['換機油', '驗車保險', '輪胎電瓶檢查', '洗濾網', '換濾芯', '槽洗淨', '除黴去垢', '換燈泡電池'],
+      routines: ['關瓦斯爐火', '關冷氣電扇', '鎖好門窗', '拔熱水瓶插頭', '倒垃圾廚餘', '繳水電瓦斯費', '領管理室包裹'],
+    };
+  }
+
+  // 5. ✈️ 出國必備 / 行程安排 / 出遊防忘快檢
+  if (
+    isMemoTagActive(noteText, '✈️ 出國必備') ||
+    isMemoTagActive(noteText, '📅 行程安排') ||
+    noteText.includes('出國必備') ||
+    noteText.includes('行程安排')
+  ) {
+    return {
+      domain: 'travel',
+      defaultTag: '✈️ 出國必備',
+      title: '✈️ 出遊與返鄉防忘快選',
+      subtitle: '先選對象，再點行李物品，出門前逐一打勾不漏帶',
+      step1Label: '1. 點選攜帶對象',
+      step2LabelPrefix: '2. 點一下立即加入',
+      step3Label: '3. 出門前最後確認（點一下直接加入）：',
+      subjects: ['大人', '小孩', '全家共用', '隨身背包', '車上備用'],
+      tasks: ['換洗衣物', '保暖外套', '充電線與行充', '水壺與環保袋', '常備感冒腸胃藥', '牙刷盥洗包', '防蚊液與防曬', '雨具與拖鞋'],
+      routines: ['護照身分證健保卡', '錢包現鈔與信用卡', '關瓦斯與總電源', '鎖門窗與倒廚餘', '確認訂房與車票憑證'],
+    };
+  }
+
+  // 6. 💼 重要備忘 / 公司職場交辦與代墊報支
+  if (
+    isMemoTagActive(noteText, '💼 重要備忘') ||
+    noteText.includes('重要備忘')
+  ) {
+    return {
+      domain: 'work',
+      defaultTag: '💼 重要備忘',
+      title: '💼 工作交辦與代墊報支快選',
+      subtitle: '點選動作＋事項，秒速記下會議交辦與費用核銷',
+      step1Label: '1. 點選工作動作',
+      step2LabelPrefix: '2. 點一下立即加入',
+      step3Label: '3. 公司代墊與報帳核銷（點一下直接加入）：',
+      subjects: ['回覆', '追蹤', '準備', '確認', '提交', '催收', '報支'],
+      tasks: ['客戶報價', '會議簡報', '合約審閱', '專案進度', '廠商請款', '主管簽核', '發票統編', '出差車資住宿'],
+      routines: ['索取公司統編發票', '填寫費用報支單', '送交財務簽核', '確認代墊款已入帳', '寄出客戶文件包裹', '備份重要工作檔案'],
+    };
+  }
+
+  return null;
+}
+
 /**
  * 判斷當前記事是否處於「🎒 學校親子 / 聯絡簿」模式
  */
@@ -1219,17 +1373,18 @@ export function isSchoolMemoMode(noteText?: string): boolean {
 }
 
 /**
- * 點選科目與作業類型，自動組裝並追加一行純淨的 `- [ ] 項目` 到記事中
+ * 點選主詞與動作類型，自動組裝並追加一行純淨的 `- [ ] 項目` 到記事中
  */
 export function appendSchoolChecklistItem(
   currentNote: string,
   subject: string | null,
-  taskOrItem: string
+  taskOrItem: string,
+  defaultTag: string = '🎒 學校親子'
 ): string {
   const itemText = subject ? `${subject}${taskOrItem}` : taskOrItem;
   const trimmed = (currentNote || '').trim();
   if (!trimmed) {
-    return `[🎒 學校親子]\n- [ ] ${itemText}`;
+    return `[${defaultTag}]\n- [ ] ${itemText}`;
   }
   // 若最後一行是空的待辦方框 `- [ ]`，直接填入該行
   if (/[-*]\s*\[\s*\]\s*$/.test(trimmed)) {

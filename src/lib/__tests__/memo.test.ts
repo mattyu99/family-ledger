@@ -26,6 +26,7 @@ import {
   findMemoTopicTagMatch,
   isSchoolMemoMode,
   appendSchoolChecklistItem,
+  detectMemoQuickBuilderConfig,
 } from '../memo';
 import { hydrateTransactionWithInvoice } from '../ledgerUtils';
 
@@ -692,6 +693,47 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
         const parsed2 = parseMemoItemReplies('數學小考（範圍：第1-3章）');
         expect(parsed2.replies).toHaveLength(0);
         expect(parsed2.cleanText).toBe('數學小考（範圍：第1-3章）');
+      });
+
+      it('detectMemoQuickBuilderConfig 應能依據六大情境標籤智慧切換專屬快選組裝配置', () => {
+        // 1. 學校聯絡簿
+        const schoolCfg = detectMemoQuickBuilderConfig('[🎒 學校親子]');
+        expect(schoolCfg?.domain).toBe('school');
+        expect(schoolCfg?.subjects).toContain('數學');
+
+        // 2. 健康用藥（支援動態帶入家庭成員名單）
+        const healthCfg = detectMemoQuickBuilderConfig('[🩺 健康用藥]', ['智爸', '瑩媽', '洋洋', '豆豆']);
+        expect(healthCfg?.domain).toBe('health');
+        expect(healthCfg?.subjects).toEqual(['智爸', '瑩媽', '洋洋', '豆豆', '長輩', '全家']);
+        expect(healthCfg?.tasks).toContain('早餐後藥');
+
+        // 3. 祭祀拜拜
+        const worshipCfg = detectMemoQuickBuilderConfig('[🙏 祭祀拜拜]');
+        expect(worshipCfg?.domain).toBe('worship');
+        expect(worshipCfg?.subjects).toContain('地基主');
+        expect(worshipCfg?.tasks).toContain('三牲');
+
+        // 4. 家居修繕與汽機車定保
+        const homeCfg = detectMemoQuickBuilderConfig('[🏠 家居修繕]');
+        expect(homeCfg?.domain).toBe('home');
+        expect(homeCfg?.subjects).toContain('汽車');
+        expect(homeCfg?.tasks).toContain('換機油');
+
+        // 5. 出遊與返鄉防忘
+        const travelCfg = detectMemoQuickBuilderConfig('[✈️ 出國必備]');
+        expect(travelCfg?.domain).toBe('travel');
+        expect(travelCfg?.subjects).toContain('小孩');
+        expect(travelCfg?.tasks).toContain('換洗衣物');
+
+        // 6. 公司工作交辦與代墊報支
+        const workCfg = detectMemoQuickBuilderConfig('[💼 重要備忘]');
+        expect(workCfg?.domain).toBe('work');
+        expect(workCfg?.subjects).toContain('追蹤');
+        expect(workCfg?.tasks).toContain('廠商請款');
+        expect(workCfg?.routines).toContain('索取公司統編發票');
+
+        // 7. 一般採買或點餐不觸發此面板
+        expect(detectMemoQuickBuilderConfig('[🧋 點餐開團]')).toBeNull();
       });
     });
   });

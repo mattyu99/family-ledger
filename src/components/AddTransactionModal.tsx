@@ -44,10 +44,7 @@ import {
   offsetDateYmd,
   computeNextRelayReminderDate,
   resolveAnchorDate,
-  SCHOOL_SUBJECTS,
-  SCHOOL_TASK_TYPES,
-  SCHOOL_DAILY_ITEMS,
-  isSchoolMemoMode,
+  detectMemoQuickBuilderConfig,
   appendSchoolChecklistItem,
 } from '../lib/memo';
 import {
@@ -269,6 +266,19 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [selectedSchoolSubject, setSelectedSchoolSubject] = useState<string>('國文');
+
+  const activeQuickBuilder = React.useMemo(
+    () => detectMemoQuickBuilderConfig(note, (members || []).map(m => m.display_name)),
+    [note, members]
+  );
+
+  const effectiveQuickSubject = React.useMemo(() => {
+    if (!activeQuickBuilder) return '';
+    if (activeQuickBuilder.subjects.includes(selectedSchoolSubject)) {
+      return selectedSchoolSubject;
+    }
+    return activeQuickBuilder.subjects[0] || '';
+  }, [activeQuickBuilder, selectedSchoolSubject]);
 
   const handleSelectTemplate = React.useCallback((template: MemoChecklistTemplate) => {
     if (template.id === 'school_contact_book') {
@@ -1825,24 +1835,24 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     maxFontSizeMultiplier={1.15}
                   />
 
-                  {/* 🎒 學校聯絡簿點選式快捷詞膠囊組合面板 (方式二) */}
-                  {isSchoolMemoMode(note) && (
+                  {/* ⚡ 智慧隨境切換點選式快選組裝面板 (支援學校聯絡簿、健康用藥、祭祀拜拜、居家定保、出遊防忘、工作報支) */}
+                  {!!activeQuickBuilder && (
                     <View style={styles.schoolQuickBuilderBox}>
                       <View style={styles.schoolQuickBuilderHeader}>
                         <Text style={styles.schoolQuickBuilderTitle} maxFontSizeMultiplier={1.08}>
-                          🎒 聯絡簿快選組裝
+                          {activeQuickBuilder.title}
                         </Text>
                         <Text style={styles.schoolQuickBuilderSubtitle} maxFontSizeMultiplier={1.05}>
-                          先選科目，再點作業即自動加一行待辦
+                          {activeQuickBuilder.subtitle}
                         </Text>
                       </View>
 
                       <Text style={styles.schoolQuickRowLabel} maxFontSizeMultiplier={1.05}>
-                        1. 點選科目（目前：{selectedSchoolSubject}）：
+                        {activeQuickBuilder.step1Label}（目前：{effectiveQuickSubject}）：
                       </Text>
                       <View style={styles.schoolQuickChipsRow}>
-                        {SCHOOL_SUBJECTS.map((subj) => {
-                          const isSelected = selectedSchoolSubject === subj;
+                        {activeQuickBuilder.subjects.map((subj) => {
+                          const isSelected = effectiveQuickSubject === subj;
                           return (
                             <TouchableOpacity
                               key={subj}
@@ -1868,36 +1878,50 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       </View>
 
                       <Text style={[styles.schoolQuickRowLabel, { marginTop: 8 }]} maxFontSizeMultiplier={1.05}>
-                        2. 點一下立即加入「{selectedSchoolSubject}」待辦：
+                        {activeQuickBuilder.step2LabelPrefix}「{effectiveQuickSubject}」項目：
                       </Text>
                       <View style={styles.schoolQuickChipsRow}>
-                        {SCHOOL_TASK_TYPES.map((task) => (
+                        {activeQuickBuilder.tasks.map((task) => (
                           <TouchableOpacity
                             key={task}
                             style={styles.schoolActionChip}
                             activeOpacity={0.75}
                             onPress={() =>
-                              setNote((prev) => appendSchoolChecklistItem(prev, selectedSchoolSubject, task))
+                              setNote((prev) =>
+                                appendSchoolChecklistItem(
+                                  prev,
+                                  effectiveQuickSubject,
+                                  task,
+                                  activeQuickBuilder.defaultTag
+                                )
+                              )
                             }
                           >
                             <Text style={styles.schoolActionChipText} maxFontSizeMultiplier={1.08}>
-                              ＋{selectedSchoolSubject}{task}
+                              ＋{effectiveQuickSubject}{task}
                             </Text>
                           </TouchableOpacity>
                         ))}
                       </View>
 
                       <Text style={[styles.schoolQuickRowLabel, { marginTop: 8 }]} maxFontSizeMultiplier={1.05}>
-                        3. 常態必備與簽名（點一下直接加入）：
+                        {activeQuickBuilder.step3Label}
                       </Text>
                       <View style={styles.schoolQuickChipsRow}>
-                        {SCHOOL_DAILY_ITEMS.map((item) => (
+                        {activeQuickBuilder.routines.map((item) => (
                           <TouchableOpacity
                             key={item}
                             style={styles.schoolRoutineChip}
                             activeOpacity={0.75}
                             onPress={() =>
-                              setNote((prev) => appendSchoolChecklistItem(prev, null, item))
+                              setNote((prev) =>
+                                appendSchoolChecklistItem(
+                                  prev,
+                                  null,
+                                  item,
+                                  activeQuickBuilder.defaultTag
+                                )
+                              )
                             }
                           >
                             <Text style={styles.schoolRoutineChipText} maxFontSizeMultiplier={1.08}>
