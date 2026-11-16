@@ -975,8 +975,7 @@ export function convertVoteToFoodOrder(storeName: string, originalVoteNote?: str
       consensusLine = `\n🎉 全家共識：${cleanStore}（${matched.voters.join('、')} 贊成）`;
     }
   }
-  return `[🧋 點餐開團] 店家：${cleanStore}
-店家：${cleanStore}${consensusLine}
+  return `[🧋 點餐開團] 店家：${cleanStore}${consensusLine}
 - [ ] 大家直接在下方點「＋我也要 / 登記品項」快速報單！`;
 }
 

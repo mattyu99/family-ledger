@@ -919,6 +919,8 @@ describe('groupOrder 工具庫單元測試', () => {
       expect(foodOrder).toContain('[🧋 點餐開團] 店家：鼎泰豐小籠包');
       expect(foodOrder).toContain('🎉 全家共識：鼎泰豐小籠包（智爸、瑩媽、洋洋 贊成）');
       expect(foodOrder).toContain('快速報單');
+      // 確保「店家：」只出現一次，不重複產生店家行
+      expect(foodOrder.split('店家：').length - 1).toBe(1);
       expect(detectCollaborativeOrderMode('點餐開團', foodOrder)).toBe('food');
     });
   });
