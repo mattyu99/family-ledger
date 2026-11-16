@@ -1023,11 +1023,19 @@ export const BUILTIN_MEMO_TEMPLATES: MemoChecklistTemplate[] = [
   },
   {
     id: 'school_contact_book',
-    title: '學校聯絡簿快選',
+    title: '學校聯絡簿',
     icon: '🎒',
     tag: '🎒 學校親子',
-    description: '點選科目與作業類型，免打字秒速組裝今日聯絡簿清單',
-    items: [],
+    description: '每日各科作業、小考複習、考卷與聯絡簿簽名檢核',
+    items: [
+      '國文習作與課文注釋',
+      '英文單字背誦與小考複習',
+      '數學講義與習作訂正',
+      '理化習作與重點複習',
+      '考卷訂正與家長簽名',
+      '聯絡簿給家長簽名',
+      '整理明日書包與特殊學具',
+    ],
   },
   {
     id: 'travel_abroad',
@@ -1211,6 +1219,7 @@ export type QuickBuilderDomain = 'school' | 'health' | 'home' | 'worship' | 'tra
 export interface MemoQuickBuilderConfig {
   domain: QuickBuilderDomain;
   defaultTag: string;
+  shortToggleLabel: string;
   title: string;
   subtitle: string;
   step1Label: string;
@@ -1255,6 +1264,7 @@ export function detectMemoQuickBuilderConfig(
     return {
       domain: 'school',
       defaultTag: '🎒 學校親子',
+      shortToggleLabel: '⚡ 聯絡簿快選',
       title: '🎒 聯絡簿快選組裝',
       subtitle: '先選科目，再點作業即自動加一行待辦',
       step1Label: '1. 點選科目',
@@ -1289,6 +1299,7 @@ export function detectMemoQuickBuilderConfig(
     return {
       domain: 'health',
       defaultTag: '🩺 健康用藥',
+      shortToggleLabel: '⚡ 用藥快選',
       title: '🩺 健康用藥與照護快選',
       subtitle: '先選家人，再點用藥或檢查即自動加入清單',
       step1Label: '1. 點選家人對象',
@@ -1320,6 +1331,7 @@ export function detectMemoQuickBuilderConfig(
     return {
       domain: 'worship',
       defaultTag: '🙏 祭祀拜拜',
+      shortToggleLabel: '⚡ 供品快選',
       title: '🙏 祭祀拜拜供品快選',
       subtitle: '先選祭拜對象，自動切換專屬禮俗供品',
       step1Label: '1. 點選祭拜對象',
@@ -1354,6 +1366,7 @@ export function detectMemoQuickBuilderConfig(
     return {
       domain: 'home',
       defaultTag: '🏠 家居修繕',
+      shortToggleLabel: '⚡ 定保快選',
       title: '🏠 居家與汽機車定保快選',
       subtitle: '先選設備，自動切換該設備專屬保養項目',
       step1Label: '1. 點選設備或區域',
@@ -1385,6 +1398,7 @@ export function detectMemoQuickBuilderConfig(
     return {
       domain: 'travel',
       defaultTag: '✈️ 出國必備',
+      shortToggleLabel: '⚡ 出遊快選',
       title: '✈️ 出遊與返鄉防忘快選',
       subtitle: '先選對象或位置，自動切換專屬必帶清單',
       step1Label: '1. 點選對象或位置',
@@ -1416,6 +1430,7 @@ export function detectMemoQuickBuilderConfig(
     return {
       domain: 'work',
       defaultTag: '💼 重要備忘',
+      shortToggleLabel: '⚡ 工作快選',
       title: '💼 工作交辦與代墊報支快選',
       subtitle: '先選動作，自動切換對應之商務交辦或報帳項目',
       step1Label: '1. 點選工作動作',

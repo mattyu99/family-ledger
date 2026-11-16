@@ -745,6 +745,19 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
         // 7. 一般採買或點餐不觸發此面板
         expect(detectMemoQuickBuilderConfig('[🧋 點餐開團]')).toBeNull();
       });
+
+      it('常用範本「學校聯絡簿」應能一鍵直接帶入完整聯絡簿待辦清單', () => {
+        const contactBookTmpl = BUILTIN_MEMO_TEMPLATES.find(t => t.id === 'school_contact_book')!;
+        expect(contactBookTmpl).toBeDefined();
+        expect(contactBookTmpl.title).toBe('學校聯絡簿');
+        expect(contactBookTmpl.items.length).toBeGreaterThanOrEqual(5);
+
+        const applied = applyChecklistTemplate(contactBookTmpl);
+        expect(applied).toContain('[🎒 學校親子]');
+        expect(applied).toContain('- [ ] 國文習作與課文注釋');
+        expect(applied).toContain('- [ ] 考卷訂正與家長簽名');
+        expect(applied).toContain('- [ ] 聯絡簿給家長簽名');
+      });
     });
   });
 });

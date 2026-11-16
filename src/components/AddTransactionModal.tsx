@@ -266,6 +266,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [selectedSchoolSubject, setSelectedSchoolSubject] = useState<string>('國文');
+  const [isQuickBuilderExpanded, setIsQuickBuilderExpanded] = useState<boolean>(false);
 
   const activeQuickBuilder = React.useMemo(
     () => detectMemoQuickBuilderConfig(note, (members || []).map(m => m.display_name), selectedSchoolSubject),
@@ -281,15 +282,6 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   }, [activeQuickBuilder, selectedSchoolSubject]);
 
   const handleSelectTemplate = React.useCallback((template: MemoChecklistTemplate) => {
-    if (template.id === 'school_contact_book') {
-      if (!note || !note.trim()) {
-        setNote('[🎒 學校親子]');
-      } else if (!isMemoTagActive(note, '🎒 學校親子')) {
-        setNote(toggleMemoTag(note, '🎒 學校親子'));
-      }
-      return;
-    }
-
     if (!note || !note.trim()) {
       setNote(applyChecklistTemplate(template));
       return;
@@ -1806,7 +1798,28 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 <View onLayout={(e) => setMemoSectionY(e.nativeEvent.layout.y)}>
                   <View style={styles.sectionLabelRow}>
                     <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記事內容與備忘</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      {!!activeQuickBuilder && (
+                        <TouchableOpacity
+                          style={[
+                            styles.quickBuilderToggleBtn,
+                            isQuickBuilderExpanded && styles.quickBuilderToggleBtnActive,
+                          ]}
+                          onPress={() => setIsQuickBuilderExpanded(prev => !prev)}
+                          activeOpacity={0.75}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        >
+                          <Text
+                            style={[
+                              styles.quickBuilderToggleBtnText,
+                              isQuickBuilderExpanded && styles.quickBuilderToggleBtnTextActive,
+                            ]}
+                            maxFontSizeMultiplier={1.08}
+                          >
+                            {activeQuickBuilder.shortToggleLabel} {isQuickBuilderExpanded ? '▴' : '▾'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
                       <TouchableOpacity
                         style={styles.insertCheckboxBtn}
                         onPress={() => setNote(prev => insertChecklistCheckbox(prev))}
@@ -1835,16 +1848,25 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     maxFontSizeMultiplier={1.15}
                   />
 
-                  {/* ⚡ 智慧隨境切換點選式快選組裝面板 (支援學校聯絡簿、健康用藥、祭祀拜拜、居家定保、出遊防忘、工作報支) */}
-                  {!!activeQuickBuilder && (
+                  {/* ⚡ 智慧隨境切換點選式快選組裝面板 (解法 A：預設收合不擠開標籤，點擊右上角按鈕才展開) */}
+                  {!!activeQuickBuilder && isQuickBuilderExpanded && (
                     <View style={styles.schoolQuickBuilderBox}>
                       <View style={styles.schoolQuickBuilderHeader}>
-                        <Text style={styles.schoolQuickBuilderTitle} maxFontSizeMultiplier={1.08}>
-                          {activeQuickBuilder.title}
-                        </Text>
-                        <Text style={styles.schoolQuickBuilderSubtitle} maxFontSizeMultiplier={1.05}>
-                          {activeQuickBuilder.subtitle}
-                        </Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.schoolQuickBuilderTitle} maxFontSizeMultiplier={1.08}>
+                            {activeQuickBuilder.title}
+                          </Text>
+                          <Text style={styles.schoolQuickBuilderSubtitle} maxFontSizeMultiplier={1.05}>
+                            {activeQuickBuilder.subtitle}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.schoolQuickCollapseBtn}
+                          onPress={() => setIsQuickBuilderExpanded(false)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.schoolQuickCollapseBtnText}>收起 ▴</Text>
+                        </TouchableOpacity>
                       </View>
 
                       <Text style={styles.schoolQuickRowLabel} maxFontSizeMultiplier={1.05}>
@@ -5615,5 +5637,36 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 11.5,
     fontWeight: '600',
     color: isDark ? '#6EE7B7' : '#065F46',
+  },
+  quickBuilderToggleBtn: {
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.16)' : '#EEF2FF',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(99, 102, 241, 0.45)' : '#A5B4FC',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  quickBuilderToggleBtnActive: {
+    backgroundColor: isDark ? '#4F46E5' : '#4F46E5',
+    borderColor: isDark ? '#818CF8' : '#4338CA',
+  },
+  quickBuilderToggleBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: isDark ? '#A5B4FC' : '#4338CA',
+  },
+  quickBuilderToggleBtnTextActive: {
+    color: '#FFFFFF',
+  },
+  schoolQuickCollapseBtn: {
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E0E7FF',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  schoolQuickCollapseBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: isDark ? '#C7D2FE' : '#4338CA',
   },
 });
