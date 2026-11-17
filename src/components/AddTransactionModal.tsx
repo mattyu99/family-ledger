@@ -2994,7 +2994,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 <View style={styles.allowanceMembersCard}>
                   {/* 出資家長列 */}
                   <View style={styles.transferFlowRow}>
-                    <Text style={[styles.transferFlowLabel, styles.transferFlowLabelPurple]} maxFontSizeMultiplier={1.12}>
+                    <Text style={[styles.transferFlowLabel, styles.transferFlowLabelPurple]} numberOfLines={1} maxFontSizeMultiplier={1.12}>
                       出資家長
                     </Text>
                     <HorizontalScrollView
@@ -3048,7 +3048,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
                   {/* 受款成員列 */}
                   <View style={styles.transferFlowRow}>
-                    <Text style={[styles.transferFlowLabel, styles.transferFlowLabelGreen]} maxFontSizeMultiplier={1.12}>
+                    <Text style={[styles.transferFlowLabel, styles.transferFlowLabelGreen]} numberOfLines={1} maxFontSizeMultiplier={1.12}>
                       受款成員
                     </Text>
                     <HorizontalScrollView
@@ -3344,7 +3344,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 <View style={styles.transferFlowCard}>
                   {/* 轉出扣款列 */}
                   <View style={styles.transferFlowRow}>
-                    <Text style={[styles.transferFlowLabel, styles.transferFlowLabelBlue]} maxFontSizeMultiplier={1.12}>
+                    <Text style={[styles.transferFlowLabel, styles.transferFlowLabelBlue]} numberOfLines={1} maxFontSizeMultiplier={1.12}>
                       轉出扣款
                     </Text>
                     <HorizontalScrollView
@@ -3400,7 +3400,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
                   {/* 轉入去向列 */}
                   <View style={styles.transferFlowRow}>
-                    <Text style={[styles.transferFlowLabel, styles.transferFlowLabelGreen]} maxFontSizeMultiplier={1.12}>
+                    <Text style={[styles.transferFlowLabel, styles.transferFlowLabelGreen]} numberOfLines={1} maxFontSizeMultiplier={1.12}>
                       轉入去向
                     </Text>
                     <HorizontalScrollView
@@ -3529,7 +3529,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 <View style={styles.transferNoteCard}>
                   {/* 手續費一行化 */}
                   <View style={styles.feeInlineRow}>
-                    <Text style={styles.feeInlineLabel} maxFontSizeMultiplier={1.12}>手續費：</Text>
+                    <Text style={styles.feeInlineLabel} numberOfLines={1} maxFontSizeMultiplier={1.12}>手續費：</Text>
                     <HorizontalScrollView
                       showsHorizontalScrollIndicator={false}
                       contentContainerStyle={styles.feeInlineScroll}
@@ -4807,8 +4807,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   },
   transferTargetTypeBtn: {
     flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 4,
     borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
@@ -4830,9 +4830,10 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     elevation: 2,
   },
   transferTargetTypeBtnText: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '600',
     color: isDark ? colors.text.secondary : '#64748B',
+    includeFontPadding: false,
   },
   transferTargetTypeBtnTextActive: {
     color: '#FFFFFF',
@@ -6955,8 +6956,9 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: isDark ? '#94A3B8' : '#64748B',
-    width: 60,
+    width: 68,
     flexShrink: 0,
+    includeFontPadding: false,
   },
   payerMethodScroll: {
     flex: 1,
@@ -7331,8 +7333,9 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   transferFlowLabel: {
     fontSize: 12,
     fontWeight: '700',
-    width: 58,
+    width: 68,
     flexShrink: 0,
+    includeFontPadding: false,
   },
   transferFlowLabelBlue: {
     color: isDark ? '#38BDF8' : '#0284C7',
@@ -7390,11 +7393,12 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     color: isDark ? '#94A3B8' : '#64748B',
   },
   transferFlowDivider: {
-    height: 14,
+    height: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    marginVertical: 4,
+    marginVertical: 6,
     position: 'relative',
+    zIndex: 3,
   },
   transferFlowDividerLine: {
     position: 'absolute',
@@ -7408,13 +7412,18 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     borderWidth: 1,
     borderColor: isDark ? '#334155' : '#CBD5E1',
     borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   transferFlowDividerArrowText: {
     fontSize: 10,
+    lineHeight: 14,
     fontWeight: '700',
     color: isDark ? '#94A3B8' : '#64748B',
+    includeFontPadding: false,
   },
   payerChipCompactAllowanceActive: {
     backgroundColor: '#8B5CF6',
@@ -7466,8 +7475,9 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 11.5,
     fontWeight: '600',
     color: isDark ? '#94A3B8' : '#64748B',
-    width: 48,
+    width: 58,
     flexShrink: 0,
+    includeFontPadding: false,
   },
   feeInlineScroll: {
     flexDirection: 'row',
