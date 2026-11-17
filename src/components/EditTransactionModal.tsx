@@ -2599,16 +2599,26 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   </View>
                 )}
 
-            {/* 金額輸入 */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-              <Text style={[styles.sectionLabel, { marginBottom: 0 }]} maxFontSizeMultiplier={1.15}>
-                {type === 'expense' && showDiscountPanel && discountCalcMode === 'subtract'
-                  ? '商品原價 (TWD)'
-                  : '金額 (TWD)'}
-              </Text>
-              {type === 'expense' && (
+            {/* 金額輸入框 + 點數折抵整合 (極致瘦身卡片) */}
+            <View style={[styles.amountCardIntegrated, !canEdit && styles.readOnlyAmountContainer]}>
+              <View style={styles.amountInputGroup}>
+                <Text style={[styles.currencyPrefixIntegrated, !canEdit && styles.readOnlyTextMuted]} maxFontSizeMultiplier={1.15}>NT$</Text>
+                <TextInput
+                  style={[styles.amountInputIntegrated, !canEdit && styles.readOnlyAmountInput]}
+                  placeholder="0"
+                  placeholderTextColor="#9CA3AF"
+                  keyboardType="numeric"
+                  value={amount}
+                  onChangeText={setAmount}
+                  editable={canEdit}
+                  autoFocus={false}
+                  maxFontSizeMultiplier={1.15}
+                  underlineColorAndroid="transparent"
+                />
+              </View>
+
+              {type === 'expense' && canEdit && (
                 <TouchableOpacity
-                  disabled={!canEdit}
                   style={[styles.discountToggleChip, showDiscountPanel && styles.discountToggleChipActive]}
                   onPress={() => {
                     if (!showDiscountPanel) {
@@ -2621,30 +2631,16 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                       setDiscountAmount('');
                     }
                   }}
+                  activeOpacity={0.7}
                 >
                   <Text
                     style={[styles.discountToggleChipText, showDiscountPanel && styles.discountToggleChipTextActive]}
-                    maxFontSizeMultiplier={1.15}
+                    maxFontSizeMultiplier={1.08}
                   >
-                    {showDiscountPanel ? '🎁 取消點數/回饋折抵' : '🎁 點數/回饋折抵'}
+                    {showDiscountPanel ? '🎁 收起折抵 ▴' : '🎁 點數折抵'}
                   </Text>
                 </TouchableOpacity>
               )}
-            </View>
-            <View style={[styles.amountContainer, !canEdit && styles.readOnlyAmountContainer]}>
-              <Text style={[styles.currencySymbol, !canEdit && styles.readOnlyTextMuted]} maxFontSizeMultiplier={1.15}>$</Text>
-              <TextInput
-                style={[styles.amountInput, !canEdit && styles.readOnlyAmountInput]}
-                placeholder="0"
-                placeholderTextColor="#D1D5DB"
-                keyboardType="numeric"
-                value={amount}
-                onChangeText={setAmount}
-                editable={canEdit}
-                autoFocus={false}
-                maxFontSizeMultiplier={1.15}
-                underlineColorAndroid="transparent"
-              />
             </View>
 
             {/* 點數／行動支付回饋折抵面板 */}
@@ -6677,5 +6673,40 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     paddingTop: 2,
+  },
+  amountCardIntegrated: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: isDark ? 'rgba(30, 41, 59, 0.5)' : '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(51, 65, 85, 0.7)' : '#E2E8F0',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginBottom: 8,
+    minHeight: 48,
+  },
+  amountInputGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
+  currencyPrefixIntegrated: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: isDark ? '#94A3B8' : '#64748B',
+    marginRight: 6,
+  },
+  amountInputIntegrated: {
+    flex: 1,
+    fontSize: 24,
+    fontWeight: '800',
+    color: isDark ? '#F8FAFC' : '#0F172A',
+    padding: 0,
+    paddingVertical: 0,
+    height: 38,
+    textAlign: 'left',
   },
 });

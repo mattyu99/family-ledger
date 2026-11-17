@@ -2711,47 +2711,26 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   </>
                 )}
 
-            {/* 金額輸入 */}
-            <View style={styles.amountContainer}>
-              <Text style={styles.currencyPrefix} maxFontSizeMultiplier={1.15}>NT$</Text>
-              <TextInput
-                style={styles.amountInput}
-                keyboardType="numeric"
-                placeholder="0"
-                placeholderTextColor="#D1D5DB"
-                value={amount}
-                onChangeText={setAmount}
-                autoFocus={false}
-                maxFontSizeMultiplier={1.15}
-                underlineColorAndroid="transparent"
-              />
-            </View>
+            {/* 金額輸入框 + 點數折抵整合 (極致瘦身卡片) */}
+            <View style={styles.amountCardIntegrated}>
+              <View style={styles.amountInputGroup}>
+                <Text style={styles.currencyPrefixIntegrated} maxFontSizeMultiplier={1.15}>NT$</Text>
+                <TextInput
+                  style={styles.amountInputIntegrated}
+                  keyboardType="numeric"
+                  placeholder="0"
+                  placeholderTextColor="#9CA3AF"
+                  value={amount}
+                  onChangeText={setAmount}
+                  autoFocus={false}
+                  maxFontSizeMultiplier={1.15}
+                  underlineColorAndroid="transparent"
+                />
+              </View>
 
-            {/* 快捷金額累加膠囊標籤 */}
-            <View style={styles.quickAmountRow}>
-              {[100, 200, 500, 1000].map(val => (
-                <TouchableOpacity
-                  key={val}
-                  style={styles.quickAmountChip}
-                  onPress={() => handleQuickAddAmount(val)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.quickAmountChipText} maxFontSizeMultiplier={1.08}>+{val.toLocaleString()}</Text>
-                </TouchableOpacity>
-              ))}
-              {!!amount && (
-                <TouchableOpacity
-                  style={[styles.quickAmountChip, styles.quickAmountClearChip]}
-                  onPress={() => setAmount('')}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.quickAmountClearText} maxFontSizeMultiplier={1.08}>清除</Text>
-                </TouchableOpacity>
-              )}
               {mode === 'expense' && (
                 <TouchableOpacity
                   style={[
-                    styles.quickAmountChip,
                     styles.discountToggleChip,
                     showDiscountPanel && styles.discountToggleChipActive,
                   ]}
@@ -2775,8 +2754,33 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       ? parsedDiscountAmount > 0
                         ? `🎁 已折 $${parsedDiscountAmount.toLocaleString()} ▴`
                         : '🎁 收起折抵 ▴'
-                      : '🎁 點數/回饋折抵'}
+                      : '🎁 點數折抵'}
                   </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* 快捷金額累加膠囊標籤 (左側 4 大面額、右側獨立清除) */}
+            <View style={styles.quickAmountRowIntegrated}>
+              <View style={styles.quickAmountGroupLeft}>
+                {[100, 200, 500, 1000].map(val => (
+                  <TouchableOpacity
+                    key={val}
+                    style={styles.quickAmountChip}
+                    onPress={() => handleQuickAddAmount(val)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.quickAmountChipText} maxFontSizeMultiplier={1.08}>+{val.toLocaleString()}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {!!amount && (
+                <TouchableOpacity
+                  style={styles.quickAmountClearBtnRight}
+                  onPress={() => setAmount('')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.quickAmountClearTextRight} maxFontSizeMultiplier={1.08}>清除</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -6961,5 +6965,64 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     paddingTop: 2,
+  },
+  amountCardIntegrated: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: isDark ? 'rgba(30, 41, 59, 0.5)' : '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(51, 65, 85, 0.7)' : '#E2E8F0',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginBottom: 8,
+    minHeight: 48,
+  },
+  amountInputGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
+  currencyPrefixIntegrated: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: isDark ? '#94A3B8' : '#64748B',
+    marginRight: 6,
+  },
+  amountInputIntegrated: {
+    flex: 1,
+    fontSize: 24,
+    fontWeight: '800',
+    color: isDark ? '#F8FAFC' : '#0F172A',
+    padding: 0,
+    paddingVertical: 0,
+    height: 38,
+    textAlign: 'left',
+  },
+  quickAmountRowIntegrated: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  quickAmountGroupLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  quickAmountClearBtnRight: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(239, 68, 68, 0.35)' : '#FECACA',
+  },
+  quickAmountClearTextRight: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: isDark ? '#FCA5A5' : '#DC2626',
   },
 });
