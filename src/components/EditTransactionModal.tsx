@@ -3378,22 +3378,23 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 </View>
               )}
 
-              {/* 緊湊發票操作列 (移除無意義貼上，單行俐落呈現) */}
+              {/* 緊湊發票操作列 (對稱滿版高顯色排版) */}
               {canEdit && type === 'expense' && (
                 <View style={styles.storeNoteToolbarRow}>
                   <TouchableOpacity
                     style={[
-                      styles.attachmentToolbarBtn,
-                      (isInvoiceExpanded || !!invoiceNumber) && styles.attachmentToolbarBtnActive,
+                      styles.invoiceToolbarBtn,
+                      styles.invoiceToolbarBtnLeft,
+                      (isInvoiceExpanded || !!invoiceNumber) && styles.invoiceToolbarBtnLeftActive,
                     ]}
                     onPress={() => setIsInvoiceExpanded(prev => !prev)}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.attachmentToolbarBtnIcon}>🧾</Text>
+                    <Text style={styles.invoiceToolbarBtnIcon}>🧾</Text>
                     <Text
                       style={[
-                        styles.attachmentToolbarBtnText,
-                        (isInvoiceExpanded || !!invoiceNumber) && styles.attachmentToolbarBtnTextActive,
+                        styles.invoiceToolbarBtnTextLeft,
+                        (isInvoiceExpanded || !!invoiceNumber) && styles.invoiceToolbarBtnTextLeftActive,
                       ]}
                       maxFontSizeMultiplier={1.08}
                     >
@@ -3402,12 +3403,12 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={styles.attachmentToolbarBtn}
+                    style={[styles.invoiceToolbarBtn, styles.invoiceToolbarBtnRight]}
                     onPress={() => setScannerModalVisible(true)}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.attachmentToolbarBtnIcon}>📷</Text>
-                    <Text style={styles.attachmentToolbarBtnText} maxFontSizeMultiplier={1.08}>掃描發票</Text>
+                    <Text style={styles.invoiceToolbarBtnIcon}>📷</Text>
+                    <Text style={styles.invoiceToolbarBtnTextRight} maxFontSizeMultiplier={1.08}>掃描發票</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -6699,11 +6700,48 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   storeNoteToolbarRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
-    paddingTop: 6,
+    gap: 8,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#DCFCE7',
+  },
+  invoiceToolbarBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 38,
+    borderRadius: 9,
+    borderWidth: 1.2,
+    gap: 6,
+  },
+  invoiceToolbarBtnLeft: {
+    backgroundColor: isDark ? 'rgba(6, 78, 59, 0.35)' : '#F0FDF4',
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.6)' : '#86EFAC',
+  },
+  invoiceToolbarBtnLeftActive: {
+    backgroundColor: isDark ? 'rgba(6, 78, 59, 0.6)' : '#DCFCE7',
+    borderColor: isDark ? '#10B981' : '#059669',
+  },
+  invoiceToolbarBtnRight: {
+    backgroundColor: isDark ? '#1E293B' : '#F8FAFC',
+    borderColor: isDark ? '#334155' : '#CBD5E1',
+  },
+  invoiceToolbarBtnIcon: {
+    fontSize: 14,
+  },
+  invoiceToolbarBtnTextLeft: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: isDark ? '#34D399' : '#047857',
+  },
+  invoiceToolbarBtnTextLeftActive: {
+    color: isDark ? '#6EE7B7' : '#065F46',
+  },
+  invoiceToolbarBtnTextRight: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: isDark ? '#E2E8F0' : '#334155',
   },
   storeQuickChipsScroll: {
     flexDirection: 'row',
