@@ -266,23 +266,48 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [selectedSchoolSubject, setSelectedSchoolSubject] = useState<string>('國文');
-  const [isQuickBuilderExpanded, setIsQuickBuilderExpanded] = useState<boolean>(false);
+  const [isMemoTagDrawerOpen, setIsMemoTagDrawerOpen] = useState<boolean>(false);
+  const [isMemoTemplateDrawerOpen, setIsMemoTemplateDrawerOpen] = useState<boolean>(false);
+  const [memoDrawerTab, setMemoDrawerTab] = useState<'templates' | 'quickBuilder'>('templates');
+  const [selectedBuilderDomain, setSelectedBuilderDomain] = useState<string>('school');
+
+  const activeMemoTag = React.useMemo(() => {
+    return displayedMemoTags.find(tag => isMemoTagActive(note, tag));
+  }, [displayedMemoTags, note]);
 
   const activeQuickBuilder = React.useMemo(
     () => detectMemoQuickBuilderConfig(note, (members || []).map(m => m.display_name), selectedSchoolSubject),
     [note, members, selectedSchoolSubject]
   );
 
+  const currentBuilderConfig = React.useMemo(() => {
+    if (activeQuickBuilder) {
+      return activeQuickBuilder;
+    }
+    const domainTagMap: Record<string, string> = {
+      school: '[🎒 學校親子]',
+      travel: '[✈️ 出國必備]',
+      home: '[🏠 家居修繕]',
+      schedule: '[📅 行程安排]',
+      health: '[🩺 健康用藥]',
+      shopping: '[🛒 採買清單]',
+      worship: '[🙏 祭祀拜拜]',
+    };
+    const dummyNote = domainTagMap[selectedBuilderDomain] || '[🎒 學校親子]';
+    return detectMemoQuickBuilderConfig(dummyNote, (members || []).map(m => m.display_name), selectedSchoolSubject);
+  }, [activeQuickBuilder, selectedBuilderDomain, members, selectedSchoolSubject]);
+
   const effectiveQuickSubject = React.useMemo(() => {
-    if (!activeQuickBuilder) return '';
-    if (activeQuickBuilder.subjects.includes(selectedSchoolSubject)) {
+    const cfg = currentBuilderConfig;
+    if (!cfg) return '';
+    if (cfg.subjects.includes(selectedSchoolSubject)) {
       return selectedSchoolSubject;
     }
-    if (activeQuickBuilder.domain === 'schedule') {
+    if (cfg.domain === 'schedule') {
       return '09:00';
     }
-    return activeQuickBuilder.subjects[0] || '';
-  }, [activeQuickBuilder, selectedSchoolSubject]);
+    return cfg.subjects[0] || '';
+  }, [currentBuilderConfig, selectedSchoolSubject]);
 
   const handleSelectTemplate = React.useCallback((template: MemoChecklistTemplate) => {
     if (!note || !note.trim()) {
@@ -1779,64 +1804,15 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   </View>
                 </View>
 
-                {/* 常用清單範本捷徑列 */}
-                <View style={styles.templateSection}>
-                  <Text style={styles.templateSectionLabel} maxFontSizeMultiplier={1.08}>📋 常用範本 (點選一鍵帶入清單)：</Text>
-                  <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.templateChipsRow}>
-                    {BUILTIN_MEMO_TEMPLATES.map((tmpl) => (
-                      <TouchableOpacity
-                        key={tmpl.id}
-                        style={styles.templateChip}
-                        onPress={() => handleSelectTemplate(tmpl)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.templateChipIcon}>{tmpl.icon}</Text>
-                        <Text style={styles.templateChipText} maxFontSizeMultiplier={1.08}>{tmpl.title}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </HorizontalScrollView>
-                </View>
-
-                {/* 記事內容多行輸入框 */}
+                {/* 記事內容多行輸入框與常駐操作工具列 */}
                 <View onLayout={(e) => setMemoSectionY(e.nativeEvent.layout.y)}>
                   <View style={styles.sectionLabelRow}>
                     <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記事內容與備忘</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      {!!activeQuickBuilder && (
-                        <TouchableOpacity
-                          style={[
-                            styles.quickBuilderToggleBtn,
-                            isQuickBuilderExpanded && styles.quickBuilderToggleBtnActive,
-                          ]}
-                          onPress={() => setIsQuickBuilderExpanded(prev => !prev)}
-                          activeOpacity={0.75}
-                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                        >
-                          <Text
-                            style={[
-                              styles.quickBuilderToggleBtnText,
-                              isQuickBuilderExpanded && styles.quickBuilderToggleBtnTextActive,
-                            ]}
-                            maxFontSizeMultiplier={1.08}
-                          >
-                            {activeQuickBuilder.shortToggleLabel} {isQuickBuilderExpanded ? '▴' : '▾'}
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-                      <TouchableOpacity
-                        style={styles.insertCheckboxBtn}
-                        onPress={() => setNote(prev => insertChecklistCheckbox(prev))}
-                        activeOpacity={0.7}
-                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                      >
-                        <Text style={styles.insertCheckboxBtnText} maxFontSizeMultiplier={1.08}>☑ ＋ 待辦方框</Text>
+                    {keyboardOffset > 0 && (
+                      <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
                       </TouchableOpacity>
-                      {keyboardOffset > 0 && (
-                        <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                          <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
+                    )}
                   </View>
                   <TextInput
                     style={styles.memoContentInput}
@@ -1851,112 +1827,54 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     maxFontSizeMultiplier={1.15}
                   />
 
-                  {/* ⚡ 智慧隨境切換點選式快選組裝面板 (解法 A：預設收合不擠開標籤，點擊右上角按鈕才展開) */}
-                  {!!activeQuickBuilder && isQuickBuilderExpanded && (
-                    <View style={styles.schoolQuickBuilderBox}>
-                      <View style={styles.schoolQuickBuilderHeader}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.schoolQuickBuilderTitle} maxFontSizeMultiplier={1.08}>
-                            {activeQuickBuilder.title}
-                          </Text>
-                          <Text style={styles.schoolQuickBuilderSubtitle} maxFontSizeMultiplier={1.05}>
-                            {activeQuickBuilder.subtitle}
-                          </Text>
-                        </View>
-                        <TouchableOpacity
-                          style={styles.schoolQuickCollapseBtn}
-                          onPress={() => setIsQuickBuilderExpanded(false)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.schoolQuickCollapseBtnText}>收起 ▴</Text>
-                        </TouchableOpacity>
-                      </View>
+                  {/* 🛠️ 輸入框常駐編輯操作列 (3 等分黃金工具列：方框 / 標籤 / 範本快選) */}
+                  <View style={styles.memoEditorToolbar}>
+                    <TouchableOpacity
+                      style={styles.memoToolbarBtn}
+                      onPress={() => setNote(prev => insertChecklistCheckbox(prev))}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.memoToolbarBtnIcon}>☑</Text>
+                      <Text style={styles.memoToolbarBtnText} maxFontSizeMultiplier={1.08}>＋待辦</Text>
+                    </TouchableOpacity>
 
-                      <Text style={styles.schoolQuickRowLabel} maxFontSizeMultiplier={1.05}>
-                        {activeQuickBuilder.step1Label}（目前：{effectiveQuickSubject}）：
+                    <TouchableOpacity
+                      style={[styles.memoToolbarBtn, !!activeMemoTag && styles.memoToolbarBtnActive]}
+                      onPress={() => setIsMemoTagDrawerOpen(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.memoToolbarBtnIcon}>🏷️</Text>
+                      <Text
+                        style={[styles.memoToolbarBtnText, !!activeMemoTag && styles.memoToolbarBtnTextActive]}
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={1.08}
+                      >
+                        {activeMemoTag ? activeMemoTag.replace(/^([^\s]+)\s*/, '') : '分類標籤'} ▾
                       </Text>
-                      <View style={styles.schoolQuickChipsRow}>
-                        {activeQuickBuilder.subjects.map((subj) => {
-                          const isSelected = effectiveQuickSubject === subj;
-                          return (
-                            <TouchableOpacity
-                              key={subj}
-                              style={[
-                                styles.schoolSubjectChip,
-                                isSelected && styles.schoolSubjectChipActive,
-                              ]}
-                              activeOpacity={0.75}
-                              onPress={() => setSelectedSchoolSubject(subj)}
-                            >
-                              <Text
-                                style={[
-                                  styles.schoolSubjectChipText,
-                                  isSelected && styles.schoolSubjectChipTextActive,
-                                ]}
-                                maxFontSizeMultiplier={1.08}
-                              >
-                                {subj}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
+                    </TouchableOpacity>
 
-                      <Text style={[styles.schoolQuickRowLabel, { marginTop: 8 }]} maxFontSizeMultiplier={1.05}>
-                        {activeQuickBuilder.step2LabelPrefix}「{effectiveQuickSubject}」項目：
+                    <TouchableOpacity
+                      style={[styles.memoToolbarBtn, !!activeQuickBuilder && styles.memoToolbarBtnHighlight]}
+                      onPress={() => {
+                        if (activeQuickBuilder) {
+                          setMemoDrawerTab('quickBuilder');
+                        } else {
+                          setMemoDrawerTab('templates');
+                        }
+                        setIsMemoTemplateDrawerOpen(true);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.memoToolbarBtnIcon}>{activeQuickBuilder ? '🪄' : '📋'}</Text>
+                      <Text
+                        style={[styles.memoToolbarBtnText, !!activeQuickBuilder && styles.memoToolbarBtnTextHighlight]}
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={1.08}
+                      >
+                        {activeQuickBuilder ? activeQuickBuilder.shortToggleLabel.replace('⚡ ', '') : '範本快選'} ▾
                       </Text>
-                      <View style={styles.schoolQuickChipsRow}>
-                        {activeQuickBuilder.tasks.map((task) => (
-                          <TouchableOpacity
-                            key={task}
-                            style={styles.schoolActionChip}
-                            activeOpacity={0.75}
-                            onPress={() =>
-                              setNote((prev) =>
-                                appendSchoolChecklistItem(
-                                  prev,
-                                  effectiveQuickSubject,
-                                  task,
-                                  activeQuickBuilder.defaultTag
-                                )
-                              )
-                            }
-                          >
-                            <Text style={styles.schoolActionChipText} maxFontSizeMultiplier={1.08}>
-                              ＋{effectiveQuickSubject}{/^\d{1,2}:\d{2}/.test(effectiveQuickSubject) ? ' ' : ''}{task}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-
-                      <Text style={[styles.schoolQuickRowLabel, { marginTop: 8 }]} maxFontSizeMultiplier={1.05}>
-                        {activeQuickBuilder.step3Label}
-                      </Text>
-                      <View style={styles.schoolQuickChipsRow}>
-                        {activeQuickBuilder.routines.map((item) => (
-                          <TouchableOpacity
-                            key={item}
-                            style={styles.schoolRoutineChip}
-                            activeOpacity={0.75}
-                            onPress={() =>
-                              setNote((prev) =>
-                                appendSchoolChecklistItem(
-                                  prev,
-                                  null,
-                                  item,
-                                  activeQuickBuilder.defaultTag
-                                )
-                              )
-                            }
-                          >
-                            <Text style={styles.schoolRoutineChipText} maxFontSizeMultiplier={1.08}>
-                              ＋{item}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </View>
-                  )}
+                    </TouchableOpacity>
+                  </View>
 
                   {/* ⏰ 點餐開團 / 家庭投票 截止時間快捷設定列 */}
                   {(isCollabOrderOrVoting || currentOrderDeadline?.hasDeadline) && (
@@ -2050,32 +1968,6 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     )}
                   </View>
                 )}
-
-                {/* 快捷情境標籤（方式 1：自動換行全顯；策略 1：依頻率智慧動態排序；長按可移除） */}
-                <View style={styles.quickNoteRow}>
-                  {displayedMemoTags.map(tag => {
-                    const active = isMemoTagActive(note, tag);
-                    return (
-                      <TouchableOpacity
-                        key={tag}
-                        style={[styles.quickNoteChip, active && styles.quickNoteChipActive]}
-                        onPress={() => {
-                          setNote(toggleMemoTag(note, tag));
-                          recordMemoTag(tag, true);
-                        }}
-                        onLongPress={() => handleLongPressMemoTag(tag)}
-                        activeOpacity={0.7}
-                      >
-                        <Text
-                          style={[styles.quickNoteChipText, active && styles.quickNoteChipTextActive]}
-                          maxFontSizeMultiplier={1.08}
-                        >
-                          {tag}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
 
                 {/* 記事日期 */}
                 <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記事日期</Text>
@@ -3951,6 +3843,271 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           </Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* 🏷️ 選擇記事標籤抽屜 (Bottom Sheet 內置浮層) */}
+      {isMemoTagDrawerOpen && (
+        <View style={styles.memoDrawerOverlay}>
+          <TouchableOpacity
+            style={styles.memoDrawerBackdrop}
+            activeOpacity={1}
+            onPress={() => setIsMemoTagDrawerOpen(false)}
+          />
+          <View style={styles.memoDrawerCard}>
+            <View style={styles.memoDrawerHandle} />
+            <View style={styles.memoDrawerHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.memoDrawerTitle} maxFontSizeMultiplier={1.12}>🏷️ 選擇生活記事標籤</Text>
+                <Text style={styles.memoDrawerSubtitle} maxFontSizeMultiplier={1.05}>點選加入標籤，長按可移除自訂標籤</Text>
+              </View>
+              {!!activeMemoTag && (
+                <TouchableOpacity
+                  style={styles.memoDrawerClearBtn}
+                  onPress={() => {
+                    setNote(prev => toggleMemoTag(prev, activeMemoTag));
+                    setIsMemoTagDrawerOpen(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.memoDrawerClearBtnText}>✕ 移除標籤</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={styles.memoDrawerCloseBtn}
+                onPress={() => setIsMemoTagDrawerOpen(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.memoDrawerCloseBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              style={styles.memoDrawerScrollBody}
+              contentContainerStyle={styles.memoDrawerTagGrid}
+              showsVerticalScrollIndicator={false}
+            >
+              {displayedMemoTags.map((tag) => {
+                const active = isMemoTagActive(note, tag);
+                return (
+                  <TouchableOpacity
+                    key={tag}
+                    style={[styles.memoDrawerTagChip, active && styles.memoDrawerTagChipActive]}
+                    onPress={() => {
+                      setNote(prev => toggleMemoTag(prev, tag));
+                      recordMemoTag(tag, true);
+                      setIsMemoTagDrawerOpen(false);
+                    }}
+                    onLongPress={() => handleLongPressMemoTag(tag)}
+                    activeOpacity={0.75}
+                  >
+                    <Text
+                      style={[styles.memoDrawerTagChipText, active && styles.memoDrawerTagChipTextActive]}
+                      maxFontSizeMultiplier={1.08}
+                    >
+                      {tag}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      )}
+
+      {/* 📋 常用生活範本與智慧快選組裝抽屜 (Bottom Sheet 內置浮層) */}
+      {isMemoTemplateDrawerOpen && (
+        <View style={styles.memoDrawerOverlay}>
+          <TouchableOpacity
+            style={styles.memoDrawerBackdrop}
+            activeOpacity={1}
+            onPress={() => setIsMemoTemplateDrawerOpen(false)}
+          />
+          <View style={[styles.memoDrawerCard, { maxHeight: '82%' }]}>
+            <View style={styles.memoDrawerHandle} />
+            
+            {/* 頁籤切換 Header */}
+            <View style={styles.memoDrawerTabHeader}>
+              <View style={styles.memoDrawerTabRow}>
+                <TouchableOpacity
+                  style={[styles.memoDrawerTabBtn, memoDrawerTab === 'templates' && styles.memoDrawerTabBtnActive]}
+                  onPress={() => setMemoDrawerTab('templates')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.memoDrawerTabBtnText, memoDrawerTab === 'templates' && styles.memoDrawerTabBtnTextActive]} maxFontSizeMultiplier={1.08}>
+                    📋 常用範本
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.memoDrawerTabBtn, memoDrawerTab === 'quickBuilder' && styles.memoDrawerTabBtnActive]}
+                  onPress={() => setMemoDrawerTab('quickBuilder')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.memoDrawerTabBtnText, memoDrawerTab === 'quickBuilder' && styles.memoDrawerTabBtnTextActive]} maxFontSizeMultiplier={1.08}>
+                    🪄 自由快選組裝
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity
+                style={styles.memoDrawerDoneBtn}
+                onPress={() => setIsMemoTemplateDrawerOpen(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.memoDrawerDoneBtnText}>完成 ✓</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.memoDrawerScrollBody} showsVerticalScrollIndicator={false}>
+              {memoDrawerTab === 'templates' ? (
+                <View style={styles.memoTemplateListContainer}>
+                  <Text style={styles.memoDrawerSectionDesc} maxFontSizeMultiplier={1.05}>
+                    點選即可一鍵整套帶入生活清單範本：
+                  </Text>
+                  {BUILTIN_MEMO_TEMPLATES.map((tmpl) => (
+                    <TouchableOpacity
+                      key={tmpl.id}
+                      style={styles.memoTemplateCardItem}
+                      onPress={() => {
+                        handleSelectTemplate(tmpl);
+                        setIsMemoTemplateDrawerOpen(false);
+                      }}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={styles.memoTemplateCardIcon}>{tmpl.icon}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.memoTemplateCardTitle} maxFontSizeMultiplier={1.08}>{tmpl.title}</Text>
+                        <Text style={styles.memoTemplateCardDesc} maxFontSizeMultiplier={1.05} numberOfLines={1}>
+                          {tmpl.description || '點選自動帶入清單範本'}
+                        </Text>
+                      </View>
+                      <View style={styles.memoTemplateCardArrowBadge}>
+                        <Text style={styles.memoTemplateCardArrowText}>＋帶入</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.memoQuickBuilderContainer}>
+                  {/* 7 大情境領域切換膠囊 */}
+                  <Text style={styles.memoDrawerSectionDesc} maxFontSizeMultiplier={1.05}>
+                    切換情境領域，點擊作業或項目立即追加至待辦中：
+                  </Text>
+                  <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.builderDomainChipsRow}>
+                    {[
+                      { key: 'school', label: '🎒 聯絡簿' },
+                      { key: 'travel', label: '✈️ 行李必備' },
+                      { key: 'home', label: '🏠 居家保養' },
+                      { key: 'schedule', label: '📅 時間行程' },
+                      { key: 'health', label: '🩺 用藥照護' },
+                      { key: 'shopping', label: '🛒 採買清單' },
+                      { key: 'worship', label: '🙏 祭祀拜拜' },
+                    ].map(d => {
+                      const isCur = (currentBuilderConfig?.domain === d.key) || (!currentBuilderConfig && selectedBuilderDomain === d.key);
+                      return (
+                        <TouchableOpacity
+                          key={d.key}
+                          style={[styles.builderDomainChip, isCur && styles.builderDomainChipActive]}
+                          onPress={() => setSelectedBuilderDomain(d.key)}
+                          activeOpacity={0.75}
+                        >
+                          <Text style={[styles.builderDomainChipText, isCur && styles.builderDomainChipTextActive]} maxFontSizeMultiplier={1.08}>
+                            {d.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </HorizontalScrollView>
+
+                  {currentBuilderConfig && (
+                    <View style={styles.drawerQuickBuilderInner}>
+                      <Text style={styles.schoolQuickRowLabel} maxFontSizeMultiplier={1.05}>
+                        {currentBuilderConfig.step1Label}（目前：{effectiveQuickSubject}）：
+                      </Text>
+                      <View style={styles.schoolQuickChipsRow}>
+                        {currentBuilderConfig.subjects.map((subj) => {
+                          const isSelected = effectiveQuickSubject === subj;
+                          return (
+                            <TouchableOpacity
+                              key={subj}
+                              style={[
+                                styles.schoolSubjectChip,
+                                isSelected && styles.schoolSubjectChipActive,
+                              ]}
+                              activeOpacity={0.75}
+                              onPress={() => setSelectedSchoolSubject(subj)}
+                            >
+                              <Text
+                                style={[
+                                  styles.schoolSubjectChipText,
+                                  isSelected && styles.schoolSubjectChipTextActive,
+                                ]}
+                                maxFontSizeMultiplier={1.08}
+                              >
+                                {subj}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+
+                      <Text style={[styles.schoolQuickRowLabel, { marginTop: 10 }]} maxFontSizeMultiplier={1.05}>
+                        {currentBuilderConfig.step2LabelPrefix}「{effectiveQuickSubject}」項目 (可連續快點加入)：
+                      </Text>
+                      <View style={styles.schoolQuickChipsRow}>
+                        {currentBuilderConfig.tasks.map((task) => (
+                          <TouchableOpacity
+                            key={task}
+                            style={styles.schoolActionChip}
+                            activeOpacity={0.75}
+                            onPress={() =>
+                              setNote((prev) =>
+                                appendSchoolChecklistItem(
+                                  prev,
+                                  effectiveQuickSubject,
+                                  task,
+                                  currentBuilderConfig.defaultTag
+                                )
+                              )
+                            }
+                          >
+                            <Text style={styles.schoolActionChipText} maxFontSizeMultiplier={1.08}>
+                              ＋{effectiveQuickSubject}{/^\d{1,2}:\d{2}/.test(effectiveQuickSubject) ? ' ' : ''}{task}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+
+                      <Text style={[styles.schoolQuickRowLabel, { marginTop: 10 }]} maxFontSizeMultiplier={1.05}>
+                        {currentBuilderConfig.step3Label}
+                      </Text>
+                      <View style={styles.schoolQuickChipsRow}>
+                        {currentBuilderConfig.routines.map((item) => (
+                          <TouchableOpacity
+                            key={item}
+                            style={styles.schoolRoutineChip}
+                            activeOpacity={0.75}
+                            onPress={() =>
+                              setNote((prev) =>
+                                appendSchoolChecklistItem(
+                                  prev,
+                                  null,
+                                  item,
+                                  currentBuilderConfig.defaultTag
+                                )
+                              )
+                            }
+                          >
+                            <Text style={styles.schoolRoutineChipText} maxFontSizeMultiplier={1.08}>
+                              ＋{item}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      )}
     </View>
   </KeyboardAvoidingView>
 
@@ -4773,11 +4930,67 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     borderWidth: 1.5,
     borderColor: isDark ? colors.border.default : '#E5E7EB',
     borderRadius: 12,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderBottomWidth: 0,
     padding: 12,
     fontSize: 15,
     color: colors.text.primary,
     minHeight: 140,
-    marginBottom: 10,
+    marginBottom: 0,
+  },
+  memoEditorToolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: isDark ? 'rgba(30, 41, 59, 0.9)' : '#F1F5F9',
+    borderWidth: 1.5,
+    borderColor: isDark ? colors.border.default : '#E5E7EB',
+    borderTopWidth: 1,
+    borderTopColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 8,
+    marginBottom: 12,
+  },
+  memoToolbarBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#CBD5E1',
+    paddingVertical: 7,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  memoToolbarBtnActive: {
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.18)' : '#FEF3C7',
+    borderColor: isDark ? 'rgba(245, 158, 11, 0.55)' : '#F59E0B',
+  },
+  memoToolbarBtnHighlight: {
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF',
+    borderColor: isDark ? 'rgba(99, 102, 241, 0.55)' : '#6366F1',
+  },
+  memoToolbarBtnIcon: {
+    fontSize: 13,
+  },
+  memoToolbarBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: isDark ? '#E2E8F0' : '#475569',
+  },
+  memoToolbarBtnTextActive: {
+    color: isDark ? '#FBBF24' : '#B45309',
+    fontWeight: '700',
+  },
+  memoToolbarBtnTextHighlight: {
+    color: isDark ? '#A5B4FC' : '#4338CA',
+    fontWeight: '700',
   },
   linkedMemoBanner: {
     backgroundColor: isDark ? 'rgba(59, 130, 246, 0.18)' : '#EFF6FF',
@@ -5671,5 +5884,247 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: isDark ? '#C7D2FE' : '#4338CA',
+  },
+  memoDrawerOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    justifyContent: 'flex-end',
+    zIndex: 999,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    overflow: 'hidden',
+  },
+  memoDrawerBackdrop: {
+    flex: 1,
+  },
+  memoDrawerCard: {
+    backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: 1,
+    borderTopColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#E2E8F0',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 32 : 16,
+    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 12,
+  },
+  memoDrawerHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : '#CBD5E1',
+    alignSelf: 'center',
+    marginBottom: 10,
+  },
+  memoDrawerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
+    marginBottom: 12,
+    gap: 8,
+  },
+  memoDrawerTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: isDark ? '#F1F5F9' : '#0F172A',
+  },
+  memoDrawerSubtitle: {
+    fontSize: 11.5,
+    color: isDark ? '#94A3B8' : '#64748B',
+    marginTop: 2,
+  },
+  memoDrawerClearBtn: {
+    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  memoDrawerClearBtnText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: isDark ? '#FCA5A5' : '#DC2626',
+  },
+  memoDrawerCloseBtn: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
+  },
+  memoDrawerCloseBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: isDark ? '#94A3B8' : '#64748B',
+  },
+  memoDrawerDoneBtn: {
+    backgroundColor: isDark ? '#4F46E5' : '#4F46E5',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  memoDrawerDoneBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  memoDrawerScrollBody: {
+    maxHeight: 460,
+  },
+  memoDrawerTagGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingVertical: 4,
+    paddingBottom: 24,
+  },
+  memoDrawerTagChip: {
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F8FAFC',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#E2E8F0',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+  },
+  memoDrawerTagChipActive: {
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
+    borderColor: isDark ? '#F59E0B' : '#D97706',
+  },
+  memoDrawerTagChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: isDark ? '#E2E8F0' : '#334155',
+  },
+  memoDrawerTagChipTextActive: {
+    color: isDark ? '#FBBF24' : '#B45309',
+    fontWeight: '700',
+  },
+  memoDrawerTabHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
+    marginBottom: 10,
+    gap: 8,
+  },
+  memoDrawerTabRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.3)' : '#F1F5F9',
+    borderRadius: 10,
+    padding: 3,
+    gap: 4,
+  },
+  memoDrawerTabBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  memoDrawerTabBtnActive: {
+    backgroundColor: isDark ? '#334155' : '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  memoDrawerTabBtnText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: isDark ? '#94A3B8' : '#64748B',
+  },
+  memoDrawerTabBtnTextActive: {
+    color: isDark ? '#F8FAFC' : '#0F172A',
+    fontWeight: '700',
+  },
+  memoDrawerSectionDesc: {
+    fontSize: 11.5,
+    color: isDark ? '#94A3B8' : '#64748B',
+    marginBottom: 8,
+  },
+  memoTemplateListContainer: {
+    paddingVertical: 4,
+    gap: 8,
+    paddingBottom: 24,
+  },
+  memoTemplateCardItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : '#F8FAFC',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#E2E8F0',
+    borderRadius: 12,
+    padding: 10,
+    gap: 10,
+  },
+  memoTemplateCardIcon: {
+    fontSize: 22,
+  },
+  memoTemplateCardTitle: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: isDark ? '#F1F5F9' : '#0F172A',
+  },
+  memoTemplateCardDesc: {
+    fontSize: 11,
+    color: isDark ? '#94A3B8' : '#64748B',
+    marginTop: 2,
+  },
+  memoTemplateCardArrowBadge: {
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.18)' : '#EEF2FF',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  memoTemplateCardArrowText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: isDark ? '#A5B4FC' : '#4F46E5',
+  },
+  memoQuickBuilderContainer: {
+    paddingVertical: 4,
+    paddingBottom: 24,
+  },
+  builderDomainChipsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingBottom: 8,
+    marginBottom: 6,
+  },
+  builderDomainChip: {
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#CBD5E1',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  builderDomainChipActive: {
+    backgroundColor: isDark ? '#4F46E5' : '#4F46E5',
+    borderColor: isDark ? '#818CF8' : '#4338CA',
+  },
+  builderDomainChipText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: isDark ? '#CBD5E1' : '#475569',
+  },
+  builderDomainChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  drawerQuickBuilderInner: {
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.25)' : '#F8FAFC',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
+    borderRadius: 12,
+    padding: 10,
   },
 });
