@@ -2760,7 +2760,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               )}
             </View>
 
-            {/* 快捷金額累加膠囊標籤 (左側 4 大面額、右側獨立清除) */}
+            {/* 快捷金額累加膠囊標籤 (左側 4 大面額、右側常駐清除) */}
             <View style={styles.quickAmountRowIntegrated}>
               <View style={styles.quickAmountGroupLeft}>
                 {[100, 200, 500, 1000].map(val => (
@@ -2774,15 +2774,24 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   </TouchableOpacity>
                 ))}
               </View>
-              {!!amount && (
-                <TouchableOpacity
-                  style={styles.quickAmountClearBtnRight}
-                  onPress={() => setAmount('')}
-                  activeOpacity={0.7}
+              <TouchableOpacity
+                style={[
+                  styles.quickAmountClearBtnRight,
+                  (!amount || amount === '0') && styles.quickAmountClearBtnDisabled,
+                ]}
+                onPress={() => setAmount('')}
+                activeOpacity={amount && amount !== '0' ? 0.7 : 1}
+              >
+                <Text
+                  style={[
+                    styles.quickAmountClearTextRight,
+                    (!amount || amount === '0') && styles.quickAmountClearTextDisabled,
+                  ]}
+                  maxFontSizeMultiplier={1.08}
                 >
-                  <Text style={styles.quickAmountClearTextRight} maxFontSizeMultiplier={1.08}>清除</Text>
-                </TouchableOpacity>
-              )}
+                  清除
+                </Text>
+              </TouchableOpacity>
             </View>
 
             {/* 🎁 點數 / 回饋折抵面板（算在原先支出的一環，不額外產生第 2 筆交易） */}
@@ -3769,16 +3778,33 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 >
                   <View style={styles.storeNoteCardHeader}>
                     <Text style={styles.storeNoteCardTitle} maxFontSizeMultiplier={1.12}>
-                      店家與備註 (整合常駐操作列)
+                      🏪 店家與備註
                     </Text>
-                    <Text style={styles.storeNoteCardSubtitle} maxFontSizeMultiplier={1.05}>
-                      ✨ 發票與收據無縫融入
-                    </Text>
+                    {/* 📷 拍照附收據移至標題列右上角 */}
+                    <TouchableOpacity
+                      style={[
+                        styles.headerReceiptBtn,
+                        !!receiptPhotoUri && styles.headerReceiptBtnActive,
+                      ]}
+                      onPress={handlePromptReceiptPhotoSource}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.headerReceiptBtnIcon}>📸</Text>
+                      <Text
+                        style={[
+                          styles.headerReceiptBtnText,
+                          !!receiptPhotoUri && styles.headerReceiptBtnTextActive,
+                        ]}
+                        maxFontSizeMultiplier={1.08}
+                      >
+                        {receiptPhotoUri ? '收據已附 ▾' : '拍照收據'}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
 
                   {/* 左右並排輸入列 */}
                   <View style={styles.storeNoteInputsRow}>
-                    {/* 左側：店家輸入框 (約 36% 寬度) */}
+                    {/* 左側：店家輸入框 */}
                     <View style={styles.storeInputCol}>
                       <View style={styles.storeInputInner}>
                         <Text style={styles.storeInputIcon}>🏪</Text>
@@ -3804,7 +3830,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       </View>
                     </View>
 
-                    {/* 右側：備註輸入框 (約 64% 寬度) */}
+                    {/* 右側：備註輸入框 */}
                     <View style={styles.noteInputCol}>
                       <View style={styles.noteInputInner}>
                         <TextInput
@@ -3829,122 +3855,68 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     </View>
                   </View>
 
-                  {/* 緊湊內嵌操作工具列 */}
-                  <View style={styles.storeNoteToolbarRow}>
-                    {mode === 'expense' && (
-                      <>
-                        <TouchableOpacity
-                          style={[
-                            styles.attachmentToolbarBtn,
-                            (isInvoiceExpanded || !!invoiceNumber) && styles.attachmentToolbarBtnActive,
-                          ]}
-                          onPress={() => setIsInvoiceExpanded(prev => !prev)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.attachmentToolbarBtnIcon}>🧾</Text>
-                          <Text
-                            style={[
-                              styles.attachmentToolbarBtnText,
-                              (isInvoiceExpanded || !!invoiceNumber) && styles.attachmentToolbarBtnTextActive,
-                            ]}
-                            maxFontSizeMultiplier={1.08}
-                          >
-                            {invoiceNumber ? `發票 ${invoiceNumber}` : '＋發票字軌'}
-                          </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={styles.attachmentToolbarBtnCompact}
-                          onPress={() => setScannerModalVisible(true)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.attachmentToolbarBtnIcon}>📷</Text>
-                          <Text style={styles.attachmentToolbarBtnText} maxFontSizeMultiplier={1.08}>掃描</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={styles.attachmentToolbarBtnCompact}
-                          onPress={handlePasteInvoice}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.attachmentToolbarBtnIcon}>📋</Text>
-                          <Text style={styles.attachmentToolbarBtnText} maxFontSizeMultiplier={1.08}>貼上</Text>
-                        </TouchableOpacity>
-                      </>
-                    )}
-
-                    {/* 📷 拍照附收據 */}
-                    <TouchableOpacity
-                      style={[
-                        styles.attachmentToolbarBtn,
-                        styles.attachmentToolbarBtnCamera,
-                        !!receiptPhotoUri && styles.attachmentToolbarBtnCameraActive,
-                      ]}
-                      onPress={handlePromptReceiptPhotoSource}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.attachmentToolbarBtnCameraIcon}>📸</Text>
-                      <Text
-                        style={[
-                          styles.attachmentToolbarBtnText,
-                          !!receiptPhotoUri && styles.attachmentToolbarBtnTextCameraActive,
-                        ]}
-                        maxFontSizeMultiplier={1.08}
+                  {/* 完整一行：常用店家快選滑動列 (常駐開放，一戳秒選秒帶入) */}
+                  {suggestedMerchants.length > 0 && (
+                    <View style={styles.quickMerchantsRowContainer}>
+                      <HorizontalScrollView
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.storeQuickChipsScroll}
+                        keyboardShouldPersistTaps="handled"
                       >
-                        {receiptPhotoUri ? '收據已附 ▾' : '拍照收據'}
-                      </Text>
-                    </TouchableOpacity>
+                        {suggestedMerchants.map((item) => {
+                          const isSelected = merchant.trim().toLowerCase() === item.toLowerCase();
+                          return (
+                            <TouchableOpacity
+                              key={item}
+                              style={[styles.merchantChip, isSelected && styles.merchantChipActive]}
+                              onPress={() => setMerchant(isSelected ? '' : item)}
+                              activeOpacity={0.7}
+                            >
+                              <Text
+                                style={[styles.merchantChipText, isSelected && styles.merchantChipTextActive]}
+                                maxFontSizeMultiplier={1.08}
+                              >
+                                {item}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </HorizontalScrollView>
+                    </View>
+                  )}
 
-                    {/* 🏷️ 常用詞 ▾ */}
-                    {suggestedMerchants.length > 0 && (
+                  {/* 緊湊發票操作列 (移除無意義貼上，單行俐落呈現) */}
+                  {mode === 'expense' && (
+                    <View style={styles.storeNoteToolbarRow}>
                       <TouchableOpacity
                         style={[
-                          styles.attachmentToolbarBtnCompact,
-                          showSuggestedMerchants && styles.attachmentToolbarBtnActive,
+                          styles.attachmentToolbarBtn,
+                          (isInvoiceExpanded || !!invoiceNumber) && styles.attachmentToolbarBtnActive,
                         ]}
-                        onPress={() => setShowSuggestedMerchants(prev => !prev)}
+                        onPress={() => setIsInvoiceExpanded(prev => !prev)}
                         activeOpacity={0.7}
                       >
-                        <Text style={styles.attachmentToolbarBtnIcon}>🏷️</Text>
+                        <Text style={styles.attachmentToolbarBtnIcon}>🧾</Text>
                         <Text
                           style={[
                             styles.attachmentToolbarBtnText,
-                            showSuggestedMerchants && styles.attachmentToolbarBtnTextActive,
+                            (isInvoiceExpanded || !!invoiceNumber) && styles.attachmentToolbarBtnTextActive,
                           ]}
                           maxFontSizeMultiplier={1.08}
                         >
-                          常用詞 ▾
+                          {invoiceNumber ? `發票 ${invoiceNumber}` : '＋發票字軌'}
                         </Text>
                       </TouchableOpacity>
-                    )}
-                  </View>
 
-                  {/* 常用詞快捷膠囊 (點擊展開或可選) */}
-                  {showSuggestedMerchants && suggestedMerchants.length > 0 && (
-                    <HorizontalScrollView
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.storeQuickChipsScroll}
-                      keyboardShouldPersistTaps="handled"
-                    >
-                      {suggestedMerchants.map((item) => {
-                        const isSelected = merchant.trim().toLowerCase() === item.toLowerCase();
-                        return (
-                          <TouchableOpacity
-                            key={item}
-                            style={[styles.merchantChip, isSelected && styles.merchantChipActive]}
-                            onPress={() => setMerchant(isSelected ? '' : item)}
-                            activeOpacity={0.7}
-                          >
-                            <Text
-                              style={[styles.merchantChipText, isSelected && styles.merchantChipTextActive]}
-                              maxFontSizeMultiplier={1.08}
-                            >
-                              {isSelected ? `✓ ${item}` : item}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </HorizontalScrollView>
+                      <TouchableOpacity
+                        style={styles.attachmentToolbarBtn}
+                        onPress={() => setScannerModalVisible(true)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.attachmentToolbarBtnIcon}>📷</Text>
+                        <Text style={styles.attachmentToolbarBtnText} maxFontSizeMultiplier={1.08}>掃描發票</Text>
+                      </TouchableOpacity>
+                    </View>
                   )}
                 </View>
 
@@ -6903,10 +6875,40 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     gap: 8,
   },
   storeInputCol: {
-    width: '36%',
+    flex: 1.15,
   },
   noteInputCol: {
-    flex: 1,
+    flex: 1.45,
+  },
+  headerReceiptBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#DCFCE7',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.4)' : '#86EFAC',
+    borderRadius: 7,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  headerReceiptBtnActive: {
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.3)' : '#BBF7D0',
+    borderColor: isDark ? '#10B981' : '#059669',
+  },
+  headerReceiptBtnIcon: {
+    fontSize: 12,
+  },
+  headerReceiptBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: isDark ? '#6EE7B7' : '#065F46',
+  },
+  headerReceiptBtnTextActive: {
+    color: isDark ? '#A7F3D0' : '#047857',
+  },
+  quickMerchantsRowContainer: {
+    paddingTop: 2,
+    paddingBottom: 4,
   },
   storeInputInner: {
     flexDirection: 'row',
@@ -7020,9 +7022,17 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     borderWidth: 1,
     borderColor: isDark ? 'rgba(239, 68, 68, 0.35)' : '#FECACA',
   },
+  quickAmountClearBtnDisabled: {
+    opacity: 0.35,
+    backgroundColor: isDark ? 'rgba(51, 65, 85, 0.4)' : '#F1F5F9',
+    borderColor: isDark ? 'rgba(71, 85, 105, 0.5)' : '#E2E8F0',
+  },
   quickAmountClearTextRight: {
     fontSize: 11.5,
     fontWeight: '600',
     color: isDark ? '#FCA5A5' : '#DC2626',
+  },
+  quickAmountClearTextDisabled: {
+    color: isDark ? '#94A3B8' : '#64748B',
   },
 });
