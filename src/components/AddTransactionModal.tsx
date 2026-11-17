@@ -411,6 +411,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [isCategoryDrawerOpen, setIsCategoryDrawerOpen] = useState<boolean>(false);
   const [categorySearchQuery, setCategorySearchQuery] = useState<string>('');
   const [isInvoiceExpanded, setIsInvoiceExpanded] = useState<boolean>(false);
+  const [showSuggestedMerchants, setShowSuggestedMerchants] = useState<boolean>(false);
 
   // 💡 智慧日期即時解析：感知記事文字中蘊含的日期 (支援待辦清單接力推進、民國年、西元年、月/日、明天等)
   const detectedMemoDate = React.useMemo(() => {
@@ -3479,435 +3480,468 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   )}
                 </View>
 
-                {/* 付款人選擇 */}
-                <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>付款成員</Text>
-                <View style={styles.payerRow}>
-                  {members.map(member => {
-                    const isSelected = effectivePaidBy === member.id;
-                    const isMe = member.id === currentUser.id || (!!currentUser.display_name && currentUser.display_name === member.display_name);
-                    return (
-                      <TouchableOpacity
-                        key={member.id}
-                        style={[styles.payerChip, isSelected && styles.payerChipActive]}
-                        onPress={() => {
-                          setHasUserManuallySelectedPayer(true);
-                          setPaidBy(member.id);
-                        }}
-                      >
-                        <Text style={styles.payerAvatar}>{member.avatar_url}</Text>
-                        <Text
-                          style={[styles.payerName, isSelected && styles.payerNameActive]}
-                          maxFontSizeMultiplier={1.15}
-                        >
-                          {member.display_name}{isMe ? ' (我)' : ''}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-
-                {/* 付款方式與卡片 */}
-                <View style={styles.sectionLabelRow}>
-                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>付款方式</Text>
-                  <Text style={styles.dateHintText} maxFontSizeMultiplier={1.15}>
-                    {supportsCreditCard
-                      ? '(可選信用卡便於對帳)'
-                      : isStoredValue
-                      ? '(連動悠遊卡扣餘額)'
-                      : ''}
-                  </Text>
-                </View>
-                <View style={styles.methodRow}>
-                  {activePaymentMethods.map((opt) => {
-                    const isSelected = paymentMethod === opt.id;
-                    return (
-                      <TouchableOpacity
-                        key={opt.id}
-                        style={[
-                          styles.methodChip,
-                          isSelected && { borderColor: opt.color || '#4F46E5', backgroundColor: `${opt.color || '#4F46E5'}15` },
-                        ]}
-                        onPress={() => handleMethodChange(opt.id as any)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.methodChipIcon}>{opt.icon}</Text>
-                        <Text
-                          style={[
-                            styles.methodChipText,
-                            isSelected && { color: opt.color || '#4F46E5', fontWeight: '700' },
-                          ]}
-                          maxFontSizeMultiplier={1.15}
-                        >
-                          {opt.name}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-
-                {/* 子層：當選擇信用卡或支援信用卡的行動支付時，展開關聯信用卡列表 */}
-                {supportsCreditCard && creditCards.length > 0 && (
-                  <View style={styles.subCardContainer}>
-                    <Text style={styles.subCardLabel} maxFontSizeMultiplier={1.15}>
-                      💳 選擇卡片 (對帳核算使用){inAdminMode ? ' · 👑 管理員模式(全體卡片)' : ''}：
-                    </Text>
-                    <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
-                      {creditCards.map(card => {
-                        const isCardSelected = selectedAccountId === card.id;
-                        const cardholder = getMemberById(card.user_id);
+                {/* 💳 付款成員與方式 (緊湊雙行左右對齊卡片) */}
+                <View style={styles.payerMethodCard}>
+                  {/* 第一行：付款成員 */}
+                  <View style={styles.payerMethodRow}>
+                    <Text style={styles.payerMethodLabel} maxFontSizeMultiplier={1.12}>付款成員</Text>
+                    <HorizontalScrollView
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.payerMethodChipsScroll}
+                      keyboardShouldPersistTaps="handled"
+                    >
+                      {members.map(member => {
+                        const isSelected = effectivePaidBy === member.id;
+                        const isMe = member.id === currentUser.id || (!!currentUser.display_name && currentUser.display_name === member.display_name);
                         return (
                           <TouchableOpacity
-                            key={card.id}
-                            style={[
-                              styles.cardChip,
-                              isCardSelected && { borderColor: card.color || '#3B82F6', backgroundColor: '#EFF6FF' },
-                            ]}
-                            onPress={() => setSelectedAccountId(isCardSelected ? '' : card.id)}
+                            key={member.id}
+                            style={[styles.payerChipCompact, isSelected && styles.payerChipCompactActive]}
+                            onPress={() => {
+                              setHasUserManuallySelectedPayer(true);
+                              setPaidBy(member.id);
+                            }}
                             activeOpacity={0.7}
                           >
-                            <Text style={styles.cardChipIcon}>💳</Text>
-                            <View>
-                              <Text
-                                style={[styles.cardChipName, isCardSelected && { color: card.color || '#1E40AF', fontWeight: '700' }]}
-                                maxFontSizeMultiplier={1.15}
-                              >
-                                {card.name}{card.last_four_digits ? ` (*${card.last_four_digits})` : ''}
-                              </Text>
-                              <Text style={styles.cardChipSub} maxFontSizeMultiplier={1.15}>
-                                {cardholder ? cardholder.display_name : '全家通用'} · 每月{card.billing_cycle_date || 15}日結帳
-                              </Text>
-                            </View>
+                            <Text style={styles.payerAvatarCompact}>{member.avatar_url}</Text>
+                            <Text
+                              style={[styles.payerNameCompact, isSelected && styles.payerNameCompactActive]}
+                              maxFontSizeMultiplier={1.12}
+                            >
+                              {member.display_name}{isMe ? ' (我)' : ''}
+                            </Text>
                           </TouchableOpacity>
                         );
                       })}
                     </HorizontalScrollView>
                   </View>
-                )}
-                {supportsCreditCard && creditCards.length === 0 && paymentMethod === 'credit_card' && (
-                  <View style={[styles.subCardContainer, { paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#F9FAFB', borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: '#E5E7EB' }]}>
-                    <Text style={{ fontSize: 12, color: '#6B7280', lineHeight: 18 }} maxFontSizeMultiplier={1.15}>
-                      💳 目前尚未綁定屬於您的信用卡。{!inAdminMode && '（如需選用其他成員卡片，可至「家庭設定」啟用管理員模式）'}
-                    </Text>
-                  </View>
-                )}
 
-                {/* 子層：當選擇悠遊卡/儲值卡時，展開儲值卡列表 */}
-                {isStoredValue && storedValueCards.length > 0 && (
-                  <View style={styles.subCardContainer}>
-                    <Text style={styles.subCardLabel} maxFontSizeMultiplier={1.15}>
-                      🚌 選擇儲值卡 (將自動扣減餘額){inAdminMode ? ' · 👑 管理員模式(全體卡片)' : ''}：
-                    </Text>
-                    <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
-                      {storedValueCards.map(card => {
-                        const isCardSelected = selectedAccountId === card.id;
-                        const cardholder = getMemberById(card.user_id);
+                  <View style={styles.payerMethodDivider} />
+
+                  {/* 第二行：付款方式 */}
+                  <View style={styles.payerMethodRow}>
+                    <Text style={styles.payerMethodLabel} maxFontSizeMultiplier={1.12}>付款方式</Text>
+                    <HorizontalScrollView
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.payerMethodChipsScroll}
+                      keyboardShouldPersistTaps="handled"
+                    >
+                      {activePaymentMethods.map((opt) => {
+                        const isSelected = paymentMethod === opt.id;
                         return (
                           <TouchableOpacity
-                            key={card.id}
+                            key={opt.id}
                             style={[
-                              styles.cardChip,
-                              isCardSelected && { borderColor: card.color || '#0284C7', backgroundColor: '#F0F9FF' },
+                              styles.methodChipCompact,
+                              isSelected && { borderColor: opt.color || '#4F46E5', backgroundColor: `${opt.color || '#4F46E5'}18` },
                             ]}
-                            onPress={() => setSelectedAccountId(card.id)}
+                            onPress={() => handleMethodChange(opt.id as any)}
                             activeOpacity={0.7}
                           >
-                            <Text style={styles.cardChipIcon}>{card.icon || '🚌'}</Text>
-                            <View>
-                              <Text
-                                style={[styles.cardChipName, isCardSelected && { color: card.color || '#0284C7', fontWeight: '700' }]}
-                                maxFontSizeMultiplier={1.15}
-                              >
-                                {card.name} (餘額: ${card.balance.toLocaleString()})
-                              </Text>
-                              <Text style={styles.cardChipSub} maxFontSizeMultiplier={1.15}>
-                                持卡人：{cardholder ? cardholder.display_name : '全家通用'}
-                              </Text>
-                            </View>
+                            <Text style={styles.methodChipIconCompact}>{opt.icon}</Text>
+                            <Text
+                              style={[
+                                styles.methodChipTextCompact,
+                                isSelected && { color: opt.color || '#4F46E5', fontWeight: '700' },
+                              ]}
+                              maxFontSizeMultiplier={1.12}
+                            >
+                              {opt.name}
+                            </Text>
                           </TouchableOpacity>
                         );
                       })}
                     </HorizontalScrollView>
                   </View>
-                )}
-                {isStoredValue && storedValueCards.length === 0 && (
-                  <View style={[styles.subCardContainer, { paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#F9FAFB', borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: '#E5E7EB' }]}>
-                    <Text style={{ fontSize: 12, color: '#6B7280', lineHeight: 18 }} maxFontSizeMultiplier={1.15}>
-                      🚌 目前尚未綁定屬於您的儲值卡/悠遊卡。{!inAdminMode && '（如需選用其他成員卡片，可至「家庭設定」啟用管理員模式）'}
-                    </Text>
-                  </View>
-                )}
 
-                {/* 子層：當選擇銀行轉帳時，展開銀行帳戶列表 */}
-                {isBankTransfer && bankAccounts.length > 0 && (
-                  <View style={styles.subCardContainer}>
-                    <Text style={styles.subCardLabel} maxFontSizeMultiplier={1.15}>
-                      🏦 選擇扣款銀行帳戶 (選填){inAdminMode ? ' · 👑 管理員模式(全體帳戶)' : ''}：
-                    </Text>
-                    <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
-                      {bankAccounts.map(account => {
-                        const isAccountSelected = selectedAccountId === account.id;
-                        const cardholder = getMemberById(account.user_id);
-                        return (
-                          <TouchableOpacity
-                            key={account.id}
-                            style={[
-                              styles.cardChip,
-                              isAccountSelected && { borderColor: account.color || '#8B5CF6', backgroundColor: '#F5F3FF' },
-                            ]}
-                            onPress={() => setSelectedAccountId(isAccountSelected ? '' : account.id)}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={styles.cardChipIcon}>🏦</Text>
-                            <View>
-                              <Text
-                                style={[styles.cardChipName, isAccountSelected && { color: account.color || '#8B5CF6', fontWeight: '700' }]}
-                                maxFontSizeMultiplier={1.15}
-                              >
-                                {account.name}{account.last_four_digits ? ` (*${account.last_four_digits})` : ''}
-                              </Text>
-                              <Text style={styles.cardChipSub} maxFontSizeMultiplier={1.15}>
-                                {cardholder ? cardholder.display_name : '全家通用'}
-                              </Text>
-                            </View>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </HorizontalScrollView>
-                  </View>
-                )}
-                {isBankTransfer && bankAccounts.length === 0 && (
-                  <View style={[styles.subCardContainer, { paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#F9FAFB', borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: '#E5E7EB' }]}>
-                    <Text style={{ fontSize: 12, color: '#6B7280', lineHeight: 18 }} maxFontSizeMultiplier={1.15}>
-                      🏦 目前尚未綁定屬於您的銀行帳戶。{!inAdminMode && '（如需選用其他成員帳戶，可至「家庭設定」啟用管理員模式）'}
-                    </Text>
-                  </View>
-                )}
+                  {/* 子層：當選擇信用卡或支援信用卡的行動支付時，展開關聯信用卡列表 */}
+                  {supportsCreditCard && creditCards.length > 0 && (
+                    <View style={styles.subCardContainer}>
+                      <Text style={styles.subCardLabel} maxFontSizeMultiplier={1.15}>
+                        💳 選擇卡片 (對帳核算使用){inAdminMode ? ' · 👑 管理員模式(全體卡片)' : ''}：
+                      </Text>
+                      <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
+                        {creditCards.map(card => {
+                          const isCardSelected = selectedAccountId === card.id;
+                          const cardholder = getMemberById(card.user_id);
+                          return (
+                            <TouchableOpacity
+                              key={card.id}
+                              style={[
+                                styles.cardChip,
+                                isCardSelected && { borderColor: card.color || '#3B82F6', backgroundColor: '#EFF6FF' },
+                              ]}
+                              onPress={() => setSelectedAccountId(isCardSelected ? '' : card.id)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={styles.cardChipIcon}>💳</Text>
+                              <View>
+                                <Text
+                                  style={[styles.cardChipName, isCardSelected && { color: card.color || '#1E40AF', fontWeight: '700' }]}
+                                  maxFontSizeMultiplier={1.15}
+                                >
+                                  {card.name}{card.last_four_digits ? ` (*${card.last_four_digits})` : ''}
+                                </Text>
+                                <Text style={styles.cardChipSub} maxFontSizeMultiplier={1.15}>
+                                  {cardholder ? cardholder.display_name : '全家通用'} · 每月{card.billing_cycle_date || 15}日結帳
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </HorizontalScrollView>
+                    </View>
+                  )}
+                  {supportsCreditCard && creditCards.length === 0 && paymentMethod === 'credit_card' && (
+                    <View style={[styles.subCardContainer, { paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#F9FAFB', borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: '#E5E7EB' }]}>
+                      <Text style={{ fontSize: 12, color: '#6B7280', lineHeight: 18 }} maxFontSizeMultiplier={1.15}>
+                        💳 目前尚未綁定屬於您的信用卡。{!inAdminMode && '（如需選用其他成員卡片，可至「家庭設定」啟用管理員模式）'}
+                      </Text>
+                    </View>
+                  )}
 
-                {/* 記帳日期選擇 */}
-                <View style={styles.sectionLabelRow}>
-                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記帳日期</Text>
-                  {!isToday && (
-                    <Text style={styles.dateHintText} maxFontSizeMultiplier={1.15}>
-                      (補記：{selectedDate.getFullYear()}/{selectedDate.getMonth() + 1}/{selectedDate.getDate()})
-                    </Text>
+                  {/* 子層：當選擇悠遊卡/儲值卡時，展開儲值卡列表 */}
+                  {isStoredValue && storedValueCards.length > 0 && (
+                    <View style={styles.subCardContainer}>
+                      <Text style={styles.subCardLabel} maxFontSizeMultiplier={1.15}>
+                        🚌 選擇儲值卡 (將自動扣減餘額){inAdminMode ? ' · 👑 管理員模式(全體卡片)' : ''}：
+                      </Text>
+                      <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
+                        {storedValueCards.map(card => {
+                          const isCardSelected = selectedAccountId === card.id;
+                          const cardholder = getMemberById(card.user_id);
+                          return (
+                            <TouchableOpacity
+                              key={card.id}
+                              style={[
+                                styles.cardChip,
+                                isCardSelected && { borderColor: card.color || '#0284C7', backgroundColor: '#F0F9FF' },
+                              ]}
+                              onPress={() => setSelectedAccountId(card.id)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={styles.cardChipIcon}>{card.icon || '🚌'}</Text>
+                              <View>
+                                <Text
+                                  style={[styles.cardChipName, isCardSelected && { color: card.color || '#0284C7', fontWeight: '700' }]}
+                                  maxFontSizeMultiplier={1.15}
+                                >
+                                  {card.name} (餘額: ${card.balance.toLocaleString()})
+                                </Text>
+                                <Text style={styles.cardChipSub} maxFontSizeMultiplier={1.15}>
+                                  持卡人：{cardholder ? cardholder.display_name : '全家通用'}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </HorizontalScrollView>
+                    </View>
+                  )}
+                  {isStoredValue && storedValueCards.length === 0 && (
+                    <View style={[styles.subCardContainer, { paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#F9FAFB', borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: '#E5E7EB' }]}>
+                      <Text style={{ fontSize: 12, color: '#6B7280', lineHeight: 18 }} maxFontSizeMultiplier={1.15}>
+                        🚌 目前尚未綁定屬於您的儲值卡/悠遊卡。{!inAdminMode && '（如需選用其他成員卡片，可至「家庭設定」啟用管理員模式）'}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* 子層：當選擇銀行轉帳時，展開銀行帳戶列表 */}
+                  {isBankTransfer && bankAccounts.length > 0 && (
+                    <View style={styles.subCardContainer}>
+                      <Text style={styles.subCardLabel} maxFontSizeMultiplier={1.15}>
+                        🏦 選擇扣款銀行帳戶 (選填){inAdminMode ? ' · 👑 管理員模式(全體帳戶)' : ''}：
+                      </Text>
+                      <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
+                        {bankAccounts.map(account => {
+                          const isAccountSelected = selectedAccountId === account.id;
+                          const cardholder = getMemberById(account.user_id);
+                          return (
+                            <TouchableOpacity
+                              key={account.id}
+                              style={[
+                                styles.cardChip,
+                                isAccountSelected && { borderColor: account.color || '#8B5CF6', backgroundColor: '#F5F3FF' },
+                              ]}
+                              onPress={() => setSelectedAccountId(isAccountSelected ? '' : account.id)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={styles.cardChipIcon}>🏦</Text>
+                              <View>
+                                <Text
+                                  style={[styles.cardChipName, isAccountSelected && { color: account.color || '#8B5CF6', fontWeight: '700' }]}
+                                  maxFontSizeMultiplier={1.15}
+                                >
+                                  {account.name}{account.last_four_digits ? ` (*${account.last_four_digits})` : ''}
+                                </Text>
+                                <Text style={styles.cardChipSub} maxFontSizeMultiplier={1.15}>
+                                  {cardholder ? cardholder.display_name : '全家通用'}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </HorizontalScrollView>
+                    </View>
+                  )}
+                  {isBankTransfer && bankAccounts.length === 0 && (
+                    <View style={[styles.subCardContainer, { paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#F9FAFB', borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: '#E5E7EB' }]}>
+                      <Text style={{ fontSize: 12, color: '#6B7280', lineHeight: 18 }} maxFontSizeMultiplier={1.15}>
+                        🏦 目前尚未綁定屬於您的銀行帳戶。{!inAdminMode && '（如需選用其他成員帳戶，可至「家庭設定」啟用管理員模式）'}
+                      </Text>
+                    </View>
                   )}
                 </View>
-                <View style={styles.dateRow}>
-                  <TouchableOpacity
-                    style={[styles.dateChip, isToday && styles.dateChipActive]}
-                    onPress={() => setSelectedDate(today)}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={[styles.dateChipText, isToday && styles.dateChipTextActive]}
-                      maxFontSizeMultiplier={1.15}
-                    >
-                      📍 今天 ({today.getMonth() + 1}/{today.getDate()})
-                    </Text>
-                  </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={[styles.dateChip, isYesterday && styles.dateChipActive]}
-                    onPress={() => setSelectedDate(yesterday)}
-                    activeOpacity={0.7}
+                {/* 記帳日期快速選擇 (緊湊單行) */}
+                <View style={styles.dateInlineContainer}>
+                  <Text style={styles.dateInlineLabel} maxFontSizeMultiplier={1.12}>日期：</Text>
+                  <HorizontalScrollView
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.dateInlineScroll}
+                    keyboardShouldPersistTaps="handled"
                   >
-                    <Text
-                      style={[styles.dateChipText, isYesterday && styles.dateChipTextActive]}
-                      maxFontSizeMultiplier={1.15}
-                    >
-                      昨天 ({yesterday.getMonth() + 1}/{yesterday.getDate()})
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.dateChip, isDayBeforeYesterday && styles.dateChipActive]}
-                    onPress={() => setSelectedDate(dayBeforeYesterday)}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={[styles.dateChipText, isDayBeforeYesterday && styles.dateChipTextActive]}
-                      maxFontSizeMultiplier={1.15}
-                    >
-                      前天 ({dayBeforeYesterday.getMonth() + 1}/{dayBeforeYesterday.getDate()})
-                    </Text>
-                  </TouchableOpacity>
-
-                  {/* 若選擇了更早的自訂日期，單獨顯示高亮 Chip */}
-                  {isCustomDate && (
                     <TouchableOpacity
-                      style={[styles.dateChip, styles.dateChipActive, styles.dateChipCustom]}
+                      style={[styles.dateChip, isToday && styles.dateChipActive]}
+                      onPress={() => setSelectedDate(today)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[styles.dateChipText, isToday && styles.dateChipTextActive]}
+                        maxFontSizeMultiplier={1.12}
+                      >
+                        今天 ({today.getMonth() + 1}/{today.getDate()})
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.dateChip, isYesterday && styles.dateChipActive]}
+                      onPress={() => setSelectedDate(yesterday)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[styles.dateChipText, isYesterday && styles.dateChipTextActive]}
+                        maxFontSizeMultiplier={1.12}
+                      >
+                        昨天 ({yesterday.getMonth() + 1}/{yesterday.getDate()})
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* 若選擇了更早的自訂日期，單獨顯示高亮 Chip */}
+                    {isCustomDate && (
+                      <TouchableOpacity
+                        style={[styles.dateChip, styles.dateChipActive, styles.dateChipCustom]}
+                        onPress={() => setDatePickerVisible(true)}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[styles.dateChipText, styles.dateChipTextActive]}
+                          maxFontSizeMultiplier={1.12}
+                        >
+                          🗓️ {selectedDate.getMonth() + 1}/{selectedDate.getDate()}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
+                    <TouchableOpacity
+                      style={[styles.dateMoreBtn, isCustomDate && styles.dateMoreBtnSelected]}
                       onPress={() => setDatePickerVisible(true)}
                       activeOpacity={0.7}
                     >
                       <Text
-                        style={[styles.dateChipText, styles.dateChipTextActive]}
-                        maxFontSizeMultiplier={1.15}
+                        style={[styles.dateMoreBtnText, isCustomDate && styles.dateMoreBtnTextSelected]}
+                        maxFontSizeMultiplier={1.12}
                       >
-                        🗓️ {selectedDate.getMonth() + 1}/{selectedDate.getDate()} (特定日期)
+                        {isCustomDate ? '✏️ 改選...' : '🗓️ 改選...'}
                       </Text>
                     </TouchableOpacity>
-                  )}
+                  </HorizontalScrollView>
+                </View>
 
-                  <TouchableOpacity
-                    style={[styles.dateMoreBtn, isCustomDate && styles.dateMoreBtnSelected]}
-                    onPress={() => setDatePickerVisible(true)}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={[styles.dateMoreBtnText, isCustomDate && styles.dateMoreBtnTextSelected]}
-                      maxFontSizeMultiplier={1.15}
-                    >
-                      {isCustomDate ? '✏️ 改選其他日期' : '📅 選擇特定日期...'}
+                {/* 🏪 店家與備註 (整合常駐操作列 · 極致瘦身) */}
+                <View
+                  onLayout={(e) => setMerchantSectionY(e.nativeEvent.layout.y)}
+                  style={styles.storeNoteCard}
+                >
+                  <View style={styles.storeNoteCardHeader}>
+                    <Text style={styles.storeNoteCardTitle} maxFontSizeMultiplier={1.12}>
+                      店家與備註 (整合常駐操作列)
                     </Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* 店家 / 對象 (選填) */}
-                <View onLayout={(e) => setMerchantSectionY(e.nativeEvent.layout.y)}>
-                  <View style={styles.sectionLabelRow}>
-                    <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>店家 / 付款對象 (選填)</Text>
-                    {!!merchant && (
-                      <TouchableOpacity onPress={() => setMerchant('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Text style={styles.clearMerchantText} maxFontSizeMultiplier={1.08}>清除</Text>
-                      </TouchableOpacity>
-                    )}
+                    <Text style={styles.storeNoteCardSubtitle} maxFontSizeMultiplier={1.05}>
+                      ✨ 發票與收據無縫融入
+                    </Text>
                   </View>
-                  <View style={styles.merchantInputWrapper}>
-                    <Text style={styles.merchantInputIcon}>🏪</Text>
-                    <TextInput
-                      style={styles.merchantInput}
-                      placeholder="例如：全聯、好市多、麥當勞、中油..."
-                      placeholderTextColor="#9CA3AF"
-                      value={merchant}
-                      onChangeText={setMerchant}
-                      onFocus={() => scrollToInput(merchantSectionY, 350)}
-                      returnKeyType="next"
-                      maxFontSizeMultiplier={1.15}
-                    />
-                    {!!merchant && (
-                      <TouchableOpacity onPress={() => setMerchant('')} style={styles.merchantClearBtn}>
-                        <Text style={styles.merchantClearBtnText}>✕</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
 
-                {/* 智慧自學習快捷膠囊標籤 */}
-                {suggestedMerchants.length > 0 && (
-                  <HorizontalScrollView
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.merchantChipsRow}
-                    keyboardShouldPersistTaps="handled"
-                  >
-                    {suggestedMerchants.map((item) => {
-                      const isSelected = merchant.trim().toLowerCase() === item.toLowerCase();
-                      return (
+                  {/* 左右並排輸入列 */}
+                  <View style={styles.storeNoteInputsRow}>
+                    {/* 左側：店家輸入框 (約 36% 寬度) */}
+                    <View style={styles.storeInputCol}>
+                      <View style={styles.storeInputInner}>
+                        <Text style={styles.storeInputIcon}>🏪</Text>
+                        <TextInput
+                          style={styles.storeTextInput}
+                          placeholder="例如：麥當勞"
+                          placeholderTextColor="#9CA3AF"
+                          value={merchant}
+                          onChangeText={setMerchant}
+                          onFocus={() => scrollToInput(merchantSectionY, 350)}
+                          returnKeyType="next"
+                          maxFontSizeMultiplier={1.12}
+                        />
+                        {!!merchant && (
+                          <TouchableOpacity
+                            onPress={() => setMerchant('')}
+                            style={styles.storeClearBtn}
+                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                          >
+                            <Text style={styles.storeClearBtnText}>✕</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+
+                    {/* 右側：備註輸入框 (約 64% 寬度) */}
+                    <View style={styles.noteInputCol}>
+                      <View style={styles.noteInputInner}>
+                        <TextInput
+                          style={styles.noteTextInput}
+                          placeholder="例如：午餐雙人餐..."
+                          placeholderTextColor="#9CA3AF"
+                          value={note}
+                          onChangeText={setNote}
+                          onFocus={() => scrollToInput(noteSectionY, 400)}
+                          maxFontSizeMultiplier={1.12}
+                        />
+                        {!!note && (
+                          <TouchableOpacity
+                            onPress={() => setNote('')}
+                            style={styles.storeClearBtn}
+                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                          >
+                            <Text style={styles.storeClearBtnText}>✕</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* 緊湊內嵌操作工具列 */}
+                  <View style={styles.storeNoteToolbarRow}>
+                    {mode === 'expense' && (
+                      <>
                         <TouchableOpacity
-                          key={item}
-                          style={[styles.merchantChip, isSelected && styles.merchantChipActive]}
-                          onPress={() => setMerchant(isSelected ? '' : item)}
+                          style={[
+                            styles.attachmentToolbarBtn,
+                            (isInvoiceExpanded || !!invoiceNumber) && styles.attachmentToolbarBtnActive,
+                          ]}
+                          onPress={() => setIsInvoiceExpanded(prev => !prev)}
                           activeOpacity={0.7}
                         >
+                          <Text style={styles.attachmentToolbarBtnIcon}>🧾</Text>
                           <Text
-                            style={[styles.merchantChipText, isSelected && styles.merchantChipTextActive]}
+                            style={[
+                              styles.attachmentToolbarBtnText,
+                              (isInvoiceExpanded || !!invoiceNumber) && styles.attachmentToolbarBtnTextActive,
+                            ]}
                             maxFontSizeMultiplier={1.08}
                           >
-                            {isSelected ? `✓ ${item}` : item}
+                            {invoiceNumber ? `發票 ${invoiceNumber}` : '＋發票字軌'}
                           </Text>
                         </TouchableOpacity>
-                      );
-                    })}
-                  </HorizontalScrollView>
-                )}
 
-                {/* 備註說明 */}
-                <View onLayout={(e) => setNoteSectionY(e.nativeEvent.layout.y)}>
-                  <View style={styles.sectionLabelRow}>
-                    <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>備註說明</Text>
-                    {keyboardOffset > 0 && (
-                      <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
-                      </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.attachmentToolbarBtnCompact}
+                          onPress={() => setScannerModalVisible(true)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.attachmentToolbarBtnIcon}>📷</Text>
+                          <Text style={styles.attachmentToolbarBtnText} maxFontSizeMultiplier={1.08}>掃描</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.attachmentToolbarBtnCompact}
+                          onPress={handlePasteInvoice}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.attachmentToolbarBtnIcon}>📋</Text>
+                          <Text style={styles.attachmentToolbarBtnText} maxFontSizeMultiplier={1.08}>貼上</Text>
+                        </TouchableOpacity>
+                      </>
                     )}
-                  </View>
-                  <TextInput
-                    style={styles.noteInput}
-                    placeholder="例如：好市多牛肉、加滿油、水電費..."
-                    placeholderTextColor="#9CA3AF"
-                    value={note}
-                    onChangeText={setNote}
-                    multiline={true}
-                    textAlignVertical="top"
-                    onFocus={() => scrollToInput(noteSectionY, 450)}
-                    maxFontSizeMultiplier={1.15}
-                  />
-                </View>
 
-                {/* 🛠️ 記帳輔助工具列 (發票對獎 ＋ 照片收據附件 · 支出分頁極致瘦身) */}
-                <View style={styles.attachmentToolbarRow}>
-                  {mode === 'expense' && (
-                    <>
+                    {/* 📷 拍照附收據 */}
+                    <TouchableOpacity
+                      style={[
+                        styles.attachmentToolbarBtn,
+                        styles.attachmentToolbarBtnCamera,
+                        !!receiptPhotoUri && styles.attachmentToolbarBtnCameraActive,
+                      ]}
+                      onPress={handlePromptReceiptPhotoSource}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.attachmentToolbarBtnCameraIcon}>📸</Text>
+                      <Text
+                        style={[
+                          styles.attachmentToolbarBtnText,
+                          !!receiptPhotoUri && styles.attachmentToolbarBtnTextCameraActive,
+                        ]}
+                        maxFontSizeMultiplier={1.08}
+                      >
+                        {receiptPhotoUri ? '收據已附 ▾' : '拍照收據'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* 🏷️ 常用詞 ▾ */}
+                    {suggestedMerchants.length > 0 && (
                       <TouchableOpacity
                         style={[
-                          styles.attachmentToolbarBtn,
-                          (isInvoiceExpanded || !!invoiceNumber) && styles.attachmentToolbarBtnActive,
+                          styles.attachmentToolbarBtnCompact,
+                          showSuggestedMerchants && styles.attachmentToolbarBtnActive,
                         ]}
-                        onPress={() => setIsInvoiceExpanded(prev => !prev)}
+                        onPress={() => setShowSuggestedMerchants(prev => !prev)}
                         activeOpacity={0.7}
                       >
-                        <Text style={styles.attachmentToolbarBtnIcon}>🧾</Text>
+                        <Text style={styles.attachmentToolbarBtnIcon}>🏷️</Text>
                         <Text
                           style={[
                             styles.attachmentToolbarBtnText,
-                            (isInvoiceExpanded || !!invoiceNumber) && styles.attachmentToolbarBtnTextActive,
+                            showSuggestedMerchants && styles.attachmentToolbarBtnTextActive,
                           ]}
                           maxFontSizeMultiplier={1.08}
                         >
-                          {invoiceNumber ? `發票 ${invoiceNumber}` : '＋發票字軌'}
+                          常用詞 ▾
                         </Text>
                       </TouchableOpacity>
+                    )}
+                  </View>
 
-                      <TouchableOpacity
-                        style={styles.attachmentToolbarBtnCompact}
-                        onPress={() => setScannerModalVisible(true)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.attachmentToolbarBtnIcon}>📷</Text>
-                        <Text style={styles.attachmentToolbarBtnText} maxFontSizeMultiplier={1.08}>掃描</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={styles.attachmentToolbarBtnCompact}
-                        onPress={handlePasteInvoice}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.attachmentToolbarBtnIcon}>📋</Text>
-                        <Text style={styles.attachmentToolbarBtnText} maxFontSizeMultiplier={1.08}>貼上</Text>
-                      </TouchableOpacity>
-                    </>
-                  )}
-
-                  {/* 📷 拍照附收據 / 憑證 (所有模式一體化) */}
-                  <TouchableOpacity
-                    style={[
-                      styles.attachmentToolbarBtn,
-                      styles.attachmentToolbarBtnCamera,
-                      !!receiptPhotoUri && styles.attachmentToolbarBtnCameraActive,
-                    ]}
-                    onPress={handlePromptReceiptPhotoSource}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.attachmentToolbarBtnCameraIcon}>📸</Text>
-                    <Text
-                      style={[
-                        styles.attachmentToolbarBtnText,
-                        !!receiptPhotoUri && styles.attachmentToolbarBtnTextCameraActive,
-                      ]}
-                      maxFontSizeMultiplier={1.08}
+                  {/* 常用詞快捷膠囊 (點擊展開或可選) */}
+                  {showSuggestedMerchants && suggestedMerchants.length > 0 && (
+                    <HorizontalScrollView
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.storeQuickChipsScroll}
+                      keyboardShouldPersistTaps="handled"
                     >
-                      {receiptPhotoUri ? '收據已附 ▾' : '附收據/憑證'}
-                    </Text>
-                  </TouchableOpacity>
+                      {suggestedMerchants.map((item) => {
+                        const isSelected = merchant.trim().toLowerCase() === item.toLowerCase();
+                        return (
+                          <TouchableOpacity
+                            key={item}
+                            style={[styles.merchantChip, isSelected && styles.merchantChipActive]}
+                            onPress={() => setMerchant(isSelected ? '' : item)}
+                            activeOpacity={0.7}
+                          >
+                            <Text
+                              style={[styles.merchantChipText, isSelected && styles.merchantChipTextActive]}
+                              maxFontSizeMultiplier={1.08}
+                            >
+                              {isSelected ? `✓ ${item}` : item}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </HorizontalScrollView>
+                  )}
                 </View>
 
                 {/* 📷 支出照片縮圖預覽列 (有照片才顯示，支援點擊放大與移除) */}
@@ -6740,5 +6774,192 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: isDark ? colors.text.primary : '#334155',
+  },
+  payerMethodCard: {
+    backgroundColor: isDark ? 'rgba(30, 41, 59, 0.4)' : '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(51, 65, 85, 0.6)' : '#E2E8F0',
+    padding: 8,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  payerMethodRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  payerMethodLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: isDark ? '#94A3B8' : '#64748B',
+    width: 56,
+  },
+  payerMethodChipsScroll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  payerChipCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: isDark ? '#334155' : '#E2E8F0',
+  },
+  payerChipCompactActive: {
+    backgroundColor: '#4F46E5',
+    borderColor: '#4F46E5',
+  },
+  payerAvatarCompact: {
+    fontSize: 13,
+  },
+  payerNameCompact: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: isDark ? '#E2E8F0' : '#1E293B',
+  },
+  payerNameCompactActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  payerMethodDivider: {
+    height: 1,
+    backgroundColor: isDark ? 'rgba(51, 65, 85, 0.5)' : '#E2E8F0',
+    marginVertical: 6,
+  },
+  methodChipCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: isDark ? '#334155' : '#E2E8F0',
+  },
+  methodChipIconCompact: {
+    fontSize: 13,
+  },
+  methodChipTextCompact: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: isDark ? '#E2E8F0' : '#1E293B',
+  },
+  dateInlineContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  dateInlineLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: isDark ? '#94A3B8' : '#64748B',
+  },
+  dateInlineScroll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  storeNoteCard: {
+    backgroundColor: isDark ? 'rgba(6, 78, 59, 0.15)' : '#F0FDF4',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.3)' : '#BBF7D0',
+    padding: 10,
+    marginBottom: 8,
+    gap: 8,
+  },
+  storeNoteCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  storeNoteCardTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: isDark ? '#6EE7B7' : '#047857',
+  },
+  storeNoteCardSubtitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: isDark ? '#34D399' : '#059669',
+  },
+  storeNoteInputsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  storeInputCol: {
+    width: '36%',
+  },
+  noteInputCol: {
+    flex: 1,
+  },
+  storeInputInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: isDark ? '#334155' : '#CBD5E1',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    height: 38,
+  },
+  storeInputIcon: {
+    fontSize: 13,
+    marginRight: 4,
+  },
+  storeTextInput: {
+    flex: 1,
+    fontSize: 12.5,
+    color: isDark ? '#F1F5F9' : '#0F172A',
+    paddingVertical: 0,
+  },
+  noteInputInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: isDark ? '#334155' : '#CBD5E1',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    height: 38,
+  },
+  noteTextInput: {
+    flex: 1,
+    fontSize: 12.5,
+    color: isDark ? '#F1F5F9' : '#0F172A',
+    paddingVertical: 0,
+  },
+  storeClearBtn: {
+    padding: 2,
+  },
+  storeClearBtnText: {
+    fontSize: 11,
+    color: '#94A3B8',
+  },
+  storeNoteToolbarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#DCFCE7',
+  },
+  storeQuickChipsScroll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingTop: 2,
   },
 });
