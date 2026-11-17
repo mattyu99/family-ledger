@@ -1247,6 +1247,21 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     }
   };
 
+  // 📷 生活記事拍照或選取照片提示 (菜單、聯絡簿、規格備忘)
+  const handlePromptMemoPhotoSource = () => {
+    Keyboard.dismiss();
+    Alert.alert(
+      '📷 附加照片備忘',
+      '拍下菜單、聯絡簿或物品型號，省去手打快速記錄：',
+      [
+        { text: '📸 立即拍照', onPress: handlePickReceiptFromCamera },
+        { text: '🖼️ 從相簿挑選', onPress: handlePickReceiptFromLibrary },
+        { text: '取消', style: 'cancel' },
+      ],
+      { cancelable: true }
+    );
+  };
+
   // 送出內部轉帳 / 提款 / 繳卡費 (階段 B)
   const handleTransferSubmit = async () => {
     if (isSubmitting) return;
@@ -1838,26 +1853,50 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
             {mode === 'memo' ? (
               <>
-                {/* 生活記事專用橫幅 */}
-                <View style={styles.memoBanner}>
-                  <Text style={styles.memoBannerIcon}>📌</Text>
-                  <View style={styles.memoBannerContent}>
-                    <Text style={styles.memoBannerTitle} maxFontSizeMultiplier={1.15}>家庭生活手帳與備忘</Text>
-                    <Text style={styles.memoBannerDesc} maxFontSizeMultiplier={1.08}>
-                      隨手記錄生活瑣事、採買清單或重要待辦。獨立於財務統計，支援到期提醒！
-                    </Text>
-                  </View>
-                </View>
-
                 {/* 記事內容多行輸入框與常駐操作工具列 */}
                 <View onLayout={(e) => setMemoSectionY(e.nativeEvent.layout.y)}>
                   <View style={styles.sectionLabelRow}>
                     <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記事內容與備忘</Text>
-                    {keyboardOffset > 0 && (
-                      <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
-                      </TouchableOpacity>
-                    )}
+                    <View style={styles.memoHeaderActionRow}>
+                      {keyboardOffset > 0 && (
+                        <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                          <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
+                        </TouchableOpacity>
+                      )}
+                      {/* 📌 標題列置頂切換膠囊 (0 像素高度消耗) */}
+                      {isGroupOrderMemo(parseMemoNote(note).title, note) ? (
+                        <View style={styles.memoHeaderPinBadgeAuto}>
+                          <Text style={styles.memoHeaderPinTextAuto} maxFontSizeMultiplier={1.05}>⚡ 協作常駐</Text>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          style={[styles.memoHeaderPinBtn, memoIsPinned && styles.memoHeaderPinBtnActive]}
+                          onPress={() => {
+                            if (!memoIsPinned) {
+                              const quota = checkMemoPinQuota(transactions, {
+                                targetScope: memoReminderTarget,
+                                memberId: effectivePaidBy || currentUser?.id,
+                              });
+                              if (!quota.canPin) {
+                                Alert.alert(
+                                  memoReminderTarget === 'personal' ? '個人置頂已達上限' : '全家置頂已達上限',
+                                  quota.errorMessage || '置頂已達 5 筆上限，請先辦妥或取消現有置頂事項。'
+                                );
+                                return;
+                              }
+                            }
+                            userManuallyToggledPinRef.current = true;
+                            setMemoIsPinned(!memoIsPinned);
+                          }}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.memoHeaderPinText, memoIsPinned && styles.memoHeaderPinTextActive]} maxFontSizeMultiplier={1.05}>
+                            {memoIsPinned ? '📌 已置頂 ✓' : '📌 置頂'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
                   <TextInput
                     style={styles.memoContentInput}
@@ -1872,7 +1911,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     maxFontSizeMultiplier={1.15}
                   />
 
-                  {/* 🛠️ 輸入框常駐編輯操作列 (3 等分黃金工具列：方框 / 標籤 / 範本快選) */}
+                  {/* 🛠️ 輸入框常駐編輯操作列 (待辦 / 標籤 / 範本快選 / 📷 純圖示拍照選圖) */}
                   <View style={styles.memoEditorToolbar}>
                     <TouchableOpacity
                       style={styles.memoToolbarBtn}
@@ -1920,7 +1959,44 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         {activeQuickBuilder ? activeQuickBuilder.shortToggleLabel.replace('⚡ ', '') : '範本快選'} ▾
                       </Text>
                     </TouchableOpacity>
+
+                    {/* 📷 純圖示拍照/相簿按鈕 (菜單/聯絡簿/型號速記) */}
+                    <TouchableOpacity
+                      style={[styles.memoToolbarBtnCamera, !!receiptPhotoUri && styles.memoToolbarBtnCameraActive]}
+                      onPress={handlePromptMemoPhotoSource}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.memoToolbarBtnCameraIcon}>📷</Text>
+                    </TouchableOpacity>
                   </View>
+
+                  {/* 📷 記事即時照片縮圖列 (有照片才顯示，支援點擊全螢幕放大與一鍵移除) */}
+                  {!!receiptPhotoUri && (
+                    <View style={styles.memoPhotoPreviewBar}>
+                      <TouchableOpacity
+                        onPress={() => setViewingPhotoModal(true)}
+                        activeOpacity={0.8}
+                        style={styles.memoPhotoThumbnailTouchable}
+                      >
+                        <Image source={{ uri: receiptPhotoUri }} style={styles.memoPhotoThumbnailImg} />
+                        <Text style={styles.memoPhotoHintText} maxFontSizeMultiplier={1.05}>
+                          📷 照片已附加 (點擊放大檢視)
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.memoPhotoDeleteBtn}
+                        onPress={() => {
+                          setReceiptPhotoUri('');
+                          setReceiptPhotoBase64('');
+                        }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.memoPhotoDeleteBtnText}>✕ 移除</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
 
                   {/* ⏰ 點餐開團 / 家庭投票 截止時間快捷設定列 */}
                   {(isCollabOrderOrVoting || currentOrderDeadline?.hasDeadline) && (
@@ -2182,7 +2258,11 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     </TouchableOpacity>
                   )}
                 </View>
-                <View style={styles.dateRow}>
+                <HorizontalScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.memoReminderScrollRow}
+                >
                   <TouchableOpacity
                     style={[styles.dateChip, !memoReminderDate && styles.dateChipActive]}
                     onPress={() => {
@@ -2239,7 +2319,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       ]}
                       maxFontSizeMultiplier={1.15}
                     >
-                      🗓️ 選國曆
+                      🗓️ 國曆...
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -2262,135 +2342,136 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       ]}
                       maxFontSizeMultiplier={1.15}
                     >
-                      🏮 選農曆
+                      🏮 農曆...
                     </Text>
                   </TouchableOpacity>
-                </View>
+                </HorizontalScrollView>
 
-                {/* 🔄 提醒頻率與農曆對照預覽 */}
-                <View style={styles.memoRepeatCard}>
-                  <View style={styles.memoRepeatHeaderRow}>
-                    <Text style={styles.memoRepeatTitle} maxFontSizeMultiplier={1.08}>
-                      🔄 提醒頻率與週期
-                    </Text>
-                    {!!memoReminderDate &&
-                      memoReminderRepeat !== 'lunar_1_15' &&
-                      memoReminderRepeat !== 'lunar_2_16' && (
-                        <View style={styles.calendarBasisSwitch}>
-                          <TouchableOpacity
-                            style={[
-                              styles.calendarBasisBtn,
-                              memoReminderCalendar === 'solar' && styles.calendarBasisBtnActive,
-                            ]}
-                            onPress={() => setMemoReminderCalendar('solar')}
-                            activeOpacity={0.7}
-                          >
-                            <Text
+                {/* 🔄 提醒頻率與週期 (僅在設定提醒日期時展開，未設提醒高度為 0) */}
+                {!!memoReminderDate && (
+                  <View style={styles.memoRepeatCard}>
+                    <View style={styles.memoRepeatHeaderRow}>
+                      <Text style={styles.memoRepeatTitle} maxFontSizeMultiplier={1.08}>
+                        🔄 提醒頻率與週期
+                      </Text>
+                      {memoReminderRepeat !== 'lunar_1_15' &&
+                        memoReminderRepeat !== 'lunar_2_16' && (
+                          <View style={styles.calendarBasisSwitch}>
+                            <TouchableOpacity
                               style={[
-                                styles.calendarBasisBtnText,
-                                memoReminderCalendar === 'solar' && styles.calendarBasisBtnTextActive,
+                                styles.calendarBasisBtn,
+                                memoReminderCalendar === 'solar' && styles.calendarBasisBtnActive,
                               ]}
-                              maxFontSizeMultiplier={1.05}
+                              onPress={() => setMemoReminderCalendar('solar')}
+                              activeOpacity={0.7}
                             >
-                              🗓️ 國曆基準
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[
-                              styles.calendarBasisBtn,
-                              memoReminderCalendar === 'lunar' && styles.calendarBasisBtnLunarActive,
-                            ]}
-                            onPress={() => setMemoReminderCalendar('lunar')}
-                            activeOpacity={0.7}
-                          >
-                            <Text
+                              <Text
+                                style={[
+                                  styles.calendarBasisBtnText,
+                                  memoReminderCalendar === 'solar' && styles.calendarBasisBtnTextActive,
+                                ]}
+                                maxFontSizeMultiplier={1.05}
+                              >
+                                🗓️ 國曆
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
                               style={[
-                                styles.calendarBasisBtnText,
-                                memoReminderCalendar === 'lunar' && styles.calendarBasisBtnTextLunarActive,
+                                styles.calendarBasisBtn,
+                                memoReminderCalendar === 'lunar' && styles.calendarBasisBtnLunarActive,
                               ]}
-                              maxFontSizeMultiplier={1.05}
+                              onPress={() => setMemoReminderCalendar('lunar')}
+                              activeOpacity={0.7}
                             >
-                              🏮 農曆基準
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
-                  </View>
-
-                  <View style={styles.memoRepeatChipsRow}>
-                    {REPEAT_OPTIONS.map(opt => {
-                      const isRepSelected = !!memoReminderDate && memoReminderRepeat === opt.value;
-                      return (
-                        <TouchableOpacity
-                          key={opt.value}
-                          style={[
-                            styles.memoRepeatChip,
-                            opt.lunarOnly && styles.memoRepeatChipLunar,
-                            isRepSelected && (opt.lunarOnly ? styles.memoRepeatChipLunarActive : styles.memoRepeatChipActive),
-                          ]}
-                          onPress={() => {
-                            if (opt.value === 'lunar_1_15' || opt.value === 'lunar_2_16') {
-                              setMemoReminderRepeat(opt.value);
-                              setMemoReminderCalendar('lunar');
-                              const alignedYmd = getNearestLunarPairDate(memoReminderDate || todayYmd, opt.value);
-                              setMemoReminderDate(alignedYmd);
-                            } else {
-                              setMemoReminderRepeat(opt.value);
-                              if (!memoReminderDate) {
-                                setMemoReminderDate(todayYmd);
-                              }
-                            }
-                          }}
-                          activeOpacity={0.7}
-                        >
-                          <Text
-                            style={[
-                              styles.memoRepeatChipText,
-                              opt.lunarOnly && styles.memoRepeatChipTextLunar,
-                              isRepSelected && (opt.lunarOnly ? styles.memoRepeatChipTextLunarActive : styles.memoRepeatChipTextActive),
-                            ]}
-                            maxFontSizeMultiplier={1.08}
-                          >
-                            {opt.shortLabel}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-
-                  {!!memoReminderDate && (() => {
-                    const badge = formatMemoReminderBadge(
-                      memoReminderDate,
-                      memoReminderCalendar,
-                      memoReminderRepeat
-                    );
-                    const nextYmd =
-                      memoReminderRepeat !== 'once'
-                        ? getNextMemoReminderDate(memoReminderDate, memoReminderRepeat, memoReminderCalendar)
-                        : null;
-                    const nextBadge = nextYmd
-                      ? formatMemoReminderBadge(nextYmd, memoReminderCalendar, 'once')
-                      : null;
-                    return (
-                      <View style={styles.memoReminderPreviewBox}>
-                        <Text style={styles.memoReminderPreviewPrimary} maxFontSizeMultiplier={1.08}>
-                          📌 已排定：{badge?.fullText || memoReminderDate}
-                        </Text>
-                        {memoReminderRepeat !== 'once' && nextBadge && (
-                          <Text style={styles.memoReminderPreviewNext} maxFontSizeMultiplier={1.08}>
-                            ✨ 辦妥打勾後，將自動接力產生下一期：{nextBadge.fullText}
-                          </Text>
+                              <Text
+                                style={[
+                                  styles.calendarBasisBtnText,
+                                  memoReminderCalendar === 'lunar' && styles.calendarBasisBtnTextLunarActive,
+                                ]}
+                                maxFontSizeMultiplier={1.05}
+                              >
+                                🏮 農曆
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
                         )}
-                      </View>
-                    );
-                  })()}
-                </View>
+                    </View>
 
-                {/* 🎯 適用對象範圍切換 (解綁日期限制：全家共享 vs 個人專屬) */}
+                    <View style={styles.memoRepeatChipsRow}>
+                      {REPEAT_OPTIONS.map(opt => {
+                        const isRepSelected = memoReminderRepeat === opt.value;
+                        return (
+                          <TouchableOpacity
+                            key={opt.value}
+                            style={[
+                              styles.memoRepeatChip,
+                              opt.lunarOnly && styles.memoRepeatChipLunar,
+                              isRepSelected && (opt.lunarOnly ? styles.memoRepeatChipLunarActive : styles.memoRepeatChipActive),
+                            ]}
+                            onPress={() => {
+                              if (opt.value === 'lunar_1_15' || opt.value === 'lunar_2_16') {
+                                setMemoReminderRepeat(opt.value);
+                                setMemoReminderCalendar('lunar');
+                                const alignedYmd = getNearestLunarPairDate(memoReminderDate || todayYmd, opt.value);
+                                setMemoReminderDate(alignedYmd);
+                              } else {
+                                setMemoReminderRepeat(opt.value);
+                                if (!memoReminderDate) {
+                                  setMemoReminderDate(todayYmd);
+                                }
+                              }
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Text
+                              style={[
+                                styles.memoRepeatChipText,
+                                opt.lunarOnly && styles.memoRepeatChipTextLunar,
+                                isRepSelected && (opt.lunarOnly ? styles.memoRepeatChipTextLunarActive : styles.memoRepeatChipTextActive),
+                              ]}
+                              maxFontSizeMultiplier={1.08}
+                            >
+                              {opt.shortLabel}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    {(() => {
+                      const badge = formatMemoReminderBadge(
+                        memoReminderDate,
+                        memoReminderCalendar,
+                        memoReminderRepeat
+                      );
+                      const nextYmd =
+                        memoReminderRepeat !== 'once'
+                          ? getNextMemoReminderDate(memoReminderDate, memoReminderRepeat, memoReminderCalendar)
+                          : null;
+                      const nextBadge = nextYmd
+                        ? formatMemoReminderBadge(nextYmd, memoReminderCalendar, 'once')
+                        : null;
+                      return (
+                        <View style={styles.memoReminderPreviewBox}>
+                          <Text style={styles.memoReminderPreviewPrimary} maxFontSizeMultiplier={1.08}>
+                            📌 已排定：{badge?.fullText || memoReminderDate}
+                          </Text>
+                          {memoReminderRepeat !== 'once' && nextBadge && (
+                            <Text style={styles.memoReminderPreviewNext} maxFontSizeMultiplier={1.08}>
+                              ✨ 辦妥打勾後，將自動接力產生下一期：{nextBadge.fullText}
+                            </Text>
+                          )}
+                        </View>
+                      );
+                    })()}
+                  </View>
+                )}
+
+                {/* 🎯 適用對象範圍切換 (輕量化無說明小字) */}
                 <View style={styles.memoTargetCard}>
                   <View style={styles.memoRepeatHeaderRow}>
                     <Text style={styles.memoRepeatTitle} maxFontSizeMultiplier={1.08}>
-                      🎯 適用對象 ({memoReminderDate ? '通知與共享範圍' : '可見與共享範圍'})
+                      🎯 適用對象
                     </Text>
                   </View>
                   <View style={styles.memoTargetButtonsRow}>
@@ -2421,7 +2502,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         ]}
                         maxFontSizeMultiplier={1.1}
                       >
-                        🌐 全家共享 ({memoReminderDate ? '全員通知' : '全員可見'})
+                        🌐 全家共享 (全員可見)
                       </Text>
                     </TouchableOpacity>
 
@@ -2452,25 +2533,16 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         ]}
                         maxFontSizeMultiplier={1.1}
                       >
-                        👤 個人專屬 ({memoReminderDate ? '僅提醒負責人' : '僅負責人可見'})
+                        👤 個人專屬 (僅我可見)
                       </Text>
                     </TouchableOpacity>
                   </View>
-                  <Text style={styles.memoTargetDescText} maxFontSizeMultiplier={1.05}>
-                    {memoReminderTarget === 'personal'
-                      ? (memoReminderDate
-                          ? `💡 僅指派之負責人（${(members.find(m => m.id === effectivePaidBy) || currentUser)?.display_name || '此成員'}）的手機會在到期日收到推播。`
-                          : `💡 僅指派之負責人（${(members.find(m => m.id === effectivePaidBy) || currentUser)?.display_name || '此成員'}）可檢視與置頂此記事，其他家人不會看到此私人備忘。`)
-                      : (memoReminderDate
-                          ? '💡 全體家庭成員的手機在提醒日皆會收到推播，適合家庭採買與公共待辦。'
-                          : '💡 全體家庭成員皆可在生活手帳中共同檢視與置頂，適合家庭公用資訊。')}
-                  </Text>
                 </View>
 
                 {/* 負責 / 記錄成員 */}
                 <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>
                   {memoReminderTarget === 'personal'
-                    ? (memoReminderDate ? '負責成員 (僅該成員手機接收個人提醒)' : '專屬成員 (僅該成員可見此私人記事)')
+                    ? (memoReminderDate ? '負責成員' : '專屬成員')
                     : '記錄成員'}
                 </Text>
                 <View style={styles.payerRow}>
@@ -2496,45 +2568,6 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       </TouchableOpacity>
                     );
                   })}
-                </View>
-
-                {/* 📌 置頂重要記事切換 (五大協作看板天然常駐最上方，不佔靜態置頂名額；一般記事享 5 筆配額防呆) */}
-                <View style={styles.memoPinContainer}>
-                  {isGroupOrderMemo(parseMemoNote(note).title, note) ? (
-                    <View style={[styles.memoPinToggleBtn, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF', borderColor: isDark ? '#6366F1' : '#A5B4FC' }]}>
-                      <Text style={[styles.memoPinToggleText, { color: isDark ? '#C7D2FE' : '#4338CA', fontWeight: '700' }]}>
-                        ⚡ 協作活動進行中自動常駐首頁最上方 (拍板結案後自動歸檔，不佔置頂名額)
-                      </Text>
-                    </View>
-                  ) : (
-                    <TouchableOpacity
-                      style={[styles.memoPinToggleBtn, memoIsPinned && styles.memoPinToggleBtnActive]}
-                      onPress={() => {
-                        if (!memoIsPinned) {
-                          const quota = checkMemoPinQuota(transactions, {
-                            targetScope: memoReminderTarget,
-                            memberId: effectivePaidBy || currentUser?.id,
-                          });
-                          if (!quota.canPin) {
-                            Alert.alert(
-                              memoReminderTarget === 'personal' ? '個人置頂已達上限' : '全家置頂已達上限',
-                              quota.errorMessage || '置頂已達 5 筆上限，請先辦妥或取消現有置頂事項。'
-                            );
-                            return;
-                          }
-                        }
-                        userManuallyToggledPinRef.current = true;
-                        setMemoIsPinned(!memoIsPinned);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.memoPinToggleText, memoIsPinned && styles.memoPinToggleTextActive]}>
-                        {memoIsPinned
-                          ? `📌 已置頂 (${memoReminderTarget === 'personal' ? '個人' : '全家'}看板最上方)`
-                          : `📌 置頂此記事 (常駐${memoReminderTarget === 'personal' ? '個人' : '全家'}看板最上方)`}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
                 </View>
               </>
             ) : (
@@ -3793,74 +3826,76 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           </>
         )}
 
-        {/* 📷 消費收據 / 保固憑證附件 (階段 B) */}
-        <View style={styles.receiptSection}>
-          <View style={styles.sectionLabelRow}>
-            <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>📷 消費收據 / 保固憑證 (選填)</Text>
-            {isUploadingPhoto && (
-              <Text style={styles.receiptUploadingText} maxFontSizeMultiplier={1.08}>⏳ 雲端上傳中...</Text>
-            )}
-          </View>
-          {receiptPhotoUri ? (
-            <View style={styles.receiptPreviewContainer}>
-              <TouchableOpacity
-                onPress={() => setViewingPhotoModal(true)}
-                activeOpacity={0.8}
-                style={styles.receiptThumbnailTouchable}
-              >
-                <Image source={{ uri: receiptPhotoUri }} style={styles.receiptThumbnailImage} />
-                <View style={styles.receiptEnlargeOverlay}>
-                  <Text style={styles.receiptEnlargeText}>🔍 點擊放大檢視</Text>
-                </View>
-              </TouchableOpacity>
-              <View style={styles.receiptActionsCol}>
+        {/* 📷 消費收據 / 保固憑證附件 (僅在收支轉帳模式顯示；生活記事已收納至工具列即時縮圖) */}
+        {mode !== 'memo' && (
+          <View style={styles.receiptSection}>
+            <View style={styles.sectionLabelRow}>
+              <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>📷 消費收據 / 保固憑證 (選填)</Text>
+              {isUploadingPhoto && (
+                <Text style={styles.receiptUploadingText} maxFontSizeMultiplier={1.08}>⏳ 雲端上傳中...</Text>
+              )}
+            </View>
+            {receiptPhotoUri ? (
+              <View style={styles.receiptPreviewContainer}>
                 <TouchableOpacity
-                  style={styles.receiptActionBtn}
+                  onPress={() => setViewingPhotoModal(true)}
+                  activeOpacity={0.8}
+                  style={styles.receiptThumbnailTouchable}
+                >
+                  <Image source={{ uri: receiptPhotoUri }} style={styles.receiptThumbnailImage} />
+                  <View style={styles.receiptEnlargeOverlay}>
+                    <Text style={styles.receiptEnlargeText}>🔍 點擊放大檢視</Text>
+                  </View>
+                </TouchableOpacity>
+                <View style={styles.receiptActionsCol}>
+                  <TouchableOpacity
+                    style={styles.receiptActionBtn}
+                    onPress={handlePickReceiptFromCamera}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.receiptActionBtnText}>📸 重新拍攝</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.receiptActionBtn}
+                    onPress={handlePickReceiptFromLibrary}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.receiptActionBtnText}>🖼️ 相簿替換</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.receiptActionBtn, styles.receiptDeleteBtn]}
+                    onPress={() => {
+                      setReceiptPhotoUri('');
+                      setReceiptPhotoBase64('');
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.receiptDeleteBtnText}>🗑️ 移除照片</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.receiptUploadBtnRow}>
+                <TouchableOpacity
+                  style={styles.receiptPickBtn}
                   onPress={handlePickReceiptFromCamera}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.receiptActionBtnText}>📸 重新拍攝</Text>
+                  <Text style={styles.receiptPickBtnIcon}>📸</Text>
+                  <Text style={styles.receiptPickBtnText} maxFontSizeMultiplier={1.08}>拍照附收據</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.receiptActionBtn}
+                  style={styles.receiptPickBtn}
                   onPress={handlePickReceiptFromLibrary}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.receiptActionBtnText}>🖼️ 相簿替換</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.receiptActionBtn, styles.receiptDeleteBtn]}
-                  onPress={() => {
-                    setReceiptPhotoUri('');
-                    setReceiptPhotoBase64('');
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.receiptDeleteBtnText}>🗑️ 移除照片</Text>
+                  <Text style={styles.receiptPickBtnIcon}>🖼️</Text>
+                  <Text style={styles.receiptPickBtnText} maxFontSizeMultiplier={1.08}>從相簿選擇</Text>
                 </TouchableOpacity>
               </View>
-            </View>
-          ) : (
-            <View style={styles.receiptUploadBtnRow}>
-              <TouchableOpacity
-                style={styles.receiptPickBtn}
-                onPress={handlePickReceiptFromCamera}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.receiptPickBtnIcon}>📸</Text>
-                <Text style={styles.receiptPickBtnText} maxFontSizeMultiplier={1.08}>拍照附收據</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.receiptPickBtn}
-                onPress={handlePickReceiptFromLibrary}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.receiptPickBtnIcon}>🖼️</Text>
-                <Text style={styles.receiptPickBtnText} maxFontSizeMultiplier={1.08}>從相簿選擇</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+            )}
+          </View>
+        )}
 
         {/* 儲存 / 一鍵撥款 / 轉帳 / 儲存記事按鈕 */}
         <TouchableOpacity
@@ -4228,7 +4263,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     visible={viewingPhotoModal}
     onClose={() => setViewingPhotoModal(false)}
     imageUrl={receiptPhotoUri}
-    title="消費收據 / 保固憑證"
+    title={mode === 'memo' ? '記事照片備忘 (菜單/聯絡簿/型號)' : '消費收據 / 保固憑證'}
     onDelete={() => {
       setReceiptPhotoUri('');
       setReceiptPhotoBase64('');
@@ -5067,6 +5102,110 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   memoToolbarBtnTextHighlight: {
     color: isDark ? '#A5B4FC' : '#4338CA',
     fontWeight: '700',
+  },
+  memoToolbarBtnCamera: {
+    width: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#CBD5E1',
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  memoToolbarBtnCameraActive: {
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#D1FAE5',
+    borderColor: isDark ? '#10B981' : '#059669',
+  },
+  memoToolbarBtnCameraIcon: {
+    fontSize: 15,
+  },
+  memoPhotoPreviewBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: isDark ? 'rgba(30, 41, 59, 0.75)' : '#F8FAFC',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#E2E8F0',
+    borderRadius: 10,
+    padding: 6,
+    paddingHorizontal: 8,
+    marginTop: -4,
+    marginBottom: 12,
+    gap: 8,
+  },
+  memoPhotoThumbnailTouchable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  memoPhotoThumbnailImg: {
+    width: 38,
+    height: 38,
+    borderRadius: 6,
+    backgroundColor: '#E2E8F0',
+  },
+  memoPhotoHintText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: isDark ? '#CBD5E1' : '#475569',
+  },
+  memoPhotoDeleteBtn: {
+    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  memoPhotoDeleteBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: isDark ? '#FCA5A5' : '#DC2626',
+  },
+  memoHeaderActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  memoHeaderPinBtn: {
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.15)' : '#CBD5E1',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  memoHeaderPinBtnActive: {
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.22)' : '#FEF3C7',
+    borderColor: isDark ? '#F59E0B' : '#D97706',
+  },
+  memoHeaderPinText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: isDark ? '#CBD5E1' : '#475569',
+  },
+  memoHeaderPinTextActive: {
+    color: isDark ? '#FBBF24' : '#B45309',
+    fontWeight: '700',
+  },
+  memoHeaderPinBadgeAuto: {
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.18)' : '#EEF2FF',
+    borderWidth: 1,
+    borderColor: isDark ? '#6366F1' : '#A5B4FC',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  memoHeaderPinTextAuto: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: isDark ? '#C7D2FE' : '#4338CA',
+  },
+  memoReminderScrollRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingBottom: 4,
   },
   linkedMemoBanner: {
     backgroundColor: isDark ? 'rgba(59, 130, 246, 0.18)' : '#EFF6FF',
