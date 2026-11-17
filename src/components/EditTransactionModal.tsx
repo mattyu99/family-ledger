@@ -1145,7 +1145,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const isYesterday = isSameDay(curDate, yesterday);
   const isDayBeforeYesterday = isSameDay(curDate, dayBeforeYesterday);
   const isCustomDate = !isOriginal && !isToday && !isYesterday && !isDayBeforeYesterday;
-  const isCustomReminder = !!memoReminderDate && memoReminderDate !== tomorrowYmd;
+  const isCustomReminder = !!memoReminderDate && memoReminderDate !== todayYmd && memoReminderDate !== tomorrowYmd;
 
   const curDateFormattedWithTime = React.useMemo(() => {
     if (isNaN(curDate.getTime())) return '';
@@ -2101,7 +2101,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   </View>
                 )}
 
-                {/* ⏰ 待辦提醒日期 (選填，極簡 3 顆晶片) */}
+                {/* ⏰ 待辦提醒日期 (選填，精簡 4 顆晶片) */}
                 <View style={styles.sectionLabelRow}>
                   <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>⏰ 待辦提醒日期 (選填)</Text>
                   {canEdit && !!memoReminderDate && !detectedMemoDate && (
@@ -2130,6 +2130,21 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   >
                     <Text style={[styles.dateChipText, !memoReminderDate && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
                       不設提醒
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    disabled={!canEdit}
+                    style={[styles.dateChip, memoReminderDate === todayYmd && styles.dateChipActive]}
+                    onPress={() => {
+                      setMemoReminderDate(todayYmd);
+                      setMemoReminderCalendar('solar');
+                      userManuallySetReminderRef.current = true;
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dateChipText, memoReminderDate === todayYmd && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                      今天 ({today.getMonth() + 1}/{today.getDate()})
                     </Text>
                   </TouchableOpacity>
 

@@ -4,7 +4,7 @@
  */
 
 export type CalendarSystem = 'solar' | 'lunar';
-export type MemoRepeatFrequency = 'once' | 'weekly' | 'monthly' | 'lunar_1_15' | 'lunar_2_16' | 'yearly';
+export type MemoRepeatFrequency = 'once' | 'weekly' | 'biweekly' | 'monthly' | 'lunar_1_15' | 'lunar_2_16' | 'yearly';
 
 export interface LunarDateInfo {
   lunarYear: number;
@@ -357,6 +357,12 @@ function stepNextReminderDate(
     return formatSolarYmd(d.getFullYear(), d.getMonth() + 1, d.getDate());
   }
 
+  if (frequency === 'biweekly') {
+    const d = new Date(year, month - 1, day);
+    d.setDate(d.getDate() + 14);
+    return formatSolarYmd(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  }
+
   if (frequency === 'lunar_1_15') {
     const lunar = solarToLunar(baseYmd);
     if (lunar.lunarDay < 15) {
@@ -493,6 +499,7 @@ export interface RepeatOptionItem {
 export const REPEAT_OPTIONS: RepeatOptionItem[] = [
   { value: 'once', label: '單次提醒 (不重複)', shortLabel: '單次' },
   { value: 'weekly', label: '每週重複', shortLabel: '🔄 每週' },
+  { value: 'biweekly', label: '每兩週重複 (隔週)', shortLabel: '🔄 每兩週' },
   { value: 'monthly', label: '每月重複', shortLabel: '🔄 每月' },
   { value: 'lunar_1_15', label: '農曆每月初一＆十五', shortLabel: '🏮 初一＆十五', lunarOnly: true },
   { value: 'lunar_2_16', label: '農曆每月初二＆十六', shortLabel: '🏮 初二＆十六', lunarOnly: true },
@@ -527,6 +534,7 @@ export function formatMemoReminderBadge(
 
   let repeatLabel = '';
   if (repeat === 'weekly') repeatLabel = '🔄 每週';
+  else if (repeat === 'biweekly') repeatLabel = '🔄 每兩週';
   else if (repeat === 'monthly') repeatLabel = '🔄 每月';
   else if (repeat === 'lunar_1_15') repeatLabel = '🔄 初一/十五';
   else if (repeat === 'lunar_2_16') repeatLabel = '🔄 初二/十六';

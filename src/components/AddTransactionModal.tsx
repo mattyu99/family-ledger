@@ -983,7 +983,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const isYesterday = isSameDay(selectedDate, yesterday);
   const isDayBeforeYesterday = isSameDay(selectedDate, dayBeforeYesterday);
   const isCustomDate = !isToday && !isYesterday && !isDayBeforeYesterday;
-  const isCustomReminder = !!memoReminderDate && memoReminderDate !== tomorrowYmd;
+  const isCustomReminder = !!memoReminderDate && memoReminderDate !== todayYmd && memoReminderDate !== tomorrowYmd;
 
   // 切換付款方式
   const handleMethodChange = (method: PaymentMethod) => {
@@ -2250,6 +2250,20 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   >
                     <Text style={[styles.dateChipText, !memoReminderDate && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
                       不設提醒
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.dateChip, memoReminderDate === todayYmd && styles.dateChipActive]}
+                    onPress={() => {
+                      setMemoReminderDate(todayYmd);
+                      setMemoReminderCalendar('solar');
+                      userManuallySetReminderRef.current = true;
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.dateChipText, memoReminderDate === todayYmd && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                      今天 ({today.getMonth() + 1}/{today.getDate()})
                     </Text>
                   </TouchableOpacity>
 

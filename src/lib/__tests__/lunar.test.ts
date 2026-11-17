@@ -46,6 +46,11 @@ describe('國曆農曆轉換與節氣提醒推算模組 (lunar.ts)', () => {
       expect(nextDate).toBe('2026-11-12');
     });
 
+    it('每兩週重複 (biweekly) 應精準往後遞延 14 天 (如更換濾心週期)', () => {
+      const nextDate = getNextMemoReminderDate('2026-11-05', 'biweekly', 'solar', '2026-11-05');
+      expect(nextDate).toBe('2026-11-19');
+    });
+
     it('國曆每月重複 (monthly) 應維持相同日期', () => {
       const nextDate = getNextMemoReminderDate('2026-11-05', 'monthly', 'solar', '2026-11-05');
       expect(nextDate).toBe('2026-12-05');
