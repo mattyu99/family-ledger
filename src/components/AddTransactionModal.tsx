@@ -2718,65 +2718,6 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               </>
             ) : (
               <>
-                {/* 轉給家人 / 撥零用錢模式切換與說明橫幅 */}
-                {((mode === 'transfer' && transferTargetType === 'member') || (mode as string) === 'allowance') && (
-                  <>
-                    <View style={styles.allowanceModeSelector}>
-                      <TouchableOpacity
-                        style={[
-                          styles.allowanceModeBtn,
-                          allowanceMode === 'transfer' && styles.allowanceModeBtnActive,
-                        ]}
-                        onPress={() => setAllowanceMode('transfer')}
-                        activeOpacity={0.8}
-                      >
-                        <Text
-                          style={[
-                            styles.allowanceModeBtnText,
-                            allowanceMode === 'transfer' && styles.allowanceModeBtnTextActive,
-                          ]}
-                          maxFontSizeMultiplier={1.12}
-                        >
-                          ⭐️ 內部轉帳模式（推薦）
-                        </Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={[
-                          styles.allowanceModeBtn,
-                          allowanceMode === 'expense_income' && styles.allowanceModeBtnActive,
-                        ]}
-                        onPress={() => setAllowanceMode('expense_income')}
-                        activeOpacity={0.8}
-                      >
-                        <Text
-                          style={[
-                            styles.allowanceModeBtnText,
-                            allowanceMode === 'expense_income' && styles.allowanceModeBtnTextActive,
-                          ]}
-                          maxFontSizeMultiplier={1.12}
-                        >
-                          雙向收支記帳
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.allowanceBanner}>
-                      <Text style={styles.allowanceBannerIcon}>💡</Text>
-                      <View style={styles.allowanceBannerContent}>
-                        <Text style={styles.allowanceBannerTitle} maxFontSizeMultiplier={1.15}>
-                          {allowanceMode === 'transfer' ? '內部轉帳模式（推薦）' : '一鍵雙向記帳機制'}
-                        </Text>
-                        <Text style={styles.allowanceBannerDesc} maxFontSizeMultiplier={1.08}>
-                          {allowanceMode === 'transfer'
-                            ? '在成員間調撥資金，保留明細與零用錢錢包餘額，不計入家庭總支出。等孩子日後自己拿手機記帳花費時才算入家庭支出！'
-                            : '自動為出資家長記「支出」，並為受款小孩記「零用錢收入」。適合小孩不拿手機記帳的家庭，直接認列為本期育兒開銷。'}
-                        </Text>
-                      </View>
-                    </View>
-                  </>
-                )}
-
             {/* 金額輸入框 + 點數折抵整合 (極致瘦身卡片) */}
             <View style={styles.amountCardIntegrated}>
               <View style={styles.amountInputGroup}>
@@ -2999,124 +2940,187 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             {(mode === 'transfer' || (mode as string) === 'allowance') ? (
               (transferTargetType === 'member' || (mode as string) === 'allowance') ? (
               <>
-                {/* 出資家長選擇 */}
-                <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>出資家長 (付款支出方)</Text>
-                <View style={styles.payerRow}>
-                  {members.map(member => {
-                    const isSelected = effectiveAllowancePayer === member.id;
-                    const isMe = member.id === currentUser.id || (!!currentUser.display_name && currentUser.display_name === member.display_name);
-                    return (
-                      <TouchableOpacity
-                        key={member.id}
-                        style={[styles.payerChip, isSelected && styles.payerChipActive]}
-                        onPress={() => {
-                          setHasUserManuallySelectedPayer(true);
-                          setAllowancePayerId(member.id);
-                          setPaidBy(member.id);
-                          if (allowanceRecipientId === member.id) {
-                            const other = members.find(m => m.id !== member.id);
-                            if (other) setAllowanceRecipientId(other.id);
-                          }
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.payerAvatar}>{member.avatar_url}</Text>
-                        <Text
-                          style={[styles.payerName, isSelected && styles.payerNameActive]}
-                          maxFontSizeMultiplier={1.15}
-                        >
-                          {member.display_name}{isMe ? ' (我)' : ''}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
+                {/* 🌟 核心革新：零用錢模式切換 (精簡按鈕 + 單行超緊湊提示，省下 80px) */}
+                <View style={styles.allowanceModeSelectorCompact}>
+                  <TouchableOpacity
+                    style={[
+                      styles.allowanceModeBtnCompact,
+                      allowanceMode === 'transfer' && styles.allowanceModeBtnCompactActive,
+                    ]}
+                    onPress={() => setAllowanceMode('transfer')}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={[
+                        styles.allowanceModeBtnTextCompact,
+                        allowanceMode === 'transfer' && styles.allowanceModeBtnTextCompactActive,
+                      ]}
+                      maxFontSizeMultiplier={1.12}
+                    >
+                      ⭐️ 內部調撥 (推薦)
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.allowanceModeBtnCompact,
+                      allowanceMode === 'expense_income' && styles.allowanceModeBtnCompactActive,
+                    ]}
+                    onPress={() => setAllowanceMode('expense_income')}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={[
+                        styles.allowanceModeBtnTextCompact,
+                        allowanceMode === 'expense_income' && styles.allowanceModeBtnTextCompactActive,
+                      ]}
+                      maxFontSizeMultiplier={1.12}
+                    >
+                      雙向收支記帳
+                    </Text>
+                  </TouchableOpacity>
                 </View>
 
-                {/* 受款小孩 / 成員選擇 */}
-                <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>受款小孩 / 成員 (零用錢入帳方)</Text>
-                <View style={styles.payerRow}>
-                  {members.filter(m => m.id !== effectiveAllowancePayer).map(member => {
-                    const isSelected = allowanceRecipientId === member.id;
-                    return (
-                      <TouchableOpacity
-                        key={member.id}
-                        style={[
-                          styles.payerChip,
-                          isSelected && styles.recipientChipActive,
-                        ]}
-                        onPress={() => setAllowanceRecipientId(member.id)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.payerAvatar}>{member.avatar_url}</Text>
-                        <Text
-                          style={[styles.payerName, isSelected && styles.recipientNameActive]}
-                          maxFontSizeMultiplier={1.15}
-                        >
-                          {member.display_name}
-                        </Text>
-                        {isSelected && (
-                          <View style={styles.recipientBadge}>
-                            <Text style={styles.recipientBadgeText} maxFontSizeMultiplier={1.08}>入帳</Text>
-                          </View>
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
+                {/* 單行柔和提示字 (取代原本 90px 大橫幅) */}
+                <View style={styles.allowanceCompactTip}>
+                  <Text style={styles.allowanceCompactTipText} maxFontSizeMultiplier={1.08}>
+                    {allowanceMode === 'transfer'
+                      ? '💡 內部調撥：保留錢包餘額，等孩子日後自己記帳花費時才算入家庭支出。'
+                      : '💡 雙向記帳：自動為家長記支出、孩子記零用錢收入，直接認列為本期育兒開銷。'}
+                  </Text>
                 </View>
 
-                {/* 雙向分類展示 */}
-                <View style={styles.allowanceCatSection}>
-                  <View style={styles.sectionLabelRow}>
-                    <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>雙向記帳分類</Text>
-                    <Text style={styles.dateHintText} maxFontSizeMultiplier={1.15}>(系統自動配對)</Text>
+                {/* 🌟 核心亮點 1：出資家長與受款成員雙行卡片 */}
+                <View style={styles.allowanceMembersCard}>
+                  {/* 出資家長列 */}
+                  <View style={styles.transferFlowRow}>
+                    <Text style={[styles.transferFlowLabel, styles.transferFlowLabelPurple]} maxFontSizeMultiplier={1.12}>
+                      出資家長
+                    </Text>
+                    <HorizontalScrollView
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.transferFlowScroll}
+                      keyboardShouldPersistTaps="handled"
+                    >
+                      {members.map(member => {
+                        const isSelected = effectiveAllowancePayer === member.id;
+                        const isMe = member.id === currentUser.id || (!!currentUser.display_name && currentUser.display_name === member.display_name);
+                        return (
+                          <TouchableOpacity
+                            key={member.id}
+                            style={[
+                              styles.payerChipCompact,
+                              isSelected && styles.payerChipCompactAllowanceActive,
+                            ]}
+                            onPress={() => {
+                              setHasUserManuallySelectedPayer(true);
+                              setAllowancePayerId(member.id);
+                              setPaidBy(member.id);
+                              if (allowanceRecipientId === member.id) {
+                                const other = members.find(m => m.id !== member.id);
+                                if (other) setAllowanceRecipientId(other.id);
+                              }
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.payerAvatarCompact}>{member.avatar_url}</Text>
+                            <Text
+                              style={[styles.payerNameCompact, isSelected && styles.payerNameCompactAllowanceActive]}
+                              maxFontSizeMultiplier={1.15}
+                            >
+                              {member.display_name}{isMe ? ' (我)' : ''}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </HorizontalScrollView>
                   </View>
-                  <View style={styles.allowanceCatFlow}>
-                    <View style={styles.allowanceCatBox}>
-                      <Text style={styles.allowanceCatBoxTitle} maxFontSizeMultiplier={1.08}>出資支出分類</Text>
-                      <Text style={styles.allowanceCatBoxVal} maxFontSizeMultiplier={1.15}>
-                        {getCategoryById(allowanceExpenseCatId)?.icon || '👶'} {getCategoryById(allowanceExpenseCatId)?.name || '育兒教育'}
+
+                  {/* 撥款指示線 */}
+                  <View style={styles.transferFlowDivider}>
+                    <View style={[styles.transferFlowDividerLine, { backgroundColor: isDark ? 'rgba(139, 92, 246, 0.25)' : '#E9D5FF' }]} />
+                    <View style={[styles.transferFlowDividerArrowBadge, { borderColor: isDark ? 'rgba(139, 92, 246, 0.4)' : '#DDD6FE' }]}>
+                      <Text style={[styles.transferFlowDividerArrowText, { color: isDark ? '#C084FC' : '#7C3AED' }]} maxFontSizeMultiplier={1.08}>
+                        ⇣ 撥款入帳
                       </Text>
                     </View>
-                    <Text style={styles.allowanceCatArrow}>➔</Text>
-                    <View style={[styles.allowanceCatBox, styles.allowanceCatBoxIncome]}>
-                      <Text style={[styles.allowanceCatBoxTitle, { color: '#059669' }]} maxFontSizeMultiplier={1.08}>小孩收入分類</Text>
-                      <Text style={[styles.allowanceCatBoxVal, { color: '#047857' }]} maxFontSizeMultiplier={1.15}>
-                        💵 零用錢
-                      </Text>
-                    </View>
+                  </View>
+
+                  {/* 受款成員列 */}
+                  <View style={styles.transferFlowRow}>
+                    <Text style={[styles.transferFlowLabel, styles.transferFlowLabelGreen]} maxFontSizeMultiplier={1.12}>
+                      受款成員
+                    </Text>
+                    <HorizontalScrollView
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.transferFlowScroll}
+                      keyboardShouldPersistTaps="handled"
+                    >
+                      {members.filter(m => m.id !== effectiveAllowancePayer).map(member => {
+                        const isSelected = allowanceRecipientId === member.id;
+                        return (
+                          <TouchableOpacity
+                            key={member.id}
+                            style={[
+                              styles.payerChipCompact,
+                              isSelected && styles.recipientChipCompactActive,
+                            ]}
+                            onPress={() => setAllowanceRecipientId(member.id)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.payerAvatarCompact}>{member.avatar_url}</Text>
+                            <Text
+                              style={[styles.payerNameCompact, isSelected && styles.recipientNameCompactActive]}
+                              maxFontSizeMultiplier={1.15}
+                            >
+                              {member.display_name}
+                            </Text>
+                            {isSelected && (
+                              <View style={styles.recipientBadgeCompact}>
+                                <Text style={styles.recipientBadgeCompactText} maxFontSizeMultiplier={1.08}>入帳</Text>
+                              </View>
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </HorizontalScrollView>
                   </View>
                 </View>
 
-                {/* 付款方式與卡片 */}
-                <View style={styles.sectionLabelRow}>
-                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>出資支付方式</Text>
-                </View>
-                <View style={styles.methodRow}>
-                  {activePaymentMethods.map((opt) => {
-                    const isSelected = paymentMethod === opt.id;
-                    return (
-                      <TouchableOpacity
-                        key={opt.id}
-                        style={[
-                          styles.methodChip,
-                          isSelected && { borderColor: opt.color || '#4F46E5', backgroundColor: `${opt.color || '#4F46E5'}15` },
-                        ]}
-                        onPress={() => handleMethodChange(opt.id as any)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.methodChipIcon}>{opt.icon}</Text>
-                        <Text
+                {/* 🌟 核心亮點 2：出資方式單行化 */}
+                <View style={styles.payerMethodInlineRow}>
+                  <Text style={styles.payerMethodLabel} numberOfLines={1} maxFontSizeMultiplier={1.12}>出資方式：</Text>
+                  <HorizontalScrollView
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.payerMethodScroll}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    {activePaymentMethods.map((opt) => {
+                      const isSelected = paymentMethod === opt.id;
+                      return (
+                        <TouchableOpacity
+                          key={opt.id}
                           style={[
-                            styles.methodChipText,
-                            isSelected && { color: opt.color || '#4F46E5', fontWeight: '700' },
+                            styles.methodChipCompact,
+                            isSelected && { borderColor: opt.color || '#8B5CF6', backgroundColor: `${opt.color || '#8B5CF6'}20` },
                           ]}
-                          maxFontSizeMultiplier={1.15}
+                          onPress={() => handleMethodChange(opt.id as any)}
+                          activeOpacity={0.7}
                         >
-                          {opt.name}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
+                          <Text style={styles.methodChipCompactIcon}>{opt.icon}</Text>
+                          <Text
+                            style={[
+                              styles.methodChipCompactText,
+                              isSelected && { color: opt.color || '#8B5CF6', fontWeight: '700' },
+                            ]}
+                            maxFontSizeMultiplier={1.15}
+                          >
+                            {opt.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </HorizontalScrollView>
                 </View>
 
                 {/* 子層：信用卡列表 */}
@@ -3207,295 +3211,402 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   </View>
                 )}
 
-                {/* 記帳日期選擇 */}
-                <View style={styles.sectionLabelRow}>
-                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>發放日期</Text>
-                  {!isToday && (
-                    <Text style={styles.dateHintText} maxFontSizeMultiplier={1.15}>
-                      (補記：{selectedDate.getFullYear()}/{selectedDate.getMonth() + 1}/{selectedDate.getDate()})
-                    </Text>
-                  )}
-                </View>
-                <View style={styles.dateRow}>
-                  <TouchableOpacity
-                    style={[styles.dateChip, isToday && styles.dateChipActive]}
-                    onPress={() => setSelectedDate(today)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.dateChipText, isToday && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
-                      📍 今天 ({today.getMonth() + 1}/{today.getDate()})
-                    </Text>
-                  </TouchableOpacity>
+                {/* 🌟 核心亮點 3：雙向分類配對卡片 (僅在雙向記帳模式時顯示) */}
+                {allowanceMode === 'expense_income' && (
+                  <View style={styles.allowanceCatSection}>
+                    <View style={styles.sectionLabelRow}>
+                      <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>雙向記帳分類</Text>
+                      <Text style={styles.dateHintText} maxFontSizeMultiplier={1.15}>(系統自動配對)</Text>
+                    </View>
+                    <View style={styles.allowanceCatFlow}>
+                      <View style={styles.allowanceCatBox}>
+                        <Text style={styles.allowanceCatBoxTitle} maxFontSizeMultiplier={1.08}>出資支出分類</Text>
+                        <Text style={styles.allowanceCatBoxVal} maxFontSizeMultiplier={1.15}>
+                          {getCategoryById(allowanceExpenseCatId)?.icon || '👶'} {getCategoryById(allowanceExpenseCatId)?.name || '育兒教育'}
+                        </Text>
+                      </View>
+                      <Text style={styles.allowanceCatArrow}>➔</Text>
+                      <View style={[styles.allowanceCatBox, styles.allowanceCatBoxIncome]}>
+                        <Text style={[styles.allowanceCatBoxTitle, { color: '#059669' }]} maxFontSizeMultiplier={1.08}>小孩收入分類</Text>
+                        <Text style={[styles.allowanceCatBoxVal, { color: '#047857' }]} maxFontSizeMultiplier={1.15}>
+                          💵 零用錢
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
 
-                  <TouchableOpacity
-                    style={[styles.dateChip, isYesterday && styles.dateChipActive]}
-                    onPress={() => setSelectedDate(yesterday)}
-                    activeOpacity={0.7}
+                {/* 🌟 核心亮點 4：發放日期單行化 */}
+                <View style={styles.dateInlineContainer}>
+                  <Text style={styles.dateInlineLabel} maxFontSizeMultiplier={1.12}>發放日期：</Text>
+                  <HorizontalScrollView
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.dateInlineScroll}
+                    keyboardShouldPersistTaps="handled"
                   >
-                    <Text style={[styles.dateChipText, isYesterday && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
-                      昨天 ({yesterday.getMonth() + 1}/{yesterday.getDate()})
-                    </Text>
-                  </TouchableOpacity>
-
-                  {isCustomDate && (
                     <TouchableOpacity
-                      style={[styles.dateChip, styles.dateChipActive, styles.dateChipCustom]}
+                      style={[styles.dateChip, isToday && styles.dateChipActiveAllowance]}
+                      onPress={() => setSelectedDate(today)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.dateChipText, isToday && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                        今天 ({today.getMonth() + 1}/{today.getDate()})
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.dateChip, isYesterday && styles.dateChipActiveAllowance]}
+                      onPress={() => setSelectedDate(yesterday)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.dateChipText, isYesterday && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                        昨天 ({yesterday.getMonth() + 1}/{yesterday.getDate()})
+                      </Text>
+                    </TouchableOpacity>
+
+                    {isCustomDate && (
+                      <TouchableOpacity
+                        style={[styles.dateChip, styles.dateChipActiveAllowance, styles.dateChipCustom]}
+                        onPress={() => setDatePickerVisible(true)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.dateChipText, styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                          🗓️ {selectedDate.getMonth() + 1}/{selectedDate.getDate()} (自訂)
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
+                    <TouchableOpacity
+                      style={[styles.dateMoreBtn, isCustomDate && styles.dateMoreBtnSelected]}
                       onPress={() => setDatePickerVisible(true)}
                       activeOpacity={0.7}
                     >
-                      <Text style={[styles.dateChipText, styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
-                        🗓️ {selectedDate.getMonth() + 1}/{selectedDate.getDate()} (自訂)
+                      <Text style={[styles.dateMoreBtnText, isCustomDate && styles.dateMoreBtnTextSelected]} maxFontSizeMultiplier={1.15}>
+                        {isCustomDate ? '✏️ 改選' : '🗓️ 更多...'}
                       </Text>
                     </TouchableOpacity>
-                  )}
+                  </HorizontalScrollView>
+                </View>
 
-                  <TouchableOpacity
-                    style={[styles.dateMoreBtn, isCustomDate && styles.dateMoreBtnSelected]}
-                    onPress={() => setDatePickerVisible(true)}
-                    activeOpacity={0.7}
+                {/* 🌟 核心亮點 5：事由備註整合卡片 (含 6 個常用快選標籤) */}
+                <View style={styles.allowanceNoteCard} onLayout={(e) => setAllowanceNoteSectionY(e.nativeEvent.layout.y)}>
+                  <HorizontalScrollView
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.quickTagsScroll}
+                    keyboardShouldPersistTaps="handled"
                   >
-                    <Text style={[styles.dateMoreBtnText, isCustomDate && styles.dateMoreBtnTextSelected]} maxFontSizeMultiplier={1.15}>
-                      {isCustomDate ? '✏️ 改選' : '🗓️ 更多...'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* 發放事由與備註 */}
-                <View style={styles.sectionLabelRow}>
-                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>發放事由與備註</Text>
-                  {keyboardOffset > 0 && (
-                    <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <View style={styles.quickNoteRow}>
-                  {['每週零用錢', '做家事獎勵', '段考進步', '生日紅包', '好表現獎勵', '伙食津貼'].map(tag => (
-                    <TouchableOpacity
-                      key={tag}
-                      style={styles.quickNoteChip}
-                      onPress={() => handleQuickNote(tag)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.quickNoteChipText} maxFontSizeMultiplier={1.08}>{tag}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <View onLayout={(e) => setAllowanceNoteSectionY(e.nativeEvent.layout.y)}>
-                  <TextInput
-                    style={styles.noteInput}
-                    placeholder="例如：每週零用錢、考試進步獎勵..."
-                    placeholderTextColor="#9CA3AF"
-                    value={note}
-                    onChangeText={setNote}
-                    multiline={true}
-                    textAlignVertical="top"
-                    onFocus={() => scrollToInput(allowanceNoteSectionY, 300)}
-                    maxFontSizeMultiplier={1.15}
-                  />
+                    {['每週零用錢', '做家事獎勵', '段考進步', '生日紅包', '好表現獎勵', '伙食津貼'].map(tag => {
+                      const isTagActive = note === tag;
+                      return (
+                        <TouchableOpacity
+                          key={tag}
+                          style={[styles.quickStoreChip, isTagActive && styles.quickStoreChipActiveAllowance]}
+                          onPress={() => setNote(isTagActive ? '' : tag)}
+                          activeOpacity={0.7}
+                        >
+                          <Text
+                            style={[styles.quickStoreChipText, isTagActive && styles.quickStoreChipTextActiveAllowance]}
+                            maxFontSizeMultiplier={1.08}
+                          >
+                            {tag}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </HorizontalScrollView>
+                  <View style={styles.storeInputInner}>
+                    <Text style={styles.storeInputIcon}>🎁</Text>
+                    <TextInput
+                      style={styles.storeTextInput}
+                      placeholder="發放事由（例如：每週零用錢、考試進步獎勵）"
+                      placeholderTextColor="#9CA3AF"
+                      value={note}
+                      onChangeText={setNote}
+                      onFocus={() => scrollToInput(allowanceNoteSectionY, 300)}
+                      maxFontSizeMultiplier={1.15}
+                      underlineColorAndroid="transparent"
+                    />
+                    {!!note && (
+                      <TouchableOpacity
+                        style={styles.storeClearBtn}
+                        onPress={() => setNote('')}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={styles.storeClearBtnText}>✕</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
               </>
             ) : (
               <>
-                {/* 轉出帳戶 (扣款來源) */}
-                <View style={styles.sectionLabelRow}>
-                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>轉出帳戶 (扣款來源)</Text>
-                </View>
-                <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
-                  {paymentAccounts.filter(a => a.type === 'bank' || a.type === 'cash' || a.type === 'stored_value').map(account => {
-                    const isSelected = transferFromAccountId === account.id;
-                    const icon = account.type === 'bank' ? '🏦' : account.type === 'cash' ? '💵' : (account.icon || '🚌');
-                    return (
-                      <TouchableOpacity
-                        key={account.id}
-                        style={[
-                          styles.cardChip,
-                          isSelected && { borderColor: '#0284C7', backgroundColor: isDark ? 'rgba(2, 132, 199, 0.25)' : '#F0F9FF' },
-                        ]}
-                        onPress={() => {
-                          setTransferFromAccountId(account.id);
-                          if (transferToAccountId === account.id) {
-                            const other = paymentAccounts.find(a => a.id !== account.id);
-                            if (other) setTransferToAccountId(other.id);
-                          }
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.cardChipIcon}>{icon}</Text>
-                        <View>
-                          <Text
-                            style={[styles.cardChipName, isSelected && { color: '#0284C7', fontWeight: '700' }]}
-                            maxFontSizeMultiplier={1.15}
+                {/* 🌟 核心亮點 1：資金流向雙行卡片 */}
+                <View style={styles.transferFlowCard}>
+                  {/* 轉出扣款列 */}
+                  <View style={styles.transferFlowRow}>
+                    <Text style={[styles.transferFlowLabel, styles.transferFlowLabelBlue]} maxFontSizeMultiplier={1.12}>
+                      轉出扣款
+                    </Text>
+                    <HorizontalScrollView
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.transferFlowScroll}
+                      keyboardShouldPersistTaps="handled"
+                    >
+                      {paymentAccounts.filter(a => a.type === 'bank' || a.type === 'cash' || a.type === 'stored_value').map(account => {
+                        const isSelected = transferFromAccountId === account.id;
+                        const icon = account.type === 'bank' ? '🏦' : account.type === 'cash' ? '💵' : (account.icon || '🚌');
+                        return (
+                          <TouchableOpacity
+                            key={account.id}
+                            style={[
+                              styles.transferFlowChip,
+                              isSelected && styles.transferFlowChipSelectedFrom,
+                            ]}
+                            onPress={() => {
+                              setTransferFromAccountId(account.id);
+                              if (transferToAccountId === account.id) {
+                                const other = paymentAccounts.find(a => a.id !== account.id);
+                                if (other) setTransferToAccountId(other.id);
+                              }
+                            }}
+                            activeOpacity={0.7}
                           >
-                            {account.name}
-                          </Text>
-                          <Text style={styles.cardChipSub} maxFontSizeMultiplier={1.15}>
-                            餘額: NT$ {Number(account.balance || 0).toLocaleString()}
-                          </Text>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </HorizontalScrollView>
+                            <Text style={styles.transferFlowChipIcon}>{icon}</Text>
+                            <View style={styles.transferFlowChipInfo}>
+                              <Text
+                                style={[styles.transferFlowChipTitle, isSelected && styles.transferFlowChipTitleSelectedFrom]}
+                                numberOfLines={1}
+                                maxFontSizeMultiplier={1.15}
+                              >
+                                {account.name}
+                              </Text>
+                              <Text style={styles.transferFlowChipSub} numberOfLines={1} maxFontSizeMultiplier={1.08}>
+                                餘額: NT$ {Number(account.balance || 0).toLocaleString()}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </HorizontalScrollView>
+                  </View>
 
-                {/* 轉入目標 */}
-                <View style={[styles.sectionLabelRow, { marginTop: 12 }]}>
-                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>轉入目標 (資金去向 / 繳卡費)</Text>
-                </View>
-                <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardScroll}>
-                  {paymentAccounts.filter(a => a.id !== transferFromAccountId).map(account => {
-                    const isSelected = transferToAccountId === account.id;
-                    const isCard = account.type === 'credit_card';
-                    const icon = account.type === 'bank' ? '🏦' : account.type === 'cash' ? '💵' : isCard ? '💳' : (account.icon || '🚌');
-                    return (
-                      <TouchableOpacity
-                        key={account.id}
-                        style={[
-                          styles.cardChip,
-                          isSelected && { borderColor: '#10B981', backgroundColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#ECFDF5' },
-                        ]}
-                        onPress={() => setTransferToAccountId(account.id)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.cardChipIcon}>{icon}</Text>
-                        <View>
-                          <Text
-                            style={[styles.cardChipName, isSelected && { color: '#059669', fontWeight: '700' }]}
-                            maxFontSizeMultiplier={1.15}
+                  {/* 流向指示線與箭頭 */}
+                  <View style={styles.transferFlowDivider}>
+                    <View style={styles.transferFlowDividerLine} />
+                    <View style={styles.transferFlowDividerArrowBadge}>
+                      <Text style={styles.transferFlowDividerArrowText} maxFontSizeMultiplier={1.08}>⇣ 流入目標</Text>
+                    </View>
+                  </View>
+
+                  {/* 轉入去向列 */}
+                  <View style={styles.transferFlowRow}>
+                    <Text style={[styles.transferFlowLabel, styles.transferFlowLabelGreen]} maxFontSizeMultiplier={1.12}>
+                      轉入去向
+                    </Text>
+                    <HorizontalScrollView
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.transferFlowScroll}
+                      keyboardShouldPersistTaps="handled"
+                    >
+                      {paymentAccounts.filter(a => a.id !== transferFromAccountId).map(account => {
+                        const isSelected = transferToAccountId === account.id;
+                        const isCard = account.type === 'credit_card';
+                        const icon = account.type === 'bank' ? '🏦' : account.type === 'cash' ? '💵' : isCard ? '💳' : (account.icon || '🚌');
+                        return (
+                          <TouchableOpacity
+                            key={account.id}
+                            style={[
+                              styles.transferFlowChip,
+                              isSelected && styles.transferFlowChipSelectedTo,
+                            ]}
+                            onPress={() => setTransferToAccountId(account.id)}
+                            activeOpacity={0.7}
                           >
-                            {account.name}{isCard ? ' (繳卡費)' : ''}
-                          </Text>
-                          <Text style={styles.cardChipSub} maxFontSizeMultiplier={1.15}>
-                            {isCard ? '折抵未核銷卡債' : `餘額: NT$ ${Number(account.balance || 0).toLocaleString()}`}
-                          </Text>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </HorizontalScrollView>
-
-                {/* 跨行手續費 (選填) */}
-                <View style={[styles.sectionLabelRow, { marginTop: 12 }]}>
-                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>跨行手續費 (選填 · 自動獨立記為雜支)</Text>
+                            <Text style={styles.transferFlowChipIcon}>{icon}</Text>
+                            <View style={styles.transferFlowChipInfo}>
+                              <Text
+                                style={[styles.transferFlowChipTitle, isSelected && styles.transferFlowChipTitleSelectedTo]}
+                                numberOfLines={1}
+                                maxFontSizeMultiplier={1.15}
+                              >
+                                {account.name}{isCard ? ' (繳卡費)' : ''}
+                              </Text>
+                              <Text style={styles.transferFlowChipSub} numberOfLines={1} maxFontSizeMultiplier={1.08}>
+                                {isCard ? '折抵未核銷卡債' : `餘額: NT$ ${Number(account.balance || 0).toLocaleString()}`}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </HorizontalScrollView>
+                  </View>
                 </View>
-                <View style={styles.feeChipsRow}>
-                  {[
-                    { label: '免手續費 ($0)', fee: '0' },
-                    { label: '跨行轉帳 ($15)', fee: '15' },
-                    { label: '跨行提款 ($5)', fee: '5' },
-                    { label: '郵局跨行 ($10)', fee: '10' },
-                  ].map(opt => {
-                    const isFeeActive = transferFee === opt.fee;
-                    return (
+
+                {/* 🌟 核心亮點 2：轉帳日期單行化 */}
+                <View style={styles.dateInlineContainer}>
+                  <Text style={styles.dateInlineLabel} maxFontSizeMultiplier={1.12}>轉帳日期：</Text>
+                  <HorizontalScrollView
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.dateInlineScroll}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    <TouchableOpacity
+                      style={[styles.dateChip, isToday && styles.dateChipActiveTransfer]}
+                      onPress={() => setSelectedDate(today)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.dateChipText, isToday && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                        今天 ({today.getMonth() + 1}/{today.getDate()})
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.dateChip, isYesterday && styles.dateChipActiveTransfer]}
+                      onPress={() => setSelectedDate(yesterday)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.dateChipText, isYesterday && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                        昨天 ({yesterday.getMonth() + 1}/{yesterday.getDate()})
+                      </Text>
+                    </TouchableOpacity>
+
+                    {isCustomDate && (
                       <TouchableOpacity
-                        key={opt.fee}
-                        style={[styles.feeChip, isFeeActive && styles.feeChipActive]}
-                        onPress={() => setTransferFee(opt.fee)}
+                        style={[styles.dateChip, styles.dateChipActiveTransfer, styles.dateChipCustom]}
+                        onPress={() => setDatePickerVisible(true)}
                         activeOpacity={0.7}
                       >
-                        <Text style={[styles.feeChipText, isFeeActive && styles.feeChipTextActive]} maxFontSizeMultiplier={1.08}>
-                          {opt.label}
+                        <Text style={[styles.dateChipText, styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                          🗓️ {selectedDate.getMonth() + 1}/{selectedDate.getDate()} (自訂)
                         </Text>
                       </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                    )}
 
-                {/* 轉帳日期 */}
-                <View style={[styles.sectionLabelRow, { marginTop: 8 }]}>
-                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>轉帳日期</Text>
-                </View>
-                <View style={styles.dateRow}>
-                  <TouchableOpacity
-                    style={[styles.dateChip, isToday && styles.dateChipActive]}
-                    onPress={() => setSelectedDate(today)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.dateChipText, isToday && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
-                      今天 ({today.getMonth() + 1}/{today.getDate()})
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.dateChip, isYesterday && styles.dateChipActive]}
-                    onPress={() => setSelectedDate(yesterday)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.dateChipText, isYesterday && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
-                      昨天 ({yesterday.getMonth() + 1}/{yesterday.getDate()})
-                    </Text>
-                  </TouchableOpacity>
-                  {isCustomDate && (
                     <TouchableOpacity
-                      style={[styles.dateChip, styles.dateChipActive, styles.dateChipCustom]}
+                      style={[styles.dateMoreBtn, isCustomDate && styles.dateMoreBtnSelected]}
                       onPress={() => setDatePickerVisible(true)}
                       activeOpacity={0.7}
                     >
-                      <Text style={[styles.dateChipText, styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
-                        🗓️ {selectedDate.getMonth() + 1}/{selectedDate.getDate()} (自訂)
+                      <Text style={[styles.dateMoreBtnText, isCustomDate && styles.dateMoreBtnTextSelected]} maxFontSizeMultiplier={1.15}>
+                        {isCustomDate ? '✏️ 改選' : '🗓️ 更多...'}
                       </Text>
                     </TouchableOpacity>
-                  )}
-                  <TouchableOpacity
-                    style={[styles.dateMoreBtn, isCustomDate && styles.dateMoreBtnSelected]}
-                    onPress={() => setDatePickerVisible(true)}
-                    activeOpacity={0.7}
+                  </HorizontalScrollView>
+                </View>
+
+                {/* 🌟 核心亮點 3：經手成員單行化 */}
+                <View style={styles.payerMethodInlineRow}>
+                  <Text style={styles.payerMethodLabel} numberOfLines={1} maxFontSizeMultiplier={1.12}>經手成員：</Text>
+                  <HorizontalScrollView
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.payerMethodScroll}
+                    keyboardShouldPersistTaps="handled"
                   >
-                    <Text style={[styles.dateMoreBtnText, isCustomDate && styles.dateMoreBtnTextSelected]} maxFontSizeMultiplier={1.15}>
-                      {isCustomDate ? '✏️ 改選' : '🗓️ 更多...'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* 經手成員 */}
-                <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>經手成員</Text>
-                <View style={styles.payerRow}>
-                  {members.map(member => {
-                    const isSelected = effectivePaidBy === member.id;
-                    const isMe = member.id === currentUser.id || (!!currentUser.display_name && currentUser.display_name === member.display_name);
-                    return (
-                      <TouchableOpacity
-                        key={member.id}
-                        style={[styles.payerChip, isSelected && styles.payerChipActive]}
-                        onPress={() => handleSelectPayer(member.id)}
-                      >
-                        <Text style={styles.payerAvatar}>{member.avatar_url}</Text>
-                        <Text
-                          style={[styles.payerName, isSelected && styles.payerNameActive]}
-                          maxFontSizeMultiplier={1.15}
+                    {members.map(member => {
+                      const isSelected = effectivePaidBy === member.id;
+                      const isMe = member.id === currentUser.id || (!!currentUser.display_name && currentUser.display_name === member.display_name);
+                      return (
+                        <TouchableOpacity
+                          key={member.id}
+                          style={[styles.payerChipCompact, isSelected && styles.payerChipCompactTransferActive]}
+                          onPress={() => handleSelectPayer(member.id)}
+                          activeOpacity={0.7}
                         >
-                          {member.display_name}{isMe ? ' (我)' : ''}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
+                          <Text style={styles.payerAvatarCompact}>{member.avatar_url}</Text>
+                          <Text
+                            style={[styles.payerNameCompact, isSelected && styles.payerNameCompactActive]}
+                            maxFontSizeMultiplier={1.15}
+                          >
+                            {member.display_name}{isMe ? ' (我)' : ''}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </HorizontalScrollView>
                 </View>
 
-                {/* 轉帳備註 / 事由 */}
-                <View style={styles.sectionLabelRow}>
-                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>轉帳事由與備註 (選填)</Text>
-                </View>
-                <View style={styles.quickNoteRow}>
-                  {['提款放皮夾', '繳納信用卡費', '銀行定存互轉', '儲值悠遊卡/一卡通', '生活備用金'].map(tag => (
-                    <TouchableOpacity
-                      key={tag}
-                      style={styles.quickNoteChip}
-                      onPress={() => setNote(tag)}
-                      activeOpacity={0.7}
+                {/* 🌟 核心亮點 4：手續費與備註整合卡片 (含 5 個常用事由快選標籤) */}
+                <View style={styles.transferNoteCard}>
+                  {/* 手續費一行化 */}
+                  <View style={styles.feeInlineRow}>
+                    <Text style={styles.feeInlineLabel} maxFontSizeMultiplier={1.12}>手續費：</Text>
+                    <HorizontalScrollView
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.feeInlineScroll}
+                      keyboardShouldPersistTaps="handled"
                     >
-                      <Text style={styles.quickNoteChipText} maxFontSizeMultiplier={1.08}>{tag}</Text>
-                    </TouchableOpacity>
-                  ))}
+                      {[
+                        { label: '免手續費 ($0)', fee: '0' },
+                        { label: '跨行轉帳 ($15)', fee: '15' },
+                        { label: '跨行提款 ($5)', fee: '5' },
+                        { label: '郵局跨行 ($10)', fee: '10' },
+                      ].map(opt => {
+                        const isFeeActive = transferFee === opt.fee;
+                        return (
+                          <TouchableOpacity
+                            key={opt.fee}
+                            style={[styles.feeChipCompact, isFeeActive && styles.feeChipCompactActive]}
+                            onPress={() => setTransferFee(opt.fee)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={[styles.feeChipTextCompact, isFeeActive && styles.feeChipTextCompactActive]} maxFontSizeMultiplier={1.08}>
+                              {opt.label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </HorizontalScrollView>
+                  </View>
+
+                  {/* 常用轉帳事由快選標籤列 */}
+                  <HorizontalScrollView
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.quickTagsScroll}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    {['提款放皮夾', '繳納信用卡費', '銀行定存互轉', '儲值悠遊卡/一卡通', '生活備用金'].map(tag => {
+                      const isTagActive = note === tag;
+                      return (
+                        <TouchableOpacity
+                          key={tag}
+                          style={[styles.quickStoreChip, isTagActive && styles.quickStoreChipActiveTransfer]}
+                          onPress={() => setNote(isTagActive ? '' : tag)}
+                          activeOpacity={0.7}
+                        >
+                          <Text
+                            style={[styles.quickStoreChipText, isTagActive && styles.quickStoreChipTextActiveTransfer]}
+                            maxFontSizeMultiplier={1.08}
+                          >
+                            {tag}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </HorizontalScrollView>
+
+                  {/* 備註輸入框 */}
+                  <View style={styles.storeInputInner}>
+                    <Text style={styles.storeInputIcon}>⇄</Text>
+                    <TextInput
+                      style={styles.storeTextInput}
+                      placeholder="轉帳事由 / 備註（例如：ATM 提款放皮夾、線上繳富邦卡費）"
+                      placeholderTextColor="#9CA3AF"
+                      value={note}
+                      onChangeText={setNote}
+                      maxFontSizeMultiplier={1.15}
+                      underlineColorAndroid="transparent"
+                    />
+                    {!!note && (
+                      <TouchableOpacity
+                        style={styles.storeClearBtn}
+                        onPress={() => setNote('')}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={styles.storeClearBtnText}>✕</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
-                <TextInput
-                  style={styles.noteInput}
-                  placeholder="例如：ATM 提款放皮夾、線上繳富邦卡費..."
-                  placeholderTextColor="#9CA3AF"
-                  value={note}
-                  onChangeText={setNote}
-                  multiline={true}
-                  textAlignVertical="top"
-                  maxFontSizeMultiplier={1.15}
-                />
               </>
             )) : (
               <>
@@ -7150,5 +7261,305 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   },
   quickAmountClearTextDisabled: {
     color: isDark ? '#94A3B8' : '#64748B',
+  },
+  // ── 轉帳與零用錢極致瘦身樣式 ──
+  allowanceModeSelectorCompact: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 6,
+  },
+  allowanceModeBtnCompact: {
+    flex: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: isDark ? '#1E293B' : '#F1F5F9',
+    borderWidth: 1,
+    borderColor: isDark ? '#334155' : '#E2E8F0',
+  },
+  allowanceModeBtnCompactActive: {
+    backgroundColor: isDark ? 'rgba(139, 92, 246, 0.25)' : '#EDE9FE',
+    borderColor: '#8B5CF6',
+  },
+  allowanceModeBtnTextCompact: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: isDark ? '#94A3B8' : '#64748B',
+  },
+  allowanceModeBtnTextCompactActive: {
+    color: isDark ? '#C084FC' : '#6D28D9',
+    fontWeight: '700',
+  },
+  allowanceCompactTip: {
+    backgroundColor: isDark ? 'rgba(139, 92, 246, 0.12)' : '#F5F3FF',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: isDark ? 'rgba(139, 92, 246, 0.35)' : '#DDD6FE',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    marginBottom: 8,
+  },
+  allowanceCompactTipText: {
+    fontSize: 11,
+    color: isDark ? '#C084FC' : '#6D28D9',
+    lineHeight: 16,
+  },
+  allowanceMembersCard: {
+    backgroundColor: isDark ? 'rgba(30, 41, 59, 0.45)' : '#FAF5FF',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(139, 92, 246, 0.35)' : '#E9D5FF',
+    borderRadius: 12,
+    padding: 8,
+    marginBottom: 8,
+  },
+  transferFlowCard: {
+    backgroundColor: isDark ? 'rgba(30, 41, 59, 0.45)' : '#F0F9FF',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(2, 132, 199, 0.35)' : '#BAE6FD',
+    borderRadius: 12,
+    padding: 8,
+    marginBottom: 8,
+  },
+  transferFlowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  transferFlowLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    width: 58,
+    flexShrink: 0,
+  },
+  transferFlowLabelBlue: {
+    color: isDark ? '#38BDF8' : '#0284C7',
+  },
+  transferFlowLabelGreen: {
+    color: isDark ? '#34D399' : '#059669',
+  },
+  transferFlowLabelPurple: {
+    color: isDark ? '#C084FC' : '#7C3AED',
+  },
+  transferFlowScroll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  transferFlowChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: isDark ? '#334155' : '#CBD5E1',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  transferFlowChipSelectedFrom: {
+    backgroundColor: isDark ? 'rgba(2, 132, 199, 0.25)' : '#E0F2FE',
+    borderColor: '#0284C7',
+  },
+  transferFlowChipSelectedTo: {
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#DCFCE7',
+    borderColor: '#10B981',
+  },
+  transferFlowChipIcon: {
+    fontSize: 13,
+  },
+  transferFlowChipInfo: {
+    flexDirection: 'column',
+  },
+  transferFlowChipTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: isDark ? '#F1F5F9' : '#1E293B',
+  },
+  transferFlowChipTitleSelectedFrom: {
+    color: isDark ? '#38BDF8' : '#0369A1',
+  },
+  transferFlowChipTitleSelectedTo: {
+    color: isDark ? '#34D399' : '#047857',
+  },
+  transferFlowChipSub: {
+    fontSize: 10,
+    color: isDark ? '#94A3B8' : '#64748B',
+  },
+  transferFlowDivider: {
+    height: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginVertical: 4,
+    position: 'relative',
+  },
+  transferFlowDividerLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: isDark ? 'rgba(51, 65, 85, 0.6)' : '#E2E8F0',
+  },
+  transferFlowDividerArrowBadge: {
+    backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: isDark ? '#334155' : '#CBD5E1',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  transferFlowDividerArrowText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: isDark ? '#94A3B8' : '#64748B',
+  },
+  payerChipCompactAllowanceActive: {
+    backgroundColor: '#8B5CF6',
+    borderColor: '#8B5CF6',
+  },
+  payerNameCompactAllowanceActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  payerChipCompactTransferActive: {
+    backgroundColor: '#0284C7',
+    borderColor: '#0284C7',
+  },
+  recipientChipCompactActive: {
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#DCFCE7',
+    borderColor: '#10B981',
+  },
+  recipientNameCompactActive: {
+    color: isDark ? '#34D399' : '#047857',
+    fontWeight: '700',
+  },
+  recipientBadgeCompact: {
+    backgroundColor: '#10B981',
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    marginLeft: 3,
+  },
+  recipientBadgeCompactText: {
+    fontSize: 9,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  dateChipActiveTransfer: {
+    backgroundColor: '#0284C7',
+    borderColor: '#0284C7',
+  },
+  dateChipActiveAllowance: {
+    backgroundColor: '#8B5CF6',
+    borderColor: '#8B5CF6',
+  },
+  feeInlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
+  },
+  feeInlineLabel: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: isDark ? '#94A3B8' : '#64748B',
+    width: 48,
+    flexShrink: 0,
+  },
+  feeInlineScroll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 2,
+  },
+  feeChipCompact: {
+    backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: isDark ? '#334155' : '#E2E8F0',
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  feeChipCompactActive: {
+    backgroundColor: isDark ? 'rgba(2, 132, 199, 0.25)' : '#E0F2FE',
+    borderColor: '#0284C7',
+  },
+  feeChipTextCompact: {
+    fontSize: 11,
+    color: isDark ? '#94A3B8' : '#64748B',
+    fontWeight: '500',
+  },
+  feeChipTextCompactActive: {
+    color: isDark ? '#38BDF8' : '#0369A1',
+    fontWeight: '700',
+  },
+  transferNoteCard: {
+    backgroundColor: isDark ? 'rgba(30, 41, 59, 0.4)' : '#F8FAFC',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(51, 65, 85, 0.7)' : '#E2E8F0',
+    borderRadius: 12,
+    padding: 8,
+    marginBottom: 8,
+    gap: 6,
+  },
+  allowanceNoteCard: {
+    backgroundColor: isDark ? 'rgba(30, 41, 59, 0.4)' : '#FAF5FF',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(139, 92, 246, 0.3)' : '#E9D5FF',
+    borderRadius: 12,
+    padding: 8,
+    marginBottom: 8,
+    gap: 6,
+  },
+  quickTagsScroll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  quickStoreChipActiveAllowance: {
+    backgroundColor: isDark ? 'rgba(139, 92, 246, 0.25)' : '#EDE9FE',
+    borderColor: '#8B5CF6',
+  },
+  quickStoreChipTextActiveAllowance: {
+    color: isDark ? '#C084FC' : '#7C3AED',
+    fontWeight: '700',
+  },
+  quickStoreChipActiveTransfer: {
+    backgroundColor: isDark ? 'rgba(2, 132, 199, 0.25)' : '#E0F2FE',
+    borderColor: '#0284C7',
+  },
+  quickStoreChipTextActiveTransfer: {
+    color: isDark ? '#38BDF8' : '#0369A1',
+    fontWeight: '700',
+  },
+  payerMethodInlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  methodChipCompactText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: isDark ? '#E2E8F0' : '#1E293B',
+  },
+  quickStoreChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: isDark ? '#1E293B' : '#F3F4F6',
+    borderWidth: 1,
+    borderColor: isDark ? '#334155' : '#E5E7EB',
+  },
+  quickStoreChipText: {
+    fontSize: 11,
+    color: isDark ? '#94A3B8' : '#4B5563',
+  },
+  methodChipCompactIcon: {
+    fontSize: 13,
   },
 });

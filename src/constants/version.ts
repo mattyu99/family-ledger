@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.17';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.17 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 41;
+export const APP_BUILD_REVISION = 42;
 
 // 完整版本字串 (例如 "1.0.17.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -23,6 +23,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
     date: '2026-11-16 ~ 2026-11-17',
     title: '五大記事協作看板、常駐編輯工具列、版面極致瘦身與操作手冊升級',
     highlights: [
+      '⇄ 轉帳與零用錢分頁極致瘦身：資金流向與出資受款雙行緊湊整合，備忘事由快選橫向直選，單行日期排版告別滾動。',
       '🧾 支出記帳極致緊湊整合：付款成員與付款方式標籤排版防折行優化，網頁版顯示平整寬舒，記帳與編輯明細上下標誌色彩一致。',
       '🛠️ 記事備忘極致瘦身與週期智慧還原：工具列排版齊平且適用對象俐落單行化，農曆初一十五切換常規週期自動還原今天基準與國曆。',
       '⚡ 常用範本與自由快選抽屜化：常用範本與情境標籤收入獨立抽屜，補齊賣場採買防漏快選，鏡像預覽盒支援即時同步與撤回。',
