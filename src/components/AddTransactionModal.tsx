@@ -1940,7 +1940,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   {/* 🛠️ 輸入框常駐編輯操作列 (待辦 / 標籤 / 範本快選 / 📷 純圖示拍照選圖) */}
                   <View style={styles.memoEditorToolbar}>
                     <TouchableOpacity
-                      style={styles.memoToolbarBtn}
+                      style={styles.memoToolbarBtnChecklist}
                       onPress={() => setNote(prev => insertChecklistCheckbox(prev))}
                       activeOpacity={0.7}
                     >
@@ -2454,7 +2454,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   </View>
                 )}
 
-                {/* 🎯 適用對象範圍切換 (輕量化無說明小字) */}
+                {/* 🎯 適用對象範圍切換 (方案 B: 精簡單行 + 下方親切說明) */}
                 <View style={styles.memoTargetCard}>
                   <View style={styles.memoRepeatHeaderRow}>
                     <Text style={styles.memoRepeatTitle} maxFontSizeMultiplier={1.08}>
@@ -2489,7 +2489,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         ]}
                         maxFontSizeMultiplier={1.1}
                       >
-                        🌐 全家共享 (全員可見)
+                        🌐 全家共享
                       </Text>
                     </TouchableOpacity>
 
@@ -2520,10 +2520,15 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         ]}
                         maxFontSizeMultiplier={1.1}
                       >
-                        👤 個人專屬 (僅我可見)
+                        👤 個人專屬
                       </Text>
                     </TouchableOpacity>
                   </View>
+                  <Text style={styles.memoTargetDescText} maxFontSizeMultiplier={1.08}>
+                    {memoReminderTarget === 'family'
+                      ? (memoReminderDate ? '💡 記帳本所有家庭成員皆可瀏覽與接收待辦提醒' : '💡 記帳本所有家庭成員皆可瀏覽此生活記事')
+                      : (memoReminderDate ? '🔒 僅自己可見與接收提醒，不干擾其他家庭成員' : '🔒 僅自己可見，不會出現在其他人的記事列表')}
+                  </Text>
                 </View>
 
                 {/* 負責 / 記錄成員 */}
@@ -5055,14 +5060,26 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   },
   memoToolbarBtn: {
     flex: 1,
+    height: 32,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#FFFFFF',
     borderWidth: 1,
     borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#CBD5E1',
-    paddingVertical: 7,
-    paddingHorizontal: 4,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+    gap: 4,
+  },
+  memoToolbarBtnChecklist: {
+    height: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#CBD5E1',
+    paddingHorizontal: 10,
     borderRadius: 8,
     gap: 4,
   },
@@ -5091,13 +5108,13 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontWeight: '700',
   },
   memoToolbarBtnCamera: {
-    width: 38,
+    width: 36,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#FFFFFF',
     borderWidth: 1,
     borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#CBD5E1',
-    paddingVertical: 7,
     borderRadius: 8,
   },
   memoToolbarBtnCameraActive: {
@@ -5105,7 +5122,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     borderColor: isDark ? '#10B981' : '#059669',
   },
   memoToolbarBtnCameraIcon: {
-    fontSize: 15,
+    fontSize: 14,
+    lineHeight: 16,
   },
   memoPhotoPreviewBar: {
     flexDirection: 'row',
@@ -5436,11 +5454,11 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     marginTop: 2,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   memoTargetBtn: {
     flex: 1,
-    paddingVertical: 8,
+    height: 36,
     paddingHorizontal: 8,
     borderRadius: 9,
     alignItems: 'center',
@@ -5458,7 +5476,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     borderColor: '#A855F7',
   },
   memoTargetBtnText: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '600',
     color: isDark ? colors.text.secondary : '#64748B',
   },
@@ -5470,7 +5488,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 11,
     color: isDark ? colors.text.muted : '#64748B',
     lineHeight: 16,
-    marginTop: 2,
+    marginTop: 4,
+    paddingHorizontal: 2,
   },
   memoPinContainer: {
     marginTop: 12,
