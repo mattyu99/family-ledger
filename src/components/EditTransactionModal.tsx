@@ -2641,7 +2641,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   <View style={[styles.typeToggle, !canEdit && styles.disabledContainer]}>
                     <TouchableOpacity
                       disabled={!canEdit}
-                      style={[styles.typeBtn, type === 'expense' && styles.typeBtnActive]}
+                      style={[styles.typeBtn, type === 'expense' && styles.typeBtnActiveExpense]}
                       onPress={() => handleTypeChange('expense')}
                     >
                       <Text
@@ -2854,7 +2854,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
             {/* 分類選擇 (常用 2 行 8 格精選 ＋ 更多抽屜) */}
             <View style={styles.sectionLabelRow}>
-              <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>分類</Text>
+              <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>選擇分類</Text>
               {availableCategories.length > 8 && canEdit && (
                 <TouchableOpacity
                   onPress={() => setIsCategoryDrawerOpen(true)}
@@ -4255,11 +4255,11 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     borderRadius: 8,
   },
-  typeBtnActive: {
-    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
-    shadowColor: '#000',
+  typeBtnActiveExpense: {
+    backgroundColor: '#EF4444',
+    shadowColor: '#EF4444',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.2,
     shadowRadius: 2,
     elevation: 1,
   },
@@ -4277,7 +4277,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     color: colors.text.muted,
   },
   typeTextActive: {
-    color: colors.text.primary,
+    color: '#FFFFFF',
     fontWeight: '700',
   },
   sectionLabel: {
@@ -6422,14 +6422,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     color: isDark ? '#93C5FD' : '#2563EB',
   },
   categoryMoreHeaderLink: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF',
-  },
-  categoryMoreHeaderLinkText: {
-    fontSize: 12,
-    color: isDark ? '#A5B4FC' : '#4F46E5',
+    fontSize: 11,
+    color: isDark ? '#818CF8' : '#4F46E5',
     fontWeight: '600',
   },
   categoryMoreChip: {
