@@ -349,6 +349,27 @@ export function toggleMemoTag(currentNote: string, tag: string): string {
 }
 
 /**
+ * 徹底移除記事內容開頭的主題標籤（保留後續筆記內容）
+ */
+export function removeMemoTag(currentNote: string): string {
+  const match = findMemoTopicTagMatch(currentNote);
+  if (!match) return (currentNote || '').trim();
+  const after = currentNote.replace(match[0], '').replace(/^\n+/, '');
+  return after.trim();
+}
+
+/**
+ * 取得標籤用於工具列或按鈕上的精簡顯示文字
+ * - 若有 Emoji 則去除開頭 Emoji 呈現核心文字（例如 "🎒 學校親子" -> "學校親子"）
+ * - 若為純文字自訂標籤則完整保留（例如 "功能需求" -> "功能需求"）
+ */
+export function getMemoTagDisplayLabel(tag?: string): string {
+  if (!tag) return '分類標籤';
+  const withoutEmoji = tag.replace(EMOJI_REGEX, '').trim();
+  return withoutEmoji.length > 0 ? withoutEmoji : tag;
+}
+
+/**
  * 取得裝置本地時區的 YYYY-MM-DD 日期字串 (避免 toISOString() 造成 UTC 與本地時區差問題)
  */
 export function getLocalDateYmd(d: Date = new Date()): string {

@@ -27,6 +27,8 @@ import {
   isSchoolMemoMode,
   appendSchoolChecklistItem,
   detectMemoQuickBuilderConfig,
+  removeMemoTag,
+  getMemoTagDisplayLabel,
 } from '../memo';
 import { hydrateTransactionWithInvoice } from '../ledgerUtils';
 
@@ -773,6 +775,22 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
         expect(applied).toContain('- [ ] 國文習作與課文注釋');
         expect(applied).toContain('- [ ] 考卷訂正與家長簽名');
         expect(applied).toContain('- [ ] 聯絡簿給家長簽名');
+      });
+
+      it('removeMemoTag 應能正確清除記事開頭的標籤並保留後續內容', () => {
+        expect(removeMemoTag('[⚓ 測試]\n- [ ] 地基主滷蛋與青菜')).toBe('- [ ] 地基主滷蛋與青菜');
+        expect(removeMemoTag('[功能需求]\n- [ ] 介面優化')).toBe('- [ ] 介面優化');
+        expect(removeMemoTag('[📌 待辦清單]')).toBe('');
+        expect(removeMemoTag('純文字無標籤')).toBe('純文字無標籤');
+      });
+
+      it('getMemoTagDisplayLabel 應正確去除 Emoji 並保留純文字自訂標籤', () => {
+        expect(getMemoTagDisplayLabel('🎒 學校親子')).toBe('學校親子');
+        expect(getMemoTagDisplayLabel('📌 待辦清單')).toBe('待辦清單');
+        expect(getMemoTagDisplayLabel('功能需求')).toBe('功能需求');
+        expect(getMemoTagDisplayLabel('⚓ 測試')).toBe('測試');
+        expect(getMemoTagDisplayLabel('')).toBe('分類標籤');
+        expect(getMemoTagDisplayLabel(undefined)).toBe('分類標籤');
       });
     });
   });

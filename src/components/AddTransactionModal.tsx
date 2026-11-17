@@ -46,6 +46,8 @@ import {
   resolveAnchorDate,
   detectMemoQuickBuilderConfig,
   appendSchoolChecklistItem,
+  removeMemoTag,
+  getMemoTagDisplayLabel,
 } from '../lib/memo';
 import {
   isGroupOrderMemo,
@@ -1873,7 +1875,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         numberOfLines={1}
                         maxFontSizeMultiplier={1.08}
                       >
-                        {activeMemoTag ? activeMemoTag.replace(/^([^\s]+)\s*/, '') : '分類標籤'} ▾
+                        {getMemoTagDisplayLabel(activeMemoTag)} ▾
                       </Text>
                     </TouchableOpacity>
 
@@ -3887,12 +3889,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 <TouchableOpacity
                   style={styles.memoDrawerClearBtn}
                   onPress={() => {
-                    setNote(prev => toggleMemoTag(prev, activeMemoTag));
+                    setNote(prev => removeMemoTag(prev));
                     setIsMemoTagDrawerOpen(false);
                   }}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.memoDrawerClearBtnText}>✕ 移除標籤</Text>
+                  <Text style={styles.memoDrawerClearBtnText}>✕ 清除當前標籤</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity
@@ -3915,8 +3917,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     key={tag}
                     style={[styles.memoDrawerTagChip, active && styles.memoDrawerTagChipActive]}
                     onPress={() => {
-                      setNote(prev => toggleMemoTag(prev, tag));
-                      recordMemoTag(tag, true);
+                      if (active) {
+                        setNote(prev => removeMemoTag(prev));
+                      } else {
+                        setNote(prev => toggleMemoTag(prev, tag));
+                        recordMemoTag(tag, true);
+                      }
                       setIsMemoTagDrawerOpen(false);
                     }}
                     onLongPress={() => handleLongPressMemoTag(tag)}
