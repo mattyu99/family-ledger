@@ -257,13 +257,11 @@ const AppContent: React.FC = () => {
   const initialActionHandledRef = useRef<boolean>(false);
   const initialUrlHandledRef = useRef<boolean>(false);
 
-  // 監聽 App 移至背景：當使用者按 Home / 返回鍵離開 App 時，安全重設視窗與相機暫存旗標，回到乾淨狀態
+  // 監聽 App 移至背景：重設單次自動掃描旗標，確保返回時不重複觸發；保留正在編輯之彈窗避免拍照選圖時跳出
   useEffect(() => {
     const sub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
       if (nextState === 'background') {
         setModalAutoOpenScanner(false);
-        setModalVisible(false);
-        setMemoTodoModalVisible(false);
       }
     });
     return () => sub.remove();

@@ -983,7 +983,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const isYesterday = isSameDay(selectedDate, yesterday);
   const isDayBeforeYesterday = isSameDay(selectedDate, dayBeforeYesterday);
   const isCustomDate = !isToday && !isYesterday && !isDayBeforeYesterday;
-  const isCustomReminder = !!memoReminderDate && memoReminderDate !== todayYmd && memoReminderDate !== tomorrowYmd;
+  const isCustomReminder = !!memoReminderDate && memoReminderDate !== tomorrowYmd;
 
   // 切換付款方式
   const handleMethodChange = (method: PaymentMethod) => {
@@ -2258,11 +2258,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     </TouchableOpacity>
                   )}
                 </View>
-                <HorizontalScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.memoReminderScrollRow}
-                >
+                <View style={styles.dateRow}>
                   <TouchableOpacity
                     style={[styles.dateChip, !memoReminderDate && styles.dateChipActive]}
                     onPress={() => {
@@ -2276,22 +2272,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       不設提醒
                     </Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.dateChip, memoReminderDate === todayYmd && styles.dateChipActive]}
-                    onPress={() => {
-                      setMemoReminderDate(todayYmd);
-                      userManuallySetReminderRef.current = true;
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.dateChipText, memoReminderDate === todayYmd && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
-                      今天 ({today.getMonth() + 1}/{today.getDate()})
-                    </Text>
-                  </TouchableOpacity>
+
                   <TouchableOpacity
                     style={[styles.dateChip, memoReminderDate === tomorrowYmd && styles.dateChipActive]}
                     onPress={() => {
                       setMemoReminderDate(tomorrowYmd);
+                      setMemoReminderCalendar('solar');
                       userManuallySetReminderRef.current = true;
                     }}
                     activeOpacity={0.7}
@@ -2300,14 +2286,44 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       明天 ({tomorrow.getMonth() + 1}/{tomorrow.getDate()})
                     </Text>
                   </TouchableOpacity>
+
+                  {isCustomReminder && (
+                    <TouchableOpacity
+                      style={[
+                        styles.dateChip,
+                        styles.dateChipActive,
+                        memoReminderCalendar === 'lunar' ? styles.lunarMoreBtnSelected : styles.dateChipCustom,
+                      ]}
+                      onPress={() => {
+                        userManuallySetReminderRef.current = true;
+                        setReminderPickerInitialMode(memoReminderCalendar || 'solar');
+                        setReminderDatePickerVisible(true);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.dateChipText,
+                          styles.dateChipTextActive,
+                          memoReminderCalendar === 'lunar' && styles.lunarMoreBtnTextSelected,
+                        ]}
+                        maxFontSizeMultiplier={1.15}
+                      >
+                        {memoReminderCalendar === 'lunar'
+                          ? `🏮 ${formatMemoReminderBadge(memoReminderDate, 'lunar', 'once')?.dateText || memoReminderDate}`
+                          : `🗓️ ${memoReminderDate.slice(5).replace('-', '/')} (自訂)`}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
                   <TouchableOpacity
                     style={[
                       styles.dateMoreBtn,
-                      isCustomReminder && memoReminderCalendar === 'solar' && styles.dateMoreBtnSelected,
+                      isCustomReminder && (memoReminderCalendar === 'lunar' ? styles.lunarMoreBtnSelected : styles.dateMoreBtnSelected),
                     ]}
                     onPress={() => {
                       userManuallySetReminderRef.current = true;
-                      setReminderPickerInitialMode('solar');
+                      setReminderPickerInitialMode(memoReminderCalendar || 'solar');
                       setReminderDatePickerVisible(true);
                     }}
                     activeOpacity={0.7}
@@ -2315,37 +2331,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     <Text
                       style={[
                         styles.dateMoreBtnText,
-                        isCustomReminder && memoReminderCalendar === 'solar' && styles.dateMoreBtnTextSelected,
+                        isCustomReminder && (memoReminderCalendar === 'lunar' ? styles.lunarMoreBtnTextSelected : styles.dateMoreBtnTextSelected),
                       ]}
                       maxFontSizeMultiplier={1.15}
                     >
-                      🗓️ 國曆...
+                      {isCustomReminder ? '✏️ 改選' : '🗓️ 更多...'}
                     </Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.dateMoreBtn,
-                      styles.lunarMoreBtn,
-                      !!memoReminderDate && memoReminderCalendar === 'lunar' && styles.lunarMoreBtnSelected,
-                    ]}
-                    onPress={() => {
-                      setReminderPickerInitialMode('lunar');
-                      setReminderDatePickerVisible(true);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={[
-                        styles.dateMoreBtnText,
-                        styles.lunarMoreBtnText,
-                        !!memoReminderDate && memoReminderCalendar === 'lunar' && styles.lunarMoreBtnTextSelected,
-                      ]}
-                      maxFontSizeMultiplier={1.15}
-                    >
-                      🏮 農曆...
-                    </Text>
-                  </TouchableOpacity>
-                </HorizontalScrollView>
+                </View>
 
                 {/* 🔄 提醒頻率與週期 (僅在設定提醒日期時展開，未設提醒高度為 0) */}
                 {!!memoReminderDate && (
@@ -5166,6 +5159,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    marginLeft: 'auto',
   },
   memoHeaderPinBtn: {
     backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
