@@ -3611,7 +3611,14 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.submitBtn, (isSubmitting || isUploadingPhoto) && { opacity: 0.6 }]}
+              style={[
+                styles.submitBtn,
+                (type === 'expense' || transaction.type === 'expense') && styles.submitBtnExpense,
+                (type === 'income' || transaction.type === 'income') && styles.submitBtnIncome,
+                (type === 'transfer' || transaction.type === 'transfer') && (targetRecipientMember ? styles.submitBtnAllowance : styles.submitBtnTransfer),
+                (type === 'memo' || transaction.type === 'memo') && styles.submitBtnMemo,
+                (isSubmitting || isUploadingPhoto) && { opacity: 0.6 },
+              ]}
               disabled={isSubmitting || isUploadingPhoto}
               onPress={handleSubmit}
             >
@@ -3628,7 +3635,11 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
               <Text style={styles.readOnlyCloseBtnText} maxFontSizeMultiplier={1.15}>關閉</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.submitBtn, (isSubmitting || isUploadingPhoto) && { opacity: 0.6 }]}
+              style={[
+                styles.submitBtn,
+                styles.submitBtnMemo,
+                (isSubmitting || isUploadingPhoto) && { opacity: 0.6 },
+              ]}
               disabled={isSubmitting || isUploadingPhoto}
               onPress={handleSubmit}
             >
@@ -4608,6 +4619,26 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 3,
+  },
+  submitBtnExpense: {
+    backgroundColor: '#EF4444',
+    shadowColor: '#EF4444',
+  },
+  submitBtnIncome: {
+    backgroundColor: '#10B981',
+    shadowColor: '#10B981',
+  },
+  submitBtnTransfer: {
+    backgroundColor: '#0284C7',
+    shadowColor: '#0284C7',
+  },
+  submitBtnAllowance: {
+    backgroundColor: '#8B5CF6',
+    shadowColor: '#8B5CF6',
+  },
+  submitBtnMemo: {
+    backgroundColor: '#D97706',
+    shadowColor: '#D97706',
   },
   submitBtnText: {
     color: '#FFFFFF',

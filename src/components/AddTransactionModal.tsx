@@ -4103,6 +4103,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         <TouchableOpacity
           style={[
             styles.submitBtn,
+            (mode === 'expense' || type === 'expense') && styles.submitBtnExpense,
+            (mode === 'income' || type === 'income') && styles.submitBtnIncome,
             mode === 'transfer' && (transferTargetType === 'member' ? styles.submitBtnAllowance : styles.submitBtnTransfer),
             (mode as string) === 'allowance' && styles.submitBtnAllowance,
             mode === 'memo' && styles.submitBtnMemo,
@@ -5251,11 +5253,21 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     color: isDark ? '#FCD34D' : '#92400E',
     fontWeight: '700',
   },
+  submitBtnExpense: {
+    backgroundColor: '#EF4444',
+    shadowColor: '#EF4444',
+  },
+  submitBtnIncome: {
+    backgroundColor: '#10B981',
+    shadowColor: '#10B981',
+  },
   submitBtnAllowance: {
     backgroundColor: '#8B5CF6',
+    shadowColor: '#8B5CF6',
   },
   submitBtnMemo: {
     backgroundColor: '#D97706',
+    shadowColor: '#D97706',
   },
   memoBanner: {
     flexDirection: 'row',
