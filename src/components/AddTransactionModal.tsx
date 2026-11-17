@@ -311,6 +311,25 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     return cfg.subjects[0] || '';
   }, [currentBuilderConfig, selectedSchoolSubject]);
 
+  const orderedBuilderDomains = React.useMemo(() => {
+    const list = [
+      { key: 'school', label: '🎒 聯絡簿' },
+      { key: 'travel', label: '✈️ 行李必備' },
+      { key: 'home', label: '🏠 居家保養' },
+      { key: 'schedule', label: '📅 時間行程' },
+      { key: 'health', label: '🩺 用藥照護' },
+      { key: 'shopping', label: '🛒 採買清單' },
+      { key: 'worship', label: '🙏 祭祀拜拜' },
+    ];
+    const activeKey = currentBuilderConfig?.domain || selectedBuilderDomain;
+    if (!activeKey) return list;
+    const matchIndex = list.findIndex(d => d.key === activeKey);
+    if (matchIndex <= 0) return list;
+    const activeItem = list[matchIndex];
+    const rest = list.filter((_, idx) => idx !== matchIndex);
+    return [activeItem, ...rest];
+  }, [currentBuilderConfig?.domain, selectedBuilderDomain]);
+
   const previewScrollRef = useRef<ScrollView>(null);
 
   const checklistItemsCount = React.useMemo(() => {
@@ -1884,6 +1903,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       onPress={() => {
                         if (activeQuickBuilder) {
                           setMemoDrawerTab('quickBuilder');
+                          setSelectedBuilderDomain(activeQuickBuilder.domain);
                         } else {
                           setMemoDrawerTab('templates');
                         }
@@ -4022,15 +4042,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     切換情境領域，點擊作業或項目立即追加至待辦中：
                   </Text>
                   <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.builderDomainChipsRow}>
-                    {[
-                      { key: 'school', label: '🎒 聯絡簿' },
-                      { key: 'travel', label: '✈️ 行李必備' },
-                      { key: 'home', label: '🏠 居家保養' },
-                      { key: 'schedule', label: '📅 時間行程' },
-                      { key: 'health', label: '🩺 用藥照護' },
-                      { key: 'shopping', label: '🛒 採買清單' },
-                      { key: 'worship', label: '🙏 祭祀拜拜' },
-                    ].map(d => {
+                    {orderedBuilderDomains.map(d => {
                       const isCur = (currentBuilderConfig?.domain === d.key) || (!currentBuilderConfig && selectedBuilderDomain === d.key);
                       return (
                         <TouchableOpacity

@@ -1235,7 +1235,7 @@ export const SCHOOL_DAILY_ITEMS = [
   '收書包',
 ];
 
-export type QuickBuilderDomain = 'school' | 'health' | 'home' | 'worship' | 'travel' | 'schedule' | 'work';
+export type QuickBuilderDomain = 'school' | 'health' | 'home' | 'worship' | 'travel' | 'schedule' | 'work' | 'shopping';
 
 export interface MemoQuickBuilderConfig {
   domain: QuickBuilderDomain;
@@ -1493,6 +1493,37 @@ export function detectMemoQuickBuilderConfig(
       tasks: subjectTasksMap[activeSubj] || subjectTasksMap['回覆'],
       subjectTasksMap,
       routines: ['索取公司統編發票', '填寫費用報支單', '送交財務簽核', '確認代墊款已入帳', '寄出客戶文件包裹', '備份重要工作檔案'],
+    };
+  }
+
+  // 8. 🛒 採買清單 (賣場與生鮮日用品快選)
+  if (
+    isMemoTagActive(noteText, '🛒 採買清單') ||
+    noteText.includes('採買清單') ||
+    noteText.includes('採買')
+  ) {
+    const shoppingSubjects = ['全聯', '好市多', '大賣場', '傳統市場', '藥妝生活'];
+    const subjectTasksMap: Record<string, string[]> = {
+      全聯: ['鮮乳與優酪乳', '洗選雞蛋', '當季生鮮蔬果', '冷藏豬肉牛肉', '鮮奶土司麵包', '泡麵罐頭乾拌麵', '零食點心飲料'],
+      好市多: ['大包裝牛排肉片', '美式烤全雞', '綜合貝果可頌', '特大袋綜合堅果', '捲筒三層衛生紙', '強效洗衣膠囊', 'Kirkland全脂鮮奶'],
+      大賣場: ['大包裝抽取衛生紙', '廚房紙巾與保鮮膜', '洗衣精與柔軟精', '洗碗精與菜瓜布', '大瓶純水與飲品', '米油鹽調味醬料'],
+      傳統市場: ['溫體黑豬肉', '土雞肉與排骨', '當季現撈鮮魚', '現採當令蔬菜', '綜合新鮮水果', '現做手工豆腐豆皮', '蔥薑蒜辣椒辛香料'],
+      藥妝生活: ['洗髮精沐浴乳', '牙刷牙膏牙線', '洗面乳與保養品', '防蚊液防曬乳', '特厚除臭垃圾袋', '家庭常備感冒止痛藥'],
+    };
+    const activeSubj = selectedSubject && shoppingSubjects.includes(selectedSubject) ? selectedSubject : shoppingSubjects[0];
+    return {
+      domain: 'shopping',
+      defaultTag: '🛒 採買清單',
+      shortToggleLabel: '⚡ 採買快選',
+      title: '🛒 賣場採買與生活防漏快選',
+      subtitle: '先選賣場或地點，再點商品品項快速加入清單',
+      step1Label: '1. 點選採買賣場或區域',
+      step2LabelPrefix: '2. 點一下立即加入',
+      step3Label: '3. 出門前必備與付款準備（點一下直接加入）：',
+      subjects: shoppingSubjects,
+      tasks: subjectTasksMap[activeSubj] || subjectTasksMap['全聯'],
+      subjectTasksMap,
+      routines: ['環保購物大提袋', '好市多實體會員卡', '保冷購物袋與冰磚', '手機PXPay/全支付確認', '隨身零錢包與信用卡'],
     };
   }
 

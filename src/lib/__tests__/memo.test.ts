@@ -760,7 +760,16 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
         expect(workCfg?.tasks).toContain('計程車收據');
         expect(workCfg?.routines).toContain('索取公司統編發票');
 
-        // 7. 一般採買或點餐不觸發此面板
+        // 7. 賣場採買與生活防漏快選
+        const shoppingCfg = detectMemoQuickBuilderConfig('[🛒 採買清單]', [], '好市多');
+        expect(shoppingCfg?.domain).toBe('shopping');
+        expect(shoppingCfg?.shortToggleLabel).toBe('⚡ 採買快選');
+        expect(shoppingCfg?.subjects).toContain('全聯');
+        expect(shoppingCfg?.subjects).toContain('好市多');
+        expect(shoppingCfg?.tasks).toContain('美式烤全雞');
+        expect(shoppingCfg?.routines).toContain('環保購物大提袋');
+
+        // 8. 一般點餐開團不觸發此面板
         expect(detectMemoQuickBuilderConfig('[🧋 點餐開團]')).toBeNull();
       });
 
