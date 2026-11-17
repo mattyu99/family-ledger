@@ -2366,7 +2366,11 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     </TouchableOpacity>
                   )}
                 </View>
-                <View style={styles.dateRow}>
+                <HorizontalScrollView
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.memoReminderDateScroll}
+                  keyboardShouldPersistTaps="handled"
+                >
                   <TouchableOpacity
                     style={[styles.dateChip, !memoReminderDate && styles.dateChipActive]}
                     onPress={() => {
@@ -2470,7 +2474,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       {isCustomReminder ? '✏️ 改選' : '🗓️ 更多...'}
                     </Text>
                   </TouchableOpacity>
-                </View>
+                </HorizontalScrollView>
 
                 {/* 🔄 提醒頻率與週期 (僅在設定提醒日期時展開，未設提醒高度為 0) */}
                 {!!memoReminderDate && (
@@ -7036,6 +7040,13 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     paddingVertical: 2,
+  },
+  memoReminderDateScroll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 2,
+    marginBottom: 10,
   },
   storeNoteCard: {
     backgroundColor: isDark ? 'rgba(6, 78, 59, 0.15)' : '#F0FDF4',

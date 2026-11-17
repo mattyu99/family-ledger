@@ -2244,7 +2244,11 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                     </TouchableOpacity>
                   )}
                 </View>
-                <View style={styles.dateRow}>
+                <HorizontalScrollView
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.memoReminderDateScroll}
+                  keyboardShouldPersistTaps="handled"
+                >
                   <TouchableOpacity
                     disabled={!canEdit}
                     style={[styles.dateChip, !memoReminderDate && styles.dateChipActive]}
@@ -2354,7 +2358,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                       </Text>
                     </TouchableOpacity>
                   )}
-                </View>
+                </HorizontalScrollView>
 
                 {/* 🔄 提醒頻率與週期 (僅在設定提醒日期時展開，未設提醒高度為 0) */}
                 {!!memoReminderDate && (
@@ -6642,6 +6646,13 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     paddingVertical: 2,
+  },
+  memoReminderDateScroll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 2,
+    marginBottom: 10,
   },
   storeNoteCard: {
     backgroundColor: isDark ? 'rgba(6, 78, 59, 0.15)' : '#F0FDF4',
