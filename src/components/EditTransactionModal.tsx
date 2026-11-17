@@ -2915,8 +2915,9 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             <View style={styles.payerMethodCard}>
               {/* 第一行：付款成員 */}
               <View style={styles.payerMethodRow}>
-                <Text style={styles.payerMethodLabel} maxFontSizeMultiplier={1.12}>付款成員</Text>
+                <Text style={styles.payerMethodLabel} numberOfLines={1} maxFontSizeMultiplier={1.12}>付款成員</Text>
                 <HorizontalScrollView
+                  style={styles.payerMethodScroll}
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.payerMethodChipsScroll}
                   keyboardShouldPersistTaps="handled"
@@ -2956,8 +2957,9 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
               {/* 第二行：付款方式 */}
               <View style={styles.payerMethodRow}>
-                <Text style={styles.payerMethodLabel} maxFontSizeMultiplier={1.12}>付款方式</Text>
+                <Text style={styles.payerMethodLabel} numberOfLines={1} maxFontSizeMultiplier={1.12}>付款方式</Text>
                 <HorizontalScrollView
+                  style={styles.payerMethodScroll}
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.payerMethodChipsScroll}
                   keyboardShouldPersistTaps="handled"
@@ -6561,7 +6563,11 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: isDark ? '#94A3B8' : '#64748B',
-    width: 56,
+    width: 60,
+    flexShrink: 0,
+  },
+  payerMethodScroll: {
+    flex: 1,
   },
   payerMethodChipsScroll: {
     flexDirection: 'row',
