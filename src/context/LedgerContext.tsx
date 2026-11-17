@@ -66,6 +66,7 @@ import {
   mergePaymentMethods,
   isAccountBoundToUser,
 } from '../lib/ledgerUtils';
+import { recordDemoTryoutSafely } from '../lib/demoAnalytics';
 
 // 領域狀態 Hooks
 import { useLedgerBudget } from '../hooks/useLedgerBudget';
@@ -6390,6 +6391,15 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
         await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(SWEETHOME_LEDGER));
         await loadLedgerData(SWEETHOME_LEDGER, demoUser.id);
+
+        // 🎮 匿名訪客試玩打點統計（三層白名單嚴格排除智爸、家人與開發環境）
+        recordDemoTryoutSafely({
+          userEmail: currentUser?.email,
+          authEmail: currentUser?.auth_email,
+          currentLedgerId: currentLedger?.id,
+          inAdminMode: Boolean(isAdminMode || isOwner),
+        }).catch(() => {});
+
         return { success: true };
       }
 

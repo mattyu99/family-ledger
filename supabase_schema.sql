@@ -901,6 +901,23 @@ CREATE POLICY "成員可管理所屬帳本的裝置" ON public.member_devices
 -- 確保 Realtime 事件可用
 ALTER TABLE public.member_devices REPLICA IDENTITY FULL;
 
+-- 🎮 官方示範體驗 (SWEETHOME) 訪客試玩統計架構：
+-- 目前透過 member_devices (UNIQUE(ledger_id, device_id)) 原生記錄訪客裝置指紋與平台，免手動資料庫遷移；
+-- 若日後欲將示範訪客與家庭裝置完全脫鉤，可執行以下獨立擴充表：
+CREATE TABLE IF NOT EXISTS public.demo_tryouts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    device_id TEXT UNIQUE NOT NULL,
+    platform TEXT CHECK (platform IN ('ios', 'android', 'web')) NOT NULL,
+    app_version TEXT,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    last_tried_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.demo_tryouts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "訪客可匿名打點登記試玩" ON public.demo_tryouts;
+CREATE POLICY "訪客可匿名打點登記試玩" ON public.demo_tryouts
+    FOR ALL USING (auth.role() = 'anon' OR auth.role() = 'authenticated');
+
 -- ==============================================================================
 -- 9. Google 帳號綁定與身分電子鎖欄位擴充 (Phase 2)
 -- ==============================================================================

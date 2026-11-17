@@ -20,6 +20,8 @@ import {
   CloudLedgerSummary,
   CloudDatabaseQuota,
 } from '../lib/cloudLedgerService';
+import { fetchDemoTryoutsStats, DemoTryoutsStats } from '../lib/demoAnalytics';
+import { SWEETHOME_LEDGER_ID } from '../constants/sweethomeDemo';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -46,6 +48,7 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
   const [quotaExpanded, setQuotaExpanded] = useState<boolean>(true);
   const [ledgers, setLedgers] = useState<CloudLedgerSummary[]>([]);
   const [quota, setQuota] = useState<CloudDatabaseQuota | null>(null);
+  const [demoStats, setDemoStats] = useState<DemoTryoutsStats | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'active' | 'test' | 'ghost'>('all');
 
   const knownLedgersRef = React.useRef(knownLedgers);
@@ -56,9 +59,13 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchCloudLedgersSummary(knownLedgersRef.current);
+      const [data, stats] = await Promise.all([
+        fetchCloudLedgersSummary(knownLedgersRef.current),
+        fetchDemoTryoutsStats(),
+      ]);
       setLedgers(data.ledgers);
       setQuota(data.quota);
+      setDemoStats(stats);
     } catch (e) {
       console.warn('載入雲端帳本總管失敗:', e);
       Alert.alert('載入失敗', '無法讀取雲端資料庫帳本清單，請檢查網路連線。');
@@ -298,6 +305,22 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
                         <Text style={styles.txSummaryText}>
                           🕒 最新記帳活動：{l.latestTxDate}
                         </Text>
+                      )}
+
+                      {/* 示範帳本專屬：訪客試玩體驗統計 */}
+                      {(l.id === SWEETHOME_LEDGER_ID || l.name.includes('SWEETHOME')) && demoStats && (
+                        <View style={styles.demoStatsBox}>
+                          <View style={styles.demoStatsHeader}>
+                            <Text style={styles.demoStatsTitle}>
+                              🎮 官方體驗試玩累積：
+                              <Text style={styles.demoStatsHighlight}> {demoStats.totalVisitors} 位獨立訪客</Text>
+                            </Text>
+                          </View>
+                          <Text style={styles.demoStatsDetail}>
+                            📱 Android: {demoStats.androidCount} 人 · 🌐 Web 網頁: {demoStats.webCount} 人{demoStats.iosCount > 0 ? ` · 🍎 iOS: ${demoStats.iosCount} 人` : ''}
+                            {demoStats.latestActiveAt ? ` · 最近試玩: ${demoStats.latestActiveAt}` : ''}
+                          </Text>
+                        </View>
                       )}
                     </View>
                   );
@@ -660,5 +683,32 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 10.5,
     color: colors.text.muted,
     marginTop: 6,
+  },
+  demoStatsBox: {
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(129, 140, 248, 0.3)' : '#C7D2FE',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginTop: 8,
+  },
+  demoStatsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  demoStatsTitle: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: isDark ? '#A5B4FC' : '#4338CA',
+  },
+  demoStatsHighlight: {
+    color: isDark ? '#38BDF8' : '#0284C7',
+    fontWeight: '800',
+  },
+  demoStatsDetail: {
+    fontSize: 10.5,
+    color: isDark ? '#94A3B8' : '#64748B',
   },
 });
