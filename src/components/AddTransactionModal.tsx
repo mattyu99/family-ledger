@@ -3093,7 +3093,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
                 {/* 🌟 核心亮點 2：出資方式單行化 */}
                 <View style={styles.payerMethodInlineRow}>
-                  <Text style={styles.payerMethodLabel} numberOfLines={1} maxFontSizeMultiplier={1.12}>出資方式：</Text>
+                  <Text style={styles.payerMethodLabel} numberOfLines={1} maxFontSizeMultiplier={1.12}>出資方式</Text>
                   <HorizontalScrollView
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.payerMethodScroll}
@@ -3242,7 +3242,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
                 {/* 🌟 核心亮點 4：發放日期單行化 */}
                 <View style={styles.dateInlineContainer}>
-                  <Text style={styles.dateInlineLabel} maxFontSizeMultiplier={1.12}>發放日期：</Text>
+                  <Text style={styles.dateInlineLabel} maxFontSizeMultiplier={1.12}>發放日期</Text>
                   <HorizontalScrollView
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.dateInlineScroll}
@@ -3448,7 +3448,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
                 {/* 🌟 核心亮點 2：轉帳日期單行化 */}
                 <View style={styles.dateInlineContainer}>
-                  <Text style={styles.dateInlineLabel} maxFontSizeMultiplier={1.12}>轉帳日期：</Text>
+                  <Text style={styles.dateInlineLabel} maxFontSizeMultiplier={1.12}>轉帳日期</Text>
                   <HorizontalScrollView
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.dateInlineScroll}
@@ -3500,7 +3500,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
                 {/* 🌟 核心亮點 3：經手成員單行化 */}
                 <View style={styles.payerMethodInlineRow}>
-                  <Text style={styles.payerMethodLabel} numberOfLines={1} maxFontSizeMultiplier={1.12}>經手成員：</Text>
+                  <Text style={styles.payerMethodLabel} numberOfLines={1} maxFontSizeMultiplier={1.12}>經手成員</Text>
                   <HorizontalScrollView
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.payerMethodScroll}
@@ -3533,7 +3533,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 <View style={styles.transferNoteCard}>
                   {/* 手續費一行化 */}
                   <View style={styles.feeInlineRow}>
-                    <Text style={styles.feeInlineLabel} numberOfLines={1} maxFontSizeMultiplier={1.12}>手續費：</Text>
+                    <Text style={styles.feeInlineLabel} numberOfLines={1} maxFontSizeMultiplier={1.12}>手續費</Text>
                     <HorizontalScrollView
                       showsHorizontalScrollIndicator={false}
                       contentContainerStyle={styles.feeInlineScroll}
@@ -3885,7 +3885,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
                 {/* 記帳日期快速選擇 (緊湊單行) */}
                 <View style={styles.dateInlineContainer}>
-                  <Text style={styles.dateInlineLabel} maxFontSizeMultiplier={1.12}>日期：</Text>
+                  <Text style={styles.dateInlineLabel} maxFontSizeMultiplier={1.12}>日期</Text>
                   <HorizontalScrollView
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.dateInlineScroll}

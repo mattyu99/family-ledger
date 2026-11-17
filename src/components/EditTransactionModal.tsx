@@ -3203,7 +3203,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             ) : (
               <View style={{ marginBottom: 8 }}>
                 <View style={styles.dateInlineContainer}>
-                  <Text style={styles.dateInlineLabel} maxFontSizeMultiplier={1.12}>日期：</Text>
+                  <Text style={styles.dateInlineLabel} maxFontSizeMultiplier={1.12}>日期</Text>
                   <HorizontalScrollView
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.dateInlineScroll}
