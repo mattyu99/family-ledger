@@ -15,20 +15,6 @@ import {
 import { Text, TextInput } from './common/Text';
 
 import { HorizontalScrollView } from './HorizontalScrollView';
-
-let ImagePickerModule: any = null;
-try {
-  ImagePickerModule = require('expo-image-picker');
-} catch {}
-
-const safeAlert = (title: string, message: string) => {
-  if (Platform.OS === 'web') {
-    if (typeof window !== 'undefined') window.alert(`${title}\n\n${message}`);
-  } else {
-    Alert.alert(title, message);
-  }
-};
-
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
@@ -96,6 +82,19 @@ import { InvoiceScannerModal } from './InvoiceScannerModal';
 import { ImageViewerModal } from './ImageViewerModal';
 import { uploadReceiptPhoto } from '../lib/receiptStorage';
 import { isGroupOrderMemo } from '../lib/groupOrder';
+
+let ImagePickerModule: any = null;
+try {
+  ImagePickerModule = require('expo-image-picker');
+} catch {}
+
+const safeAlert = (title: string, message: string) => {
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined') window.alert(`${title}\n\n${message}`);
+  } else {
+    Alert.alert(title, message);
+  }
+};
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -3264,7 +3263,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   <View style={[styles.noteInputInner, !canEdit && styles.readOnlyInputWrapper]}>
                     <TextInput
                       style={[styles.noteTextInput, !canEdit && styles.readOnlyTextInput]}
-                      placeholder={canEdit ? "例如：午餐雙人餐..." : "無備註"}
+                      placeholder={canEdit ? "例如：好市多牛肉、加滿油、午餐雙人餐..." : "無備註"}
                       placeholderTextColor="#9CA3AF"
                       value={note}
                       onChangeText={setNote}

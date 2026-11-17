@@ -3809,7 +3809,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       <View style={styles.noteInputInner}>
                         <TextInput
                           style={styles.noteTextInput}
-                          placeholder="例如：午餐雙人餐..."
+                          placeholder="例如：好市多牛肉、加滿油、午餐雙人餐..."
                           placeholderTextColor="#9CA3AF"
                           value={note}
                           onChangeText={setNote}
