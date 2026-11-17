@@ -309,6 +309,30 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     return cfg.subjects[0] || '';
   }, [currentBuilderConfig, selectedSchoolSubject]);
 
+  const previewScrollRef = useRef<ScrollView>(null);
+
+  const checklistItemsCount = React.useMemo(() => {
+    if (!note) return 0;
+    const matches = note.match(/[-*]\s*\[\s*[xX]?\s*\]/g);
+    return matches ? matches.length : 0;
+  }, [note]);
+
+  const handleUndoLastChecklistItem = React.useCallback(() => {
+    if (!note) return;
+    const lines = note.split('\n');
+    let lastIndex = -1;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (/^[-*]\s*\[\s*[xX]?\s*\]/.test(lines[i].trim())) {
+        lastIndex = i;
+        break;
+      }
+    }
+    if (lastIndex !== -1) {
+      lines.splice(lastIndex, 1);
+      setNote(lines.join('\n').replace(/\n{3,}/g, '\n\n').trim());
+    }
+  }, [note]);
+
   const handleSelectTemplate = React.useCallback((template: MemoChecklistTemplate) => {
     if (!note || !note.trim()) {
       setNote(applyChecklistTemplate(template));
@@ -3950,7 +3974,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 onPress={() => setIsMemoTemplateDrawerOpen(false)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.memoDrawerDoneBtnText}>完成 ✓</Text>
+                <Text style={styles.memoDrawerDoneBtnText}>
+                  完成 ✓{checklistItemsCount > 0 ? ` (${checklistItemsCount}項)` : ''}
+                </Text>
               </TouchableOpacity>
             </View>
 
@@ -4014,6 +4040,38 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       );
                     })}
                   </HorizontalScrollView>
+
+                  {/* 📝 當前待辦即時鏡像預覽盒 (解決抽屜擋住背後輸入框盲點，支援滾動與撤銷) */}
+                  <View style={styles.memoDrawerLivePreviewCard}>
+                    <View style={styles.memoDrawerLivePreviewHeader}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                        <Text style={styles.memoDrawerLivePreviewTitle} maxFontSizeMultiplier={1.08}>
+                          📝 當前待辦清單 {checklistItemsCount > 0 ? `(已加入 ${checklistItemsCount} 項)` : ''}
+                        </Text>
+                      </View>
+                      {checklistItemsCount > 0 && (
+                        <TouchableOpacity
+                          style={styles.memoDrawerUndoBtn}
+                          onPress={handleUndoLastChecklistItem}
+                          activeOpacity={0.7}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        >
+                          <Text style={styles.memoDrawerUndoBtnText}>⎌ 撤回最後一項</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    <ScrollView
+                      ref={previewScrollRef}
+                      style={styles.memoDrawerLivePreviewScroll}
+                      nestedScrollEnabled
+                      showsVerticalScrollIndicator={true}
+                      onContentSizeChange={() => previewScrollRef.current?.scrollToEnd({ animated: true })}
+                    >
+                      <Text style={styles.memoDrawerLivePreviewText} maxFontSizeMultiplier={1.05}>
+                        {note.trim() || '尚未加入項目，請點選下方時段/科目與作業立即追加待辦'}
+                      </Text>
+                    </ScrollView>
+                  </View>
 
                   {currentBuilderConfig && (
                     <View style={styles.drawerQuickBuilderInner}>
@@ -6126,5 +6184,46 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
     borderRadius: 12,
     padding: 10,
+  },
+  memoDrawerLivePreviewCard: {
+    backgroundColor: isDark ? 'rgba(15, 23, 42, 0.85)' : '#F8FAFC',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(99, 102, 241, 0.4)' : '#C7D2FE',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 10,
+  },
+  memoDrawerLivePreviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  memoDrawerLivePreviewTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: isDark ? '#A5B4FC' : '#4338CA',
+  },
+  memoDrawerUndoBtn: {
+    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.18)' : '#FEE2E2',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(239, 68, 68, 0.45)' : '#FCA5A5',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  memoDrawerUndoBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: isDark ? '#FCA5A5' : '#DC2626',
+  },
+  memoDrawerLivePreviewScroll: {
+    maxHeight: 72,
+  },
+  memoDrawerLivePreviewText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: isDark ? '#E2E8F0' : '#334155',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
 });
