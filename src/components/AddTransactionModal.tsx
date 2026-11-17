@@ -404,6 +404,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const lastAutoDetectedDateRef = useRef<string>('');
   const userManuallySetReminderRef = useRef<boolean>(false);
   const userManuallyToggledPinRef = useRef<boolean>(false);
+  // 🎯 記憶非農曆初一十五週期時之基準日期與曆法（切換頻率時智慧還原用）
+  const baseReminderDateRef = useRef<string>('');
+  const baseReminderCalendarRef = useRef<CalendarSystem>('solar');
 
   // 💡 智慧日期即時解析：感知記事文字中蘊含的日期 (支援待辦清單接力推進、民國年、西元年、月/日、明天等)
   const detectedMemoDate = React.useMemo(() => {
@@ -1050,6 +1053,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     setMemoReminderCalendar('solar');
     setMemoReminderRepeat('once');
     setMemoReminderTarget('family');
+    baseReminderDateRef.current = '';
+    baseReminderCalendarRef.current = 'solar';
     setMemoIsPinned(false);
     setImportedRestockMemoIds([]);
     lastAutoDetectedDateRef.current = '';
@@ -2258,6 +2263,11 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     onPress={() => {
                       setMemoReminderDate(todayYmd);
                       setMemoReminderCalendar('solar');
+                      baseReminderDateRef.current = todayYmd;
+                      baseReminderCalendarRef.current = 'solar';
+                      if (memoReminderRepeat === 'lunar_1_15' || memoReminderRepeat === 'lunar_2_16') {
+                        setMemoReminderRepeat('once');
+                      }
                       userManuallySetReminderRef.current = true;
                     }}
                     activeOpacity={0.7}
@@ -2272,6 +2282,11 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     onPress={() => {
                       setMemoReminderDate(tomorrowYmd);
                       setMemoReminderCalendar('solar');
+                      baseReminderDateRef.current = tomorrowYmd;
+                      baseReminderCalendarRef.current = 'solar';
+                      if (memoReminderRepeat === 'lunar_1_15' || memoReminderRepeat === 'lunar_2_16') {
+                        setMemoReminderRepeat('once');
+                      }
                       userManuallySetReminderRef.current = true;
                     }}
                     activeOpacity={0.7}
@@ -2349,7 +2364,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                 styles.calendarBasisBtn,
                                 memoReminderCalendar === 'solar' && styles.calendarBasisBtnActive,
                               ]}
-                              onPress={() => setMemoReminderCalendar('solar')}
+                              onPress={() => {
+                                setMemoReminderCalendar('solar');
+                                baseReminderCalendarRef.current = 'solar';
+                              }}
                               activeOpacity={0.7}
                             >
                               <Text
@@ -2367,7 +2385,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                 styles.calendarBasisBtn,
                                 memoReminderCalendar === 'lunar' && styles.calendarBasisBtnLunarActive,
                               ]}
-                              onPress={() => setMemoReminderCalendar('lunar')}
+                              onPress={() => {
+                                setMemoReminderCalendar('lunar');
+                                baseReminderCalendarRef.current = 'lunar';
+                              }}
                               activeOpacity={0.7}
                             >
                               <Text
@@ -2397,14 +2418,27 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             ]}
                             onPress={() => {
                               if (opt.value === 'lunar_1_15' || opt.value === 'lunar_2_16') {
+                                // 🏮 若從一般週期進入初一十五，先記憶當前使用者的基準日期與曆法
+                                if (memoReminderRepeat !== 'lunar_1_15' && memoReminderRepeat !== 'lunar_2_16') {
+                                  baseReminderDateRef.current = memoReminderDate || todayYmd;
+                                  baseReminderCalendarRef.current = memoReminderCalendar || 'solar';
+                                }
                                 setMemoReminderRepeat(opt.value);
                                 setMemoReminderCalendar('lunar');
                                 const alignedYmd = getNearestLunarPairDate(memoReminderDate || todayYmd, opt.value);
                                 setMemoReminderDate(alignedYmd);
                               } else {
+                                const wasLunarPair = memoReminderRepeat === 'lunar_1_15' || memoReminderRepeat === 'lunar_2_16';
                                 setMemoReminderRepeat(opt.value);
-                                if (!memoReminderDate) {
+                                if (wasLunarPair) {
+                                  // 🎯 從初一十五改選常規週期時，智慧還原為先前的基準日期（例如今天）與國曆
+                                  const restoredDate = baseReminderDateRef.current || todayYmd;
+                                  const restoredCal = baseReminderCalendarRef.current || 'solar';
+                                  setMemoReminderDate(restoredDate);
+                                  setMemoReminderCalendar(restoredCal);
+                                } else if (!memoReminderDate) {
                                   setMemoReminderDate(todayYmd);
+                                  baseReminderDateRef.current = todayYmd;
                                 }
                               }
                             }}
@@ -4237,9 +4271,16 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         const l = solarToLunar(newDate);
         if (memoReminderRepeat === 'lunar_1_15' && l.lunarDay !== 1 && l.lunarDay !== 15) {
           setMemoReminderRepeat('monthly');
+          baseReminderDateRef.current = ymd;
+          baseReminderCalendarRef.current = pickedMode || 'solar';
         } else if (memoReminderRepeat === 'lunar_2_16' && l.lunarDay !== 2 && l.lunarDay !== 16) {
           setMemoReminderRepeat('monthly');
+          baseReminderDateRef.current = ymd;
+          baseReminderCalendarRef.current = pickedMode || 'solar';
         }
+      } else {
+        baseReminderDateRef.current = ymd;
+        baseReminderCalendarRef.current = pickedMode || 'solar';
       }
       setReminderDatePickerVisible(false);
     }}

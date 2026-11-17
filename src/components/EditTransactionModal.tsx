@@ -393,6 +393,9 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const scrollViewRef = useRef<ScrollView>(null);
   const lastAutoDetectedDateRef = useRef<string>('');
   const userManuallySetReminderRef = useRef<boolean>(!!(transaction?.reminder_date));
+  // 🎯 記憶非農曆初一十五週期時之基準日期與曆法（切換頻率時智慧還原用）
+  const baseReminderDateRef = useRef<string>('');
+  const baseReminderCalendarRef = useRef<CalendarSystem>('solar');
 
   // 💡 智慧日期即時解析：感知記事文字中蘊含的日期 (支援待辦清單接力推進、民國年、西元年、月/日、明天等)
   const detectedMemoDate = React.useMemo(() => {
@@ -1051,6 +1054,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       setMemoReminderDate(initialReminder);
       setMemoReminderCalendar(initialCal);
       setMemoReminderRepeat(initialRep);
+      baseReminderDateRef.current = (initialRep === 'lunar_1_15' || initialRep === 'lunar_2_16') ? todayYmd : (initialReminder || todayYmd);
+      baseReminderCalendarRef.current = (initialRep === 'lunar_1_15' || initialRep === 'lunar_2_16') ? 'solar' : initialCal;
       setMemoReminderTarget(transaction.reminder_target || 'family');
       setReminderPickerInitialMode(initialCal);
       setIsSettled(!!transaction.is_settled);
@@ -2139,6 +2144,11 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                     onPress={() => {
                       setMemoReminderDate(todayYmd);
                       setMemoReminderCalendar('solar');
+                      baseReminderDateRef.current = todayYmd;
+                      baseReminderCalendarRef.current = 'solar';
+                      if (memoReminderRepeat === 'lunar_1_15' || memoReminderRepeat === 'lunar_2_16') {
+                        setMemoReminderRepeat('once');
+                      }
                       userManuallySetReminderRef.current = true;
                     }}
                     activeOpacity={0.7}
@@ -2154,6 +2164,11 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                     onPress={() => {
                       setMemoReminderDate(tomorrowYmd);
                       setMemoReminderCalendar('solar');
+                      baseReminderDateRef.current = tomorrowYmd;
+                      baseReminderCalendarRef.current = 'solar';
+                      if (memoReminderRepeat === 'lunar_1_15' || memoReminderRepeat === 'lunar_2_16') {
+                        setMemoReminderRepeat('once');
+                      }
                       userManuallySetReminderRef.current = true;
                     }}
                     activeOpacity={0.7}
@@ -2235,7 +2250,10 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                                 styles.calendarBasisBtn,
                                 memoReminderCalendar === 'solar' && styles.calendarBasisBtnActive,
                               ]}
-                              onPress={() => setMemoReminderCalendar('solar')}
+                              onPress={() => {
+                                setMemoReminderCalendar('solar');
+                                baseReminderCalendarRef.current = 'solar';
+                              }}
                               activeOpacity={0.7}
                             >
                               <Text
@@ -2253,7 +2271,10 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                                 styles.calendarBasisBtn,
                                 memoReminderCalendar === 'lunar' && styles.calendarBasisBtnLunarActive,
                               ]}
-                              onPress={() => setMemoReminderCalendar('lunar')}
+                              onPress={() => {
+                                setMemoReminderCalendar('lunar');
+                                baseReminderCalendarRef.current = 'lunar';
+                              }}
                               activeOpacity={0.7}
                             >
                               <Text
@@ -2284,12 +2305,26 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                             ]}
                             onPress={() => {
                               if (opt.value === 'lunar_1_15' || opt.value === 'lunar_2_16') {
+                                if (memoReminderRepeat !== 'lunar_1_15' && memoReminderRepeat !== 'lunar_2_16') {
+                                  baseReminderDateRef.current = memoReminderDate || todayYmd;
+                                  baseReminderCalendarRef.current = memoReminderCalendar || 'solar';
+                                }
                                 setMemoReminderRepeat(opt.value);
                                 setMemoReminderCalendar('lunar');
                                 const alignedYmd = getNearestLunarPairDate(memoReminderDate || todayYmd, opt.value);
                                 setMemoReminderDate(alignedYmd);
                               } else {
+                                const wasLunarPair = memoReminderRepeat === 'lunar_1_15' || memoReminderRepeat === 'lunar_2_16';
                                 setMemoReminderRepeat(opt.value);
+                                if (wasLunarPair) {
+                                  const restoredDate = baseReminderDateRef.current || todayYmd;
+                                  const restoredCal = baseReminderCalendarRef.current || 'solar';
+                                  setMemoReminderDate(restoredDate);
+                                  setMemoReminderCalendar(restoredCal);
+                                } else if (!memoReminderDate) {
+                                  setMemoReminderDate(todayYmd);
+                                  baseReminderDateRef.current = todayYmd;
+                                }
                               }
                             }}
                             activeOpacity={0.7}
@@ -3764,9 +3799,16 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         const l = solarToLunar(newDate);
         if (memoReminderRepeat === 'lunar_1_15' && l.lunarDay !== 1 && l.lunarDay !== 15) {
           setMemoReminderRepeat('monthly');
+          baseReminderDateRef.current = ymd;
+          baseReminderCalendarRef.current = pickedMode || 'solar';
         } else if (memoReminderRepeat === 'lunar_2_16' && l.lunarDay !== 2 && l.lunarDay !== 16) {
           setMemoReminderRepeat('monthly');
+          baseReminderDateRef.current = ymd;
+          baseReminderCalendarRef.current = pickedMode || 'solar';
         }
+      } else {
+        baseReminderDateRef.current = ymd;
+        baseReminderCalendarRef.current = pickedMode || 'solar';
       }
       setReminderDatePickerVisible(false);
     }}
