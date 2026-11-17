@@ -407,6 +407,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   // 🎯 記憶非農曆初一十五週期時之基準日期與曆法（切換頻率時智慧還原用）
   const baseReminderDateRef = useRef<string>('');
   const baseReminderCalendarRef = useRef<CalendarSystem>('solar');
+  // 📂 分類抽屜與發票收折狀態 (支出分頁極致瘦身)
+  const [isCategoryDrawerOpen, setIsCategoryDrawerOpen] = useState<boolean>(false);
+  const [categorySearchQuery, setCategorySearchQuery] = useState<string>('');
+  const [isInvoiceExpanded, setIsInvoiceExpanded] = useState<boolean>(false);
 
   // 💡 智慧日期即時解析：感知記事文字中蘊含的日期 (支援待辦清單接力推進、民國年、西元年、月/日、明天等)
   const detectedMemoDate = React.useMemo(() => {
@@ -527,6 +531,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const lastScannedItemsNoteRef = useRef<string>('');
 
   const applyParsedInvoice = React.useCallback((parsed: ParsedInvoiceData) => {
+    setIsInvoiceExpanded(true);
     if (parsed.invoiceNumber) {
       setInvoiceNumber(parsed.invoiceNumber);
     }
@@ -919,6 +924,29 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   }, [allowancePayerId, members, effectivePaidBy]);
 
   const availableCategories = categories.filter(c => c.type === type);
+  // 📂 常用 2 行 8 格精選分類：當分類大於 8 個時，固定前 7 顆 + 1 顆更多，且選中項若在第 8 顆之後則動態置換進前 7 顆
+  const displayedCategories = React.useMemo(() => {
+    if (availableCategories.length <= 8) {
+      return availableCategories;
+    }
+    const top7 = availableCategories.slice(0, 7);
+    const isSelectedInTop7 = top7.some(c => c.id === selectedCategoryId);
+    if (isSelectedInTop7 || !selectedCategoryId) {
+      return top7;
+    }
+    const selectedCat = availableCategories.find(c => c.id === selectedCategoryId);
+    if (selectedCat) {
+      return [...top7.slice(0, 6), selectedCat];
+    }
+    return top7;
+  }, [availableCategories, selectedCategoryId]);
+
+  // 分類抽屜內關鍵字搜尋
+  const filteredDrawerCategories = React.useMemo(() => {
+    if (!categorySearchQuery.trim()) return availableCategories;
+    const q = categorySearchQuery.trim().toLowerCase();
+    return availableCategories.filter(c => c.name.toLowerCase().includes(q));
+  }, [availableCategories, categorySearchQuery]);
   const targetPayerId = effectivePaidBy || currentUser?.id;
   const creditCards = React.useMemo(
     () => filterAccountsForUser(paymentAccounts, {
@@ -1262,6 +1290,31 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         { text: '📸 立即拍照', onPress: handlePickReceiptFromCamera },
         { text: '🖼️ 從相簿挑選', onPress: handlePickReceiptFromLibrary },
         { text: '取消', style: 'cancel' },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  // 📷 消費收據 / 保固憑證拍照或相簿提示 (支出分頁極致瘦身)
+  const handlePromptReceiptPhotoSource = () => {
+    Keyboard.dismiss();
+    Alert.alert(
+      '📷 附加消費收據 / 保固憑證',
+      '拍下發票收據或保固卡，日後對帳與保固查驗超省心：',
+      [
+        { text: '📸 拍照附收據', onPress: handlePickReceiptFromCamera },
+        { text: '🖼️ 從相簿選擇', onPress: handlePickReceiptFromLibrary },
+        ...(receiptPhotoUri
+          ? [{
+              text: '🗑️ 移除照片',
+              style: 'destructive' as const,
+              onPress: () => {
+                setReceiptPhotoUri('');
+                setReceiptPhotoBase64('');
+              },
+            }]
+          : []),
+        { text: '取消', style: 'cancel' as const },
       ],
       { cancelable: true }
     );
@@ -3369,10 +3422,23 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               </>
             )) : (
               <>
-                {/* 分類選擇 */}
-                <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>選擇分類</Text>
+                {/* 分類選擇 (常用 2 行 8 格精選 ＋ 更多抽屜) */}
+                <View style={styles.sectionLabelRow}>
+                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>選擇分類</Text>
+                  {availableCategories.length > 8 && (
+                    <TouchableOpacity
+                      onPress={() => setIsCategoryDrawerOpen(true)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.categoryMoreHeaderLink} maxFontSizeMultiplier={1.08}>
+                        全部 {availableCategories.length} 個 ▾
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
                 <View style={styles.categoryGrid}>
-                  {availableCategories.map(cat => {
+                  {displayedCategories.map(cat => {
                     const isSelected = selectedCategoryId === cat.id;
                     return (
                       <TouchableOpacity
@@ -3396,6 +3462,21 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       </TouchableOpacity>
                     );
                   })}
+                  {availableCategories.length > 8 && (
+                    <TouchableOpacity
+                      style={[
+                        styles.categoryChip,
+                        styles.categoryMoreChip,
+                      ]}
+                      onPress={() => setIsCategoryDrawerOpen(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.categoryChipIcon}>📂</Text>
+                      <Text style={styles.categoryMoreChipText} maxFontSizeMultiplier={1.15}>
+                        更多分類 ▾
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
 
                 {/* 付款人選擇 */}
@@ -3762,165 +3843,189 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   />
                 </View>
 
-                {/* 統一發票輸入與對獎預覽 */}
-                <View onLayout={(e) => setInvoiceSectionY(e.nativeEvent.layout.y)} style={styles.invoiceInputContainer}>
-                  <View style={styles.sectionLabelRow}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>🧾 統一發票</Text>
-                      <Text style={styles.optionalBadgeText} maxFontSizeMultiplier={1.08}>(選填 · 自動對獎)</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                {/* 🛠️ 記帳輔助工具列 (發票對獎 ＋ 照片收據附件 · 支出分頁極致瘦身) */}
+                <View style={styles.attachmentToolbarRow}>
+                  {mode === 'expense' && (
+                    <>
                       <TouchableOpacity
+                        style={[
+                          styles.attachmentToolbarBtn,
+                          (isInvoiceExpanded || !!invoiceNumber) && styles.attachmentToolbarBtnActive,
+                        ]}
+                        onPress={() => setIsInvoiceExpanded(prev => !prev)}
                         activeOpacity={0.7}
-                        style={styles.invoiceScanBtn}
+                      >
+                        <Text style={styles.attachmentToolbarBtnIcon}>🧾</Text>
+                        <Text
+                          style={[
+                            styles.attachmentToolbarBtnText,
+                            (isInvoiceExpanded || !!invoiceNumber) && styles.attachmentToolbarBtnTextActive,
+                          ]}
+                          maxFontSizeMultiplier={1.08}
+                        >
+                          {invoiceNumber ? `發票 ${invoiceNumber}` : '＋發票字軌'}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.attachmentToolbarBtnCompact}
                         onPress={() => setScannerModalVisible(true)}
-                      >
-                        <Text style={styles.invoiceScanBtnText} maxFontSizeMultiplier={1.08}>📷 掃描發票</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
                         activeOpacity={0.7}
-                        style={styles.invoicePasteBtn}
-                        onPress={handlePasteInvoice}
                       >
-                        <Text style={styles.invoicePasteBtnText} maxFontSizeMultiplier={1.08}>📋 貼上</Text>
+                        <Text style={styles.attachmentToolbarBtnIcon}>📷</Text>
+                        <Text style={styles.attachmentToolbarBtnText} maxFontSizeMultiplier={1.08}>掃描</Text>
                       </TouchableOpacity>
-                    </View>
-                  </View>
 
-                  <View style={styles.invoiceInputRow}>
-                    <TextInput
-                      style={[styles.invoiceNumberInput, !!invoicePreview?.winning.isWon && styles.invoiceInputWon]}
-                      placeholder="例如：AB-12345678 (貼上QR碼自動解析)"
-                      placeholderTextColor="#9CA3AF"
-                      value={invoiceNumber}
-                      onChangeText={handleInvoiceInput}
-                      autoCapitalize="characters"
-                      maxLength={11}
-                      onFocus={() => scrollToInput(invoiceSectionY, 450)}
-                      returnKeyType="next"
-                      maxFontSizeMultiplier={1.15}
-                    />
-                    <TextInput
-                      style={styles.invoiceRandomCodeInput}
-                      placeholder="隨機碼"
-                      placeholderTextColor="#9CA3AF"
-                      value={invoiceRandomCode}
-                      onChangeText={setInvoiceRandomCode}
-                      keyboardType="number-pad"
-                      maxLength={4}
-                      onFocus={() => scrollToInput(invoiceSectionY, 450)}
-                      maxFontSizeMultiplier={1.15}
-                    />
-                  </View>
-
-                  {/* 即時對獎與期別指示徽章 */}
-                  {invoicePreview && (
-                    <View style={[
-                      styles.invoiceStatusRow,
-                      invoicePreview.winning.isWon && styles.invoiceStatusRowWon,
-                    ]}>
-                      <Text style={[
-                        styles.invoiceStatusText,
-                        invoicePreview.winning.isWon && styles.invoiceStatusTextWon,
-                      ]} maxFontSizeMultiplier={1.08}>
-                        {invoicePreview.winning.isDrawn
-                          ? invoicePreview.winning.isWon
-                            ? `🎉 中獎 NT$ ${invoicePreview.winning.prizeAmount.toLocaleString()} (${invoicePreview.winning.prizeName})`
-                            : `未中獎 (${invoicePreview.periodLabel})`
-                          : `🎯 歸屬 ${invoicePreview.periodLabel} (待開獎)`}
-                      </Text>
-                    </View>
+                      <TouchableOpacity
+                        style={styles.attachmentToolbarBtnCompact}
+                        onPress={handlePasteInvoice}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.attachmentToolbarBtnIcon}>📋</Text>
+                        <Text style={styles.attachmentToolbarBtnText} maxFontSizeMultiplier={1.08}>貼上</Text>
+                      </TouchableOpacity>
+                    </>
                   )}
 
-                  {/* 發票防重複記帳即時警示橫幅 */}
-                  {duplicateInvoiceTx && (
-                    <View style={styles.duplicateWarningBox}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 }}>
-                        <Text style={styles.duplicateWarningIcon}>⚠️</Text>
-                        <Text style={styles.duplicateWarningTitle} maxFontSizeMultiplier={1.12}>
-                          偵測到此發票號碼已在帳本中記錄過！
+                  {/* 📷 拍照附收據 / 憑證 (所有模式一體化) */}
+                  <TouchableOpacity
+                    style={[
+                      styles.attachmentToolbarBtn,
+                      styles.attachmentToolbarBtnCamera,
+                      !!receiptPhotoUri && styles.attachmentToolbarBtnCameraActive,
+                    ]}
+                    onPress={handlePromptReceiptPhotoSource}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.attachmentToolbarBtnCameraIcon}>📸</Text>
+                    <Text
+                      style={[
+                        styles.attachmentToolbarBtnText,
+                        !!receiptPhotoUri && styles.attachmentToolbarBtnTextCameraActive,
+                      ]}
+                      maxFontSizeMultiplier={1.08}
+                    >
+                      {receiptPhotoUri ? '收據已附 ▾' : '附收據/憑證'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* 📷 支出照片縮圖預覽列 (有照片才顯示，支援點擊放大與移除) */}
+                {!!receiptPhotoUri && (
+                  <View style={styles.memoPhotoPreviewBar}>
+                    <TouchableOpacity
+                      onPress={() => setViewingPhotoModal(true)}
+                      activeOpacity={0.8}
+                      style={styles.memoPhotoThumbnailTouchable}
+                    >
+                      <Image source={{ uri: receiptPhotoUri }} style={styles.memoPhotoThumbnailImg} />
+                      <Text style={styles.memoPhotoHintText} maxFontSizeMultiplier={1.05}>
+                        📷 收據已附加 (點擊放大檢視)
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.memoPhotoDeleteBtn}
+                      onPress={() => {
+                        setReceiptPhotoUri('');
+                        setReceiptPhotoBase64('');
+                      }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.memoPhotoDeleteBtnText} maxFontSizeMultiplier={1.05}>✕ 移除</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {/* 🧾 展開之統一發票輸入與即時對獎區 (僅在支出模式且展開/有號碼時顯示) */}
+                {mode === 'expense' && (isInvoiceExpanded || !!invoiceNumber) && (
+                  <View onLayout={(e) => setInvoiceSectionY(e.nativeEvent.layout.y)} style={styles.invoiceInputContainer}>
+                    <View style={styles.sectionLabelRow}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>🧾 統一發票字軌與對獎</Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => {
+                          if (invoiceNumber) {
+                            setInvoiceNumber('');
+                            setInvoiceRandomCode('');
+                            setInvoiceSellerTaxId('');
+                          }
+                          setIsInvoiceExpanded(false);
+                        }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.invoiceCloseText} maxFontSizeMultiplier={1.08}>
+                          {invoiceNumber ? '✕ 清除發票' : '收起 ▴'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.invoiceInputRow}>
+                      <TextInput
+                        style={[styles.invoiceNumberInput, !!invoicePreview?.winning.isWon && styles.invoiceInputWon]}
+                        placeholder="例如：AB-12345678"
+                        placeholderTextColor="#9CA3AF"
+                        value={invoiceNumber}
+                        onChangeText={handleInvoiceInput}
+                        autoCapitalize="characters"
+                        maxLength={11}
+                        onFocus={() => scrollToInput(invoiceSectionY, 450)}
+                        returnKeyType="next"
+                        maxFontSizeMultiplier={1.15}
+                      />
+                      <TextInput
+                        style={styles.invoiceRandomCodeInput}
+                        placeholder="隨機碼"
+                        placeholderTextColor="#9CA3AF"
+                        value={invoiceRandomCode}
+                        onChangeText={setInvoiceRandomCode}
+                        keyboardType="number-pad"
+                        maxLength={4}
+                        onFocus={() => scrollToInput(invoiceSectionY, 450)}
+                        maxFontSizeMultiplier={1.15}
+                      />
+                    </View>
+
+                    {/* 即時對獎與期別指示徽章 */}
+                    {invoicePreview && (
+                      <View style={[
+                        styles.invoiceStatusRow,
+                        invoicePreview.winning.isWon && styles.invoiceStatusRowWon,
+                      ]}>
+                        <Text style={[
+                          styles.invoiceStatusText,
+                          invoicePreview.winning.isWon && styles.invoiceStatusTextWon,
+                        ]} maxFontSizeMultiplier={1.08}>
+                          {invoicePreview.winning.isDrawn
+                            ? invoicePreview.winning.isWon
+                              ? `🎉 中獎 NT$ ${invoicePreview.winning.prizeAmount.toLocaleString()} (${invoicePreview.winning.prizeName})`
+                              : `未中獎 (${invoicePreview.periodLabel})`
+                            : `🎯 歸屬 ${invoicePreview.periodLabel} (待開獎)`}
                         </Text>
                       </View>
-                      <Text style={styles.duplicateWarningDesc} maxFontSizeMultiplier={1.08}>
-                        已由【{(getMemberById(duplicateInvoiceTx.paid_by) || currentUser).display_name}】於 {duplicateInvoiceTx.transacted_at ? duplicateInvoiceTx.transacted_at.split('T')[0] : '歷史記錄'} 登記（{duplicateInvoiceTx.merchant || '消費'} NT$ {duplicateInvoiceTx.amount.toLocaleString()}），請確認避免重複記帳。
-                      </Text>
-                    </View>
-                  )}
-                </View>
+                    )}
+
+                    {/* 發票防重複記帳即時警示橫幅 */}
+                    {duplicateInvoiceTx && (
+                      <View style={styles.duplicateWarningBox}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 3 }}>
+                          <Text style={styles.duplicateWarningIcon}>⚠️</Text>
+                          <Text style={styles.duplicateWarningTitle} maxFontSizeMultiplier={1.12}>
+                            偵測到此發票號碼已在帳本中記錄過！
+                          </Text>
+                        </View>
+                        <Text style={styles.duplicateWarningDesc} maxFontSizeMultiplier={1.08}>
+                          已由【{(getMemberById(duplicateInvoiceTx.paid_by) || currentUser).display_name}】於 {duplicateInvoiceTx.transacted_at ? duplicateInvoiceTx.transacted_at.split('T')[0] : '歷史記錄'} 登記（{duplicateInvoiceTx.merchant || '消費'} NT$ {duplicateInvoiceTx.amount.toLocaleString()}），請確認避免重複記帳。
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
               </>
             )}
           </>
-        )}
-
-        {/* 📷 消費收據 / 保固憑證附件 (僅在收支轉帳模式顯示；生活記事已收納至工具列即時縮圖) */}
-        {mode !== 'memo' && (
-          <View style={styles.receiptSection}>
-            <View style={styles.sectionLabelRow}>
-              <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>📷 消費收據 / 保固憑證 (選填)</Text>
-              {isUploadingPhoto && (
-                <Text style={styles.receiptUploadingText} maxFontSizeMultiplier={1.08}>⏳ 雲端上傳中...</Text>
-              )}
-            </View>
-            {receiptPhotoUri ? (
-              <View style={styles.receiptPreviewContainer}>
-                <TouchableOpacity
-                  onPress={() => setViewingPhotoModal(true)}
-                  activeOpacity={0.8}
-                  style={styles.receiptThumbnailTouchable}
-                >
-                  <Image source={{ uri: receiptPhotoUri }} style={styles.receiptThumbnailImage} />
-                  <View style={styles.receiptEnlargeOverlay}>
-                    <Text style={styles.receiptEnlargeText}>🔍 點擊放大檢視</Text>
-                  </View>
-                </TouchableOpacity>
-                <View style={styles.receiptActionsCol}>
-                  <TouchableOpacity
-                    style={styles.receiptActionBtn}
-                    onPress={handlePickReceiptFromCamera}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.receiptActionBtnText}>📸 重新拍攝</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.receiptActionBtn}
-                    onPress={handlePickReceiptFromLibrary}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.receiptActionBtnText}>🖼️ 相簿替換</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.receiptActionBtn, styles.receiptDeleteBtn]}
-                    onPress={() => {
-                      setReceiptPhotoUri('');
-                      setReceiptPhotoBase64('');
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.receiptDeleteBtnText}>🗑️ 移除照片</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
-              <View style={styles.receiptUploadBtnRow}>
-                <TouchableOpacity
-                  style={styles.receiptPickBtn}
-                  onPress={handlePickReceiptFromCamera}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.receiptPickBtnIcon}>📸</Text>
-                  <Text style={styles.receiptPickBtnText} maxFontSizeMultiplier={1.08}>拍照附收據</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.receiptPickBtn}
-                  onPress={handlePickReceiptFromLibrary}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.receiptPickBtnIcon}>🖼️</Text>
-                  <Text style={styles.receiptPickBtnText} maxFontSizeMultiplier={1.08}>從相簿選擇</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
         )}
 
         {/* 儲存 / 一鍵撥款 / 轉帳 / 儲存記事按鈕 */}
@@ -4241,6 +4346,92 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   )}
                 </View>
               )}
+            </ScrollView>
+          </View>
+        </View>
+      )}
+
+      {/* 📂 支出全部分類抽屜 Modal (支出分頁極致瘦身) */}
+      {isCategoryDrawerOpen && (
+        <View style={styles.memoDrawerOverlay}>
+          <TouchableOpacity
+            style={styles.memoDrawerBackdrop}
+            activeOpacity={1}
+            onPress={() => {
+              setIsCategoryDrawerOpen(false);
+              setCategorySearchQuery('');
+            }}
+          />
+          <View style={styles.memoDrawerCard}>
+            <View style={styles.memoDrawerHandle} />
+            <View style={styles.memoDrawerHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.memoDrawerTitle} maxFontSizeMultiplier={1.12}>📂 選擇記帳分類</Text>
+                <Text style={styles.memoDrawerSubtitle} maxFontSizeMultiplier={1.05}>
+                  共 {availableCategories.length} 個分類，點選即可選定
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.memoDrawerCloseBtn}
+                onPress={() => {
+                  setIsCategoryDrawerOpen(false);
+                  setCategorySearchQuery('');
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.memoDrawerCloseBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* 快速搜尋框 (大於 10 個分類時顯示) */}
+            {availableCategories.length > 10 && (
+              <View style={styles.categorySearchContainer}>
+                <TextInput
+                  style={styles.categorySearchInput}
+                  placeholder="🔍 搜尋分類名稱..."
+                  placeholderTextColor="#94A3B8"
+                  value={categorySearchQuery}
+                  onChangeText={setCategorySearchQuery}
+                  maxFontSizeMultiplier={1.08}
+                />
+              </View>
+            )}
+
+            <ScrollView
+              style={styles.memoDrawerScrollBody}
+              contentContainerStyle={styles.categoryDrawerGrid}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {filteredDrawerCategories.map((cat) => {
+                const isSelected = selectedCategoryId === cat.id;
+                return (
+                  <TouchableOpacity
+                    key={cat.id}
+                    style={[
+                      styles.categoryDrawerCardItem,
+                      isSelected && { borderColor: cat.color, backgroundColor: `${cat.color}20` },
+                    ]}
+                    onPress={() => {
+                      setSelectedCategoryId(cat.id);
+                      setIsCategoryDrawerOpen(false);
+                      setCategorySearchQuery('');
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={styles.categoryDrawerItemIcon}>{getCategoryIcon(cat.icon)}</Text>
+                    <Text
+                      style={[
+                        styles.categoryDrawerItemText,
+                        isSelected && { color: cat.color, fontWeight: '700' },
+                      ]}
+                      maxFontSizeMultiplier={1.1}
+                    >
+                      {cat.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
           </View>
         </View>
@@ -6430,5 +6621,124 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     lineHeight: 18,
     color: isDark ? '#E2E8F0' : '#334155',
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  categoryMoreHeaderLink: {
+    fontSize: 11,
+    color: isDark ? '#818CF8' : '#4F46E5',
+    fontWeight: '600',
+  },
+  categoryMoreChip: {
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF',
+    borderColor: isDark ? 'rgba(99, 102, 241, 0.4)' : '#C7D2FE',
+  },
+  categoryMoreChipText: {
+    fontSize: 12,
+    color: isDark ? '#A5B4FC' : '#4F46E5',
+    fontWeight: '700',
+  },
+  attachmentToolbarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    marginBottom: 8,
+    flexWrap: 'wrap',
+  },
+  attachmentToolbarBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 32,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#CBD5E1',
+    gap: 4,
+  },
+  attachmentToolbarBtnActive: {
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF',
+    borderColor: isDark ? '#818CF8' : '#6366F1',
+  },
+  attachmentToolbarBtnCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 32,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#CBD5E1',
+    gap: 3,
+  },
+  attachmentToolbarBtnIcon: {
+    fontSize: 13,
+  },
+  attachmentToolbarBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: isDark ? '#E2E8F0' : '#475569',
+  },
+  attachmentToolbarBtnTextActive: {
+    color: isDark ? '#A5B4FC' : '#4338CA',
+    fontWeight: '700',
+  },
+  attachmentToolbarBtnCamera: {
+    marginLeft: 'auto',
+  },
+  attachmentToolbarBtnCameraActive: {
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5',
+    borderColor: isDark ? '#10B981' : '#059669',
+  },
+  attachmentToolbarBtnCameraIcon: {
+    fontSize: 13,
+  },
+  attachmentToolbarBtnTextCameraActive: {
+    color: isDark ? '#6EE7B7' : '#059669',
+    fontWeight: '700',
+  },
+  invoiceCloseText: {
+    fontSize: 11,
+    color: isDark ? '#94A3B8' : '#64748B',
+    fontWeight: '600',
+  },
+  categorySearchContainer: {
+    marginBottom: 8,
+  },
+  categorySearchInput: {
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.3)' : '#F1F5F9',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#CBD5E1',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    fontSize: 13,
+    color: colors.text.primary,
+  },
+  categoryDrawerGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingBottom: 24,
+  },
+  categoryDrawerCardItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F8FAFC',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#E2E8F0',
+    gap: 6,
+  },
+  categoryDrawerItemIcon: {
+    fontSize: 16,
+  },
+  categoryDrawerItemText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: isDark ? colors.text.primary : '#334155',
   },
 });
