@@ -1419,12 +1419,36 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       txDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
       const transacted_at = txDate.toISOString();
 
+      // 若有附加備忘/菜單照片，上傳至雲端 Storage
+      let finalImageUrl: string | undefined = undefined;
+      if (receiptPhotoUri) {
+        if (receiptPhotoUri.startsWith('http://') || receiptPhotoUri.startsWith('https://')) {
+          finalImageUrl = receiptPhotoUri;
+        } else if (currentLedger?.id) {
+          try {
+            setIsUploadingPhoto(true);
+            finalImageUrl = await uploadReceiptPhoto({
+              ledgerId: currentLedger.id,
+              uri: receiptPhotoUri,
+              base64: receiptPhotoBase64 || undefined,
+            });
+          } catch {
+            finalImageUrl = receiptPhotoUri;
+          } finally {
+            setIsUploadingPhoto(false);
+          }
+        } else {
+          finalImageUrl = receiptPhotoUri;
+        }
+      }
+
       const createdTxId = await addTransaction({
         amount: 0,
         type: 'memo',
         category_id: defaultMemoCat?.id || categories[0]?.id,
         paid_by: targetPayer,
         note: note.trim(),
+        image_url: finalImageUrl,
         reminder_date: memoReminderDate || undefined,
         reminder_calendar: memoReminderDate ? memoReminderCalendar : undefined,
         reminder_repeat: memoReminderDate ? memoReminderRepeat : undefined,
@@ -1475,6 +1499,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       setAmount('');
       setMerchant('');
       setNote('');
+      setReceiptPhotoUri('');
+      setReceiptPhotoBase64('');
       setMemoReminderDate('');
       setMemoReminderCalendar('solar');
       setMemoReminderRepeat('once');
@@ -2090,52 +2116,6 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     )}
                   </View>
                 )}
-
-                {/* 記事日期 */}
-                <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>記事日期</Text>
-                <View style={styles.dateRow}>
-                  <TouchableOpacity
-                    style={[styles.dateChip, isToday && styles.dateChipActive]}
-                    onPress={() => setSelectedDate(today)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.dateChipText, isToday && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
-                      今天 ({today.getMonth() + 1}/{today.getDate()})
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.dateChip, isYesterday && styles.dateChipActive]}
-                    onPress={() => setSelectedDate(yesterday)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.dateChipText, isYesterday && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
-                      昨天 ({yesterday.getMonth() + 1}/{yesterday.getDate()})
-                    </Text>
-                  </TouchableOpacity>
-
-                  {isCustomDate && (
-                    <TouchableOpacity
-                      style={[styles.dateChip, styles.dateChipActive, styles.dateChipCustom]}
-                      onPress={() => setDatePickerVisible(true)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.dateChipText, styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
-                        🗓️ {selectedDate.getMonth() + 1}/{selectedDate.getDate()} (自訂)
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-
-                  <TouchableOpacity
-                    style={[styles.dateMoreBtn, isCustomDate && styles.dateMoreBtnSelected]}
-                    onPress={() => setDatePickerVisible(true)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.dateMoreBtnText, isCustomDate && styles.dateMoreBtnTextSelected]} maxFontSizeMultiplier={1.15}>
-                      {isCustomDate ? '✏️ 改選' : '🗓️ 更多...'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
 
                 {/* 💡 智慧即時日期辨識膠囊 (感知記事文字自動帶入) */}
                 {detectedMemoDate && (
