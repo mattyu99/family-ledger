@@ -411,7 +411,6 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [isCategoryDrawerOpen, setIsCategoryDrawerOpen] = useState<boolean>(false);
   const [categorySearchQuery, setCategorySearchQuery] = useState<string>('');
   const [isInvoiceExpanded, setIsInvoiceExpanded] = useState<boolean>(false);
-  const [showSuggestedMerchants, setShowSuggestedMerchants] = useState<boolean>(false);
 
   // 💡 智慧日期即時解析：感知記事文字中蘊含的日期 (支援待辦清單接力推進、民國年、西元年、月/日、明天等)
   const detectedMemoDate = React.useMemo(() => {
@@ -1330,6 +1329,18 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   // 📷 生活記事拍照或選取照片提示 (菜單、聯絡簿、規格備忘)
   const handlePromptMemoPhotoSource = () => {
     Keyboard.dismiss();
+    if (Platform.OS === 'web') {
+      if (receiptPhotoUri) {
+        if (typeof window !== 'undefined') {
+          if (window.confirm('目前已附加記事照片。\n\n按「確定」重新選擇新照片更換，\n按「取消」保留目前照片。')) {
+            handlePickReceiptFromLibrary();
+          }
+        }
+      } else {
+        handlePickReceiptFromLibrary();
+      }
+      return;
+    }
     Alert.alert(
       '📷 附加照片備忘',
       '拍下菜單、聯絡簿或物品型號，省去手打快速記錄：',
@@ -1345,6 +1356,18 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   // 📷 消費收據 / 保固憑證拍照或相簿提示 (支出分頁極致瘦身)
   const handlePromptReceiptPhotoSource = () => {
     Keyboard.dismiss();
+    if (Platform.OS === 'web') {
+      if (receiptPhotoUri) {
+        if (typeof window !== 'undefined') {
+          if (window.confirm('目前已附加收據照片。\n\n按「確定」重新選擇收據照片更換，\n按「取消」保留目前照片（若欲移除照片可直接點選下方縮圖旁的「✕ 移除」）。')) {
+            handlePickReceiptFromLibrary();
+          }
+        }
+      } else {
+        handlePickReceiptFromLibrary();
+      }
+      return;
+    }
     Alert.alert(
       '📷 附加消費收據 / 保固憑證',
       '拍下發票收據或保固卡，日後對帳與保固查驗超省心：',
