@@ -1037,16 +1037,62 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     };
 
     if (isCc) {
-      const userCard = creditCards.find(c => isUserAccount(c.user_id)) || creditCards[0];
-      if (userCard) setSelectedAccountId(userCard.id);
+      const userCard = creditCards.find(c => isUserAccount(c.user_id)) || creditCards.find(c => !c.user_id);
+      setSelectedAccountId(userCard ? userCard.id : '');
     } else if (isSv) {
-      const userCard = storedValueCards.find(c => isUserAccount(c.user_id)) || storedValueCards[0];
-      if (userCard) setSelectedAccountId(userCard.id);
+      const userCard = storedValueCards.find(c => isUserAccount(c.user_id)) || storedValueCards.find(c => !c.user_id);
+      setSelectedAccountId(userCard ? userCard.id : '');
     } else if (isBank) {
-      const userBank = bankAccounts.find(a => isUserAccount(a.user_id)) || bankAccounts[0];
-      if (userBank) setSelectedAccountId(userBank.id);
+      const userBank = bankAccounts.find(a => isUserAccount(a.user_id)) || bankAccounts.find(a => !a.user_id);
+      setSelectedAccountId(userBank ? userBank.id : '');
     } else {
       setSelectedAccountId('');
+    }
+  };
+
+  // 切換付款成員 (智慧同步卡片與付款方式，絕不殘留他人卡片)
+  const handleSelectPayer = (newPayerId: string) => {
+    setHasUserManuallySelectedPayer(true);
+    setPaidBy(newPayerId);
+
+    const mObj = (paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS).find(m => m.id === paymentMethod);
+    const isCc = mObj ? !!mObj.supports_credit_card : (paymentMethod === 'credit_card' || paymentMethod === 'line_pay' || paymentMethod === 'px_pay');
+    const isSv = mObj ? (mObj.type === 'stored_value' || mObj.id === 'stored_value') : paymentMethod === 'stored_value';
+    const isBank = mObj ? (mObj.type === 'bank' || mObj.id === 'transfer') : paymentMethod === 'transfer';
+
+    if (!isCc && !isSv && !isBank) {
+      setSelectedAccountId('');
+      return;
+    }
+
+    const accType = isCc ? 'credit_card' : (isSv ? 'stored_value' : 'bank');
+    const newMemberAccounts = filterAccountsForUser(paymentAccounts, {
+      type: accType,
+      currentUser,
+      inAdminMode,
+      selectedAccountId: undefined,
+      getMemberById,
+      targetPayerId: newPayerId,
+    });
+
+    const ownCard = newMemberAccounts.find(a => {
+      if (!a.user_id) return false;
+      if (a.user_id === newPayerId) return true;
+      if (getMemberById && getMemberById(a.user_id)?.display_name === getMemberById(newPayerId)?.display_name) return true;
+      return false;
+    });
+
+    const publicCard = newMemberAccounts.find(a => !a.user_id);
+
+    if (ownCard) {
+      setSelectedAccountId(ownCard.id);
+    } else if (publicCard) {
+      setSelectedAccountId(publicCard.id);
+    } else {
+      setSelectedAccountId('');
+      if (paymentMethod === 'credit_card' || paymentMethod === 'stored_value') {
+        setPaymentMethod('cash');
+      }
     }
   };
 
@@ -2633,10 +2679,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       <TouchableOpacity
                         key={member.id}
                         style={[styles.payerChip, isSelected && styles.payerChipActive]}
-                        onPress={() => {
-                          setHasUserManuallySelectedPayer(true);
-                          setPaidBy(member.id);
-                        }}
+                        onPress={() => handleSelectPayer(member.id)}
                       >
                         <Text style={styles.payerAvatar}>{member.avatar_url}</Text>
                         <Text
@@ -3390,10 +3433,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       <TouchableOpacity
                         key={member.id}
                         style={[styles.payerChip, isSelected && styles.payerChipActive]}
-                        onPress={() => {
-                          setHasUserManuallySelectedPayer(true);
-                          setPaidBy(member.id);
-                        }}
+                        onPress={() => handleSelectPayer(member.id)}
                       >
                         <Text style={styles.payerAvatar}>{member.avatar_url}</Text>
                         <Text
@@ -3510,10 +3550,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                           <TouchableOpacity
                             key={member.id}
                             style={[styles.payerChipCompact, isSelected && styles.payerChipCompactActive]}
-                            onPress={() => {
-                              setHasUserManuallySelectedPayer(true);
-                              setPaidBy(member.id);
-                            }}
+                            onPress={() => handleSelectPayer(member.id)}
                             activeOpacity={0.7}
                           >
                             <Text style={styles.payerAvatarCompact}>{member.avatar_url}</Text>

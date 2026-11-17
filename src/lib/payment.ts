@@ -543,22 +543,17 @@ export const filterAccountsForUser = (
   const activeDisplayName = (payerProfile?.display_name || (activeUserId === currentUser?.id ? currentUser?.display_name : ''))?.trim().toLowerCase();
 
   const filtered = ofType.filter(acc => {
-    // 若此卡已被當前交易選定，保留顯示以供檢視目前狀態
-    if (selectedAccountId && acc.id === selectedAccountId) {
-      return true;
-    }
-
-    // 未綁定特定成員的通用公用卡 (例如全家公用信用卡、悠遊卡)，任何人皆可選用
+    // 1. 未綁定特定成員的通用公用卡 (例如全家公用信用卡、悠遊卡)，任何人皆可選用
     if (!acc.user_id) {
       return true;
     }
 
-    // 直接 ID 吻合
+    // 2. 直接 ID 吻合
     if (activeUserId && acc.user_id === activeUserId) {
       return true;
     }
 
-    // 透過別名/名冊比對 (例如 Google 影子帳號或同名成員)
+    // 3. 透過別名/名冊比對 (例如 Google 影子帳號或同名成員)
     if (getMemberById) {
       const owner = getMemberById(acc.user_id);
       if (owner) {
@@ -569,15 +564,24 @@ export const filterAccountsForUser = (
       }
     }
 
+    // 4. 若此卡已被當前交易選定，且未限定 targetPayerId（例如開啟舊明細檢視）時才保留顯示
+    if (selectedAccountId && acc.id === selectedAccountId && !targetPayerId) {
+      return true;
+    }
+
     return false;
   });
 
   // 🛡️ 容錯保底：若日常模式過濾後結果為空 (例如新成員尚未綁卡、或當前身分未綁定專屬卡)，
-  // 但帳本中已存在卡片，至少提供通用公用卡或全部卡片供使用者記帳選擇，避免記帳選單空白卡死
+  // 但帳本中已存在卡片，至少提供通用公用卡供使用者記帳選擇，避免記帳選單空白卡死；
+  // 但若有明確指定 targetPayerId（使用者切換至特定成員），且該成員確實無卡也無公用卡，精準回傳空陣列，絕不越權塞入他人卡片
   if (filtered.length === 0 && ofType.length > 0) {
     const publicCards = ofType.filter(a => !a.user_id);
     if (publicCards.length > 0) {
       return sortAccountsByUser(publicCards, preferredUser, targetPriorityId);
+    }
+    if (targetPayerId) {
+      return [];
     }
     return sortAccountsByUser(ofType, preferredUser, targetPriorityId);
   }

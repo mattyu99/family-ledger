@@ -151,6 +151,24 @@ describe('Account Member Alias Resolution Tests', () => {
       expect(res.some(a => a.id === 'card-public')).toBe(true);
     });
 
+    test('never leaks other members private cards when targetPayerId has no card and no public card', () => {
+      const kidProfile: Profile = {
+        id: 'kid-yang',
+        display_name: '洋洋',
+        role: 'member',
+      };
+      const privateOnlyAccounts = [yingCreditCard, zhiCreditCard]; // 無任何公用卡
+      const res = filterAccountsForUser(privateOnlyAccounts, {
+        type: 'credit_card',
+        currentUser: zhiProfile,
+        targetPayerId: kidProfile.id,
+        selectedAccountId: zhiCreditCard.id, // 原先選中智爸的卡
+        getMemberById,
+      });
+      // 洋洋沒有信用卡，且無公用卡，絕不可將智爸的卡洩漏給洋洋
+      expect(res).toEqual([]);
+    });
+
     test('prioritizes selected or priority card to position #1 in horizontal selector', () => {
       const cardA: PaymentAccount = {
         id: 'card-a',
