@@ -160,6 +160,7 @@ interface AddTransactionModalProps {
   autoOpenScanner?: boolean;
   onClearAutoOpenScanner?: () => void;
   resetKey?: number;
+  defaultDemoPublicMemo?: boolean;
 }
 
 export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
@@ -177,6 +178,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   autoOpenScanner = false,
   onClearAutoOpenScanner,
   resetKey,
+  defaultDemoPublicMemo,
 }) => {
   const { isDark, colors } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
@@ -1235,6 +1237,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     if (justOpened || initialModeChanged) {
       setHasUserManuallySelectedPayer(false);
       resetFormRef.current();
+      if (defaultDemoPublicMemo) {
+        setIsDemoPublicMemo(true);
+      }
     } else if (!visible) {
       // 當彈窗關閉時，確保所有子彈窗 (相機掃描器、照片檢視、日期選擇) 無條件關閉釋放資源
       setScannerModalVisible(false);

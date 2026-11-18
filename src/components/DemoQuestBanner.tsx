@@ -28,6 +28,8 @@ export interface DemoQuestBannerProps {
   onOpenBills: () => void;
   onOpenReconciliation: () => void;
   onOpenMemos: () => void;
+  onOpenRelayMemo?: () => void;
+  onOpenPublicMemo?: () => void;
   onCreateLedger: () => void;
   onResetDemo: () => void;
 }
@@ -55,6 +57,8 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
   onOpenBills,
   onOpenReconciliation,
   onOpenMemos,
+  onOpenRelayMemo,
+  onOpenPublicMemo,
   onCreateLedger,
   onResetDemo,
 }) => {
@@ -111,8 +115,8 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
           const parsed = JSON.parse(val);
           if (Array.isArray(parsed)) {
             setCompletedQuestIds(parsed);
-            // 若 6 項任務皆已通關，預設自動折疊收合，避免畫面過長遮擋內容
-            if (parsed.length >= 6) {
+            // 若 8 項任務皆已通關，預設自動折疊收合，避免畫面過長遮擋內容
+            if (parsed.length >= 8) {
               setIsCollapsed(true);
             }
           }
@@ -128,7 +132,7 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
       if (prev.includes(questId)) return prev;
       const updated = [...prev, questId];
       AsyncStorage.setItem(STORAGE_KEY_QUESTS, JSON.stringify(updated));
-      if (updated.length === 6 && !hasShownCelebration) {
+      if (updated.length === 8 && !hasShownCelebration) {
         setShowCelebration(true);
         setHasShownCelebration(true);
       }
@@ -190,10 +194,26 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
       actionText: '看看板',
       action: () => handleQuestAction('quest_memo', onOpenMemos),
     },
+    {
+      id: 'quest_relay_memo',
+      tag: '💊 任務 7',
+      title: '試玩慢箋接力提醒',
+      desc: '阿公降血壓藥打勾辦妥，親睹粉紫泡泡自動推算接力',
+      actionText: '去打勾',
+      action: () => handleQuestAction('quest_relay_memo', () => (onOpenRelayMemo ? onOpenRelayMemo() : onOpenMemos())),
+    },
+    {
+      id: 'quest_public_memo',
+      tag: '💌 任務 8',
+      title: '發布全台看板留言',
+      desc: '在迎賓留言板留下試用心得，或發布生活記事至全台看板',
+      actionText: '寫留言',
+      action: () => handleQuestAction('quest_public_memo', () => (onOpenPublicMemo ? onOpenPublicMemo() : onAddExpense())),
+    },
   ];
 
   const completedCount = completedQuestIds.length;
-  const progressPercent = Math.round((completedCount / 6) * 100);
+  const progressPercent = Math.round((completedCount / 8) * 100);
   const activeMemberObj =
     activeMembersList.find((m) => m.id === currentUser?.id) || activeMembersList[0];
 
@@ -229,7 +249,7 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
             numberOfLines={1}
             maxFontSizeMultiplier={1.15}
           >
-            🎮 探索指南 ({completedCount}/6)
+            🎮 探索指南 ({completedCount}/8)
           </Text>
           {isCollapsed && activeMemberObj && (
             <View style={[styles.collapsedMemberPill, isDark && styles.collapsedMemberPillDark]}>
@@ -530,7 +550,7 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
               太棒了！您已通關全套體驗！
             </Text>
             <Text style={[styles.celebrationBody, isDark && styles.textMutedDark]}>
-              您已經親自體驗了改名、極速記帳、發票對獎、水電銷帳、信用卡對帳與共享生活手帳。{'\n\n'}
+              您已經親自體驗了改名、極速記帳、發票對獎、水電銷帳、信用卡對帳、共享生活手帳、慢箋自動接力與全台看板交流。{'\n\n'}
               記帳不再是一個人孤軍奮戰，現在就為您的家人建立一個溫馨專屬的家庭記帳本吧！
             </Text>
 

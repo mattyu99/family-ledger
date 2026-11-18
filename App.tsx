@@ -242,6 +242,7 @@ const AppContent: React.FC = () => {
   const [modalDefaultMerchant, setModalDefaultMerchant] = useState<string | undefined>(undefined);
   const [modalLinkedMemoId, setModalLinkedMemoId] = useState<string | undefined>(undefined);
   const [modalLinkedCompletionNote, setModalLinkedCompletionNote] = useState<string | undefined>(undefined);
+  const [modalDefaultDemoPublicMemo, setModalDefaultDemoPublicMemo] = useState<boolean>(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const returnToInvoiceLotteryRef = useRef<boolean>(false);
 
@@ -955,6 +956,15 @@ const AppContent: React.FC = () => {
             }}
             onOpenReconciliation={() => openReconcileModalForCurrentFilter('credit_card')}
             onOpenMemos={() => setMemoTodoModalVisible(true)}
+            onOpenRelayMemo={() => setMemoTodoModalVisible(true)}
+            onOpenPublicMemo={() => {
+              setModalMode('memo');
+              setModalDefaultDemoPublicMemo(true);
+              setModalDefaultNote('[💌 訪客留言] ');
+              setModalRecipientId(undefined);
+              setModalAutoOpenScanner(false);
+              setModalVisible(true);
+            }}
             onCreateLedger={() => setCreateLedgerModalVisible(true)}
             onResetDemo={() => resetDemoLedger()}
           />
@@ -1200,12 +1210,14 @@ const AppContent: React.FC = () => {
         autoOpenScanner={modalAutoOpenScanner}
         onClearAutoOpenScanner={() => setModalAutoOpenScanner(false)}
         resetKey={modalResetKey}
+        defaultDemoPublicMemo={modalDefaultDemoPublicMemo}
         onSuccess={() => {
           setCompletingMemo(null);
           setCompletionTempNote('');
           setCompletionTempCompleter('');
           setModalDefaultAmount(undefined);
           setModalDefaultMerchant(undefined);
+          setModalDefaultDemoPublicMemo(false);
         }}
         onClose={() => {
           setModalVisible(false);
@@ -1217,6 +1229,7 @@ const AppContent: React.FC = () => {
           setModalLinkedMemoId(undefined);
           setModalLinkedCompletionNote(undefined);
           setModalAutoOpenScanner(false);
+          setModalDefaultDemoPublicMemo(false);
         }}
       />
 

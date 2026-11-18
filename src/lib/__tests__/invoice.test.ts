@@ -327,7 +327,7 @@ describe('台灣統一發票與條碼解析核心模組測試 (invoice.ts)', () 
       const { SWEETHOME_MEMBERS, SWEETHOME_ACCOUNTS } = require('../../constants/sweethomeDemo');
       const txs = getSweethomeInitialTransactions();
 
-      expect(txs.length).toBe(35);
+      expect(txs.length).toBe(38);
 
       // 4 位成員皆有交易紀錄
       SWEETHOME_MEMBERS.forEach((m: any) => {
