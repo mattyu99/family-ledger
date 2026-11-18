@@ -199,7 +199,7 @@ CREATE OR REPLACE FUNCTION public.is_ledger_member(target_ledger_id UUID)
 RETURNS BOOLEAN AS $$
 BEGIN
   -- 官方示範帳本 (SWEETHOME) 允許訪客暢快試玩體驗
-  IF target_ledger_id = '00000000-0000-4000-8000-000000000001'::uuid THEN
+  IF target_ledger_id = 'ee100000-0000-4000-8000-000000000001'::uuid THEN
     RETURN TRUE;
   END IF;
 
@@ -1018,6 +1018,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 GRANT EXECUTE ON FUNCTION public.get_all_cloud_ledgers_summary() TO anon, authenticated;
 
 -- 10.3 管理員自雲端抹除指定帳本之 RPC 函式 (CASCADE 級聯刪除關聯成員與明細，嚴格限制建立者或 owner 管理員)
+DROP FUNCTION IF EXISTS public.delete_cloud_ledger_admin(UUID);
+
 CREATE OR REPLACE FUNCTION public.delete_cloud_ledger_admin(
     target_ledger_id UUID,
     p_admin_pin TEXT DEFAULT NULL

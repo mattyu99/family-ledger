@@ -13,7 +13,7 @@ CREATE OR REPLACE FUNCTION public.is_ledger_member(target_ledger_id UUID)
 RETURNS BOOLEAN AS $$
 BEGIN
   -- 官方示範帳本 (SWEETHOME) 允許訪客暢快試玩體驗
-  IF target_ledger_id = '00000000-0000-4000-8000-000000000001'::uuid THEN
+  IF target_ledger_id = 'ee100000-0000-4000-8000-000000000001'::uuid THEN
     RETURN TRUE;
   END IF;
 
@@ -170,6 +170,8 @@ CREATE POLICY "Anyone can update profiles" ON public.profiles
 -- ------------------------------------------------------------------------------
 -- 12. 加固 delete_cloud_ledger_admin RPC：僅建立者 (智爸) 或 owner 成員能刪除帳本
 -- ------------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.delete_cloud_ledger_admin(UUID);
+
 CREATE OR REPLACE FUNCTION public.delete_cloud_ledger_admin(
     target_ledger_id UUID,
     p_admin_pin TEXT DEFAULT NULL
