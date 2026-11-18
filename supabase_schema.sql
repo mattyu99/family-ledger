@@ -198,11 +198,6 @@ ALTER TABLE public.ledger_invites ENABLE ROW LEVEL SECURITY;
 CREATE OR REPLACE FUNCTION public.is_ledger_member(target_ledger_id UUID)
 RETURNS BOOLEAN AS $$
 BEGIN
-  -- 官方示範帳本 (SWEETHOME) 允許訪客暢快試玩體驗
-  IF target_ledger_id = 'ee100000-0000-4000-8000-000000000001'::uuid THEN
-    RETURN TRUE;
-  END IF;
-
   RETURN EXISTS (
     SELECT 1 FROM public.ledger_members
     WHERE ledger_id = target_ledger_id AND user_id = auth.uid()
