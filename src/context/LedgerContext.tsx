@@ -4170,13 +4170,23 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (!isConfigured) return { success: false, count: 0, message: '未連線至雲端資料庫' };
       let { data: { session } } = await supabase.auth.getSession();
       const authUser = session?.user;
-      if (!authUser) return { success: false, count: 0, message: '尚未登入' };
 
-      let candidateUserIds = [authUser.id];
+      let candidateUserIds = authUser ? [authUser.id] : [];
       let lookupEmail: string | undefined = undefined;
 
       if (authUser?.email && !authUser.email.endsWith('@family.local') && !authUser.email.includes('anonymous')) {
         lookupEmail = authUser.email;
+      }
+
+      if (!lookupEmail && googleUserEmail && !googleUserEmail.endsWith('@family.local')) {
+        lookupEmail = googleUserEmail;
+      }
+
+      if (!lookupEmail) {
+        try {
+          const savedGoogleEmail = await AsyncStorage.getItem('@family_ledger_google_email');
+          if (savedGoogleEmail && !savedGoogleEmail.endsWith('@family.local')) lookupEmail = savedGoogleEmail;
+        } catch {}
       }
 
       if (!lookupEmail) {
@@ -4188,13 +4198,6 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               lookupEmail = u.auth_email;
             }
           }
-        } catch {}
-      }
-
-      if (!lookupEmail) {
-        try {
-          const savedGoogleEmail = await AsyncStorage.getItem('@family_ledger_google_email');
-          if (savedGoogleEmail) lookupEmail = savedGoogleEmail;
         } catch {}
       }
 
@@ -4211,6 +4214,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } catch {}
       }
 
+      if (!lookupEmail && !authUser) {
+        return { success: false, count: 0, message: '尚未登入或未連結 Google 帳號' };
+      }
+
       if (lookupEmail) {
         // 🚀 優先走「專屬安全通行管道 (RPC)」一次性拉取名下全部授權公帳清單
         try {
@@ -4221,7 +4228,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (!rpcErr && rpcRes?.success && Array.isArray(rpcRes.ledgers) && rpcRes.ledgers.length > 0) {
             const mappedLedgers: Ledger[] = rpcRes.ledgers.map((l: any) => ({
               ...l,
-              userRole: l.userRole || (l.created_by === authUser.id ? 'owner' : 'member'),
+              userRole: l.userRole || (authUser && l.created_by === authUser.id ? 'owner' : 'member'),
               userDisplayName: l.userDisplayName || '',
               userAvatar: l.userAvatar || '',
             }));
@@ -4339,7 +4346,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       const allUserLedgers: Ledger[] = await Promise.all(uniqueMemberLedgers.map(async (m: any) => {
         const l = (Array.isArray(m.ledgers) ? m.ledgers[0] : m.ledgers) as unknown as Ledger;
-        const isCreator = l.created_by === authUser.id;
+        const isCreator = Boolean(authUser?.id && l.created_by === authUser.id);
         let savedName = '';
         let savedAvatar = '';
         try {
@@ -4633,7 +4640,33 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } catch {}
         }
 
+        let validMemberLedgers: any[] = [];
+
         if (lookupEmail) {
+          // 🚀 核心升級：initialize 優先走專屬安全通行管道 (RPC)，一次性拉取名下全部授權公帳
+          try {
+            const { data: rpcRes, error: rpcErr } = await supabase.rpc('get_user_authorized_ledgers', {
+              p_email: lookupEmail.toLowerCase(),
+              p_link_user_id: authUser?.id || null,
+            });
+            if (!rpcErr && rpcRes?.success && Array.isArray(rpcRes.ledgers) && rpcRes.ledgers.length > 0) {
+              validMemberLedgers = rpcRes.ledgers.map((l: any) => ({
+                ledger_id: l.id,
+                role: l.userRole || (l.created_by === authUser.id ? 'owner' : 'member'),
+                joined_at: l.created_at || new Date().toISOString(),
+                ledgers: l,
+                profiles: {
+                  id: authUser.id,
+                  display_name: l.userDisplayName || '',
+                  avatar_url: l.userAvatar || '',
+                  auth_email: lookupEmail,
+                },
+              }));
+            }
+          } catch (rpcErr) {
+            console.warn('initialize 專屬安全通道 RPC 失敗，啟用備援通道:', rpcErr);
+          }
+
           try {
             const { data: boundProfiles } = await supabase
               .from('profiles')
@@ -4647,11 +4680,26 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         }
 
-        const { data: memberLedgers } = await supabase
-          .from('ledger_members')
-          .select('ledger_id, role, joined_at, ledgers(*), profiles(*)')
-          .in('user_id', candidateUserIds)
-          .order('joined_at', { ascending: false });
+        // 若專屬通道未取得帳本，才走舊式查詢作為備援
+        if (validMemberLedgers.length === 0) {
+          const { data: memberLedgers } = await supabase
+            .from('ledger_members')
+            .select('ledger_id, role, joined_at, ledgers(*), profiles(*)')
+            .in('user_id', candidateUserIds)
+            .order('joined_at', { ascending: false });
+
+          const savedLedgerStr = await AsyncStorage.getItem(STORAGE_KEYS.LEDGER);
+          validMemberLedgers = (memberLedgers || []).map((m: any) => {
+            if (m.ledgers && isValidUUID(m.ledgers.id)) return m;
+            if (m.ledger_id && isValidUUID(m.ledger_id)) {
+              const cached = (ledgers || []).find(l => l.id === m.ledger_id) || (savedLedgerStr ? JSON.parse(savedLedgerStr) : null);
+              if (cached && cached.id === m.ledger_id) {
+                return { ...m, ledgers: cached };
+              }
+            }
+            return m;
+          }).filter((m: any) => m.ledgers && isValidUUID(m.ledgers.id));
+        }
 
         const targetInvite = urlInviteCode || urlJoinId;
 
@@ -4667,17 +4715,6 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } catch {}
         }
         const savedCode = await AsyncStorage.getItem(STORAGE_KEYS.INVITE_CODE);
-
-        let validMemberLedgers = (memberLedgers || []).map((m: any) => {
-          if (m.ledgers && isValidUUID(m.ledgers.id)) return m;
-          if (m.ledger_id && isValidUUID(m.ledger_id)) {
-            const cached = (ledgers || []).find(l => l.id === m.ledger_id) || (savedLedgerStr ? JSON.parse(savedLedgerStr) : null);
-            if (cached && cached.id === m.ledger_id) {
-              return { ...m, ledgers: cached };
-            }
-          }
-          return m;
-        }).filter((m: any) => m.ledgers && isValidUUID(m.ledgers.id));
 
         // 額外保底：查出由 candidateUserIds 建立之所有帳本，確保發起人永遠能見到自己建立的公帳
         try {
@@ -4897,7 +4934,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         const allUserLedgers: Ledger[] = await Promise.all(uniqueMemberLedgers.map(async (m: any) => {
           const l = m.ledgers as unknown as Ledger;
-          const isCreator = l.created_by === authUser.id;
+          const isCreator = Boolean(authUser?.id && l.created_by === authUser.id);
           let savedName = '';
           let savedAvatar = '';
           try {

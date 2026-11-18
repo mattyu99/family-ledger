@@ -82,12 +82,12 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
   const [isJoining, setIsJoining] = useState(false);
   const [isSyncingLedgers, setIsSyncingLedgers] = useState(false);
 
-  // 當彈窗打開時：若已登入 Google，自動於背景檢查並拉取最新公帳名冊（單次觸發，絕不重複迴圈）
+  // 當彈窗打開時：若已登入 Google 或有 Google 信箱，自動於背景檢查並拉取最新公帳名冊（單次觸發，絕不重複迴圈）
   useEffect(() => {
-    if (visible && isGoogleAuthenticated) {
+    if (visible && (isGoogleAuthenticated || Boolean(googleUserEmail))) {
       refreshLedgerList().catch(() => {});
     }
-  }, [visible, isGoogleAuthenticated]);
+  }, [visible, isGoogleAuthenticated, googleUserEmail]);
 
   useEffect(() => {
     if (!visible) return;
