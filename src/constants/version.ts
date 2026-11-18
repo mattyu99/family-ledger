@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.17';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.17 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 56;
+export const APP_BUILD_REVISION = 57;
 
 // 完整版本字串 (例如 "1.0.17.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -23,6 +23,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
     date: '2026-11-16 ~ 2026-11-18',
     title: '五大記事協作看板、常駐編輯工具列、版面極致瘦身與操作手冊升級',
     highlights: [
+      '🏰 示範家庭母本雲端搬遷與唯讀守護：完整搬遷 38 筆生活情境與固定帳單至雲端母本，全面啟用唯讀防護，訪客暢快試玩沙盒且母本永不被篡改。',
       '🎮 示範任務全域防遮擋與即時進度同步：任務引導點擊與實質操作雙向即時 +1，配合首頁安全落地防遮擋，操作順暢且全破慶祝從容升起。',
       '🌐 全台示範看板交流與探索指南擴充：擴充為全新 8 大新手任務，新增慢箋接力領藥體驗與全台看板交流互動，虛實結合秒開沙盒與即時回響。',
       '🛡️ 雲端公帳專屬安全通行管道：升級帳本專屬授權通道，登入 Google 即可一秒自動還原名下所有公帳與歷史帳本，全面守護家庭資產與收支隱私。',

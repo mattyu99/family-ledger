@@ -254,6 +254,26 @@ async function seed() {
       is_active: true,
       amount_type: 'fixed',
     },
+    {
+      id: 'ee600000-0000-4000-8000-000000000005',
+      ledger_id: DEMO_LEDGER_ID,
+      name: 'Dyson 智慧涼暖空氣清淨機 (12 期)',
+      default_amount: 2890,
+      merchant: 'Dyson 官方直營',
+      paid_by: DEMO_MEMBERS[0].id,
+      payment_method: 'credit_card',
+      category_id: DEMO_CATEGORIES[8].id, // 數位３Ｃ
+      account_id: DEMO_ACCOUNTS[2].id,
+      frequency: 'monthly',
+      due_day: 15,
+      is_active: true,
+      amount_type: 'fixed',
+      is_installment: true,
+      total_installments: 12,
+      current_installment: 3,
+      installment_start_period: `${now.getFullYear()}-${String(now.getMonth() === 0 ? 11 : now.getMonth() - 1).padStart(2, '0')}`,
+      note: '客廳清淨冷暖氣機，每期 NT$ 2,890 (共 12 期，國泰世華 CUBE 卡自動分期扣繳)',
+    },
   ];
 
   for (const r of recurringRules) {
@@ -261,9 +281,18 @@ async function seed() {
     if (rErr) console.warn(`Recurring rule ${r.name} 警告:`, rErr.message);
   }
 
-  // 7. 建立 25 筆逼真交易 + 3 筆共享備忘錄 (共 28 筆 transactions)
-  console.log('[7/7] 建立家庭擬真消費紀錄與中獎發票及備忘錄...');
+  // 7. 建立 38 筆逼真交易 (含五大看板、慢箋接力、拜拜祈福與迎賓留言等)
+  console.log('[7/7] 建立家庭擬真消費紀錄與中獎發票及備忘錄 (38 筆)...');
   const txBaseTime = now.getTime();
+  const todayYmd = now.toISOString().split('T')[0];
+  const rocYear = now.getFullYear() - 1911;
+  const d2Str = `${rocYear}/${now.getMonth() + 1}/${now.getDate()}`;
+  const d3Date = new Date(txBaseTime + 28 * 86400000);
+  const d3RocYear = d3Date.getFullYear() - 1911;
+  const d3Str = `${d3RocYear}/${d3Date.getMonth() + 1}/${d3Date.getDate()}`;
+  const finalClinicDate = new Date(txBaseTime + 56 * 86400000);
+  const finalRocYear = finalClinicDate.getFullYear() - 1911;
+  const finalStr = `${finalRocYear}/${finalClinicDate.getMonth() + 1}/${finalClinicDate.getDate()}`;
 
   const demoTransactions = [
     {
@@ -309,7 +338,7 @@ async function seed() {
       category_id: DEMO_CATEGORIES[1].id, // 生鮮超市
       payment_method: 'credit_card',
       account_id: DEMO_ACCOUNTS[3].id,
-      note: '晚餐食材：產銷履歷有機高麗菜、去骨雞胸肉、雞蛋、豆腐 [🧾 HQ-55124098|11309|5678|pending|0|]',
+      note: '【🎁 福利點 折抵 $50 · 原價 $730】晚餐食材：產銷履歷有機高麗菜、去骨雞胸肉、雞蛋、豆腐 [🧾 HQ-55124098|11309|5678|pending|0|]',
       transacted_at: new Date(txBaseTime - 3600000 * 30).toISOString(),
       is_settled: false,
       is_reconciled: false,
@@ -781,7 +810,90 @@ async function seed() {
       is_settled: true,
       is_reconciled: false,
     },
+    {
+      id: 'ee400000-0000-4000-8000-000000000036',
+      ledger_id: DEMO_LEDGER_ID,
+      creator_id: DEMO_MEMBERS[0].id,
+      paid_by: DEMO_MEMBERS[0].id,
+      type: 'memo',
+      amount: 0,
+      merchant: '💊 慢箋接力',
+      reminder_target: 'family',
+      category_id: DEMO_CATEGORIES[12].id,
+      note: `[💊 慢箋接力] 阿公心臟內科看診與慢箋 (${finalStr}早28號看診)\n- [ ] ${d2Str}第2次慢箋 (台大醫院·今天到期)\n- [ ] ${d3Str}第3次慢箋 (大樹藥局領藥)\n醫療院所：台大醫院心臟內科\n領藥號碼：慢性病連續處方箋第 2 次 (共 3 次)\n💡 試玩接力：點擊上方「第2次慢箋」打勾辦妥，系統將自動智慧接力排入第 3 次領藥提醒！`,
+      transacted_at: new Date(txBaseTime - 3600000 * 8).toISOString(),
+      reminder_date: todayYmd,
+      is_settled: false,
+      is_reconciled: false,
+    },
+    {
+      id: 'ee400000-0000-4000-8000-000000000037',
+      ledger_id: DEMO_LEDGER_ID,
+      creator_id: DEMO_MEMBERS[0].id,
+      paid_by: DEMO_MEMBERS[0].id,
+      type: 'memo',
+      amount: 0,
+      merchant: '💌 迎賓留言板',
+      reminder_target: 'family',
+      category_id: DEMO_CATEGORIES[12].id,
+      note: '[💌 訪客留言] SWEETHOME 迎賓交流板與許願池 #訪客留言\n歡迎來到甜心記帳本示範家庭！本則記事已公開至全台示範看板。\n大家可直接在下方留言交流，或點擊頂部【＋記一筆】發布新留言！\n- [ ] 試用心得回饋 (台北小智: 介面好清爽，五大協作看板超實用！) (台中林小姐: 點餐大字報單在櫃檯超讚 👍)\n- [ ] 新功能許願池 (高雄阿豪: 希望增加更多圖示與主題色) (官方接待員: 收到！已排入設計開發排程囉 🚀)',
+      transacted_at: new Date(txBaseTime - 3600000 * 9).toISOString(),
+      reminder_date: todayYmd,
+      is_settled: false,
+      is_reconciled: false,
+    },
+    {
+      id: 'ee400000-0000-4000-8000-000000000038',
+      ledger_id: DEMO_LEDGER_ID,
+      creator_id: DEMO_MEMBERS[1].id,
+      paid_by: DEMO_MEMBERS[1].id,
+      type: 'memo',
+      amount: 0,
+      merchant: '🏮 土地公拜拜',
+      reminder_target: 'family',
+      category_id: DEMO_CATEGORIES[12].id,
+      note: '[🏮 土地公拜拜] 農曆初一十五祈福水果與金紙\n地點：社區福德宮土地公廟\n準備物品：三色當季水果、土地公發財金一盒\n提醒：每月農曆初一、十五向土地公祈福求平安（已自動換算國曆對應日期）。\n- [ ] 瑩媽：早市採買新鮮水果 $150\n- [ ] 智爸：金紙店準備發財金一份 $100',
+      transacted_at: new Date(txBaseTime - 3600000 * 10).toISOString(),
+      reminder_date: todayYmd,
+      is_settled: false,
+      is_reconciled: false,
+    },
+    {
+      id: 'ee400000-0000-4000-8000-000000000029',
+      ledger_id: DEMO_LEDGER_ID,
+      creator_id: DEMO_MEMBERS[3].id,
+      paid_by: DEMO_MEMBERS[3].id,
+      type: 'income',
+      amount: 100,
+      merchant: '阿公給的獎勵金',
+      category_id: DEMO_CATEGORIES[11].id, // 零用錢
+      payment_method: 'cash',
+      account_id: DEMO_ACCOUNTS[5].id,
+      note: '豆豆幫忙收玩具，阿公獎勵投進存錢筒',
+      transacted_at: new Date(txBaseTime - 3600000 * 48).toISOString(),
+      is_settled: true,
+      is_reconciled: false,
+    },
+    {
+      id: 'ee400000-0000-4000-8000-000000000030',
+      ledger_id: DEMO_LEDGER_ID,
+      creator_id: DEMO_MEMBERS[3].id,
+      paid_by: DEMO_MEMBERS[3].id,
+      type: 'expense',
+      amount: 25,
+      merchant: '美芝城早餐店',
+      category_id: DEMO_CATEGORIES[0].id, // 餐飲伙食
+      payment_method: 'cash',
+      account_id: DEMO_ACCOUNTS[5].id,
+      note: '豆豆放學買小美香草冰淇淋',
+      transacted_at: new Date(txBaseTime - 3600000 * 12).toISOString(),
+      is_settled: true,
+      is_reconciled: false,
+    },
   ];
+
+  // 先清空示範帳本現有的 transactions，確保雲端母本 100% 乾淨對齊
+  await supabase.from('transactions').delete().eq('ledger_id', DEMO_LEDGER_ID);
 
   for (const tx of demoTransactions) {
     const { error: txErr } = await supabase.from('transactions').upsert(tx);
@@ -792,9 +904,9 @@ async function seed() {
   console.log('• 帳本 ID:', DEMO_LEDGER_ID);
   console.log('• 邀請碼: SWEETHOME');
   console.log('• 成員數: 4 (智爸, 瑩媽, 洋洋, 豆豆)');
-  console.log('• 交易數: 28 筆 (含 25 筆消費/收入 + 3 筆生活備忘錄)');
+  console.log(`• 交易數: ${demoTransactions.length} 筆 (含 27 筆消費/收入 + 11 筆生活協作備忘錄)`);
   console.log('• 帳戶數: 6 個 (現金, 公帳, 信用卡, 悠遊卡, 存錢筒)');
-  console.log('• 週期帳單: 4 筆 (水電, 光世代, 串流)');
+  console.log('• 週期帳單: 5 筆 (水電, 光世代, 串流, Dyson分期)');
 }
 
 seed().catch(err => {
