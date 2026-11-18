@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -69,7 +69,10 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
   onResetDemo,
 }) => {
   const [internalCompletedQuestIds, setInternalCompletedQuestIds] = useState<string[]>([]);
-  const completedQuestIds = completedQuestIdsOverride || internalCompletedQuestIds;
+  const completedQuestIds = useMemo(() => {
+    const set = new Set([...internalCompletedQuestIds, ...(completedQuestIdsOverride || [])]);
+    return Array.from(set);
+  }, [internalCompletedQuestIds, completedQuestIdsOverride]);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [prevActiveTab, setPrevActiveTab] = useState(activeTab);
   const [showCelebration, setShowCelebration] = useState(false);
@@ -166,8 +169,10 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
   };
 
   const handleQuestAction = (questId: string, actionFn: () => void) => {
-    markQuestCompleted(questId);
     actionFn();
+    setTimeout(() => {
+      markQuestCompleted(questId);
+    }, 50);
   };
 
   const quests: QuestItem[] = [
@@ -225,13 +230,7 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
       title: '試玩慢箋接力提醒',
       desc: '阿公降血壓藥打勾辦妥，親睹粉紫泡泡自動推算接力',
       actionText: '去打勾',
-      action: () => {
-        if (completedQuestIds.includes('quest_relay_memo')) {
-          handleQuestAction('quest_relay_memo', () => (onOpenRelayMemo ? onOpenRelayMemo() : onOpenMemos()));
-        } else {
-          onOpenRelayMemo ? onOpenRelayMemo() : onOpenMemos();
-        }
-      },
+      action: () => handleQuestAction('quest_relay_memo', () => (onOpenRelayMemo ? onOpenRelayMemo() : onOpenMemos())),
     },
     {
       id: 'quest_public_memo',
@@ -239,13 +238,7 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
       title: '發布全台看板留言',
       desc: '在迎賓留言板留下試用心得，或發布生活記事至全台看板',
       actionText: '寫留言',
-      action: () => {
-        if (completedQuestIds.includes('quest_public_memo')) {
-          handleQuestAction('quest_public_memo', () => (onOpenPublicMemo ? onOpenPublicMemo() : onAddExpense()));
-        } else {
-          onOpenPublicMemo ? onOpenPublicMemo() : onAddExpense();
-        }
-      },
+      action: () => handleQuestAction('quest_public_memo', () => (onOpenPublicMemo ? onOpenPublicMemo() : onAddExpense())),
     },
   ];
 

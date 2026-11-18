@@ -960,7 +960,9 @@ const AppContent: React.FC = () => {
               invoiceLotteryModalVisible ||
               recurringModalVisible ||
               reconcileModalVisible ||
-              createLedgerModalVisible
+              createLedgerModalVisible ||
+              !!editingTransaction ||
+              !!completingMemo
             }
             completedQuestIdsOverride={completedDemoQuestIds}
             onMarkQuestCompleted={handleMarkQuestCompleted}
