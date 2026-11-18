@@ -3443,19 +3443,28 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           finalTx = [...missingTxs, ...finalTx];
         }
 
-        // 🌐 示範家庭全台看板迴響：同步雲端最新公開留言與互動
+        // 🌐 示範家庭全台看板迴響：嚴格僅同步雲端「公開生活記事與訪客留言」，絕不抓取舊版展示收支
         if (isConfigured) {
           try {
             const { data: cloudDemoTxs } = await supabase
               .from('transactions')
               .select('*')
               .eq('ledger_id', SWEETHOME_LEDGER_ID)
+              .eq('type', 'memo')
               .order('transacted_at', { ascending: false })
               .limit(50);
             if (cloudDemoTxs && cloudDemoTxs.length > 0) {
               const transformedCloud = cloudDemoTxs.map(transformSingleTx);
               const localMap = new Map(finalTx.map(t => [t.id, t]));
               for (const cTx of transformedCloud) {
+                // 防污染守則：僅納入訪客公開留言或非靜態預設之新記事，嚴防舊版露營採買覆蓋本地好市多採買
+                const isVisitorMemo =
+                  cTx.note?.includes('#訪客留言') ||
+                  (cTx.merchant && cTx.merchant.startsWith('💌')) ||
+                  !cTx.id.startsWith('ee400000-');
+
+                if (!isVisitorMemo) continue;
+
                 if (!localMap.has(cTx.id)) {
                   finalTx.push(cTx);
                 } else {
