@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.17';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.17 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 50;
+export const APP_BUILD_REVISION = 51;
 
 // 完整版本字串 (例如 "1.0.17.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -23,6 +23,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
     date: '2026-11-16 ~ 2026-11-18',
     title: '五大記事協作看板、常駐編輯工具列、版面極致瘦身與操作手冊升級',
     highlights: [
+      '🌐 示範家庭全台看板迴響互動：生活記事支援一鍵公開發布至全台示範看板，虛實結合秒開沙盒與即時交流，全家帳本私密安全零干擾。',
       '🛡️ 雲端家庭安全大門全面加固：關閉非家庭成員之公開讀取通道，建立成員雙重防護通行機制，全面守護家庭資產與收支隱私。',
       '📊 示範體驗訪客熱度智慧盤點：獨立訪客自動去重與平台統計，三層白名單嚴格排除家庭成員與測試裝置，管理員總管一覽無遺。',
       '⇄ 欄位標籤極致純淨化與排版防截：全面統一移除冒號，經手成員與出資方式完整顯露告別省略號，手續費與各類日期平整單行。',

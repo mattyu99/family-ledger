@@ -226,6 +226,13 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                 </Text>
               </View>
             )}
+            {(transaction.note?.includes('#訪客留言') || (transaction.merchant && transaction.merchant.startsWith('💌'))) && (
+              <View style={[styles.memoPinnedBadge, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }, isDark && { backgroundColor: 'rgba(59, 130, 246, 0.2)', borderColor: 'rgba(59, 130, 246, 0.4)' }]}>
+                <Text style={[styles.memoPinnedBadgeText, { color: '#2563EB', fontWeight: '600' }, isDark && { color: '#93C5FD' }]} maxFontSizeMultiplier={1.08}>
+                  🌐 全台看板
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* 右側：辦妥徽章 或 全家/個人標籤 + 建立日期 */}

@@ -17,6 +17,7 @@ import { Text, TextInput } from './common/Text';
 import { HorizontalScrollView } from './HorizontalScrollView';
 
 import { useLedger } from '../context/LedgerContext';
+import { isDemoLedgerId } from '../constants/sweethomeDemo';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import { TransactionType, PaymentMethod } from '../types/database';
@@ -394,6 +395,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [memoReminderRepeat, setMemoReminderRepeat] = useState<MemoRepeatFrequency>('once');
   const [memoReminderTarget, setMemoReminderTarget] = useState<'family' | 'personal'>('family');
   const [memoIsPinned, setMemoIsPinned] = useState<boolean>(false);
+  const [isDemoPublicMemo, setIsDemoPublicMemo] = useState<boolean>(false);
   const [importedRestockMemoIds, setImportedRestockMemoIds] = useState<string[]>([]);
   const [importedRestockItems, setImportedRestockItems] = useState<PendingRestockItem[]>([]);
   const [isRestockPickerVisible, setIsRestockPickerVisible] = useState<boolean>(false);
@@ -456,6 +458,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     const isOrder = isGroupOrderMemo(parsed.title, note);
     if (isOrder) {
       setMemoIsPinned(false);
+      setIsDemoPublicMemo(false);
       setMemoReminderTarget('family');
     }
   }, [note, mode, type]);
@@ -1130,6 +1133,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     baseReminderDateRef.current = '';
     baseReminderCalendarRef.current = 'solar';
     setMemoIsPinned(false);
+    setIsDemoPublicMemo(false);
     setImportedRestockMemoIds([]);
     lastAutoDetectedDateRef.current = '';
     userManuallySetReminderRef.current = false;
@@ -1570,12 +1574,22 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         }
       }
 
+      const isPublicDemo = isDemoLedgerId(currentLedger?.id) && isDemoPublicMemo;
+      const parsedMemo = parseMemoNote(note);
+      const demoMerchant = isPublicDemo
+        ? (parsedMemo.title ? `💌 ${parsedMemo.title}` : '💌 訪客留言')
+        : undefined;
+      const finalNote = isPublicDemo && !note.includes('#訪客留言')
+        ? `${note.trim()} #訪客留言`
+        : note.trim();
+
       const createdTxId = await addTransaction({
         amount: 0,
         type: 'memo',
         category_id: defaultMemoCat?.id || categories[0]?.id,
         paid_by: targetPayer,
-        note: note.trim(),
+        merchant: demoMerchant,
+        note: finalNote,
         image_url: finalImageUrl,
         reminder_date: memoReminderDate || undefined,
         reminder_calendar: memoReminderDate ? memoReminderCalendar : undefined,
@@ -1584,7 +1598,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         linked_transaction_id: linkedMemoId || undefined,
         transacted_at,
         is_pinned: memoIsPinned,
-      });
+        is_demo_public: isPublicDemo,
+      } as any);
 
       if (linkedMemoId && createdTxId) {
         await updateTransaction(linkedMemoId, {
@@ -1637,6 +1652,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       userManuallySetReminderRef.current = false;
       userManuallyToggledPinRef.current = false;
       setMemoIsPinned(false);
+      setIsDemoPublicMemo(false);
       setImportedRestockMemoIds([]);
       setSelectedDate(new Date());
       onSuccess?.(createdTxId);
@@ -2017,6 +2033,28 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                           <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收起鍵盤 ▾</Text>
                         </TouchableOpacity>
                       )}
+                      {/* 示範帳本專屬：發布至全台示範看板切換膠囊 */}
+                      {isDemoLedgerId(currentLedger?.id) && (
+                        <TouchableOpacity
+                          style={[
+                            styles.memoHeaderPinBtn,
+                            isDemoPublicMemo && { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.25)' : '#EFF6FF', borderColor: '#3B82F6' },
+                          ]}
+                          onPress={() => setIsDemoPublicMemo(!isDemoPublicMemo)}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                          activeOpacity={0.7}
+                        >
+                          <Text
+                            style={[
+                              styles.memoHeaderPinText,
+                              isDemoPublicMemo && { color: isDark ? '#93C5FD' : '#1D4ED8', fontWeight: '700' },
+                            ]}
+                            maxFontSizeMultiplier={1.05}
+                          >
+                            {isDemoPublicMemo ? '🌐 公開看板 ✓' : '🌐 公開留言'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
                       {/* 📌 標題列置頂切換膠囊 (0 像素高度消耗) */}
                       {isGroupOrderMemo(parseMemoNote(note).title, note) ? (
                         <View style={styles.memoHeaderPinBadgeAuto}>
@@ -2064,6 +2102,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     textAlignVertical="top"
                     maxFontSizeMultiplier={1.15}
                   />
+
+                  {isDemoLedgerId(currentLedger?.id) && isDemoPublicMemo && (
+                    <View style={[styles.demoPublicMemoNotice, isDark && styles.demoPublicMemoNoticeDark]}>
+                      <Text style={[styles.demoPublicMemoNoticeText, isDark && styles.demoPublicMemoNoticeTextDark]} maxFontSizeMultiplier={1.08}>
+                        🌐 此生活記事將發布至「全台示範看板」，歡迎分享您的體驗心得與即時互動！
+                      </Text>
+                    </View>
+                  )}
 
                   {/* 🛠️ 輸入框常駐編輯操作列 (待辦 / 標籤 / 範本快選 / 📷 純圖示拍照選圖) */}
                   <View style={styles.memoEditorToolbar}>
@@ -2637,6 +2683,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                           if (!quota.canPin) {
                             Alert.alert('全家置頂已達上限', `${quota.errorMessage}\n切換為全家共享後已自動取消置頂。`);
                             setMemoIsPinned(false);
+      setIsDemoPublicMemo(false);
                           }
                         }
                         setMemoReminderTarget('family');
@@ -2668,6 +2715,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                           if (!quota.canPin) {
                             Alert.alert('個人置頂已達上限', `${quota.errorMessage}\n切換為個人專屬後已自動取消置頂。`);
                             setMemoIsPinned(false);
+      setIsDemoPublicMemo(false);
                           }
                         }
                         setMemoReminderTarget('personal');
@@ -7582,5 +7630,27 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   },
   methodChipCompactIcon: {
     fontSize: 13,
+  },
+  demoPublicMemoNotice: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  demoPublicMemoNoticeDark: {
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+    borderColor: 'rgba(59, 130, 246, 0.35)',
+  },
+  demoPublicMemoNoticeText: {
+    fontSize: 12,
+    color: '#1D4ED8',
+    lineHeight: 16,
+  },
+  demoPublicMemoNoticeTextDark: {
+    color: '#93C5FD',
   },
 });

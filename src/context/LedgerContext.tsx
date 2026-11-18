@@ -3442,6 +3442,35 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (missingTxs.length > 0) {
           finalTx = [...missingTxs, ...finalTx];
         }
+
+        // 🌐 示範家庭全台看板迴響：同步雲端最新公開留言與互動
+        if (isConfigured) {
+          try {
+            const { data: cloudDemoTxs } = await supabase
+              .from('transactions')
+              .select('*')
+              .eq('ledger_id', SWEETHOME_LEDGER_ID)
+              .order('transacted_at', { ascending: false })
+              .limit(50);
+            if (cloudDemoTxs && cloudDemoTxs.length > 0) {
+              const transformedCloud = cloudDemoTxs.map(transformSingleTx);
+              const localMap = new Map(finalTx.map(t => [t.id, t]));
+              for (const cTx of transformedCloud) {
+                if (!localMap.has(cTx.id)) {
+                  finalTx.push(cTx);
+                } else {
+                  const local = localMap.get(cTx.id)!;
+                  if (cTx.updated_at && (!local.updated_at || new Date(cTx.updated_at) > new Date(local.updated_at))) {
+                    Object.assign(local, cTx);
+                  }
+                }
+              }
+            }
+          } catch (demoSyncErr) {
+            console.warn('同步示範看板雲端留言失敗 (不影響離線體驗):', demoSyncErr);
+          }
+        }
+
         persistTransactionsCache(finalTx, SWEETHOME_LEDGER_ID).catch(() => {});
       }
       if (finalTx.length === 0) {
@@ -5455,18 +5484,22 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // 手動 / 前景重新整理當前帳本完整資料
   const refreshLedger = async () => {
-    if (isConfigured && currentLedger && !isDemoLedgerId(currentLedger.id)) {
+    if (isConfigured && currentLedger) {
       try {
-        // 離線佇列掛載 3 秒超時防護，即使離線網路抖動亦絕不卡死下拉轉圈
-        await Promise.race([
-          processOfflineQueue(),
-          new Promise(resolve => setTimeout(resolve, 3000)),
-        ]);
+        if (!isDemoLedgerId(currentLedger.id)) {
+          // 離線佇列掛載 3 秒超時防護，即使離線網路抖動亦絕不卡死下拉轉圈
+          await Promise.race([
+            processOfflineQueue(),
+            new Promise(resolve => setTimeout(resolve, 3000)),
+          ]);
+        }
         const { data: { session } } = await supabase.auth.getSession();
         const authUserId = session?.user?.id || currentUser?.id || '';
         await Promise.all([
           loadLedgerData(currentLedger, authUserId),
-          loadBudgetRef.current && currentLedger?.id ? loadBudgetRef.current(currentLedger.id) : Promise.resolve(),
+          (!isDemoLedgerId(currentLedger.id) && loadBudgetRef.current && currentLedger?.id)
+            ? loadBudgetRef.current(currentLedger.id)
+            : Promise.resolve(),
         ]);
       } catch (err) {
         console.warn('重新整理帳本資料失敗:', err);
@@ -7458,7 +7491,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     // 樂觀更新本地畫面（預先標記 _isPendingSync，確保在收到雲端成功回執前若重新整理頁面絕不遺失）
-    const isOnlinePublishing = isConfigured && isCloudSynced && !isDemoLedgerId(newTx.ledger_id);
+    const isDemoPublic = isDemoLedgerId(currentLedger.id) && Boolean((data as any).is_demo_public);
+    if (isDemoPublic) {
+      (newTx as any).is_demo_public = true;
+    }
+    const isOnlinePublishing = (isConfigured && isCloudSynced && !isDemoLedgerId(newTx.ledger_id)) || (isConfigured && isDemoPublic);
     (newTx as any)._isPendingSync = true;
     const currentTxList = transactionsRef.current && transactionsRef.current.length > 0 ? transactionsRef.current : transactions;
     const updated = [newTx, ...currentTxList.filter(t => t.id !== newTx.id)];
@@ -8626,7 +8663,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
       }
 
-      if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
+      const isDemoPublicTx = isDemoLedgerId(currentLedger.id) && (
+        targetTx?.note?.includes('#訪客留言') ||
+        (data.note && data.note.includes('#訪客留言')) ||
+        (targetTx?.merchant && targetTx.merchant.startsWith('💌')) ||
+        Boolean((targetTx as any)?.is_demo_public)
+      );
+
+      if (isConfigured && (!isDemoLedgerId(currentLedger.id) || isDemoPublicTx)) {
         const updatePayload: any = {};
         if (data.amount !== undefined) updatePayload.amount = isTargetMemo ? 0 : data.amount;
         if (data.type !== undefined) updatePayload.type = data.type;
@@ -8829,8 +8873,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         }
 
-        // 3. 若所有線上通道仍未成功更新 (如完全離線)，排入離線隊列稍後補傳
-        if (error || rowsAffected === 0) {
+        // 3. 若所有線上通道仍未成功更新 (如完全離線)，且非示範體驗帳本時，排入離線隊列稍後補傳
+        if (!isDemoLedgerId(currentLedger.id) && (error || rowsAffected === 0)) {
           console.warn('雲端更新交易失敗或受影響筆數為 0，已排入離線隊列稍後補傳:', error || '0 rows updated');
           const cleanQueuePayload = cleanTransactionForSync(updatePayload);
           delete cleanQueuePayload.id;
