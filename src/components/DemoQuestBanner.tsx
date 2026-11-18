@@ -21,6 +21,9 @@ export interface DemoQuestBannerProps {
   activeTab?: string;
   currentUser?: Profile;
   members?: Profile[];
+  isInputModalOpen?: boolean;
+  completedQuestIdsOverride?: string[];
+  onMarkQuestCompleted?: (questId: string) => void;
   onSwitchMember?: (member: Profile) => void;
   onEditName: () => void;
   onAddExpense: () => void;
@@ -34,7 +37,7 @@ export interface DemoQuestBannerProps {
   onResetDemo: () => void;
 }
 
-const STORAGE_KEY_QUESTS = '@sweethome_completed_quests';
+export const STORAGE_KEY_QUESTS = '@sweethome_completed_quests';
 
 interface QuestItem {
   id: string;
@@ -50,6 +53,9 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
   activeTab,
   currentUser,
   members,
+  isInputModalOpen = false,
+  completedQuestIdsOverride,
+  onMarkQuestCompleted,
   onSwitchMember,
   onEditName,
   onAddExpense,
@@ -62,11 +68,13 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
   onCreateLedger,
   onResetDemo,
 }) => {
-  const [completedQuestIds, setCompletedQuestIds] = useState<string[]>([]);
+  const [internalCompletedQuestIds, setInternalCompletedQuestIds] = useState<string[]>([]);
+  const completedQuestIds = completedQuestIdsOverride || internalCompletedQuestIds;
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [prevActiveTab, setPrevActiveTab] = useState(activeTab);
   const [showCelebration, setShowCelebration] = useState(false);
   const [hasShownCelebration, setHasShownCelebration] = useState(false);
+  const [pendingCelebration, setPendingCelebration] = useState(false);
   const [showPhilosophyModal, setShowPhilosophyModal] = useState(false);
 
   // 任務卡片滾動導航與左右切換狀態
@@ -114,7 +122,7 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
         try {
           const parsed = JSON.parse(val);
           if (Array.isArray(parsed)) {
-            setCompletedQuestIds(parsed);
+            setInternalCompletedQuestIds(parsed);
             // 若 8 項任務皆已通關，預設自動折疊收合，避免畫面過長遮擋內容
             if (parsed.length >= 8) {
               setIsCollapsed(true);
@@ -127,14 +135,31 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
     });
   }, []);
 
+  // 🛡️ 全局防遮擋保護：當主要表單彈窗關閉且存在待跳出的慶祝通知時，在首頁優雅呈現
+  useEffect(() => {
+    if (!isInputModalOpen && pendingCelebration && !hasShownCelebration) {
+      setPendingCelebration(false);
+      setShowCelebration(true);
+      setHasShownCelebration(true);
+    }
+  }, [isInputModalOpen, pendingCelebration, hasShownCelebration]);
+
   const markQuestCompleted = async (questId: string) => {
-    setCompletedQuestIds((prev) => {
+    if (onMarkQuestCompleted) {
+      onMarkQuestCompleted(questId);
+    }
+    setInternalCompletedQuestIds((prev) => {
       if (prev.includes(questId)) return prev;
       const updated = [...prev, questId];
       AsyncStorage.setItem(STORAGE_KEY_QUESTS, JSON.stringify(updated));
-      if (updated.length === 8 && !hasShownCelebration) {
-        setShowCelebration(true);
-        setHasShownCelebration(true);
+      if (updated.length >= 8 && !hasShownCelebration) {
+        if (isInputModalOpen) {
+          // 🛡️ 畫面上仍有主要操作彈窗，暫緩慶祝，待彈窗關閉回首頁才彈出
+          setPendingCelebration(true);
+        } else {
+          setShowCelebration(true);
+          setHasShownCelebration(true);
+        }
       }
       return updated;
     });
@@ -200,7 +225,13 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
       title: '試玩慢箋接力提醒',
       desc: '阿公降血壓藥打勾辦妥，親睹粉紫泡泡自動推算接力',
       actionText: '去打勾',
-      action: () => handleQuestAction('quest_relay_memo', () => (onOpenRelayMemo ? onOpenRelayMemo() : onOpenMemos())),
+      action: () => {
+        if (completedQuestIds.includes('quest_relay_memo')) {
+          handleQuestAction('quest_relay_memo', () => (onOpenRelayMemo ? onOpenRelayMemo() : onOpenMemos()));
+        } else {
+          onOpenRelayMemo ? onOpenRelayMemo() : onOpenMemos();
+        }
+      },
     },
     {
       id: 'quest_public_memo',
@@ -208,7 +239,13 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
       title: '發布全台看板留言',
       desc: '在迎賓留言板留下試用心得，或發布生活記事至全台看板',
       actionText: '寫留言',
-      action: () => handleQuestAction('quest_public_memo', () => (onOpenPublicMemo ? onOpenPublicMemo() : onAddExpense())),
+      action: () => {
+        if (completedQuestIds.includes('quest_public_memo')) {
+          handleQuestAction('quest_public_memo', () => (onOpenPublicMemo ? onOpenPublicMemo() : onAddExpense()));
+        } else {
+          onOpenPublicMemo ? onOpenPublicMemo() : onAddExpense();
+        }
+      },
     },
   ];
 
@@ -227,7 +264,8 @@ export const DemoQuestBanner: React.FC<DemoQuestBannerProps> = ({
       '確定要重置示範資料嗎？您剛才在本機測試輸入的紀錄將被清除，並重新還原為乾淨的標準示範帳本。',
       async () => {
         await AsyncStorage.removeItem(STORAGE_KEY_QUESTS);
-        setCompletedQuestIds([]);
+        setInternalCompletedQuestIds([]);
+        setPendingCelebration(false);
         setHasShownCelebration(false);
         setIsCollapsed(false);
         onResetDemo();

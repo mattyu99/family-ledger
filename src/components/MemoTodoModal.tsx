@@ -49,6 +49,7 @@ interface MemoTodoModalProps {
   onEditMemo: (tx: Transaction) => void;
   onAddMemo: () => void;
   onCompleteMemo?: (tx: Transaction) => void;
+  focusMemoId?: string | null;
 }
 
 export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
@@ -57,6 +58,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
   onEditMemo,
   onAddMemo,
   onCompleteMemo,
+  focusMemoId,
 }) => {
   const { isDark, colors } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
@@ -82,6 +84,12 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
   const [scrollPillText, setScrollPillText] = useState<string>('');
   const [scrollPillOpacity] = useState(() => new Animated.Value(0));
   const scrollPillTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (visible && focusMemoId) {
+      setLastViewedMemoId(focusMemoId);
+    }
+  }, [visible, focusMemoId]);
 
   useEffect(() => {
     if (lastViewedMemoId) {
@@ -218,20 +226,34 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
 
   // 當前分頁顯示之項目清單
   const displayList = useMemo(() => {
+    let list: Transaction[] = [];
     switch (activeTab) {
       case 'today':
-        return todayAndOverdueMemos;
+        list = todayAndOverdueMemos;
+        break;
       case 'upcoming':
-        return upcomingMemos;
+        list = upcomingMemos;
+        break;
       case 'undated':
-        return undatedMemos;
+        list = undatedMemos;
+        break;
       case 'completed':
-        return completedMemos;
+        list = completedMemos;
+        break;
       case 'all':
       default:
-        return activeMemos;
+        list = activeMemos;
+        break;
     }
-  }, [activeTab, todayAndOverdueMemos, upcomingMemos, undatedMemos, completedMemos, activeMemos]);
+    // 🎯 任務導引焦點置頂：若指定了目標記事 ID 且非已辦妥分頁，直接將該記事排在清單最第 1 位
+    if (focusMemoId && activeTab !== 'completed') {
+      const focusItem = list.find(m => m.id === focusMemoId);
+      if (focusItem) {
+        return [focusItem, ...list.filter(m => m.id !== focusMemoId)];
+      }
+    }
+    return list;
+  }, [activeTab, todayAndOverdueMemos, upcomingMemos, undatedMemos, completedMemos, activeMemos, focusMemoId]);
 
   // 計算距今天數狀態
   const getDueStatus = (item: Transaction) => {

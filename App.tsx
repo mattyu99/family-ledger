@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import * as Updates from 'expo-updates';
 import * as QuickActions from 'expo-quick-actions';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { FontSizeProvider } from './src/theme/FontSizeContext';
@@ -76,7 +77,7 @@ import { CloudLedgerManagerModal } from './src/components/CloudLedgerManagerModa
 import { ImageViewerModal } from './src/components/ImageViewerModal';
 import { LiveToastBanner } from './src/components/LiveToastBanner';
 import { AppLockOverlay } from './src/components/AppLockOverlay';
-import { DemoQuestBanner } from './src/components/DemoQuestBanner';
+import { DemoQuestBanner, STORAGE_KEY_QUESTS } from './src/components/DemoQuestBanner';
 import { getLatestDrawnPeriodKey } from './src/lib/invoice';
 import { computeGroupOrderSummary, generateGroupOrderSettlementNote, getGroupOrderSettlementStats } from './src/lib/groupOrder';
 
@@ -380,9 +381,34 @@ const AppContent: React.FC = () => {
 
   // 生活記事待辦狀態
   const [memoTodoModalVisible, setMemoTodoModalVisible] = useState(false);
+  const [memoTodoFocusMemoId, setMemoTodoFocusMemoId] = useState<string | null>(null);
+  const [completedDemoQuestIds, setCompletedDemoQuestIds] = useState<string[]>([]);
   const [completingMemo, setCompletingMemo] = useState<Transaction | null>(null);
   const [completionTempNote, setCompletionTempNote] = useState<string>('');
   const [completionTempCompleter, setCompletionTempCompleter] = useState<string>('');
+
+  // 載入示範任務完成狀態
+  useEffect(() => {
+    if (isDemoLedger) {
+      AsyncStorage.getItem(STORAGE_KEY_QUESTS).then((val: string | null) => {
+        if (val) {
+          try {
+            const parsed = JSON.parse(val);
+            if (Array.isArray(parsed)) setCompletedDemoQuestIds(parsed);
+          } catch {}
+        }
+      });
+    }
+  }, [isDemoLedger]);
+
+  const handleMarkQuestCompleted = useCallback((questId: string) => {
+    setCompletedDemoQuestIds(prev => {
+      if (prev.includes(questId)) return prev;
+      const next = [...prev, questId];
+      AsyncStorage.setItem(STORAGE_KEY_QUESTS, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
 
   const availableMonths = useMemo(() => {
     const monthMap = new Map<string, number>();
@@ -927,6 +953,17 @@ const AppContent: React.FC = () => {
             activeTab={activeTab}
             currentUser={currentUser}
             members={members}
+            isInputModalOpen={
+              modalVisible ||
+              memoTodoModalVisible ||
+              editMemberModalVisible ||
+              invoiceLotteryModalVisible ||
+              recurringModalVisible ||
+              reconcileModalVisible ||
+              createLedgerModalVisible
+            }
+            completedQuestIdsOverride={completedDemoQuestIds}
+            onMarkQuestCompleted={handleMarkQuestCompleted}
             onSwitchMember={async (m) => {
               const res = await switchCurrentUser(m);
               if (res.success) {
@@ -956,7 +993,10 @@ const AppContent: React.FC = () => {
             }}
             onOpenReconciliation={() => openReconcileModalForCurrentFilter('credit_card')}
             onOpenMemos={() => setMemoTodoModalVisible(true)}
-            onOpenRelayMemo={() => setMemoTodoModalVisible(true)}
+            onOpenRelayMemo={() => {
+              setMemoTodoFocusMemoId('ee400000-0000-4000-8000-000000000036');
+              setMemoTodoModalVisible(true);
+            }}
             onOpenPublicMemo={() => {
               setModalMode('memo');
               setModalDefaultDemoPublicMemo(true);
@@ -966,7 +1006,10 @@ const AppContent: React.FC = () => {
               setModalVisible(true);
             }}
             onCreateLedger={() => setCreateLedgerModalVisible(true)}
-            onResetDemo={() => resetDemoLedger()}
+            onResetDemo={() => {
+              setCompletedDemoQuestIds([]);
+              resetDemoLedger();
+            }}
           />
         )}
 
@@ -1212,6 +1255,9 @@ const AppContent: React.FC = () => {
         resetKey={modalResetKey}
         defaultDemoPublicMemo={modalDefaultDemoPublicMemo}
         onSuccess={() => {
+          if (isDemoLedger) {
+            handleMarkQuestCompleted('quest_public_memo');
+          }
           setCompletingMemo(null);
           setCompletionTempNote('');
           setCompletionTempCompleter('');
@@ -1282,10 +1328,15 @@ const AppContent: React.FC = () => {
 
       <MemoTodoModal
         visible={memoTodoModalVisible && !completingMemo && !modalVisible && !editingTransaction}
-        onClose={() => setMemoTodoModalVisible(false)}
+        focusMemoId={memoTodoFocusMemoId}
+        onClose={() => {
+          setMemoTodoModalVisible(false);
+          setMemoTodoFocusMemoId(null);
+        }}
         onEditMemo={(tx) => setEditingTransaction(tx)}
         onAddMemo={() => {
           setMemoTodoModalVisible(false);
+          setMemoTodoFocusMemoId(null);
           setModalDefaultPayerId(undefined);
           setModalDefaultNote(undefined);
           setModalLinkedMemoId(undefined);

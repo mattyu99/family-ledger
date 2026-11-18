@@ -9234,6 +9234,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ...(shouldUpdateReminder ? { reminder_date: nextRelayDate } : {}),
     };
 
+    // 🎮 示範帳本新手任務連動：試玩阿公慢箋打勾辦妥時，自動標記任務 7 通關
+    if (transactionId === 'ee400000-0000-4000-8000-000000000036' || targetTx.merchant?.includes('慢箋')) {
+      AsyncStorage.getItem('@sweethome_completed_quests').then(raw => {
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(parsed) && !parsed.includes('quest_relay_memo')) {
+          AsyncStorage.setItem('@sweethome_completed_quests', JSON.stringify([...parsed, 'quest_relay_memo'])).catch(() => {});
+        }
+      }).catch(() => {});
+    }
+
     return updateTransaction(transactionId, updates);
   }, [transactions, updateTransaction]);
 
