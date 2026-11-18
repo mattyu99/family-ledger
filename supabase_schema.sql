@@ -198,6 +198,11 @@ ALTER TABLE public.ledger_invites ENABLE ROW LEVEL SECURITY;
 CREATE OR REPLACE FUNCTION public.is_ledger_member(target_ledger_id UUID)
 RETURNS BOOLEAN AS $$
 BEGIN
+  -- 官方示範帳本 (SWEETHOME) 允許訪客暢快試玩體驗
+  IF target_ledger_id = '00000000-0000-4000-8000-000000000001'::uuid THEN
+    RETURN TRUE;
+  END IF;
+
   RETURN EXISTS (
     SELECT 1 FROM public.ledger_members
     WHERE ledger_id = target_ledger_id AND user_id = auth.uid()
@@ -224,7 +229,12 @@ CREATE POLICY "Anyone can insert profiles" ON public.profiles FOR INSERT WITH CH
 
 DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 DROP POLICY IF EXISTS "Anyone can update profiles" ON public.profiles;
-CREATE POLICY "Anyone can update profiles" ON public.profiles FOR UPDATE USING (true);
+CREATE POLICY "Anyone can update profiles" ON public.profiles 
+  FOR UPDATE USING (
+    id = auth.uid() 
+    OR (auth_email IS NOT NULL AND lower(auth_email) = lower(coalesce(auth.jwt() ->> 'email', '')))
+    OR NOT is_locked
+  );
 
 -- Ledgers 規則：只有成員與建立者能看自己參與的帳本
 DROP POLICY IF EXISTS "Members can view their ledgers" ON public.ledgers;
@@ -261,7 +271,7 @@ CREATE POLICY "Users can leave ledger" ON public.ledger_members FOR DELETE
 -- Categories 規則
 DROP POLICY IF EXISTS "Members can view categories" ON public.categories;
 CREATE POLICY "Members can view categories" ON public.categories FOR SELECT 
-  USING (ledger_id IS NULL OR public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+  USING (ledger_id IS NULL OR public.is_ledger_member(ledger_id));
 
 DROP POLICY IF EXISTS "Members can manage categories" ON public.categories;
 CREATE POLICY "Members can manage categories" ON public.categories FOR ALL 
@@ -270,7 +280,7 @@ CREATE POLICY "Members can manage categories" ON public.categories FOR ALL
 -- Transactions 規則：只有成員能看與增修帳目
 DROP POLICY IF EXISTS "Members can view transactions" ON public.transactions;
 CREATE POLICY "Members can view transactions" ON public.transactions FOR SELECT 
-  USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+  USING (public.is_ledger_member(ledger_id));
 
 DROP POLICY IF EXISTS "Members can insert transactions" ON public.transactions;
 CREATE POLICY "Members can insert transactions" ON public.transactions FOR INSERT 
@@ -287,11 +297,10 @@ CREATE POLICY "Members can delete transactions" ON public.transactions FOR DELET
 -- Payment Accounts 規則：只有成員能看與增修卡片帳戶
 DROP POLICY IF EXISTS "Members can view payment accounts" ON public.payment_accounts;
 CREATE POLICY "Members can view payment accounts" ON public.payment_accounts FOR SELECT 
-  USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+  USING (public.is_ledger_member(ledger_id));
 
 DROP POLICY IF EXISTS "Members can manage payment accounts" ON public.payment_accounts;
 CREATE POLICY "Members can manage payment accounts" ON public.payment_accounts FOR ALL 
-  USING (public.is_ledger_member(ledger_id));
   USING (public.is_ledger_member(ledger_id));
 
 -- Splits 規則
@@ -758,24 +767,15 @@ ALTER TABLE public.deleted_transactions ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "帳本成員可檢視墓碑名單" ON public.deleted_transactions;
 CREATE POLICY "帳本成員可檢視墓碑名單" ON public.deleted_transactions
-    FOR SELECT USING (
-        ledger_id IN (SELECT ledger_id FROM public.ledger_members WHERE user_id = auth.uid())
-        OR auth.role() = 'anon'
-    );
+    FOR SELECT USING (public.is_ledger_member(ledger_id));
 
 DROP POLICY IF EXISTS "帳本成員可記錄刪除墓碑" ON public.deleted_transactions;
 CREATE POLICY "帳本成員可記錄刪除墓碑" ON public.deleted_transactions
-    FOR INSERT WITH CHECK (
-        ledger_id IN (SELECT ledger_id FROM public.ledger_members WHERE user_id = auth.uid())
-        OR auth.role() = 'anon'
-    );
+    FOR INSERT WITH CHECK (public.is_ledger_member(ledger_id));
 
 DROP POLICY IF EXISTS "帳本成員可刪除墓碑(還原備份用)" ON public.deleted_transactions;
 CREATE POLICY "帳本成員可刪除墓碑(還原備份用)" ON public.deleted_transactions
-    FOR DELETE USING (
-        ledger_id IN (SELECT ledger_id FROM public.ledger_members WHERE user_id = auth.uid())
-        OR auth.role() = 'anon'
-    );
+    FOR DELETE USING (public.is_ledger_member(ledger_id));
 
 -- 1. 當 transactions 有資料被刪除時，自動寫入 deleted_transactions 墓碑表
 CREATE OR REPLACE FUNCTION public.log_transaction_deletion()
@@ -845,19 +845,19 @@ ALTER TABLE public.recurring_rules ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "成員可讀取所屬帳本的週期規則" ON public.recurring_rules;
 CREATE POLICY "成員可讀取所屬帳本的週期規則" ON public.recurring_rules
-    FOR SELECT USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+    FOR SELECT USING (public.is_ledger_member(ledger_id));
 
 DROP POLICY IF EXISTS "成員可新增所屬帳本的週期規則" ON public.recurring_rules;
 CREATE POLICY "成員可新增所屬帳本的週期規則" ON public.recurring_rules
-    FOR INSERT WITH CHECK (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+    FOR INSERT WITH CHECK (public.is_ledger_member(ledger_id));
 
 DROP POLICY IF EXISTS "成員可更新所屬帳本的週期規則" ON public.recurring_rules;
 CREATE POLICY "成員可更新所屬帳本的週期規則" ON public.recurring_rules
-    FOR UPDATE USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+    FOR UPDATE USING (public.is_ledger_member(ledger_id));
 
 DROP POLICY IF EXISTS "成員可刪除所屬帳本的週期規則" ON public.recurring_rules;
 CREATE POLICY "成員可刪除所屬帳本的週期規則" ON public.recurring_rules
-    FOR DELETE USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+    FOR DELETE USING (public.is_ledger_member(ledger_id));
 
 -- 確保 Realtime 事件可用
 ALTER TABLE public.recurring_rules REPLICA IDENTITY FULL;
@@ -896,7 +896,7 @@ DROP POLICY IF EXISTS "成員可管理所屬帳本的裝置" ON public.member_de
 
 CREATE POLICY "成員可管理所屬帳本的裝置" ON public.member_devices
     FOR ALL
-    USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+    USING (public.is_ledger_member(ledger_id));
 
 -- 確保 Realtime 事件可用
 ALTER TABLE public.member_devices REPLICA IDENTITY FULL;
@@ -937,10 +937,10 @@ CREATE INDEX IF NOT EXISTS idx_profiles_claim_code ON public.profiles(claim_code
 -- 支援 Web 網頁版與手機端同時無障礙盤點、穿透讀取、一鍵清理無用空帳本
 -- ==============================================================================
 
--- 10.1 允許全域讀取帳本基本資訊 (支援 Web 與 Mobile 雲端帳本總管列表顯示)
+-- 10.1 允許成員讀取所屬帳本基本資訊
 DROP POLICY IF EXISTS "Members can view their ledgers" ON public.ledgers;
 CREATE POLICY "Members can view their ledgers" ON public.ledgers FOR SELECT 
-  USING (public.is_ledger_member(id) OR auth.role() = 'anon' OR auth.role() = 'authenticated');
+  USING (public.is_ledger_member(id));
 
 -- 10.2 高效能盤點全體雲端帳本現況與用量統計之 SECURITY DEFINER 函式
 CREATE OR REPLACE FUNCTION public.get_all_cloud_ledgers_summary()
@@ -1017,12 +1017,42 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.get_all_cloud_ledgers_summary() TO anon, authenticated;
 
--- 10.3 管理員自雲端抹除指定帳本之 RPC 函式 (CASCADE 級聯刪除關聯成員與明細)
-CREATE OR REPLACE FUNCTION public.delete_cloud_ledger_admin(target_ledger_id UUID)
+-- 10.3 管理員自雲端抹除指定帳本之 RPC 函式 (CASCADE 級聯刪除關聯成員與明細，嚴格限制建立者或 owner 管理員)
+CREATE OR REPLACE FUNCTION public.delete_cloud_ledger_admin(
+    target_ledger_id UUID,
+    p_admin_pin TEXT DEFAULT NULL
+)
 RETURNS JSONB AS $$
+DECLARE
+    v_is_authorized BOOLEAN := FALSE;
+    v_ledger RECORD;
 BEGIN
     IF target_ledger_id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'message', '帳本 ID 不得為空');
+    END IF;
+
+    SELECT * INTO v_ledger FROM public.ledgers WHERE id = target_ledger_id;
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'message', '找不到指定的帳本');
+    END IF;
+
+    -- 權限檢查 1：已登入建立者或 owner 成員
+    IF auth.uid() IS NOT NULL THEN
+        v_is_authorized := (v_ledger.created_by = auth.uid()) OR EXISTS (
+            SELECT 1 FROM public.ledger_members 
+            WHERE ledger_id = target_ledger_id AND user_id = auth.uid() AND role = 'owner'
+        );
+    END IF;
+
+    -- 權限檢查 2：管理員安全 PIN 碼
+    IF NOT v_is_authorized AND p_admin_pin IS NOT NULL AND v_ledger.admin_pin IS NOT NULL THEN
+        IF trim(p_admin_pin) = trim(v_ledger.admin_pin) THEN
+            v_is_authorized := TRUE;
+        END IF;
+    END IF;
+
+    IF NOT v_is_authorized THEN
+        RETURN jsonb_build_object('success', false, 'message', '無權限刪除此帳本：只有帳本建立者或具備 owner 權限之管理員可執行此操作');
     END IF;
 
     DELETE FROM public.ledgers WHERE id = target_ledger_id;
@@ -1031,7 +1061,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-GRANT EXECUTE ON FUNCTION public.delete_cloud_ledger_admin(UUID) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.delete_cloud_ledger_admin(UUID, TEXT) TO anon, authenticated;
 
 -- 10.4 管理員一鍵批量清理 0 成員 0 交易之無用幽靈帳本之 RPC 函式
 CREATE OR REPLACE FUNCTION public.batch_purge_ghost_ledgers_admin(ghost_ledger_ids UUID[])
@@ -1080,22 +1110,22 @@ ALTER TABLE public.payment_methods ENABLE ROW LEVEL SECURITY;
 -- 政策：所屬帳本成員皆可讀取自訂付款方式
 DROP POLICY IF EXISTS "成員可讀取所屬帳本的付款方式" ON public.payment_methods;
 CREATE POLICY "成員可讀取所屬帳本的付款方式" ON public.payment_methods
-    FOR SELECT USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+    FOR SELECT USING (public.is_ledger_member(ledger_id));
 
 -- 政策：所屬帳本成員皆可新增付款方式
 DROP POLICY IF EXISTS "成員可新增所屬帳本的付款方式" ON public.payment_methods;
 CREATE POLICY "成員可新增所屬帳本的付款方式" ON public.payment_methods
-    FOR INSERT WITH CHECK (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+    FOR INSERT WITH CHECK (public.is_ledger_member(ledger_id));
 
 -- 政策：所屬帳本成員皆可更新付款方式
 DROP POLICY IF EXISTS "成員可更新所屬帳本的付款方式" ON public.payment_methods;
 CREATE POLICY "成員可更新所屬帳本的付款方式" ON public.payment_methods
-    FOR UPDATE USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+    FOR UPDATE USING (public.is_ledger_member(ledger_id));
 
 -- 政策：所屬帳本成員皆可刪除付款方式
 DROP POLICY IF EXISTS "成員可刪除所屬帳本的付款方式" ON public.payment_methods;
 CREATE POLICY "成員可刪除所屬帳本的付款方式" ON public.payment_methods
-    FOR DELETE USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+    FOR DELETE USING (public.is_ledger_member(ledger_id));
 
 -- 確保 Realtime 事件可用
 ALTER TABLE public.payment_methods REPLICA IDENTITY FULL;
@@ -1125,22 +1155,22 @@ ALTER TABLE public.ledger_budgets ENABLE ROW LEVEL SECURITY;
 -- 政策：所屬帳本成員皆可讀取預算設定
 DROP POLICY IF EXISTS "成員可讀取所屬帳本的預算設定" ON public.ledger_budgets;
 CREATE POLICY "成員可讀取所屬帳本的預算設定" ON public.ledger_budgets
-    FOR SELECT USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+    FOR SELECT USING (public.is_ledger_member(ledger_id));
 
 -- 政策：所屬帳本成員皆可新增預算設定
 DROP POLICY IF EXISTS "成員可新增所屬帳本的預算設定" ON public.ledger_budgets;
 CREATE POLICY "成員可新增所屬帳本的預算設定" ON public.ledger_budgets
-    FOR INSERT WITH CHECK (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+    FOR INSERT WITH CHECK (public.is_ledger_member(ledger_id));
 
 -- 政策：所屬帳本成員皆可更新預算設定
 DROP POLICY IF EXISTS "成員可更新所屬帳本的預算設定" ON public.ledger_budgets;
 CREATE POLICY "成員可更新所屬帳本的預算設定" ON public.ledger_budgets
-    FOR UPDATE USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+    FOR UPDATE USING (public.is_ledger_member(ledger_id));
 
 -- 政策：所屬帳本成員皆可刪除預算設定
 DROP POLICY IF EXISTS "成員可刪除所屬帳本的預算設定" ON public.ledger_budgets;
 CREATE POLICY "成員可刪除所屬帳本的預算設定" ON public.ledger_budgets
-    FOR DELETE USING (public.is_ledger_member(ledger_id) OR auth.role() = 'anon');
+    FOR DELETE USING (public.is_ledger_member(ledger_id));
 
 -- 確保 Supabase Realtime 完整推播所有欄位
 ALTER TABLE public.ledger_budgets REPLICA IDENTITY FULL;
