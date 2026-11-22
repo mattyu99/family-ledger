@@ -65,6 +65,8 @@ import {
   buildMemberAliasMap,
   mergePaymentMethods,
   isAccountBoundToUser,
+  isDemoMemberProfile,
+  isRealAuthEmail,
 } from '../lib/ledgerUtils';
 import { recordDemoTryoutSafely } from '../lib/demoAnalytics';
 
@@ -102,7 +104,110 @@ export {
   deduplicateMembers,
   buildMemberAliasMap,
   mergePaymentMethods,
+  isDemoMemberProfile,
+  isRealAuthEmail,
 } from '../lib/ledgerUtils';
+
+const mapLedgerMemberRowsToProfiles = (
+  memberRows: any[],
+  ledgerId: string,
+  creatorId?: string,
+  filterDemoLeaks = false
+): Profile[] => {
+  const isDemo = isDemoLedgerId(ledgerId);
+  return memberRows
+    .map((r: any) => {
+      if (!r?.profiles) return null;
+      const isThisCreator = creatorId === r.user_id;
+      const effectiveName = (r.custom_name || '').trim() || r.profiles.display_name || '家庭成員';
+      const effectiveAvatar = (r.custom_avatar || '').trim() || r.profiles.avatar_url || '👤';
+      if (
+        filterDemoLeaks &&
+        !isDemo &&
+        !isThisCreator &&
+        !r.profiles.is_locked &&
+        !isRealAuthEmail(r.profiles.auth_email) &&
+        isDemoMemberProfile({ id: r.user_id, display_name: effectiveName })
+      ) {
+        return null;
+      }
+      return {
+        ...r.profiles,
+        display_name: effectiveName,
+        avatar_url: effectiveAvatar,
+        custom_name: r.custom_name || null,
+        custom_avatar: r.custom_avatar || null,
+        role: isThisCreator ? 'owner' : (r.role || 'member'),
+      } as Profile;
+    })
+    .filter(Boolean) as Profile[];
+};
+
+const fetchLedgerMemberRowsWithFallback = async (ledgerId: string): Promise<any[] | null> => {
+  let memberRows: any[] | null = null;
+  const { data: clientRows, error: clientErr } = await supabase
+    .from('ledger_members')
+    .select('user_id, role, custom_name, custom_avatar, profiles(*)')
+    .eq('ledger_id', ledgerId);
+
+  if (!clientErr && clientRows && clientRows.length > 0) {
+    memberRows = clientRows;
+  } else if (clientErr?.message?.includes('custom_name')) {
+    const { data: legacyRows } = await supabase
+      .from('ledger_members')
+      .select('user_id, role, profiles(*)')
+      .eq('ledger_id', ledgerId);
+    if (legacyRows && legacyRows.length > 0) memberRows = legacyRows;
+  }
+
+  if ((!memberRows || memberRows.length === 0) && !isDemoLedgerId(ledgerId)) {
+    try {
+      const token = getStorageServiceToken();
+      const headers = { apikey: token, Authorization: `Bearer ${token}` };
+      let res = await fetch(
+        `${SUPABASE_URL}/rest/v1/ledger_members?ledger_id=eq.${encodeURIComponent(ledgerId)}&select=user_id,role,custom_name,custom_avatar,profiles(*)`,
+        { headers }
+      );
+      if (!res.ok) {
+        res = await fetch(
+          `${SUPABASE_URL}/rest/v1/ledger_members?ledger_id=eq.${encodeURIComponent(ledgerId)}&select=user_id,role,profiles(*)`,
+          { headers }
+        );
+      }
+      if (res.ok) {
+        const anonRows = await res.json();
+        if (Array.isArray(anonRows) && anonRows.length > 0) memberRows = anonRows;
+      }
+    } catch {}
+  }
+
+  return memberRows;
+};
+
+const removeGhostOrLeakedMemberFromCloud = async (
+  ledgerId: string,
+  targetUserId: string,
+  transferToId?: string,
+  operatorId?: string
+): Promise<void> => {
+  try {
+    const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_remove_member', {
+      p_ledger_id: ledgerId,
+      p_user_id: targetUserId,
+      p_transfer_to_id: transferToId || null,
+      p_operator_id: operatorId || transferToId || null,
+    });
+    if (!rpcErr && rpcRes && rpcRes.success !== false) {
+      return;
+    }
+  } catch {}
+
+  await supabase
+    .from('ledger_members')
+    .delete()
+    .eq('ledger_id', ledgerId)
+    .eq('user_id', targetUserId);
+};
 
 export interface LiveToastNotification {
   id: string;
@@ -1937,42 +2042,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               }
             }
 
-            let memberRows: any[] | null = null;
-            const { data: clientMemberRows } = await supabase
-              .from('ledger_members')
-              .select('user_id, role, profiles(*)')
-              .eq('ledger_id', ledgerId);
-
-            if (clientMemberRows && clientMemberRows.length > 0) {
-              memberRows = clientMemberRows;
-            } else if (!isDemoLedgerId(ledgerId)) {
-              try {
-                const token = getStorageServiceToken();
-                const res = await fetch(
-                  `${SUPABASE_URL}/rest/v1/ledger_members?ledger_id=eq.${encodeURIComponent(ledgerId)}&select=user_id,role,profiles(*)`,
-                  { headers: { apikey: token, Authorization: `Bearer ${token}` } }
-                );
-                if (res.ok) {
-                  const anonRows = await res.json();
-                  if (Array.isArray(anonRows) && anonRows.length > 0) memberRows = anonRows;
-                }
-              } catch {}
-            }
+            const memberRows = await fetchLedgerMemberRowsWithFallback(ledgerId);
 
             if (memberRows && memberRows.length > 0) {
-              const loadedMembers: Profile[] = memberRows
-                .map((r: any) => {
-                  if (!r.profiles) return null;
-                  const isThisCreator = currentLedger.created_by === r.user_id;
-                  return {
-                    ...r.profiles,
-                    role: isThisCreator ? 'owner' : (r.role || 'member'),
-                  };
-                })
-                .filter(Boolean);
+              const loadedMembers = mapLedgerMemberRowsToProfiles(
+                memberRows,
+                ledgerId,
+                currentLedger.created_by,
+                true
+              );
 
               setRawMembers(loadedMembers);
-              const dedupedMembers = deduplicateMembers(loadedMembers);
+              const dedupedMembers = deduplicateMembers(loadedMembers, currentLedger.created_by);
               const updatedAliasMap = buildMemberAliasMap(dedupedMembers, loadedMembers);
               setMemberAliasMap(updatedAliasMap);
               await AsyncStorage.setItem(STORAGE_KEYS.ALIAS_MAP, JSON.stringify(updatedAliasMap));
@@ -1984,20 +2065,27 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 await AsyncStorage.setItem(`${STORAGE_KEYS.MEMBERS}_${ledgerId}`, JSON.stringify(dedupedMembers));
               }
 
-              // 即時同步本機使用者之角色權限 (跨裝置同名身分自動對齊)
+              // 即時同步本機使用者之角色權限 (跨裝置同名或同信箱身分自動對齊)
               const { data: { session } } = await supabase.auth.getSession();
               const myAuthId = session?.user?.id;
-              if (myAuthId) {
-                const myRow = memberRows.find((r: any) => r.user_id === myAuthId);
-                const myName = ((myRow?.profiles as any)?.display_name || currentUser.display_name || '').trim().toLowerCase();
+              const myAuthEmail = isRealAuthEmail(currentUser.auth_email)
+                ? currentUser.auth_email!.trim().toLowerCase()
+                : '';
+              if (myAuthId || myAuthEmail) {
+                const myRow = myAuthId ? memberRows.find((r: any) => r.user_id === myAuthId) : undefined;
+                const myName = ((myRow?.custom_name || (myRow?.profiles as any)?.display_name || currentUser.display_name) || '').trim().toLowerCase();
                 const creatorRow = memberRows.find((r: any) => r.user_id === currentLedger.created_by);
-                const creatorName = ((creatorRow?.profiles as any)?.display_name || '').trim().toLowerCase();
-                const isMeCreator = currentLedger.created_by === myAuthId || Boolean(creatorName && myName && creatorName === myName);
+                const creatorName = ((creatorRow?.custom_name || (creatorRow?.profiles as any)?.display_name) || '').trim().toLowerCase();
+                const isMeCreator = (Boolean(myAuthId) && currentLedger.created_by === myAuthId) || Boolean(creatorName && myName && creatorName === myName);
                 const hasAdminByName = memberRows.some((r: any) => {
-                  const rName = ((r.profiles as any)?.display_name || '').trim().toLowerCase();
+                  const rName = ((r.custom_name || (r.profiles as any)?.display_name) || '').trim().toLowerCase();
                   return (r.role === 'owner' || r.role === 'admin' || r.user_id === currentLedger.created_by) && rName && rName === myName;
                 });
-                const isMeAdmin = isMeCreator || hasAdminByName || (myRow?.role === 'owner' || myRow?.role === 'admin');
+                const hasAdminByEmail = Boolean(myAuthEmail) && memberRows.some((r: any) => {
+                  const rEmail = ((r.profiles as any)?.auth_email || '').trim().toLowerCase();
+                  return (r.role === 'owner' || r.role === 'admin' || r.user_id === currentLedger.created_by) && rEmail === myAuthEmail;
+                });
+                const isMeAdmin = isMeCreator || hasAdminByName || hasAdminByEmail || (myRow?.role === 'owner' || myRow?.role === 'admin');
                 const newRole = isMeAdmin ? 'owner' : ((myRow?.role as 'owner' | 'admin' | 'member') || 'member');
                 setUserRole(newRole);
                 await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, newRole);
@@ -2018,42 +2106,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         async () => {
           // 當有成員資料（如大頭貼或暱稱）變更時，刷新成員名單
           try {
-            let memberRows: any[] | null = null;
-            const { data: clientMemberRows } = await supabase
-              .from('ledger_members')
-              .select('user_id, role, profiles(*)')
-              .eq('ledger_id', ledgerId);
-
-            if (clientMemberRows && clientMemberRows.length > 0) {
-              memberRows = clientMemberRows;
-            } else if (!isDemoLedgerId(ledgerId)) {
-              try {
-                const token = getStorageServiceToken();
-                const res = await fetch(
-                  `${SUPABASE_URL}/rest/v1/ledger_members?ledger_id=eq.${encodeURIComponent(ledgerId)}&select=user_id,role,profiles(*)`,
-                  { headers: { apikey: token, Authorization: `Bearer ${token}` } }
-                );
-                if (res.ok) {
-                  const anonRows = await res.json();
-                  if (Array.isArray(anonRows) && anonRows.length > 0) memberRows = anonRows;
-                }
-              } catch {}
-            }
+            const memberRows = await fetchLedgerMemberRowsWithFallback(ledgerId);
 
             if (memberRows && memberRows.length > 0) {
-              const loadedMembers: Profile[] = memberRows
-                .map((r: any) => {
-                  if (!r.profiles) return null;
-                  const isThisCreator = currentLedger.created_by === r.user_id;
-                  return {
-                    ...r.profiles,
-                    role: isThisCreator ? 'owner' : (r.role || 'member'),
-                  };
-                })
-                .filter(Boolean);
+              const loadedMembers = mapLedgerMemberRowsToProfiles(
+                memberRows,
+                ledgerId,
+                currentLedger.created_by,
+                true
+              );
 
               setRawMembers(loadedMembers);
-              const dedupedMembers = deduplicateMembers(loadedMembers);
+              const dedupedMembers = deduplicateMembers(loadedMembers, currentLedger.created_by);
               const updatedAliasMap = buildMemberAliasMap(dedupedMembers, loadedMembers);
               setMemberAliasMap(updatedAliasMap);
               await AsyncStorage.setItem(STORAGE_KEYS.ALIAS_MAP, JSON.stringify(updatedAliasMap));
@@ -2763,15 +2827,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (activeMemberRows.length === 0 && !isDemoLedgerId(targetLedger.id)) {
       try {
         const token = getStorageServiceToken();
-        const res = await fetch(
-          `${SUPABASE_URL}/rest/v1/ledger_members?ledger_id=eq.${targetLedger.id}&select=user_id,role,profiles(*)`,
-          {
-            headers: {
-              apikey: token,
-              Authorization: `Bearer ${token}`,
-            },
-          }
+        const headers = { apikey: token, Authorization: `Bearer ${token}` };
+        let res = await fetch(
+          `${SUPABASE_URL}/rest/v1/ledger_members?ledger_id=eq.${targetLedger.id}&select=user_id,role,custom_name,custom_avatar,profiles(*)`,
+          { headers }
         );
+        if (!res.ok) {
+          res = await fetch(
+            `${SUPABASE_URL}/rest/v1/ledger_members?ledger_id=eq.${targetLedger.id}&select=user_id,role,profiles(*)`,
+            { headers }
+          );
+        }
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data) && data.length > 0) {
@@ -2802,22 +2868,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } catch {}
       loadedMembers = demoMembers;
     } else if (activeMemberRows && activeMemberRows.length > 0) {
-      loadedMembers = activeMemberRows
-        .map((r: any) => {
-          if (!r.profiles) return null;
-          const isThisCreator = targetLedger.created_by === r.user_id;
-          const effectiveName = (r.custom_name || '').trim() || r.profiles.display_name || '家庭成員';
-          const effectiveAvatar = (r.custom_avatar || '').trim() || r.profiles.avatar_url || '👤';
-          return {
-            ...r.profiles,
-            display_name: effectiveName,
-            avatar_url: effectiveAvatar,
-            custom_name: r.custom_name || null,
-            custom_avatar: r.custom_avatar || null,
-            role: isThisCreator ? 'owner' : (r.role || 'member'),
-          };
-        })
-        .filter(Boolean);
+      loadedMembers = mapLedgerMemberRowsToProfiles(activeMemberRows, targetLedger.id, targetLedger.created_by, false);
 
       // deduplicateMembers 會在記憶體中自動整併 Google OAuth 影子紀錄至受保護稱謂（如「倉鼠」或「智爸」），名冊呈現始終純淨
     }
@@ -2830,7 +2881,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const localMembers: Profile[] = JSON.parse(localSavedMembersStr);
           const validLocals = localMembers.filter(lm =>
             isValidUUID(lm.id) &&
-            !lm.id.startsWith('20000000-0000-4000-8000') &&
+            !isDemoMemberProfile(lm) &&
             lm.id !== 'e6a2d1ec-3b2a-495f-b24e-71c2647d9a86' &&
             (lm.display_name || '').trim() !== '寶可夢'
           );
@@ -2851,62 +2902,66 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     setRawMembers(loadedMembers);
-    let dedupedMembers = deduplicateMembers(loadedMembers);
+    let dedupedMembers = deduplicateMembers(loadedMembers, targetLedger.created_by);
     let aliasMap = buildMemberAliasMap(dedupedMembers, loadedMembers);
     let canonicalMe: Profile | undefined = undefined;
 
     // 雲端幽靈成員自動自癒清理：若名冊中已存在具名自訂成員，但雲端仍殘留未命名的預設「家庭成員」假人，自動自雲端抹除
     if (isConfigured && !isDemoLedgerId(targetLedger.id) && dedupedMembers.length > 0) {
-      const ghostRows = activeMemberRows.filter((r: any) =>
-        r.profiles &&
-        ((r.profiles.display_name || '').trim() === '家庭成員' || (r.profiles.display_name || '').trim() === '') &&
-        r.user_id !== targetLedger.created_by
-      );
+      const ghostRows = activeMemberRows.filter((r: any) => {
+        if (!r.profiles || r.user_id === targetLedger.created_by) return false;
+        if (r.profiles.is_locked || isRealAuthEmail(r.profiles.auth_email)) return false;
+        const effectiveName = (r.custom_name || '').trim() || (r.profiles.display_name || '').trim();
+        return effectiveName === '家庭成員' || effectiveName === '';
+      });
       if (ghostRows.length > 0) {
         for (const ghost of ghostRows) {
-          supabase
-            .from('ledger_members')
-            .delete()
-            .eq('ledger_id', targetLedger.id)
-            .eq('user_id', ghost.user_id)
-            .then(
-              () => {
-                console.log(`[自癒] 已自雲端清理殘留之幽靈成員: ${ghost.user_id}`);
-              },
-              (err: any) => {
-                console.warn('[自癒] 雲端清理幽靈成員失敗:', err);
-              }
-            );
+          removeGhostOrLeakedMemberFromCloud(
+            targetLedger.id,
+            ghost.user_id,
+            targetLedger.created_by || undefined,
+            targetLedger.created_by || authUserId
+          ).then(
+            () => {
+              console.log(`[自癒] 已自雲端清理殘留之幽靈成員: ${ghost.user_id}`);
+            },
+            (err: any) => {
+              console.warn('[自癒] 雲端清理幽靈成員失敗:', err);
+            }
+          );
         }
       }
     }
 
-    // 🛡️ 示範成員防污染自癒防護：若在真實帳本中偵測到由示範帳本誤寫入之示範成員稱謂（例如「豆豆 (妹妹)」、「智爸 (爸爸)」），且該帳本已有正常自訂名冊，自動自真實帳本清理剔除
-    if (isConfigured && !isDemoLedgerId(targetLedger.id) && activeMemberRows && activeMemberRows.length > 0) {
-      const demoLeakRows = activeMemberRows.filter((r: any) =>
-        r.profiles &&
-        r.user_id !== targetLedger.created_by &&
-        (
+    // 🛡️ 示範成員防污染自癒防護：若在真實帳本中偵測到由示範帳本誤寫入之示範成員稱謂（例如「智爸 (爸爸)」、「豆豆 (妹妹)」），且該帳本已有正常自訂名冊，自動自真實帳本清理剔除
+    const hasRealNamedMembers = dedupedMembers.some(m => {
+      const n = (m.display_name || '').trim();
+      return n !== '' && n !== '家庭成員' && !isDemoMemberProfile(m);
+    });
+    if (isConfigured && !isDemoLedgerId(targetLedger.id) && activeMemberRows && activeMemberRows.length > 0 && hasRealNamedMembers) {
+      const demoLeakRows = activeMemberRows.filter((r: any) => {
+        if (!r.profiles || r.user_id === targetLedger.created_by) return false;
+        if (r.profiles.is_locked || isRealAuthEmail(r.profiles.auth_email)) return false;
+        const effectiveName = (r.custom_name || '').trim() || r.profiles.display_name || '';
+        return (
           SWEETHOME_MEMBERS.some(sm => sm.id === r.user_id) ||
-          ((r.profiles.display_name || '').trim() === '豆豆 (妹妹)' && dedupedMembers.some(m => (m.display_name || '').trim() === '豆豆')) ||
-          ((r.profiles.display_name || '').trim() === '洋洋 (哥哥)' && dedupedMembers.some(m => (m.display_name || '').trim() === '洋洋')) ||
-          ((r.profiles.display_name || '').trim() === '瑩媽 (媽媽)' && dedupedMembers.some(m => (m.display_name || '').trim() === '瑩媽'))
-        )
-      );
+          isDemoMemberProfile({ id: r.user_id, display_name: effectiveName })
+        );
+      });
       if (demoLeakRows.length > 0) {
         for (const leak of demoLeakRows) {
-          supabase
-            .from('ledger_members')
-            .delete()
-            .eq('ledger_id', targetLedger.id)
-            .eq('user_id', leak.user_id)
-            .then(
-              () => console.log(`[自癒] 已自真實帳本清理受污染之示範成員: ${leak.user_id}`),
-              (err: any) => console.warn('[自癒] 清理污染成員失敗:', err)
-            );
+          removeGhostOrLeakedMemberFromCloud(
+            targetLedger.id,
+            leak.user_id,
+            targetLedger.created_by || undefined,
+            targetLedger.created_by || authUserId
+          ).then(
+            () => console.log(`[自癒] 已自真實帳本清理受污染之示範成員: ${leak.user_id}`),
+            (err: any) => console.warn('[自癒] 清理污染成員失敗:', err)
+          );
         }
         loadedMembers = loadedMembers.filter(lm => !demoLeakRows.some((dl: any) => dl.user_id === lm.id));
-        dedupedMembers = deduplicateMembers(loadedMembers);
+        dedupedMembers = deduplicateMembers(loadedMembers, targetLedger.created_by);
         aliasMap = buildMemberAliasMap(dedupedMembers, loadedMembers);
       }
     }
@@ -3040,9 +3095,18 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
-      // 若未認領訪客，嚴禁發送 Supabase 提權更新
-      if (!isUnclaimedMember && role === 'owner' && myMemberRow && myMemberRow.role !== 'owner' && isConfigured && !isDemoLedgerId(targetLedger.id)) {
-        supabase.from('ledger_members').update({ role: 'owner' }).eq('ledger_id', targetLedger.id).eq('user_id', authUserId).then();
+      // 若未認領訪客，嚴禁發送 Supabase 提權更新；且僅同步實際匹配的成員列，絕不提權不相關的 authUserId
+      if (
+        !isUnclaimedMember &&
+        role === 'owner' &&
+        canonicalMe &&
+        myMemberRow &&
+        myMemberRow.user_id === canonicalMe.id &&
+        myMemberRow.role !== 'owner' &&
+        isConfigured &&
+        !isDemoLedgerId(targetLedger.id)
+      ) {
+        supabase.from('ledger_members').update({ role: 'owner' }).eq('ledger_id', targetLedger.id).eq('user_id', canonicalMe.id).then();
       }
 
       if (canonicalMe && role === 'owner' && !isUnclaimedMember) {
@@ -3059,7 +3123,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (canonicalMe) {
         const activeMe = canonicalMe;
         setCurrentUser(activeMe);
-        await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(activeMe));
+        if (!isDemoLedgerId(targetLedger.id)) {
+          await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(activeMe));
+        }
         // 關鍵：未認領身分絕不寫入該帳本專屬記憶快取！避免將未認領狀態或冒用狀態固化
         if (!isUnclaimedMember) {
           await AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${targetLedger.id}`, JSON.stringify(activeMe));
@@ -4530,7 +4596,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const savedUserStr = await AsyncStorage.getItem(STORAGE_KEYS.CURRENT_USER);
           if (savedUserStr) {
             const u = JSON.parse(savedUserStr);
-            if (u?.display_name && u.display_name.trim() !== '家庭成員') {
+            if (u?.display_name && u.display_name.trim() !== '家庭成員' && !isDemoMemberProfile(u)) {
               savedLocalName = u.display_name.trim();
               savedLocalAvatar = u.avatar_url;
             }
@@ -4558,8 +4624,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           };
           await supabase.from('profiles').upsert(myProfile);
         } else {
-          // 若 Profile 為預設「家庭成員」，且本地記有真實稱謂，自動洗淨修復為真實稱謂
-          if (existingProfile.display_name === '家庭成員' && savedLocalName) {
+          // 若 Profile 為預設「家庭成員」或曾受示範稱謂污染，且本地記有真實稱謂，自動洗淨修復為真實稱謂
+          if ((existingProfile.display_name === '家庭成員' || isDemoMemberProfile(existingProfile)) && savedLocalName) {
             existingProfile.display_name = savedLocalName;
             if (savedLocalAvatar) existingProfile.avatar_url = savedLocalAvatar;
             await supabase.from('profiles').update({
@@ -5817,6 +5883,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               window.history.replaceState({}, document.title, window.location.pathname);
 
               if (!upErr) {
+                if (currentSession?.user?.id && isRealAuthEmail(userEmail)) {
+                  supabase.rpc('link_session_to_email', {
+                    p_email: userEmail,
+                    p_session_uid: currentSession.user.id,
+                  }).then(() => {}, () => {});
+                }
                 // 本地同步更新 currentUser
                 setCurrentUser(prev => {
                   const updated: Profile = {
@@ -5854,7 +5926,21 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               window.history.replaceState({}, document.title, window.location.pathname);
 
               if (!claimErr && matchedProfiles && matchedProfiles.length > 0) {
-                const matched = matchedProfiles[0] as Profile;
+                const inCurrentLedger = (matchedProfiles as any[]).find((p: any) => members.some(m => m.id === p.id));
+                const realProfile = (matchedProfiles as any[]).find(
+                  (p: any) =>
+                    (p.display_name || '').trim() !== '家庭成員' &&
+                    (!p.avatar_url || (!p.avatar_url.startsWith('http://') && !p.avatar_url.startsWith('https://')))
+                );
+                const matched = (inCurrentLedger || realProfile || matchedProfiles[0]) as Profile;
+                if (currentSession?.user?.id && isRealAuthEmail(userEmail)) {
+                  try {
+                    await supabase.rpc('link_session_to_email', {
+                      p_email: userEmail,
+                      p_session_uid: currentSession.user.id,
+                    });
+                  } catch {}
+                }
                 await registerDevice(matched.id, currentLedger.id);
                 setCurrentUser(matched);
                 await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(matched));
@@ -6510,7 +6596,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setInviteCode(SWEETHOME_INVITE_CODE);
         setPendingInviteCode(null);
         setHasJoinedLedger(true);
-        await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(demoUser));
+        // 示範沙盒僅寫入 SWEETHOME 專屬記憶快取，絕不覆寫真實帳本共用的全域 CURRENT_USER
         await AsyncStorage.setItem(`${STORAGE_KEYS.CURRENT_USER}_${SWEETHOME_LEDGER_ID}`, JSON.stringify(demoUser));
         await AsyncStorage.setItem(STORAGE_KEYS.USER_ROLE, demoRole);
         await AsyncStorage.setItem(STORAGE_KEYS.INVITE_CODE, SWEETHOME_INVITE_CODE);

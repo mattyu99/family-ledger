@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase';
+import { isRealAuthEmail } from './ledgerUtils';
 
 export interface CloudLedgerMemberInfo {
   userId: string;
@@ -47,7 +48,8 @@ export interface CloudDatabaseQuota {
  */
 export function deduplicateCloudMembers(
   rawMembers: CloudLedgerMemberInfo[],
-  profileMap?: Map<string, any>
+  profileMap?: Map<string, any>,
+  creatorId?: string
 ): CloudLedgerMemberInfo[] {
   const cleanList = rawMembers
     .filter(m => {
@@ -74,8 +76,15 @@ export function deduplicateCloudMembers(
   const hasRealMembers = cleanList.some(m => m.displayName !== '家庭成員');
   const filteredList = hasRealMembers ? cleanList.filter(m => m.displayName !== '家庭成員') : cleanList;
 
-  // 排序：鎖定優先、Emoji頭像優先、管理者優先
+  // 排序：創建者優先、鎖定優先、Emoji頭像優先、管理者優先
   const sorted = [...filteredList].sort((a, b) => {
+    if (creatorId) {
+      const aCreator = a.userId === creatorId;
+      const bCreator = b.userId === creatorId;
+      if (aCreator && !bCreator) return -1;
+      if (!aCreator && bCreator) return 1;
+    }
+
     if (a.isLocked && !b.isLocked) return -1;
     if (!a.isLocked && b.isLocked) return 1;
 
@@ -91,19 +100,30 @@ export function deduplicateCloudMembers(
 
   const result: CloudLedgerMemberInfo[] = [];
   const seenNames = new Set<string>();
-  const seenEmails = new Set<string>();
+  const seenAuthEmails = new Set<string>();
+  const seenFallbackEmails = new Set<string>();
 
   for (const m of sorted) {
     const nameKey = m.displayName.toLowerCase();
-    const emailKey = (m.authEmail || m.email || '').trim().toLowerCase();
+    const authEmailKey = isRealAuthEmail(m.authEmail) ? m.authEmail!.trim().toLowerCase() : '';
+    const fallbackEmailKey = !authEmailKey ? (m.email || '').trim().toLowerCase() : '';
 
     let existing: CloudLedgerMemberInfo | undefined = undefined;
-    if (nameKey && seenNames.has(nameKey)) {
-      existing = result.find(r => r.displayName.toLowerCase() === nameKey);
-    } else if (emailKey && seenEmails.has(emailKey)) {
+    if (authEmailKey && seenAuthEmails.has(authEmailKey)) {
+      existing = result.find(
+        r => isRealAuthEmail(r.authEmail) && r.authEmail!.trim().toLowerCase() === authEmailKey
+      );
+    } else if (nameKey && seenNames.has(nameKey)) {
+      existing = result.find(r => {
+        if (r.displayName.toLowerCase() !== nameKey) return false;
+        const rAuth = isRealAuthEmail(r.authEmail) ? r.authEmail!.trim().toLowerCase() : '';
+        if (authEmailKey && rAuth && authEmailKey !== rAuth) return false;
+        return true;
+      });
+    } else if (fallbackEmailKey && seenFallbackEmails.has(fallbackEmailKey)) {
       existing = result.find(r => {
         const rEmail = (r.authEmail || r.email || '').trim().toLowerCase();
-        if (rEmail !== emailKey) return false;
+        if (rEmail !== fallbackEmailKey) return false;
         const mIsUrl = Boolean(m.avatarUrl && (m.avatarUrl.startsWith('http://') || m.avatarUrl.startsWith('https://')));
         const rIsUrl = Boolean(r.avatarUrl && (r.avatarUrl.startsWith('http://') || r.avatarUrl.startsWith('https://')));
         return (r.displayName.toLowerCase() === nameKey) || mIsUrl || rIsUrl;
@@ -112,11 +132,13 @@ export function deduplicateCloudMembers(
 
     if (!existing) {
       if (nameKey) seenNames.add(nameKey);
-      if (emailKey) seenEmails.add(emailKey);
+      if (authEmailKey) seenAuthEmails.add(authEmailKey);
+      if (fallbackEmailKey) seenFallbackEmails.add(fallbackEmailKey);
       result.push({ ...m });
     } else {
       if (m.role === 'owner') existing.role = 'owner';
       else if (m.role === 'admin' && existing.role !== 'owner') existing.role = 'admin';
+      if (m.authEmail && !existing.authEmail) existing.authEmail = m.authEmail;
       if (m.isLocked) existing.isLocked = true;
       if (
         existing.avatarUrl &&
@@ -182,7 +204,7 @@ function buildSummariesFromRaw(
 
   const summaries: CloudLedgerSummary[] = rawLedgers.map(l => {
     const rawMems = memberGroup.get(l.id) || [];
-    const mems = deduplicateCloudMembers(rawMems, profileMap);
+    const mems = deduplicateCloudMembers(rawMems, profileMap, l.created_by);
     const txInfo = txGroup.get(l.id);
     const txCount = txInfo?.count || 0;
     const isGhost = mems.length === 0 && txCount === 0;
@@ -248,7 +270,7 @@ async function fetchWebFallbackSummaries(
         authEmail: m.auth_email || m.authEmail,
         isLocked: m.is_locked ?? m.isLocked,
       }));
-      const mems = deduplicateCloudMembers(rawMems, profileMap);
+      const mems = deduplicateCloudMembers(rawMems, profileMap, kl.createdBy);
       ledgerMap.set(kl.id, {
         id: kl.id,
         name: kl.name || '未命名帳本',
@@ -293,7 +315,7 @@ async function fetchWebFallbackSummaries(
                     isLocked: pm.is_locked,
                   }))
                 : [];
-              const prevMembers = deduplicateCloudMembers(rawPrevMembers, profileMap);
+              const prevMembers = deduplicateCloudMembers(rawPrevMembers, profileMap, prev.created_by || inv.created_by);
 
               const existing = ledgerMap.get(prev.ledger_id);
               if (existing) {
@@ -479,7 +501,7 @@ export async function fetchCloudLedgersSummary(knownLedgers: any[] = []): Promis
     if (!rpcErr && rpcData && Array.isArray(rpcData.ledgers) && rpcData.ledgers.length > 0) {
       const summaries: CloudLedgerSummary[] = rpcData.ledgers.map((l: any) => {
         const rawMems: CloudLedgerMemberInfo[] = Array.isArray(l.members) ? l.members : [];
-        const dedupedMems = deduplicateCloudMembers(rawMems, profileMap);
+        const dedupedMems = deduplicateCloudMembers(rawMems, profileMap, l.created_by);
         const txCount = Number(l.tx_count) || 0;
         const isGhost = dedupedMems.length === 0 && txCount === 0;
         const isTest = !isGhost && txCount === 0 && dedupedMems.length <= 1;

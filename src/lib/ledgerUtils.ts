@@ -112,11 +112,50 @@ export const hydrateTransactionWithInvoice = (t: any): Transaction => {
   };
 };
 
-// 成員名冊去重函式：相同 display_name 或相同 Google 綁定信箱者視為同一位家庭成員（支援多台手機/電腦認領同一身分及 Google 帳號授權）
-export const deduplicateMembers = (memberList: Profile[]): Profile[] => {
+export const DEMO_POLLUTED_MEMBER_NAMES = [
+  '智爸 (爸爸)',
+  '瑩媽 (媽媽)',
+  '洋洋 (哥哥)',
+  '豆豆 (妹妹)',
+  '爸爸 (我)',
+] as const;
+
+/**
+ * 判斷信箱是否為真實經過驗證的電子信箱（排除空白、@family.local 與 anonymous 匿名佔位字串）
+ */
+export const isRealAuthEmail = (email?: string | null): boolean => {
+  if (!email || typeof email !== 'string') return false;
+  const clean = email.trim().toLowerCase();
+  if (!clean || !clean.includes('@')) return false;
+  if (clean.endsWith('@family.local')) return false;
+  if (clean.includes('anonymous')) return false;
+  return true;
+};
+
+/**
+ * 判斷成員 Profile 是否屬於官方示範帳本的預設成員或示範污染稱謂
+ */
+export const isDemoMemberProfile = (
+  member?: { id?: string | null; display_name?: string | null } | null
+): boolean => {
+  if (!member) return false;
+  const id = (member.id || '').trim().toLowerCase();
+  if (id.startsWith('ee200000-0000-4000-8000') || id.startsWith('20000000-0000-4000-8000')) {
+    return true;
+  }
+  const name = (member.display_name || '').trim();
+  return (DEMO_POLLUTED_MEMBER_NAMES as readonly string[]).includes(name);
+};
+
+const isHttpAvatarUrl = (avatarUrl?: string | null): boolean =>
+  Boolean(avatarUrl && (avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://')));
+
+// 成員名冊去重函式：相同 display_name 或相同已驗證 Google 信箱者視為同一位家庭成員（支援多台手機/電腦認領同一身分及 Google 帳號授權）
+export const deduplicateMembers = (memberList: Profile[], creatorId?: string): Profile[] => {
   const result: Profile[] = [];
   const seenNames = new Set<string>();
-  const seenEmails = new Set<string>();
+  const seenAuthEmails = new Set<string>();
+  const seenFallbackEmails = new Set<string>();
 
   // 排除殘留之訪客寶可夢與歷史幽靈成員，確保名冊永遠純淨
   const initialClean = memberList.filter(m =>
@@ -134,17 +173,29 @@ export const deduplicateMembers = (memberList: Profile[]): Profile[] => {
     ? initialClean.filter(m => (m.display_name || '').trim() !== '家庭成員' && (m.display_name || '').trim() !== '')
     : initialClean;
 
-  // 步驟一：先將已綁定 Google 且加鎖之重要受保護成員放前，確保保留自訂家庭稱謂（如「智爸」優先於「Matt Yu」）
+  // 步驟一：先將帳本創建者、已綁定 Google 且加鎖之重要受保護成員放前，確保保留自訂家庭稱謂（如「智爸」優先於「Matt Yu」或「爸」）
   const sortedList = [...cleanList].sort((a, b) => {
+    // 0. 帳本建立者最優先
+    if (creatorId) {
+      const aCreator = a.id === creatorId;
+      const bCreator = b.id === creatorId;
+      if (aCreator && !bCreator) return -1;
+      if (!aCreator && bCreator) return 1;
+    }
     // 1. 已加鎖保護者優先
     if (a.is_locked && !b.is_locked) return -1;
     if (!a.is_locked && b.is_locked) return 1;
     // 2. 具有自訂稱謂（非 Google 預設姓名、頭像不是圖片網址）者優先
-    const aIsUrl = Boolean(a.avatar_url && (a.avatar_url.startsWith('http://') || a.avatar_url.startsWith('https://')));
-    const bIsUrl = Boolean(b.avatar_url && (b.avatar_url.startsWith('http://') || b.avatar_url.startsWith('https://')));
+    const aIsUrl = isHttpAvatarUrl(a.avatar_url);
+    const bIsUrl = isHttpAvatarUrl(b.avatar_url);
     if (!aIsUrl && bIsUrl) return -1;
     if (aIsUrl && !bIsUrl) return 1;
-    // 3. owner / admin 優先
+    // 3. 具有帳本專屬 custom_name 者優先
+    const aHasCustom = Boolean(a.custom_name && a.custom_name.trim());
+    const bHasCustom = Boolean(b.custom_name && b.custom_name.trim());
+    if (aHasCustom && !bHasCustom) return -1;
+    if (!aHasCustom && bHasCustom) return 1;
+    // 4. owner / admin 優先
     if ((a.role === 'owner' || a.role === 'admin') && b.role === 'member') return -1;
     if (a.role === 'member' && (b.role === 'owner' || b.role === 'admin')) return 1;
     return 0;
@@ -152,20 +203,31 @@ export const deduplicateMembers = (memberList: Profile[]): Profile[] => {
 
   for (const m of sortedList) {
     const nameKey = (m.display_name || '').trim().toLowerCase();
-    const emailKey = (m.auth_email || m.email || '').trim().toLowerCase();
+    const authEmailKey = isRealAuthEmail(m.auth_email) ? m.auth_email!.trim().toLowerCase() : '';
+    const fallbackEmailKey = !authEmailKey ? (m.email || '').trim().toLowerCase() : '';
 
-    // 檢查是否已有名稱相同，或已綁定信箱相同且其中一方為 Google 影子帳號的既有成員
     let existing: Profile | undefined = undefined;
 
-    if (nameKey && seenNames.has(nameKey)) {
-      existing = result.find(em => (em.display_name || '').trim().toLowerCase() === nameKey);
-    } else if (emailKey && seenEmails.has(emailKey)) {
-      // 僅在其中一個是 Google 授權所產生的影子帳號（大頭貼為 HTTP 圖片網址，或稱謂為未加鎖的 Google 帳號姓名）時，才與既有自訂家庭稱謂合併！
+    // 1. 同一帳本內只要綁定相同的已驗證 Google 信箱，一律整併為同一成員（即使 Emoji 頭像與暱稱不同）
+    if (authEmailKey && seenAuthEmails.has(authEmailKey)) {
+      existing = result.find(
+        em => isRealAuthEmail(em.auth_email) && em.auth_email!.trim().toLowerCase() === authEmailKey
+      );
+    } else if (nameKey && seenNames.has(nameKey)) {
+      existing = result.find(em => {
+        if ((em.display_name || '').trim().toLowerCase() !== nameKey) return false;
+        // 若兩者各自綁定了不同的真實 Google 信箱，視為不同真人不強行合併
+        const emAuth = isRealAuthEmail(em.auth_email) ? em.auth_email!.trim().toLowerCase() : '';
+        if (authEmailKey && emAuth && authEmailKey !== emAuth) return false;
+        return true;
+      });
+    } else if (fallbackEmailKey && seenFallbackEmails.has(fallbackEmailKey)) {
+      // 非 auth_email 的一般 email 維持保守條件（同名或其中一方為 Google HTTP 圖片頭像影子）才合併，避免假信箱誤併
       existing = result.find(em => {
         const emEmail = (em.auth_email || em.email || '').trim().toLowerCase();
-        if (emEmail !== emailKey) return false;
-        const mIsUrl = Boolean(m.avatar_url && (m.avatar_url.startsWith('http://') || m.avatar_url.startsWith('https://')));
-        const emIsUrl = Boolean(em.avatar_url && (em.avatar_url.startsWith('http://') || em.avatar_url.startsWith('https://')));
+        if (emEmail !== fallbackEmailKey) return false;
+        const mIsUrl = isHttpAvatarUrl(m.avatar_url);
+        const emIsUrl = isHttpAvatarUrl(em.avatar_url);
         const isSameName = (em.display_name || '').trim().toLowerCase() === nameKey;
         return isSameName || mIsUrl || emIsUrl;
       });
@@ -173,7 +235,8 @@ export const deduplicateMembers = (memberList: Profile[]): Profile[] => {
 
     if (!existing) {
       if (nameKey) seenNames.add(nameKey);
-      if (emailKey) seenEmails.add(emailKey);
+      if (authEmailKey) seenAuthEmails.add(authEmailKey);
+      if (fallbackEmailKey) seenFallbackEmails.add(fallbackEmailKey);
       result.push({ ...m });
     } else {
       // 合併屬性：保留較高的權限與已綁定資訊
@@ -185,7 +248,7 @@ export const deduplicateMembers = (memberList: Profile[]): Profile[] => {
       if (m.claim_code && !existing.claim_code) existing.claim_code = m.claim_code;
       if (m.claim_code_expires_at && !existing.claim_code_expires_at) existing.claim_code_expires_at = m.claim_code_expires_at;
       // 保留正常 Emoji 大頭貼（若 existing 的是 URL 而 m 是 Emoji，換回 Emoji）
-      if (existing.avatar_url && (existing.avatar_url.startsWith('http://') || existing.avatar_url.startsWith('https://')) && m.avatar_url && !m.avatar_url.startsWith('http')) {
+      if (isHttpAvatarUrl(existing.avatar_url) && m.avatar_url && !isHttpAvatarUrl(m.avatar_url)) {
         existing.avatar_url = m.avatar_url;
       }
     }
@@ -193,7 +256,66 @@ export const deduplicateMembers = (memberList: Profile[]): Profile[] => {
   return result;
 };
 
-// 建立成員別名映射表：將多台裝置同名 UUID、示範資料常數 UUID 等均映射至去重後之主要 Profile
+const findCanonicalMemberForProfile = (
+  target: Profile,
+  deduped: Profile[],
+  allowDefaultMemberFallback: boolean
+): Profile | undefined => {
+  const byId = deduped.find(m => m.id === target.id);
+  if (byId) return byId;
+
+  const targetName = (target.display_name || '').trim().toLowerCase();
+  const targetAuthEmail = isRealAuthEmail(target.auth_email) ? target.auth_email!.trim().toLowerCase() : '';
+  const targetFallbackEmail = (target.auth_email || target.email || '').trim().toLowerCase();
+
+  // 1. 優先比對已驗證的 Google 信箱，確保跨裝置不同稱謂分身準確對齊主帳號
+  if (targetAuthEmail) {
+    const byAuthEmail = deduped.find(
+      m => isRealAuthEmail(m.auth_email) && m.auth_email!.trim().toLowerCase() === targetAuthEmail
+    );
+    if (byAuthEmail) return byAuthEmail;
+  }
+
+  // 2. 名稱完全相同
+  let canonical = deduped.find(m => {
+    if ((m.display_name || '').trim().toLowerCase() !== targetName) return false;
+    const mAuth = isRealAuthEmail(m.auth_email) ? m.auth_email!.trim().toLowerCase() : '';
+    if (targetAuthEmail && mAuth && targetAuthEmail !== mAuth) return false;
+    return true;
+  });
+
+  // 3. 名稱前綴模糊匹配
+  if (!canonical && targetName) {
+    canonical = deduped.find(m => {
+      const dName = (m.display_name || '').trim().toLowerCase();
+      if (!dName) return false;
+      const mAuth = isRealAuthEmail(m.auth_email) ? m.auth_email!.trim().toLowerCase() : '';
+      if (targetAuthEmail && mAuth && targetAuthEmail !== mAuth) return false;
+      return (targetName.length >= 1 && dName.startsWith(targetName)) ||
+             (dName.length >= 1 && targetName.startsWith(dName));
+    });
+  }
+
+  // 4. 一般信箱保守比對
+  if (!canonical && targetFallbackEmail) {
+    canonical = deduped.find(m => {
+      const mEmail = (m.auth_email || m.email || '').trim().toLowerCase();
+      if (mEmail !== targetFallbackEmail) return false;
+      const tIsUrl = isHttpAvatarUrl(target.avatar_url);
+      const mIsUrl = isHttpAvatarUrl(m.avatar_url);
+      return (m.display_name || '').trim().toLowerCase() === targetName || tIsUrl || mIsUrl;
+    });
+  }
+
+  // 5. 空白或預設「家庭成員」回退
+  if (allowDefaultMemberFallback && !canonical && ((target.display_name || '').trim() === '家庭成員' || !(target.display_name || '').trim()) && deduped.length > 0) {
+    canonical = deduped[0];
+  }
+
+  return canonical;
+};
+
+// 建立成員別名映射表：將多台裝置同名 UUID、同信箱分身、示範資料常數 UUID 等均映射至去重後之主要 Profile
 export const buildMemberAliasMap = (
   deduped: Profile[],
   loaded: Profile[],
@@ -206,66 +328,16 @@ export const buildMemberAliasMap = (
     map[m.id] = m;
   }
 
-  // 2. 雲端所有關聯成員（包含不同裝置登入但同一暱稱者、以及 Google OAuth 幽靈帳號）
+  // 2. 雲端所有關聯成員（包含不同裝置登入但同一暱稱者、同信箱分身、以及 Google OAuth 幽靈帳號）
   for (const raw of loaded) {
-    const rawName = (raw.display_name || '').trim().toLowerCase();
-    const rawEmail = (raw.auth_email || raw.email || '').trim().toLowerCase();
-
-    let canonical = deduped.find(
-      m => (m.display_name || '').trim().toLowerCase() === rawName
-    );
-    if (!canonical && rawName) {
-      canonical = deduped.find(m => {
-        const dName = (m.display_name || '').trim().toLowerCase();
-        if (!dName) return false;
-        return (rawName.length >= 1 && dName.startsWith(rawName)) ||
-               (dName.length >= 1 && rawName.startsWith(dName));
-      });
-    }
-    if (!canonical && rawEmail) {
-      canonical = deduped.find(
-        m => {
-          const mEmail = (m.auth_email || m.email || '').trim().toLowerCase();
-          if (mEmail !== rawEmail) return false;
-          const rawIsUrl = Boolean(raw.avatar_url && (raw.avatar_url.startsWith('http://') || raw.avatar_url.startsWith('https://')));
-          const mIsUrl = Boolean(m.avatar_url && (m.avatar_url.startsWith('http://') || m.avatar_url.startsWith('https://')));
-          return (m.display_name || '').trim().toLowerCase() === rawName || rawIsUrl || mIsUrl;
-        }
-      );
-    }
-    if (!canonical && ((raw.display_name || '').trim() === '家庭成員' || !(raw.display_name || '').trim()) && deduped.length > 0) {
-      canonical = deduped[0];
-    }
+    const canonical = findCanonicalMemberForProfile(raw, deduped, true);
     map[raw.id] = canonical || raw;
   }
 
   // 3. 額外查詢之付款人 Profile
   if (extraProfiles) {
     for (const p of extraProfiles) {
-      const pName = (p.display_name || '').trim().toLowerCase();
-      const pEmail = (p.auth_email || p.email || '').trim().toLowerCase();
-      let canonical = deduped.find(
-        m => (m.display_name || '').trim().toLowerCase() === pName
-      );
-      if (!canonical && pName) {
-        canonical = deduped.find(m => {
-          const dName = (m.display_name || '').trim().toLowerCase();
-          if (!dName) return false;
-          return (pName.length >= 1 && dName.startsWith(pName)) ||
-                 (dName.length >= 1 && pName.startsWith(dName));
-        });
-      }
-      if (!canonical && pEmail) {
-        canonical = deduped.find(
-          m => {
-            const mEmail = (m.auth_email || m.email || '').trim().toLowerCase();
-            if (mEmail !== pEmail) return false;
-            const pIsUrl = Boolean(p.avatar_url && (p.avatar_url.startsWith('http://') || p.avatar_url.startsWith('https://')));
-            const mIsUrl = Boolean(m.avatar_url && (m.avatar_url.startsWith('http://') || m.avatar_url.startsWith('https://')));
-            return (m.display_name || '').trim().toLowerCase() === pName || pIsUrl || mIsUrl;
-          }
-        );
-      }
+      const canonical = findCanonicalMemberForProfile(p, deduped, false);
       map[p.id] = canonical || p;
     }
   }

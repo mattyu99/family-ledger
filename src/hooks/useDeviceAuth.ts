@@ -5,7 +5,7 @@ import { Profile, MemberDevice, Ledger } from '../types/database';
 import { getDeviceId, getDeviceName, getDevicePlatform } from '../lib/device';
 import { getExpoPushTokenSafely } from '../lib/pushDispatcher';
 import { APP_FULL_VERSION } from '../constants/version';
-import { safeAlert } from '../lib/ledgerUtils';
+import { safeAlert, isRealAuthEmail } from '../lib/ledgerUtils';
 import { STORAGE_KEYS } from '../constants/ledgerDefaults';
 import { isDemoLedgerId, SWEETHOME_MEMBERS } from '../constants/sweethomeDemo';
 import { checkBiometricsCapability, authenticateWithBiometrics } from '../lib/biometrics';
@@ -676,7 +676,12 @@ export function useDeviceAuth({
       }
 
       const inCurrentLedger = (matchedProfiles as any[]).find((p: any) => members.some(m => m.id === p.id));
-      const matched = (inCurrentLedger || matchedProfiles[0]) as Profile;
+      const realProfile = (matchedProfiles as any[]).find(
+        (p: any) =>
+          (p.display_name || '').trim() !== '家庭成員' &&
+          (!p.avatar_url || (!p.avatar_url.startsWith('http://') && !p.avatar_url.startsWith('https://')))
+      );
+      const matched = (inCurrentLedger || realProfile || matchedProfiles[0]) as Profile;
 
       if (!clean.includes('@') && (matched as any).claim_code_expires_at) {
         const expiresAt = new Date((matched as any).claim_code_expires_at).getTime();
@@ -688,44 +693,17 @@ export function useDeviceAuth({
       await registerDevice(matched.id, currentLedger.id);
 
       // 跨裝置 Google 授權與 RLS 權限鏈接：
-      // 確保當前連線 Session 的 auth.uid() 獲得雲端 ledger_members 存取權限
+      // 僅將當前連線 Session UID 寫入獨立通行證表 auth_session_links，絕不把裝置 UID 插入家庭成員名冊 ledger_members
       const { data: { session: curSession } } = await supabase.auth.getSession();
       const currentAuthUserId = curSession?.user?.id;
-      if (currentAuthUserId) {
+      if (currentAuthUserId && isRealAuthEmail(matched.auth_email)) {
         try {
-          const { data: matchedLedgerRows } = await supabase
-            .from('ledger_members')
-            .select('ledger_id, role')
-            .eq('user_id', matched.id);
-
-          if (matchedLedgerRows && matchedLedgerRows.length > 0) {
-            for (const row of matchedLedgerRows) {
-              await supabase.from('ledger_members').upsert({
-                ledger_id: row.ledger_id,
-                user_id: currentAuthUserId,
-                role: row.role || 'member',
-              }, { onConflict: 'ledger_id,user_id' });
-            }
-          } else if (currentLedger?.id && !isDemoLedgerId(currentLedger.id)) {
-            await supabase.from('ledger_members').upsert({
-              ledger_id: currentLedger.id,
-              user_id: currentAuthUserId,
-              role: matched.role || 'member',
-            }, { onConflict: 'ledger_id,user_id' });
-          }
-
-          // 同步更新當前 Session 在 profiles 中的身分與保護狀態
-          await supabase.from('profiles').upsert({
-            id: currentAuthUserId,
-            display_name: matched.display_name,
-            avatar_url: matched.avatar_url,
-            auth_email: matched.auth_email,
-            auth_provider: 'google',
-            is_locked: true,
-            updated_at: new Date().toISOString(),
+          await supabase.rpc('link_session_to_email', {
+            p_email: matched.auth_email!.trim().toLowerCase(),
+            p_session_uid: currentAuthUserId,
           });
         } catch (linkErr) {
-          console.warn('同步 Google 授權成員權限失敗:', linkErr);
+          console.warn('建立 Google 授權連線通行證失敗:', linkErr);
         }
       }
 
@@ -1005,33 +983,34 @@ export function useDeviceAuth({
 
     if (isConfigured && !isDemoLedgerId(currentLedger.id)) {
       try {
-        if (currentUser.display_name && currentUser.display_name !== '家庭成員') {
-          await supabase.from('profiles').upsert({
-            id: authUserId,
-            display_name: currentUser.display_name,
-            avatar_url: currentUser.avatar_url,
-            updated_at: new Date().toISOString(),
-          });
+        const isCurrentInMembers = members.some(m => m.id === currentUser.id);
+        if (isCurrentInMembers && currentUser.id) {
+          let roleRpcOk = false;
+          try {
+            const { data: rpcRes } = await supabase.rpc('set_member_role', {
+              target_ledger_id: currentLedger.id,
+              target_user_id: currentUser.id,
+              new_role: 'owner',
+            });
+            if (rpcRes && rpcRes.success) {
+              roleRpcOk = true;
+            }
+          } catch {}
+
+          if (!roleRpcOk) {
+            await supabase
+              .from('ledger_members')
+              .update({ role: 'owner' })
+              .eq('ledger_id', currentLedger.id)
+              .eq('user_id', currentUser.id);
+          }
         }
 
-        await supabase.from('ledger_members').upsert({
-          ledger_id: currentLedger.id,
-          user_id: authUserId,
-          role: 'owner',
-        }, { onConflict: 'ledger_id,user_id' });
-
-        if (currentUser.id && currentUser.id !== authUserId) {
-          await supabase.from('ledger_members').upsert({
-            ledger_id: currentLedger.id,
-            user_id: currentUser.id,
-            role: 'owner',
-          }, { onConflict: 'ledger_id,user_id' });
-        }
-
-        // 僅在帳本目前無建立者或本使用者即為創立者時，才設定 created_by；否則只升級 owner 角色，避免誤改帳本原創者
-        if (!currentLedger.created_by || currentLedger.created_by === authUserId) {
-          await supabase.from('ledgers').update({ created_by: authUserId, updated_at: new Date().toISOString() }).eq('id', currentLedger.id);
-          setCurrentLedger(prev => ({ ...prev, created_by: authUserId }));
+        // 僅在帳本目前無建立者或本使用者即為創立者時，才設定 created_by；絕不為匿名 authUserId 憑空建立新成員分身
+        const effectiveOwnerId = isCurrentInMembers ? currentUser.id : authUserId;
+        if (!currentLedger.created_by || currentLedger.created_by === effectiveOwnerId) {
+          await supabase.from('ledgers').update({ created_by: effectiveOwnerId, updated_at: new Date().toISOString() }).eq('id', currentLedger.id);
+          setCurrentLedger(prev => ({ ...prev, created_by: effectiveOwnerId }));
         }
 
         // 跨裝置同步：若名冊中有其他同名紀錄 (例如同成員的手機 APP 或其他瀏覽器裝置)，一併升級為 owner
@@ -1045,7 +1024,7 @@ export function useDeviceAuth({
           if (allMembersInLedger) {
             for (const m of allMembersInLedger) {
               const mName = ((m.profiles as any)?.display_name || '').trim().toLowerCase();
-              if (mName === myName && m.user_id !== authUserId) {
+              if (mName === myName && m.user_id !== currentUser.id) {
                 await supabase
                   .from('ledger_members')
                   .update({ role: 'owner' })
