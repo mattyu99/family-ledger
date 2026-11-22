@@ -263,7 +263,9 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
     const isRelay = isMemoRelayEnabled(item);
     const relayOffset = getMemoRelayOffsetDays(item);
     const relayPrefix = isRelay ? '🔁 ' : '';
-    const relayOffsetSuffix = isRelay && relayOffset < 0 ? `·提前${Math.abs(relayOffset)}天` : '';
+    const relayOffsetSuffix = isRelay && relayOffset !== undefined
+      ? (relayOffset < 0 ? `·提前${Math.abs(relayOffset)}天預告` : '·僅當天提醒')
+      : '';
     const cal = item.reminder_calendar || decoded.reminderCalendar;
     const rep = item.reminder_repeat || decoded.reminderRepeat;
     const badge = formatMemoReminderBadge(reminderDateStr, cal, rep);

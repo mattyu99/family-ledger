@@ -334,6 +334,7 @@ interface LedgerContextType {
   paymentAccounts: PaymentAccount[];
   addPaymentAccount: (account: Omit<PaymentAccount, 'id' | 'ledger_id' | 'created_at'>) => Promise<PaymentAccount>;
   updatePaymentAccount: (id: string, data: Partial<PaymentAccount>) => Promise<boolean>;
+  syncPaymentAccountsBillingDates: (targetIds: string[], billingCycleDate: number, paymentDueDay: number | null) => Promise<boolean>;
   deletePaymentAccount: (id: string) => Promise<boolean>;
   restoreDefaultAccounts: () => Promise<void>;
   paymentMethods: CustomPaymentMethod[];
@@ -947,6 +948,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setPaymentMethods,
     addPaymentAccount,
     updatePaymentAccount,
+    syncPaymentAccountsBillingDates,
     deletePaymentAccount,
     restoreDefaultAccounts,
     savePaymentAccountsToStorage,
@@ -1158,8 +1160,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 ? Boolean(decodedLocalMemo.isRelay)
                 : (t.reminder_relay !== undefined ? Boolean(t.reminder_relay) : isDemoRelayLegacy);
               const restoredRelayOffset = decodedLocalMemo.isMemo
-                ? (decodedLocalMemo.relayOffsetDays || 0)
-                : (t.reminder_relay_offset || 0);
+                ? decodedLocalMemo.relayOffsetDays
+                : (t.reminder_relay_offset !== undefined && t.reminder_relay_offset !== null && Number.isFinite(t.reminder_relay_offset)
+                    ? Math.trunc(t.reminder_relay_offset)
+                    : undefined);
               return {
                 ...t,
                 type: decodedLocalMemo.isMemo ? 'memo' : t.type,
@@ -1167,7 +1171,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 reminder_calendar: decodedLocalMemo.reminderCalendar || t.reminder_calendar,
                 reminder_repeat: decodedLocalMemo.reminderRepeat || t.reminder_repeat,
                 reminder_relay: restoredRelay,
-                reminder_relay_offset: restoredRelay ? restoredRelayOffset : 0,
+                reminder_relay_offset: restoredRelay ? restoredRelayOffset : undefined,
                 completed_by: decodedLocalMemo.completedBy || t.completed_by,
                 is_pinned: t.is_pinned !== undefined ? Boolean(t.is_pinned) : Boolean(decodedLocalMemo.isPinned),
                 merchant: parsedMerchant || t.merchant || undefined,
@@ -1455,7 +1459,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
           let isPinned = Boolean(newRow.is_pinned);
           let reminderRelay = newRow.reminder_relay !== undefined ? Boolean(newRow.reminder_relay) : false;
-          let reminderRelayOffset = newRow.reminder_relay_offset || 0;
+          let reminderRelayOffset: number | undefined =
+            newRow.reminder_relay_offset !== undefined && newRow.reminder_relay_offset !== null && Number.isFinite(newRow.reminder_relay_offset)
+              ? Math.trunc(newRow.reminder_relay_offset)
+              : undefined;
 
           const decodedMemo = decodeMemoMerchantTag(parsedMerchant);
           if (decodedMemo.isMemo) {
@@ -1464,7 +1471,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             reminderCalendar = decodedMemo.reminderCalendar;
             reminderRepeat = decodedMemo.reminderRepeat;
             reminderRelay = Boolean(decodedMemo.isRelay);
-            reminderRelayOffset = decodedMemo.relayOffsetDays || 0;
+            reminderRelayOffset = decodedMemo.relayOffsetDays;
             if (decodedMemo.completedBy) completedBy = decodedMemo.completedBy;
             if (decodedMemo.isPinned) isPinned = true;
           } else if (newRow.type === 'memo' || (newRow.type === 'transfer' && Number(newRow.amount) === 0)) {
@@ -1472,7 +1479,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             parsedNote = newRow.note;
             if (newRow.id === 'ee400000-0000-4000-8000-000000000036') {
               reminderRelay = true;
-              reminderRelayOffset = 0;
+              reminderRelayOffset = undefined;
             }
           } else if (parsedMerchant) {
             recordMerchant(parsedMerchant);
@@ -1494,7 +1501,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               reminder_repeat: reminderRepeat || newRow.reminder_repeat,
               reminder_target: newRow.reminder_target || 'family',
               reminder_relay: reminderRelay,
-              reminder_relay_offset: reminderRelay ? reminderRelayOffset : 0,
+              reminder_relay_offset: reminderRelay ? reminderRelayOffset : undefined,
               completed_by: completedBy || newRow.completed_by,
               is_pinned: isPinned,
               merchant: parsedMerchant || newRow.merchant || undefined,
@@ -1597,7 +1604,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             reminderCalendar = decodedMemo.reminderCalendar;
             reminderRepeat = decodedMemo.reminderRepeat;
             reminderRelay = Boolean(decodedMemo.isRelay);
-            reminderRelayOffset = decodedMemo.relayOffsetDays || 0;
+            reminderRelayOffset = decodedMemo.relayOffsetDays;
             if (decodedMemo.completedBy) completedBy = decodedMemo.completedBy;
             if (decodedMemo.isPinned !== undefined) isPinned = decodedMemo.isPinned;
           } else if (updatedRow.type === 'memo' || (updatedRow.type === 'transfer' && Number(updatedRow.amount) === 0)) {
@@ -1605,7 +1612,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             parsedNote = updatedRow.note;
             if (updatedRow.id === 'ee400000-0000-4000-8000-000000000036') {
               reminderRelay = true;
-              reminderRelayOffset = 0;
+              reminderRelayOffset = undefined;
             }
           } else if (parsedMerchant) {
             recordMerchant(parsedMerchant);
@@ -1630,7 +1637,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     reminder_calendar: decodedMemo.isMemo ? decodedMemo.reminderCalendar : (reminderCalendar !== undefined ? reminderCalendar : t.reminder_calendar),
                     reminder_repeat: decodedMemo.isMemo ? decodedMemo.reminderRepeat : (reminderRepeat !== undefined ? reminderRepeat : t.reminder_repeat),
                     reminder_relay: reminderRelay !== undefined ? reminderRelay : t.reminder_relay,
-                    reminder_relay_offset: reminderRelayOffset !== undefined ? (reminderRelay ? reminderRelayOffset : 0) : t.reminder_relay_offset,
+                    reminder_relay_offset: decodedMemo.isMemo
+                      ? (reminderRelay ? reminderRelayOffset : undefined)
+                      : (reminderRelayOffset !== undefined ? (reminderRelay ? reminderRelayOffset : undefined) : t.reminder_relay_offset),
                     completed_by: updatedRow.is_settled ? (completedBy || t.completed_by) : undefined,
                     is_pinned: isPinned !== undefined ? isPinned : t.is_pinned,
                     merchant: parsedMerchant || updatedRow.merchant || t.merchant || undefined,
@@ -3292,7 +3301,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       let resolvedType: TransactionType = t.type;
       let isPinned = Boolean(t.is_pinned);
       let reminderRelay = t.reminder_relay !== undefined ? Boolean(t.reminder_relay) : false;
-      let reminderRelayOffset = t.reminder_relay_offset || 0;
+      let reminderRelayOffset: number | undefined =
+        t.reminder_relay_offset !== undefined && t.reminder_relay_offset !== null && Number.isFinite(t.reminder_relay_offset)
+          ? Math.trunc(t.reminder_relay_offset)
+          : undefined;
 
       const decodedMemo = decodeMemoMerchantTag(parsedMerchant);
       let reminderTarget = t.reminder_target;
@@ -3302,7 +3314,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         reminderCalendar = decodedMemo.reminderCalendar;
         reminderRepeat = decodedMemo.reminderRepeat;
         reminderRelay = Boolean(decodedMemo.isRelay);
-        reminderRelayOffset = decodedMemo.relayOffsetDays || 0;
+        reminderRelayOffset = decodedMemo.relayOffsetDays;
         if (decodedMemo.reminderTarget) reminderTarget = decodedMemo.reminderTarget;
         if (decodedMemo.completedBy) completedBy = decodedMemo.completedBy;
         if (decodedMemo.completedAt) completedAt = decodedMemo.completedAt;
@@ -3312,7 +3324,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         parsedNote = stripMemoInternalTag(t.note);
         if (t.id === 'ee400000-0000-4000-8000-000000000036') {
           reminderRelay = true;
-          reminderRelayOffset = 0;
+          reminderRelayOffset = undefined;
         }
       } else if (parsedMerchant && isValidMerchantName(parsedMerchant)) {
         recordMerchant(parsedMerchant);
@@ -3332,7 +3344,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         reminder_repeat: reminderRepeat || t.reminder_repeat,
         reminder_target: reminderTarget || t.reminder_target || 'family',
         reminder_relay: reminderRelay,
-        reminder_relay_offset: reminderRelay ? reminderRelayOffset : 0,
+        reminder_relay_offset: reminderRelay ? reminderRelayOffset : undefined,
         completed_by: completedBy || t.completed_by,
         completed_at: completedAt || t.completed_at,
         is_pinned: isPinned,
@@ -7557,12 +7569,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const txId = data.id || generateUUID();
     let cleanMerchant = data.merchant ? data.merchant.trim() : undefined;
     const effectiveRelay = data.type === 'memo' ? Boolean(data.reminder_relay) : false;
-    const effectiveRelayOffset = effectiveRelay && Number.isFinite(data.reminder_relay_offset)
-      ? Math.trunc(data.reminder_relay_offset || 0)
-      : 0;
+    const effectiveRelayOffset =
+      effectiveRelay && data.reminder_relay_offset !== undefined && data.reminder_relay_offset !== null && Number.isFinite(data.reminder_relay_offset)
+        ? Math.trunc(data.reminder_relay_offset)
+        : undefined;
     const computedRelayYmd =
       data.type === 'memo' && effectiveRelay && data.note
-        ? computeNextRelayReminderDate(data.note, new Date(), data.transacted_at, effectiveRelayOffset)
+        ? computeNextRelayReminderDate(data.note, new Date(), data.transacted_at, 0)
         : null;
     const effectiveReminderDate = data.type === 'memo' && effectiveRelay
       ? (computedRelayYmd || data.reminder_date)
@@ -8660,15 +8673,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         if (isExplicitlyClearingDate && data.reminder_relay !== true) {
           effectiveRelay = false;
-          effectiveRelayOffset = 0;
+          effectiveRelayOffset = undefined;
         } else {
           effectiveRelay = data.reminder_relay !== undefined
             ? Boolean(data.reminder_relay)
             : isMemoRelayEnabled(targetTx);
-          const rawOffset = data.reminder_relay_offset !== undefined
-            ? (data.reminder_relay_offset !== null && Number.isFinite(data.reminder_relay_offset) ? Math.trunc(data.reminder_relay_offset) : 0)
+          const rawOffset = data.reminder_relay_offset === null
+            ? undefined
+            : data.reminder_relay_offset !== undefined
+            ? (Number.isFinite(data.reminder_relay_offset) ? Math.trunc(data.reminder_relay_offset) : undefined)
             : getMemoRelayOffsetDays(targetTx);
-          effectiveRelayOffset = effectiveRelay ? rawOffset : 0;
+          effectiveRelayOffset = effectiveRelay ? rawOffset : undefined;
         }
 
         effectiveReminder = data.reminder_date !== undefined
@@ -8677,7 +8692,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         if (effectiveRelay && currentMemoNote) {
           const anchorDate = data.transacted_at || targetTx?.transacted_at || targetTx?.created_at;
-          const relayYmd = computeNextRelayReminderDate(currentMemoNote, new Date(), anchorDate, effectiveRelayOffset);
+          const relayYmd = computeNextRelayReminderDate(currentMemoNote, new Date(), anchorDate, 0);
           if (relayYmd) {
             effectiveReminder = relayYmd;
           }
@@ -9523,13 +9538,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const nextNote = toggleChecklistItem(targetTx.note, itemIndex);
     if (nextNote === targetTx.note) return false;
 
-    // 💡 接力式推進提醒日計算（方案 B 顯性接力）：
-    // 僅當該記事顯式開啟「隨子項目自動接力」模式時，才在打勾子項目後推進至下一站日期；
+    // 💡 接力式推進提醒日計算（方案 A 到期日歸到期日、提前預告歸推播）：
+    // 僅當該記事顯式開啟「隨子項目自動接力」模式時，才在打勾子項目後推進至下一站真實到期日；
     // 一般固定提醒與無提醒記事皆嚴格維持原設定，絕不擅自覆蓋提醒日期！
     const isRelay = isMemoRelayEnabled(targetTx);
-    const relayOffset = isRelay ? getMemoRelayOffsetDays(targetTx) : 0;
     const nextRelayDate = isRelay
-      ? computeNextRelayReminderDate(nextNote, new Date(), targetTx.transacted_at || targetTx.created_at, relayOffset)
+      ? computeNextRelayReminderDate(nextNote, new Date(), targetTx.transacted_at || targetTx.created_at, 0)
       : null;
     const shouldUpdateReminder = isRelay && !!nextRelayDate && nextRelayDate !== targetTx.reminder_date;
 
@@ -10100,6 +10114,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         paymentAccounts: scopedPaymentAccounts,
         addPaymentAccount,
         updatePaymentAccount,
+        syncPaymentAccountsBillingDates,
         deletePaymentAccount,
         restoreDefaultAccounts,
         paymentMethods,

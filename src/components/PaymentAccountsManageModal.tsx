@@ -18,7 +18,7 @@ import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import { sortAccountsByUser } from '../lib/payment';
-import { detectIssuerBank } from '../lib/bankIssuer';
+import { detectIssuerBank, findSameIssuerBillingPeerCards } from '../lib/bankIssuer';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -63,7 +63,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
 }) => {
   const { isDark, colors } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
-  const { paymentAccounts, addPaymentAccount, updatePaymentAccount, deletePaymentAccount, restoreDefaultAccounts, members, currentUser, isOwner, getMemberById } = useLedger();
+  const { currentLedger, paymentAccounts, addPaymentAccount, updatePaymentAccount, syncPaymentAccountsBillingDates, deletePaymentAccount, restoreDefaultAccounts, members, currentUser, isOwner, getMemberById } = useLedger();
 
   const showAlert = (title: string, message: string) => {
     if (Platform.OS === 'web') {
@@ -129,14 +129,15 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     };
   }, []);
 
-  const handleInputFocus = (field: 'name' | 'lastFour' | 'cycleDate' | 'balance' | 'cardNumber' | 'issuerBank') => {
+  const handleInputFocus = (field: 'name' | 'lastFour' | 'cycleDate' | 'dueDay' | 'balance' | 'cardNumber' | 'issuerBank') => {
     // Web 版具有自然視窗佈局，點擊輸入框嚴禁強制捲動避免將輸入框頂出視野
     if (Platform.OS === 'web') return;
     const scrollMap: Record<string, number> = {
       name: 0,
       issuerBank: 80,
       lastFour: 150,
-      cycleDate: 230,
+      cycleDate: 220,
+      dueDay: 270,
       balance: 140,
       cardNumber: 180,
     };
@@ -156,10 +157,38 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   const [formLastFour, setFormLastFour] = useState<string>('');
   const [formCardNumber, setFormCardNumber] = useState<string>('');
   const [formCycleDate, setFormCycleDate] = useState<string>('15');
+  const [formDueDay, setFormDueDay] = useState<string>('');
+  const [isEditingSharedBillingDates, setIsEditingSharedBillingDates] = useState<boolean>(false);
   const [formBalance, setFormBalance] = useState<string>('0');
   const [formColor, setFormColor] = useState<string>(COLOR_PALETTE[0]);
   const [formIssuerBank, setFormIssuerBank] = useState<string>('');
   const [isManualIssuer, setIsManualIssuer] = useState<boolean>(false);
+
+  const sameIssuerPeers = useMemo(() => {
+    if (!isEditing || formType !== 'credit_card') return [];
+    return findSameIssuerBillingPeerCards({
+      accounts: paymentAccounts,
+      cardName: formName,
+      issuerBank: formIssuerBank || undefined,
+      userId: formUserId || null,
+      excludeCardId: editingId,
+      ledgerId: currentLedger?.id,
+      getMemberById,
+    });
+  }, [isEditing, formType, paymentAccounts, formName, formIssuerBank, formUserId, editingId, currentLedger?.id, getMemberById]);
+
+  const sharedPeerSource = useMemo(() => {
+    if (sameIssuerPeers.length === 0) return null;
+    return sameIssuerPeers.find(p => p.payment_due_day !== undefined && p.payment_due_day !== null) || sameIssuerPeers[0];
+  }, [sameIssuerPeers]);
+
+  // 同持卡人同銀行既有設定存在且尚未手動解鎖修改時，自動對齊共用結帳日與繳款截止日
+  useEffect(() => {
+    if (!isEditing || formType !== 'credit_card') return;
+    if (!sharedPeerSource || isEditingSharedBillingDates) return;
+    setFormCycleDate(String(sharedPeerSource.billing_cycle_date || 15));
+    setFormDueDay(sharedPeerSource.payment_due_day ? String(sharedPeerSource.payment_due_day) : '');
+  }, [isEditing, formType, sharedPeerSource, isEditingSharedBillingDates]);
 
   // 判斷某個綁定成員 ID 是否對應當前本機使用者 (支援 ID 直接比對、名稱別名比對與名冊連動)
   const isMatchedToCurrentUser = useCallback(
@@ -240,6 +269,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     setFormLastFour('');
     setFormCardNumber('');
     setFormCycleDate('15');
+    setFormDueDay('');
+    setIsEditingSharedBillingDates(false);
     setFormBalance('0');
     setFormColor(
       type === 'credit_card'
@@ -280,6 +311,24 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     setFormLastFour(acc.last_four_digits || '');
     setFormCardNumber(acc.card_number || (acc.type === 'stored_value' ? (acc.last_four_digits || '') : ''));
     setFormCycleDate(String(acc.billing_cycle_date || 15));
+    setFormDueDay(acc.payment_due_day ? String(acc.payment_due_day) : '');
+    const peers = acc.type === 'credit_card'
+      ? findSameIssuerBillingPeerCards({
+          accounts: paymentAccounts,
+          cardName: acc.name,
+          issuerBank: acc.issuer_bank,
+          userId: acc.user_id || null,
+          excludeCardId: acc.id,
+          ledgerId: currentLedger?.id,
+          getMemberById,
+        })
+      : [];
+    const peerMismatch = peers.some(
+      p =>
+        (p.billing_cycle_date || 15) !== (acc.billing_cycle_date || 15) ||
+        (p.payment_due_day ?? null) !== (acc.payment_due_day ?? null)
+    );
+    setIsEditingSharedBillingDates(peers.length === 0 || peerMismatch);
     setFormBalance(String(acc.balance || 0));
     setFormColor(acc.color || (acc.type === 'bank' ? COLOR_PALETTE[6] : COLOR_PALETTE[0]));
     const detected = acc.type === 'credit_card' ? detectIssuerBank(acc.name, acc.issuer_bank) : null;
@@ -325,6 +374,11 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
 
     const cycleNum = parseInt(formCycleDate, 10);
     const validCycle = isNaN(cycleNum) ? 15 : Math.max(1, Math.min(31, cycleNum));
+    const parsedDueNum = parseInt(formDueDay.trim(), 10);
+    const validDueDay: number | null =
+      formType === 'credit_card' && !isNaN(parsedDueNum) && parsedDueNum >= 1 && parsedDueNum <= 31
+        ? parsedDueNum
+        : null;
     const balanceNum = parseFloat(formBalance) || 0;
     const targetUserId = (!isOwner && scope === 'my')
       ? (formUserId && isMatchedToCurrentUser(formUserId) ? formUserId : (currentUser?.id || null))
@@ -338,6 +392,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
         last_four_digits: finalLastFour,
         card_number: finalCardNumber,
         billing_cycle_date: formType === 'credit_card' ? validCycle : undefined,
+        payment_due_day: formType === 'credit_card' ? validDueDay : undefined,
         issuer_bank: finalIssuerBankForUpdate,
         balance: formType === 'stored_value' ? balanceNum : 0,
         color: formColor,
@@ -350,6 +405,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
         last_four_digits: finalLastFour,
         card_number: finalCardNumber,
         billing_cycle_date: formType === 'credit_card' ? validCycle : undefined,
+        payment_due_day: formType === 'credit_card' ? validDueDay : undefined,
         issuer_bank: finalIssuerBankForAdd,
         balance: formType === 'stored_value' ? balanceNum : 0,
         color: formColor,
@@ -365,6 +421,23 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
             : '🚌',
         sort_order: paymentAccounts.length + 1,
       });
+    }
+
+    // 若同持卡人同發卡銀行已有其他卡片且日期不一致或已解鎖編輯，一併對齊共用結帳日與繳款截止日
+    if (formType === 'credit_card' && sameIssuerPeers.length > 0) {
+      const peersToSync = sameIssuerPeers.filter(
+        p =>
+          isEditingSharedBillingDates ||
+          (p.billing_cycle_date || 15) !== validCycle ||
+          (p.payment_due_day ?? null) !== validDueDay
+      );
+      if (peersToSync.length > 0) {
+        await syncPaymentAccountsBillingDates(
+          peersToSync.map(p => p.id),
+          validCycle,
+          validDueDay
+        );
+      }
     }
 
     if (formType === 'stored_value' || formType === 'credit_card' || formType === 'bank' || formType === 'cash' || formType === 'carrier') {
@@ -792,21 +865,79 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     returnKeyType="next"
                   />
 
-                  {/* 結帳日 */}
-                  <Text style={styles.fieldLabel}>每月結帳日 (1 ~ 31 號，依帳單切分週期)</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    value={formCycleDate}
-                    onChangeText={setFormCycleDate}
-                    placeholder="15"
-                    keyboardType="numeric"
-                    onFocus={() => handleInputFocus('cycleDate')}
-                    returnKeyType="done"
-                    onSubmitEditing={Keyboard.dismiss}
-                  />
-                  <Text style={styles.fieldHint}>
-                    💡 設定結帳日後，每月對帳時系統會精確鎖定上月{parseInt(formCycleDate, 10) + 1 || 16}日到本月{formCycleDate || 15}日的帳單消費。
-                  </Text>
+                  {/* 結帳日與繳款截止日（同持卡人同發卡銀行自動共用，免重填防衝突） */}
+                  {sameIssuerPeers.length > 0 && !isEditingSharedBillingDates ? (
+                    <View style={styles.sharedBillingCard}>
+                      <View style={styles.sharedBillingHeader}>
+                        <Text style={styles.sharedBillingTitle}>
+                          🏛️ 與同銀行卡片共用帳單週期
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.sharedBillingEditBtn}
+                          onPress={() => setIsEditingSharedBillingDates(true)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.sharedBillingEditText}>✏️ 調整此銀行日期</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <Text style={styles.sharedBillingDesc}>
+                        已自動帶入同發卡銀行（{sameIssuerPeers.map(p => p.name).join('、')}）之設定，同一銀行帳單共期無需重填：
+                      </Text>
+                      <View style={styles.sharedBillingBadgesRow}>
+                        <View style={styles.sharedBillingBadge}>
+                          <Text style={styles.sharedBillingBadgeText}>
+                            結帳日：每月 {parseInt(formCycleDate, 10) || 15} 號
+                          </Text>
+                        </View>
+                        <View style={styles.sharedBillingBadge}>
+                          <Text style={styles.sharedBillingBadgeText}>
+                            繳款日：{formDueDay.trim() ? `每月 ${parseInt(formDueDay, 10)} 號` : '結帳後 20 天 (預設)'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  ) : (
+                    <>
+                      <Text style={styles.fieldLabel}>每月結帳日 (1 ~ 31 號，依帳單切分週期)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        value={formCycleDate}
+                        onChangeText={setFormCycleDate}
+                        placeholder="15"
+                        keyboardType="numeric"
+                        maxLength={2}
+                        onFocus={() => handleInputFocus('cycleDate')}
+                        returnKeyType="next"
+                      />
+
+                      <Text style={styles.fieldLabel}>每月繳款截止日 (1 ~ 31 號，選填，供繳款提醒)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        value={formDueDay}
+                        onChangeText={(t) => setFormDueDay(t.replace(/\D/g, '').slice(0, 2))}
+                        placeholder="留空則預設結帳日 + 20 天"
+                        keyboardType="numeric"
+                        maxLength={2}
+                        onFocus={() => handleInputFocus('dueDay')}
+                        returnKeyType="done"
+                        onSubmitEditing={Keyboard.dismiss}
+                      />
+
+                      <Text style={styles.fieldHint}>
+                        {(() => {
+                          const cDay = Math.max(1, Math.min(31, parseInt(formCycleDate, 10) || 15));
+                          const dDay = parseInt(formDueDay, 10);
+                          const dueHint = !isNaN(dDay) && dDay >= 1 && dDay <= 31
+                            ? `繳款提醒將依「${dDay > cDay ? '同月' : '次月'} ${dDay} 號」計算；`
+                            : '繳款截止日留空將以結帳日後 20 天推算；';
+                          const syncHint = sameIssuerPeers.length > 0
+                            ? `\n🔄 儲存後將自動同步套用至同一持卡人同銀行共 ${sameIssuerPeers.length + 1} 張卡（${[formName.trim() || '本卡', ...sameIssuerPeers.map(p => p.name)].join('、')}），確保零衝突。`
+                            : '';
+                          return `💡 對帳時系統會鎖定上月 ${cDay + 1} 日到本月 ${cDay} 日消費；${dueHint}${syncHint}`;
+                        })()}
+                      </Text>
+                    </>
+                  )}
                 </>
               ) : formType === 'bank' ? (
                 <>
@@ -1010,6 +1141,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                             <Text style={styles.cardSubText}>
                               {cardholder ? `${cardholder.avatar_url || '👤'} ${cardholder.display_name} · ` : '🏠 全家通用 · '}
                               每月 {card.billing_cycle_date || 15} 號結帳
+                              {card.payment_due_day ? ` · ${card.payment_due_day} 號繳款` : ''}
                             </Text>
                           </View>
                           {canEditCard && (
@@ -1763,5 +1895,64 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 10.5,
     fontWeight: '600',
     color: isDark ? '#818CF8' : '#4F46E5',
+  },
+  sharedBillingCard: {
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.1)' : '#ECFDF5',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#A7F3D0',
+    padding: 12,
+    marginTop: 10,
+    marginBottom: 8,
+  },
+  sharedBillingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 6,
+  },
+  sharedBillingTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: isDark ? '#6EE7B7' : '#065F46',
+    flex: 1,
+  },
+  sharedBillingEditBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.45)' : '#6EE7B7',
+  },
+  sharedBillingEditText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: isDark ? '#6EE7B7' : '#047857',
+  },
+  sharedBillingDesc: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: isDark ? '#A7F3D0' : '#047857',
+    marginBottom: 8,
+  },
+  sharedBillingBadgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  sharedBillingBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: isDark ? 'rgba(15, 23, 42, 0.6)' : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#A7F3D0',
+  },
+  sharedBillingBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: isDark ? '#D1FAE5' : '#065F46',
   },
 });

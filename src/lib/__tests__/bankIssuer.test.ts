@@ -4,6 +4,7 @@ import {
   groupCreditCardsByIssuer,
   findIssuerGroupForCard,
   getSiblingCardIdsInGroup,
+  findSameIssuerBillingPeerCards,
   mergeCloudPaymentAccountsWithLocal,
   TAIWAN_BANK_ISSUERS,
 } from '../bankIssuer';
@@ -310,6 +311,137 @@ describe('💳 信用卡發卡機構歸戶辨識演算法 (bankIssuer.test.ts)',
       expect(merged.find(a => a.id === 'card-edited')?.issuer_bank).toBe('台新銀行');
       expect(merged.find(a => a.id === 'card-cleared')?.issuer_bank).toBeNull();
       expect(merged.find(a => a.id === 'card-new-cloud')?.issuer_bank).toBe('國泰世華');
+    });
+
+    it('mergeCloudPaymentAccountsWithLocal 應同樣保護本機 payment_due_day 不被尚未升級的雲端回傳覆蓋', () => {
+      const localAccounts: PaymentAccount[] = [
+        {
+          id: 'card-esun',
+          ledger_id: 'led-1',
+          name: '玉山 Ubear',
+          type: 'credit_card',
+          billing_cycle_date: 15,
+          payment_due_day: 2,
+          balance: 0,
+          sort_order: 1,
+          created_at: '',
+        },
+        {
+          id: 'card-fubon',
+          ledger_id: 'led-1',
+          name: '富邦 J 卡',
+          type: 'credit_card',
+          billing_cycle_date: 20,
+          payment_due_day: 7,
+          balance: 0,
+          sort_order: 2,
+          created_at: '',
+        },
+      ];
+      const cloudAccounts: PaymentAccount[] = [
+        {
+          id: 'card-esun',
+          ledger_id: 'led-1',
+          name: '玉山 Ubear',
+          type: 'credit_card',
+          billing_cycle_date: 15,
+          balance: 0,
+          sort_order: 1,
+          created_at: '',
+        },
+        {
+          id: 'card-fubon',
+          ledger_id: 'led-1',
+          name: '富邦 J 卡',
+          type: 'credit_card',
+          billing_cycle_date: 20,
+          payment_due_day: 9,
+          balance: 0,
+          sort_order: 2,
+          created_at: '',
+        },
+      ];
+      const merged = mergeCloudPaymentAccountsWithLocal(cloudAccounts, localAccounts);
+      expect(merged.find(a => a.id === 'card-esun')?.payment_due_day).toBe(2);
+      expect(merged.find(a => a.id === 'card-fubon')?.payment_due_day).toBe(9);
+    });
+
+    it('findSameIssuerBillingPeerCards 能找出同持卡人同發卡銀行之其他信用卡供共用帳單週期，並排除不同持卡人與其他銀行', () => {
+      const accounts: PaymentAccount[] = [
+        {
+          id: 'esun-1',
+          ledger_id: 'led-1',
+          name: '玉山 Unicard',
+          type: 'credit_card',
+          user_id: 'dad',
+          issuer_bank: '玉山銀行',
+          billing_cycle_date: 17,
+          payment_due_day: 3,
+          balance: 0,
+          sort_order: 1,
+          created_at: '',
+        },
+        {
+          id: 'esun-2',
+          ledger_id: 'led-1',
+          name: '玉山 Ubear',
+          type: 'credit_card',
+          user_id: 'dad-alias',
+          billing_cycle_date: 15,
+          balance: 0,
+          sort_order: 2,
+          created_at: '',
+        },
+        {
+          id: 'esun-mom',
+          ledger_id: 'led-1',
+          name: '玉山熊本熊卡',
+          type: 'credit_card',
+          user_id: 'mom',
+          billing_cycle_date: 15,
+          balance: 0,
+          sort_order: 3,
+          created_at: '',
+        },
+        {
+          id: 'cathay-dad',
+          ledger_id: 'led-1',
+          name: '國泰 CUBE',
+          type: 'credit_card',
+          user_id: 'dad',
+          billing_cycle_date: 15,
+          balance: 0,
+          sort_order: 4,
+          created_at: '',
+        },
+      ];
+      const getMemberById = (id?: string) => {
+        if (id === 'dad' || id === 'dad-alias') return { id: id, display_name: '智爸' };
+        if (id === 'mom') return { id: 'mom', display_name: '瑩媽' };
+        return undefined;
+      };
+
+      const peers = findSameIssuerBillingPeerCards({
+        accounts,
+        cardName: '玉山 Pi 拍錢包卡',
+        issuerBank: '玉山銀行',
+        userId: 'dad',
+        ledgerId: 'led-1',
+        getMemberById,
+      });
+
+      expect(peers.map(p => p.id)).toEqual(['esun-1', 'esun-2']);
+
+      const peersExcludingOne = findSameIssuerBillingPeerCards({
+        accounts,
+        cardName: '玉山 Unicard',
+        issuerBank: '玉山銀行',
+        userId: 'dad',
+        excludeCardId: 'esun-1',
+        ledgerId: 'led-1',
+        getMemberById,
+      });
+      expect(peersExcludingOne.map(p => p.id)).toEqual(['esun-2']);
     });
   });
 });

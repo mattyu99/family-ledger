@@ -428,9 +428,8 @@ export function encodeMemoMerchantTag(options: {
 
   if (isRelay) {
     parts.push('relay:1');
-    const cleanOffset = relayOffsetDays !== undefined && Number.isFinite(relayOffsetDays) ? Math.trunc(relayOffsetDays) : 0;
-    if (cleanOffset !== 0) {
-      parts.push(`roff:${cleanOffset}`);
+    if (relayOffsetDays !== undefined && relayOffsetDays !== null && Number.isFinite(relayOffsetDays)) {
+      parts.push(`roff:${Math.trunc(relayOffsetDays)}`);
     }
   }
 
@@ -460,10 +459,10 @@ export function decodeMemoMerchantTag(rawMerchant?: string): {
   isRelay?: boolean;
   relayOffsetDays?: number;
 } {
-  if (!rawMerchant) return { isMemo: false, isPinned: false, isRelay: false, relayOffsetDays: 0 };
+  if (!rawMerchant) return { isMemo: false, isPinned: false, isRelay: false, relayOffsetDays: undefined };
   const trimmed = rawMerchant.trim();
   if (!trimmed.startsWith('remind:') && !trimmed.startsWith('memo')) {
-    return { isMemo: false, isPinned: false, isRelay: false, relayOffsetDays: 0 };
+    return { isMemo: false, isPinned: false, isRelay: false, relayOffsetDays: undefined };
   }
 
   let reminderDate: string | undefined;
@@ -474,7 +473,7 @@ export function decodeMemoMerchantTag(rawMerchant?: string): {
   let completedAt: string | undefined;
   let isPinned = false;
   let isRelay = false;
-  let relayOffsetDays = 0;
+  let relayOffsetDays: number | undefined;
 
   const segments = trimmed.split('|');
   for (const seg of segments) {
@@ -522,7 +521,7 @@ export function decodeMemoMerchantTag(rawMerchant?: string): {
     completedAt,
     isPinned,
     isRelay,
-    relayOffsetDays: isRelay ? relayOffsetDays : 0,
+    relayOffsetDays: isRelay ? relayOffsetDays : undefined,
   };
 }
 
@@ -576,17 +575,17 @@ export function isMemoRelayEnabled(item?: {
 }
 
 /**
- * 取得生活記事接力模式之每站提前天數偏移量（預設 0=當天；負數表示提前天數）
+ * 取得生活記事接力模式單則提醒時機覆寫（undefined=跟隨設定頁全域預設, 0=僅當天, 負數=提前天數+當天）
  */
 export function getMemoRelayOffsetDays(item?: {
-  reminder_relay_offset?: number;
+  reminder_relay_offset?: number | null;
   merchant?: string;
-} | null): number {
-  if (!item) return 0;
-  if (item.reminder_relay_offset !== undefined && Number.isFinite(item.reminder_relay_offset)) {
+} | null): number | undefined {
+  if (!item) return undefined;
+  if (item.reminder_relay_offset !== undefined && item.reminder_relay_offset !== null && Number.isFinite(item.reminder_relay_offset)) {
     return Math.trunc(item.reminder_relay_offset);
   }
-  return decodeMemoMerchantTag(item.merchant).relayOffsetDays || 0;
+  return decodeMemoMerchantTag(item.merchant).relayOffsetDays;
 }
 
 export interface PinQuotaCheckResult {
@@ -1706,19 +1705,20 @@ export function getRollingMemoDueInfo(reminderYmd?: string | null, referenceYmd?
 }
 
 /**
- * 取得生活記事之「有效生效提醒日期（Effective Reminder Date）」
- * 核心原則（方案 B：固定優先、顯性接力）：
+ * 取得生活記事之「有效真實到期日（Effective Reminder Date）」
+ * 核心原則（方案 A：到期日歸到期日、提前預告歸推播）：
  * 1. 嚴格防呆：若未設定提醒且未開啟接力，嚴格維持 null（不設提醒）！
  * 2. 固定提醒模式（預設）：嚴格保留使用者設定的 `reminder_date`，絕不被子項目日期覆蓋！
  * 3. 顯性接力模式（僅當 `isMemoRelayEnabled(transaction)` 為 true 時）：
- *    自動解析未完成子項目中最早到期之日期（全完成時接回主標題日期），並套用每站提前天數偏移量。
+ *    自動解析未完成子項目中最早到期之真實日期（全完成時接回主標題日期），
+ *    不再扣減提前天數（提前預告由推播排程於前幾天＋當天自動發送）。
  */
 export function getEffectiveMemoReminderDate(
   transaction?: {
     type?: string;
     reminder_date?: string | null;
     reminder_relay?: boolean;
-    reminder_relay_offset?: number;
+    reminder_relay_offset?: number | null;
     merchant?: string;
     note?: string;
     transacted_at?: string;
@@ -1735,11 +1735,10 @@ export function getEffectiveMemoReminderDate(
   // 1. 若未設定提醒且未開啟接力，嚴格維持為 null
   if (!rawReminderDate && !isRelay) return null;
 
-  // 2. 僅當顯式開啟「隨子項目自動接力」時，才動態追蹤下一站接力提醒日
+  // 2. 僅當顯式開啟「隨子項目自動接力」時，才動態追蹤下一站真實到期日
   if (isRelay && transaction.note) {
     const anchorDate = transaction.transacted_at || transaction.created_at;
-    const offsetDays = getMemoRelayOffsetDays(transaction);
-    const relayDate = computeNextRelayReminderDate(transaction.note, referenceDate, anchorDate, offsetDays);
+    const relayDate = computeNextRelayReminderDate(transaction.note, referenceDate, anchorDate, 0);
     if (relayDate) {
       return relayDate;
     }

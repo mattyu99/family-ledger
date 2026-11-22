@@ -60,6 +60,12 @@ import {
   QuickBuilderDomain,
 } from '../lib/memo';
 import {
+  getNotificationPreferences,
+  NotificationPreferences,
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  formatMemoAdvanceLabel,
+} from '../lib/billingNotifications';
+import {
   CalendarSystem,
   MemoRepeatFrequency,
   REPEAT_OPTIONS,
@@ -285,7 +291,13 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     () => transaction?.reminder_target || 'family'
   );
   const [memoReminderRelay, setMemoReminderRelay] = useState<boolean>(() => isMemoRelayEnabled(transaction));
-  const [memoReminderRelayOffset, setMemoReminderRelayOffset] = useState<number>(() => getMemoRelayOffsetDays(transaction));
+  const [memoReminderRelayOffset, setMemoReminderRelayOffset] = useState<number | undefined>(() => getMemoRelayOffsetDays(transaction));
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
+  useEffect(() => {
+    if (visible) {
+      getNotificationPreferences().then(setNotifPrefs).catch(() => {});
+    }
+  }, [visible]);
   const [reminderPickerInitialMode, setReminderPickerInitialMode] = useState<CalendarSystem>(() => {
     if (transaction?.reminder_calendar) return transaction.reminder_calendar;
     const decoded = decodeMemoMerchantTag(transaction?.merchant);
@@ -432,20 +444,18 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     }
   }, [detectedMemoDate, memoReminderDate, memoReminderRelay]);
 
-  // 🔁 接力模式即時計算：開啟接力時自動鎖定下一站（並套用每站提前天數偏移量）
+  // 🔁 接力模式即時計算：開啟接力時自動鎖定下一站真實到期日（提前預告由推播於前幾天與當天發送）
   useEffect(() => {
     if (transaction?.type !== 'memo' || !memoReminderRelay) return;
     if (relaySchedule?.nextDateYmd) {
-      const nextYmd = memoReminderRelayOffset
-        ? offsetDateYmd(relaySchedule.nextDateYmd, memoReminderRelayOffset)
-        : relaySchedule.nextDateYmd;
+      const nextYmd = relaySchedule.nextDateYmd;
       if (nextYmd !== memoReminderDate) {
         setMemoReminderDate(nextYmd);
         setMemoReminderCalendar('solar');
         setMemoReminderRepeat('once');
       }
     }
-  }, [transaction?.type, memoReminderRelay, memoReminderRelayOffset, relaySchedule, memoReminderDate]);
+  }, [transaction?.type, memoReminderRelay, relaySchedule, memoReminderDate]);
 
   // 🎁 點數 / 回饋折抵專用狀態（算在原先支出交易的一環）
   const [showDiscountPanel, setShowDiscountPanel] = useState<boolean>(false);
@@ -1443,7 +1453,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           reminder_repeat: memoReminderDate ? memoReminderRepeat : null,
           reminder_target: memoReminderTarget || 'family',
           reminder_relay: memoReminderRelay,
-          reminder_relay_offset: memoReminderRelay ? memoReminderRelayOffset : 0,
+          reminder_relay_offset: memoReminderRelay ? (memoReminderRelayOffset === undefined ? null : memoReminderRelayOffset) : null,
           is_settled: true,
           completed_by: effectiveCompleter,
           completion_note: noteToSave || undefined,
@@ -1552,7 +1562,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           reminder_repeat: memoReminderDate ? memoReminderRepeat : null,
           reminder_target: memoReminderTarget || 'family',
           reminder_relay: memoReminderRelay,
-          reminder_relay_offset: memoReminderRelay ? memoReminderRelayOffset : 0,
+          reminder_relay_offset: memoReminderRelay ? (memoReminderRelayOffset === undefined ? null : memoReminderRelayOffset) : null,
           transacted_at: transactedAt || transaction.transacted_at,
           is_settled: isSettled,
           completed_by: isSettled ? (transaction.completed_by || currentUser?.id) : undefined,
@@ -2161,7 +2171,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                             setMemoReminderDate('');
                             setMemoReminderRepeat('once');
                             setMemoReminderRelay(false);
-                            setMemoReminderRelayOffset(0);
+                            setMemoReminderRelayOffset(undefined);
                             userManuallySetReminderRef.current = true;
                           }}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -2188,7 +2198,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                           setMemoReminderRepeat('once');
                           setMemoReminderCalendar('solar');
                           setMemoReminderRelay(false);
-                          setMemoReminderRelayOffset(0);
+                          setMemoReminderRelayOffset(undefined);
                           userManuallySetReminderRef.current = true;
                         }}
                         activeOpacity={0.7}
@@ -2214,7 +2224,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                           setMemoReminderRepeat('once');
                           setMemoReminderCalendar('solar');
                           setMemoReminderRelay(false);
-                          setMemoReminderRelayOffset(0);
+                          setMemoReminderRelayOffset(undefined);
                           userManuallySetReminderRef.current = true;
                         }}
                         activeOpacity={0.7}
@@ -2240,7 +2250,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                           setMemoReminderRepeat('once');
                           setMemoReminderCalendar('solar');
                           setMemoReminderRelay(false);
-                          setMemoReminderRelayOffset(0);
+                          setMemoReminderRelayOffset(undefined);
                           userManuallySetReminderRef.current = true;
                         }}
                         activeOpacity={0.7}
@@ -2268,7 +2278,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                         setMemoReminderDate('');
                         setMemoReminderRepeat('once');
                         setMemoReminderRelay(false);
-                        setMemoReminderRelayOffset(0);
+                        setMemoReminderRelayOffset(undefined);
                         userManuallySetReminderRef.current = true;
                       }}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -2289,7 +2299,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                       setMemoReminderDate('');
                       setMemoReminderRepeat('once');
                       setMemoReminderRelay(false);
-                      setMemoReminderRelayOffset(0);
+                      setMemoReminderRelayOffset(undefined);
                       userManuallySetReminderRef.current = true;
                     }}
                     activeOpacity={0.7}
@@ -2306,7 +2316,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                       setMemoReminderDate(todayYmd);
                       setMemoReminderCalendar('solar');
                       setMemoReminderRelay(false);
-                      setMemoReminderRelayOffset(0);
+                      setMemoReminderRelayOffset(undefined);
                       baseReminderDateRef.current = todayYmd;
                       baseReminderCalendarRef.current = 'solar';
                       if (memoReminderRepeat === 'lunar_1_15' || memoReminderRepeat === 'lunar_2_16') {
@@ -2328,7 +2338,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                       setMemoReminderDate(tomorrowYmd);
                       setMemoReminderCalendar('solar');
                       setMemoReminderRelay(false);
-                      setMemoReminderRelayOffset(0);
+                      setMemoReminderRelayOffset(undefined);
                       baseReminderDateRef.current = tomorrowYmd;
                       baseReminderCalendarRef.current = 'solar';
                       if (memoReminderRepeat === 'lunar_1_15' || memoReminderRepeat === 'lunar_2_16') {
@@ -2407,9 +2417,14 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                   ];
                   const routePreview = routeStops.slice(0, 3).map(s => s.shortDate).join(' → ')
                     + (routeStops.length > 3 ? ' → …' : '');
+                  const ruleHint = memoReminderRelayOffset === undefined
+                    ? `跟隨預設：${formatMemoAdvanceLabel(notifPrefs.memoAdvanceMode)}`
+                    : memoReminderRelayOffset === 0
+                    ? `僅當天 ${notifPrefs.dailyReminderTime} 提醒`
+                    : `前 ${Math.abs(memoReminderRelayOffset)} 天 ${notifPrefs.dailyReminderTime} 預告＋當天提醒`;
                   const subText = memoReminderRelay
                     ? (relaySchedule?.nextStop
-                        ? `下一站：${routePreview}${memoReminderRelayOffset < 0 && memoReminderDate ? `（實際提醒：${memoReminderDate.slice(5).replace('-', '/')}）` : ''}`
+                        ? `下一站到期：${routePreview}（${ruleHint}）`
                         : '目前所有帶日期子項目皆已完成，將保留原提醒日')
                     : '打勾子項目後自動推進至下一站到期日';
 
@@ -2434,14 +2449,11 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                               setMemoReminderCalendar('solar');
                               setMemoReminderRepeat('once');
                               if (relaySchedule?.nextDateYmd) {
-                                const nextYmd = memoReminderRelayOffset
-                                  ? offsetDateYmd(relaySchedule.nextDateYmd, memoReminderRelayOffset)
-                                  : relaySchedule.nextDateYmd;
-                                setMemoReminderDate(nextYmd);
+                                setMemoReminderDate(relaySchedule.nextDateYmd);
                               }
                             } else {
                               setMemoReminderRelay(false);
-                              setMemoReminderRelayOffset(0);
+                              setMemoReminderRelayOffset(undefined);
                             }
                           }}
                           activeOpacity={0.7}
@@ -2456,14 +2468,15 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                         <View style={styles.relayOffsetRow}>
                           <Text style={styles.relayOffsetLabel} maxFontSizeMultiplier={1.08}>每站提醒時機：</Text>
                           {[
-                            { label: '當天', offset: 0 },
-                            { label: '提前 1 天', offset: -1 },
-                            { label: '提前 3 天', offset: -3 },
+                            { label: '跟隨預設', offset: undefined as number | undefined },
+                            { label: '僅當天', offset: 0 as number | undefined },
+                            { label: '提前 1 天', offset: -1 as number | undefined },
+                            { label: '提前 3 天', offset: -3 as number | undefined },
                           ].map(opt => {
                             const selected = memoReminderRelayOffset === opt.offset;
                             return (
                               <TouchableOpacity
-                                key={opt.offset}
+                                key={opt.label}
                                 disabled={!canEdit}
                                 style={[styles.relayOffsetChip, selected && styles.relayOffsetChipActive]}
                                 onPress={() => {
@@ -4192,7 +4205,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     onSelectDate={(newDate: Date, pickedMode?: CalendarSystem) => {
       const ymd = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}-${String(newDate.getDate()).padStart(2, '0')}`;
       setMemoReminderRelay(false);
-      setMemoReminderRelayOffset(0);
+      setMemoReminderRelayOffset(undefined);
       userManuallySetReminderRef.current = true;
       setMemoReminderDate(ymd);
       if (pickedMode) {

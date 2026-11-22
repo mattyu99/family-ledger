@@ -206,6 +206,7 @@ export function useLedgerBackup({
           card_number: a.card_number,
           issuer_bank: a.issuer_bank,
           billing_cycle_date: a.billing_cycle_date,
+          payment_due_day: a.payment_due_day ?? null,
           balance: a.balance,
           color: a.color,
           icon: a.icon,
@@ -214,7 +215,7 @@ export function useLedgerBackup({
       transactions: transactions.map(t => {
         const isMemo = t.type === 'memo';
         const isRelay = isMemo ? isMemoRelayEnabled(t) : false;
-        const relayOffset = isMemo && isRelay ? getMemoRelayOffsetDays(t) : 0;
+        const relayOffset = isMemo && isRelay ? getMemoRelayOffsetDays(t) : undefined;
         const encodedMerchant = isMemo
           ? (t.merchant || encodeMemoMerchantTag({
               reminderDate: t.reminder_date,
@@ -752,6 +753,7 @@ export function useLedgerBackup({
                 card_number: acc.card_number || null,
                 issuer_bank: acc.issuer_bank || null,
                 billing_cycle_date: acc.billing_cycle_date || 1,
+                payment_due_day: acc.payment_due_day ?? null,
                 balance: acc.balance || 0,
                 color: acc.color || '#3B82F6',
                 icon: acc.icon || '💳',
@@ -1017,10 +1019,10 @@ export function useLedgerBackup({
           ? Boolean(t.reminder_relay !== undefined ? t.reminder_relay : decodedMemo.isRelay)
           : false;
         const restoredRelayOffset = (isBackupMemo && restoredIsRelay)
-          ? (t.reminder_relay_offset !== undefined && Number.isFinite(t.reminder_relay_offset)
+          ? (t.reminder_relay_offset !== undefined && t.reminder_relay_offset !== null && Number.isFinite(t.reminder_relay_offset)
               ? Math.trunc(t.reminder_relay_offset)
-              : (decodedMemo.relayOffsetDays || 0))
-          : 0;
+              : decodedMemo.relayOffsetDays)
+          : undefined;
         const restoredMerchant = isBackupMemo
           ? encodeMemoMerchantTag({
               reminderDate: restoredReminderDate,

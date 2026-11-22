@@ -130,9 +130,31 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
       expect(decoded.completedAt).toBe('2026-11-09T18:00:00.000Z');
     });
 
-    it('應能完整編解碼接力提醒標籤 relay:1 與提前天數 roff:-1 / roff:-3', () => {
+    it('應能完整編解碼接力提醒標籤 relay:1 與單則覆寫 roff:0 / roff:-1 / roff:-3（未寫 roff 代表跟隨預設 undefined）', () => {
+      const tagFollowDefault = encodeMemoMerchantTag({
+        reminderDate: '2026-11-08',
+        reminderTarget: 'family',
+        isRelay: true,
+        relayOffsetDays: undefined,
+      });
+      expect(tagFollowDefault).toContain('relay:1');
+      expect(tagFollowDefault).not.toContain('roff:');
+      expect(decodeMemoMerchantTag(tagFollowDefault).relayOffsetDays).toBeUndefined();
+      expect(getMemoRelayOffsetDays({ merchant: tagFollowDefault })).toBeUndefined();
+
+      const tagSameDay = encodeMemoMerchantTag({
+        reminderDate: '2026-11-08',
+        reminderTarget: 'family',
+        isRelay: true,
+        relayOffsetDays: 0,
+      });
+      expect(tagSameDay).toContain('relay:1');
+      expect(tagSameDay).toContain('roff:0');
+      expect(decodeMemoMerchantTag(tagSameDay).relayOffsetDays).toBe(0);
+      expect(getMemoRelayOffsetDays({ merchant: tagSameDay })).toBe(0);
+
       const tag = encodeMemoMerchantTag({
-        reminderDate: '2026-11-07',
+        reminderDate: '2026-11-08',
         reminderTarget: 'family',
         isRelay: true,
         relayOffsetDays: -1,
@@ -148,7 +170,7 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
       expect(isMemoRelayEnabled({ type: 'memo', merchant: tag })).toBe(true);
       expect(getMemoRelayOffsetDays({ merchant: tag })).toBe(-1);
       expect(isMemoRelayEnabled({ type: 'memo', merchant: 'remind:2026-11-10' })).toBe(false);
-      expect(getMemoRelayOffsetDays({ merchant: 'remind:2026-11-10' })).toBe(0);
+      expect(getMemoRelayOffsetDays({ merchant: 'remind:2026-11-10' })).toBeUndefined();
     });
   });
 
@@ -698,21 +720,32 @@ describe('生活備忘與待辦清單核心模組測試 (memo.ts)', () => {
         expect(getEffectiveMemoReminderDate(txStep3, baseDate)).toBe('2027-01-09');
       });
 
-      it('開啟接力並搭配每站提前 1 天 (reminder_relay_offset: -1 / roff:-1) 時，每站皆精準提前 1 天提醒', () => {
+      it('開啟接力即使單則設定提前 1 天 (reminder_relay_offset: -1 / roff:-1) 或僅當天 (roff:0)，到期日仍永遠保持真實到期日不被扣減', () => {
         const txOffset = {
           type: 'memo',
-          reminder_date: '2026-11-07',
-          merchant: 'remind:2026-11-07|relay:1|roff:-1',
+          reminder_date: '2026-11-08',
+          merchant: 'remind:2026-11-08|relay:1|roff:-1',
           transacted_at: '2026-10-17',
           note: `智116/1/9早28號心臟科\n- [ ] 115/11/8第2次慢籤\n- [ ] 115/12/6第3次慢籤`,
         };
-        expect(getEffectiveMemoReminderDate(txOffset, baseDate)).toBe('2026-11-07');
+        expect(getEffectiveMemoReminderDate(txOffset, baseDate)).toBe('2026-11-08');
+        expect(getMemoRelayOffsetDays(txOffset)).toBe(-1);
 
         const txOffsetStep2 = {
           ...txOffset,
           note: `智116/1/9早28號心臟科\n- [x] 115/11/8第2次慢籤\n- [ ] 115/12/6第3次慢籤`,
         };
-        expect(getEffectiveMemoReminderDate(txOffsetStep2, baseDate)).toBe('2026-12-05');
+        expect(getEffectiveMemoReminderDate(txOffsetStep2, baseDate)).toBe('2026-12-06');
+
+        const txSameDay = {
+          type: 'memo',
+          reminder_date: '2026-11-08',
+          merchant: 'remind:2026-11-08|relay:1|roff:0',
+          transacted_at: '2026-10-17',
+          note: `智116/1/9早28號心臟科\n- [ ] 115/11/8第2次慢籤`,
+        };
+        expect(getEffectiveMemoReminderDate(txSameDay, baseDate)).toBe('2026-11-08');
+        expect(getMemoRelayOffsetDays(txSameDay)).toBe(0);
       });
 
       it('嚴格安全防呆門檻：未設提醒且未開啟接力時，即便子項目有日期，有效提醒日嚴格維持 null', () => {

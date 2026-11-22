@@ -139,7 +139,7 @@ describe('帳本備份與還原資料完整性測試 (Backup & Restore Integrity
     expect(decodedMemo.isPinned).toBe(true);
   });
 
-  it('生活記事之接力提醒開關 (reminder_relay) 與每站提前天數 (reminder_relay_offset) 在匯出與還原時應 100% 完整保留', () => {
+  it('生活記事之接力提醒開關 (reminder_relay) 與單則覆寫 (undefined / 0 / -1) 及信用卡繳款截止日 (payment_due_day) 在匯出與還原時應 100% 完整保留', () => {
     const relayMemo: Transaction = {
       id: 'tx-relay-1',
       ledger_id: mockLedger.id,
@@ -152,12 +152,24 @@ describe('帳本備份與還原資料完整性測試 (Backup & Restore Integrity
       transacted_at: '2026-10-17T10:00:00.000Z',
       created_at: '2026-10-17T10:00:00.000Z',
       is_settled: false,
-      reminder_date: '2026-11-07',
+      reminder_date: '2026-11-08',
       reminder_calendar: 'solar',
       reminder_repeat: 'once',
       reminder_target: 'family',
       reminder_relay: true,
       reminder_relay_offset: -1,
+    };
+
+    const relayFollowDefaultMemo: Transaction = {
+      ...relayMemo,
+      id: 'tx-relay-default',
+      reminder_relay_offset: undefined,
+    };
+
+    const relaySameDayMemo: Transaction = {
+      ...relayMemo,
+      id: 'tx-relay-sameday',
+      reminder_relay_offset: 0,
     };
 
     const memoMerchantTag = encodeMemoMerchantTag({
@@ -168,27 +180,49 @@ describe('帳本備份與還原資料完整性測試 (Backup & Restore Integrity
       isRelay: relayMemo.reminder_relay,
       relayOffsetDays: relayMemo.reminder_relay_offset,
     });
+    const defaultTag = encodeMemoMerchantTag({
+      reminderDate: relayFollowDefaultMemo.reminder_date,
+      reminderTarget: 'family',
+      isRelay: true,
+      relayOffsetDays: relayFollowDefaultMemo.reminder_relay_offset,
+    });
+    const sameDayTag = encodeMemoMerchantTag({
+      reminderDate: relaySameDayMemo.reminder_date,
+      reminderTarget: 'family',
+      isRelay: true,
+      relayOffsetDays: relaySameDayMemo.reminder_relay_offset,
+    });
 
     const exportedJson = JSON.stringify({
-      transactions: [{
-        ...relayMemo,
-        merchant: memoMerchantTag,
-      }],
+      payment_accounts: [
+        {
+          id: 'card-1',
+          name: '玉山 Ubear',
+          type: 'credit_card',
+          billing_cycle_date: 15,
+          payment_due_day: 2,
+          balance: 0,
+          sort_order: 1,
+        },
+      ],
+      transactions: [
+        { ...relayMemo, merchant: memoMerchantTag },
+        { ...relayFollowDefaultMemo, merchant: defaultTag },
+        { ...relaySameDayMemo, merchant: sameDayTag },
+      ],
     });
 
     const parsedBackup = JSON.parse(exportedJson);
-    const restoredRawTx = parsedBackup.transactions[0];
-    const decodedMemo = decodeMemoMerchantTag(restoredRawTx.merchant);
+    const [restoredMinusOne, restoredDefault, restoredSameDay] = parsedBackup.transactions;
 
-    const restoredIsRelay = Boolean(restoredRawTx.reminder_relay !== undefined ? restoredRawTx.reminder_relay : decodedMemo.isRelay);
-    const restoredRelayOffset = restoredRawTx.reminder_relay_offset !== undefined
-      ? restoredRawTx.reminder_relay_offset
-      : (decodedMemo.relayOffsetDays || 0);
+    expect(parsedBackup.payment_accounts[0].payment_due_day).toBe(2);
 
-    expect(decodedMemo.isRelay).toBe(true);
-    expect(decodedMemo.relayOffsetDays).toBe(-1);
-    expect(restoredIsRelay).toBe(true);
-    expect(restoredRelayOffset).toBe(-1);
+    expect(decodeMemoMerchantTag(restoredMinusOne.merchant).relayOffsetDays).toBe(-1);
+    expect(decodeMemoMerchantTag(restoredDefault.merchant).relayOffsetDays).toBeUndefined();
+    expect(decodeMemoMerchantTag(restoredSameDay.merchant).relayOffsetDays).toBe(0);
+    expect(restoredMinusOne.reminder_relay_offset).toBe(-1);
+    expect(restoredDefault.reminder_relay_offset).toBeUndefined();
+    expect(restoredSameDay.reminder_relay_offset).toBe(0);
   });
 
   it('統一發票延伸明細與品項細項在匯出與還原時應 100% 完整保留', () => {

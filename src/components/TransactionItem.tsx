@@ -678,7 +678,9 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                 >
                   {isRelay ? '🔁 ' : (reminderBadge?.isLunar ? '🏮 ' : '⏰ ')}
                   {reminderBadge?.fullText || `提醒：${reminderDate}`}
-                  {isRelay && relayOffset < 0 ? ` (提前${Math.abs(relayOffset)}天)` : ''}
+                  {isRelay && relayOffset !== undefined
+                    ? (relayOffset < 0 ? ` (提前${Math.abs(relayOffset)}天預告)` : ' (僅當天)')
+                    : ''}
                 </Text>
               </View>
             )}

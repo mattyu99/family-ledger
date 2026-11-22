@@ -368,10 +368,56 @@ export const getSiblingCardIdsInGroup = (
 };
 
 /**
+ * 查詢同持卡人且同發卡銀行的所有信用卡（供結帳日／繳款日共用與同步）
+ * 忽略既有結帳日差異，以便偵測並同步統一同一銀行之帳單週期。
+ */
+export const findSameIssuerBillingPeerCards = (params: {
+  accounts: PaymentAccount[];
+  cardName?: string;
+  issuerBank?: string | null;
+  userId?: string | null;
+  excludeCardId?: string | null;
+  ledgerId?: string;
+  getMemberById?: (id?: string) => { id: string; display_name?: string } | undefined;
+}): PaymentAccount[] => {
+  const { accounts, cardName, issuerBank, userId, excludeCardId, ledgerId, getMemberById } = params;
+  if (!Array.isArray(accounts) || accounts.length === 0) return [];
+
+  const targetIssuer = detectIssuerBank(cardName, issuerBank);
+  if (!targetIssuer) return [];
+
+  const targetUserId = userId && userId.trim() ? userId.trim() : null;
+  const targetUserName = targetUserId && getMemberById
+    ? getMemberById(targetUserId)?.display_name?.trim().toLowerCase()
+    : undefined;
+
+  const isSameOwner = (cardUserId?: string | null): boolean => {
+    const cleanCardUid = cardUserId && cardUserId.trim() ? cardUserId.trim() : null;
+    if (!targetUserId && !cleanCardUid) return true;
+    if (!targetUserId || !cleanCardUid) return false;
+    if (cleanCardUid === targetUserId) return true;
+    if (targetUserName && getMemberById) {
+      const peerName = getMemberById(cleanCardUid)?.display_name?.trim().toLowerCase();
+      if (peerName && peerName === targetUserName) return true;
+    }
+    return false;
+  };
+
+  return accounts.filter(acc => {
+    if (!acc || acc.type !== 'credit_card') return false;
+    if (ledgerId && acc.ledger_id && acc.ledger_id !== ledgerId) return false;
+    if (excludeCardId && acc.id === excludeCardId) return false;
+    if (!isSameOwner(acc.user_id)) return false;
+    const peerIssuer = detectIssuerBank(acc.name, acc.issuer_bank);
+    return peerIssuer?.id === targetIssuer.id;
+  });
+};
+
+/**
  * 合併雲端與本機的支付帳戶清單
- * 當雲端資料庫尚未升級 issuer_bank 欄位（回傳物件不存在 issuer_bank 鍵）時，
- * 自動保留本機對應卡片既有的發卡機構設定，避免 Realtime 或重新載入覆蓋遺失。
- * 若雲端物件已包含 issuer_bank 鍵（包含明確字串或 null），則完全以雲端資料為準。
+ * 當雲端資料庫尚未升級 issuer_bank / payment_due_day 欄位（回傳物件不存在對應鍵）時，
+ * 自動保留本機對應卡片既有的發卡機構與繳款日設定，避免 Realtime 或重新載入覆蓋遺失。
+ * 若雲端物件已包含該鍵（包含明確值或 null），則完全以雲端資料為準。
  */
 export const mergeCloudPaymentAccountsWithLocal = (
   cloudAccounts: PaymentAccount[],
@@ -389,16 +435,27 @@ export const mergeCloudPaymentAccountsWithLocal = (
 
   return cloudAccounts.map(cloudAcc => {
     if (!cloudAcc || !cloudAcc.id) return cloudAcc;
-    if (!Object.prototype.hasOwnProperty.call(cloudAcc, 'issuer_bank')) {
-      const localAcc = localMap.get(cloudAcc.id);
-      if (localAcc && typeof localAcc.issuer_bank === 'string' && localAcc.issuer_bank.trim().length > 0) {
-        return {
-          ...cloudAcc,
-          issuer_bank: localAcc.issuer_bank,
-        };
-      }
+    const localAcc = localMap.get(cloudAcc.id);
+    if (!localAcc) return cloudAcc;
+
+    let merged: PaymentAccount = cloudAcc;
+    if (
+      !Object.prototype.hasOwnProperty.call(cloudAcc, 'issuer_bank') &&
+      typeof localAcc.issuer_bank === 'string' &&
+      localAcc.issuer_bank.trim().length > 0
+    ) {
+      merged = { ...merged, issuer_bank: localAcc.issuer_bank };
     }
-    return cloudAcc;
+    if (
+      !Object.prototype.hasOwnProperty.call(cloudAcc, 'payment_due_day') &&
+      typeof localAcc.payment_due_day === 'number' &&
+      Number.isFinite(localAcc.payment_due_day) &&
+      localAcc.payment_due_day >= 1 &&
+      localAcc.payment_due_day <= 31
+    ) {
+      merged = { ...merged, payment_due_day: Math.trunc(localAcc.payment_due_day) };
+    }
+    return merged;
   });
 };
 

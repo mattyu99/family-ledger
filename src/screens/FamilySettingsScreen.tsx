@@ -19,7 +19,7 @@ import { showAlert, showConfirm, copyToClipboard } from '../lib/alert';
 import { formatLastBackupText } from '../lib/backup';
 import { APP_FULL_VERSION as APP_VERSION } from '../constants/version';
 import { Profile, MemberDevice } from '../types';
-import { parseMemoNote, getLocalDateYmd } from '../lib/memo';
+import { parseMemoNote, getLocalDateYmd, getEffectiveMemoReminderDate } from '../lib/memo';
 import {
   isNotificationSupported,
   getBillingNotificationsEnabled,
@@ -31,8 +31,18 @@ import {
   scheduleMemoReminderNotifications,
   sendTestBillingNotification,
   sendTestMemoNotification,
-  calculateCardScheduleDates,
   calculateCardOutstandingAmount,
+  NotificationPreferences,
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  REMINDER_TIME_OPTIONS,
+  BILLING_DUE_ADVANCE_OPTIONS,
+  MEMO_ADVANCE_OPTIONS,
+  getNotificationPreferences,
+  saveNotificationPreferences,
+  buildBillingReminderGroups,
+  computeMemoNotificationTriggers,
+  formatBillingAdvanceLabel,
+  formatMemoAdvanceLabel,
 } from '../lib/billingNotifications';
 import {
   isQuickActionSupported,
@@ -178,6 +188,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
   const [memoNoticeEnabled, setMemoNoticeEnabled] = useState(false);
   const [isSchedulingMemoNotice, setIsSchedulingMemoNotice] = useState(false);
   const [isMemosExpanded, setIsMemosExpanded] = useState(false);
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
   const [isQuickActionSupportedState, setIsQuickActionSupportedState] = useState(false);
   const [widgetSnapshot, setWidgetSnapshot] = useState<WidgetSnapshotData | null>(null);
   const [isSyncingWidget, setIsSyncingWidget] = useState(false);
@@ -186,6 +197,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
   useEffect(() => {
     getBillingNotificationsEnabled().then(setBillingNoticeEnabled);
     getMemoNotificationsEnabled().then(setMemoNoticeEnabled);
+    getNotificationPreferences().then(setNotifPrefs);
     isQuickActionSupported().then(setIsQuickActionSupportedState);
     getWidgetSnapshot().then(setWidgetSnapshot);
   }, []);
@@ -226,16 +238,31 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     });
   }, [paymentAccounts, currentLedger?.id, currentUser?.id, currentUser?.display_name, getMemberById]);
 
+  // 依發卡銀行歸戶合併本機個人信用卡提醒群組（同持卡人同銀行只提醒一次並加總待繳金額）
+  const billingGroups = useMemo(() => {
+    const ledgerCards = (paymentAccounts || []).filter(
+      acc => !acc.ledger_id || !currentLedger?.id || acc.ledger_id === currentLedger.id
+    );
+    return buildBillingReminderGroups(
+      ledgerCards,
+      transactions || [],
+      currentUser?.id,
+      getMemberById,
+      new Date(),
+      notifPrefs
+    );
+  }, [paymentAccounts, currentLedger?.id, transactions, currentUser?.id, getMemberById, notifPrefs]);
+
   // 僅篩選出本機實際會推播提醒的待辦記事：
-  // 1. 僅保留今天與未來尚未過期的排程（reminder_date >= todayYmd；已逾期之提醒不屬於未來推播排程）
+  // 1. 以真實到期日（含接力模式下一站）為準，僅保留今天與未來尚未過期的排程
   // 2. 個人專屬待辦僅列出指派給當前使用者的項目（其餘家庭成員之個人專屬待辦本機不響鈴，予以隱藏避免混淆）
   const pendingMemos = useMemo(() => {
     const todayYmd = getLocalDateYmd();
     return (transactions || [])
       .filter(t => {
-        if (t.type !== 'memo' || t.is_settled || !t.reminder_date) return false;
-        // 排除已逾期的提醒（只保留今天與未來即將推播的排程）
-        if (t.reminder_date < todayYmd) return false;
+        if (t.type !== 'memo' || t.is_settled) return false;
+        const effDate = getEffectiveMemoReminderDate(t);
+        if (!effDate || effDate < todayYmd) return false;
         // 個人專屬待辦分流純化：若非全家公用，僅列出指派給自己的項目 (支援別名穿透對齊)
         if (t.reminder_target === 'personal' && currentUser?.id && t.paid_by) {
           if (t.paid_by !== currentUser.id) {
@@ -247,8 +274,29 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
         }
         return true;
       })
-      .sort((a, b) => (a.reminder_date || '').localeCompare(b.reminder_date || ''));
+      .sort((a, b) => (getEffectiveMemoReminderDate(a) || '').localeCompare(getEffectiveMemoReminderDate(b) || ''));
   }, [transactions, currentUser?.id, currentUser?.display_name, getMemberById]);
+
+  const handleUpdateNotifPrefs = async (partial: Partial<NotificationPreferences>) => {
+    const nextPrefs = await saveNotificationPreferences(partial);
+    setNotifPrefs(nextPrefs);
+
+    const affectsBilling =
+      partial.dailyReminderTime !== undefined ||
+      partial.billingStatementEnabled !== undefined ||
+      partial.billingDueEnabled !== undefined ||
+      partial.billingDueAdvanceMode !== undefined;
+    const affectsMemo =
+      partial.dailyReminderTime !== undefined ||
+      partial.memoAdvanceMode !== undefined;
+
+    if (affectsBilling && billingNoticeEnabled) {
+      scheduleBillingReminderNotifications(paymentAccounts, transactions, currentUser?.id, getMemberById, nextPrefs).catch(() => {});
+    }
+    if (affectsMemo && memoNoticeEnabled) {
+      scheduleMemoReminderNotifications(transactions, members, currentUser?.id, nextPrefs).catch(() => {});
+    }
+  };
 
   const handleToggleBillingNotice = async () => {
     const nextState = !billingNoticeEnabled;
@@ -261,7 +309,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       if (!granted) {
         showAlert(
           '請允許通知權限',
-          '甜心記帳本需要通知權限，才能在信用卡出帳日隔天與繳款到期前 3 天發送提醒通知。請至手機「設定」中開啟通知！'
+          '甜心記帳本需要通知權限，才能在信用卡出帳日隔天與繳款期限前發送提醒通知。請至手機「設定」中開啟通知！'
         );
         return;
       }
@@ -270,14 +318,21 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     await setBillingNotificationsEnabled(nextState);
     if (nextState) {
       setIsSchedulingNotice(true);
-      const count = await scheduleBillingReminderNotifications(paymentAccounts, transactions, currentUser?.id, getMemberById);
+      const count = await scheduleBillingReminderNotifications(paymentAccounts, transactions, currentUser?.id, getMemberById, notifPrefs);
       setIsSchedulingNotice(false);
+      const activeRules: string[] = [];
+      if (notifPrefs.billingStatementEnabled) {
+        activeRules.push(`・出帳日隔天 ${notifPrefs.dailyReminderTime}：帳單出帳提醒`);
+      }
+      if (notifPrefs.billingDueEnabled) {
+        activeRules.push(`・繳款期限 ${notifPrefs.dailyReminderTime}（${formatBillingAdvanceLabel(notifPrefs.billingDueAdvanceMode)}）：防忘繳提醒`);
+      }
       showAlert(
         '🔔 信用卡個人提醒已開啟',
-        `已成功為您本人持有的信用卡排程 ${count} 則結帳與繳款到期提醒！\n（其他家庭成員之卡片將不干擾本機）\n\n・出帳日隔天 09:30：帳單出帳提醒\n・繳款到期前 3 天 09:30：待繳金額與防違約金提醒`
+        `已成功為您本人持有的信用卡依發卡銀行合併排程 ${count} 則提醒！\n（同銀行多卡只響一次、其他家庭成員之卡片不干擾本機）\n\n${activeRules.length > 0 ? activeRules.join('\n') : '・目前出帳與繳款子開關皆關閉，可於下方隨時開啟'}`
       );
     } else {
-      await scheduleBillingReminderNotifications(paymentAccounts, transactions, currentUser?.id, getMemberById);
+      await scheduleBillingReminderNotifications(paymentAccounts, transactions, currentUser?.id, getMemberById, notifPrefs);
       showAlert('信用卡提醒已關閉', '已取消所有信用卡本機排程提醒。');
     }
   };
@@ -315,7 +370,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       if (!granted) {
         showAlert(
           '請允許通知權限',
-          '甜心記帳本需要通知權限，才能在生活記事提醒日當天上午 09:00 發送待辦提醒。請至手機「設定」中開啟通知！'
+          `甜心記帳本需要通知權限，才能於生活記事到期前與當天上午 ${notifPrefs.dailyReminderTime} 發送待辦提醒。請至手機「設定」中開啟通知！`
         );
         return;
       }
@@ -324,14 +379,14 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     await setMemoNotificationsEnabled(nextState);
     if (nextState) {
       setIsSchedulingMemoNotice(true);
-      const count = await scheduleMemoReminderNotifications(transactions, members, currentUser?.id);
+      const count = await scheduleMemoReminderNotifications(transactions, members, currentUser?.id, notifPrefs);
       setIsSchedulingMemoNotice(false);
       showAlert(
         '📌 記事待辦提醒已開啟',
-        `已成功為您排程 ${count} 則待辦提醒！\n（包含全家共同待辦，以及指派給您本人的個人專屬備忘）\n\n・提醒日當天 09:00：待辦清單提醒\n・重要拜拜/紀念日：前一晚 20:00 預警通知`
+        `已成功為您排程 ${count} 則待辦提醒！\n（包含全家共同待辦，以及指派給您本人的個人專屬備忘）\n\n・預設預警規則：${formatMemoAdvanceLabel(notifPrefs.memoAdvanceMode)}\n・早晨提醒鐘點：${notifPrefs.dailyReminderTime}`
       );
     } else {
-      await scheduleMemoReminderNotifications(transactions, members, currentUser?.id);
+      await scheduleMemoReminderNotifications(transactions, members, currentUser?.id, notifPrefs);
       showAlert('記事提醒已關閉', '已取消所有生活記事本機排程提醒。');
     }
   };
@@ -918,6 +973,55 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
   {/* 🔔 提醒與個人維度 */}
   {showReminderCards && (
     <>
+      {/* ⏰ 統一每日提醒鐘點偏好 */}
+      <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+            ⏰ 每日提醒鐘點
+          </Text>
+          <View style={[styles.cardholderBadge, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
+            <Text style={[styles.cardholderBadgeText, { color: isDark ? '#34D399' : '#047857' }]}>
+              目前 {notifPrefs.dailyReminderTime}
+            </Text>
+          </View>
+        </View>
+
+        <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          信用卡帳單與生活記事統一於此早晨時刻響鈴提醒，配合您的日常出門作息
+        </Text>
+
+        <View style={styles.reminderOptionsRow}>
+          {REMINDER_TIME_OPTIONS.map((timeOpt) => {
+            const isSelected = notifPrefs.dailyReminderTime === timeOpt;
+            return (
+              <TouchableOpacity
+                key={timeOpt}
+                style={[
+                  styles.reminderOptionChip,
+                  {
+                    backgroundColor: isSelected
+                      ? (isDark ? 'rgba(59, 130, 246, 0.22)' : '#EFF6FF')
+                      : colors.background.cardSubtle,
+                    borderColor: isSelected ? '#3B82F6' : colors.border.default,
+                  },
+                ]}
+                onPress={() => handleUpdateNotifPrefs({ dailyReminderTime: timeOpt })}
+                activeOpacity={0.75}
+              >
+                <Text
+                  style={[
+                    styles.reminderOptionChipText,
+                    { color: isSelected ? (isDark ? '#93C5FD' : '#1D4ED8') : colors.text.secondary, fontWeight: isSelected ? '700' : '500' },
+                  ]}
+                >
+                  {timeOpt}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+
       {/* 💳 信用卡帳單與智慧推播提醒卡片 */}
       <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
         <View style={styles.sectionHeaderRow}>
@@ -937,8 +1041,96 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
         </View>
 
         <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-          僅提醒您本人持有的信用卡，於出帳日與繳款期限前自動發送專屬推播防忘繳
+          同銀行多張信用卡自動合併通知不重複轟炸，並依本人持卡分流提醒
         </Text>
+
+        {/* 出帳日與繳款期限獨立子開關 */}
+        <View style={styles.reminderSubSection}>
+          <Text style={[styles.reminderSubLabel, { color: colors.text.secondary }]}>通知項目（可分別開關）</Text>
+          <View style={styles.reminderSubToggleRow}>
+            <TouchableOpacity
+              style={[
+                styles.reminderSubToggleChip,
+                {
+                  backgroundColor: notifPrefs.billingStatementEnabled
+                    ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5')
+                    : colors.background.cardSubtle,
+                  borderColor: notifPrefs.billingStatementEnabled ? '#10B981' : colors.border.default,
+                },
+              ]}
+              onPress={() => handleUpdateNotifPrefs({ billingStatementEnabled: !notifPrefs.billingStatementEnabled })}
+              activeOpacity={0.75}
+            >
+              <Text
+                style={[
+                  styles.reminderSubToggleText,
+                  { color: notifPrefs.billingStatementEnabled ? (isDark ? '#34D399' : '#047857') : colors.text.muted },
+                ]}
+              >
+                {notifPrefs.billingStatementEnabled ? '✓ ' : '○ '}📄 出帳日 (結帳隔天)
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.reminderSubToggleChip,
+                {
+                  backgroundColor: notifPrefs.billingDueEnabled
+                    ? (isDark ? 'rgba(59, 130, 246, 0.22)' : '#EFF6FF')
+                    : colors.background.cardSubtle,
+                  borderColor: notifPrefs.billingDueEnabled ? '#3B82F6' : colors.border.default,
+                },
+              ]}
+              onPress={() => handleUpdateNotifPrefs({ billingDueEnabled: !notifPrefs.billingDueEnabled })}
+              activeOpacity={0.75}
+            >
+              <Text
+                style={[
+                  styles.reminderSubToggleText,
+                  { color: notifPrefs.billingDueEnabled ? (isDark ? '#93C5FD' : '#1D4ED8') : colors.text.muted },
+                ]}
+              >
+                {notifPrefs.billingDueEnabled ? '✓ ' : '○ '}🗓️ 繳款期限日
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {notifPrefs.billingDueEnabled && (
+            <>
+              <Text style={[styles.reminderSubLabel, { color: colors.text.secondary, marginTop: 10 }]}>繳款預警時機</Text>
+              <View style={styles.reminderOptionsWrapRow}>
+                {BILLING_DUE_ADVANCE_OPTIONS.map((opt) => {
+                  const isSelected = notifPrefs.billingDueAdvanceMode === opt.value;
+                  return (
+                    <TouchableOpacity
+                      key={opt.value}
+                      style={[
+                        styles.reminderChoicePill,
+                        {
+                          backgroundColor: isSelected
+                            ? (isDark ? 'rgba(59, 130, 246, 0.22)' : '#EFF6FF')
+                            : colors.background.cardSubtle,
+                          borderColor: isSelected ? '#3B82F6' : colors.border.default,
+                        },
+                      ]}
+                      onPress={() => handleUpdateNotifPrefs({ billingDueAdvanceMode: opt.value })}
+                      activeOpacity={0.75}
+                    >
+                      <Text
+                        style={[
+                          styles.reminderChoicePillText,
+                          { color: isSelected ? (isDark ? '#93C5FD' : '#1D4ED8') : colors.text.secondary, fontWeight: isSelected ? '700' : '500' },
+                        ]}
+                      >
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          )}
+        </View>
 
         {/* 展開/收合信用卡時程按鈕 */}
         <TouchableOpacity
@@ -948,51 +1140,67 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
         >
           <Text style={[styles.collapseToggleBtnText, { color: colors.text.primary }]}>
             {isCreditCardsExpanded
-              ? '收合卡片提醒排程 ▴'
-              : `展開卡片提醒排程 (${creditCards.length} 張) ▾`}
+              ? '收合銀行帳單排程 ▴'
+              : `展開銀行帳單排程 (${billingGroups.length} 組) ▾`}
           </Text>
         </TouchableOpacity>
 
-        {/* 信用卡時程清單預覽 */}
+        {/* 信用卡時程清單預覽（依發卡銀行歸戶顯示） */}
         {isCreditCardsExpanded && (
           <View style={[styles.cardScheduleContainer, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
-            {creditCards.length === 0 ? (
+            {billingGroups.length === 0 ? (
               <View style={styles.noCardBox}>
                 <Text style={[styles.noCardText, { color: colors.text.muted }]}>
                   💳 目前無屬於您本人的信用卡提醒。可至「錢包與帳戶」新增信用卡或指派持卡人為您本人
                 </Text>
               </View>
             ) : (
-              creditCards.map((card) => {
-                const dates = calculateCardScheduleDates(card);
-                const outstanding = calculateCardOutstandingAmount(card.id, transactions);
+              billingGroups.map((group) => {
+                const { billStatementDate, advanceReminderDate, dueDayReminderDate, advanceDays, includeDueDay } = group.dates;
+                const fmtMdHm = (d: Date) =>
+                  `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                const scheduleParts: string[] = [];
+                if (notifPrefs.billingStatementEnabled) {
+                  scheduleParts.push(`出帳 ${fmtMdHm(billStatementDate)}`);
+                }
+                if (notifPrefs.billingDueEnabled) {
+                  scheduleParts.push(`前${advanceDays}天 ${fmtMdHm(advanceReminderDate)}`);
+                  if (includeDueDay) {
+                    scheduleParts.push(`當天 ${fmtMdHm(dueDayReminderDate)}`);
+                  }
+                }
                 return (
-                  <View key={card.id} style={[styles.cardScheduleRow, { borderBottomColor: colors.border.default }]}>
+                  <View key={group.groupKey} style={[styles.cardScheduleRow, { borderBottomColor: colors.border.default }]}>
                     <View style={{ flex: 1, marginRight: 8 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Text style={styles.cardScheduleIcon}>{card.icon || '💳'}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <Text style={styles.cardScheduleIcon}>💳</Text>
                         <Text style={[styles.cardScheduleName, { color: colors.text.primary }]} numberOfLines={1}>
-                          {card.name}
+                          {group.displayName}
                         </Text>
-                        {card.user_id === currentUser?.id || (currentUser?.display_name && getMemberById && getMemberById(card.user_id)?.display_name === currentUser.display_name) ? (
+                        {group.isPersonalCard ? (
                           <View style={[styles.cardholderBadge, { backgroundColor: isDark ? '#1E3A8A' : '#EFF6FF' }]}>
                             <Text style={[styles.cardholderBadgeText, { color: isDark ? '#93C5FD' : '#2563EB' }]}>
-                              📱 本人卡片 (本機提醒)
+                              📱 本人帳單
                             </Text>
                           </View>
                         ) : (
                           <View style={[styles.cardholderBadge, { backgroundColor: colors.border.default }]}>
                             <Text style={[styles.cardholderBadgeText, { color: colors.text.secondary }]}>
-                              🌐 通用公用卡 (本機提醒)
+                              🌐 公用帳單
                             </Text>
                           </View>
                         )}
                       </View>
+                      {group.cards.length > 1 && (
+                        <Text style={[styles.cardScheduleMeta, { color: colors.text.muted }]} numberOfLines={2}>
+                          合併卡片：{group.cardNames.join('、')}
+                        </Text>
+                      )}
                       <Text style={[styles.cardScheduleMeta, { color: colors.text.secondary }]}>
-                        結帳日：每月 {card.billing_cycle_date || 15} 號 · 待繳約 NT$ {outstanding.toLocaleString()}
+                        每月 {group.billingCycleDate} 號結帳 · {group.paymentDueDay ? `${group.paymentDueDay} 號繳款` : '結帳後20天繳款'} · 待繳約 NT$ {group.estimatedAmount.toLocaleString()}
                       </Text>
                       <Text style={[styles.cardScheduleDates, { color: colors.text.muted }]}>
-                        下次出帳：{dates.billStatementDate.getMonth() + 1}/{dates.billStatementDate.getDate()} 09:30 · 繳費提醒：{dates.reminderDueDate.getMonth() + 1}/{dates.reminderDueDate.getDate()} 09:30
+                        {scheduleParts.length > 0 ? `🔔 ${scheduleParts.join(' · ')}` : '⏸️ 目前出帳與繳款子開關皆關閉'}
                       </Text>
                     </View>
                   </View>
@@ -1039,8 +1247,45 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
         </View>
 
         <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-          全家待辦全員接收；個人專屬待辦僅提醒被指派之負責成員，精準防擾
+          全家待辦全員接收；個人專屬待辦僅提醒被指派之負責成員，到期日與預告推播完美一致
         </Text>
+
+        {/* 生活記事預設提前預警策略 */}
+        <View style={styles.reminderSubSection}>
+          <Text style={[styles.reminderSubLabel, { color: colors.text.secondary }]}>
+            預設提前預警（含一般記事與接力子項目，到期當天皆會於 {notifPrefs.dailyReminderTime} 提醒）
+          </Text>
+          <View style={styles.reminderOptionsWrapRow}>
+            {MEMO_ADVANCE_OPTIONS.map((opt) => {
+              const isSelected = notifPrefs.memoAdvanceMode === opt.value;
+              return (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[
+                    styles.reminderChoicePill,
+                    {
+                      backgroundColor: isSelected
+                        ? (isDark ? 'rgba(20, 184, 166, 0.22)' : '#CCFBF1')
+                        : colors.background.cardSubtle,
+                      borderColor: isSelected ? '#0D9488' : colors.border.default,
+                    },
+                  ]}
+                  onPress={() => handleUpdateNotifPrefs({ memoAdvanceMode: opt.value })}
+                  activeOpacity={0.75}
+                >
+                  <Text
+                    style={[
+                      styles.reminderChoicePillText,
+                      { color: isSelected ? (isDark ? '#5EEAD4' : '#0F766E') : colors.text.secondary, fontWeight: isSelected ? '700' : '500' },
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
 
         {/* 展開/收合生活待辦時程按鈕 */}
         <TouchableOpacity
@@ -1068,14 +1313,25 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
               pendingMemos.map((memo) => {
                 const parsed = parseMemoNote(memo.note);
                 const assignee = memo.paid_by ? getMemberById(memo.paid_by) : null;
+                const schedule = computeMemoNotificationTriggers(memo, notifPrefs);
+                const fmtMdHm = (d: Date) =>
+                  `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                const triggerSummary = schedule.triggers.map(t => fmtMdHm(t.date)).join(' · ');
                 return (
                   <View key={memo.id} style={[styles.cardScheduleRow, { borderBottomColor: colors.border.default }]}>
                     <View style={{ flex: 1, marginRight: 8 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         <Text style={styles.cardScheduleIcon}>{parsed.icon || '📌'}</Text>
                         <Text style={[styles.cardScheduleName, { color: colors.text.primary }]} numberOfLines={1}>
                           {parsed.title}
                         </Text>
+                        {schedule.isRelay && (
+                          <View style={[styles.cardholderBadge, { backgroundColor: isDark ? 'rgba(20, 184, 166, 0.25)' : '#CCFBF1' }]}>
+                            <Text style={[styles.cardholderBadgeText, { color: isDark ? '#5EEAD4' : '#0F766E' }]}>
+                              🔁 接力
+                            </Text>
+                          </View>
+                        )}
                         <View style={[styles.cardholderBadge, { backgroundColor: memo.reminder_target === 'personal' ? (isDark ? '#581C87' : '#FAF5FF') : (isDark ? '#1E3A8A' : '#EFF6FF') }]}>
                           <Text style={[styles.cardholderBadgeText, { color: memo.reminder_target === 'personal' ? (isDark ? '#D8B4FE' : '#9333EA') : (isDark ? '#93C5FD' : '#2563EB') }]}>
                             {memo.reminder_target === 'personal' ? `👤 個人專屬${assignee ? `·${assignee.display_name}` : ''}` : '🌐 全家待辦'}
@@ -1083,10 +1339,11 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                         </View>
                       </View>
                       <Text style={[styles.cardScheduleMeta, { color: colors.text.secondary }]} numberOfLines={1}>
-                        {parsed.cleanContent || memo.note}
+                        {schedule.nextStopLabel ? `下一站：${schedule.nextStopLabel}` : (parsed.cleanContent || memo.note)}
                       </Text>
                       <Text style={[styles.cardScheduleDates, { color: colors.text.muted }]}>
-                        🔔 預計提醒：{memo.reminder_date} 上午 09:00
+                        📅 到期 {schedule.dueYmd} · 🔔 推播：{triggerSummary}
+                        {schedule.relayOverrideOffset !== undefined ? `（${schedule.modeLabel}）` : ''}
                       </Text>
                     </View>
                   </View>
@@ -3028,6 +3285,64 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
     lineHeight: 16,
+  },
+  reminderOptionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+  },
+  reminderOptionChip: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reminderOptionChipText: {
+    fontSize: 13,
+  },
+  reminderSubSection: {
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  reminderSubLabel: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  reminderSubToggleRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  reminderSubToggleChip: {
+    flex: 1,
+    minWidth: 135,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reminderSubToggleText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  reminderOptionsWrapRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  reminderChoicePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  reminderChoicePillText: {
+    fontSize: 12,
   },
 });
 

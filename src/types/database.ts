@@ -107,6 +107,7 @@ export interface PaymentAccount {
   last_four_digits?: string; // 末四碼 (如 8829)
   card_number?: string; // 完整卡號 (悠遊卡/一卡通可填 10~16 碼，供官網查帳與一鍵複製)
   billing_cycle_date?: number; // 信用卡結帳日 (每月 1~31 號)
+  payment_due_day?: number | null; // 信用卡繳款截止日 (每月 1~31 號，選填；留空時預設結帳日 + 20 天)
   issuer_bank?: string | null; // 發卡銀行/機構識別（例如：國泰世華銀行、台北富邦銀行），用於同銀行歸戶與帳單共享
   balance: number; // 儲值卡/帳戶餘額 (悠遊卡使用)
   color?: string; // 卡片識別色
@@ -135,7 +136,7 @@ export interface Transaction {
   reminder_repeat?: 'once' | 'weekly' | 'biweekly' | 'monthly' | 'lunar_1_15' | 'lunar_2_16' | 'yearly'; // 提醒重複週期
   reminder_target?: 'family' | 'personal'; // 提醒對象範圍：'family' (全家提醒，預設) | 'personal' (個人專屬)
   reminder_relay?: boolean; // 是否開啟「隨子項目日期自動接力提醒」（預設 false，固定提醒不被子項目覆蓋）
-  reminder_relay_offset?: number; // 接力模式每站提前天數偏移量 (0=當天, -1=提前1天, -3=提前3天)
+  reminder_relay_offset?: number; // 接力模式單則提醒時機覆寫（undefined=跟隨設定頁預設, 0=僅當天, -1=提前1天+當天, -3=提前3天+當天）
   is_pinned?: boolean; // 生活記事置頂標記 (跨月常駐於首頁與待辦榜首)
   completed_by?: string; // 完成此待辦事項的家庭成員 ID (Profile ID)
   completed_at?: string; // 辦妥此待辦事項的精確時間戳記 (ISO 8601)
