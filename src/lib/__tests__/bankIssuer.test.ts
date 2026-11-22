@@ -4,6 +4,7 @@ import {
   groupCreditCardsByIssuer,
   findIssuerGroupForCard,
   getSiblingCardIdsInGroup,
+  mergeCloudPaymentAccountsWithLocal,
   TAIWAN_BANK_ISSUERS,
 } from '../bankIssuer';
 import { PaymentAccount } from '../../types/database';
@@ -198,6 +199,117 @@ describe('💳 信用卡發卡機構歸戶辨識演算法 (bankIssuer.test.ts)',
 
       const notFoundSiblings = getSiblingCardIdsInGroup('non-exist', testAccounts);
       expect(notFoundSiblings).toEqual(['non-exist']);
+    });
+  });
+
+  describe('4. Unicard 自動辨識、自訂非字典機構不碰撞與雲端本機發卡機構合併保護', () => {
+    it('能自動辨識 unicard 為玉山銀行，且手動指定自訂銀行具最高優先權與獨立識別碼', () => {
+      const autoDetected = detectIssuerBank('unicard');
+      expect(autoDetected?.id).toBe('esun');
+      expect(autoDetected?.shortName).toBe('玉山銀行');
+
+      const customBankA = detectIssuerBank('unicard', '用山銀行');
+      expect(customBankA?.shortName).toBe('用山銀行');
+      expect(customBankA?.name).toBe('用山銀行');
+
+      const customBankB = detectIssuerBank('星辰聯名卡', '星辰銀行');
+      expect(customBankB?.shortName).toBe('星辰銀行');
+      expect(customBankA?.id).not.toBe(customBankB?.id);
+    });
+
+    it('mergeCloudPaymentAccountsWithLocal 能在雲端尚未支援 issuer_bank 欄位時保留本機設定，並在雲端已支援時尊重雲端結果', () => {
+      const localAccounts: PaymentAccount[] = [
+        {
+          id: 'card-unicard',
+          ledger_id: 'led-1',
+          name: 'unicard',
+          type: 'credit_card',
+          issuer_bank: '用山銀行',
+          billing_cycle_date: 15,
+          balance: 0,
+          sort_order: 1,
+          created_at: '',
+        },
+        {
+          id: 'card-edited',
+          ledger_id: 'led-1',
+          name: '無名卡',
+          type: 'credit_card',
+          issuer_bank: '舊銀行',
+          billing_cycle_date: 15,
+          balance: 0,
+          sort_order: 2,
+          created_at: '',
+        },
+        {
+          id: 'card-cleared',
+          ledger_id: 'led-1',
+          name: '通用卡',
+          type: 'credit_card',
+          issuer_bank: '曾經設定的銀行',
+          billing_cycle_date: 15,
+          balance: 0,
+          sort_order: 3,
+          created_at: '',
+        },
+      ];
+
+      // 模擬：
+      // 1. card-unicard 來自舊版 DB，物件完全不含 issuer_bank 鍵 ➔ 應保留本機「用山銀行」
+      // 2. card-edited 來自已升級 DB，帶有新值「台新銀行」 ➔ 應採用雲端「台新銀行」
+      // 3. card-cleared 來自已升級 DB，明確為 null ➔ 應尊重雲端清除結果 null
+      // 4. card-new-cloud 為他機新增卡片 ➔ 正常保留
+      const cloudAccounts: PaymentAccount[] = [
+        {
+          id: 'card-unicard',
+          ledger_id: 'led-1',
+          name: 'unicard',
+          type: 'credit_card',
+          billing_cycle_date: 15,
+          balance: 0,
+          sort_order: 1,
+          created_at: '',
+        },
+        {
+          id: 'card-edited',
+          ledger_id: 'led-1',
+          name: '無名卡',
+          type: 'credit_card',
+          issuer_bank: '台新銀行',
+          billing_cycle_date: 15,
+          balance: 0,
+          sort_order: 2,
+          created_at: '',
+        },
+        {
+          id: 'card-cleared',
+          ledger_id: 'led-1',
+          name: '通用卡',
+          type: 'credit_card',
+          issuer_bank: null,
+          billing_cycle_date: 15,
+          balance: 0,
+          sort_order: 3,
+          created_at: '',
+        },
+        {
+          id: 'card-new-cloud',
+          ledger_id: 'led-1',
+          name: '新卡片',
+          type: 'credit_card',
+          issuer_bank: '國泰世華',
+          billing_cycle_date: 20,
+          balance: 0,
+          sort_order: 4,
+          created_at: '',
+        },
+      ];
+
+      const merged = mergeCloudPaymentAccountsWithLocal(cloudAccounts, localAccounts);
+      expect(merged.find(a => a.id === 'card-unicard')?.issuer_bank).toBe('用山銀行');
+      expect(merged.find(a => a.id === 'card-edited')?.issuer_bank).toBe('台新銀行');
+      expect(merged.find(a => a.id === 'card-cleared')?.issuer_bank).toBeNull();
+      expect(merged.find(a => a.id === 'card-new-cloud')?.issuer_bank).toBe('國泰世華');
     });
   });
 });

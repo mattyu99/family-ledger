@@ -291,9 +291,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     setFormName(text);
     if (formType === 'credit_card' && !isManualIssuer) {
       const detected = detectIssuerBank(text);
-      if (detected) {
-        setFormIssuerBank(detected.shortName);
-      }
+      setFormIssuerBank(detected ? detected.shortName : '');
     }
   };
 
@@ -322,7 +320,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
       : (cleanLastFour || undefined);
 
     const cleanIssuerBank = formIssuerBank.trim();
-    const finalIssuerBank = formType === 'credit_card' ? (cleanIssuerBank || undefined) : undefined;
+    const finalIssuerBankForAdd = formType === 'credit_card' ? (cleanIssuerBank || undefined) : undefined;
+    const finalIssuerBankForUpdate = formType === 'credit_card' ? (cleanIssuerBank || null) : null;
 
     const cycleNum = parseInt(formCycleDate, 10);
     const validCycle = isNaN(cycleNum) ? 15 : Math.max(1, Math.min(31, cycleNum));
@@ -339,7 +338,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
         last_four_digits: finalLastFour,
         card_number: finalCardNumber,
         billing_cycle_date: formType === 'credit_card' ? validCycle : undefined,
-        issuer_bank: finalIssuerBank,
+        issuer_bank: finalIssuerBankForUpdate,
         balance: formType === 'stored_value' ? balanceNum : 0,
         color: formColor,
       });
@@ -351,7 +350,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
         last_four_digits: finalLastFour,
         card_number: finalCardNumber,
         billing_cycle_date: formType === 'credit_card' ? validCycle : undefined,
-        issuer_bank: finalIssuerBank,
+        issuer_bank: finalIssuerBankForAdd,
         balance: formType === 'stored_value' ? balanceNum : 0,
         color: formColor,
         icon:

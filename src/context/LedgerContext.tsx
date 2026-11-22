@@ -7,6 +7,7 @@ import { supabase, supabaseAdmin, isConfigured, SUPABASE_URL, SUPABASE_ANON_KEY 
 const getStorageServiceToken = (): string => SUPABASE_ANON_KEY;
 import { generateUUID } from '../lib/uuid';
 import { DEMO_PAYMENT_ACCOUNTS, DEFAULT_PAYMENT_METHODS, isAccountBelongingToMember, KNOWN_PAYMENT_METHOD_UUIDS } from '../lib/payment';
+import { mergeCloudPaymentAccountsWithLocal } from '../lib/bankIssuer';
 import { DEFAULT_RECURRING_PRESETS, getCurrentPeriodKey, getBillPeriodLabel, getInstallmentInfo, appendPeriodKey } from '../lib/recurring';
 import { parseMemoNote, encodeMemoMerchantTag, decodeMemoMerchantTag, DEFAULT_MEMO_QUICK_TAGS, extractMemoTag, toggleChecklistItem, isChecklistOnlyChange, stripMemoInternalTag, isValidMerchantName, computeNextRelayReminderDate, isMemoActionTag, isMemoRelayEnabled, getMemoRelayOffsetDays } from '../lib/memo';
 import { CalendarSystem, MemoRepeatFrequency, getNextMemoReminderDate, formatMemoReminderBadge } from '../lib/lunar';
@@ -2242,9 +2243,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
 
             if (freshAccounts.length > 0) {
-              setPaymentAccounts(freshAccounts);
-              AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify(freshAccounts));
-              AsyncStorage.setItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${ledgerId}`, JSON.stringify(freshAccounts));
+              let localAccounts: PaymentAccount[] = [];
+              try {
+                const localStr =
+                  (await AsyncStorage.getItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${ledgerId}`)) ||
+                  (await AsyncStorage.getItem(STORAGE_KEYS.PAYMENT_ACCOUNTS));
+                if (localStr) {
+                  const parsed = JSON.parse(localStr);
+                  if (Array.isArray(parsed)) localAccounts = parsed;
+                }
+              } catch {}
+              const mergedAccounts = mergeCloudPaymentAccountsWithLocal(freshAccounts, localAccounts);
+              setPaymentAccounts(mergedAccounts);
+              AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify(mergedAccounts));
+              AsyncStorage.setItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${ledgerId}`, JSON.stringify(mergedAccounts));
             }
           } catch (err) {
             console.warn('Realtime 刷新卡片帳戶失敗:', err);
@@ -4049,6 +4061,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               }
             }
           }
+
+          let localCachedAccounts: PaymentAccount[] = [];
+          if (savedLedgerAccounts) {
+            try {
+              const parsedLocal = JSON.parse(savedLedgerAccounts);
+              if (Array.isArray(parsedLocal)) {
+                localCachedAccounts = parsedLocal;
+              }
+            } catch {}
+          }
+          scopedCloudAccs = mergeCloudPaymentAccountsWithLocal(scopedCloudAccs, localCachedAccounts);
 
           setPaymentAccounts(scopedCloudAccs);
           await AsyncStorage.setItem(STORAGE_KEYS.PAYMENT_ACCOUNTS, JSON.stringify(scopedCloudAccs));

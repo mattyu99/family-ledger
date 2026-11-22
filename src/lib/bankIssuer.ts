@@ -62,7 +62,7 @@ export const TAIWAN_BANK_ISSUERS: IssuerBankInfo[] = [
     code: '808',
     name: '玉山商業銀行',
     shortName: '玉山銀行',
-    aliases: ['玉山銀行', '玉山', 'esun', 'e.sun', 'ubear', '熊本熊', 'pi 拍錢包', 'pi拍錢包', '808'],
+    aliases: ['玉山銀行', '玉山', 'esun', 'e.sun', 'ubear', 'unicard', '熊本熊', 'pi 拍錢包', 'pi拍錢包', '808'],
   },
   {
     id: 'ubot',
@@ -246,7 +246,7 @@ const toSimpleSlug = (str: string): string => {
  * @param explicitIssuer 使用者手動設定之發卡機構名稱或代碼（選填，若有則優先採用）
  * @returns 命中之發卡機構資訊，若未命中則返回 null
  */
-export const detectIssuerBank = (cardName?: string, explicitIssuer?: string): IssuerBankInfo | null => {
+export const detectIssuerBank = (cardName?: string, explicitIssuer?: string | null): IssuerBankInfo | null => {
   // 1. 若有顯式指定發卡機構，優先以顯式值比對
   if (explicitIssuer && explicitIssuer.trim()) {
     const raw = explicitIssuer.trim();
@@ -263,8 +263,9 @@ export const detectIssuerBank = (cardName?: string, explicitIssuer?: string): Is
     if (matched) return matched;
 
     // 自訂非內建銀行
+    const slug = toSimpleSlug(raw);
     return {
-      id: `custom_${toSimpleSlug(raw) || 'bank'}`,
+      id: `custom_${slug || raw.replace(/\s+/g, '')}`,
       name: raw,
       shortName: raw,
       aliases: [lower],
@@ -364,5 +365,40 @@ export const getSiblingCardIdsInGroup = (
   const group = findIssuerGroupForCard(cardId, cards);
   if (!group) return [cardId];
   return group.cards.map(c => c.id);
+};
+
+/**
+ * 合併雲端與本機的支付帳戶清單
+ * 當雲端資料庫尚未升級 issuer_bank 欄位（回傳物件不存在 issuer_bank 鍵）時，
+ * 自動保留本機對應卡片既有的發卡機構設定，避免 Realtime 或重新載入覆蓋遺失。
+ * 若雲端物件已包含 issuer_bank 鍵（包含明確字串或 null），則完全以雲端資料為準。
+ */
+export const mergeCloudPaymentAccountsWithLocal = (
+  cloudAccounts: PaymentAccount[],
+  localAccounts: PaymentAccount[]
+): PaymentAccount[] => {
+  if (!Array.isArray(cloudAccounts) || cloudAccounts.length === 0) return cloudAccounts;
+  if (!Array.isArray(localAccounts) || localAccounts.length === 0) return cloudAccounts;
+
+  const localMap = new Map<string, PaymentAccount>();
+  localAccounts.forEach(acc => {
+    if (acc && acc.id) {
+      localMap.set(acc.id, acc);
+    }
+  });
+
+  return cloudAccounts.map(cloudAcc => {
+    if (!cloudAcc || !cloudAcc.id) return cloudAcc;
+    if (!Object.prototype.hasOwnProperty.call(cloudAcc, 'issuer_bank')) {
+      const localAcc = localMap.get(cloudAcc.id);
+      if (localAcc && typeof localAcc.issuer_bank === 'string' && localAcc.issuer_bank.trim().length > 0) {
+        return {
+          ...cloudAcc,
+          issuer_bank: localAcc.issuer_bank,
+        };
+      }
+    }
+    return cloudAcc;
+  });
 };
 

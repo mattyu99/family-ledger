@@ -116,10 +116,18 @@ export function usePaymentAccounts({
             : newAcc;
 
           let { error: insErr } = await supabase.from('payment_accounts').insert(payloadAcc);
-          if (insErr && (insErr.code === '42703' || insErr.message?.includes('card_number') || insErr.message?.includes('issuer_bank'))) {
+          if (insErr && (insErr.code === '42703' || insErr.code === 'PGRST204' || insErr.message?.includes('card_number') || insErr.message?.includes('issuer_bank'))) {
             const { card_number: _c, issuer_bank: _i, ...fallbackAcc } = payloadAcc;
             await supabase.from('payment_accounts').insert(fallbackAcc);
           }
+        } else if (rpcRes?.issuer_bank_supported !== true && newAcc.issuer_bank) {
+          // 兼容：若雲端資料表已有 issuer_bank 欄位但 RPC 尚未更新，嘗試補寫；若欄位不存在則靜默略過
+          try {
+            await supabase
+              .from('payment_accounts')
+              .update({ issuer_bank: newAcc.issuer_bank })
+              .eq('id', newAcc.id);
+          } catch {}
         }
       } catch (e) {
         console.warn('雲端新增付款帳戶連線失敗 (已保留本地):', e);
@@ -155,10 +163,17 @@ export function usePaymentAccounts({
         });
         if (rpcErr || (rpcRes && rpcRes.success === false)) {
           let { error: updErr } = await supabase.from('payment_accounts').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id);
-          if (updErr && (updErr.code === '42703' || updErr.message?.includes('card_number') || updErr.message?.includes('issuer_bank'))) {
+          if (updErr && (updErr.code === '42703' || updErr.code === 'PGRST204' || updErr.message?.includes('card_number') || updErr.message?.includes('issuer_bank'))) {
             const { card_number: _c, issuer_bank: _i, ...fallbackData } = data;
             await supabase.from('payment_accounts').update({ ...fallbackData, updated_at: new Date().toISOString() }).eq('id', id);
           }
+        } else if (rpcRes?.issuer_bank_supported !== true && Object.prototype.hasOwnProperty.call(data, 'issuer_bank')) {
+          try {
+            await supabase
+              .from('payment_accounts')
+              .update({ issuer_bank: data.issuer_bank ?? null, updated_at: new Date().toISOString() })
+              .eq('id', id);
+          } catch {}
         }
       } catch (e) {
         console.warn('雲端更新付款帳戶失敗:', e);

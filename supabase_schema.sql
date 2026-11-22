@@ -149,6 +149,7 @@ CREATE TABLE IF NOT EXISTS public.payment_accounts (
     user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL, -- 持卡人 / 歸屬成員
     last_four_digits TEXT, -- 末四碼 (如 8829)
     card_number TEXT, -- 完整卡號 (悠遊卡/一卡通 10~16 碼，供官網查帳與一鍵複製)
+    issuer_bank TEXT, -- 發卡銀行/機構識別（用於同銀行多卡歸戶對帳）
     billing_cycle_date INT CHECK (billing_cycle_date BETWEEN 1 AND 31), -- 結帳日 (每月 1~31 號)
     balance NUMERIC(12, 2) DEFAULT 0 NOT NULL, -- 儲值卡/帳戶餘額 (悠遊卡使用)
     color TEXT DEFAULT '#3B82F6',
@@ -1132,8 +1133,9 @@ CREATE POLICY "成員可刪除所屬帳本的付款方式" ON public.payment_met
 -- 確保 Realtime 事件可用
 ALTER TABLE public.payment_methods REPLICA IDENTITY FULL;
 
--- 補齊 payment_accounts 悠遊卡完整卡號支援 (card_number)
+-- 補齊 payment_accounts 悠遊卡完整卡號支援 (card_number) 與發卡機構識別 (issuer_bank)
 ALTER TABLE public.payment_accounts ADD COLUMN IF NOT EXISTS card_number TEXT;
+ALTER TABLE public.payment_accounts ADD COLUMN IF NOT EXISTS issuer_bank TEXT;
 
 -- ==============================================================================
 -- 13. 家庭公帳月度總預算與成員個人額度表 (Ledger Budgets)
@@ -1737,6 +1739,7 @@ BEGIN
         user_id,
         last_four_digits,
         card_number,
+        issuer_bank,
         billing_cycle_date,
         balance,
         color,
@@ -1752,6 +1755,7 @@ BEGIN
         CASE WHEN (p_account->>'user_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (p_account->>'user_id')::UUID ELSE NULL END,
         NULLIF(p_account->>'last_four_digits', ''),
         NULLIF(p_account->>'card_number', ''),
+        NULLIF(trim(p_account->>'issuer_bank'), ''),
         NULLIF(p_account->>'billing_cycle_date', '')::INT,
         COALESCE(NULLIF(p_account->>'balance', '')::NUMERIC, 0),
         COALESCE(p_account->>'color', '#3B82F6'),
@@ -1766,6 +1770,7 @@ BEGIN
         user_id = EXCLUDED.user_id,
         last_four_digits = EXCLUDED.last_four_digits,
         card_number = EXCLUDED.card_number,
+        issuer_bank = EXCLUDED.issuer_bank,
         billing_cycle_date = EXCLUDED.billing_cycle_date,
         balance = EXCLUDED.balance,
         color = EXCLUDED.color,
@@ -1774,7 +1779,7 @@ BEGIN
         updated_at = NOW()
     WHERE payment_accounts.ledger_id = EXCLUDED.ledger_id;
 
-    RETURN jsonb_build_object('success', true, 'id', v_id);
+    RETURN jsonb_build_object('success', true, 'id', v_id, 'issuer_bank_supported', true);
 EXCEPTION WHEN OTHERS THEN
     RETURN jsonb_build_object('success', false, 'error', SQLERRM);
 END;
@@ -1792,7 +1797,7 @@ DECLARE
     v_updated_count INT := 0;
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM public.payment_accounts WHERE id = p_account_id) THEN
-        RETURN jsonb_build_object('success', true, 'rows_affected', 0, 'id', p_account_id);
+        RETURN jsonb_build_object('success', true, 'rows_affected', 0, 'id', p_account_id, 'issuer_bank_supported', true);
     END IF;
 
     IF p_payload ? 'name' AND NULLIF(p_payload->>'name', '') IS NOT NULL THEN
@@ -1817,6 +1822,10 @@ BEGIN
 
     IF p_payload ? 'card_number' THEN
         UPDATE public.payment_accounts SET card_number = NULLIF(p_payload->>'card_number', '') WHERE id = p_account_id;
+    END IF;
+
+    IF p_payload ? 'issuer_bank' THEN
+        UPDATE public.payment_accounts SET issuer_bank = NULLIF(trim(p_payload->>'issuer_bank'), '') WHERE id = p_account_id;
     END IF;
 
     IF p_payload ? 'billing_cycle_date' THEN
@@ -1849,7 +1858,8 @@ BEGIN
     RETURN jsonb_build_object(
         'success', true,
         'rows_affected', v_updated_count,
-        'id', p_account_id
+        'id', p_account_id,
+        'issuer_bank_supported', true
     );
 EXCEPTION WHEN OTHERS THEN
     RETURN jsonb_build_object(
