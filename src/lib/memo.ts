@@ -160,6 +160,8 @@ export function isValidMerchantName(name?: string | null): boolean {
     trimmed.includes('rep:') ||
     trimmed.includes('tgt:') ||
     trimmed.includes('pin:') ||
+    trimmed.includes('relay:') ||
+    trimmed.includes('roff:') ||
     trimmed.includes('|')
   ) {
     return false;
@@ -391,8 +393,10 @@ export function encodeMemoMerchantTag(options: {
   completedBy?: string;
   completedAt?: string;
   isPinned?: boolean;
+  isRelay?: boolean;
+  relayOffsetDays?: number;
 }): string {
-  const { reminderDate, reminderCalendar, reminderRepeat, reminderTarget, completedBy, completedAt, isPinned } = options;
+  const { reminderDate, reminderCalendar, reminderRepeat, reminderTarget, completedBy, completedAt, isPinned, isRelay, relayOffsetDays } = options;
   const parts: string[] = [];
 
   if (reminderDate && reminderDate.trim()) {
@@ -422,6 +426,14 @@ export function encodeMemoMerchantTag(options: {
     parts.push('pin:1');
   }
 
+  if (isRelay) {
+    parts.push('relay:1');
+    const cleanOffset = relayOffsetDays !== undefined && Number.isFinite(relayOffsetDays) ? Math.trunc(relayOffsetDays) : 0;
+    if (cleanOffset !== 0) {
+      parts.push(`roff:${cleanOffset}`);
+    }
+  }
+
   if (completedBy && completedBy.trim()) {
     parts.push(`done:${completedBy.trim()}`);
   }
@@ -445,11 +457,13 @@ export function decodeMemoMerchantTag(rawMerchant?: string): {
   completedBy?: string;
   completedAt?: string;
   isPinned?: boolean;
+  isRelay?: boolean;
+  relayOffsetDays?: number;
 } {
-  if (!rawMerchant) return { isMemo: false, isPinned: false };
+  if (!rawMerchant) return { isMemo: false, isPinned: false, isRelay: false, relayOffsetDays: 0 };
   const trimmed = rawMerchant.trim();
   if (!trimmed.startsWith('remind:') && !trimmed.startsWith('memo')) {
-    return { isMemo: false, isPinned: false };
+    return { isMemo: false, isPinned: false, isRelay: false, relayOffsetDays: 0 };
   }
 
   let reminderDate: string | undefined;
@@ -459,6 +473,8 @@ export function decodeMemoMerchantTag(rawMerchant?: string): {
   let completedBy: string | undefined;
   let completedAt: string | undefined;
   let isPinned = false;
+  let isRelay = false;
+  let relayOffsetDays = 0;
 
   const segments = trimmed.split('|');
   for (const seg of segments) {
@@ -478,6 +494,13 @@ export function decodeMemoMerchantTag(rawMerchant?: string): {
       reminderTarget = 'family';
     } else if (seg === 'pin:1' || seg === 'pin:true') {
       isPinned = true;
+    } else if (seg === 'relay:1' || seg === 'relay:true') {
+      isRelay = true;
+    } else if (seg.startsWith('roff:')) {
+      const parsedOffset = parseInt(seg.slice(5).trim(), 10);
+      if (!isNaN(parsedOffset) && parsedOffset >= -30 && parsedOffset <= 0) {
+        relayOffsetDays = parsedOffset;
+      }
     } else if (seg.startsWith('done:')) {
       completedBy = seg.slice(5).trim() || undefined;
     } else if (seg.startsWith('done_at:')) {
@@ -498,6 +521,8 @@ export function decodeMemoMerchantTag(rawMerchant?: string): {
     completedBy,
     completedAt,
     isPinned,
+    isRelay,
+    relayOffsetDays: isRelay ? relayOffsetDays : 0,
   };
 }
 
@@ -531,7 +556,37 @@ export function toggleMemoPinnedMerchant(rawMerchant?: string, targetState?: boo
     completedBy: decoded.completedBy,
     completedAt: decoded.completedAt,
     isPinned: nextPinned,
+    isRelay: decoded.isRelay,
+    relayOffsetDays: decoded.relayOffsetDays,
   });
+}
+
+/**
+ * 判斷生活記事是否明確啟用「隨子項目日期自動接力提醒」模式（預設關閉）
+ */
+export function isMemoRelayEnabled(item?: {
+  type?: string;
+  reminder_relay?: boolean;
+  merchant?: string;
+} | null): boolean {
+  if (!item) return false;
+  if (item.type && item.type !== 'memo') return false;
+  if (item.reminder_relay !== undefined) return Boolean(item.reminder_relay);
+  return Boolean(decodeMemoMerchantTag(item.merchant).isRelay);
+}
+
+/**
+ * 取得生活記事接力模式之每站提前天數偏移量（預設 0=當天；負數表示提前天數）
+ */
+export function getMemoRelayOffsetDays(item?: {
+  reminder_relay_offset?: number;
+  merchant?: string;
+} | null): number {
+  if (!item) return 0;
+  if (item.reminder_relay_offset !== undefined && Number.isFinite(item.reminder_relay_offset)) {
+    return Math.trunc(item.reminder_relay_offset);
+  }
+  return decodeMemoMerchantTag(item.merchant).relayOffsetDays || 0;
 }
 
 export interface PinQuotaCheckResult {
@@ -1652,18 +1707,18 @@ export function getRollingMemoDueInfo(reminderYmd?: string | null, referenceYmd?
 
 /**
  * 取得生活記事之「有效生效提醒日期（Effective Reminder Date）」
- * 核心原則：
- * 1. 嚴格防呆：若該記事本來就沒有設定提醒（reminder_date 為空），嚴格維持 null（不設提醒）！
- * 2. 接力智慧對齊：
- *    - 若該記事原先有設定提醒，且包含待辦子清單（Checklist）；
- *    - 且子清單尚未全部辦妥；
- *    - 則自動解析未完成子項目中最早到期之日期（或子項目全部完成時的主標題日期）；
- *    - 若推算出的接力日期存在，則以該最緊急之接力日期為準（解決歷史舊資料提醒日停留在遙遠看診日的脫節現象）！
- * 3. 一般情況：傳回原始的 reminder_date。
+ * 核心原則（方案 B：固定優先、顯性接力）：
+ * 1. 嚴格防呆：若未設定提醒且未開啟接力，嚴格維持 null（不設提醒）！
+ * 2. 固定提醒模式（預設）：嚴格保留使用者設定的 `reminder_date`，絕不被子項目日期覆蓋！
+ * 3. 顯性接力模式（僅當 `isMemoRelayEnabled(transaction)` 為 true 時）：
+ *    自動解析未完成子項目中最早到期之日期（全完成時接回主標題日期），並套用每站提前天數偏移量。
  */
 export function getEffectiveMemoReminderDate(
   transaction?: {
+    type?: string;
     reminder_date?: string | null;
+    reminder_relay?: boolean;
+    reminder_relay_offset?: number;
     merchant?: string;
     note?: string;
     transacted_at?: string;
@@ -1675,20 +1730,23 @@ export function getEffectiveMemoReminderDate(
 
   const decodedMerchant = decodeMemoMerchantTag(transaction.merchant);
   const rawReminderDate = transaction.reminder_date || decodedMerchant.reminderDate;
+  const isRelay = isMemoRelayEnabled(transaction);
 
-  // 1. 若當初明確未設提醒，嚴格維持為 null
-  if (!rawReminderDate) return null;
+  // 1. 若未設定提醒且未開啟接力，嚴格維持為 null
+  if (!rawReminderDate && !isRelay) return null;
 
-  // 2. 若有待辦清單，且原先有設提醒：以當前接力推進日期為有效提醒日
-  if (transaction.note) {
+  // 2. 僅當顯式開啟「隨子項目自動接力」時，才動態追蹤下一站接力提醒日
+  if (isRelay && transaction.note) {
     const anchorDate = transaction.transacted_at || transaction.created_at;
-    const relayDate = computeNextRelayReminderDate(transaction.note, referenceDate, anchorDate);
+    const offsetDays = getMemoRelayOffsetDays(transaction);
+    const relayDate = computeNextRelayReminderDate(transaction.note, referenceDate, anchorDate, offsetDays);
     if (relayDate) {
       return relayDate;
     }
   }
 
-  return rawReminderDate;
+  // 3. 一般固定提醒：絕不被子項目日期覆蓋
+  return rawReminderDate || null;
 }
 
 /**

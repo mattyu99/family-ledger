@@ -3,6 +3,7 @@ import {
   offsetDateYmd,
   getItemDueDateBadge,
   computeNextRelayReminderDate,
+  analyzeMemoRelaySchedule,
 } from '../dateParser';
 
 describe('智慧日期解析引擎 (dateParser)', () => {
@@ -215,6 +216,45 @@ describe('智慧日期解析引擎 (dateParser)', () => {
       const noteStep3 = `智116/1/9早28號心臟科\n[x] 115/11/8第2次慢箋\n[x] 115/12/6第3次慢箋`;
       const nextDate = computeNextRelayReminderDate(noteStep3, baseRefDate);
       expect(nextDate).toBe('2027-01-09');
+    });
+
+    it('支援套用每站提前天數偏移量（提前 1 天與提前 3 天）', () => {
+      expect(computeNextRelayReminderDate(rawNote, baseRefDate, undefined, -1)).toBe('2026-11-07');
+      expect(computeNextRelayReminderDate(rawNote, baseRefDate, undefined, -3)).toBe('2026-11-05');
+
+      const noteStep3 = `智116/1/9早28號心臟科\n[x] 115/11/8第2次慢箋\n[x] 115/12/6第3次慢箋`;
+      expect(computeNextRelayReminderDate(noteStep3, baseRefDate, undefined, -1)).toBe('2027-01-08');
+    });
+  });
+
+  describe('analyzeMemoRelaySchedule 接力路線與偵測分析', () => {
+    it('有帶日期子項目時應依日期由早到晚排序並附帶標題終點站', () => {
+      const note = `[💊 慢箋接力] 智116/1/9早28號心臟科\n- [ ] 115/12/6第3次慢箋\n- [ ] 115/11/8第2次慢箋`;
+      const schedule = analyzeMemoRelaySchedule(note, baseRefDate);
+      expect(schedule.hasDatedChecklistItems).toBe(true);
+      expect(schedule.pendingStops.map(s => s.ymd)).toEqual(['2026-11-08', '2026-12-06']);
+      expect(schedule.pendingStops[0].shortDate).toBe('11/8');
+      expect(schedule.headerStop?.ymd).toBe('2027-01-09');
+      expect(schedule.nextStop?.ymd).toBe('2026-11-08');
+      expect(schedule.nextDateYmd).toBe('2026-11-08');
+    });
+
+    it('子項目皆已完成時，nextStop 應推進回主標題站', () => {
+      const note = `[💊 慢箋接力] 智116/1/9早28號心臟科\n- [x] 115/11/8第2次慢箋\n- [x] 115/12/6第3次慢箋`;
+      const schedule = analyzeMemoRelaySchedule(note, baseRefDate);
+      expect(schedule.hasDatedChecklistItems).toBe(true);
+      expect(schedule.pendingStops.length).toBe(0);
+      expect(schedule.completedStops.length).toBe(2);
+      expect(schedule.nextStop?.isHeader).toBe(true);
+      expect(schedule.nextDateYmd).toBe('2027-01-09');
+    });
+
+    it('純文字記事或子項目不含日期時，hasDatedChecklistItems 應為 false', () => {
+      const plainNote = `[📅 行程安排] 12/25 聖誕聚餐`;
+      expect(analyzeMemoRelaySchedule(plainNote, baseRefDate).hasDatedChecklistItems).toBe(false);
+
+      const noDateChecklist = `[🛒 採買清單]\n- [ ] 鮮奶\n- [ ] 雞蛋`;
+      expect(analyzeMemoRelaySchedule(noDateChecklist, baseRefDate).hasDatedChecklistItems).toBe(false);
     });
   });
 });

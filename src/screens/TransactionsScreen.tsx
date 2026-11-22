@@ -24,7 +24,7 @@ import { StoredValueWidget } from '../components/StoredValueWidget';
 import { HorizontalScrollView } from '../components/HorizontalScrollView';
 import { isTransferToMember } from '../lib/payment';
 import { getRollingPendingBills } from '../lib/recurring';
-import { getLocalDateYmd, getRollingMemoDueInfo, isMemoPinned, checkMemoPinQuota, isValidMerchantName, parseMemoNote } from '../lib/memo';
+import { getLocalDateYmd, getRollingMemoDueInfo, isMemoPinned, checkMemoPinQuota, isValidMerchantName, parseMemoNote, getEffectiveMemoReminderDate } from '../lib/memo';
 import { isGroupOrderMemo, computeGroupOrderSummary } from '../lib/groupOrder';
 import { checkInvoiceWinning } from '../lib/lottery';
 import { getInvoicePeriodKey } from '../lib/invoice';
@@ -195,9 +195,10 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
     return transactions.filter(t => {
       if (t.type !== 'memo') return false;
       if (t.is_settled) return false;
-      if (!t.reminder_date) return false;
-      return t.reminder_date <= todayYmd;
-    }).sort((a, b) => (a.reminder_date || '').localeCompare(b.reminder_date || ''));
+      const effDate = getEffectiveMemoReminderDate(t);
+      if (!effDate) return false;
+      return effDate <= todayYmd;
+    }).sort((a, b) => (getEffectiveMemoReminderDate(a) || '').localeCompare(getEffectiveMemoReminderDate(b) || ''));
   }, [transactions]);
 
   const upcomingMemos = useMemo(() => {
@@ -205,9 +206,10 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
     return transactions.filter(t => {
       if (t.type !== 'memo') return false;
       if (t.is_settled) return false;
-      if (!t.reminder_date) return false;
-      return t.reminder_date > todayYmd;
-    }).sort((a, b) => (a.reminder_date || '').localeCompare(b.reminder_date || ''));
+      const effDate = getEffectiveMemoReminderDate(t);
+      if (!effDate) return false;
+      return effDate > todayYmd;
+    }).sort((a, b) => (getEffectiveMemoReminderDate(a) || '').localeCompare(getEffectiveMemoReminderDate(b) || ''));
   }, [transactions]);
 
   // 待繳週期帳單計算
@@ -1172,7 +1174,13 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         max7DaysDate.setDate(max7DaysDate.getDate() + 7);
         const max7DaysYmd = `${max7DaysDate.getFullYear()}-${String(max7DaysDate.getMonth() + 1).padStart(2, '0')}-${String(max7DaysDate.getDate()).padStart(2, '0')}`;
 
-        const upcoming7DaysMemos = transactions.filter(t => t.type === 'memo' && !t.is_settled && !!t.reminder_date && t.reminder_date > todayYmd && t.reminder_date <= max7DaysYmd).sort((a, b) => (a.reminder_date || '').localeCompare(b.reminder_date || ''));
+        const upcoming7DaysMemos = transactions
+          .filter(t => {
+            if (t.type !== 'memo' || t.is_settled) return false;
+            const effDate = getEffectiveMemoReminderDate(t);
+            return !!effDate && effDate > todayYmd && effDate <= max7DaysYmd;
+          })
+          .sort((a, b) => (getEffectiveMemoReminderDate(a) || '').localeCompare(getEffectiveMemoReminderDate(b) || ''));
 
         const hasPendingBills = currentFilterPendingBills.length > 0;
         const hasPendingMemos = pendingMemos.length > 0 || upcoming7DaysMemos.length > 0 || upcomingMemos.length > 0;
@@ -1185,8 +1193,11 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
           ? `待繳帳單 (${currentFilterPendingBills.length})`
           : '暫無待繳帳單';
 
-        const hasOverdueMemo = pendingMemos.some(t => t.reminder_date && t.reminder_date < todayYmd);
-        const hasTodayMemo = pendingMemos.some(t => t.reminder_date && t.reminder_date === todayYmd);
+        const hasOverdueMemo = pendingMemos.some(t => {
+          const effDate = getEffectiveMemoReminderDate(t);
+          return !!effDate && effDate < todayYmd;
+        });
+        const hasTodayMemo = pendingMemos.some(t => getEffectiveMemoReminderDate(t) === todayYmd);
 
         // 檢查全家是否有進行中的開團、投票或採買 (不論發起人是否有手動置頂，皆以動態高光喚醒)
         const activeInteractiveMemos = transactions.filter(
@@ -1230,7 +1241,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         } else if (hasTodayMemo) {
           memoPrefix = '今日待辦';
         } else if (upcoming7DaysMemos.length > 0) {
-          const firstDue = getRollingMemoDueInfo(upcoming7DaysMemos[0]?.reminder_date, todayYmd);
+          const firstDue = getRollingMemoDueInfo(getEffectiveMemoReminderDate(upcoming7DaysMemos[0]), todayYmd);
           memoPrefix = `近期待辦 (${firstDue?.badgeText || '7天內'})`;
         } else if (upcomingMemos.length > 0) {
           memoPrefix = '排程預告';

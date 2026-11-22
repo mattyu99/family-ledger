@@ -139,6 +139,58 @@ describe('帳本備份與還原資料完整性測試 (Backup & Restore Integrity
     expect(decodedMemo.isPinned).toBe(true);
   });
 
+  it('生活記事之接力提醒開關 (reminder_relay) 與每站提前天數 (reminder_relay_offset) 在匯出與還原時應 100% 完整保留', () => {
+    const relayMemo: Transaction = {
+      id: 'tx-relay-1',
+      ledger_id: mockLedger.id,
+      creator_id: 'user-dad',
+      paid_by: 'user-dad',
+      category_id: 'cat-memo',
+      amount: 0,
+      type: 'memo',
+      note: '[💊 慢箋接力] 阿公回診 116/1/9\n- [ ] 115/11/8 第2次慢箋',
+      transacted_at: '2026-10-17T10:00:00.000Z',
+      created_at: '2026-10-17T10:00:00.000Z',
+      is_settled: false,
+      reminder_date: '2026-11-07',
+      reminder_calendar: 'solar',
+      reminder_repeat: 'once',
+      reminder_target: 'family',
+      reminder_relay: true,
+      reminder_relay_offset: -1,
+    };
+
+    const memoMerchantTag = encodeMemoMerchantTag({
+      reminderDate: relayMemo.reminder_date,
+      reminderCalendar: relayMemo.reminder_calendar,
+      reminderRepeat: relayMemo.reminder_repeat,
+      reminderTarget: relayMemo.reminder_target,
+      isRelay: relayMemo.reminder_relay,
+      relayOffsetDays: relayMemo.reminder_relay_offset,
+    });
+
+    const exportedJson = JSON.stringify({
+      transactions: [{
+        ...relayMemo,
+        merchant: memoMerchantTag,
+      }],
+    });
+
+    const parsedBackup = JSON.parse(exportedJson);
+    const restoredRawTx = parsedBackup.transactions[0];
+    const decodedMemo = decodeMemoMerchantTag(restoredRawTx.merchant);
+
+    const restoredIsRelay = Boolean(restoredRawTx.reminder_relay !== undefined ? restoredRawTx.reminder_relay : decodedMemo.isRelay);
+    const restoredRelayOffset = restoredRawTx.reminder_relay_offset !== undefined
+      ? restoredRawTx.reminder_relay_offset
+      : (decodedMemo.relayOffsetDays || 0);
+
+    expect(decodedMemo.isRelay).toBe(true);
+    expect(decodedMemo.relayOffsetDays).toBe(-1);
+    expect(restoredIsRelay).toBe(true);
+    expect(restoredRelayOffset).toBe(-1);
+  });
+
   it('統一發票延伸明細與品項細項在匯出與還原時應 100% 完整保留', () => {
     const invoiceTx: Transaction = {
       id: 'tx-invoice-1',

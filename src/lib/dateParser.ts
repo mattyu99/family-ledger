@@ -380,28 +380,56 @@ export function getItemDueDateBadge(
   };
 }
 
+export interface MemoRelayStop {
+  ymd: string;
+  shortDate: string; // 例如 "11/8"
+  label: string;     // 精簡站點描述（最多 16 字元）
+  completed: boolean;
+  isHeader?: boolean;
+}
+
+export interface MemoRelaySchedule {
+  hasDatedChecklistItems: boolean;
+  pendingStops: MemoRelayStop[];
+  completedStops: MemoRelayStop[];
+  headerStop: MemoRelayStop | null;
+  nextStop: MemoRelayStop | null;
+  nextDateYmd: string | null;
+}
+
+function truncateRelayLabel(rawText: string, fallback: string = '待辦項目'): string {
+  const clean = (rawText || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return fallback;
+  return clean.length > 16 ? `${clean.slice(0, 15)}…` : clean;
+}
+
 /**
- * 接力式推進提醒日計算：
- * 檢查記事中的子任務項目，找出未打勾項目中「最早要到期」的日期；
- * 若所有子項目皆已完成，則推進回主事件/標題日期。
- *
- * @param noteText 記事內文
- * @param referenceDate 當前對比基準時間 (預設為當前系統時間)
- * @param anchorDate 記事記錄/建立日期 (相對詞推算錨點)
+ * 解析生活記事內之「子項目接力路線圖」：
+ * 分別擷取待辦清單內未完成與已完成之帶日期子項目（依日期由早到晚排序），
+ * 並解析主標題日期作為最後一站，供顯示接力預覽與計算下一站提醒日使用。
  */
-export function computeNextRelayReminderDate(
+export function analyzeMemoRelaySchedule(
   noteText: string,
   referenceDate: Date = new Date(),
   anchorDate?: Date | string | null
-): string | null {
-  if (!noteText || typeof noteText !== 'string') return null;
+): MemoRelaySchedule {
+  if (!noteText || typeof noteText !== 'string') {
+    return {
+      hasDatedChecklistItems: false,
+      pendingStops: [],
+      completedStops: [],
+      headerStop: null,
+      nextStop: null,
+      nextDateYmd: null,
+    };
+  }
 
   const resolvedAnchor = anchorDate ? resolveAnchorDate(anchorDate) : referenceDate;
   const lines = noteText.split('\n');
   const checklistLineRegex = /^\s*(?:[-*•]\s+)?(?:\[([ x✓✔])\]|([☐☑✅]))\s*(.*)$/i;
 
-  const pendingItemDates: { ymd: string; dt: Date }[] = [];
-  const completedItemDates: { ymd: string; dt: Date }[] = [];
+  const pendingEntries: { stop: MemoRelayStop; ts: number }[] = [];
+  const completedEntries: { stop: MemoRelayStop; ts: number }[] = [];
   const headerLines: string[] = [];
   let foundFirstChecklist = false;
 
@@ -420,10 +448,16 @@ export function computeNextRelayReminderDate(
       const extracted = extractDateFromText(restText, resolvedAnchor);
       if (extracted) {
         const itemDt = new Date(extracted.year, extracted.month - 1, extracted.day);
+        const stop: MemoRelayStop = {
+          ymd: extracted.formattedYmd,
+          shortDate: `${extracted.month}/${extracted.day}`,
+          label: truncateRelayLabel(restText),
+          completed: isCompleted,
+        };
         if (isCompleted) {
-          completedItemDates.push({ ymd: extracted.formattedYmd, dt: itemDt });
+          completedEntries.push({ stop, ts: itemDt.getTime() });
         } else {
-          pendingItemDates.push({ ymd: extracted.formattedYmd, dt: itemDt });
+          pendingEntries.push({ stop, ts: itemDt.getTime() });
         }
       }
     } else if (!foundFirstChecklist && line.trim()) {
@@ -431,21 +465,63 @@ export function computeNextRelayReminderDate(
     }
   }
 
-  // 1. 如果有未完成的子項目且帶有日期：取其中最早的日期
-  if (pendingItemDates.length > 0) {
-    pendingItemDates.sort((a, b) => a.dt.getTime() - b.dt.getTime());
-    return pendingItemDates[0].ymd;
-  }
+  pendingEntries.sort((a, b) => a.ts - b.ts);
+  completedEntries.sort((a, b) => a.ts - b.ts);
 
-  // 2. 如果子項目都有日期且全部打勾完成了（或者沒有子項目帶日期）：
-  // 檢查主標題/前綴是否有日期 (例如 "智116/1/9早28號心臟科")
+  const pendingStops = pendingEntries.map(e => e.stop);
+  const completedStops = completedEntries.map(e => e.stop);
+
+  let headerStop: MemoRelayStop | null = null;
   if (headerLines.length > 0) {
     const headerText = headerLines.join('\n');
     const headerExtracted = extractDateFromText(headerText, resolvedAnchor);
     if (headerExtracted) {
-      return headerExtracted.formattedYmd;
+      const strippedHeader = headerLines[0].replace(/^[\[［【][^\]］】]+[\]］】]\s*/, '').trim();
+      headerStop = {
+        ymd: headerExtracted.formattedYmd,
+        shortDate: `${headerExtracted.month}/${headerExtracted.day}`,
+        label: truncateRelayLabel(strippedHeader, '主事件'),
+        completed: false,
+        isHeader: true,
+      };
     }
   }
 
-  return null;
+  const hasDatedChecklistItems = pendingStops.length > 0 || completedStops.length > 0;
+  const nextStop = pendingStops[0] || headerStop || null;
+
+  return {
+    hasDatedChecklistItems,
+    pendingStops,
+    completedStops,
+    headerStop,
+    nextStop,
+    nextDateYmd: nextStop?.ymd ?? null,
+  };
+}
+
+/**
+ * 接力式推進提醒日計算：
+ * 檢查記事中的子任務項目，找出未打勾項目中「最早要到期」的日期；
+ * 若所有子項目皆已完成，則推進回主事件/標題日期；支援套用每站提前天數偏移量。
+ *
+ * @param noteText 記事內文
+ * @param referenceDate 當前對比基準時間 (預設為當前系統時間)
+ * @param anchorDate 記事記錄/建立日期 (相對詞推算錨點)
+ * @param offsetDays 每站提前天數偏移量 (預設 0；例如 -1 表示提前 1 天)
+ */
+export function computeNextRelayReminderDate(
+  noteText: string,
+  referenceDate: Date = new Date(),
+  anchorDate?: Date | string | null,
+  offsetDays: number = 0
+): string | null {
+  const schedule = analyzeMemoRelaySchedule(noteText, referenceDate, anchorDate);
+  if (!schedule.nextDateYmd) return null;
+
+  const cleanOffset = offsetDays && Number.isFinite(offsetDays) ? Math.trunc(offsetDays) : 0;
+  if (cleanOffset !== 0) {
+    return offsetDateYmd(schedule.nextDateYmd, cleanOffset);
+  }
+  return schedule.nextDateYmd;
 }

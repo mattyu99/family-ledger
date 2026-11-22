@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.17';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.17 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 59;
+export const APP_BUILD_REVISION = 60;
 
 // 完整版本字串 (例如 "1.0.17.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -20,9 +20,10 @@ export interface ChangelogItem {
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.17',
-    date: '2026-11-16 ~ 2026-11-21',
+    date: '2026-11-16 ~ 2026-11-22',
     title: '五大記事協作看板、常駐編輯工具列、版面極致瘦身與操作手冊升級',
     highlights: [
+      '🔁 記事固定提醒守護與子項目自動接力開關：一般記事嚴格保留您親手設定的提醒日期不被覆蓋，含日期子項目可按需開啟自動接力並自訂每站提前天數，畫面與推播提醒全面同步。',
       '🏰 示範家庭母本雲端搬遷與唯讀守護：完整搬遷 38 筆生活情境與固定帳單至雲端母本，全面啟用唯讀防護，訪客暢快試玩沙盒且母本永不被篡改。',
       '🎮 示範任務全域防遮擋與即時進度同步：任務引導點擊與實質操作雙向即時 +1，配合首頁安全落地防遮擋，操作順暢且全破慶祝從容升起。',
       '🌐 全台示範看板交流與探索指南擴充：擴充為全新 8 大新手任務，新增慢箋接力領藥體驗與全台看板交流互動，虛實結合秒開沙盒與即時回響。',

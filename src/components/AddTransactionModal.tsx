@@ -43,7 +43,7 @@ import {
   checkMemoPinQuota,
   extractDateFromText,
   offsetDateYmd,
-  computeNextRelayReminderDate,
+  analyzeMemoRelaySchedule,
   resolveAnchorDate,
   detectMemoQuickBuilderConfig,
   appendSchoolChecklistItem,
@@ -396,6 +396,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [memoReminderCalendar, setMemoReminderCalendar] = useState<CalendarSystem>('solar');
   const [memoReminderRepeat, setMemoReminderRepeat] = useState<MemoRepeatFrequency>('once');
   const [memoReminderTarget, setMemoReminderTarget] = useState<'family' | 'personal'>('family');
+  const [memoReminderRelay, setMemoReminderRelay] = useState<boolean>(false);
+  const [memoReminderRelayOffset, setMemoReminderRelayOffset] = useState<number>(0);
   const [memoIsPinned, setMemoIsPinned] = useState<boolean>(false);
   const [isDemoPublicMemo, setIsDemoPublicMemo] = useState<boolean>(false);
   const [importedRestockMemoIds, setImportedRestockMemoIds] = useState<string[]>([]);
@@ -407,6 +409,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const scrollViewRef = useRef<ScrollView>(null);
   const lastAutoDetectedDateRef = useRef<string>('');
   const userManuallySetReminderRef = useRef<boolean>(false);
+  const hasAutoFilledOnceRef = useRef<boolean>(false);
   const userManuallyToggledPinRef = useRef<boolean>(false);
   // 🎯 記憶非農曆初一十五週期時之基準日期與曆法（切換頻率時智慧還原用）
   const baseReminderDateRef = useRef<string>('');
@@ -416,38 +419,49 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [categorySearchQuery, setCategorySearchQuery] = useState<string>('');
   const [isInvoiceExpanded, setIsInvoiceExpanded] = useState<boolean>(false);
 
-  // 💡 智慧日期即時解析：感知記事文字中蘊含的日期 (支援待辦清單接力推進、民國年、西元年、月/日、明天等)
+  // 🔁 解析子項目接力路線（僅於有帶日期子項目時顯示接力開關與預覽）
+  const relaySchedule = React.useMemo(() => {
+    if (mode !== 'memo' || !note) return null;
+    const anchor = selectedDate ? resolveAnchorDate(selectedDate) : new Date();
+    return analyzeMemoRelaySchedule(note, new Date(), anchor);
+  }, [mode, note, selectedDate]);
+
+  // 💡 智慧日期即時解析：僅解析記事中最具代表性的日期提示（不強制用子項目覆蓋固定提醒）
   const detectedMemoDate = React.useMemo(() => {
     if (mode !== 'memo' || !note) return null;
     const anchor = selectedDate ? resolveAnchorDate(selectedDate) : new Date();
-    const relayYmd = computeNextRelayReminderDate(note, new Date(), anchor);
-    if (relayYmd) {
-      const [y, m, d] = relayYmd.split('-').map(Number);
-      return {
-        rawMatch: `${m}/${d}`,
-        formattedYmd: relayYmd,
-        displayLabel: relayYmd,
-        year: y,
-        month: m,
-        day: d,
-      };
-    }
     return extractDateFromText(note, anchor);
   }, [mode, note, selectedDate]);
 
-  // 即時打字感知自動預填：若使用者未手動設定其他提醒日，自動無縫帶入最新辨識之日期
+  // 即時打字感知自動預填：僅在未開啟接力、未手動設定、且尚未自動預填過時帶入一次，絕不覆蓋使用者設定
   useEffect(() => {
     if (!detectedMemoDate) return;
     const targetYmd = detectedMemoDate.formattedYmd;
     if (targetYmd !== lastAutoDetectedDateRef.current) {
       lastAutoDetectedDateRef.current = targetYmd;
-      if (!memoReminderDate || !userManuallySetReminderRef.current) {
+      if (!memoReminderRelay && !memoReminderDate && !userManuallySetReminderRef.current && !hasAutoFilledOnceRef.current) {
+        hasAutoFilledOnceRef.current = true;
         setMemoReminderDate(targetYmd);
         setMemoReminderRepeat('once');
         setMemoReminderCalendar('solar');
       }
     }
-  }, [detectedMemoDate, memoReminderDate]);
+  }, [detectedMemoDate, memoReminderDate, memoReminderRelay]);
+
+  // 🔁 接力模式即時計算：開啟接力時自動鎖定下一站（並套用每站提前天數偏移量）
+  useEffect(() => {
+    if (mode !== 'memo' || !memoReminderRelay) return;
+    if (relaySchedule?.nextDateYmd) {
+      const nextYmd = memoReminderRelayOffset
+        ? offsetDateYmd(relaySchedule.nextDateYmd, memoReminderRelayOffset)
+        : relaySchedule.nextDateYmd;
+      if (nextYmd !== memoReminderDate) {
+        setMemoReminderDate(nextYmd);
+        setMemoReminderCalendar('solar');
+        setMemoReminderRepeat('once');
+      }
+    }
+  }, [mode, memoReminderRelay, memoReminderRelayOffset, relaySchedule, memoReminderDate]);
 
   // 📌 智慧開團/採買感知自動全家共享：
   // 若生活記事命中五大協作活動（點餐/採買/投票/懸賞/包裹），自動啟用「全家共享」；
@@ -1132,6 +1146,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     setMemoReminderCalendar('solar');
     setMemoReminderRepeat('once');
     setMemoReminderTarget('family');
+    setMemoReminderRelay(false);
+    setMemoReminderRelayOffset(0);
     baseReminderDateRef.current = '';
     baseReminderCalendarRef.current = 'solar';
     setMemoIsPinned(false);
@@ -1139,6 +1155,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     setImportedRestockMemoIds([]);
     lastAutoDetectedDateRef.current = '';
     userManuallySetReminderRef.current = false;
+    hasAutoFilledOnceRef.current = false;
     userManuallyToggledPinRef.current = false;
     setReminderPickerInitialMode('solar');
     setReminderDatePickerVisible(false);
@@ -1600,6 +1617,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         reminder_calendar: memoReminderDate ? memoReminderCalendar : undefined,
         reminder_repeat: memoReminderDate ? memoReminderRepeat : undefined,
         reminder_target: memoReminderTarget || 'family',
+        reminder_relay: memoReminderRelay,
+        reminder_relay_offset: memoReminderRelay ? memoReminderRelayOffset : 0,
         linked_transaction_id: linkedMemoId || undefined,
         transacted_at,
         is_pinned: memoIsPinned,
@@ -1653,8 +1672,11 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       setMemoReminderCalendar('solar');
       setMemoReminderRepeat('once');
       setMemoReminderTarget('family');
+      setMemoReminderRelay(false);
+      setMemoReminderRelayOffset(0);
       lastAutoDetectedDateRef.current = '';
       userManuallySetReminderRef.current = false;
+      hasAutoFilledOnceRef.current = false;
       userManuallyToggledPinRef.current = false;
       setMemoIsPinned(false);
       setIsDemoPublicMemo(false);
@@ -2296,8 +2318,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   </View>
                 )}
 
-                {/* 💡 智慧即時日期辨識膠囊 (感知記事文字自動帶入) */}
-                {detectedMemoDate && (
+                {/* 💡 智慧即時日期辨識膠囊 (僅在固定提醒模式下顯示，供一鍵套用或提前) */}
+                {!memoReminderRelay && detectedMemoDate && (
                   <View style={styles.autoDetectedDateCard}>
                     <View style={styles.autoDetectedDateHeader}>
                       <Text style={styles.autoDetectedDateTitle} maxFontSizeMultiplier={1.08}>
@@ -2310,6 +2332,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                           onPress={() => {
                             setMemoReminderDate('');
                             setMemoReminderRepeat('once');
+                            setMemoReminderRelay(false);
+                            setMemoReminderRelayOffset(0);
                             userManuallySetReminderRef.current = true;
                           }}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -2335,6 +2359,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                           setMemoReminderDate(detectedMemoDate.formattedYmd);
                           setMemoReminderRepeat('once');
                           setMemoReminderCalendar('solar');
+                          setMemoReminderRelay(false);
+                          setMemoReminderRelayOffset(0);
                           userManuallySetReminderRef.current = true;
                         }}
                         activeOpacity={0.7}
@@ -2359,6 +2385,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                           setMemoReminderDate(offsetDateYmd(detectedMemoDate.formattedYmd, -1));
                           setMemoReminderRepeat('once');
                           setMemoReminderCalendar('solar');
+                          setMemoReminderRelay(false);
+                          setMemoReminderRelayOffset(0);
                           userManuallySetReminderRef.current = true;
                         }}
                         activeOpacity={0.7}
@@ -2383,6 +2411,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                           setMemoReminderDate(offsetDateYmd(detectedMemoDate.formattedYmd, -3));
                           setMemoReminderRepeat('once');
                           setMemoReminderCalendar('solar');
+                          setMemoReminderRelay(false);
+                          setMemoReminderRelayOffset(0);
                           userManuallySetReminderRef.current = true;
                         }}
                         activeOpacity={0.7}
@@ -2404,11 +2434,13 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 {/* ⏰ 待辦提醒日期與週期設定 (選填) */}
                 <View style={styles.sectionLabelRow}>
                   <Text style={styles.sectionLabel} maxFontSizeMultiplier={1.15}>⏰ 待辦提醒日期 (選填)</Text>
-                  {!!memoReminderDate && !detectedMemoDate && (
+                  {!!memoReminderDate && (memoReminderRelay || !detectedMemoDate) && (
                     <TouchableOpacity
                       onPress={() => {
                         setMemoReminderDate('');
                         setMemoReminderRepeat('once');
+                        setMemoReminderRelay(false);
+                        setMemoReminderRelayOffset(0);
                         userManuallySetReminderRef.current = true;
                       }}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -2423,24 +2455,28 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   keyboardShouldPersistTaps="handled"
                 >
                   <TouchableOpacity
-                    style={[styles.dateChip, !memoReminderDate && styles.dateChipActive]}
+                    style={[styles.dateChip, !memoReminderDate && !memoReminderRelay && styles.dateChipActive]}
                     onPress={() => {
                       setMemoReminderDate('');
                       setMemoReminderRepeat('once');
+                      setMemoReminderRelay(false);
+                      setMemoReminderRelayOffset(0);
                       userManuallySetReminderRef.current = true;
                     }}
                     activeOpacity={0.7}
                   >
-                    <Text style={[styles.dateChipText, !memoReminderDate && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                    <Text style={[styles.dateChipText, !memoReminderDate && !memoReminderRelay && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
                       不設提醒
                     </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.dateChip, memoReminderDate === todayYmd && styles.dateChipActive]}
+                    style={[styles.dateChip, !memoReminderRelay && memoReminderDate === todayYmd && styles.dateChipActive]}
                     onPress={() => {
                       setMemoReminderDate(todayYmd);
                       setMemoReminderCalendar('solar');
+                      setMemoReminderRelay(false);
+                      setMemoReminderRelayOffset(0);
                       baseReminderDateRef.current = todayYmd;
                       baseReminderCalendarRef.current = 'solar';
                       if (memoReminderRepeat === 'lunar_1_15' || memoReminderRepeat === 'lunar_2_16') {
@@ -2450,16 +2486,18 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     }}
                     activeOpacity={0.7}
                   >
-                    <Text style={[styles.dateChipText, memoReminderDate === todayYmd && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                    <Text style={[styles.dateChipText, !memoReminderRelay && memoReminderDate === todayYmd && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
                       今天 ({today.getMonth() + 1}/{today.getDate()})
                     </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.dateChip, memoReminderDate === tomorrowYmd && styles.dateChipActive]}
+                    style={[styles.dateChip, !memoReminderRelay && memoReminderDate === tomorrowYmd && styles.dateChipActive]}
                     onPress={() => {
                       setMemoReminderDate(tomorrowYmd);
                       setMemoReminderCalendar('solar');
+                      setMemoReminderRelay(false);
+                      setMemoReminderRelayOffset(0);
                       baseReminderDateRef.current = tomorrowYmd;
                       baseReminderCalendarRef.current = 'solar';
                       if (memoReminderRepeat === 'lunar_1_15' || memoReminderRepeat === 'lunar_2_16') {
@@ -2469,12 +2507,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     }}
                     activeOpacity={0.7}
                   >
-                    <Text style={[styles.dateChipText, memoReminderDate === tomorrowYmd && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
+                    <Text style={[styles.dateChipText, !memoReminderRelay && memoReminderDate === tomorrowYmd && styles.dateChipTextActive]} maxFontSizeMultiplier={1.15}>
                       明天 ({tomorrow.getMonth() + 1}/{tomorrow.getDate()})
                     </Text>
                   </TouchableOpacity>
 
-                  {isCustomReminder && (
+                  {isCustomReminder && !memoReminderRelay && (
                     <TouchableOpacity
                       style={[
                         styles.dateChip,
@@ -2506,7 +2544,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   <TouchableOpacity
                     style={[
                       styles.dateMoreBtn,
-                      isCustomReminder && (memoReminderCalendar === 'lunar' ? styles.lunarMoreBtnSelected : styles.dateMoreBtnSelected),
+                      !memoReminderRelay && isCustomReminder && (memoReminderCalendar === 'lunar' ? styles.lunarMoreBtnSelected : styles.dateMoreBtnSelected),
                     ]}
                     onPress={() => {
                       userManuallySetReminderRef.current = true;
@@ -2518,17 +2556,100 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     <Text
                       style={[
                         styles.dateMoreBtnText,
-                        isCustomReminder && (memoReminderCalendar === 'lunar' ? styles.lunarMoreBtnTextSelected : styles.dateMoreBtnTextSelected),
+                        !memoReminderRelay && isCustomReminder && (memoReminderCalendar === 'lunar' ? styles.lunarMoreBtnTextSelected : styles.dateMoreBtnTextSelected),
                       ]}
                       maxFontSizeMultiplier={1.15}
                     >
-                      {isCustomReminder ? '✏️ 改選' : '🗓️ 更多...'}
+                      {!memoReminderRelay && isCustomReminder ? '✏️ 改選' : '🗓️ 更多...'}
                     </Text>
                   </TouchableOpacity>
                 </HorizontalScrollView>
 
-                {/* 🔄 提醒頻率與週期 (僅在設定提醒日期時展開，未設提醒高度為 0) */}
-                {!!memoReminderDate && (
+                {/* 🔁 顯性子項目自動接力提醒開關（僅當子項目含日期或已開啟接力時顯示） */}
+                {(relaySchedule?.hasDatedChecklistItems || memoReminderRelay) && (() => {
+                  const routeStops = [
+                    ...(relaySchedule?.pendingStops || []),
+                    ...(relaySchedule?.headerStop ? [relaySchedule.headerStop] : []),
+                  ];
+                  const routePreview = routeStops.slice(0, 3).map(s => s.shortDate).join(' → ')
+                    + (routeStops.length > 3 ? ' → …' : '');
+                  const subText = memoReminderRelay
+                    ? (relaySchedule?.nextStop
+                        ? `下一站：${routePreview}${memoReminderRelayOffset < 0 && memoReminderDate ? `（實際提醒：${memoReminderDate.slice(5).replace('-', '/')}）` : ''}`
+                        : '目前所有帶日期子項目皆已完成，將保留原提醒日')
+                    : '打勾子項目後自動推進至下一站到期日';
+
+                  return (
+                    <View style={[styles.relayToggleCard, memoReminderRelay && styles.relayToggleCardActive]}>
+                      <View style={styles.relayHeaderRow}>
+                        <View style={styles.relayTitleBlock}>
+                          <Text style={[styles.relayTitle, memoReminderRelay && styles.relayTitleActive]} maxFontSizeMultiplier={1.08}>
+                            🔁 隨子項目日期自動接力
+                          </Text>
+                          <Text style={[styles.relaySubtitle, memoReminderRelay && styles.relaySubtitleActive]} maxFontSizeMultiplier={1.08}>
+                            {subText}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={[styles.relaySwitchBtn, memoReminderRelay && styles.relaySwitchBtnActive]}
+                          onPress={() => {
+                            userManuallySetReminderRef.current = true;
+                            if (!memoReminderRelay) {
+                              setMemoReminderRelay(true);
+                              setMemoReminderCalendar('solar');
+                              setMemoReminderRepeat('once');
+                              if (relaySchedule?.nextDateYmd) {
+                                const nextYmd = memoReminderRelayOffset
+                                  ? offsetDateYmd(relaySchedule.nextDateYmd, memoReminderRelayOffset)
+                                  : relaySchedule.nextDateYmd;
+                                setMemoReminderDate(nextYmd);
+                              }
+                            } else {
+                              setMemoReminderRelay(false);
+                              setMemoReminderRelayOffset(0);
+                            }
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.relaySwitchBtnText, memoReminderRelay && styles.relaySwitchBtnTextActive]} maxFontSizeMultiplier={1.08}>
+                            {memoReminderRelay ? '已開啟' : '未開啟'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {memoReminderRelay && (
+                        <View style={styles.relayOffsetRow}>
+                          <Text style={styles.relayOffsetLabel} maxFontSizeMultiplier={1.08}>每站提醒時機：</Text>
+                          {[
+                            { label: '當天', offset: 0 },
+                            { label: '提前 1 天', offset: -1 },
+                            { label: '提前 3 天', offset: -3 },
+                          ].map(opt => {
+                            const selected = memoReminderRelayOffset === opt.offset;
+                            return (
+                              <TouchableOpacity
+                                key={opt.offset}
+                                style={[styles.relayOffsetChip, selected && styles.relayOffsetChipActive]}
+                                onPress={() => {
+                                  userManuallySetReminderRef.current = true;
+                                  setMemoReminderRelayOffset(opt.offset);
+                                }}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={[styles.relayOffsetChipText, selected && styles.relayOffsetChipTextActive]} maxFontSizeMultiplier={1.08}>
+                                  {opt.label}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })()}
+
+                {/* 🔄 提醒頻率與週期 (僅在設定固定提醒日期時展開，未設提醒或接力模式高度為 0) */}
+                {!!memoReminderDate && !memoReminderRelay && (
                   <View style={styles.memoRepeatCard}>
                     <View style={styles.memoRepeatHeaderRow}>
                       <Text style={styles.memoRepeatTitle} maxFontSizeMultiplier={1.08}>
@@ -4697,6 +4818,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     title="⏰ 選擇提醒日期 (支援國曆＆農曆)"
     onSelectDate={(newDate: Date, pickedMode?: CalendarSystem) => {
       const ymd = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}-${String(newDate.getDate()).padStart(2, '0')}`;
+      setMemoReminderRelay(false);
+      setMemoReminderRelayOffset(0);
+      userManuallySetReminderRef.current = true;
       setMemoReminderDate(ymd);
       if (pickedMode) {
         setMemoReminderCalendar(pickedMode);
@@ -5815,6 +5939,101 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   autoDetectedDateActionBtnTextActive: {
     color: '#FFFFFF',
     fontWeight: '800',
+  },
+  relayToggleCard: {
+    backgroundColor: isDark ? colors.background.input : '#F8FAFC',
+    borderWidth: 1,
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+  },
+  relayToggleCardActive: {
+    backgroundColor: isDark ? 'rgba(13, 148, 136, 0.14)' : '#F0FDFA',
+    borderColor: isDark ? 'rgba(20, 184, 166, 0.45)' : '#5EEAD4',
+  },
+  relayHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  relayTitleBlock: {
+    flex: 1,
+  },
+  relayTitle: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: isDark ? colors.text.primary : '#334155',
+  },
+  relayTitleActive: {
+    color: isDark ? '#5EEAD4' : '#0F766E',
+  },
+  relaySubtitle: {
+    fontSize: 11,
+    color: isDark ? colors.text.muted : '#64748B',
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  relaySubtitleActive: {
+    color: isDark ? '#99F6E4' : '#0D9488',
+    fontWeight: '600',
+  },
+  relaySwitchBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: isDark ? colors.border.default : '#CBD5E1',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
+  },
+  relaySwitchBtnActive: {
+    borderColor: '#0D9488',
+    backgroundColor: '#0D9488',
+  },
+  relaySwitchBtnText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: isDark ? colors.text.secondary : '#475569',
+  },
+  relaySwitchBtnTextActive: {
+    color: '#FFFFFF',
+  },
+  relayOffsetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 9,
+    paddingTop: 9,
+    borderTopWidth: 1,
+    borderTopColor: isDark ? 'rgba(20, 184, 166, 0.25)' : '#CCFBF1',
+  },
+  relayOffsetLabel: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: isDark ? '#99F6E4' : '#0F766E',
+  },
+  relayOffsetChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(20, 184, 166, 0.35)' : '#99F6E4',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
+  },
+  relayOffsetChipActive: {
+    borderColor: '#0D9488',
+    backgroundColor: '#0D9488',
+  },
+  relayOffsetChipText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: isDark ? '#99F6E4' : '#0F766E',
+  },
+  relayOffsetChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   memoRepeatCard: {
     backgroundColor: isDark ? colors.background.input : '#F8FAFC',

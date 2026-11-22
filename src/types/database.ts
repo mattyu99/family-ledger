@@ -134,6 +134,8 @@ export interface Transaction {
   reminder_calendar?: 'solar' | 'lunar'; // 提醒曆法基準：'solar' (國曆) | 'lunar' (農曆)
   reminder_repeat?: 'once' | 'weekly' | 'biweekly' | 'monthly' | 'lunar_1_15' | 'lunar_2_16' | 'yearly'; // 提醒重複週期
   reminder_target?: 'family' | 'personal'; // 提醒對象範圍：'family' (全家提醒，預設) | 'personal' (個人專屬)
+  reminder_relay?: boolean; // 是否開啟「隨子項目日期自動接力提醒」（預設 false，固定提醒不被子項目覆蓋）
+  reminder_relay_offset?: number; // 接力模式每站提前天數偏移量 (0=當天, -1=提前1天, -3=提前3天)
   is_pinned?: boolean; // 生活記事置頂標記 (跨月常駐於首頁與待辦榜首)
   completed_by?: string; // 完成此待辦事項的家庭成員 ID (Profile ID)
   completed_at?: string; // 辦妥此待辦事項的精確時間戳記 (ISO 8601)

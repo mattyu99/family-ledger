@@ -7,7 +7,7 @@ import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { getCategoryIcon } from '../lib/icons';
 import { formatPaymentLabel, parseExpenseDiscount, isTransferToMember } from '../lib/payment';
-import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, getItemDueDateBadge, getEffectiveMemoReminderDate, formatLinkedTransactionSummary, updateChecklistItemReply, MemoChecklistItem } from '../lib/memo';
+import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, getItemDueDateBadge, getEffectiveMemoReminderDate, isMemoRelayEnabled, getMemoRelayOffsetDays, formatLinkedTransactionSummary, updateChecklistItemReply, MemoChecklistItem } from '../lib/memo';
 import { MemoItemReplyModal } from './MemoItemReplyModal';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { stripInvoiceTag } from '../lib/invoice';
@@ -106,6 +106,8 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
     const isPinned = isMemoPinned(transaction);
     const decodedMerchant = decodeMemoMerchantTag(transaction.merchant);
     const reminderDate = getEffectiveMemoReminderDate(transaction);
+    const isRelay = isMemoRelayEnabled(transaction);
+    const relayOffset = getMemoRelayOffsetDays(transaction);
     const reminderCal = transaction.reminder_calendar || decodedMerchant.reminderCalendar;
     const reminderRep = transaction.reminder_repeat || decodedMerchant.reminderRepeat;
     const reminderBadge = formatMemoReminderBadge(reminderDate, reminderCal, reminderRep);
@@ -650,23 +652,33 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
               <View
                 style={[
                   styles.memoReminderBadge,
+                  isRelay && styles.memoRelayReminderBadge,
                   isDark && {
-                    backgroundColor: reminderBadge?.isLunar ? 'rgba(239, 68, 68, 0.15)' : 'rgba(59, 130, 246, 0.15)',
-                    borderColor: reminderBadge?.isLunar ? 'rgba(239, 68, 68, 0.4)' : 'rgba(59, 130, 246, 0.4)',
+                    backgroundColor: isRelay
+                      ? 'rgba(13, 148, 136, 0.2)'
+                      : (reminderBadge?.isLunar ? 'rgba(239, 68, 68, 0.15)' : 'rgba(59, 130, 246, 0.15)'),
+                    borderColor: isRelay
+                      ? 'rgba(20, 184, 166, 0.5)'
+                      : (reminderBadge?.isLunar ? 'rgba(239, 68, 68, 0.4)' : 'rgba(59, 130, 246, 0.4)'),
                   },
                 ]}
               >
                 <Text
                   style={[
                     styles.memoReminderBadgeText,
+                    isRelay && styles.memoRelayReminderBadgeText,
                     isDark && {
-                      color: reminderBadge?.isLunar ? '#FCA5A5' : '#93C5FD',
+                      color: isRelay
+                        ? '#5EEAD4'
+                        : (reminderBadge?.isLunar ? '#FCA5A5' : '#93C5FD'),
                     },
                   ]}
                   allowFontScaling={false}
                   maxFontSizeMultiplier={1.08}
                 >
-                  {reminderBadge?.isLunar ? '🏮 ' : '⏰ '}{reminderBadge?.fullText || `提醒：${reminderDate}`}
+                  {isRelay ? '🔁 ' : (reminderBadge?.isLunar ? '🏮 ' : '⏰ ')}
+                  {reminderBadge?.fullText || `提醒：${reminderDate}`}
+                  {isRelay && relayOffset < 0 ? ` (提前${Math.abs(relayOffset)}天)` : ''}
                 </Text>
               </View>
             )}
@@ -1497,6 +1509,13 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     fontWeight: '700',
     color: '#1D4ED8',
+  },
+  memoRelayReminderBadge: {
+    backgroundColor: '#F0FDFA',
+    borderColor: '#99F6E4',
+  },
+  memoRelayReminderBadgeText: {
+    color: '#0F766E',
   },
   memoScopeBadge: {
     borderRadius: 10,

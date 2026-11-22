@@ -817,7 +817,7 @@ async function seed() {
       paid_by: DEMO_MEMBERS[0].id,
       type: 'memo',
       amount: 0,
-      merchant: '💊 慢箋接力',
+      merchant: `remind:${todayYmd}|tgt:family|relay:1`,
       reminder_target: 'family',
       category_id: DEMO_CATEGORIES[12].id,
       note: `[💊 慢箋接力] 阿公心臟內科看診與慢箋 (${finalStr}早28號看診)\n- [ ] ${d2Str}第2次慢箋 (台大醫院·今天到期)\n- [ ] ${d3Str}第3次慢箋 (大樹藥局領藥)\n醫療院所：台大醫院心臟內科\n領藥號碼：慢性病連續處方箋第 2 次 (共 3 次)\n💡 試玩接力：點擊上方「第2次慢箋」打勾辦妥，系統將自動智慧接力排入第 3 次領藥提醒！`,

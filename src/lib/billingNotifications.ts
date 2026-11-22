@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { PaymentAccount, Transaction, Profile } from '../types/database';
-import { parseMemoNote } from './memo';
+import { parseMemoNote, getEffectiveMemoReminderDate } from './memo';
 
 const BILLING_NOTIFICATIONS_STORAGE_KEY = '@family_ledger_billing_notifications_enabled';
 const MEMO_NOTIFICATIONS_STORAGE_KEY = '@family_ledger_memo_notifications_enabled';
@@ -345,7 +345,7 @@ export const scheduleMemoReminderNotifications = async (
     await cancelMemoScheduledNotifications();
 
     const pendingMemos = transactions.filter(
-      t => t.type === 'memo' && !t.is_settled && !!t.reminder_date
+      t => t.type === 'memo' && !t.is_settled && !!getEffectiveMemoReminderDate(t)
     );
     if (pendingMemos.length === 0) return 0;
 
@@ -359,7 +359,8 @@ export const scheduleMemoReminderNotifications = async (
         continue;
       }
 
-      const dateParts = (memo.reminder_date || '').split('-');
+      const effReminderDate = getEffectiveMemoReminderDate(memo);
+      const dateParts = (effReminderDate || '').split('-');
       if (dateParts.length !== 3) continue;
 
       const y = parseInt(dateParts[0], 10);

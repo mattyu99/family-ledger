@@ -17,7 +17,7 @@ import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
-import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, checkMemoPinQuota, getItemDueDateBadge, getEffectiveMemoReminderDate, formatLinkedTransactionSummary, updateChecklistItemReply, MemoChecklistItem } from '../lib/memo';
+import { parseMemoNote, getLocalDateYmd, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, checkMemoPinQuota, getItemDueDateBadge, getEffectiveMemoReminderDate, isMemoRelayEnabled, getMemoRelayOffsetDays, formatLinkedTransactionSummary, updateChecklistItemReply, MemoChecklistItem } from '../lib/memo';
 import { formatMemoReminderBadge } from '../lib/lunar';
 import { HorizontalScrollView } from './HorizontalScrollView';
 import {
@@ -260,14 +260,18 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
     const decoded = decodeMemoMerchantTag(item.merchant);
     const reminderDateStr = getEffectiveMemoReminderDate(item);
     if (!reminderDateStr) return null;
+    const isRelay = isMemoRelayEnabled(item);
+    const relayOffset = getMemoRelayOffsetDays(item);
+    const relayPrefix = isRelay ? '🔁 ' : '';
+    const relayOffsetSuffix = isRelay && relayOffset < 0 ? `·提前${Math.abs(relayOffset)}天` : '';
     const cal = item.reminder_calendar || decoded.reminderCalendar;
     const rep = item.reminder_repeat || decoded.reminderRepeat;
     const badge = formatMemoReminderBadge(reminderDateStr, cal, rep);
-    const detailSuffix = badge ? ` · ${badge.fullText}` : ` (${reminderDateStr.slice(5)})`;
+    const detailSuffix = `${badge ? ` · ${badge.fullText}` : ` (${reminderDateStr.slice(5)})`}${relayOffsetSuffix}`;
 
     if (reminderDateStr === todayYmd) {
       return {
-        label: `今天到期${badge?.isLunar || (rep && rep !== 'once') ? detailSuffix : ''}`,
+        label: `${relayPrefix}今天到期${badge?.isLunar || (rep && rep !== 'once') || isRelay ? detailSuffix : ''}`,
         type: 'today',
         color: '#EA580C',
         bg: '#FFF7ED',
@@ -279,7 +283,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
     const diffDays = Math.round((rDate.getTime() - tDate.getTime()) / (1000 * 60 * 60 * 24));
     if (diffDays < 0) {
       return {
-        label: `逾期 ${Math.abs(diffDays)} 天${detailSuffix}`,
+        label: `${relayPrefix}逾期 ${Math.abs(diffDays)} 天${detailSuffix}`,
         type: 'overdue',
         color: '#DC2626',
         bg: '#FEF2F2',
@@ -288,7 +292,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
     }
     if (diffDays === 1) {
       return {
-        label: `明天到期${detailSuffix}`,
+        label: `${relayPrefix}明天到期${detailSuffix}`,
         type: 'tomorrow',
         color: '#2563EB',
         bg: '#EFF6FF',
@@ -297,7 +301,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
     }
     if (diffDays <= 7) {
       return {
-        label: `${diffDays}天後到期${detailSuffix}`,
+        label: `${relayPrefix}${diffDays}天後到期${detailSuffix}`,
         type: 'upcoming7Days',
         color: '#0891B2',
         bg: '#ECFEFF',
@@ -305,7 +309,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
       };
     }
     return {
-      label: `還有 ${diffDays} 天${detailSuffix}`,
+      label: `${relayPrefix}還有 ${diffDays} 天${detailSuffix}`,
       type: 'upcoming',
       color: '#64748B',
       bg: '#F8FAFC',

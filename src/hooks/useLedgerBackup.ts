@@ -17,7 +17,7 @@ import { APP_FULL_VERSION } from '../constants/version';
 import { STORAGE_KEYS, isValidUUID } from '../constants/ledgerDefaults';
 import { isDemoLedgerId } from '../constants/sweethomeDemo';
 import { hydrateTransactionWithInvoice, deduplicateMembers, buildMemberAliasMap } from '../lib/ledgerUtils';
-import { encodeMemoMerchantTag, decodeMemoMerchantTag } from '../lib/memo';
+import { encodeMemoMerchantTag, decodeMemoMerchantTag, isMemoRelayEnabled, getMemoRelayOffsetDays } from '../lib/memo';
 import { loadCarrierRules, persistCarrierRules } from '../lib/carrierRules';
 import {
   StatementFile,
@@ -213,6 +213,8 @@ export function useLedgerBackup({
         })),
       transactions: transactions.map(t => {
         const isMemo = t.type === 'memo';
+        const isRelay = isMemo ? isMemoRelayEnabled(t) : false;
+        const relayOffset = isMemo && isRelay ? getMemoRelayOffsetDays(t) : 0;
         const encodedMerchant = isMemo
           ? (t.merchant || encodeMemoMerchantTag({
               reminderDate: t.reminder_date,
@@ -222,6 +224,8 @@ export function useLedgerBackup({
               completedBy: t.completed_by,
               completedAt: t.completed_at,
               isPinned: t.is_pinned,
+              isRelay,
+              relayOffsetDays: relayOffset,
             }))
           : t.merchant;
 
@@ -235,6 +239,8 @@ export function useLedgerBackup({
           reminder_calendar: t.reminder_calendar,
           reminder_repeat: t.reminder_repeat,
           reminder_target: t.reminder_target,
+          reminder_relay: isMemo ? isRelay : undefined,
+          reminder_relay_offset: isMemo && isRelay ? relayOffset : undefined,
           is_pinned: t.is_pinned,
           completed_by: t.completed_by,
           completed_at: t.completed_at,
@@ -1007,14 +1013,25 @@ export function useLedgerBackup({
 
         // 若為生活備忘，確保 merchant 標籤完整編碼，杜絕跨版本遺失
         const isPinned = isBackupMemo ? Boolean(t.is_pinned || decodedMemo.isPinned) : undefined;
+        const restoredIsRelay = isBackupMemo
+          ? Boolean(t.reminder_relay !== undefined ? t.reminder_relay : decodedMemo.isRelay)
+          : false;
+        const restoredRelayOffset = (isBackupMemo && restoredIsRelay)
+          ? (t.reminder_relay_offset !== undefined && Number.isFinite(t.reminder_relay_offset)
+              ? Math.trunc(t.reminder_relay_offset)
+              : (decodedMemo.relayOffsetDays || 0))
+          : 0;
         const restoredMerchant = isBackupMemo
           ? encodeMemoMerchantTag({
               reminderDate: restoredReminderDate,
               reminderCalendar: restoredReminderCal,
               reminderRepeat: restoredReminderRep,
+              reminderTarget: restoredReminderTarget,
               completedBy: restoredCompletedBy,
               completedAt: restoredCompletedAt,
               isPinned: isPinned,
+              isRelay: restoredIsRelay,
+              relayOffsetDays: restoredRelayOffset,
             })
           : (t.merchant || undefined);
 
@@ -1040,6 +1057,8 @@ export function useLedgerBackup({
           reminder_calendar: restoredReminderCal,
           reminder_repeat: restoredReminderRep,
           reminder_target: restoredReminderTarget,
+          reminder_relay: isBackupMemo ? restoredIsRelay : undefined,
+          reminder_relay_offset: (isBackupMemo && restoredIsRelay) ? restoredRelayOffset : undefined,
           is_pinned: isPinned,
           completed_by: restoredCompletedBy,
           completed_at: restoredCompletedAt,
