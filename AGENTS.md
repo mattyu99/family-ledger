@@ -36,13 +36,13 @@ Docs: https://docs.expo.dev/eas/index.md
 
 ## Rules
 
+- **修改程式碼前必先取得使用者確認（最高鐵律）**：任何涉及修改、新增或刪除程式碼、SQL、設定檔或專案檔案的操作，**嚴禁未經確認擅自執行**。當使用者回報問題、討論需求、詢問功能或諮詢操作邏輯時，一律先以文字回覆問題根因分析、建議方案與預計修改範圍，**必須等待使用者明確回覆同意後，方可開始動手修改程式碼**。
 - **每次 Commit 必須遞增小版號**：只要有任何程式碼變更或 commit，務必將 `src/constants/version.ts` 中的 `APP_BUILD_REVISION` 加 1（例如 13 ➔ 14），並同步更新相關文件版號字串（`README.md`、`PRODUCT_BROCHURE.md`、`public/manual.html`、`public/product_brochure.html`、`scripts/eas-update.mjs`）。
 - **更新歷程（CHANGELOG）維護鐵律（面向使用者）**：
   1. **禁止標註小版號 .yy**：更新歷程項目一律掛在主版本號（例如 `1.0.13`）下，**禁止在條目標題或內文標註 `1.0.xx.yy` 或小版號標籤**（不需一一列出小版本）。
   2. **相近整合、不同分列、以 1~2 行為限**：功能相近的項目積極整合為單一項目；功能不同的項目明確分列呈現，**絕不硬擠在同一行**，每一條項目字數精簡，**嚴格以 1~2 行為限**，條理分明、避免瑣碎流水帳。
   3. **每次前進小版必重新檢視**：每次推進小版號新增或修改更新歷程時，務必重新全面檢視該主版本下的所有條目，確保整併適當、分列清晰。
   4. **通俗易懂、嚴禁工程術語**：更新歷程是給一般家庭使用者閱讀的，嚴禁出現專業/底層程式術語（例如 `includeFontPadding=false`、`HorizontalScrollView`、`getMemberById`、`RPC`、`Zero-Token`、`UUID` 等），一律使用親切、清晰的日常繁體中文描述功能與好處。
-- **純討論與詢問絕不擅自改 Code**：若使用者僅為功能諮詢或詢問操作邏輯，嚴禁無故修改程式碼，以文字清晰解答為優先。
 - **思考與回覆語言規範**：在內部思考推導（Thinking / Chain of Thought）及所有回覆、對話與說明中，一律使用繁體中文進行分析、推理、決策與陳述，確保思考歷程親切直觀易讀。
 - If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
 - Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
