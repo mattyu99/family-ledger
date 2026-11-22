@@ -37,7 +37,7 @@ Docs: https://docs.expo.dev/eas/index.md
 ## Rules
 
 - **修改程式碼前必先取得使用者確認（最高鐵律）**：任何涉及修改、新增或刪除程式碼、SQL、設定檔或專案檔案的操作，**嚴禁未經確認擅自執行**。當使用者回報問題、討論需求、詢問功能或諮詢操作邏輯時，一律先以文字回覆問題根因分析、建議方案與預計修改範圍，**必須等待使用者明確回覆同意後，方可開始動手修改程式碼**。
-- **每次 Commit 必須遞增小版號**：只要有任何程式碼變更或 commit，務必將 `src/constants/version.ts` 中的 `APP_BUILD_REVISION` 加 1（例如 13 ➔ 14），並同步更新相關文件版號字串（`README.md`、`PRODUCT_BROCHURE.md`、`public/manual.html`、`public/product_brochure.html`、`scripts/eas-update.mjs`）。
+- **每次版本推進必須立即分開 Commit 並遞增小版號**：只要有任何程式碼變更，務必將 `src/constants/version.ts` 中的 `APP_BUILD_REVISION` 加 1（例如 13 ➔ 14），同步更新相關文件版號字串（`README.md`、`PRODUCT_BROCHURE.md`、`public/manual.html`、`public/product_brochure.html`、`scripts/eas-update.mjs`），且**只要版本號有推進，就必須立即獨立完成該版本的 `git commit`（不可將多個版本混在同一筆 commit）**，以清楚分辨各版本的修改項目。
 - **更新歷程（CHANGELOG）維護鐵律（面向使用者）**：
   1. **禁止標註小版號 .yy**：更新歷程項目一律掛在主版本號（例如 `1.0.13`）下，**禁止在條目標題或內文標註 `1.0.xx.yy` 或小版號標籤**（不需一一列出小版本）。
   2. **相近整合、不同分列、以 1~2 行為限**：功能相近的項目積極整合為單一項目；功能不同的項目明確分列呈現，**絕不硬擠在同一行**，每一條項目字數精簡，**嚴格以 1~2 行為限**，條理分明、避免瑣碎流水帳。
