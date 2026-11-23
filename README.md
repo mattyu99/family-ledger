@@ -58,9 +58,9 @@
 11. **離線優先（Local-First）與極致效能**：
     - 無網路或賣場地下室仍可流暢記帳，連網後自動補推同步。
     - 採用當月快照與分批無感加載技術，累積數萬筆資料依然秒開。
-12. **🤖 Supabase 永不休眠保活 ＋ LINE 群組每日收支日報**：
-    - 透過 GitHub Actions 每天定時對 Supabase 進行外部 API 存取打卡，重設 7 天休眠計時器，徹底杜絕免費版資料庫被暫停的風險。
-    - 每天 21:30 定時運算當日收支與月度累計，以 LINE 官方 Flex Message 原生卡片推播至家庭 LINE 群組。
+12. **🤖 Supabase 永不休眠保活 ＋ LINE 個人與家庭群組雙軌收支日報**：
+    - 透過 GitHub Actions 每天定時對 Supabase 進行外部 API 存取打卡與統一發票獎號同步，重設 7 天休眠計時器，徹底杜絕免費版資料庫被暫停的風險。
+    - 每天 21:18 定時運算當日收支、信用卡繳款倒數與待辦提醒，支援成員一鍵綁定個人專屬日報（多帳簿自動合併滑動不洗版）或家庭群組／多人聊天室公開播報，嚴格守護隱私。
 13. **📱 成員連線裝置感知與設備管理（Phase 1）**：
     - **成員裝置感應**：家庭成員名冊卡片新增「📱 X 台裝置」徽章，直觀掌握每位家庭成員目前有多少台手機/電腦在線使用。
     - **連線設備清單**：點擊成員開啟設定彈窗，新增「📱 連線中的裝置清單」，清楚列出該成員綁定的所有設備名稱（iPhone、Pixel、Chrome 等）、平台圖示、App 版本與最後活動時間，並明確標記「本機裝置」。
@@ -97,18 +97,18 @@
 19. **📌 生活記事與待辦到期智慧推播雙軌系統（本機通知 ＋ LINE 日報連動）**：
     - **本機智慧推播提醒**：支援已設定提醒日期之生活記事（如採買清單、學校聯絡、拜拜祭祀、重要備忘）於當天上午 09:00 本機推送通知（`expo-notifications`）。
     - **辦妥即時註銷排程**：記事在 App 內被勾選辦妥完成時，自動即時取消本機通知排程，精準不打擾。
-    - **每日 LINE 收支日報雙向連動**：每日 21:30 LINE 收支日報新增「📌 生活記事與待辦備忘提醒」專屬卡片，彙整今日待辦、逾期待辦與未來 3 天預告，全家群組溫馨提醒。
+    - **每日 LINE 收支日報雙向連動**：每日 21:18 LINE 收支日報同步彙整今日待辦、已逾期天數標記與未來 3 天預告，依個人與群組雙軌隱私分流守護提醒。
 20. **💳 信用卡帳單出帳與繳款雙軌智慧提醒（精準提示待繳金額）**：
-    - **出帳日與繳款日前智慧提醒**：支援出帳日隔天 09:30 與繳款到期前 3 天 09:30 本機智慧推播提醒，精準提示待繳金額防忘繳。
-    - **每日 LINE 收支日報連動**：帳單出帳或接近繳款日之卡片，於 LINE 收支日報自動亮起醒目標籤與待繳金額提醒。
+    - **出帳日與繳款日前智慧提醒**：支援出帳日隔天與繳款到期日前自訂早晨鐘點（預設 07:30）推播提醒，支援自訂每月繳款截止日與同銀行卡片合併提醒。
+    - **每日 LINE 收支日報連動**：帳單出帳或接近繳款日（含當天截止）之卡片，於 LINE 收支日報自動亮起醒目標籤與待繳金額提醒。
 21. **🔒 Google Gemini OCR 雲端金鑰安全封存 ＋ 雙向無縫備援**：
     - **雲端安全封存（Zero-Exposure）**：建立 Supabase Edge Function (`gemini-ocr`)，將 Google Gemini API 金鑰完全封存於雲端後台，App 客戶端零暴露。
     - **AI 智慧結構化發票與收據解析**：支援非標準電子發票、傳統長條收據與手寫明細拍照，透過 Gemini 多模態 AI 智慧抽取消費日期、金額、店家與品項明細。
     - **前端 Direct API 雙向無縫備援**：當 Edge Function 離線或未部署時，系統自動無感切換至本機 Direct API 備援，維持 100% 可用性。
 22. **⚡ 手機桌面 Quick Actions 快捷直達 ＋ Deep Linking 自訂協議**：
-    - **桌面長按捷徑直達（Quick Actions）**：支援手機桌面長按 App 圖示，直接彈出「記一筆支出」、「記一筆收入」、「掃描發票 / 收據」、「隨手記記事」4 大捷徑選單，一秒直達對應表單。
+    - **桌面長按捷徑直達（Quick Actions）**：支援手機桌面長按 App 圖示，直接彈出系統精選「💸 記支出」、「✅ 待辦清單（3D 黏土圖示）」、「📝 隨手記事」、「📷 掃描發票」4 大高頻捷徑選單，一秒直達對應頁面。
     - **相機掃描直通**：選擇「掃描發票 / 收據」捷徑自動直達發票掃描器，相機即刻開啟並自動對焦辨識。
-    - **自訂 URL Scheme 外部連動**：支援 `familyledger://quick-action?mode=scan|expense|income|memo` 自訂協定，可串接 iOS 捷徑、Siri 語音或外部呼叫。
+    - **自訂 URL Scheme 外部連動**：支援 `familyledger://quick-action?mode=expense|todo|memo|scan|income` 自訂協定，可串接 iOS 捷徑、Siri 語音或外部呼叫。
     - **隱私鎖安全佇列**：若已啟用生物辨識防護鎖，長按捷徑進入時先通過生物辨識驗證，通過後自動流暢執行所選動作，兼顧隱私與效率。
 23. **🛡️ 防禦型原生模組相容架構 ＋ 全域根層安全邊界 (Root Error Boundary)**：
     - **原生模組安全載入機制**：全面改用動態探測載入（`requireOptionalNativeModule`），在尚未重新編譯 APK 之舊用戶端自動平滑降級為 PIN 碼模式，徹底杜絕 OTA 黑屏現象。
@@ -122,7 +122,7 @@
     - **靜默背景喚醒 (`_contentAvailable: true`)**：推播在背景喚醒手機作業系統 1 秒鐘，自動執行快照同步並即時刷新桌面小工具，跨裝置零時差。
 26. **🛡️ 企業級零金鑰架構 (Zero-Token Architecture) 與安全預存程序**：
     - **徹底移除 service_role 權杖**：前端客戶端代碼與環境變數不再包含任何最高服務權杖與混淆碼，達成零信任 (Zero Trust) 安全防衛。
-    - **PostgreSQL 核心預存程序 (SECURITY DEFINER RPC)**：明細、卡片餘額、分類、週期規則等核心異動全線改採資料庫內部預存程序安全穿透 RLS，兼顧極致安全與穩定可用。
+    - **PostgreSQL 核心預存程序 (SECURITY DEFINER RPC)**：明細、卡片餘額、分類、週期規則與 LINE 訂閱設定全線改採資料庫內部預存程序安全穿透 RLS，兼顧極致安全與穩定可用。
 27. **⚡ 主頁下拉刷新極速並行化管線 (RTT < 300ms)**：
     - 打破 15 次循序排隊網路請求，將帳本主檔、分類、成員名冊、付款卡片、交易明細等 9 大核心查詢全面打包為 `Promise.all` 單一並發管線，下拉轉圈耗時自 15 秒驟降至 0.8 秒以內。
 28. **🛡️ 管理員生物辨識提權與零信任身分防護**：
@@ -131,7 +131,7 @@
 29. **⚡ 毫秒級游標式分頁 (Keyset Pagination)**：
     - 重構 25,000+ 筆海量歷史明細同步為毫秒級游標式分頁 (`WHERE transacted_at <= cursor`)，12 秒無感全量同步 25,980 筆紀錄，零逾時、零中斷。
 30. **🧪 全自動化三層測試金字塔 (Testing Pyramid & CI/CD Pipeline)**：
-    - **第一層 核心邏輯單元測試 (Jest)**：78 題單元測試覆蓋發票 QR Code 解析、防重複記帳演算法、帳本餘額計算、循環帳單規則與桌面小工具快照清洗。
+    - **第一層 核心邏輯單元測試 (Jest)**：21 個測試套件、330 項單元測試覆蓋發票 QR Code 解析、防重複記帳演算法、信用卡週期與帳本餘額計算、LINE 雙軌路由隱私分流、桌面小工具快照清洗與快捷捷徑解析。
     - **第二層 資料庫預存程序安全整合測試 (Supabase RPC)**：4 題關鍵安全測試驗證 Zero-Token 架構下的帳本資料隔離、未登入提權防護與邀請碼安全機制。
     - **第三層 網頁端端到端測試 (Playwright E2E & Web Bundle)**：Playwright 跨瀏覽器自動化測試模擬記帳與生活待辦流暢度，秒級通過；自動驗證靜態 Web Bundle 打包產物完整性。
     - **行動端真機走查與 GitHub Actions CI**：提供 Maestro 黑盒自動化 YAML 腳本與 Firebase Test Lab 雲端真機測試指令，搭配 GitHub Actions CI 全自動品質守門。
@@ -140,7 +140,7 @@
 
 ## 📋 歷次功能演進與重大更新記錄 (Changelog)
 
-### 🚀 v1.0.18 (當前最新版本: v1.0.18.5 / Android versionCode 15)
+### 🚀 v1.0.18 (當前最新版本: v1.0.18.6 / Android versionCode 15)
 * **⚡ 桌面快捷待辦直達與 3D 黏土圖示**：長按 App 選單精選四大家庭最高頻入口，正式納入「待辦清單」並搭配專屬圓潤 3D 黏土打勾圖示，隨時秒看待辦與打勾辦妥。
 * **💚 LINE 個人與家庭群組雙軌日報**：支援 App 一鍵綁定自由開關與挑選帳簿、多帳簿合併滑動不洗版，並整合信用卡精準倒數、逾期標記、安靜日免打擾與私密備忘隔離守護。
 * **🏛️ 雲端資料庫總綱同步與防分身機制整併**：整合信用卡每月繳款截止日與專屬連線通行證，確保新安裝與資料庫重整時具備最完善的防重複分身與帳單共用週期。
@@ -308,7 +308,7 @@
 ### 📦 v1.0.0 ~ 1.0.2
 * **👥 多人即時協同記帳**：一人一機綁定家庭身分，雲端即時雙向連線同步。
 * **⚡ 離線順暢記帳**：在地下室或無網路環境下也能順暢記帳，連上網路自動同步回雲端。
-* **🤖 LINE 群組每日 Flex 收支日報**：GitHub Actions 每日定時運算並推播圖文卡片至 LINE 群組，兼具資料庫保活。
+* **🤖 LINE 個人與家庭群組雙軌收支日報**：每天 21:18 定時運算推播，支援 App 一鍵綁定自由開關與多帳簿左右滑動合併（不洗版），個人與群組／多人聊天室嚴格隱私分流。
 * **📊 財務統計與排行榜看板**：收支類別排行、成員出資佔比長條圖、KPI 財務總覽與日均消費。
 * **🚌 悠遊卡與信用卡雙對帳看板**：支援信用卡結帳日週期對帳與悠遊卡即時餘額管理。
 * **🔔 跨裝置即時動態泡泡通知**：家人記帳或修改明細時，頂部滑落即時通知泡泡。
@@ -319,102 +319,127 @@
 
 ```text
 family-ledger/
-├── App.tsx                     # 根元件 (全域 RootErrorBoundary、隱私鎖 AppLockOverlay、4大導航分頁)
-├── app.json                    # Expo 與 Android 原生配置 (套件名稱、圖示、原生外掛、版本 v1.0.17 / versionCode 14)
-├── eas.json                    # Expo EAS Build 雲端打包與 EAS Update 頻道設定
-├── google-services.json        # Google Firebase 官方原生推播設定檔 (FCM V1 跨裝置通知與桌面喚醒)
-├── package.json                # 專案相依性與 npm 快速建置腳本 (v1.0.17)
-├── playwright.config.ts        # Playwright Web E2E 測試配置檔
+├── App.tsx                       # 根元件 (全域 RootErrorBoundary、隱私鎖 AppLockOverlay、4大導航分頁與 Deep Link 導流)
+├── app.json                      # Expo 與 Android 原生配置 (套件名稱、圖示、原生外掛、版本 v1.0.18 / versionCode 15)
+├── eas.json                      # Expo EAS Build 雲端打包與 EAS Update 頻道設定
+├── google-services.json          # Google Firebase 官方原生推播設定檔 (FCM V1 跨裝置通知與桌面喚醒)
+├── package.json                  # 專案相依性與 npm 快速建置/測試/推播腳本 (v1.0.18)
+├── playwright.config.ts          # Playwright Web E2E 測試配置檔
 ├── plugins/
-│   └── withAndroidWidgets.js   # Expo Config Plugin：Android 2x2 / 4x2 桌面小工具原生注入插件
-├── supabase_schema.sql         # Supabase PostgreSQL 完整資料表結構、RLS 安全策略、RPC 儲存程序
+│   └── withAndroidWidgets.js     # Expo Config Plugin：Android 2x2 / 4x2 桌面小工具原生注入插件
+├── supabase_schema.sql           # Supabase PostgreSQL 總綱腳本 (全量資料表、RLS、SECURITY DEFINER RPC 與履歷)
 ├── supabase/
+│   ├── migrations/               # 歷次資料庫漸進遷移腳本 (含防分身通行證、信用卡截止日與 LINE 雙軌訂閱表)
+│   │   ├── 20261120_auth_session_links_and_member_dedup.sql
+│   │   ├── 20261122_add_payment_accounts_payment_due_day.sql
+│   │   └── 20261123_add_line_subscriptions.sql
 │   ├── functions/
-│   │   └── gemini-ocr/         # Supabase Edge Function (Gemini API 金鑰雲端安全封存與發票辨識)
+│   │   ├── gemini-ocr/           # Edge Function：Gemini API 金鑰雲端安全封存與發票辨識代理
+│   │   └── line-webhook/         # Edge Function：零外部依賴 LINE Webhook (個人 BIND-／群組與多人聊天室 GRP- 綁定與口令)
 │   └── tests/
-│       └── rpc-security.test.mjs# Phase 1.5 Supabase RPC 預存程序安全穿透與資料隔離測試
+│       └── rpc-security.test.mjs # Phase 1.5 Supabase RPC 預存程序安全穿透與資料隔離測試
 ├── e2e/
 │   ├── web/
-│   │   └── app-flows.spec.ts   # Phase 2 Playwright 網頁 E2E 整合測試 (記帳/待辦全流程)
+│   │   └── app-flows.spec.ts     # Phase 2 Playwright 網頁 E2E 整合測試 (記帳/待辦全流程)
 │   └── mobile/
-│       └── accounting-flow.yaml# Phase 3 Maestro 原生行動端黑盒自動化測試腳本
+│       └── accounting-flow.yaml  # Phase 3 Maestro 原生行動端黑盒自動化測試腳本
 ├── src/
 │   ├── types/
-│   │   ├── database.ts         # TypeScript 資料庫與核心實體型別定義 (TransactionType 支援 memo)
-│   │   └── index.ts            # 通用介面與篩選器型別定義
+│   │   ├── database.ts           # TypeScript 資料庫與核心實體型別定義 (含 payment_due_day 與 memo)
+│   │   └── index.ts              # 通用介面與篩選器型別定義
 │   ├── constants/
-│   │   ├── ledgerDefaults.ts   # 預設分類圖示、示範資料、系統預設設定常數
-│   │   └── version.ts          # 應用程式版本常數與 v1.0.x 完整更新歷程 (Changelog)
+│   │   ├── ledgerDefaults.ts     # 預設分類圖示、示範資料與系統預設常數
+│   │   ├── sweethomeDemo.ts      # SWEETHOME 示範體驗帳本唯讀母本常數與 8 大新手任務引導定義
+│   │   └── version.ts            # 應用程式版本常數與精簡更新歷程 (Changelog)
 │   ├── context/
-│   │   ├── LedgerContext.tsx   # 全域帳本狀態中樞 (整合 5 大領域 Hooks，保持 100% 向下相容)
-│   │   └── PrivacyContext.tsx  # 財務隱私遮罩 (小眼睛) 與生物辨識防護鎖狀態管理
+│   │   ├── LedgerContext.tsx     # 全域帳本狀態中樞 (整合 5 大領域 Hooks 與即時 WebSocket 同步)
+│   │   └── PrivacyContext.tsx    # 財務隱私遮罩 (小眼睛) 與生物辨識防護鎖狀態管理
 │   ├── hooks/
-│   │   ├── useDeviceAuth.ts    # 設備身分識別、Google 帳號綁定鎖、連線設備感知管理 Hook
-│   │   ├── useLedgerBackup.ts  # 6 大全要素備份匯出、JSON 解析、安全合併與覆蓋還原 Hook
-│   │   ├── useLedgerBudget.ts  # 公帳總預算、警戒門檻、個人開銷額度與 WebSocket 即時同步 Hook
+│   │   ├── useDeviceAuth.ts      # 設備身分識別、Google 帳號綁定鎖、連線設備感知管理 Hook
+│   │   ├── useLedgerBackup.ts    # 6 大全要素備份匯出、JSON 解析、安全合併與覆蓋還原 Hook
+│   │   ├── useLedgerBudget.ts    # 公帳總預算、警戒門檻、個人開銷額度與 WebSocket 即時同步 Hook
 │   │   ├── usePaymentAccounts.ts # 銀行帳戶、悠遊卡、信用卡待繳負債與財務淨值試算 Hook
-│   │   └── useRecurringRules.ts# 週期扣款、固定帳單排程、信用卡分期進度追蹤 Hook
+│   │   └── useRecurringRules.ts  # 週期扣款、固定帳單排程、信用卡分期進度追蹤 Hook
 │   ├── lib/
-│   │   ├── __tests__/          # Phase 1 Jest 核心單元測試套件 (78/78 全數通過)
-│   │   │   ├── invoice.test.ts # 發票雙碼 QR Code 解析、77 碼格式驗證測試
-│   │   │   ├── lottery.test.ts # 官方發票開獎期別與中獎比對測試
-│   │   │   ├── recurring.test.ts# 週期帳單固定扣款與防呆邊界測試
-│   │   │   ├── memo.test.ts    # 記事標籤提取、超連結轉換與待辦排程測試
-│   │   │   ├── widgetSync.test.ts# 桌面小工具 SQLite 快照清洗與 4 則待辦提取測試
-│   │   │   └── lunar.test.ts   # 農曆與台灣節慶祭祀運算測試
-│   │   ├── supabase.ts         # Supabase 連線客戶端與連線狀態檢查
-│   │   ├── biometrics.ts       # 原生生物辨識 (Face ID / 指紋) 安全探測與優雅降級
-│   │   ├── quickActions.ts     # 手機桌面長按 Quick Actions 捷徑選單與 Deep Linking 處理
-│   │   ├── widgetSync.ts       # 桌面小工具本機快照寫入與資料清洗中樞
-│   │   ├── billingNotifications.ts # 信用卡出帳日與繳款日前智慧本機推播
-│   │   ├── geminiInvoice.ts    # Gemini 多模態發票收據結構化辨識與 Edge Function 整合
-│   │   ├── memo.ts             # 記事標籤解析、超連結跳轉與記事到期智慧推播
-│   │   ├── payment.ts          # 支付工具、帳單週期、分期試算與自然月對帳演算法
-│   │   ├── invoice.ts          # 統一發票 QR Code 解析、77 碼條碼格式驗證與品項抽取
-│   │   ├── lottery.ts          # 官方中獎號碼庫、期別計算與全自動比對兌獎規則
-│   │   ├── offlineQueue.ts     # 離線優先 (Local-First) 離線寫入佇列與背景自動重試同步
-│   │   ├── cloudLedgerService.ts# 雲端多帳本清單、切換、建立與用量監控
-│   │   ├── ledgerUtils.ts      # 帳本金額試算、出資歸屬純函式工具庫
-│   │   ├── device.ts           # 跨平台裝置型號與本機 UUID 提取工具
-│   │   ├── lunar.ts            # 農曆與台灣節慶祭祀運算
-│   │   ├── icons.ts            # 分類圖示對照輔助函式
-│   │   ├── alert.ts            # 跨平台相容對話框 (Web / Native)
-│   │   └── uuid.ts             # 跨平台 UUID 生成工具
+│   │   ├── __tests__/            # Phase 1 Jest 核心單元測試套件 (21 套件 / 330 項測試全數通過)
+│   │   │   ├── lineReportRouting.test.ts    # LINE 雙軌綁定碼、群組/個人隱私分流、安靜日與 Carousel 合併測試
+│   │   │   ├── billingNotifications.test.ts # 信用卡自訂截止日、同銀行共用與記事預告排程測試
+│   │   │   ├── bankIssuer.test.ts           # 發卡機構辨識與跨裝置未升級欄位保護測試
+│   │   │   ├── groupOrder.test.ts           # 五大記事協作看板解析與金額彙總測試
+│   │   │   ├── quickActions.test.ts         # 桌面長按 4 大捷徑與 Deep Link 解析測試
+│   │   │   ├── memberDedup.test.ts          # 家庭成員名冊防重複分身測試
+│   │   │   ├── invoice.test.ts              # 發票雙碼 QR Code 解析與 77 碼格式驗證測試
+│   │   │   ├── lottery.test.ts              # 官方發票開獎期別與中獎比對測試
+│   │   │   ├── recurring.test.ts            # 週期帳單固定扣款與防呆邊界測試
+│   │   │   ├── memo.test.ts                 # 記事標籤、超連結與慢箋接力排程測試
+│   │   │   ├── widgetSync.test.ts           # 桌面小工具 SQLite 快照清洗與待辦提取測試
+│   │   │   └── lunar.test.ts                # 農曆與台灣節慶祭祀運算測試
+│   │   ├── supabase.ts           # Supabase 連線客戶端 (Zero-Token 零金鑰前端架構)
+│   │   ├── lineNotifications.ts  # LINE 雙軌綁定驗證碼、訂閱偏好 RPC 串接與隱私過濾核心
+│   │   ├── billingNotifications.ts # 統一早晨鐘點、信用卡雙開關同銀行提醒與記事接力排程引擎
+│   │   ├── bankIssuer.ts         # 台灣主流發卡銀行字典、同銀行多卡歸戶與繳款日補齊邏輯
+│   │   ├── pushDispatcher.ts     # 遠端 Expo / FCM 原生推播與背景靜默喚醒分發引擎
+│   │   ├── groupOrder.ts         # 五大生活記事協作看板 (點餐/採買/包裹/家事/投票) 解析引擎
+│   │   ├── statementPassbook.ts  # 信用卡歷期帳單存摺與對帳期別計算
+│   │   ├── biometrics.ts         # 原生生物辨識 (Face ID / 指紋) 安全探測與優雅降級
+│   │   ├── quickActions.ts       # 手機桌面長按 4 大 Quick Actions 捷徑與 Deep Linking 處理
+│   │   ├── widgetSync.ts         # 桌面小工具本機快照寫入與資料清洗中樞
+│   │   ├── geminiInvoice.ts      # Gemini 多模態發票收據結構化辨識與 Edge Function 整合
+│   │   ├── memo.ts               # 記事標籤解析、子項目留言、接力推進與超連結轉換
+│   │   ├── payment.ts            # 支付工具、帳單週期、分期試算與自然月對帳演算法
+│   │   ├── invoice.ts            # 統一發票 QR Code 解析、77 碼條碼格式驗證與品項抽取
+│   │   ├── lottery.ts            # 官方中獎號碼庫、期別計算與全自動比對兌獎規則
+│   │   ├── carrierRules.ts       # 網購會員載具卡與條碼歸戶記憶規則
+│   │   ├── cloudInvoiceSync.ts   # 財政部發票 Email CSV 原生解析匯入與自動去重
+│   │   ├── dateParser.ts         # 智慧民國年與口語相對日期自然語意解析
+│   │   ├── offlineQueue.ts       # 離線優先 (Local-First) 離線寫入佇列與背景自動重試同步
+│   │   ├── cloudLedgerService.ts # 雲端多帳本清單、切換、建立與用量監控
+│   │   ├── demoAnalytics.ts      # 示範帳本獨立訪客統計與白名單過濾
+│   │   ├── ledgerUtils.ts        # 帳本金額試算、出資歸屬純函式工具庫
+│   │   ├── backup.ts & fileExport.ts & attachmentExport.ts # 全要素匯出、檔案分享與附件打包
+│   │   ├── device.ts / lunar.ts / icons.ts / alert.ts / uuid.ts # 裝置、農曆與跨平台輔助工具
 │   ├── screens/
-│   │   ├── TransactionsScreen.tsx # 📝 明細頁籤：收支流水帳、即時搜尋、店家膠囊快篩、待辦提示
-│   │   ├── AnalyticsScreen.tsx    # 📊 統計頁籤：四大 KPI、分類收支排行、走勢圖表、成員出資佔比
-│   │   ├── BillsScreen.tsx        # 💳 帳單支付頁籤：週期帳單、卡片對帳、常用付款方式、記帳分類
-│   │   └── FamilySettingsScreen.tsx# ⚙️ 家庭設定頁籤：成員名冊、邀請碼、隱私防護鎖、全要素備份
+│   │   ├── TransactionsScreen.tsx   # 📝 明細頁籤：收支流水帳、即時搜尋、店家膠囊快篩、待辦提示
+│   │   ├── AnalyticsScreen.tsx      # 📊 統計頁籤：四大 KPI、分類收支排行、走勢圖表、成員出資佔比
+│   │   ├── BillsScreen.tsx          # 💳 帳單支付頁籤：週期帳單、卡片對帳、常用付款方式、記帳分類
+│   │   └── FamilySettingsScreen.tsx # ⚙️ 家庭設定頁籤：成員名冊、LINE 雙軌設定、提醒個人偏好、隱私防護與備份
 │   ├── components/
-│   │   ├── BudgetHeroWidget.tsx   # 首頁雙視角預算儀表板 (公帳總預算 / 個人額度進度條)
-│   │   ├── BudgetManageModal.tsx  # 預算控管彈窗 (月度預算、警戒門檻、個人額度配置)
-│   │   ├── NetWorthWidget.tsx     # 首頁財務淨值看板 (四大資產型態、小眼睛星號遮罩)
-│   │   ├── AppLockOverlay.tsx     # App 啟動與喚醒全域安全鎖遮罩 (生物辨識 / PIN 碼解鎖)
-│   │   ├── TrendChartsWidget.tsx  # 財務收支走勢圖與分類佔比圓餅圖
-│   │   ├── InvoiceScannerModal.tsx# 發票雙 QR Code 鏡頭對焦掃描與相簿截圖解析彈窗
-│   │   ├── InvoiceLotteryModal.tsx# 官方發票對獎中心與一鍵兌領入帳彈窗
-│   │   ├── MemoTodoModal.tsx      # 生活備忘與待辦總覽彈窗 (5大分頁、倒數天數、打勾辦妥)
-│   │   ├── MemoCompletionModal.tsx# 待辦辦妥確認彈窗 (辦妥人、補充留言、連動支出與防退回)
-│   │   ├── CreditCardReconciliationModal.tsx # 雙分頁智慧對帳看板 (信用卡帳單 vs 悠遊卡自然月)
-│   │   ├── StoredValueWidget.tsx  # 悠遊卡/儲值卡即時餘額與通用動態加值小工具
-│   │   ├── LiveToastBanner.tsx    # 跨裝置即時動態感知泡泡通知 (動畫浮動卡片)
-│   │   ├── ProductGuideModal.tsx  # 產品介紹與常用操作指南彈窗
-│   │   ├── ChangelogModal.tsx     # 系統版本更新日誌彈窗 (v1.0.x 精簡摘要)
-│   │   └── modals/                # 解耦之專屬功能彈窗群組 (成員管理、PIN碼、備份匯出、換帳本等)
+│   │   ├── BudgetHeroWidget.tsx     # 首頁雙視角預算儀表板 (公帳總預算 / 個人額度進度條)
+│   │   ├── BudgetManageModal.tsx    # 預算控管彈窗 (月度預算、警戒門檻、個人額度配置)
+│   │   ├── NetWorthWidget.tsx       # 首頁財務淨值看板 (四大資產型態、小眼睛星號遮罩)
+│   │   ├── AppLockOverlay.tsx       # App 啟動與喚醒全域安全鎖遮罩 (生物辨識 / PIN 碼解鎖)
+│   │   ├── TrendChartsWidget.tsx    # 財務收支走勢圖與分類佔比圓餅圖
+│   │   ├── InvoiceScannerModal.tsx  # 發票雙 QR Code 鏡頭對焦掃描與相簿截圖解析彈窗
+│   │   ├── InvoiceLotteryModal.tsx  # 官方發票對獎中心與一鍵兌領入帳彈窗
+│   │   ├── CloudInvoiceSyncModal.tsx# 財政部發票 Email CSV 匯入與對帳同步彈窗
+│   │   ├── MemoTodoModal.tsx        # 生活備忘與待辦總覽彈窗 (5大分頁、倒數天數、打勾辦妥)
+│   │   ├── MemoCompletionModal.tsx  # 待辦辦妥確認彈窗 (辦妥人、補充留言、連動支出與防退回)
+│   │   ├── CreditCardReconciliationModal.tsx # 雙分頁智慧對帳看板 (信用卡歷期帳單 vs 悠遊卡自然月)
+│   │   ├── StoredValueWidget.tsx    # 悠遊卡/儲值卡即時餘額與通用動態加值小工具
+│   │   ├── LiveToastBanner.tsx      # 跨裝置即時動態感知泡泡通知
+│   │   ├── DemoQuestBanner.tsx      # SWEETHOME 示範體驗 8 大新手任務引導橫幅
+│   │   ├── ProductGuideModal.tsx & ChangelogModal.tsx # 產品指南與更新日誌彈窗
+│   │   └── modals/                  # 專屬功能彈窗群 (成員管理、PIN碼、備份匯出、換帳本、點餐投票補助彈窗等)
 │   └── theme/
-│       ├── ThemeContext.tsx       # 全域深色/淺色主題管理 Context
-│       └── colors.ts              # 甜心粉暖色系調色盤與主題色彩變數
+│       ├── ThemeContext.tsx         # 全域深色/淺色主題管理 Context
+│       ├── FontSizeContext.tsx      # 全域四檔字級 (含特大長輩模式) 與系統字體縮放管理
+│       └── colors.ts                # 甜心粉暖色系調色盤與主題色彩變數
 ├── .github/
 │   └── workflows/
-│       ├── automated-tests.yml        # CI/CD：TypeScript 型別 + Lint + Jest + RPC + Playwright 測試
-│       └── daily-report-keepalive.yml # GitHub Actions 每日定時防休眠與 LINE 日報排程
+│       ├── automated-tests.yml          # CI/CD：TypeScript 型別 + Lint + Jest + RPC + Playwright 測試
+│       └── daily-report-keepalive.yml   # GitHub Actions 每日 21:18 定時防休眠、開獎同步與雙軌日報排程
 ├── scripts/
-│   ├── daily-report.mjs          # 每日收支計算、Supabase 保活與 LINE Flex 卡片生成腳本
-│   ├── serve-web.mjs             # Playwright E2E 本機靜態網頁伺服器
-│   ├── test-web-build.mjs        # Web Bundle 打包產物完整性檢查腳本
-│   ├── run-maestro.sh            # Maestro 原生行動端 E2E 測試執行腳本
-│   └── run-firebase-test-lab.sh  # Firebase Test Lab 雲端真機農場自動化測試腳本
-└── assets/                       # 甜心記帳本 3D 黏土風圖示、自適應啟動圖、桌面小工具 Drawable 資源
+│   ├── daily-report.mjs             # 雙軌隱私分流每日收支日報、Flex Carousel 合併與 Supabase 保活腳本
+│   ├── eas-update.mjs               # 自動帶入版號與 Commit 註記的 EAS Update OTA 推播腳本
+│   ├── sync-lottery.mjs             # 財政部官方統一發票開獎號碼自動抓取同步腳本
+│   ├── generate_todo_clay_icon.mjs  # 純演算法 3D 黏土風「待辦清單」桌面捷徑與小工具圖示產生器
+│   ├── test-database-rpc.mjs        # Supabase RPC 安全性測試啟動腳本
+│   ├── serve-web.mjs & test-web-build.mjs # Web 打包完整性檢查與 E2E 測試伺服器
+│   └── run-maestro.sh & run-firebase-test-lab.sh # 行動端與 Firebase Test Lab 真機測試腳本
+├── public/                          # 靜態發佈資源 (manual.html 使用手冊、product_brochure.html 產品型錄等)
+└── assets/                          # App 圖標、啟動畫面與 3D 黏土風格資源
+    ├── shortcuts/                   # 桌面長按 4 大捷徑高解析原生圖示 (含 shortcut_todo.png)
+    └── widgets/                     # Android 桌面小工具原生視覺資源
 ```
 
 ---
@@ -435,43 +460,60 @@ family-ledger/
 
 ---
 
-## 🤖 LINE 機器人每日收支日報 ＆ Supabase 永不休眠（Keep-Alive）指南
+## 🤖 LINE 機器人每日收支日報（個人＋家庭群組雙軌）＆ Supabase 永不休眠指南
 
-系統內建了全自動化的 **GitHub Actions 雲端守護排程**，每天台灣時間 **21:30 (UTC 13:30)** 自動喚醒執行，達成兩大核心效益：
-1. **Supabase 永不休眠（Keep-Alive）**：向 Supabase 進行真實 API 存取打卡，重設 7 天休眠計時器，徹底杜絕免費版資料庫被暫停（Paused）的風險。
-2. **LINE 原生高質感 Flex 卡片日報**：統計全家今日開銷、成員貢獻與本月進度，推播至家庭 LINE 共同群組（或個人），排版嚴格對齊、永不破版折行。
+系統內建全自動化 **GitHub Actions 雲端守護排程**，每天台灣時間 **21:18 (UTC 13:18)** 自動執行（並具備跨午夜佇列延遲自動回推昨日統計防呆），實現兩大核心能力：
+1. **Supabase 永不休眠（Keep-Alive）**：每日進行真實 API 存取並同步統一發票最新獎號，徹底杜絕免費版資料庫因閒置被暫停。
+2. **個人自主訂閱 ＋ 家庭群組／多人聊天室雙軌日報**：
+   - **👤 個人專屬日報**：家人在 App「🔔 提醒與個人」一鍵綁定個人 LINE，自由開關通知、開啟 **🌙 安靜日免打擾**、並勾選名下要收的帳簿（自動排除 `SWEETHOME` 示範帳本）。**多本帳簿自動以 Flex Carousel 左右滑動卡片合併為單次推播**（每人每天最多只耗 1 則免費額度），且個人卡與個人待辦嚴格過濾不外洩。
+   - **🏠 家庭群組／多人聊天室公開播報**：帳本管理員將機器人拉入 LINE 正式群組或多人聊天室並貼上群組綁定碼（`GRP-XXXXXX`），即可每晚播報全家公帳收支與 `[全家]` 待辦，系統強制隱藏所有 `personal` 個人私密備忘與私卡。
 
-### 📋 快速串接 4 步驟指南
+### 📋 雙軌串接與上線 5 步驟
 
-#### 步驟 1：建立免費 LINE 官方帳號並啟用 Messaging API
-1. 前往 [LINE Developers Console](https://developers.line.biz/)，點擊「Create a LINE Official Account」建立官方帳號（名稱可取為「甜心記帳本小幫手」）。
-2. 在 LINE 官方帳號管理後台點選 **設定 ➜ Messaging API ➜ 啟用 Messaging API**，選擇您的 Provider 並確認啟用。
-3. 回到 LINE Developers 控制台進入該頻道 ➜ **Messaging API** 頁籤最下方 ➜ 點擊 **Issue** 複製 **Channel Access Token**。
+#### 步驟 1：建立 LINE 官方帳號並調整 2 項關鍵設定
+1. 前往 [LINE Developers Console](https://developers.line.biz/) 建立官方帳號與 Messaging API 頻道，記錄下兩把位置不同的金鑰：
+   * **`Channel secret`**：位於 **Basic settings** 分頁（32 碼字串，用於 Webhook 防偽驗章）。
+   * **`Channel access token`**：位於 **Messaging API** 分頁最下方按 **Issue** 產生（長版金鑰，用於發送與回覆日報）。
+2. 在 **Messaging API** 分頁右側點擊 **Edit** 進入 **LINE Official Account Manager（回應設定）**：
+   * **Auto-reply messages（自動回應訊息）**：務必設為 **Disabled（停用）**，避免家人傳送綁定碼時系統誤回罐頭拒絕訊息。
+   * **Allow bot to join group chats（允許加入群組／多人聊天室）**：務必設為 **Enabled（開啟）**。
 
-#### 步驟 2：取得家庭群組 Group ID（30 秒免註冊工具）
-1. 用電腦打開免註冊測試工具 [https://webhook.site](https://webhook.site)，點擊頂部 **Copy** 複製專屬網址。
-2. 在 LINE Developers 的 **Messaging API** 頁籤中：
-   * 找到 **Webhook URL** ➜ 貼上該網址並儲存。
-   * 將 **Use webhook** 開關切換為**開啟（綠色）**。
-3. 打開手機 LINE，將「甜心記帳本小幫手」邀請加入全家人的 **LINE 家庭群組**（若已在群組，在群組隨便發一句話如 `123`）。
-4. 查看 Webhook.site 網頁，在接收到的內容中找到 `"groupId": "Cxxxxxxxx..."`，複製該 **`C` 開頭代碼**。
+#### 步驟 2：執行資料庫遷移
+在 Supabase Dashboard ➜ **SQL Editor** 執行最新版 `supabase_schema.sql`（或單獨執行 `supabase/migrations/20261123_add_line_subscriptions.sql`），自動建立受嚴格 RLS 保護的 4 張綁定／訂閱表與 6 支 `SECURITY DEFINER` RPC。
 
-#### 步驟 3：設定 GitHub 倉庫 Secrets
-前往您的 GitHub 專案：**Settings ➜ Secrets and variables ➜ Actions ➜ New repository secret**，填入以下密鑰：
+#### 步驟 3：部署零外部依賴 `line-webhook` 並開啟 LINE Webhook
+`supabase/functions/line-webhook/index.ts` 採用 **100% 零外部 HTTPS 匯入** 實作（直接使用原生 `Deno.serve` 與原生 `fetch`），企業代理或隔離 Docker 環境也能零阻礙部署：
+```bash
+# 1. 將兩把 LINE 金鑰存入 Supabase Edge Function Secrets
+npx supabase secrets set LINE_CHANNEL_SECRET="您的32碼ChannelSecret" LINE_CHANNEL_ACCESS_TOKEN="您的ChannelAccessToken"
+
+# 2. 部署 Webhook 函式 (LINE 請求不帶 JWT，務必加 --no-verify-jwt)
+npx supabase functions deploy line-webhook --no-verify-jwt
+```
+回到 LINE Developers ➜ **Messaging API** 貼上您的 Webhook URL：
+`https://<您的_SUPABASE_專案_ID>.supabase.co/functions/v1/line-webhook`  
+開啟 **Use webhook** 開關後點擊 **Verify**，出現 **`Success`** 即代表綁定櫃檯就緒！
+
+#### 步驟 4：設定 GitHub 倉庫 Secrets
+前往 GitHub 專案：**Settings ➜ Secrets and variables ➜ Actions ➜ New repository secret**：
 
 | Secret 名稱 | 說明與填寫內容 | 必要性 |
 | :--- | :--- | :--- |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase 後台 **Project Settings ➜ API** 複製的 `service_role` (secret) 金鑰 | **強烈建議**（穿透 RLS 安全機制讀取帳本明細） |
-| `LINE_CHANNEL_ACCESS_TOKEN` | 步驟 1 取得的 LINE Channel Access Token | 啟用 LINE 推播必填 |
-| `LINE_TARGET_ID` | 步驟 2 取得的家庭群組 `Group ID`（`C...`）或個人 `User ID`（`U...`） | 啟用 LINE 推播必填 |
-| `LEDGER_ID` | （選填）指定帳本 UUID。若不填系統會自動智慧鎖定最近活躍的單一主帳本 | 選填 |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase 後台 **Project Settings ➜ API** 複製的 `service_role` (secret) 金鑰 | **必填**（穿透 RLS 安全機制讀取雲端個人與群組綁定表） |
+| `LINE_CHANNEL_ACCESS_TOKEN` | 步驟 1 取得的 LINE Channel Access Token | **必填**（推播每日 Flex 卡片日報） |
+| `LINE_TARGET_ID` | （過渡備援）舊版單一目標 `C...`/`U...`；雲端有任一綁定後自動退場 | 選填 |
+| `LEDGER_ID` | （過渡備援）舊版單一指定帳本 UUID | 選填 |
 
-#### 步驟 4：測試與驗證
-* **GitHub 網頁手動觸發**：前往 GitHub 專案的 **Actions ➜ Supabase Keep-Alive & Daily Report ➜ Run workflow**，20 秒內 LINE 群組即可收到卡片！
-* **本地終端機測試**：在本地 `.env` 填入上述變數後，執行：
-  ```bash
-  npm run report:daily
-  ```
+#### 步驟 5：在 App 一鍵綁定與立即驗證
+1. **個人綁定**：在 App「⚙️ 家庭設定 ➜ 🔔 提醒與個人」找到 **「💚 LINE 每日收支日報」**，點擊 **「💚 一鍵開啟 LINE 綁定 (@436nzvzs)」**，於 LINE 按「傳送」帶入的 `BIND-XXXXXX` 驗證碼即可完成。
+2. **家庭群組／多人聊天室綁定**：在 App 先切換至欲播報的家庭公帳，管理員點擊 **「🏠 產生家庭群組綁定碼」**，將 `@436nzvzs` 加入家庭群組或多人聊天室並貼上 `GRP-XXXXXX` 傳送即完成。
+3. **LINE 聊天室支援快捷口令**：
+   * 個人聊天室：`狀態`、`暫停日報`、`恢復日報`
+   * 群組／多人聊天室：`群組日報狀態`、`暫停群組日報`、`恢復群組日報`
+4. **立即實測派報**：至 GitHub **Actions ➜ Supabase Keep-Alive & Daily Report ➜ Run workflow**，或於本地設定 `.env` 後執行：
+   ```bash
+   npm run report:daily
+   ```
 
 ---
 
@@ -577,7 +619,7 @@ npm run update:android -- --message "版本更新備註"
 
 ```bash
 # 🔹 第一層：核心邏輯單元測試 (Jest)
-# 涵蓋發票 QR Code 解析、防重複記帳、帳本餘額計算、循環帳單防呆、小工具快照清洗 (78/78 全數通過)
+# 涵蓋發票 QR Code 解析、LINE 雙軌路由、帳本餘額計算、循環帳單防呆、小工具快照清洗 (330/330 全數通過)
 npm run test:unit
 
 # 🔹 第二層：資料庫預存程序安全整合測試 (Supabase RPC)
