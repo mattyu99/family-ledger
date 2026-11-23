@@ -1603,13 +1603,18 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             {/* 軌道一：👤 我的個人 LINE 日報 */}
             <View style={[styles.lineSubCard, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
               <View style={styles.sectionHeaderRow}>
-                <Text style={[styles.lineSubCardTitle, { color: colors.text.primary }]}>
+                <Text
+                  style={[styles.lineSubCardTitle, { color: colors.text.primary, flex: 1, flexShrink: 1, marginRight: 8 }]}
+                  numberOfLines={1}
+                >
                   👤 我的個人 LINE 日報
                 </Text>
                 <View
                   style={[
                     styles.cardholderBadge,
                     {
+                      maxWidth: '52%',
+                      flexShrink: 0,
                       backgroundColor: lineSettings?.userBinding.isBound
                         ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5')
                         : (isDark ? '#334155' : '#E2E8F0'),
@@ -1625,6 +1630,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                           : colors.text.secondary,
                       },
                     ]}
+                    numberOfLines={1}
                   >
                     {lineSettings?.userBinding.isBound
                       ? `🟢 已綁定${lineSettings.userBinding.lineDisplayName ? `·${lineSettings.userBinding.lineDisplayName}` : ''}`
@@ -1751,13 +1757,18 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             {/* 軌道二：🏠 家庭群組公開播報（針對目前帳本） */}
             <View style={[styles.lineSubCard, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default, marginTop: 12 }]}>
               <View style={styles.sectionHeaderRow}>
-                <Text style={[styles.lineSubCardTitle, { color: colors.text.primary }]}>
-                  🏠 家庭群組播報（《{currentLedger?.name || '目前帳本'}》）
+                <Text
+                  style={[styles.lineSubCardTitle, { color: colors.text.primary, flex: 1, flexShrink: 1, marginRight: 8 }]}
+                  numberOfLines={1}
+                >
+                  🏠 家庭群組播報
                 </Text>
                 <View
                   style={[
                     styles.cardholderBadge,
                     {
+                      maxWidth: '56%',
+                      flexShrink: 0,
                       backgroundColor: lineSettings?.groupBinding.isBound
                         ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5')
                         : (isDark ? '#334155' : '#E2E8F0'),
@@ -1773,6 +1784,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                           : colors.text.secondary,
                       },
                     ]}
+                    numberOfLines={1}
                   >
                     {lineSettings?.groupBinding.isBound
                       ? `🟢 ${lineSettings.groupBinding.groupName || '已綁定群組'}`
@@ -1780,6 +1792,9 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                   </Text>
                 </View>
               </View>
+              <Text style={[styles.lineTargetLedgerTag, { color: colors.text.secondary }]} numberOfLines={1}>
+                對象帳本：《{currentLedger?.name || '目前帳本'}》
+              </Text>
 
               <Text style={[styles.lineSubDesc, { color: colors.text.secondary, marginTop: 6 }]}>
                 群組版會強制隱藏所有「個人專屬」私密備忘與個人信用卡，只播報全家公帳收支與全家待辦。
@@ -3894,6 +3909,11 @@ const styles = StyleSheet.create({
   lineSubCardTitle: {
     fontSize: 14,
     fontWeight: '700',
+  },
+  lineTargetLedgerTag: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
   },
   lineSubDesc: {
     fontSize: 12,
