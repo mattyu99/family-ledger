@@ -102,17 +102,67 @@ function getTaiwanTimeRanges() {
 }
 
 /**
- * 檢查帳本內的信用卡是否適逢出帳日隔天或繳款到期前 3 天
+ * 輔助函式：推算信用卡發卡機構簡稱（若無 issuer_bank 則從卡名判斷）
+ */
+function detectCardBank(card) {
+  if (card.issuer_bank && card.issuer_bank.trim()) {
+    return card.issuer_bank.trim();
+  }
+  const name = card.name || '';
+  const bankPatterns = [
+    { name: '國泰世華', match: /國泰|cathay|cube|koko/i },
+    { name: '台北富邦', match: /富邦|fubon|momo|costco/i },
+    { name: '中國信託', match: /中信|中國信託|ctbc|line pay/i },
+    { name: '台新銀行', match: /台新|taishin|richart|gogo|flygo|玫瑰/i },
+    { name: '玉山銀行', match: /玉山|esun|unicard|u bear/i },
+    { name: '聯邦銀行', match: /聯邦|federal|吉鶴/i },
+    { name: '永豐銀行', match: /永豐|sinopac|大戶|幣倍/i },
+    { name: '星展銀行', match: /星展|dbs/i },
+    { name: '匯豐銀行', match: /匯豐|hsbc/i },
+    { name: '兆豐銀行', match: /兆豐|megabank/i },
+    { name: '華南銀行', match: /華南/i },
+    { name: '第一銀行', match: /第一|一銀/i },
+    { name: '合作金庫', match: /合庫|合作金庫/i },
+    { name: '彰化銀行', match: /彰銀|彰化/i },
+    { name: '臺灣銀行', match: /臺銀|臺灣銀行/i },
+  ];
+  for (const b of bankPatterns) {
+    if (b.match.test(name)) return b.name;
+  }
+  return '';
+}
+
+/**
+ * 檢查帳本內的信用卡是否適逢出帳日隔天、繳款到期前 3 天或今日到期
+ * 完整支援自訂 payment_due_day、跨月繳款推算與同銀行帳單週期整併
  */
 async function checkCreditCardAlerts(supabase, ledgerId, targetTwDate, profileMap) {
   try {
-    const { data: cards, error } = await supabase
+    const { data: rawCards, error } = await supabase
       .from('payment_accounts')
-      .select('id, name, billing_cycle_date, user_id')
+      .select('id, name, billing_cycle_date, payment_due_day, issuer_bank, user_id')
       .eq('ledger_id', ledgerId)
       .eq('type', 'credit_card');
 
-    if (error || !cards || cards.length === 0) return [];
+    if (error || !rawCards || rawCards.length === 0) return [];
+
+    // 1. 同持卡人、同發卡機構自動共享補全 billing_cycle_date 與 payment_due_day
+    const cards = rawCards.map(c => ({
+      ...c,
+      detectedBank: detectCardBank(c),
+    }));
+
+    const bankCycleMap = new Map();
+    const bankDueMap = new Map();
+    cards.forEach(c => {
+      const bankKey = `${c.user_id || 'shared'}__${c.detectedBank || c.id}`;
+      if (c.billing_cycle_date && !bankCycleMap.has(bankKey)) {
+        bankCycleMap.set(bankKey, c.billing_cycle_date);
+      }
+      if (c.payment_due_day && !bankDueMap.has(bankKey)) {
+        bankDueMap.set(bankKey, c.payment_due_day);
+      }
+    });
 
     const alerts = [];
     const nowYear = targetTwDate.getFullYear();
@@ -121,25 +171,69 @@ async function checkCreditCardAlerts(supabase, ledgerId, targetTwDate, profileMa
     const todayStart = new Date(nowYear, nowMonth, nowDay, 0, 0, 0, 0);
 
     for (const card of cards) {
-      const cycleDate = Math.max(1, Math.min(31, card.billing_cycle_date || 15));
+      const bankKey = `${card.user_id || 'shared'}__${card.detectedBank || card.id}`;
+      const effectiveCycle = card.billing_cycle_date || bankCycleMap.get(bankKey) || 15;
+      const cycleDate = Math.max(1, Math.min(31, Math.trunc(effectiveCycle)));
+
+      const effectiveDue = card.payment_due_day || bankDueMap.get(bankKey);
+      const rawDueDay =
+        effectiveDue && Number.isFinite(effectiveDue) && effectiveDue >= 1
+          ? Math.min(31, Math.trunc(effectiveDue))
+          : null;
+
       const cardholder = card.user_id ? (profileMap?.get ? profileMap.get(card.user_id) : profileMap?.[card.user_id]) : null;
       const cardholderName = cardholder ? cardholder.display_name : '';
       const holderTag = cardholderName ? ` (${cardholderName})` : '';
 
-      // 1. 出帳日隔天判定 (結帳日次日)
-      const statementDate = new Date(nowYear, nowMonth, cycleDate + 1, 0, 0, 0, 0);
+      // (A) 出帳日判定 (結帳日次日，如 5 號結帳則 6 號出帳)
+      const statementDateThisMonth = new Date(nowYear, nowMonth, cycleDate + 1, 0, 0, 0, 0);
       const isStatementDay =
-        statementDate.getFullYear() === nowYear &&
-        statementDate.getMonth() === nowMonth &&
-        statementDate.getDate() === nowDay;
+        statementDateThisMonth.getFullYear() === nowYear &&
+        statementDateThisMonth.getMonth() === nowMonth &&
+        statementDateThisMonth.getDate() === nowDay;
 
-      // 2. 繳款到期日判定 (結帳日後 20 天)
-      const dueDate = new Date(nowYear, nowMonth, cycleDate + 20, 23, 59, 59, 999);
-      const diffMs = dueDate.getTime() - todayStart.getTime();
-      const daysRemaining = Math.ceil(diffMs / (24 * 3600 * 1000));
-      const isDueSoon = daysRemaining >= 1 && daysRemaining <= 3;
+      // (B) 繳款截止日判定 (支援自訂 payment_due_day 或結帳日 + 20 天)
+      // 依序檢查上月、本月、次月三個週期的繳款截止日，找出最貼近今天的一個
+      const candidateDueDates = [-1, 0, 1].map(monthOffset => {
+        if (rawDueDay !== null) {
+          // 自訂繳款截止日：若 dueDay > cycleDate 屬結帳月當月繳款，否則屬次月繳款
+          const dueMonthOffset = rawDueDay > cycleDate ? monthOffset : monthOffset + 1;
+          return new Date(nowYear, nowMonth + dueMonthOffset, rawDueDay, 23, 59, 59, 999);
+        } else {
+          // 預設結帳日後 20 天
+          return new Date(nowYear, nowMonth + monthOffset, cycleDate + 20, 23, 59, 59, 999);
+        }
+      });
 
-      if (isStatementDay || isDueSoon) {
+      // 找出與今天距離最貼近（天數差在 0 ~ 3 天內）的截止日
+      let matchedDueDate = null;
+      let matchedDiffDays = null;
+      for (const d of candidateDueDates) {
+        const diffMs = d.getTime() - todayStart.getTime();
+        const diffDays = Math.round(diffMs / (24 * 3600 * 1000));
+        // 今天到期 (0天) 或即將到期 (1~3天)
+        if (diffDays >= 0 && diffDays <= 3) {
+          matchedDueDate = d;
+          matchedDiffDays = diffDays;
+          break;
+        }
+      }
+
+      // 若適逢出帳日但 matchedDueDate 尚未被設為今天到期，抓取當前帳單期數對應的 dueDate
+      if (isStatementDay && !matchedDueDate) {
+        if (rawDueDay !== null) {
+          const dueMonthOffset = rawDueDay > cycleDate ? 0 : 1;
+          matchedDueDate = new Date(nowYear, nowMonth + dueMonthOffset, rawDueDay, 23, 59, 59, 999);
+        } else {
+          matchedDueDate = new Date(nowYear, nowMonth, cycleDate + 20, 23, 59, 59, 999);
+        }
+        matchedDiffDays = Math.round((matchedDueDate.getTime() - todayStart.getTime()) / (24 * 3600 * 1000));
+      }
+
+      const isDueToday = matchedDiffDays === 0;
+      const isDueSoon = matchedDiffDays !== null && matchedDiffDays >= 1 && matchedDiffDays <= 3;
+
+      if (isStatementDay || isDueToday || isDueSoon) {
         // 查詢該卡待繳/未核銷金額
         const { data: cardTx } = await supabase
           .from('transactions')
@@ -151,21 +245,28 @@ async function checkCreditCardAlerts(supabase, ledgerId, targetTwDate, profileMa
 
         const pendingTotal = (cardTx || []).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
         const amountStr = pendingTotal > 0 ? `NT$ ${pendingTotal.toLocaleString()}` : '請見銀行帳單';
-        const dueDayStr = `${dueDate.getMonth() + 1}月${dueDate.getDate()}號`;
+        const dueDayStr = matchedDueDate ? `${matchedDueDate.getMonth() + 1}月${matchedDueDate.getDate()}號` : '繳款截止日';
 
-        if (isStatementDay) {
+        if (isDueToday) {
           alerts.push({
-            type: 'statement',
+            type: 'due_today',
             cardName: card.name,
-            title: `💳 ${card.name}${holderTag} 本期帳單已出帳`,
-            body: `帳單已於今日出帳，待繳約 ${amountStr}，請記得於 ${dueDayStr} 前完成繳納！`,
+            title: `⏰ ${card.name}${holderTag} 今天繳款截止！`,
+            body: `帳單最後繳款日就是今天，待繳約 ${amountStr}，請務必於今日完成繳款！`,
           });
         } else if (isDueSoon) {
           alerts.push({
             type: 'due_soon',
             cardName: card.name,
-            title: `⏰ ${card.name}${holderTag} 繳款期限倒數 ${daysRemaining} 天`,
+            title: `⏰ ${card.name}${holderTag} 繳款期限倒數 ${matchedDiffDays} 天`,
             body: `帳單將於 ${dueDayStr} 到期，待繳約 ${amountStr}，請及早安排扣款或轉帳！`,
+          });
+        } else if (isStatementDay) {
+          alerts.push({
+            type: 'statement',
+            cardName: card.name,
+            title: `💳 ${card.name}${holderTag} 本期帳單已出帳`,
+            body: `帳單已於今日出帳，待繳約 ${amountStr}，請記得於 ${dueDayStr} 前完成繳納！`,
           });
         }
       }
@@ -180,6 +281,7 @@ async function checkCreditCardAlerts(supabase, ledgerId, targetTwDate, profileMa
 
 /**
  * 檢查帳本內未完成的生活記事與待辦提醒（今日到期、逾期待辦與未來 3 天預告）
+ * 具備逾期天數計算、責任人呈現與純淨標題排版（去除嵌套括號）
  */
 async function checkMemoAlerts(supabase, ledgerId, targetTwDate, profileMap) {
   try {
@@ -212,39 +314,51 @@ async function checkMemoAlerts(supabase, ledgerId, targetTwDate, profileMap) {
       const assignee = profileMap?.get(m.paid_by) || profileMap?.get(m.creator_id);
       const assigneeName = assignee ? assignee.display_name : '';
 
-      // 解析標題與乾淨內文
+      // 解析標題與乾淨內文（分離開頭 [標籤]）
       const rawText = (m.note || '').trim();
-      const match = rawText.match(/[\[［【]([^\[\]［］【】\n]{1,16})[\]］】]/);
-      const title = match ? match[1].trim() : '生活待辦';
-      const cleanContent = match ? rawText.replace(match[0], '').trim() : rawText;
+      const match = rawText.match(/^[\[［【]([^\[\]［］【】\n]{1,20})[\]］】]\s*/);
+      const tag = match ? match[1].trim() : '';
+      const cleanContent = match ? rawText.substring(match[0].length).trim() : rawText;
 
       const isPersonal = m.reminder_target === 'personal';
       const scopeTag = isPersonal ? (assigneeName ? `[個人·${assigneeName}]` : '[個人]') : '[全家]';
+      const tagPart = tag ? `【${tag}】` : '';
+      const contentPart = cleanContent || '(無備註)';
 
-      const item = {
-        id: m.id,
-        title: `${scopeTag} ${title}`,
-        content: cleanContent || '(無備註)',
-        reminderDate: rYmd,
-        assigneeName,
-        isPersonal,
-      };
+      const parts = rYmd.split('-');
+      let diffDays = 0;
+      if (parts.length === 3) {
+        const mDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)).getTime();
+        diffDays = Math.round((mDate - todayTime) / (24 * 3600 * 1000));
+      }
 
-      if (rYmd === todayYmd) {
-        todayMemos.push(item);
-      } else if (rYmd < todayYmd) {
-        overdueMemos.push(item);
-      } else {
-        const parts = rYmd.split('-');
-        if (parts.length === 3) {
-          const mDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)).getTime();
-          const diffDays = Math.round((mDate - todayTime) / (24 * 3600 * 1000));
-          if (diffDays >= 1 && diffDays <= 3) {
-            upcomingMemos.push({ ...item, diffDays });
-          }
-        }
+      if (rYmd === todayYmd || diffDays === 0) {
+        todayMemos.push({
+          id: m.id,
+          reminderDate: rYmd,
+          formattedText: `📌 今日待辦：${scopeTag} ${tagPart}${contentPart}`,
+        });
+      } else if (diffDays < 0) {
+        const overdueDays = Math.abs(diffDays);
+        overdueMemos.push({
+          id: m.id,
+          reminderDate: rYmd,
+          overdueDays,
+          formattedText: `⚠️ 逾期待辦 (已逾期 ${overdueDays} 天)：${scopeTag} ${tagPart}${contentPart}`,
+        });
+      } else if (diffDays >= 1 && diffDays <= 3) {
+        const daysText = diffDays === 1 ? '明天' : diffDays === 2 ? '後天' : `${diffDays}天後`;
+        upcomingMemos.push({
+          id: m.id,
+          reminderDate: rYmd,
+          diffDays,
+          formattedText: `📅 ${daysText}預告：${scopeTag} ${tagPart}${contentPart}`,
+        });
       }
     }
+
+    // 逾期待辦依逾期越久越置頂
+    overdueMemos.sort((a, b) => b.overdueDays - a.overdueDays);
 
     return { todayMemos, upcomingMemos, overdueMemos };
   } catch (err) {
@@ -330,7 +444,7 @@ function buildFlexMessage({
     memoAlerts.todayMemos.forEach(m => {
       memoRows.push({
         type: 'text',
-        text: `📌 今日待辦：【${m.title}】${m.content}${m.assigneeName ? ` (${m.assigneeName})` : ''}`,
+        text: m.formattedText || `📌 今日待辦：【${m.title}】${m.content}${m.assigneeName ? ` (${m.assigneeName})` : ''}`,
         size: 'xs',
         color: '#1E293B',
         weight: 'bold',
@@ -343,7 +457,7 @@ function buildFlexMessage({
     memoAlerts.overdueMemos.slice(0, 3).forEach(m => {
       memoRows.push({
         type: 'text',
-        text: `⚠️ 逾期待辦：【${m.title}】${m.content}${m.assigneeName ? ` (${m.assigneeName})` : ''}`,
+        text: m.formattedText || `⚠️ 逾期待辦：【${m.title}】${m.content}${m.assigneeName ? ` (${m.assigneeName})` : ''}`,
         size: 'xs',
         color: '#B91C1C',
         wrap: true,
@@ -353,10 +467,9 @@ function buildFlexMessage({
 
     // 近期預告 (明天或後天)
     memoAlerts.upcomingMemos.slice(0, 3).forEach(m => {
-      const daysText = m.diffDays === 1 ? '明天' : m.diffDays === 2 ? '後天' : `${m.diffDays}天後`;
       memoRows.push({
         type: 'text',
-        text: `📅 ${daysText}預告：【${m.title}】${m.content}${m.assigneeName ? ` (${m.assigneeName})` : ''}`,
+        text: m.formattedText || `📅 預告：【${m.title}】${m.content}${m.assigneeName ? ` (${m.assigneeName})` : ''}`,
         size: 'xs',
         color: '#475569',
         wrap: true,
@@ -717,14 +830,13 @@ function buildTextMessage({
   if (memoAlerts && (memoAlerts.todayMemos.length > 0 || memoAlerts.overdueMemos.length > 0 || memoAlerts.upcomingMemos.length > 0)) {
     lines.push('📌 生活記事與待辦備忘提醒：');
     memoAlerts.todayMemos.forEach(m => {
-      lines.push(`• 今日待辦：【${m.title}】${m.content}${m.assigneeName ? ` (${m.assigneeName})` : ''}`);
+      lines.push(`• ${m.formattedText || `今日待辦：【${m.title}】${m.content}`}`);
     });
     memoAlerts.overdueMemos.slice(0, 3).forEach(m => {
-      lines.push(`• 逾期待辦：【${m.title}】${m.content}${m.assigneeName ? ` (${m.assigneeName})` : ''}`);
+      lines.push(`• ${m.formattedText || `逾期待辦：【${m.title}】${m.content}`}`);
     });
     memoAlerts.upcomingMemos.slice(0, 3).forEach(m => {
-      const daysText = m.diffDays === 1 ? '明天' : m.diffDays === 2 ? '後天' : `${m.diffDays}天後`;
-      lines.push(`• ${daysText}預告：【${m.title}】${m.content}${m.assigneeName ? ` (${m.assigneeName})` : ''}`);
+      lines.push(`• ${m.formattedText || `預告：【${m.title}】${m.content}`}`);
     });
     lines.push('───────────────');
   }
