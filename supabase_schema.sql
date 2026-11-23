@@ -30,6 +30,24 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 -- 移除 profiles 對 auth.users 的強制外鍵約束，允許家庭公帳建立無獨立登入帳號的家庭成員 (如長輩、小孩)
 ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_id_fkey;
 
+-- 1.1 獨立連線通行證表 (支援 Google 身分安全對齊與換機不產生重複分身)
+CREATE TABLE IF NOT EXISTS public.auth_session_links (
+    session_uid UUID PRIMARY KEY,
+    auth_email TEXT NOT NULL,
+    linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_session_links_email
+    ON public.auth_session_links (lower(auth_email));
+
+ALTER TABLE public.auth_session_links ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own session links" ON public.auth_session_links;
+CREATE POLICY "Users can view own session links"
+    ON public.auth_session_links
+    FOR SELECT
+    USING (session_uid = auth.uid());
+
 -- 2. 帳本表 (支援個人私帳與家庭公帳)
 CREATE TABLE IF NOT EXISTS public.ledgers (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -151,6 +169,7 @@ CREATE TABLE IF NOT EXISTS public.payment_accounts (
     card_number TEXT, -- 完整卡號 (悠遊卡/一卡通 10~16 碼，供官網查帳與一鍵複製)
     issuer_bank TEXT, -- 發卡銀行/機構識別（用於同銀行多卡歸戶對帳）
     billing_cycle_date INT CHECK (billing_cycle_date BETWEEN 1 AND 31), -- 結帳日 (每月 1~31 號)
+    payment_due_day INT CHECK (payment_due_day BETWEEN 1 AND 31), -- 繳款截止日 (每月 1~31 號)
     balance NUMERIC(12, 2) DEFAULT 0 NOT NULL, -- 儲值卡/帳戶餘額 (悠遊卡使用)
     color TEXT DEFAULT '#3B82F6',
     icon TEXT DEFAULT '💳',
@@ -195,30 +214,151 @@ ALTER TABLE public.payment_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transaction_splits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ledger_invites ENABLE ROW LEVEL SECURITY;
 
--- 檢查當前登入者是否屬於特定帳本成員的輔助函式（包含建立者、已加入成員、以及已綁定同 Google 帳號之受保護成員）
+-- 檢查當前登入者是否屬於特定帳本成員的輔助函式（包含建立者、已加入成員、已綁定同 Google 帳號之受保護成員，以及 auth_session_links 授權）
 CREATE OR REPLACE FUNCTION public.is_ledger_member(target_ledger_id UUID)
 RETURNS BOOLEAN AS $$
+DECLARE
+    v_user_email TEXT;
 BEGIN
-  -- 官方示範帳本 (SWEETHOME) 允許訪客暢快試玩體驗與熱度打點
-  IF target_ledger_id = 'ee100000-0000-4000-8000-000000000001'::uuid THEN
-    RETURN TRUE;
-  END IF;
+    IF target_ledger_id IS NULL THEN
+        RETURN FALSE;
+    END IF;
 
-  RETURN EXISTS (
-    SELECT 1 FROM public.ledger_members
-    WHERE ledger_id = target_ledger_id AND user_id = auth.uid()
-  ) OR EXISTS (
-    SELECT 1 FROM public.ledgers
-    WHERE id = target_ledger_id AND created_by = auth.uid()
-  ) OR EXISTS (
-    SELECT 1 FROM public.ledger_members lm
-    JOIN public.profiles p ON lm.user_id = p.id
-    WHERE lm.ledger_id = target_ledger_id
-      AND lower(p.auth_email) = lower(coalesce(auth.jwt() ->> 'email', ''))
-      AND p.is_locked = true
-  );
+    -- 官方示範帳本 (SWEETHOME) 永遠放行
+    IF target_ledger_id = 'ee100000-0000-4000-8000-000000000001'::uuid THEN
+        RETURN TRUE;
+    END IF;
+
+    -- 1. 當前連線直接為該帳本成員或建立者
+    IF auth.uid() IS NOT NULL THEN
+        IF EXISTS (
+            SELECT 1 FROM public.ledger_members
+            WHERE ledger_id = target_ledger_id AND user_id = auth.uid()
+        ) OR EXISTS (
+            SELECT 1 FROM public.ledgers
+            WHERE id = target_ledger_id AND created_by = auth.uid()
+        ) THEN
+            RETURN TRUE;
+        END IF;
+    END IF;
+
+    -- 2. 依序從 auth_session_links -> profiles (locked) -> auth.jwt() 解析已認證 Google 信箱
+    IF auth.uid() IS NOT NULL THEN
+        SELECT lower(trim(auth_email)) INTO v_user_email
+        FROM public.auth_session_links
+        WHERE session_uid = auth.uid()
+        LIMIT 1;
+
+        IF v_user_email IS NULL OR v_user_email = '' THEN
+            SELECT lower(trim(auth_email)) INTO v_user_email
+            FROM public.profiles
+            WHERE id = auth.uid() AND auth_email IS NOT NULL AND is_locked = true
+            LIMIT 1;
+        END IF;
+    END IF;
+
+    IF v_user_email IS NULL OR v_user_email = '' THEN
+        v_user_email := lower(trim(coalesce(auth.jwt() ->> 'email', '')));
+    END IF;
+
+    -- 3. 若具合法非虛擬信箱，檢查目標帳本中是否有屬於該信箱的成員或建立者
+    IF v_user_email IS NOT NULL
+       AND v_user_email <> ''
+       AND position('@' in v_user_email) > 0
+       AND right(v_user_email, 13) <> '@family.local'
+       AND v_user_email NOT LIKE '%anonymous%'
+    THEN
+        IF EXISTS (
+            SELECT 1 FROM public.ledger_members lm
+            JOIN public.profiles p ON lm.user_id = p.id
+            WHERE lm.ledger_id = target_ledger_id
+              AND p.auth_email IS NOT NULL
+              AND lower(trim(p.auth_email)) = v_user_email
+        ) OR EXISTS (
+            SELECT 1 FROM public.ledgers l
+            JOIN public.profiles p ON l.created_by = p.id
+            WHERE l.id = target_ledger_id
+              AND p.auth_email IS NOT NULL
+              AND lower(trim(p.auth_email)) = v_user_email
+        ) THEN
+            RETURN TRUE;
+        END IF;
+    END IF;
+
+    RETURN FALSE;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.is_ledger_member(UUID) TO anon, authenticated, service_role;
+
+-- 檢查當前連線或已認證成員是否具備目標帳本之管理員/擁有者 (owner/admin) 權限
+CREATE OR REPLACE FUNCTION public.is_ledger_admin(target_ledger_id UUID)
+RETURNS BOOLEAN AS $$
+DECLARE
+    v_user_email TEXT;
+BEGIN
+    IF target_ledger_id IS NULL OR auth.uid() IS NULL THEN
+        RETURN FALSE;
+    END IF;
+
+    -- 1. 直接比對建立者或 owner/admin 成員
+    IF EXISTS (
+        SELECT 1 FROM public.ledgers
+        WHERE id = target_ledger_id AND created_by = auth.uid()
+    ) OR EXISTS (
+        SELECT 1 FROM public.ledger_members
+        WHERE ledger_id = target_ledger_id AND user_id = auth.uid() AND role IN ('owner', 'admin')
+    ) THEN
+        RETURN TRUE;
+    END IF;
+
+    -- 2. 依序從 auth_session_links -> profiles (locked) -> auth.jwt() 解析已認證 Google 信箱
+    SELECT lower(trim(auth_email)) INTO v_user_email
+    FROM public.auth_session_links
+    WHERE session_uid = auth.uid()
+    LIMIT 1;
+
+    IF v_user_email IS NULL OR v_user_email = '' THEN
+        SELECT lower(trim(auth_email)) INTO v_user_email
+        FROM public.profiles
+        WHERE id = auth.uid() AND auth_email IS NOT NULL AND is_locked = true
+        LIMIT 1;
+    END IF;
+
+    IF v_user_email IS NULL OR v_user_email = '' THEN
+        v_user_email := lower(trim(coalesce(auth.jwt() ->> 'email', '')));
+    END IF;
+
+    -- 3. 檢查目標帳本中對應信箱是否具備建立者或管理員身份
+    IF v_user_email IS NOT NULL
+       AND v_user_email <> ''
+       AND position('@' in v_user_email) > 0
+       AND right(v_user_email, 13) <> '@family.local'
+       AND v_user_email NOT LIKE '%anonymous%'
+    THEN
+        IF EXISTS (
+            SELECT 1 FROM public.ledgers l
+            JOIN public.profiles p ON l.created_by = p.id
+            WHERE l.id = target_ledger_id
+              AND p.auth_email IS NOT NULL
+              AND lower(trim(p.auth_email)) = v_user_email
+        ) OR EXISTS (
+            SELECT 1 FROM public.ledger_members lm
+            JOIN public.profiles p ON lm.user_id = p.id
+            WHERE lm.ledger_id = target_ledger_id
+              AND lm.role IN ('owner', 'admin')
+              AND p.auth_email IS NOT NULL
+              AND lower(trim(p.auth_email)) = v_user_email
+        ) THEN
+            RETURN TRUE;
+        END IF;
+    END IF;
+
+    RETURN FALSE;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.is_ledger_admin(UUID) TO anon, authenticated, service_role;
 
 -- Profiles 規則：任何人可讀取個人公開資訊，已認證成員可新增與修改
 DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON public.profiles;
@@ -1039,12 +1179,9 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'message', '找不到指定的帳本');
     END IF;
 
-    -- 權限檢查 1：已登入建立者或 owner 成員
+    -- 權限檢查 1：已登入建立者、owner/admin 成員或 auth_session_links 授權鏈接
     IF auth.uid() IS NOT NULL THEN
-        v_is_authorized := (v_ledger.created_by = auth.uid()) OR EXISTS (
-            SELECT 1 FROM public.ledger_members 
-            WHERE ledger_id = target_ledger_id AND user_id = auth.uid() AND role = 'owner'
-        );
+        v_is_authorized := public.is_ledger_admin(target_ledger_id);
     END IF;
 
     -- 權限檢查 2：管理員安全 PIN 碼
@@ -1133,9 +1270,10 @@ CREATE POLICY "成員可刪除所屬帳本的付款方式" ON public.payment_met
 -- 確保 Realtime 事件可用
 ALTER TABLE public.payment_methods REPLICA IDENTITY FULL;
 
--- 補齊 payment_accounts 悠遊卡完整卡號支援 (card_number) 與發卡機構識別 (issuer_bank)
+-- 補齊 payment_accounts 悠遊卡完整卡號支援 (card_number)、發卡機構識別 (issuer_bank) 與繳款截止日 (payment_due_day)
 ALTER TABLE public.payment_accounts ADD COLUMN IF NOT EXISTS card_number TEXT;
 ALTER TABLE public.payment_accounts ADD COLUMN IF NOT EXISTS issuer_bank TEXT;
+ALTER TABLE public.payment_accounts ADD COLUMN IF NOT EXISTS payment_due_day INT;
 
 -- ==============================================================================
 -- 13. 家庭公帳月度總預算與成員個人額度表 (Ledger Budgets)
@@ -1741,6 +1879,7 @@ BEGIN
         card_number,
         issuer_bank,
         billing_cycle_date,
+        payment_due_day,
         balance,
         color,
         icon,
@@ -1757,6 +1896,7 @@ BEGIN
         NULLIF(p_account->>'card_number', ''),
         NULLIF(trim(p_account->>'issuer_bank'), ''),
         NULLIF(p_account->>'billing_cycle_date', '')::INT,
+        NULLIF(p_account->>'payment_due_day', '')::INT,
         COALESCE(NULLIF(p_account->>'balance', '')::NUMERIC, 0),
         COALESCE(p_account->>'color', '#3B82F6'),
         COALESCE(p_account->>'icon', '💳'),
@@ -1772,6 +1912,7 @@ BEGIN
         card_number = EXCLUDED.card_number,
         issuer_bank = EXCLUDED.issuer_bank,
         billing_cycle_date = EXCLUDED.billing_cycle_date,
+        payment_due_day = EXCLUDED.payment_due_day,
         balance = EXCLUDED.balance,
         color = EXCLUDED.color,
         icon = EXCLUDED.icon,
@@ -1779,7 +1920,12 @@ BEGIN
         updated_at = NOW()
     WHERE payment_accounts.ledger_id = EXCLUDED.ledger_id;
 
-    RETURN jsonb_build_object('success', true, 'id', v_id, 'issuer_bank_supported', true);
+    RETURN jsonb_build_object(
+        'success', true,
+        'id', v_id,
+        'issuer_bank_supported', true,
+        'payment_due_day_supported', true
+    );
 EXCEPTION WHEN OTHERS THEN
     RETURN jsonb_build_object('success', false, 'error', SQLERRM);
 END;
@@ -1797,7 +1943,13 @@ DECLARE
     v_updated_count INT := 0;
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM public.payment_accounts WHERE id = p_account_id) THEN
-        RETURN jsonb_build_object('success', true, 'rows_affected', 0, 'id', p_account_id, 'issuer_bank_supported', true);
+        RETURN jsonb_build_object(
+            'success', true,
+            'rows_affected', 0,
+            'id', p_account_id,
+            'issuer_bank_supported', true,
+            'payment_due_day_supported', true
+        );
     END IF;
 
     IF p_payload ? 'name' AND NULLIF(p_payload->>'name', '') IS NOT NULL THEN
@@ -1836,6 +1988,14 @@ BEGIN
         END IF;
     END IF;
 
+    IF p_payload ? 'payment_due_day' THEN
+        IF NULLIF(p_payload->>'payment_due_day', '') IS NOT NULL THEN
+            UPDATE public.payment_accounts SET payment_due_day = (p_payload->>'payment_due_day')::INT WHERE id = p_account_id;
+        ELSE
+            UPDATE public.payment_accounts SET payment_due_day = NULL WHERE id = p_account_id;
+        END IF;
+    END IF;
+
     IF p_payload ? 'balance' AND NULLIF(p_payload->>'balance', '') IS NOT NULL THEN
         UPDATE public.payment_accounts SET balance = (p_payload->>'balance')::NUMERIC WHERE id = p_account_id;
     END IF;
@@ -1859,7 +2019,8 @@ BEGIN
         'success', true,
         'rows_affected', v_updated_count,
         'id', p_account_id,
-        'issuer_bank_supported', true
+        'issuer_bank_supported', true,
+        'payment_due_day_supported', true
     );
 EXCEPTION WHEN OTHERS THEN
     RETURN jsonb_build_object(
@@ -1980,30 +2141,29 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'ledger_not_found', 'message', '找不到指定的帳本');
     END IF;
 
+    -- 軌道 1：透過 Auth Session 或 auth_session_links 授權鏈接
     IF auth.uid() IS NOT NULL THEN
-        v_is_authorized := EXISTS (
-            SELECT 1 FROM public.ledger_members 
-            WHERE ledger_id = p_ledger_id AND user_id = auth.uid() AND role IN ('owner', 'admin')
-        ) OR EXISTS (
-            SELECT 1 FROM public.ledgers WHERE id = p_ledger_id AND created_by = auth.uid()
-        );
+        v_is_authorized := public.is_ledger_admin(p_ledger_id);
     END IF;
 
+    -- 軌道 2：透過本地活動成員 ID (免登入成員，名冊中登記為 owner/admin 或帳本建立者)
     IF NOT v_is_authorized AND p_operator_id IS NOT NULL THEN
         v_is_authorized := EXISTS (
-            SELECT 1 FROM public.ledger_members 
+            SELECT 1 FROM public.ledger_members
             WHERE ledger_id = p_ledger_id AND user_id = p_operator_id AND role IN ('owner', 'admin')
         ) OR EXISTS (
             SELECT 1 FROM public.ledgers WHERE id = p_ledger_id AND created_by = p_operator_id
         );
     END IF;
 
+    -- 軌道 3：透過管理員 PIN 碼驗證
     IF NOT v_is_authorized AND p_admin_pin IS NOT NULL THEN
         v_is_authorized := EXISTS (
             SELECT 1 FROM public.ledgers WHERE id = p_ledger_id AND (admin_pin = p_admin_pin OR admin_pin IS NULL)
         );
     END IF;
 
+    -- 容錯保底：若此帳本全體成員無任何管理員且無 created_by，允許設定
     IF NOT v_is_authorized THEN
         IF NOT EXISTS (
             SELECT 1 FROM public.ledger_members WHERE ledger_id = p_ledger_id AND role IN ('owner', 'admin')
@@ -2044,7 +2204,7 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-GRANT EXECUTE ON FUNCTION public.secure_update_ledger(UUID, JSONB, UUID, TEXT) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.secure_update_ledger(UUID, JSONB, UUID, TEXT) TO anon, authenticated, service_role;
 
 -- 14. 安全重設或自訂邀請碼
 CREATE OR REPLACE FUNCTION public.secure_set_invite_code(
@@ -2064,17 +2224,12 @@ BEGIN
     END IF;
 
     IF auth.uid() IS NOT NULL THEN
-        v_is_authorized := EXISTS (
-            SELECT 1 FROM public.ledger_members 
-            WHERE ledger_id = p_ledger_id AND user_id = auth.uid() AND role IN ('owner', 'admin')
-        ) OR EXISTS (
-            SELECT 1 FROM public.ledgers WHERE id = p_ledger_id AND created_by = auth.uid()
-        );
+        v_is_authorized := public.is_ledger_admin(p_ledger_id);
     END IF;
 
     IF NOT v_is_authorized AND p_operator_id IS NOT NULL THEN
         v_is_authorized := EXISTS (
-            SELECT 1 FROM public.ledger_members 
+            SELECT 1 FROM public.ledger_members
             WHERE ledger_id = p_ledger_id AND user_id = p_operator_id AND role IN ('owner', 'admin')
         ) OR EXISTS (
             SELECT 1 FROM public.ledgers WHERE id = p_ledger_id AND created_by = p_operator_id
@@ -2092,7 +2247,7 @@ BEGIN
     END IF;
 
     IF EXISTS (
-        SELECT 1 FROM public.ledger_invites 
+        SELECT 1 FROM public.ledger_invites
         WHERE UPPER(TRIM(invite_code)) = v_clean_code AND ledger_id != p_ledger_id
     ) THEN
         RETURN jsonb_build_object('success', false, 'error', 'code_taken', 'message', '此自訂邀請碼已被其他家庭使用，請換一個！');
@@ -2120,9 +2275,9 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-GRANT EXECUTE ON FUNCTION public.secure_set_invite_code(UUID, TEXT, UUID, TEXT) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.secure_set_invite_code(UUID, TEXT, UUID, TEXT) TO anon, authenticated, service_role;
 
--- 15. 安全移除成員與明細移轉
+-- 15. 安全移除成員與關聯資產安全移轉
 CREATE OR REPLACE FUNCTION public.secure_remove_member(
     p_ledger_id UUID,
     p_user_id UUID,
@@ -2133,19 +2288,15 @@ CREATE OR REPLACE FUNCTION public.secure_remove_member(
 RETURNS JSONB AS $$
 DECLARE
     v_is_authorized BOOLEAN := FALSE;
+    v_ledger_creator UUID;
 BEGIN
     IF auth.uid() IS NOT NULL THEN
-        v_is_authorized := EXISTS (
-            SELECT 1 FROM public.ledger_members 
-            WHERE ledger_id = p_ledger_id AND user_id = auth.uid() AND role IN ('owner', 'admin')
-        ) OR EXISTS (
-            SELECT 1 FROM public.ledgers WHERE id = p_ledger_id AND created_by = auth.uid()
-        );
+        v_is_authorized := public.is_ledger_admin(p_ledger_id);
     END IF;
 
     IF NOT v_is_authorized AND p_operator_id IS NOT NULL THEN
         v_is_authorized := EXISTS (
-            SELECT 1 FROM public.ledger_members 
+            SELECT 1 FROM public.ledger_members
             WHERE ledger_id = p_ledger_id AND user_id = p_operator_id AND role IN ('owner', 'admin')
         ) OR EXISTS (
             SELECT 1 FROM public.ledgers WHERE id = p_ledger_id AND created_by = p_operator_id
@@ -2162,9 +2313,81 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'unauthorized', 'message', '只有帳本管理員才能移除家庭成員');
     END IF;
 
-    IF p_transfer_to_id IS NOT NULL THEN
-        UPDATE public.transactions SET creator_id = p_transfer_to_id WHERE ledger_id = p_ledger_id AND creator_id = p_user_id;
-        UPDATE public.transactions SET paid_by = p_transfer_to_id WHERE ledger_id = p_ledger_id AND paid_by = p_user_id;
+    SELECT created_by INTO v_ledger_creator FROM public.ledgers WHERE id = p_ledger_id;
+    IF v_ledger_creator IS NOT NULL AND p_user_id = v_ledger_creator THEN
+        RETURN jsonb_build_object('success', false, 'error', 'cannot_remove_creator', 'message', '無法移除帳本原始建立者');
+    END IF;
+
+    IF p_transfer_to_id IS NOT NULL AND p_transfer_to_id <> p_user_id THEN
+        UPDATE public.transactions
+        SET creator_id = p_transfer_to_id
+        WHERE ledger_id = p_ledger_id AND creator_id = p_user_id;
+
+        UPDATE public.transactions
+        SET paid_by = p_transfer_to_id
+        WHERE ledger_id = p_ledger_id AND paid_by = p_user_id;
+
+        UPDATE public.payment_accounts
+        SET user_id = p_transfer_to_id
+        WHERE ledger_id = p_ledger_id AND user_id = p_user_id;
+
+        UPDATE public.recurring_rules
+        SET paid_by = p_transfer_to_id
+        WHERE ledger_id = p_ledger_id AND paid_by = p_user_id;
+
+        IF to_regclass('public.transaction_splits') IS NOT NULL THEN
+            UPDATE public.transaction_splits ts_keep
+            SET split_amount = COALESCE(ts_keep.split_amount, 0) + COALESCE(ts_dup.split_amount, 0)
+            FROM public.transaction_splits ts_dup
+            JOIN public.transactions t ON t.id = ts_dup.transaction_id
+            WHERE t.ledger_id = p_ledger_id
+              AND ts_dup.user_id = p_user_id
+              AND ts_keep.transaction_id = ts_dup.transaction_id
+              AND ts_keep.user_id = p_transfer_to_id;
+
+            DELETE FROM public.transaction_splits ts_dup
+            USING public.transactions t
+            WHERE ts_dup.transaction_id = t.id
+              AND t.ledger_id = p_ledger_id
+              AND ts_dup.user_id = p_user_id
+              AND EXISTS (
+                  SELECT 1 FROM public.transaction_splits ts_keep
+                  WHERE ts_keep.transaction_id = ts_dup.transaction_id
+                    AND ts_keep.user_id = p_transfer_to_id
+              );
+
+            UPDATE public.transaction_splits ts
+            SET user_id = p_transfer_to_id
+            FROM public.transactions t
+            WHERE ts.transaction_id = t.id
+              AND t.ledger_id = p_ledger_id
+              AND ts.user_id = p_user_id;
+        END IF;
+
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'ledger_budgets'
+              AND column_name = 'member_budgets'
+        ) THEN
+            EXECUTE '
+                UPDATE public.ledger_budgets
+                SET member_budgets = CASE
+                    WHEN NOT (member_budgets ? $1::text) THEN
+                        (member_budgets - $2::text) || jsonb_build_object($1::text, member_budgets -> $2::text)
+                    ELSE
+                        member_budgets - $2::text
+                END
+                WHERE ledger_id = $3
+                  AND member_budgets IS NOT NULL
+                  AND member_budgets ? $2::text'
+            USING p_transfer_to_id, p_user_id, p_ledger_id;
+        END IF;
+
+        IF to_regclass('public.carrier_rules') IS NOT NULL THEN
+            EXECUTE 'UPDATE public.carrier_rules SET user_id = $1 WHERE ledger_id = $2 AND user_id = $3'
+            USING p_transfer_to_id, p_ledger_id, p_user_id;
+        END IF;
     END IF;
 
     DELETE FROM public.ledger_members WHERE ledger_id = p_ledger_id AND user_id = p_user_id;
@@ -2176,7 +2399,158 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-GRANT EXECUTE ON FUNCTION public.secure_remove_member(UUID, UUID, UUID, UUID, TEXT) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.secure_remove_member(UUID, UUID, UUID, UUID, TEXT) TO anon, authenticated, service_role;
+
+-- 16. 連結當前連線至已認證信箱之通行證 RPC (防分身專用)
+CREATE OR REPLACE FUNCTION public.link_session_to_email(
+    p_email TEXT,
+    p_session_uid UUID DEFAULT NULL
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_clean_email TEXT;
+    v_uid UUID;
+BEGIN
+    v_clean_email := lower(trim(coalesce(p_email, '')));
+    v_uid := COALESCE(p_session_uid, auth.uid());
+
+    IF v_clean_email = ''
+       OR position('@' in v_clean_email) = 0
+       OR right(v_clean_email, 13) = '@family.local'
+       OR v_clean_email LIKE '%anonymous%'
+    THEN
+        RETURN jsonb_build_object('success', false, 'message', '未提供有效的認證信箱');
+    END IF;
+
+    IF v_uid IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'message', '未提供有效的連線 Session ID');
+    END IF;
+
+    -- 驗證該信箱確實為已受保護的真實成員身分，避免任意未授權信箱鏈接
+    IF NOT EXISTS (
+        SELECT 1 FROM public.profiles
+        WHERE auth_email IS NOT NULL
+          AND lower(trim(auth_email)) = v_clean_email
+          AND is_locked = true
+    ) THEN
+        RETURN jsonb_build_object('success', false, 'message', '找不到受保護的對應 Google 身分');
+    END IF;
+
+    INSERT INTO public.auth_session_links (session_uid, auth_email, linked_at)
+    VALUES (v_uid, v_clean_email, NOW())
+    ON CONFLICT (session_uid) DO UPDATE
+    SET auth_email = EXCLUDED.auth_email,
+        linked_at = NOW();
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'session_uid', v_uid,
+        'email', v_clean_email
+    );
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object('success', false, 'message', SQLERRM);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.link_session_to_email(TEXT, UUID) TO anon, authenticated, service_role;
+
+-- 17. 取得使用者已授權之家庭公帳清單 (支援獨立通行證與停止虛擬成員寫入名冊)
+CREATE OR REPLACE FUNCTION public.get_user_authorized_ledgers(
+    p_email TEXT DEFAULT NULL,
+    p_link_user_id UUID DEFAULT NULL
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_clean_email TEXT;
+    v_ledgers JSONB;
+BEGIN
+    -- 1. 解析目標 Email（p_email -> auth_session_links -> profiles -> auth.jwt）
+    v_clean_email := lower(trim(coalesce(p_email, '')));
+
+    IF v_clean_email = '' AND auth.uid() IS NOT NULL THEN
+        SELECT lower(trim(auth_email)) INTO v_clean_email
+        FROM public.auth_session_links
+        WHERE session_uid = auth.uid()
+        LIMIT 1;
+    END IF;
+
+    IF v_clean_email = '' AND auth.uid() IS NOT NULL THEN
+        SELECT lower(trim(auth_email)) INTO v_clean_email
+        FROM public.profiles
+        WHERE id = auth.uid() AND auth_email IS NOT NULL
+        LIMIT 1;
+    END IF;
+
+    IF v_clean_email = '' THEN
+        v_clean_email := lower(trim(coalesce(auth.jwt() ->> 'email', '')));
+    END IF;
+
+    IF v_clean_email = '' THEN
+        RETURN jsonb_build_object('success', false, 'message', '未提供有效的認證信箱');
+    END IF;
+
+    -- 2. 安全驗證：確認此 Email 在 profiles 中確實存在 (防止惡意列舉他人帳本)
+    IF NOT EXISTS (
+        SELECT 1 FROM public.profiles
+        WHERE auth_email IS NOT NULL AND lower(trim(auth_email)) = v_clean_email
+    ) THEN
+        RETURN jsonb_build_object('success', false, 'message', '此信箱尚未關聯任何家庭公帳');
+    END IF;
+
+    -- 3. 僅寫入獨立通行證表 auth_session_links，絕不把裝置 UID 插入家庭成員名冊 ledger_members
+    IF p_link_user_id IS NOT NULL
+       AND position('@' in v_clean_email) > 0
+       AND right(v_clean_email, 13) <> '@family.local'
+       AND v_clean_email NOT LIKE '%anonymous%'
+    THEN
+        INSERT INTO public.auth_session_links (session_uid, auth_email, linked_at)
+        VALUES (p_link_user_id, v_clean_email, NOW())
+        ON CONFLICT (session_uid) DO UPDATE
+        SET auth_email = EXCLUDED.auth_email,
+            linked_at = NOW();
+    END IF;
+
+    -- 4. 取得該 Email 關聯的所有家庭公帳完整清單
+    SELECT jsonb_agg(sub) INTO v_ledgers
+    FROM (
+        SELECT DISTINCT ON (l.id)
+            l.id,
+            l.name,
+            l.description,
+            l.currency,
+            l.created_at,
+            l.updated_at,
+            l.admin_pin,
+            l.is_read_only,
+            l.allow_new_members,
+            l.created_by,
+            COALESCE(lm.role, CASE WHEN l.created_by = p.id THEN 'owner' ELSE 'member' END) AS "userRole",
+            COALESCE(NULLIF(trim(lm.custom_name), ''), p.display_name, '家庭成員') AS "userDisplayName",
+            COALESCE(NULLIF(trim(lm.custom_avatar), ''), p.avatar_url, '👤') AS "userAvatar"
+        FROM public.ledgers l
+        LEFT JOIN public.ledger_members lm ON l.id = lm.ledger_id
+        LEFT JOIN public.profiles p ON (lm.user_id = p.id OR l.created_by = p.id)
+        WHERE (p.auth_email IS NOT NULL AND lower(trim(p.auth_email)) = v_clean_email)
+           OR l.id = 'ee100000-0000-4000-8000-000000000001'::uuid
+        ORDER BY
+            l.id,
+            COALESCE(l.created_by = p.id, FALSE) DESC,
+            COALESCE(lm.role = 'owner', FALSE) DESC,
+            COALESCE(p.is_locked, FALSE) DESC,
+            (coalesce(lm.custom_avatar, p.avatar_url, '') NOT LIKE 'http%') DESC,
+            l.created_at DESC NULLS LAST
+    ) sub;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'email', v_clean_email,
+        'count', jsonb_array_length(COALESCE(v_ledgers, '[]'::jsonb)),
+        'ledgers', COALESCE(v_ledgers, '[]'::jsonb)
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.get_user_authorized_ledgers(TEXT, UUID) TO anon, authenticated, service_role;
 
 -- 擴充 payment_accounts 支援網購會員載具卡 ('carrier')
 ALTER TABLE public.payment_accounts DROP CONSTRAINT IF EXISTS payment_accounts_type_check;
@@ -2189,5 +2563,12 @@ VALUES
     ('00000000_baseline_schema', '系統全量基準綱要 (Initial Schema)'),
     ('20261030_zero_token_architecture', '零金鑰安全架構、全域 RLS 放行與 14 大核心預存程序'),
     ('20261102_secure_ledger_and_invites_rpc', '零金鑰架構加固：補齊帳本管理、邀請碼與成員維護之 SECURITY DEFINER 預存程序'),
-    ('20261105_carrier_account_type', '擴充 payment_accounts 支援網購會員載具卡 (type: carrier)')
+    ('20261105_carrier_account_type', '擴充 payment_accounts 支援網購會員載具卡 (type: carrier)'),
+    ('20261108_add_ledger_member_custom_name', '支援家庭成員名冊自訂暱稱與頭像設定'),
+    ('20261118_close_anon_door_and_secure_rpc', '封閉未認證提權並加深雙重守護機制'),
+    ('20261118_secure_authorized_ledgers_rpc', '強化使用者授權公帳清單查詢安全性'),
+    ('20261118_sweethome_read_only_protection', '示範家庭母本雲端唯讀守護'),
+    ('20261120_auth_session_links_and_member_dedup', '獨立連線通行證與防成員重複分身純淨守護'),
+    ('20261122_add_payment_accounts_issuer_bank', '補齊信用卡發卡機構識別與儲存支援'),
+    ('20261122_add_payment_accounts_payment_due_day', '補齊信用卡每月繳款截止日欄位與共用週期支援')
 ON CONFLICT (version) DO UPDATE SET applied_at = NOW();
