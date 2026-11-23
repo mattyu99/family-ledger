@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Switch,
   Platform,
+  Linking,
   } from 'react-native';
 import { Text } from '../components/common/Text';
 import { useFontSize, FONT_SIZE_OPTIONS } from '../theme/FontSizeContext';
@@ -54,6 +55,17 @@ import {
   syncWidgetData,
   WidgetSnapshotData,
 } from '../lib/widgetSync';
+import {
+  LINE_BOT_BASIC_ID,
+  LineNotificationSettingsResponse,
+  buildLineBindDeepLink,
+  fetchLineNotificationSettings,
+  generateLineBindCode,
+  saveLineUserPreferences,
+  unbindLineUser,
+  saveLineGroupPreferences,
+  unbindLineGroup,
+} from '../lib/lineNotifications';
 
 export type SettingsCategoryTab = 'family' | 'reminders' | 'system' | 'all';
 
@@ -193,6 +205,27 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
   const [widgetSnapshot, setWidgetSnapshot] = useState<WidgetSnapshotData | null>(null);
   const [isSyncingWidget, setIsSyncingWidget] = useState(false);
   const [widgetSyncMessage, setWidgetSyncMessage] = useState<string | null>(null);
+  const [lineSettings, setLineSettings] = useState<LineNotificationSettingsResponse | null>(null);
+  const [isLoadingLineSettings, setIsLoadingLineSettings] = useState(false);
+  const [isSavingLineSettings, setIsSavingLineSettings] = useState(false);
+  const [pendingUserBindCode, setPendingUserBindCode] = useState<{ code: string; expiresAt?: string } | null>(null);
+  const [pendingGroupBindCode, setPendingGroupBindCode] = useState<{ code: string; expiresAt?: string } | null>(null);
+
+  const loadLineSettings = async () => {
+    if (!currentUser?.id || isDemoLedger) {
+      setLineSettings(null);
+      return;
+    }
+    setIsLoadingLineSettings(true);
+    try {
+      const res = await fetchLineNotificationSettings(currentUser.id, currentLedger?.id);
+      setLineSettings(res);
+      if (res.userBinding.isBound) setPendingUserBindCode(null);
+      if (res.groupBinding.isBound) setPendingGroupBindCode(null);
+    } finally {
+      setIsLoadingLineSettings(false);
+    }
+  };
 
   useEffect(() => {
     getBillingNotificationsEnabled().then(setBillingNoticeEnabled);
@@ -201,6 +234,11 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     isQuickActionSupported().then(setIsQuickActionSupportedState);
     getWidgetSnapshot().then(setWidgetSnapshot);
   }, []);
+
+  useEffect(() => {
+    loadLineSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id, currentLedger?.id, isDemoLedger]);
 
   useEffect(() => {
     getWidgetSnapshot().then(setWidgetSnapshot);
@@ -407,6 +445,159 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     } else {
       showAlert('發送失敗', '請確認手機系統已允許「甜心記帳本」發送通知。');
     }
+  };
+
+  // ==================== LINE 雙軌每日收支日報設定 ====================
+  const canManageGroupLine = Boolean(!isDemoLedger && (isOwner || realIsOwner || isAdminMode));
+
+  const handleStartUserLineBind = async () => {
+    if (!currentUser?.id || isDemoLedger) return;
+    setIsSavingLineSettings(true);
+    try {
+      const res = await generateLineBindCode(currentUser.id, 'user', currentLedger?.id);
+      if (!res.success || !res.code) {
+        showAlert('無法產生綁定碼', res.message || '請確認網路連線或稍後再試');
+        return;
+      }
+      setPendingUserBindCode({ code: res.code, expiresAt: res.expiresAt });
+      const deepLink = buildLineBindDeepLink(res.code);
+      try {
+        await Linking.openURL(deepLink);
+      } catch {
+        copyToClipboard(res.code, `綁定碼 ${res.code} 已複製！\n請打開 LINE 官方帳號 ${LINE_BOT_BASIC_ID} 並傳送此代碼即可完成綁定。`);
+      }
+    } finally {
+      setIsSavingLineSettings(false);
+    }
+  };
+
+  const handleToggleUserLinePref = async (patch: { enabled?: boolean; skipQuietDay?: boolean }) => {
+    if (!currentUser?.id || !lineSettings?.userBinding.isBound) return;
+    setIsSavingLineSettings(true);
+    try {
+      const res = await saveLineUserPreferences({
+        userId: currentUser.id,
+        enabled: patch.enabled,
+        skipQuietDay: patch.skipQuietDay,
+      });
+      if (!res.success) {
+        showAlert('儲存失敗', res.message || '無法更新個人 LINE 日報偏好');
+        return;
+      }
+      await loadLineSettings();
+    } finally {
+      setIsSavingLineSettings(false);
+    }
+  };
+
+  const handleToggleLedgerLineSub = async (ledgerId: string, nextEnabled: boolean) => {
+    if (!currentUser?.id || !lineSettings?.userBinding.isBound) return;
+    setIsSavingLineSettings(true);
+    try {
+      const res = await saveLineUserPreferences({
+        userId: currentUser.id,
+        ledgerId,
+        ledgerEnabled: nextEnabled,
+      });
+      if (!res.success) {
+        showAlert('儲存失敗', res.message || '無法更新此帳簿之日報訂閱設定');
+        return;
+      }
+      await loadLineSettings();
+    } finally {
+      setIsSavingLineSettings(false);
+    }
+  };
+
+  const handleUnbindUserLine = () => {
+    if (!currentUser?.id) return;
+    showConfirm(
+      '解除個人 LINE 綁定',
+      '解除後，系統將不再傳送每日收支日報至您的個人 LINE，之後隨時可一鍵重新綁定。確定要解除嗎？',
+      async () => {
+        setIsSavingLineSettings(true);
+        try {
+          const res = await unbindLineUser(currentUser.id);
+          if (!res.success) {
+            showAlert('解除失敗', res.message || '請稍後再試');
+            return;
+          }
+          setPendingUserBindCode(null);
+          await loadLineSettings();
+          showAlert('已解除綁定', '已停止發送個人 LINE 日報並清除綁定紀錄。');
+        } finally {
+          setIsSavingLineSettings(false);
+        }
+      }
+    );
+  };
+
+  const handleStartGroupLineBind = async () => {
+    if (!currentUser?.id || !currentLedger?.id || isDemoLedger) return;
+    setIsSavingLineSettings(true);
+    try {
+      const res = await generateLineBindCode(currentUser.id, 'group', currentLedger.id, adminPin);
+      if (!res.success || !res.code) {
+        showAlert('無法產生群組綁定碼', res.message || '只有帳本管理員才能執行此操作');
+        return;
+      }
+      setPendingGroupBindCode({ code: res.code, expiresAt: res.expiresAt });
+      copyToClipboard(
+        res.code,
+        `群組綁定碼 ${res.code} 已複製！\n\n請依序操作：\n1. 將官方帳號 ${LINE_BOT_BASIC_ID} 邀請進家庭 LINE 群組\n2. 在群組貼上「${res.code}」並傳送\n3. 回到此畫面點「重新整理」`
+      );
+    } finally {
+      setIsSavingLineSettings(false);
+    }
+  };
+
+  const handleToggleGroupLinePref = async (patch: {
+    enabled?: boolean;
+    skipQuietDay?: boolean;
+    includeCreditCards?: boolean;
+  }) => {
+    if (!currentUser?.id || !currentLedger?.id || !lineSettings?.groupBinding.isBound) return;
+    setIsSavingLineSettings(true);
+    try {
+      const res = await saveLineGroupPreferences({
+        ledgerId: currentLedger.id,
+        operatorId: currentUser.id,
+        enabled: patch.enabled,
+        skipQuietDay: patch.skipQuietDay,
+        includeCreditCards: patch.includeCreditCards,
+        adminPin,
+      });
+      if (!res.success) {
+        showAlert('儲存失敗', res.message || '無法更新家庭群組播報設定');
+        return;
+      }
+      await loadLineSettings();
+    } finally {
+      setIsSavingLineSettings(false);
+    }
+  };
+
+  const handleUnbindGroupLine = () => {
+    if (!currentUser?.id || !currentLedger?.id) return;
+    showConfirm(
+      '解除家庭群組綁定',
+      `確定要解除《${currentLedger.name}》與目前家庭 LINE 群組的播報連動嗎？`,
+      async () => {
+        setIsSavingLineSettings(true);
+        try {
+          const res = await unbindLineGroup(currentLedger.id, currentUser.id, adminPin);
+          if (!res.success) {
+            showAlert('解除失敗', res.message || '請稍後再試');
+            return;
+          }
+          setPendingGroupBindCode(null);
+          await loadLineSettings();
+          showAlert('已解除群組綁定', '家庭群組每晚將不再自動播報本帳本的收支日報。');
+        } finally {
+          setIsSavingLineSettings(false);
+        }
+      }
+    );
   };
 
   // 定期備份計算與過期檢測
@@ -1369,6 +1560,336 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
         <Text style={[styles.backupPrivacyNote, { color: colors.text.muted, marginTop: 8 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
           💡 貼心聯防：除了手機本機推播之外，每日收支日報中也會同步整理今日待辦與未來 3 天預告，讓家人互相溫馨提醒！
         </Text>
+      </View>
+
+      {/* 💚 LINE 每日收支日報雙軌訂閱設定卡片 */}
+      <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+            💚 LINE 每日收支日報
+          </Text>
+          {!isDemoLedger && (
+            <TouchableOpacity
+              style={[styles.lineRefreshBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
+              onPress={loadLineSettings}
+              disabled={isLoadingLineSettings || isSavingLineSettings}
+              activeOpacity={0.75}
+            >
+              <Text style={[styles.lineRefreshBtnText, { color: colors.text.secondary }]}>
+                {isLoadingLineSettings ? '同步中...' : '🔄 重新整理'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          自由開關 LINE 通知與挑選訂閱帳簿，個人專屬與家庭群組公開播報雙軌並進，嚴格守護隱私
+        </Text>
+
+        {isDemoLedger ? (
+          <View style={[styles.lineNoticeBox, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
+            <Text style={[styles.lineNoticeText, { color: colors.text.secondary }]}>
+              🎭 目前為官方示範帳本，不提供 LINE 綁定功能；切換至您的真實家庭或個人帳本即可自由綁定與訂閱。
+            </Text>
+          </View>
+        ) : lineSettings?.isTableMissing ? (
+          <View style={[styles.lineNoticeBox, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.12)' : '#FFFBEB', borderColor: '#F59E0B' }]}>
+            <Text style={[styles.lineNoticeText, { color: isDark ? '#FCD34D' : '#92400E' }]}>
+              ⏳ 雲端 LINE 訂閱資料表尚未建立，請先執行最新資料庫遷移腳本後再點上方「🔄 重新整理」。
+            </Text>
+          </View>
+        ) : (
+          <>
+            {/* 軌道一：👤 我的個人 LINE 日報 */}
+            <View style={[styles.lineSubCard, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={[styles.lineSubCardTitle, { color: colors.text.primary }]}>
+                  👤 我的個人 LINE 日報
+                </Text>
+                <View
+                  style={[
+                    styles.cardholderBadge,
+                    {
+                      backgroundColor: lineSettings?.userBinding.isBound
+                        ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5')
+                        : (isDark ? '#334155' : '#E2E8F0'),
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.cardholderBadgeText,
+                      {
+                        color: lineSettings?.userBinding.isBound
+                          ? (isDark ? '#34D399' : '#047857')
+                          : colors.text.secondary,
+                      },
+                    ]}
+                  >
+                    {lineSettings?.userBinding.isBound
+                      ? `🟢 已綁定${lineSettings.userBinding.lineDisplayName ? `·${lineSettings.userBinding.lineDisplayName}` : ''}`
+                      : '⚪ 未綁定'}
+                  </Text>
+                </View>
+              </View>
+
+              {!lineSettings?.userBinding.isBound ? (
+                <View style={{ marginTop: 8 }}>
+                  <Text style={[styles.lineSubDesc, { color: colors.text.secondary }]}>
+                    綁定後只會收到「您自己勾選的帳簿」、本人信用卡與本人／全家待辦，不會收到他人的私卡或私密記事。
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.linePrimaryBtn, { opacity: isSavingLineSettings ? 0.65 : 1 }]}
+                    onPress={handleStartUserLineBind}
+                    disabled={isSavingLineSettings}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.linePrimaryBtnText}>
+                      💚 一鍵開啟 LINE 綁定 ({LINE_BOT_BASIC_ID})
+                    </Text>
+                  </TouchableOpacity>
+
+                  {pendingUserBindCode && (
+                    <View style={[styles.lineCodeBox, { backgroundColor: colors.background.modal, borderColor: '#06C755' }]}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.lineCodeLabel, { color: colors.text.muted }]}>個人綁定碼（10 分鐘內有效）</Text>
+                        <Text style={[styles.lineCodeValue, { color: colors.text.primary }]}>{pendingUserBindCode.code}</Text>
+                        <Text style={[styles.lineCodeHint, { color: colors.text.secondary }]}>
+                          若 LINE 未自動帶出文字，請複製後貼到官方帳號 {LINE_BOT_BASIC_ID} 傳送，完成後點「🔄 重新整理」。
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.lineCopyBtn}
+                        onPress={() =>
+                          copyToClipboard(
+                            pendingUserBindCode.code,
+                            `已複製綁定碼 ${pendingUserBindCode.code}！\n請打開 LINE 官方帳號 ${LINE_BOT_BASIC_ID} 傳送此代碼。`
+                          )
+                        }
+                        activeOpacity={0.75}
+                      >
+                        <Text style={styles.lineCopyBtnText}>📋 複製</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <View style={{ marginTop: 8 }}>
+                  <View style={styles.lineSwitchRow}>
+                    <View style={{ flex: 1, paddingRight: 10 }}>
+                      <Text style={[styles.lineSwitchLabel, { color: colors.text.primary }]}>每日 21:18 個人 LINE 推播</Text>
+                      <Text style={[styles.lineSwitchDesc, { color: colors.text.muted }]}>亦可直接在 LINE 聊天室傳送「暫停日報」或「恢復日報」</Text>
+                    </View>
+                    <Switch
+                      value={lineSettings.userBinding.enabled}
+                      onValueChange={(val) => handleToggleUserLinePref({ enabled: val })}
+                      disabled={isSavingLineSettings}
+                      trackColor={{ false: '#CBD5E1', true: '#06C755' }}
+                    />
+                  </View>
+
+                  <View style={[styles.lineSwitchRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border.default, paddingTop: 10, marginTop: 10 }]}>
+                    <View style={{ flex: 1, paddingRight: 10 }}>
+                      <Text style={[styles.lineSwitchLabel, { color: colors.text.primary }]}>🌙 安靜日免打擾</Text>
+                      <Text style={[styles.lineSwitchDesc, { color: colors.text.muted }]}>當日無任何消費收入，且無帳單與待辦提醒時不打擾</Text>
+                    </View>
+                    <Switch
+                      value={lineSettings.userBinding.skipQuietDay}
+                      onValueChange={(val) => handleToggleUserLinePref({ skipQuietDay: val })}
+                      disabled={isSavingLineSettings}
+                      trackColor={{ false: '#CBD5E1', true: '#06C755' }}
+                    />
+                  </View>
+
+                  {/* 訂閱帳簿清單 */}
+                  <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border.default, paddingTop: 10, marginTop: 10 }}>
+                    <Text style={[styles.reminderSubLabel, { color: colors.text.secondary, marginBottom: 6 }]}>
+                      要接收日報的帳簿（多本帳簿會自動合成單則滑動卡片，不洗版）：
+                    </Text>
+                    {lineSettings.ledgerSubscriptions.length === 0 ? (
+                      <Text style={[styles.lineSwitchDesc, { color: colors.text.muted }]}>目前尚無可訂閱的非示範帳簿</Text>
+                    ) : (
+                      lineSettings.ledgerSubscriptions.map((sub) => (
+                        <View
+                          key={sub.ledgerId}
+                          style={[
+                            styles.lineLedgerSubRow,
+                            { backgroundColor: colors.background.modal, borderColor: colors.border.default },
+                          ]}
+                        >
+                          <View style={{ flex: 1, paddingRight: 8 }}>
+                            <Text style={[styles.lineLedgerSubName, { color: colors.text.primary }]} numberOfLines={1}>
+                              📒 {sub.ledgerName}
+                            </Text>
+                            <Text style={[styles.lineSwitchDesc, { color: colors.text.muted }]}>
+                              {sub.enabled ? '✅ 每晚自動送達此帳簿日報' : '⏸️ 目前未訂閱'}
+                            </Text>
+                          </View>
+                          <Switch
+                            value={sub.enabled}
+                            onValueChange={(val) => handleToggleLedgerLineSub(sub.ledgerId, val)}
+                            disabled={isSavingLineSettings || !lineSettings.userBinding.enabled}
+                            trackColor={{ false: '#CBD5E1', true: '#06C755' }}
+                          />
+                        </View>
+                      ))
+                    )}
+                  </View>
+
+                  <TouchableOpacity
+                    style={[styles.lineDangerOutlineBtn, { borderColor: isDark ? 'rgba(239, 68, 68, 0.45)' : '#FCA5A5' }]}
+                    onPress={handleUnbindUserLine}
+                    disabled={isSavingLineSettings}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={styles.lineDangerOutlineText}>解除我的個人 LINE 綁定</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+
+            {/* 軌道二：🏠 家庭群組公開播報（針對目前帳本） */}
+            <View style={[styles.lineSubCard, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default, marginTop: 12 }]}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={[styles.lineSubCardTitle, { color: colors.text.primary }]}>
+                  🏠 家庭群組播報（《{currentLedger?.name || '目前帳本'}》）
+                </Text>
+                <View
+                  style={[
+                    styles.cardholderBadge,
+                    {
+                      backgroundColor: lineSettings?.groupBinding.isBound
+                        ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5')
+                        : (isDark ? '#334155' : '#E2E8F0'),
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.cardholderBadgeText,
+                      {
+                        color: lineSettings?.groupBinding.isBound
+                          ? (isDark ? '#34D399' : '#047857')
+                          : colors.text.secondary,
+                      },
+                    ]}
+                  >
+                    {lineSettings?.groupBinding.isBound
+                      ? `🟢 ${lineSettings.groupBinding.groupName || '已綁定群組'}`
+                      : '⚪ 未綁定群組'}
+                  </Text>
+                </View>
+              </View>
+
+              <Text style={[styles.lineSubDesc, { color: colors.text.secondary, marginTop: 6 }]}>
+                群組版會強制隱藏所有「個人專屬」私密備忘與個人信用卡，只播報全家公帳收支與全家待辦。
+              </Text>
+
+              {!lineSettings?.groupBinding.isBound ? (
+                canManageGroupLine ? (
+                  <View style={{ marginTop: 8 }}>
+                    <TouchableOpacity
+                      style={[styles.lineSecondaryBtn, { backgroundColor: colors.background.modal, borderColor: '#06C755' }]}
+                      onPress={handleStartGroupLineBind}
+                      disabled={isSavingLineSettings}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={[styles.lineSecondaryBtnText, { color: isDark ? '#4ADE80' : '#15803D' }]}>
+                        🏠 產生家庭群組綁定碼
+                      </Text>
+                    </TouchableOpacity>
+
+                    {pendingGroupBindCode && (
+                      <View style={[styles.lineCodeBox, { backgroundColor: colors.background.modal, borderColor: '#06C755' }]}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.lineCodeLabel, { color: colors.text.muted }]}>群組綁定碼（10 分鐘內有效）</Text>
+                          <Text style={[styles.lineCodeValue, { color: colors.text.primary }]}>{pendingGroupBindCode.code}</Text>
+                          <Text style={[styles.lineCodeHint, { color: colors.text.secondary }]}>
+                            請將官方帳號 {LINE_BOT_BASIC_ID} 邀請進家庭群組，並在群組傳送「{pendingGroupBindCode.code}」後點重新整理。
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.lineCopyBtn}
+                          onPress={() =>
+                            copyToClipboard(
+                              pendingGroupBindCode.code,
+                              `群組綁定碼 ${pendingGroupBindCode.code} 已複製！`
+                            )
+                          }
+                          activeOpacity={0.75}
+                        >
+                          <Text style={styles.lineCopyBtnText}>📋 複製</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                ) : (
+                  <Text style={[styles.lineSwitchDesc, { color: colors.text.muted, marginTop: 6 }]}>
+                    💡 僅帳本管理員可將本帳本綁定至家庭 LINE 群組。
+                  </Text>
+                )
+              ) : (
+                <View style={{ marginTop: 8 }}>
+                  {canManageGroupLine ? (
+                    <>
+                      <View style={styles.lineSwitchRow}>
+                        <View style={{ flex: 1, paddingRight: 10 }}>
+                          <Text style={[styles.lineSwitchLabel, { color: colors.text.primary }]}>每日 21:18 群組公開播報</Text>
+                          <Text style={[styles.lineSwitchDesc, { color: colors.text.muted }]}>亦可在群組內輸入「暫停群組日報／恢復群組日報」</Text>
+                        </View>
+                        <Switch
+                          value={lineSettings.groupBinding.enabled}
+                          onValueChange={(val) => handleToggleGroupLinePref({ enabled: val })}
+                          disabled={isSavingLineSettings}
+                          trackColor={{ false: '#CBD5E1', true: '#06C755' }}
+                        />
+                      </View>
+
+                      <View style={[styles.lineSwitchRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border.default, paddingTop: 10, marginTop: 10 }]}>
+                        <View style={{ flex: 1, paddingRight: 10 }}>
+                          <Text style={[styles.lineSwitchLabel, { color: colors.text.primary }]}>🌙 群組安靜日免打擾</Text>
+                          <Text style={[styles.lineSwitchDesc, { color: colors.text.muted }]}>公帳當日零交易且無提醒時略過，減少群組洗版</Text>
+                        </View>
+                        <Switch
+                          value={lineSettings.groupBinding.skipQuietDay}
+                          onValueChange={(val) => handleToggleGroupLinePref({ skipQuietDay: val })}
+                          disabled={isSavingLineSettings}
+                          trackColor={{ false: '#CBD5E1', true: '#06C755' }}
+                        />
+                      </View>
+
+                      <View style={[styles.lineSwitchRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border.default, paddingTop: 10, marginTop: 10 }]}>
+                        <View style={{ flex: 1, paddingRight: 10 }}>
+                          <Text style={[styles.lineSwitchLabel, { color: colors.text.primary }]}>💳 群組播報公用信用卡提醒</Text>
+                          <Text style={[styles.lineSwitchDesc, { color: colors.text.muted }]}>預設關閉；開啟時僅播報未指定私人的全家公用卡</Text>
+                        </View>
+                        <Switch
+                          value={lineSettings.groupBinding.includeCreditCards}
+                          onValueChange={(val) => handleToggleGroupLinePref({ includeCreditCards: val })}
+                          disabled={isSavingLineSettings}
+                          trackColor={{ false: '#CBD5E1', true: '#06C755' }}
+                        />
+                      </View>
+
+                      <TouchableOpacity
+                        style={[styles.lineDangerOutlineBtn, { borderColor: isDark ? 'rgba(239, 68, 68, 0.45)' : '#FCA5A5' }]}
+                        onPress={handleUnbindGroupLine}
+                        disabled={isSavingLineSettings}
+                        activeOpacity={0.75}
+                      >
+                        <Text style={styles.lineDangerOutlineText}>解除家庭群組綁定</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <Text style={[styles.lineSwitchDesc, { color: colors.text.secondary }]}>
+                      狀態：{lineSettings.groupBinding.enabled ? '🟢 每晚 21:18 播報中' : '⏸️ 管理員已暫停播報'}
+                    </Text>
+                  )}
+                </View>
+              )}
+            </View>
+          </>
+        )}
       </View>
 
       {/* 🔐 生物辨識與財務隱私鎖卡片 */}
@@ -3343,6 +3864,139 @@ const styles = StyleSheet.create({
   },
   reminderChoicePillText: {
     fontSize: 12,
+  },
+  lineRefreshBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  lineRefreshBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  lineNoticeBox: {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  lineNoticeText: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  lineSubCard: {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  lineSubCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  lineSubDesc: {
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  linePrimaryBtn: {
+    marginTop: 10,
+    backgroundColor: '#06C755',
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  linePrimaryBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  lineSecondaryBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lineSecondaryBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  lineCodeBox: {
+    marginTop: 10,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  lineCodeLabel: {
+    fontSize: 11,
+  },
+  lineCodeValue: {
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginVertical: 2,
+  },
+  lineCodeHint: {
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  lineCopyBtn: {
+    backgroundColor: '#06C755',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  lineCopyBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  lineSwitchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  lineSwitchLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  lineSwitchDesc: {
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 2,
+  },
+  lineLedgerSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 6,
+  },
+  lineLedgerSubName: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  lineDangerOutlineBtn: {
+    marginTop: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  lineDangerOutlineText: {
+    color: '#EF4444',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
 
