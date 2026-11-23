@@ -27,6 +27,16 @@ describe('桌面小工具快捷動作與 Deep Link 測試 (Quick Actions & Deep 
     expect(kind).toBe('todo');
   });
 
+  it('正確解析 QuickActions 動作物件 (parseQuickAction)', () => {
+    expect(parseQuickAction({ id: 'quick_todo', title: '待辦清單' } as any)).toBe('todo');
+    expect(parseQuickAction({ id: 'quick_expense', title: '記支出' } as any)).toBe('expense');
+    expect(parseQuickAction({ id: 'quick_memo', title: '隨手記事' } as any)).toBe('memo');
+    expect(parseQuickAction({ id: 'quick_scan', title: '掃描發票' } as any)).toBe('scan');
+    expect(parseQuickAction({ id: 'quick_income', title: '記收入' } as any)).toBe('income');
+    expect(parseQuickAction({ id: 'custom', title: '自訂', params: { mode: 'todo' } } as any)).toBe('todo');
+    expect(parseQuickAction(null)).toBeNull();
+  });
+
   it('解析無效之 URL Scheme 回傳 null', () => {
     expect(parseQuickActionUrl('')).toBeNull();
     expect(parseQuickActionUrl('https://google.com')).toBeNull();

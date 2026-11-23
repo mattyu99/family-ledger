@@ -5,7 +5,7 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.17';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.17 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 63;
+export const APP_BUILD_REVISION = 64;
 
 // 完整版本字串 (例如 "1.0.17.0")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
@@ -23,6 +23,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
     date: '2026-11-16 ~ 2026-11-23',
     title: '五大記事協作看板、常駐編輯工具列、版面極致瘦身與操作手冊升級',
     highlights: [
+      '⚡ 桌面快捷待辦直達與 3D 黏土圖示：手機桌面長按選單正式納入「待辦清單」，搭配專屬圓潤可愛 3D 黏土打勾圖示，隨時秒看待辦與打勾辦妥。',
       '🏛️ 雲端資料庫總綱同步與防分身機制整併：整合信用卡每月繳款截止日與專屬連線通行證，確保新安裝與資料庫重整時具備最完善的防重複分身與帳單共用週期。',
       '🔔 統一每日提醒鐘點與雙階段預警：帳單與生活記事預設早晨 07:30 提醒（可自訂時段），生活記事預設前一晚 20:00 預告且保持真實到期日不誤判逾期，排程預覽全面同步。',
       '💳 信用卡雙開關提醒與同銀行帳單共用：出帳日與繳款期限支援獨立開關與前 3 天＋當天預警；新增每月繳款截止日，同持卡人同銀行卡片共用週期免重填、改一處全行對齊並合併提醒待繳總額。',

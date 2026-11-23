@@ -87,13 +87,18 @@
             "shortcut_memo": {
               "foregroundImage": "./assets/shortcuts/shortcut_memo.png",
               "backgroundColor": "#FFF0F5"
+            },
+            "shortcut_todo": {
+              "foregroundImage": "./assets/shortcuts/shortcut_todo.png",
+              "backgroundColor": "#FFF0F5"
             }
           },
           "iosIcons": {
             "shortcut_expense": "./assets/shortcuts/shortcut_expense.png",
             "shortcut_income": "./assets/shortcuts/shortcut_income.png",
             "shortcut_scan": "./assets/shortcuts/shortcut_scan.png",
-            "shortcut_memo": "./assets/shortcuts/shortcut_memo.png"
+            "shortcut_memo": "./assets/shortcuts/shortcut_memo.png",
+            "shortcut_todo": "./assets/shortcuts/shortcut_todo.png"
           }
         }
       ],

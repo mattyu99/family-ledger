@@ -180,7 +180,7 @@ export function extractWidgetSnapshot(
     kind: q.kind,
     title: q.title,
     subtitle: q.subtitle,
-    icon: q.kind === 'expense' ? '💸' : q.kind === 'income' ? '💰' : q.kind === 'scan' ? '📷' : '📝',
+    icon: q.kind === 'expense' ? '💸' : q.kind === 'income' ? '💰' : q.kind === 'scan' ? '📷' : q.kind === 'todo' ? '📋' : '📝',
     deepLink: `familyledger://quick-action?mode=${q.kind}`,
   }));
 

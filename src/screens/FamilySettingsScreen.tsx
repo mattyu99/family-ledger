@@ -1596,7 +1596,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             >
               <View style={{ flex: 1, marginRight: 12 }}>
                 <Text style={[styles.cardScheduleName, { color: colors.text.primary }]}>
-                  {item.kind === 'expense' ? '📝' : item.kind === 'income' ? '💰' : item.kind === 'scan' ? '📸' : '📌'} {item.title}
+                  {item.kind === 'expense' ? '📝' : item.kind === 'income' ? '💰' : item.kind === 'scan' ? '📸' : item.kind === 'todo' ? '✅' : '📌'} {item.title}
                 </Text>
                 <Text style={[styles.cardScheduleMeta, { color: colors.text.secondary }]}>
                   {item.subtitle}

@@ -24,13 +24,22 @@ export const QUICK_ACTIONS_CONFIG: QuickActionItemConfig[] = [
     iconAndroid: 'shortcut_expense',
   },
   {
-    id: 'quick_income',
-    kind: 'income',
-    title: '記收入',
-    subtitle: '薪資、獎金或入帳',
-    iconName: 'add',
-    iconIos: 'symbol:dollarsign.circle.fill',
-    iconAndroid: 'shortcut_income',
+    id: 'quick_todo',
+    kind: 'todo',
+    title: '待辦清單',
+    subtitle: '生活備忘與打勾辦妥',
+    iconName: 'taskCompleted',
+    iconIos: 'symbol:checkmark.circle.fill',
+    iconAndroid: 'shortcut_todo',
+  },
+  {
+    id: 'quick_memo',
+    kind: 'memo',
+    title: '隨手記事',
+    subtitle: '備忘、開團與賣場採買',
+    iconName: 'task',
+    iconIos: 'symbol:checklist',
+    iconAndroid: 'shortcut_memo',
   },
   {
     id: 'quick_scan',
@@ -42,13 +51,13 @@ export const QUICK_ACTIONS_CONFIG: QuickActionItemConfig[] = [
     iconAndroid: 'shortcut_scan',
   },
   {
-    id: 'quick_memo',
-    kind: 'memo',
-    title: '隨手記事',
-    subtitle: '備忘、待辦與重要提醒',
-    iconName: 'task',
-    iconIos: 'symbol:checklist',
-    iconAndroid: 'shortcut_memo',
+    id: 'quick_income',
+    kind: 'income',
+    title: '記收入',
+    subtitle: '薪資、獎金或入帳',
+    iconName: 'add',
+    iconIos: 'symbol:dollarsign.circle.fill',
+    iconAndroid: 'shortcut_income',
   },
 ];
 
@@ -114,6 +123,7 @@ export function parseQuickAction(action?: QuickActions.Action | null): QuickActi
   if (paramMode === 'income' || action.id === 'quick_income') return 'income';
   if (paramMode === 'scan' || action.id === 'quick_scan') return 'scan';
   if (paramMode === 'memo' || action.id === 'quick_memo') return 'memo';
+  if (paramMode === 'todo' || action.id === 'quick_todo') return 'todo';
   return null;
 }
 
