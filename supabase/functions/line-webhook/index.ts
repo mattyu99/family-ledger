@@ -1,7 +1,157 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// 本 Edge Function 採用 100% 零外部 HTTPS 匯入設計，直接呼叫 Supabase Edge Runtime 原生 API，
+// 徹底避免在企業代理憑證或離線 Docker 環境打包時發生 TLS UnknownIssuer 失敗。
+declare const Deno: {
+  env: { get(key: string): string | undefined };
+  serve: (handler: (req: Request) => Response | Promise<Response>) => void;
+};
 
 const DEMO_LEDGER_ID = "ee100000-0000-4000-8000-000000000001";
+
+interface RestResult<T = any> {
+  data: T | null;
+  error: { status?: number; message: string } | null;
+}
+
+/**
+ * 輕量級 PostgREST 客戶端（原生 fetch 實作，零第三方相依）
+ */
+function createSupabaseRestClient(supabaseUrl: string, serviceRoleKey: string) {
+  const baseRestUrl = `${supabaseUrl.replace(/\/+$/, "")}/rest/v1`;
+  const baseHeaders: Record<string, string> = {
+    apikey: serviceRoleKey,
+    Authorization: `Bearer ${serviceRoleKey}`,
+  };
+
+  async function request<T = any>(
+    method: string,
+    table: string,
+    queryParts: string[],
+    body?: unknown,
+    extraHeaders?: Record<string, string>
+  ): Promise<RestResult<T>> {
+    const query = queryParts.length > 0 ? `?${queryParts.join("&")}` : "";
+    const url = `${baseRestUrl}/${table}${query}`;
+    const headers: Record<string, string> = {
+      ...baseHeaders,
+      ...(extraHeaders || {}),
+    };
+    if (body !== undefined && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+
+    try {
+      const res = await fetch(url, {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+
+      const rawText = await res.text();
+      if (!res.ok) {
+        return {
+          data: null,
+          error: { status: res.status, message: rawText || `HTTP ${res.status}` },
+        };
+      }
+
+      if (!rawText) {
+        return { data: null, error: null };
+      }
+
+      try {
+        return { data: JSON.parse(rawText) as T, error: null };
+      } catch {
+        return { data: null, error: null };
+      }
+    } catch (err: any) {
+      return {
+        data: null,
+        error: { message: err?.message || String(err) },
+      };
+    }
+  }
+
+  const eqFilter = (col: string, val: string | number | boolean) =>
+    `${col}=eq.${encodeURIComponent(String(val))}`;
+  const neqFilter = (col: string, val: string | number | boolean) =>
+    `${col}=neq.${encodeURIComponent(String(val))}`;
+  const gtFilter = (col: string, val: string) =>
+    `${col}=gt.${encodeURIComponent(val)}`;
+  const ilikeFilter = (col: string, val: string) =>
+    `${col}=ilike.${encodeURIComponent(val)}`;
+  const inFilter = (col: string, vals: string[]) =>
+    `${col}=in.(${vals.map((v) => encodeURIComponent(v)).join(",")})`;
+
+  async function selectMany<T = any>(
+    table: string,
+    columns: string,
+    filters: string[],
+    limit?: number
+  ): Promise<RestResult<T[]>> {
+    const queryParts = [`select=${encodeURIComponent(columns)}`, ...filters];
+    if (typeof limit === "number" && limit > 0) {
+      queryParts.push(`limit=${limit}`);
+    }
+    return request<T[]>("GET", table, queryParts);
+  }
+
+  async function selectMaybeSingle<T = any>(
+    table: string,
+    columns: string,
+    filters: string[]
+  ): Promise<RestResult<T>> {
+    const res = await selectMany<T>(table, columns, filters, 1);
+    if (res.error) return { data: null, error: res.error };
+    const first = Array.isArray(res.data) && res.data.length > 0 ? res.data[0] : null;
+    return { data: first, error: null };
+  }
+
+  async function upsert(
+    table: string,
+    rows: Record<string, unknown> | Record<string, unknown>[],
+    opts: { onConflict: string; ignoreDuplicates?: boolean }
+  ): Promise<RestResult<null>> {
+    const prefer = opts.ignoreDuplicates
+      ? "resolution=ignore-duplicates,return=minimal"
+      : "resolution=merge-duplicates,return=minimal";
+    const queryParts = [`on_conflict=${encodeURIComponent(opts.onConflict)}`];
+    return request<null>("POST", table, queryParts, rows, { Prefer: prefer });
+  }
+
+  async function update(
+    table: string,
+    patch: Record<string, unknown>,
+    filters: string[]
+  ): Promise<RestResult<null>> {
+    if (filters.length === 0) {
+      return { data: null, error: { message: "Refusing update without filters" } };
+    }
+    return request<null>("PATCH", table, filters, patch, { Prefer: "return=minimal" });
+  }
+
+  async function remove(
+    table: string,
+    filters: string[]
+  ): Promise<RestResult<null>> {
+    if (filters.length === 0) {
+      return { data: null, error: { message: "Refusing delete without filters" } };
+    }
+    return request<null>("DELETE", table, filters, undefined, { Prefer: "return=minimal" });
+  }
+
+  return {
+    eqFilter,
+    neqFilter,
+    gtFilter,
+    ilikeFilter,
+    inFilter,
+    selectMany,
+    selectMaybeSingle,
+    upsert,
+    update,
+    remove,
+  };
+}
 
 /**
  * 驗證 LINE Official Account Webhook HMAC-SHA256 數位簽章，防止偽造請求
@@ -119,17 +269,17 @@ async function fetchLineGroupName(
  * 取得同一成員所有關聯的非示範帳本 ID（涵蓋同 auth_email、created_by、ledger_members 與觸發綁定碼的 ledger_id）
  */
 async function collectUserLedgerIds(
-  supabase: ReturnType<typeof createClient>,
+  db: ReturnType<typeof createSupabaseRestClient>,
   userId: string,
   preferredLedgerId: string | null
 ): Promise<string[]> {
   const userIds = new Set<string>([userId]);
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("auth_email")
-    .eq("id", userId)
-    .maybeSingle();
+  const { data: profile } = await db.selectMaybeSingle<{ auth_email?: string | null }>(
+    "profiles",
+    "auth_email",
+    [db.eqFilter("id", userId)]
+  );
 
   const email = (profile?.auth_email || "").trim().toLowerCase();
   if (
@@ -138,10 +288,11 @@ async function collectUserLedgerIds(
     !email.endsWith("@family.local") &&
     !email.includes("anonymous")
   ) {
-    const { data: sameEmailProfiles } = await supabase
-      .from("profiles")
-      .select("id")
-      .ilike("auth_email", email);
+    const { data: sameEmailProfiles } = await db.selectMany<{ id: string }>(
+      "profiles",
+      "id",
+      [db.ilikeFilter("auth_email", email)]
+    );
     for (const p of sameEmailProfiles || []) {
       if (p?.id) userIds.add(p.id);
     }
@@ -154,17 +305,21 @@ async function collectUserLedgerIds(
     ledgerIds.add(preferredLedgerId);
   }
 
-  const [{ data: memberRows }, { data: ownedLedgers }] = await Promise.all([
-    supabase.from("ledger_members").select("ledger_id").in("user_id", uidArray),
-    supabase.from("ledgers").select("id, name").in("created_by", uidArray),
+  const [memberRes, ownedRes] = await Promise.all([
+    db.selectMany<{ ledger_id: string }>("ledger_members", "ledger_id", [
+      db.inFilter("user_id", uidArray),
+    ]),
+    db.selectMany<{ id: string; name?: string }>("ledgers", "id,name", [
+      db.inFilter("created_by", uidArray),
+    ]),
   ]);
 
-  for (const r of memberRows || []) {
+  for (const r of memberRes.data || []) {
     if (r?.ledger_id && r.ledger_id !== DEMO_LEDGER_ID) {
       ledgerIds.add(r.ledger_id);
     }
   }
-  for (const l of ownedLedgers || []) {
+  for (const l of ownedRes.data || []) {
     if (
       l?.id &&
       l.id !== DEMO_LEDGER_ID &&
@@ -177,7 +332,7 @@ async function collectUserLedgerIds(
   return Array.from(ledgerIds);
 }
 
-serve(async (req) => {
+Deno.serve(async (req: Request) => {
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ status: "ok" }), {
       status: 200,
@@ -227,9 +382,7 @@ serve(async (req) => {
     });
   }
 
-  const supabase = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false },
-  });
+  const db = createSupabaseRestClient(supabaseUrl, serviceRoleKey);
 
   for (const event of events) {
     try {
@@ -239,10 +392,11 @@ serve(async (req) => {
       // A. 個人取消追蹤（封鎖 / 刪除好友）➔ 自動停止個人推播
       // ================================================================
       if (event?.type === "unfollow" && sourceType === "user" && event?.source?.userId) {
-        await supabase
-          .from("line_user_bindings")
-          .update({ enabled: false, updated_at: new Date().toISOString() })
-          .eq("line_user_id", event.source.userId);
+        await db.update(
+          "line_user_bindings",
+          { enabled: false, updated_at: new Date().toISOString() },
+          [db.eqFilter("line_user_id", event.source.userId)]
+        );
         continue;
       }
 
@@ -250,10 +404,9 @@ serve(async (req) => {
       // B. 機器人被移出群組 ➔ 清理該群組綁定紀錄
       // ================================================================
       if (event?.type === "leave" && sourceType === "group" && event?.source?.groupId) {
-        await supabase
-          .from("line_group_bindings")
-          .delete()
-          .eq("line_group_id", event.source.groupId);
+        await db.remove("line_group_bindings", [
+          db.eqFilter("line_group_id", event.source.groupId),
+        ]);
         continue;
       }
 
@@ -275,13 +428,15 @@ serve(async (req) => {
           const code = bindMatch[1].toUpperCase();
           const nowIso = new Date().toISOString();
 
-          const { data: tokenRow } = await supabase
-            .from("line_bind_tokens")
-            .select("*")
-            .eq("code", code)
-            .eq("target_type", "user")
-            .gt("expires_at", nowIso)
-            .maybeSingle();
+          const { data: tokenRow } = await db.selectMaybeSingle<{
+            code: string;
+            user_id: string;
+            ledger_id?: string | null;
+          }>("line_bind_tokens", "*", [
+            db.eqFilter("code", code),
+            db.eqFilter("target_type", "user"),
+            db.gtFilter("expires_at", nowIso),
+          ]);
 
           if (!tokenRow) {
             await replyLineText(
@@ -295,24 +450,22 @@ serve(async (req) => {
           const displayName = await fetchLineUserDisplayName(lineUserId, accessToken);
 
           // 若同一個 LINE 帳號先前曾綁在別的 Profile，先刪除舊紀錄避免 UNIQUE 衝突
-          await supabase
-            .from("line_user_bindings")
-            .delete()
-            .eq("line_user_id", lineUserId)
-            .neq("user_id", tokenRow.user_id);
+          await db.remove("line_user_bindings", [
+            db.eqFilter("line_user_id", lineUserId),
+            db.neqFilter("user_id", tokenRow.user_id),
+          ]);
 
-          const { error: upsertErr } = await supabase
-            .from("line_user_bindings")
-            .upsert(
-              {
-                user_id: tokenRow.user_id,
-                line_user_id: lineUserId,
-                line_display_name: displayName,
-                enabled: true,
-                updated_at: nowIso,
-              },
-              { onConflict: "user_id" }
-            );
+          const { error: upsertErr } = await db.upsert(
+            "line_user_bindings",
+            {
+              user_id: tokenRow.user_id,
+              line_user_id: lineUserId,
+              line_display_name: displayName,
+              enabled: true,
+              updated_at: nowIso,
+            },
+            { onConflict: "user_id" }
+          );
 
           if (upsertErr) {
             console.error("[line-webhook] 寫入 line_user_bindings 失敗:", upsertErr);
@@ -326,7 +479,7 @@ serve(async (req) => {
 
           // 自動為名下非示範帳本建立預設訂閱（已存在的偏好保留不覆蓋）
           const targetLedgerIds = await collectUserLedgerIds(
-            supabase,
+            db,
             tokenRow.user_id,
             tokenRow.ledger_id || null
           );
@@ -340,12 +493,13 @@ serve(async (req) => {
               include_memos: true,
               updated_at: nowIso,
             }));
-            await supabase
-              .from("line_ledger_subscriptions")
-              .upsert(subRows, { onConflict: "user_id,ledger_id", ignoreDuplicates: true });
+            await db.upsert("line_ledger_subscriptions", subRows, {
+              onConflict: "user_id,ledger_id",
+              ignoreDuplicates: true,
+            });
           }
 
-          await supabase.from("line_bind_tokens").delete().eq("code", code);
+          await db.remove("line_bind_tokens", [db.eqFilter("code", code)]);
 
           await replyLineText(
             replyToken,
@@ -356,11 +510,13 @@ serve(async (req) => {
         }
 
         // 個人文字快捷指令
-        const { data: userBinding } = await supabase
-          .from("line_user_bindings")
-          .select("user_id, enabled, skip_quiet_day")
-          .eq("line_user_id", lineUserId)
-          .maybeSingle();
+        const { data: userBinding } = await db.selectMaybeSingle<{
+          user_id: string;
+          enabled: boolean;
+          skip_quiet_day: boolean;
+        }>("line_user_bindings", "user_id,enabled,skip_quiet_day", [
+          db.eqFilter("line_user_id", lineUserId),
+        ]);
 
         if (/^(暫停日報|關閉日報|停用日報)$/.test(rawText)) {
           if (!userBinding) {
@@ -371,10 +527,11 @@ serve(async (req) => {
             );
             continue;
           }
-          await supabase
-            .from("line_user_bindings")
-            .update({ enabled: false, updated_at: new Date().toISOString() })
-            .eq("user_id", userBinding.user_id);
+          await db.update(
+            "line_user_bindings",
+            { enabled: false, updated_at: new Date().toISOString() },
+            [db.eqFilter("user_id", userBinding.user_id)]
+          );
           await replyLineText(
             replyToken,
             "⏸️ 已暫停發送您的個人每日收支日報！日後若想恢復接收，只要傳送「恢復日報」或回 App 重新開啟即可。",
@@ -392,10 +549,11 @@ serve(async (req) => {
             );
             continue;
           }
-          await supabase
-            .from("line_user_bindings")
-            .update({ enabled: true, updated_at: new Date().toISOString() })
-            .eq("user_id", userBinding.user_id);
+          await db.update(
+            "line_user_bindings",
+            { enabled: true, updated_at: new Date().toISOString() },
+            [db.eqFilter("user_id", userBinding.user_id)]
+          );
           await replyLineText(
             replyToken,
             "▶️ 已為您恢復每日 21:18 個人收支與提醒日報！",
@@ -414,11 +572,14 @@ serve(async (req) => {
             continue;
           }
 
-          const { data: subs } = await supabase
-            .from("line_ledger_subscriptions")
-            .select("ledger_id, enabled, ledgers(name)")
-            .eq("user_id", userBinding.user_id)
-            .eq("enabled", true);
+          const { data: subs } = await db.selectMany<any>(
+            "line_ledger_subscriptions",
+            "ledger_id,enabled,ledgers(name)",
+            [
+              db.eqFilter("user_id", userBinding.user_id),
+              db.eqFilter("enabled", true),
+            ]
+          );
 
           const activeNames = (subs || [])
             .map((s: any) => (Array.isArray(s.ledgers) ? s.ledgers[0]?.name : s.ledgers?.name))
@@ -446,13 +607,15 @@ serve(async (req) => {
           const code = grpMatch[1].toUpperCase();
           const nowIso = new Date().toISOString();
 
-          const { data: tokenRow } = await supabase
-            .from("line_bind_tokens")
-            .select("*")
-            .eq("code", code)
-            .eq("target_type", "group")
-            .gt("expires_at", nowIso)
-            .maybeSingle();
+          const { data: tokenRow } = await db.selectMaybeSingle<{
+            code: string;
+            user_id: string;
+            ledger_id?: string | null;
+          }>("line_bind_tokens", "*", [
+            db.eqFilter("code", code),
+            db.eqFilter("target_type", "group"),
+            db.gtFilter("expires_at", nowIso),
+          ]);
 
           if (!tokenRow || !tokenRow.ledger_id || tokenRow.ledger_id === DEMO_LEDGER_ID) {
             await replyLineText(
@@ -465,25 +628,26 @@ serve(async (req) => {
 
           const [groupName, ledgerRes] = await Promise.all([
             fetchLineGroupName(groupId, accessToken),
-            supabase.from("ledgers").select("name").eq("id", tokenRow.ledger_id).maybeSingle(),
+            db.selectMaybeSingle<{ name?: string }>("ledgers", "name", [
+              db.eqFilter("id", tokenRow.ledger_id),
+            ]),
           ]);
 
           const ledgerName = ledgerRes?.data?.name || "家庭共同帳本";
 
-          const { error: grpUpsertErr } = await supabase
-            .from("line_group_bindings")
-            .upsert(
-              {
-                ledger_id: tokenRow.ledger_id,
-                line_group_id: groupId,
-                group_name: groupName,
-                enabled: true,
-                bound_by: tokenRow.user_id,
-                bound_at: nowIso,
-                updated_at: nowIso,
-              },
-              { onConflict: "ledger_id" }
-            );
+          const { error: grpUpsertErr } = await db.upsert(
+            "line_group_bindings",
+            {
+              ledger_id: tokenRow.ledger_id,
+              line_group_id: groupId,
+              group_name: groupName,
+              enabled: true,
+              bound_by: tokenRow.user_id,
+              bound_at: nowIso,
+              updated_at: nowIso,
+            },
+            { onConflict: "ledger_id" }
+          );
 
           if (grpUpsertErr) {
             console.error("[line-webhook] 寫入 line_group_bindings 失敗:", grpUpsertErr);
@@ -495,7 +659,7 @@ serve(async (req) => {
             continue;
           }
 
-          await supabase.from("line_bind_tokens").delete().eq("code", code);
+          await db.remove("line_bind_tokens", [db.eqFilter("code", code)]);
 
           await replyLineText(
             replyToken,
@@ -506,20 +670,22 @@ serve(async (req) => {
         }
 
         // 群組文字快捷指令
-        const { data: groupBindings } = await supabase
-          .from("line_group_bindings")
-          .select("ledger_id, enabled, include_credit_cards, ledgers(name)")
-          .eq("line_group_id", groupId);
+        const { data: groupBindings } = await db.selectMany<any>(
+          "line_group_bindings",
+          "ledger_id,enabled,include_credit_cards,ledgers(name)",
+          [db.eqFilter("line_group_id", groupId)]
+        );
 
         if (!groupBindings || groupBindings.length === 0) {
           continue;
         }
 
         if (/^(暫停群組日報|關閉群組日報)$/.test(rawText)) {
-          await supabase
-            .from("line_group_bindings")
-            .update({ enabled: false, updated_at: new Date().toISOString() })
-            .eq("line_group_id", groupId);
+          await db.update(
+            "line_group_bindings",
+            { enabled: false, updated_at: new Date().toISOString() },
+            [db.eqFilter("line_group_id", groupId)]
+          );
           await replyLineText(
             replyToken,
             "⏸️ 已暫停本群組的每日家庭收支播報，如需恢復請輸入「恢復群組日報」。",
@@ -529,10 +695,11 @@ serve(async (req) => {
         }
 
         if (/^(恢復群組日報|開啟群組日報)$/.test(rawText)) {
-          await supabase
-            .from("line_group_bindings")
-            .update({ enabled: true, updated_at: new Date().toISOString() })
-            .eq("line_group_id", groupId);
+          await db.update(
+            "line_group_bindings",
+            { enabled: true, updated_at: new Date().toISOString() },
+            [db.eqFilter("line_group_id", groupId)]
+          );
           await replyLineText(
             replyToken,
             "▶️ 已恢復本群組每日 21:18 的家庭收支公開播報！",
