@@ -50,15 +50,6 @@ export const QUICK_ACTIONS_CONFIG: QuickActionItemConfig[] = [
     iconIos: 'symbol:qrcode.viewfinder',
     iconAndroid: 'shortcut_scan',
   },
-  {
-    id: 'quick_income',
-    kind: 'income',
-    title: '記收入',
-    subtitle: '薪資、獎金或入帳',
-    iconName: 'add',
-    iconIos: 'symbol:dollarsign.circle.fill',
-    iconAndroid: 'shortcut_income',
-  },
 ];
 
 /**
