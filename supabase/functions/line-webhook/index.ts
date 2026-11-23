@@ -401,11 +401,17 @@ Deno.serve(async (req: Request) => {
       }
 
       // ================================================================
-      // B. 機器人被移出群組 ➔ 清理該群組綁定紀錄
+      // B. 機器人被移出群組或多人聊天室 ➔ 清理該聊天室綁定紀錄
       // ================================================================
-      if (event?.type === "leave" && sourceType === "group" && event?.source?.groupId) {
+      const leaveChatId =
+        sourceType === "group"
+          ? event?.source?.groupId
+          : sourceType === "room"
+            ? event?.source?.roomId
+            : null;
+      if (event?.type === "leave" && leaveChatId) {
         await db.remove("line_group_bindings", [
-          db.eqFilter("line_group_id", event.source.groupId),
+          db.eqFilter("line_group_id", leaveChatId),
         ]);
         continue;
       }
@@ -597,10 +603,18 @@ Deno.serve(async (req: Request) => {
       }
 
       // ================================================================
-      // D. 家庭群組訊息處理（GRP-XXXXXX 與群組指令）
+      // D. 家庭群組／多人聊天室訊息處理（GRP-XXXXXX 與群組指令）
       // ================================================================
-      if (sourceType === "group" && event?.source?.groupId) {
-        const groupId: string = event.source.groupId;
+      const multiChatId: string | null =
+        sourceType === "group" && event?.source?.groupId
+          ? event.source.groupId
+          : sourceType === "room" && event?.source?.roomId
+            ? event.source.roomId
+            : null;
+
+      if (multiChatId) {
+        const isRoom = sourceType === "room";
+        const chatRoleLabel = isRoom ? "家庭多人聊天室" : "家庭群組";
         const grpMatch = rawText.match(/\b(GRP-[A-Z0-9]{4,10})\b/i);
 
         if (grpMatch) {
@@ -627,7 +641,7 @@ Deno.serve(async (req: Request) => {
           }
 
           const [groupName, ledgerRes] = await Promise.all([
-            fetchLineGroupName(groupId, accessToken),
+            isRoom ? Promise.resolve("家庭多人聊天室") : fetchLineGroupName(multiChatId, accessToken),
             db.selectMaybeSingle<{ name?: string }>("ledgers", "name", [
               db.eqFilter("id", tokenRow.ledger_id),
             ]),
@@ -639,7 +653,7 @@ Deno.serve(async (req: Request) => {
             "line_group_bindings",
             {
               ledger_id: tokenRow.ledger_id,
-              line_group_id: groupId,
+              line_group_id: multiChatId,
               group_name: groupName,
               enabled: true,
               bound_by: tokenRow.user_id,
@@ -663,17 +677,17 @@ Deno.serve(async (req: Request) => {
 
           await replyLineText(
             replyToken,
-            `✅ 家庭群組綁定成功！\n本群組已連結帳本《${ledgerName}》。\n\n往後每晚 21:18 將定時播報全家公開版收支日報與全家待辦提醒（已自動隱藏個人私密備忘與個人信用卡，守護每位成員隱私）。\n管理員可回 App「🔔 提醒與個人」調整設定，或在群組輸入「暫停群組日報」、「恢復群組日報」。`,
+            `✅ ${chatRoleLabel}綁定成功！\n此處已連結帳本《${ledgerName}》。\n\n往後每晚 21:18 將定時播報全家公開版收支日報與全家待辦提醒（已自動隱藏個人私密備忘與個人信用卡，守護每位成員隱私）。\n管理員可回 App「🔔 提醒與個人」調整設定，或在此輸入「暫停群組日報」、「恢復群組日報」。`,
             accessToken
           );
           continue;
         }
 
-        // 群組文字快捷指令
+        // 群組／聊天室文字快捷指令
         const { data: groupBindings } = await db.selectMany<any>(
           "line_group_bindings",
           "ledger_id,enabled,include_credit_cards,ledgers(name)",
-          [db.eqFilter("line_group_id", groupId)]
+          [db.eqFilter("line_group_id", multiChatId)]
         );
 
         if (!groupBindings || groupBindings.length === 0) {
@@ -684,11 +698,11 @@ Deno.serve(async (req: Request) => {
           await db.update(
             "line_group_bindings",
             { enabled: false, updated_at: new Date().toISOString() },
-            [db.eqFilter("line_group_id", groupId)]
+            [db.eqFilter("line_group_id", multiChatId)]
           );
           await replyLineText(
             replyToken,
-            "⏸️ 已暫停本群組的每日家庭收支播報，如需恢復請輸入「恢復群組日報」。",
+            `⏸️ 已暫停此${chatRoleLabel}的每日家庭收支播報，如需恢復請輸入「恢復群組日報」。`,
             accessToken
           );
           continue;
@@ -698,11 +712,11 @@ Deno.serve(async (req: Request) => {
           await db.update(
             "line_group_bindings",
             { enabled: true, updated_at: new Date().toISOString() },
-            [db.eqFilter("line_group_id", groupId)]
+            [db.eqFilter("line_group_id", multiChatId)]
           );
           await replyLineText(
             replyToken,
-            "▶️ 已恢復本群組每日 21:18 的家庭收支公開播報！",
+            `▶️ 已恢復此${chatRoleLabel}每日 21:18 的家庭收支公開播報！`,
             accessToken
           );
           continue;
@@ -715,7 +729,7 @@ Deno.serve(async (req: Request) => {
           });
           await replyLineText(
             replyToken,
-            `🏠 家庭群組播報狀態\n${summaryLines.join("\n")}\n（已自動隱藏所有成員的個人私密記事）`,
+            `🏠 ${chatRoleLabel}播報狀態\n${summaryLines.join("\n")}\n（已自動隱藏所有成員的個人私密記事）`,
             accessToken
           );
           continue;
