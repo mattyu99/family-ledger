@@ -3,29 +3,66 @@ import {
   View,
   StyleSheet,
   TouchableOpacity,
-  } from 'react-native';
+} from 'react-native';
 import { Text } from './common/Text';
-
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import { getCategoryIcon } from '../lib/icons';
 
+export interface TrendMonthDatum {
+  ym: string;
+  label: string;
+  income: number;
+  expense: number;
+  balance: number;
+}
+
+export interface TrendCategoryInsight {
+  name: string;
+  icon: string;
+  diff: number;
+}
+
+export interface TrendMoMInsightData {
+  prevYm: string;
+  topIncreasedCategory?: TrendCategoryInsight;
+  topDecreasedCategory?: TrendCategoryInsight;
+}
+
 export interface TrendChartsWidgetProps {
   selectedMonthYm: string;
   onSelectMonth?: (ym: string) => void;
+  sixMonthDataOverride?: TrendMonthDatum[];
+  momOverride?: TrendMoMInsightData | null;
+  showComparison?: boolean;
+  isMonthSelected?: boolean;
+  scopeLabel?: string;
 }
 
 export const TrendChartsWidget: React.FC<TrendChartsWidgetProps> = ({
   selectedMonthYm,
   onSelectMonth,
+  sixMonthDataOverride,
+  momOverride,
+  showComparison = true,
+  isMonthSelected = true,
+  scopeLabel,
 }) => {
   const { getSixMonthTrend, getMoMComparison } = useLedger();
   const { isDark, colors } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
 
-  const sixMonthData = getSixMonthTrend();
-  const mom = getMoMComparison(selectedMonthYm);
+  const sixMonthData = useMemo(
+    () => sixMonthDataOverride || getSixMonthTrend(),
+    [sixMonthDataOverride, getSixMonthTrend]
+  );
+
+  const mom = useMemo<TrendMoMInsightData | null>(() => {
+    if (!showComparison) return null;
+    if (momOverride !== undefined) return momOverride;
+    return getMoMComparison(selectedMonthYm);
+  }, [showComparison, momOverride, getMoMComparison, selectedMonthYm]);
 
   // 計算 6 個月中的最高單一項目數值，作為柱狀圖高度 100% 之縮放基準 (最低保底 1,000)
   const maxVal = useMemo(() => {
@@ -38,14 +75,21 @@ export const TrendChartsWidget: React.FC<TrendChartsWidgetProps> = ({
   }, [sixMonthData]);
 
   const CHART_MAX_HEIGHT = 100;
+  const shouldShowInsights = Boolean(
+    showComparison && mom && (mom.topIncreasedCategory || mom.topDecreasedCategory)
+  );
 
   return (
     <View style={styles.container}>
       {/* 區塊 1: 近 6 個月收支走勢圖 */}
       <View style={styles.chartHeader}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title}>📈 近 6 個月收支走勢圖</Text>
-          <Text style={styles.subtitle}>過去半年收入與支出起伏對照，掌握收支平衡</Text>
+        <View style={styles.chartTitleCol}>
+          <Text style={styles.title}>
+            📈 近 6 個月收支走勢{scopeLabel ? `（${scopeLabel}）` : ''}
+          </Text>
+          <Text style={styles.subtitle}>
+            點擊月份柱狀可快速切換檢視該月明細
+          </Text>
         </View>
 
         {/* 圖例說明 */}
@@ -62,9 +106,9 @@ export const TrendChartsWidget: React.FC<TrendChartsWidgetProps> = ({
       </View>
 
       {/* 雙柱狀圖容器 */}
-      <View style={styles.barsContainer}>
+      <View style={[styles.barsContainer, !shouldShowInsights && { marginBottom: 0 }]}>
         {sixMonthData.map(item => {
-          const isSelected = item.ym === selectedMonthYm;
+          const isSelected = isMonthSelected && item.ym === selectedMonthYm;
           const incomeHeight = Math.max(4, Math.round((item.income / maxVal) * CHART_MAX_HEIGHT));
           const expenseHeight = Math.max(4, Math.round((item.expense / maxVal) * CHART_MAX_HEIGHT));
 
@@ -102,7 +146,11 @@ export const TrendChartsWidget: React.FC<TrendChartsWidgetProps> = ({
 
               {/* 月份標籤 */}
               <View style={[styles.monthBadge, isSelected && styles.monthBadgeSelected]}>
-                <Text style={[styles.monthLabel, isSelected && styles.monthLabelSelected]}>
+                <Text
+                  style={[styles.monthLabel, isSelected && styles.monthLabelSelected]}
+                  allowFontScaling={false}
+                  maxFontSizeMultiplier={1.08}
+                >
                   {item.label}
                 </Text>
               </View>
@@ -111,76 +159,23 @@ export const TrendChartsWidget: React.FC<TrendChartsWidgetProps> = ({
         })}
       </View>
 
-      {/* 區塊 2: 相較上月同期增減 (MoM) 看板 */}
-      <View style={styles.momSection}>
-        <View style={styles.momHeaderRow}>
-          <Text style={styles.momSectionTitle}>⚖️ 相較上月同期比較 (MoM)</Text>
-          <Text style={styles.momSubtext}>
-            {selectedMonthYm.slice(5)}月 vs {mom.prevYm.slice(5)}月
-          </Text>
-        </View>
-
-        <View style={styles.momGrid}>
-          {/* 總支出同期比較 */}
-          <View style={styles.momCard}>
-            <Text style={styles.momCardLabel}>💸 總支出</Text>
-            <Text style={styles.momCardVal}>NT$ {mom.currentExpense.toLocaleString()}</Text>
-            <View
-              style={[
-                styles.diffBadge,
-                mom.expenseDiff > 0 ? styles.diffBadgeExpenseUp : styles.diffBadgeExpenseDown,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.diffBadgeText,
-                  mom.expenseDiff > 0 ? styles.diffBadgeTextExpenseUp : styles.diffBadgeTextExpenseDown,
-                ]}
-              >
-                {mom.expenseDiff > 0
-                  ? `+${mom.expenseDiffRate}% 🔺 多花 $${mom.expenseDiff.toLocaleString()}`
-                  : mom.expenseDiff < 0
-                  ? `${mom.expenseDiffRate}% 📉 節省 $${Math.abs(mom.expenseDiff).toLocaleString()}`
-                  : '持平'}
-              </Text>
-            </View>
+      {/* 區塊 2: 較上月分類變動洞察（僅單月視角顯示，不重複總金額大卡） */}
+      {shouldShowInsights && mom && (
+        <View style={styles.momSection}>
+          <View style={styles.momHeaderRow}>
+            <Text style={styles.momSectionTitle}>⚖️ 較上月分類變動</Text>
+            <Text style={styles.momSubtext}>
+              {selectedMonthYm.slice(5)}月 vs {mom.prevYm.slice(5)}月
+            </Text>
           </View>
 
-          {/* 總收入同期比較 */}
-          <View style={styles.momCard}>
-            <Text style={styles.momCardLabel}>💰 總收入</Text>
-            <Text style={styles.momCardVal}>NT$ {mom.currentIncome.toLocaleString()}</Text>
-            <View
-              style={[
-                styles.diffBadge,
-                mom.incomeDiff >= 0 ? styles.diffBadgeIncomeUp : styles.diffBadgeIncomeDown,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.diffBadgeText,
-                  mom.incomeDiff >= 0 ? styles.diffBadgeTextIncomeUp : styles.diffBadgeTextIncomeDown,
-                ]}
-              >
-                {mom.incomeDiff > 0
-                  ? `+${mom.incomeDiffRate}% 📈 增加 $${mom.incomeDiff.toLocaleString()}`
-                  : mom.incomeDiff < 0
-                  ? `${mom.incomeDiffRate}% 📉 減少 $${Math.abs(mom.incomeDiff).toLocaleString()}`
-                  : '持平'}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* 關鍵支出變動分類洞察 */}
-        {(mom.topIncreasedCategory || mom.topDecreasedCategory) && (
           <View style={styles.insightBox}>
             {mom.topIncreasedCategory && (
               <View style={styles.insightRow}>
                 <Text style={styles.insightIcon}>🔺</Text>
-                <Text style={styles.insightText} numberOfLines={1}>
+                <Text style={styles.insightText}>
                   本月增加最多：
-                  <Text style={{ fontWeight: '700', color: colors.text.primary }}>
+                  <Text style={styles.insightHighlight}>
                     {getCategoryIcon(mom.topIncreasedCategory.icon)} {mom.topIncreasedCategory.name}
                   </Text>{' '}
                   (+NT$ {mom.topIncreasedCategory.diff.toLocaleString()})
@@ -188,11 +183,11 @@ export const TrendChartsWidget: React.FC<TrendChartsWidgetProps> = ({
               </View>
             )}
             {mom.topDecreasedCategory && (
-              <View style={[styles.insightRow, mom.topIncreasedCategory && { marginTop: 4 }]}>
+              <View style={[styles.insightRow, mom.topIncreasedCategory && { marginTop: 6 }]}>
                 <Text style={styles.insightIcon}>📉</Text>
-                <Text style={styles.insightText} numberOfLines={1}>
+                <Text style={styles.insightText}>
                   本月省錢最多：
-                  <Text style={{ fontWeight: '700', color: colors.text.primary }}>
+                  <Text style={styles.insightHighlight}>
                     {getCategoryIcon(mom.topDecreasedCategory.icon)} {mom.topDecreasedCategory.name}
                   </Text>{' '}
                   (-NT$ {mom.topDecreasedCategory.diff.toLocaleString()})
@@ -200,8 +195,8 @@ export const TrendChartsWidget: React.FC<TrendChartsWidgetProps> = ({
               </View>
             )}
           </View>
-        )}
-      </View>
+        </View>
+      )}
     </View>
   );
 };
@@ -225,10 +220,17 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'flex-start',
+      flexWrap: 'wrap',
+      columnGap: 8,
+      rowGap: 6,
       marginBottom: 12,
     },
+    chartTitleCol: {
+      flex: 1,
+      minWidth: 180,
+    },
     title: {
-      fontSize: 14,
+      fontSize: 15,
       fontWeight: '700',
       color: colors.text.primary,
     },
@@ -236,11 +238,14 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontSize: 11.5,
       color: colors.text.muted,
       marginTop: 2,
+      lineHeight: 16,
     },
     legendWrap: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 10,
+      flexShrink: 0,
+      paddingTop: 2,
     },
     legendItem: {
       flexDirection: 'row',
@@ -329,95 +334,45 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 10,
+      flexWrap: 'wrap',
+      gap: 6,
+      marginBottom: 8,
     },
     momSectionTitle: {
-      fontSize: 13,
+      fontSize: 13.5,
       fontWeight: '700',
       color: colors.text.primary,
     },
     momSubtext: {
-      fontSize: 11,
+      fontSize: 11.5,
       color: colors.text.muted,
       fontWeight: '600',
     },
-    momGrid: {
-      flexDirection: 'row',
-      gap: 10,
-      marginBottom: 10,
-    },
-    momCard: {
-      flex: 1,
-      backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
-      borderRadius: 12,
-      padding: 10,
-      borderWidth: 1,
-      borderColor: colors.border.default,
-    },
-    momCardLabel: {
-      fontSize: 11,
-      color: colors.text.muted,
-      marginBottom: 2,
-    },
-    momCardVal: {
-      fontSize: 14,
-      fontWeight: '800',
-      color: colors.text.primary,
-      marginBottom: 6,
-    },
-    diffBadge: {
-      paddingHorizontal: 6,
-      paddingVertical: 3,
-      borderRadius: 6,
-      alignSelf: 'flex-start',
-    },
-    diffBadgeExpenseUp: {
-      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEF2F2',
-    },
-    diffBadgeExpenseDown: {
-      backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#F0FDF4',
-    },
-    diffBadgeIncomeUp: {
-      backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#F0FDF4',
-    },
-    diffBadgeIncomeDown: {
-      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FFFBEB',
-    },
-    diffBadgeText: {
-      fontSize: 10,
-      fontWeight: '700',
-    },
-    diffBadgeTextExpenseUp: {
-      color: isDark ? '#F87171' : '#DC2626',
-    },
-    diffBadgeTextExpenseDown: {
-      color: isDark ? '#4ADE80' : '#15803D',
-    },
-    diffBadgeTextIncomeUp: {
-      color: isDark ? '#4ADE80' : '#15803D',
-    },
-    diffBadgeTextIncomeDown: {
-      color: isDark ? '#FBBF24' : '#B45309',
-    },
     insightBox: {
-      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F1F5F9',
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : '#F8FAFC',
       borderRadius: 10,
-      padding: 9,
+      padding: 10,
       borderWidth: 1,
       borderColor: colors.border.default,
     },
     insightRow: {
       flexDirection: 'row',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       gap: 6,
     },
     insightIcon: {
-      fontSize: 12,
+      fontSize: 12.5,
+      marginTop: 1,
+      flexShrink: 0,
     },
     insightText: {
-      fontSize: 11,
+      fontSize: 12,
+      lineHeight: 17,
       color: colors.text.secondary,
       flex: 1,
     },
+    insightHighlight: {
+      fontWeight: '700',
+      color: colors.text.primary,
+    },
   });
-
