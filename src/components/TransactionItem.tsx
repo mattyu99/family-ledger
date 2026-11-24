@@ -1010,7 +1010,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
         </View>
 
         {/* 第 2 行（說明行）：左側備註（若有），右側付款人 ＋ 支付方式（＋未隱藏時顯示日期） */}
-        <View style={styles.bottomRow}>
+        <View style={[styles.bottomRow, !hasNote && styles.bottomRowAlignEnd]}>
           {hasNote && (
             <Text
               style={[styles.noteText, isDark && { color: colors.text.secondary }]}
@@ -1330,6 +1330,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 8,
+  },
+  bottomRowAlignEnd: {
+    justifyContent: 'flex-end',
   },
   noteText: {
     fontSize: 13,
