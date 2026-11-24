@@ -309,7 +309,7 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
                           ]}
                         />
                       )}
-                      <Text style={styles.listRowTitle}>
+                      <Text style={styles.listRowTitle} numberOfLines={1} ellipsizeMode="tail">
                         {getCategoryIcon(cat?.icon)} {rule.name}
                         {billsScope === 'all' && payer?.display_name ? ` · ${payer.display_name}` : ''}
                       </Text>
@@ -436,7 +436,7 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
                   activeOpacity={0.7}
                 >
                   <View style={styles.listRowMain}>
-                    <Text style={styles.listRowTitle}>
+                    <Text style={styles.listRowTitle} numberOfLines={1} ellipsizeMode="tail">
                       {acc.icon || (isCard ? '💳' : '🚌')} {acc.name}
                       {last4 ? ` (*${last4.slice(-4)})` : ''}
                       {billsScope === 'all' && cardholder?.display_name ? ` · ${cardholder.display_name}` : ''}
@@ -683,16 +683,14 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      flexWrap: 'wrap',
-      columnGap: 8,
-      rowGap: 5,
+      gap: 8,
     },
     listRowTitleWrap: {
+      flex: 1,
+      minWidth: 0,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
-      flexShrink: 1,
-      maxWidth: '100%',
     },
     pendingDot: {
       width: 7,
@@ -701,11 +699,12 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       flexShrink: 0,
     },
     listRowTitle: {
+      flex: 1,
+      minWidth: 0,
       fontSize: 14,
       fontWeight: '600',
       color: colors.text.primary,
       lineHeight: 20,
-      maxWidth: '100%',
     },
     statusBadge: {
       paddingHorizontal: 8,
