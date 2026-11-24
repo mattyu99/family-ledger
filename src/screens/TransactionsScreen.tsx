@@ -1205,25 +1205,14 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
             activeOpacity={0.7}
             onPress={() => setIsSummaryExpanded(prev => !prev)}
           >
-            <View style={styles.summaryTitleRow}>
-              <Text style={styles.summaryTitle} maxFontSizeMultiplier={1.2}>
-                {summaryCardTitle}
-              </Text>
-              <Text style={styles.summaryCountText} maxFontSizeMultiplier={1.15}>
-                {historySyncProgress
-                  ? `· ${Math.max(historySyncProgress.loaded, transactions.length).toLocaleString()}/${historySyncProgress.total.toLocaleString()} 筆`
-                  : filteredTransactions.length < transactions.length
-                  ? `· ${filteredTransactions.length.toLocaleString()}/${transactions.length.toLocaleString()} 筆`
-                  : `· ${transactions.length.toLocaleString()} 筆`}
-              </Text>
-              {isFiltered && (
-                <View style={styles.summaryFilteredBadge}>
-                  <Text style={styles.summaryFilteredBadgeText} maxFontSizeMultiplier={1.08}>
-                    篩選中
-                  </Text>
-                </View>
-              )}
-            </View>
+            <Text
+              style={styles.summaryTitle}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              maxFontSizeMultiplier={1.2}
+            >
+              {summaryCardTitle}
+            </Text>
           </TouchableOpacity>
 
           <View style={styles.summaryHeaderRight}>
@@ -1988,85 +1977,106 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         )}
       </HorizontalScrollView>
 
-      {/* 獨立等寬三態分段切換列（防大字體爆版） */}
-      <View style={[styles.typeFilterFullBar, isDark && { backgroundColor: colors.background.cardSubtle }]}>
-        <TouchableOpacity
-          style={[
-            styles.typeFilterFullTab,
-            transactionTypeFilter === 'all' && styles.typeFilterInlineTabActiveAll,
-            isDark && transactionTypeFilter === 'all' && {
-              backgroundColor: colors.background.card,
-              borderColor: colors.border.strong,
-            },
-          ]}
-          onPress={() => setTransactionTypeFilter('all')}
-          activeOpacity={0.7}
-        >
+      {/* 明細筆數與三態分類切換同列並排（緊貼清單上方，連動一目了然且防大字體爆版） */}
+      <View style={styles.sectionHeaderInlineRow}>
+        <View style={styles.sectionHeaderTitleWrap}>
           <Text
-            style={[
-              styles.typeFilterInlineTabText,
-              transactionTypeFilter === 'all' && styles.typeFilterInlineTabTextActiveAll,
-              isDark && { color: colors.text.secondary },
-              isDark && transactionTypeFilter === 'all' && { color: '#A5B4FC' },
-            ]}
+            style={[styles.sectionInlineTitle, isDark && { color: colors.text.primary }]}
             numberOfLines={1}
-            maxFontSizeMultiplier={1.08}
+            ellipsizeMode="tail"
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
+            maxFontSizeMultiplier={1.12}
           >
-            全部 {typeCountStats.all}
+            {transactionTypeFilter === 'memo' ? '記事' : transactionTypeFilter === 'financial' ? '收支' : '明細'}{' '}
+            {historySyncProgress
+              ? `${Math.max(historySyncProgress.loaded, transactions.length).toLocaleString()}/${historySyncProgress.total.toLocaleString()}`
+              : filteredTransactions.length < transactions.length
+              ? `${filteredTransactions.length.toLocaleString()}/${transactions.length.toLocaleString()}`
+              : `${transactions.length.toLocaleString()}`}
           </Text>
-        </TouchableOpacity>
+        </View>
 
-        <TouchableOpacity
-          style={[
-            styles.typeFilterFullTab,
-            transactionTypeFilter === 'financial' && styles.typeFilterInlineTabActiveFinancial,
-            isDark && transactionTypeFilter === 'financial' && {
-              backgroundColor: 'rgba(59, 130, 246, 0.2)',
-              borderColor: 'rgba(59, 130, 246, 0.45)',
-            },
-          ]}
-          onPress={() => setTransactionTypeFilter('financial')}
-          activeOpacity={0.7}
-        >
-          <Text
+        {/* 緊湊三態切換膠囊 */}
+        <View style={[styles.typeFilterInlineContainer, isDark && { backgroundColor: colors.background.cardSubtle }]}>
+          <TouchableOpacity
             style={[
-              styles.typeFilterInlineTabText,
-              transactionTypeFilter === 'financial' && styles.typeFilterInlineTabTextActiveFinancial,
-              isDark && { color: colors.text.secondary },
-              isDark && transactionTypeFilter === 'financial' && { color: '#93C5FD' },
+              styles.typeFilterInlineTab,
+              transactionTypeFilter === 'all' && styles.typeFilterInlineTabActiveAll,
+              isDark && transactionTypeFilter === 'all' && {
+                backgroundColor: colors.background.card,
+                borderColor: colors.border.strong,
+              },
             ]}
-            numberOfLines={1}
-            maxFontSizeMultiplier={1.08}
+            onPress={() => setTransactionTypeFilter('all')}
+            activeOpacity={0.7}
           >
-            💳 收支 {typeCountStats.financial}
-          </Text>
-        </TouchableOpacity>
+            <Text
+              style={[
+                styles.typeFilterInlineTabText,
+                transactionTypeFilter === 'all' && styles.typeFilterInlineTabTextActiveAll,
+                isDark && { color: colors.text.secondary },
+                isDark && transactionTypeFilter === 'all' && { color: '#A5B4FC' },
+              ]}
+              numberOfLines={1}
+              maxFontSizeMultiplier={1.06}
+            >
+              全部 {typeCountStats.all}
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[
-            styles.typeFilterFullTab,
-            transactionTypeFilter === 'memo' && styles.typeFilterInlineTabActiveMemo,
-            isDark && transactionTypeFilter === 'memo' && {
-              backgroundColor: 'rgba(245, 158, 11, 0.2)',
-              borderColor: 'rgba(245, 158, 11, 0.45)',
-            },
-          ]}
-          onPress={() => setTransactionTypeFilter('memo')}
-          activeOpacity={0.7}
-        >
-          <Text
+          <TouchableOpacity
             style={[
-              styles.typeFilterInlineTabText,
-              transactionTypeFilter === 'memo' && styles.typeFilterInlineTabTextActiveMemo,
-              isDark && { color: colors.text.secondary },
-              isDark && transactionTypeFilter === 'memo' && { color: '#FCD34D' },
+              styles.typeFilterInlineTab,
+              transactionTypeFilter === 'financial' && styles.typeFilterInlineTabActiveFinancial,
+              isDark && transactionTypeFilter === 'financial' && {
+                backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                borderColor: 'rgba(59, 130, 246, 0.45)',
+              },
             ]}
-            numberOfLines={1}
-            maxFontSizeMultiplier={1.08}
+            onPress={() => setTransactionTypeFilter('financial')}
+            activeOpacity={0.7}
           >
-            📝 記事 {typeCountStats.memo}
-          </Text>
-        </TouchableOpacity>
+            <Text
+              style={[
+                styles.typeFilterInlineTabText,
+                transactionTypeFilter === 'financial' && styles.typeFilterInlineTabTextActiveFinancial,
+                isDark && { color: colors.text.secondary },
+                isDark && transactionTypeFilter === 'financial' && { color: '#93C5FD' },
+              ]}
+              numberOfLines={1}
+              maxFontSizeMultiplier={1.06}
+            >
+              💳 收支 {typeCountStats.financial}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.typeFilterInlineTab,
+              transactionTypeFilter === 'memo' && styles.typeFilterInlineTabActiveMemo,
+              isDark && transactionTypeFilter === 'memo' && {
+                backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                borderColor: 'rgba(245, 158, 11, 0.45)',
+              },
+            ]}
+            onPress={() => setTransactionTypeFilter('memo')}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.typeFilterInlineTabText,
+                transactionTypeFilter === 'memo' && styles.typeFilterInlineTabTextActiveMemo,
+                isDark && { color: colors.text.secondary },
+                isDark && transactionTypeFilter === 'memo' && { color: '#FCD34D' },
+              ]}
+              numberOfLines={1}
+              maxFontSizeMultiplier={1.06}
+            >
+              📝 記事 {typeCountStats.memo}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* 交易清單 */}
@@ -2434,28 +2444,6 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       flex: 1,
       marginRight: 8,
     },
-    summaryTitleRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flexWrap: 'wrap',
-      gap: 6,
-    },
-    summaryCountText: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: '#C7D2FE',
-    },
-    summaryFilteredBadge: {
-      backgroundColor: 'rgba(255, 255, 255, 0.22)',
-      paddingHorizontal: 6,
-      paddingVertical: 1.5,
-      borderRadius: 6,
-    },
-    summaryFilteredBadgeText: {
-      fontSize: 10.5,
-      fontWeight: '700',
-      color: '#FFFFFF',
-    },
     summaryHeaderRight: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -2731,19 +2719,38 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       color: '#4F46E5',
       fontWeight: '700',
     },
-    typeFilterFullBar: {
+    sectionHeaderInlineRow: {
       flexDirection: 'row',
-      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
-      borderRadius: 12,
-      padding: 3,
-      gap: 4,
-      marginBottom: 10,
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: 2,
+      marginBottom: 8,
+      gap: 6,
     },
-    typeFilterFullTab: {
+    sectionHeaderTitleWrap: {
       flex: 1,
-      paddingVertical: 6,
-      paddingHorizontal: 6,
-      borderRadius: 9,
+      minWidth: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    sectionInlineTitle: {
+      fontSize: 15.5,
+      fontWeight: '700',
+      color: colors.text.primary,
+    },
+    typeFilterInlineContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexShrink: 0,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
+      borderRadius: 10,
+      padding: 2,
+      gap: 2,
+    },
+    typeFilterInlineTab: {
+      paddingVertical: 5,
+      paddingHorizontal: 7,
+      borderRadius: 8,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -2778,7 +2785,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       elevation: 2,
     },
     typeFilterInlineTabText: {
-      fontSize: 12,
+      fontSize: 11.5,
       fontWeight: '600',
       color: colors.text.muted,
     },
