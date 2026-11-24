@@ -367,18 +367,18 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   },
   headerBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#FEF3C7',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.18)' : '#FEF3C7',
     paddingHorizontal: 7,
     paddingVertical: 2.5,
     borderRadius: 6,
     marginBottom: 4,
     borderWidth: 1,
-    borderColor: '#FDE68A',
+    borderColor: isDark ? 'rgba(251, 191, 36, 0.35)' : '#FDE68A',
   },
   headerBadgeText: {
     fontSize: 10.5,
     fontWeight: '800',
-    color: '#B45309',
+    color: isDark ? '#FCD34D' : '#B45309',
   },
   title: {
     fontSize: 18,
@@ -430,7 +430,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     color: '#2563EB',
   },
   quotaMiniPercentBadge: {
-    backgroundColor: '#DBEAFE',
+    backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#DBEAFE',
     paddingHorizontal: 6,
     paddingVertical: 1.5,
     borderRadius: 4,
@@ -438,7 +438,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   quotaMiniPercentBadgeText: {
     fontSize: 11,
     fontWeight: '800',
-    color: '#1D4ED8',
+    color: isDark ? '#93C5FD' : '#1D4ED8',
   },
   quotaToggleBtn: {
     backgroundColor: isDark ? colors.background.card : '#F1F5F9',
@@ -595,20 +595,20 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     marginTop: 4,
   },
   badgeCurrent: {
-    backgroundColor: '#DCFCE7',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#DCFCE7',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: '#BBF7D0',
+    borderColor: isDark ? 'rgba(52, 211, 153, 0.4)' : '#BBF7D0',
   },
   badgeCurrentText: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#15803D',
+    color: isDark ? '#6EE7B7' : '#15803D',
   },
   badgeActive: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
@@ -616,10 +616,10 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   badgeActiveText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#1D4ED8',
+    color: isDark ? '#93C5FD' : '#1D4ED8',
   },
   badgeTest: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
@@ -627,10 +627,10 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   badgeTestText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#B45309',
+    color: isDark ? '#FCD34D' : '#B45309',
   },
   badgeGhost: {
-    backgroundColor: '#FEE2E2',
+    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
@@ -638,7 +638,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   badgeGhostText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#DC2626',
+    color: isDark ? '#FCA5A5' : '#DC2626',
   },
   memberBox: {
     marginTop: 8,

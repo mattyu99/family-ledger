@@ -353,28 +353,28 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
                 <View style={styles.prizeGrid}>
                   {/* 特別獎 */}
                   <View style={styles.prizeItem}>
-                    <View style={[styles.prizeTag, { backgroundColor: '#FEE2E2' }]}>
-                      <Text style={[styles.prizeTagText, { color: '#DC2626' }]} maxFontSizeMultiplier={1.08} numberOfLines={1}>特別獎 (1,000萬)</Text>
+                    <View style={[styles.prizeTag, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2' }]}>
+                      <Text style={[styles.prizeTagText, { color: isDark ? '#FCA5A5' : '#DC2626' }]} maxFontSizeMultiplier={1.08} numberOfLines={1}>特別獎 (1,000萬)</Text>
                     </View>
-                    <Text style={[styles.prizeNum, { color: '#B91C1C' }]} maxFontSizeMultiplier={1.12}>{drawData.superPrize}</Text>
+                    <Text style={[styles.prizeNum, { color: isDark ? '#FCA5A5' : '#B91C1C' }]} maxFontSizeMultiplier={1.12}>{drawData.superPrize}</Text>
                   </View>
 
                   {/* 特獎 */}
                   <View style={styles.prizeItem}>
-                    <View style={[styles.prizeTag, { backgroundColor: '#FEF3C7' }]}>
-                      <Text style={[styles.prizeTagText, { color: '#D97706' }]} maxFontSizeMultiplier={1.08} numberOfLines={1}>特獎 (200萬)</Text>
+                    <View style={[styles.prizeTag, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7' }]}>
+                      <Text style={[styles.prizeTagText, { color: isDark ? '#FCD34D' : '#D97706' }]} maxFontSizeMultiplier={1.08} numberOfLines={1}>特獎 (200萬)</Text>
                     </View>
-                    <Text style={[styles.prizeNum, { color: '#92400E' }]} maxFontSizeMultiplier={1.12}>{drawData.specialPrize}</Text>
+                    <Text style={[styles.prizeNum, { color: isDark ? '#FCD34D' : '#92400E' }]} maxFontSizeMultiplier={1.12}>{drawData.specialPrize}</Text>
                   </View>
 
                   {/* 頭獎 */}
                   <View style={styles.prizeItem}>
-                    <View style={[styles.prizeTag, { backgroundColor: '#DBEAFE' }]}>
-                      <Text style={[styles.prizeTagText, { color: '#2563EB' }]} maxFontSizeMultiplier={1.08} numberOfLines={1}>頭獎 (20萬)</Text>
+                    <View style={[styles.prizeTag, { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#DBEAFE' }]}>
+                      <Text style={[styles.prizeTagText, { color: isDark ? '#93C5FD' : '#2563EB' }]} maxFontSizeMultiplier={1.08} numberOfLines={1}>頭獎 (20萬)</Text>
                     </View>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
                       {drawData.firstPrizes.map((fp, idx) => (
-                        <Text key={idx} style={[styles.prizeNum, { color: '#1E40AF', fontSize: 15 }]} maxFontSizeMultiplier={1.12}>{fp}</Text>
+                        <Text key={idx} style={[styles.prizeNum, { color: isDark ? '#93C5FD' : '#1E40AF', fontSize: 15 }]} maxFontSizeMultiplier={1.12}>{fp}</Text>
                       ))}
                     </View>
                   </View>

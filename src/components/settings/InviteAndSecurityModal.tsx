@@ -283,12 +283,18 @@ export const InviteAndSecurityModal: React.FC<InviteAndSecurityModalProps> = ({
                 style={[
                   styles.gatekeeperBadge,
                   allowNewMembers ? styles.gatekeeperBadgeOpen : styles.gatekeeperBadgeLocked,
+                  isDark && {
+                    backgroundColor: allowNewMembers ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                  },
                 ]}
               >
                 <Text
                   style={[
                     styles.gatekeeperBadgeText,
                     allowNewMembers ? styles.gatekeeperBadgeTextOpen : styles.gatekeeperBadgeTextLocked,
+                    isDark && {
+                      color: allowNewMembers ? '#6EE7B7' : '#FCA5A5',
+                    },
                   ]}
                 >
                   {allowNewMembers ? '🟢 開放加入中' : '🔒 門禁已上鎖'}
@@ -335,12 +341,15 @@ export const InviteAndSecurityModal: React.FC<InviteAndSecurityModalProps> = ({
                   }
                 }
               }}
-              trackColor={{ false: '#FECACA', true: '#BBF7D0' }}
+              trackColor={{
+                false: isDark ? 'rgba(239, 68, 68, 0.35)' : '#FECACA',
+                true: isDark ? 'rgba(16, 185, 129, 0.45)' : '#BBF7D0',
+              }}
               thumbColor={allowNewMembers ? '#16A34A' : '#DC2626'}
             />
           ) : (
-            <View style={styles.gatekeeperReadonlyTag}>
-              <Text style={styles.gatekeeperReadonlyTagText}>
+            <View style={[styles.gatekeeperReadonlyTag, isDark && { backgroundColor: colors.background.cardSubtle }]}>
+              <Text style={[styles.gatekeeperReadonlyTagText, isDark && { color: colors.text.secondary }]}>
                 {allowNewMembers ? '開放中' : '已上鎖'}
               </Text>
             </View>

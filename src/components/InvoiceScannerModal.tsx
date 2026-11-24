@@ -919,7 +919,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   errorBanner: {
-    backgroundColor: '#FEE2E2',
+    backgroundColor: 'rgba(239, 68, 68, 0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(248, 113, 113, 0.45)',
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 8,
@@ -927,7 +929,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   errorBannerText: {
-    color: '#DC2626',
+    color: '#FCA5A5',
     fontSize: 12.5,
     textAlign: 'center',
     fontWeight: '600',

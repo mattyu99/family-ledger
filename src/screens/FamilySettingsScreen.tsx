@@ -960,6 +960,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                     styles.userChip,
                     { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default },
                     isCurrent && styles.userChipActive,
+                    isCurrent && isDark && { backgroundColor: 'rgba(59, 130, 246, 0.18)', borderColor: '#60A5FA' },
                   ]}
                   activeOpacity={0.7}
                   onPress={() => onOpenEditMemberModal(member)}
@@ -970,6 +971,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                       styles.userTitle,
                       { color: colors.text.primary },
                       isCurrent && styles.userTitleActive,
+                      isCurrent && isDark && { color: '#93C5FD' },
                     ]}
                     numberOfLines={1}
                     ellipsizeMode="tail"
@@ -977,22 +979,57 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                     {member.display_name}
                   </Text>
                   {isCreator ? (
-                    <View style={styles.memberRoleBadge}>
-                      <Text style={styles.memberRoleBadgeText}>👑 創建者</Text>
+                    <View
+                      style={[
+                        styles.memberRoleBadge,
+                        isDark && {
+                          backgroundColor: 'rgba(245, 158, 11, 0.18)',
+                          borderWidth: 1,
+                          borderColor: 'rgba(251, 191, 36, 0.35)',
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.memberRoleBadgeText, isDark && { color: '#FCD34D' }]}>👑 創建者</Text>
                     </View>
                   ) : isMemberAdmin ? (
-                    <View style={styles.memberRoleBadge}>
-                      <Text style={styles.memberRoleBadgeText}>👑 管理員</Text>
+                    <View
+                      style={[
+                        styles.memberRoleBadge,
+                        isDark && {
+                          backgroundColor: 'rgba(245, 158, 11, 0.18)',
+                          borderWidth: 1,
+                          borderColor: 'rgba(251, 191, 36, 0.35)',
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.memberRoleBadgeText, isDark && { color: '#FCD34D' }]}>👑 管理員</Text>
                     </View>
                   ) : null}
                   {memberDevList.length > 0 && (
-                    <View style={styles.memberDeviceCountBadge}>
-                      <Text style={styles.memberDeviceCountBadgeText}>📱 {memberDevList.length}</Text>
+                    <View
+                      style={[
+                        styles.memberDeviceCountBadge,
+                        isDark && {
+                          backgroundColor: 'rgba(99, 102, 241, 0.18)',
+                          borderWidth: 1,
+                          borderColor: 'rgba(129, 140, 248, 0.35)',
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.memberDeviceCountBadgeText, isDark && { color: '#A5B4FC' }]}>📱 {memberDevList.length}</Text>
                     </View>
                   )}
                   {member.is_locked ? (
-                    <View style={styles.memberLockedBadge}>
-                      <Text style={styles.memberLockedBadgeText}>🔒 已保護</Text>
+                    <View
+                      style={[
+                        styles.memberLockedBadge,
+                        isDark && {
+                          backgroundColor: 'rgba(16, 185, 129, 0.18)',
+                          borderColor: 'rgba(52, 211, 153, 0.4)',
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.memberLockedBadgeText, isDark && { color: '#6EE7B7' }]}>🔒 已保護</Text>
                     </View>
                   ) : isCurrent && !isDemoLedger ? (
                     <View
@@ -1014,7 +1051,16 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
                       </Text>
                     </View>
                   ) : null}
-                  {isCurrent && <Text style={styles.activeTag}>我</Text>}
+                  {isCurrent && (
+                    <Text
+                      style={[
+                        styles.activeTag,
+                        isDark && { backgroundColor: 'rgba(59, 130, 246, 0.2)', color: '#93C5FD' },
+                      ]}
+                    >
+                      我
+                    </Text>
+                  )}
                   {canEdit && <Text style={styles.memberEditHintIcon}>✏️</Text>}
                 </TouchableOpacity>
               );

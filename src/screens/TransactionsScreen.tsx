@@ -2112,10 +2112,16 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
             {searchQuery.trim() && filterMonth !== 'all' && (
               <TouchableOpacity
-                style={[styles.filterEmptyResetBtn, { backgroundColor: '#EEF2FF', borderColor: '#6366F1' }]}
+                style={[
+                  styles.filterEmptyResetBtn,
+                  {
+                    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.18)' : '#EEF2FF',
+                    borderColor: isDark ? '#818CF8' : '#6366F1',
+                  },
+                ]}
                 onPress={() => setFilterMonth('all')}
               >
-                <Text style={[styles.filterEmptyResetText, { color: '#4F46E5' }]}>🗓️ 改查全部月份</Text>
+                <Text style={[styles.filterEmptyResetText, { color: isDark ? '#A5B4FC' : '#4F46E5' }]}>🗓️ 改查全部月份</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.filterEmptyResetBtn} onPress={resetFilters}>

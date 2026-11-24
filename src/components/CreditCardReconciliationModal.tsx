@@ -1802,9 +1802,24 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                           </TouchableOpacity>
                         </View>
                       ) : (
-                        <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, marginHorizontal: 16, marginTop: 10, marginBottom: 4, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <View
+                          style={{
+                            backgroundColor: isDark ? 'rgba(245, 158, 11, 0.16)' : '#FEF3C7',
+                            borderWidth: isDark ? 1 : 0,
+                            borderColor: isDark ? 'rgba(251, 191, 36, 0.35)' : 'transparent',
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            borderRadius: 8,
+                            marginHorizontal: 16,
+                            marginTop: 10,
+                            marginBottom: 4,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 6,
+                          }}
+                        >
                           <Text style={{ fontSize: 13 }}>🔒</Text>
-                          <Text style={{ fontSize: 12, color: '#92400E', flex: 1 }}>
+                          <Text style={{ fontSize: 12, color: isDark ? '#FCD34D' : '#92400E', flex: 1 }}>
                             全家瀏覽模式：此卡片屬於其他成員，僅供瀏覽消費明細。若需進行對帳或折抵，請切換至「我的」視角。
                           </Text>
                         </View>
@@ -2053,8 +2068,16 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                               </View>
                             )}
                             {isCreditTransfer && (
-                              <View style={[styles.topUpBadge, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}>
-                                <Text style={[styles.topUpBadgeText, { color: '#4F46E5' }]}>加值轉出</Text>
+                              <View
+                                style={[
+                                  styles.topUpBadge,
+                                  {
+                                    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.18)' : '#EEF2FF',
+                                    borderColor: isDark ? 'rgba(129, 140, 248, 0.4)' : '#C7D2FE',
+                                  },
+                                ]}
+                              >
+                                <Text style={[styles.topUpBadgeText, { color: isDark ? '#A5B4FC' : '#4F46E5' }]}>加值轉出</Text>
                               </View>
                             )}
                             {isCredit && !isRebate && !isCreditTransfer && !!tx.payment_method && tx.payment_method !== 'credit_card' && (() => {

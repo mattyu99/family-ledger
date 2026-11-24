@@ -3145,7 +3145,10 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                           disabled={!canEdit}
                           style={[
                             styles.cardChip,
-                            isCardSelected && { borderColor: card.color || '#3B82F6', backgroundColor: '#EFF6FF' },
+                            isCardSelected && {
+                              borderColor: card.color || '#3B82F6',
+                              backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF',
+                            },
                             !canEdit && !isCardSelected && styles.readOnlyUnselectedChip,
                           ]}
                           onPress={() => setSelectedAccountId(isCardSelected ? '' : card.id)}
@@ -3154,7 +3157,13 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                           <Text style={styles.cardChipIcon}>💳</Text>
                           <View>
                             <Text
-                              style={[styles.cardChipName, isCardSelected && { color: card.color || '#1E40AF', fontWeight: '700' }]}
+                              style={[
+                                styles.cardChipName,
+                                isCardSelected && {
+                                  color: isDark ? '#93C5FD' : (card.color || '#1E40AF'),
+                                  fontWeight: '700',
+                                },
+                              ]}
                               maxFontSizeMultiplier={1.15}
                             >
                               {card.name}{card.last_four_digits ? ` (*${card.last_four_digits})` : ''}
@@ -3193,7 +3202,10 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                           disabled={!canEdit}
                           style={[
                             styles.cardChip,
-                            isCardSelected && { borderColor: card.color || '#0284C7', backgroundColor: '#F0F9FF' },
+                            isCardSelected && {
+                              borderColor: card.color || '#0284C7',
+                              backgroundColor: isDark ? 'rgba(14, 165, 233, 0.2)' : '#F0F9FF',
+                            },
                             !canEdit && !isCardSelected && styles.readOnlyUnselectedChip,
                           ]}
                           onPress={() => setSelectedAccountId(card.id)}
@@ -3202,7 +3214,13 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                           <Text style={styles.cardChipIcon}>{card.icon || '🚌'}</Text>
                           <View>
                             <Text
-                              style={[styles.cardChipName, isCardSelected && { color: card.color || '#0284C7', fontWeight: '700' }]}
+                              style={[
+                                styles.cardChipName,
+                                isCardSelected && {
+                                  color: isDark ? '#7DD3FC' : (card.color || '#0284C7'),
+                                  fontWeight: '700',
+                                },
+                              ]}
                               maxFontSizeMultiplier={1.15}
                             >
                               {card.name} (餘額: ${card.balance.toLocaleString()})
@@ -3241,7 +3259,10 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                           disabled={!canEdit}
                           style={[
                             styles.cardChip,
-                            isAccountSelected && { borderColor: account.color || '#8B5CF6', backgroundColor: '#F5F3FF' },
+                            isAccountSelected && {
+                              borderColor: account.color || '#8B5CF6',
+                              backgroundColor: isDark ? 'rgba(139, 92, 246, 0.2)' : '#F5F3FF',
+                            },
                             !canEdit && !isAccountSelected && styles.readOnlyUnselectedChip,
                           ]}
                           onPress={() => setSelectedAccountId(isAccountSelected ? '' : account.id)}
@@ -3250,7 +3271,13 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                           <Text style={styles.cardChipIcon}>🏦</Text>
                           <View>
                             <Text
-                              style={[styles.cardChipName, isAccountSelected && { color: account.color || '#8B5CF6', fontWeight: '700' }]}
+                              style={[
+                                styles.cardChipName,
+                                isAccountSelected && {
+                                  color: isDark ? '#C4B5FD' : (account.color || '#8B5CF6'),
+                                  fontWeight: '700',
+                                },
+                              ]}
                               maxFontSizeMultiplier={1.15}
                             >
                               {account.name}{account.last_four_digits ? ` (*${account.last_four_digits})` : ''}
@@ -3316,8 +3343,16 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                         家庭零用錢錢包入帳
                       </Text>
                     </View>
-                    <View style={[styles.destinationBadge, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}>
-                      <Text style={[styles.destinationBadgeText, { color: '#059669' }]} maxFontSizeMultiplier={1.08}>受款入帳</Text>
+                    <View
+                      style={[
+                        styles.destinationBadge,
+                        {
+                          backgroundColor: isDark ? 'rgba(16, 185, 129, 0.18)' : '#ECFDF5',
+                          borderColor: isDark ? 'rgba(52, 211, 153, 0.4)' : '#A7F3D0',
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.destinationBadgeText, { color: isDark ? '#6EE7B7' : '#059669' }]} maxFontSizeMultiplier={1.08}>受款入帳</Text>
                     </View>
                   </View>
                 )}
@@ -6079,7 +6114,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     width: 90,
     height: 90,
     borderRadius: 9,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#E2E8F0',
   },
   receiptEnlargeOverlay: {
     position: 'absolute',
@@ -6296,7 +6331,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 6,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#E2E8F0',
   },
   memoPhotoHintText: {
     fontSize: 11.5,

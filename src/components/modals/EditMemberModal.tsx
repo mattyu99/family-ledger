@@ -271,7 +271,13 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
                   </TouchableOpacity>
                   {isGoogleAuthenticated && (
                     <TouchableOpacity
-                      style={[styles.authUnlinkBtn, { backgroundColor: '#F3F4F6', borderColor: '#D1D5DB' }]}
+                      style={[
+                        styles.authUnlinkBtn,
+                        {
+                          backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
+                          borderColor: isDark ? colors.border.default : '#D1D5DB',
+                        },
+                      ]}
                       onPress={() => {
                         onClose();
                         showConfirm(
@@ -284,7 +290,9 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
                       }}
                       activeOpacity={0.7}
                     >
-                      <Text style={[styles.authUnlinkBtnText, { color: '#4B5563' }]}>🚪 登出 Google 帳號 (重設本機為訪客)</Text>
+                      <Text style={[styles.authUnlinkBtnText, { color: isDark ? colors.text.secondary : '#4B5563' }]}>
+                        🚪 登出 Google 帳號 (重設本機為訪客)
+                      </Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -500,14 +508,20 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
             {isPreviewMode && (
               <View style={{ marginTop: 14 }}>
                 <TouchableOpacity
-                  style={[styles.modalPreviewBtn, { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' }]}
+                  style={[
+                    styles.modalPreviewBtn,
+                    {
+                      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.18)' : '#FEE2E2',
+                      borderColor: isDark ? 'rgba(248, 113, 113, 0.4)' : '#FCA5A5',
+                    },
+                  ]}
                   onPress={() => {
                     onClose();
                     exitMemberPreview();
                     showAlert('已結束預覽', '已安全切回管理員身分！');
                   }}
                 >
-                  <Text style={[styles.modalPreviewBtnText, { color: '#B91C1C' }]}>
+                  <Text style={[styles.modalPreviewBtnText, { color: isDark ? '#FCA5A5' : '#B91C1C' }]}>
                     ✕ 結束預覽，返回管理員
                   </Text>
                 </TouchableOpacity>
@@ -824,15 +838,15 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     },
     authBoundActionsRow: {},
     authUnlinkBtn: {
-      backgroundColor: '#FFFFFF',
+      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.12)' : '#FFFFFF',
       borderWidth: 1,
-      borderColor: '#EF4444',
+      borderColor: isDark ? 'rgba(248, 113, 113, 0.45)' : '#EF4444',
       borderRadius: 8,
       paddingVertical: 8,
       alignItems: 'center',
     },
     authUnlinkBtnText: {
-      color: '#DC2626',
+      color: isDark ? '#FCA5A5' : '#DC2626',
       fontSize: 12,
       fontWeight: '600',
     },
@@ -1051,15 +1065,15 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontWeight: '600',
     },
     modalPreviewBtn: {
-      backgroundColor: '#EFF6FF',
+      backgroundColor: isDark ? 'rgba(59, 130, 246, 0.16)' : '#EFF6FF',
       borderWidth: 1,
-      borderColor: '#93C5FD',
+      borderColor: isDark ? 'rgba(96, 165, 250, 0.4)' : '#93C5FD',
       borderRadius: 10,
       paddingVertical: 10,
       alignItems: 'center',
     },
     modalPreviewBtnText: {
-      color: '#1D4ED8',
+      color: isDark ? '#93C5FD' : '#1D4ED8',
       fontSize: 13,
       fontWeight: 'bold',
     },
@@ -1070,33 +1084,33 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       borderWidth: 1,
     },
     modalRoleToggleBtnPromote: {
-      backgroundColor: '#FEF3C7',
-      borderColor: '#F59E0B',
+      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.16)' : '#FEF3C7',
+      borderColor: isDark ? 'rgba(251, 191, 36, 0.4)' : '#F59E0B',
     },
     modalRoleToggleBtnDemote: {
-      backgroundColor: '#F3F4F6',
-      borderColor: '#D1D5DB',
+      backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
+      borderColor: isDark ? colors.border.default : '#D1D5DB',
     },
     modalRoleToggleBtnText: {
       fontSize: 13,
       fontWeight: 'bold',
     },
     modalRoleToggleBtnTextPromote: {
-      color: '#B45309',
+      color: isDark ? '#FCD34D' : '#B45309',
     },
     modalRoleToggleBtnTextDemote: {
-      color: '#4B5563',
+      color: isDark ? colors.text.secondary : '#4B5563',
     },
     modalDeleteBtn: {
-      backgroundColor: '#FEE2E2',
+      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.16)' : '#FEE2E2',
       borderWidth: 1,
-      borderColor: '#FCA5A5',
+      borderColor: isDark ? 'rgba(248, 113, 113, 0.4)' : '#FCA5A5',
       borderRadius: 10,
       paddingVertical: 10,
       alignItems: 'center',
     },
     modalDeleteBtnText: {
-      color: '#DC2626',
+      color: isDark ? '#FCA5A5' : '#DC2626',
       fontSize: 13,
       fontWeight: 'bold',
     },

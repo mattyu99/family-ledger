@@ -164,6 +164,9 @@ export const LocalNotificationsModal: React.FC<LocalNotificationsModalProps> = (
             style={[
               styles.backupToggleBtn,
               billingNoticeEnabled ? styles.backupToggleBtnActive : styles.backupToggleBtnInactive,
+              isDark && {
+                backgroundColor: billingNoticeEnabled ? 'rgba(16, 185, 129, 0.2)' : colors.background.cardSubtle,
+              },
             ]}
             onPress={onToggleBillingNotice}
             activeOpacity={0.8}
@@ -173,6 +176,9 @@ export const LocalNotificationsModal: React.FC<LocalNotificationsModalProps> = (
               style={[
                 styles.backupToggleText,
                 billingNoticeEnabled ? styles.backupToggleTextActive : styles.backupToggleTextInactive,
+                isDark && {
+                  color: billingNoticeEnabled ? '#6EE7B7' : colors.text.muted,
+                },
               ]}
               allowFontScaling={false}
               maxFontSizeMultiplier={1.08}
@@ -465,6 +471,9 @@ export const LocalNotificationsModal: React.FC<LocalNotificationsModalProps> = (
             style={[
               styles.backupToggleBtn,
               memoNoticeEnabled ? styles.backupToggleBtnActive : styles.backupToggleBtnInactive,
+              isDark && {
+                backgroundColor: memoNoticeEnabled ? 'rgba(16, 185, 129, 0.2)' : colors.background.cardSubtle,
+              },
             ]}
             onPress={onToggleMemoNotice}
             activeOpacity={0.8}
@@ -474,6 +483,9 @@ export const LocalNotificationsModal: React.FC<LocalNotificationsModalProps> = (
               style={[
                 styles.backupToggleText,
                 memoNoticeEnabled ? styles.backupToggleTextActive : styles.backupToggleTextInactive,
+                isDark && {
+                  color: memoNoticeEnabled ? '#6EE7B7' : colors.text.muted,
+                },
               ]}
               allowFontScaling={false}
               maxFontSizeMultiplier={1.08}

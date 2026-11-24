@@ -14,6 +14,7 @@ import {
 import { Text, TextInput } from './common/Text';
 import { showAlert, showConfirm } from '../lib/alert';
 import { useTheme } from '../theme/ThemeContext';
+import { ThemeColors } from '../theme/colors';
 import { useLedger } from '../context/LedgerContext';
 import {
   processCloudInvoicesSync,
@@ -39,6 +40,7 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
   onClose,
 }) => {
   const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const {
     transactions,
     paymentAccounts,
@@ -662,10 +664,10 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                     {
                       color:
                         statusBanner.type === 'success'
-                          ? '#065F46'
+                          ? isDark ? '#6EE7B7' : '#065F46'
                           : statusBanner.type === 'error'
-                          ? '#991B1B'
-                          : '#0369A1',
+                          ? isDark ? '#FCA5A5' : '#991B1B'
+                          : isDark ? '#7DD3FC' : '#0369A1',
                     },
                   ]}
                 >
@@ -797,19 +799,19 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                   </View>
                   <View style={styles.statsSummaryCol}>
                     <Text style={styles.statsSummaryLabel}>總計消費額</Text>
-                    <Text style={[styles.statsSummaryVal, { color: '#0284C7' }]}>
+                    <Text style={[styles.statsSummaryVal, { color: isDark ? '#38BDF8' : '#0284C7' }]}>
                       NT$ {syncResult.stats.totalAmount.toLocaleString()}
                     </Text>
                   </View>
                   <View style={styles.statsSummaryCol}>
                     <Text style={styles.statsSummaryLabel}>自動分流</Text>
-                    <Text style={[styles.statsSummaryVal, { color: '#10B981' }]}>
+                    <Text style={[styles.statsSummaryVal, { color: isDark ? '#34D399' : '#10B981' }]}>
                       {syncResult.stats.newCount} 筆
                     </Text>
                   </View>
                   <View style={styles.statsSummaryCol}>
                     <Text style={styles.statsSummaryLabel}>補齊手動記帳</Text>
-                    <Text style={[styles.statsSummaryVal, { color: '#F59E0B' }]}>
+                    <Text style={[styles.statsSummaryVal, { color: isDark ? '#FBBF24' : '#F59E0B' }]}>
                       {syncResult.stats.updatedCount} 筆
                     </Text>
                   </View>
@@ -1403,10 +1405,10 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.75)' : 'rgba(0, 0, 0, 0.55)',
     justifyContent: 'flex-end',
   },
   modalContent: {
@@ -1422,7 +1424,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingBottom: 12,
     borderBottomWidth: 0.5,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: isDark ? colors.border.default : '#E2E8F0',
   },
   headerTitle: {
     fontSize: 17,
@@ -1465,7 +1467,7 @@ const styles = StyleSheet.create({
   heroTitle: {
     fontSize: 15,
     fontWeight: '800',
-    color: '#0369A1',
+    color: isDark ? '#38BDF8' : '#0369A1',
   },
   heroBadge: {
     backgroundColor: '#0284C7',
@@ -1480,7 +1482,7 @@ const styles = StyleSheet.create({
   },
   heroDesc: {
     fontSize: 12.5,
-    color: '#0C4A6E',
+    color: isDark ? colors.text.secondary : '#0C4A6E',
     lineHeight: 18,
     marginBottom: 14,
   },
@@ -1502,16 +1504,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   secondaryActionBtn: {
-    backgroundColor: '#E0F2FE',
+    backgroundColor: isDark ? 'rgba(14, 165, 233, 0.18)' : '#E0F2FE',
     borderWidth: 1,
-    borderColor: '#7DD3FC',
+    borderColor: isDark ? 'rgba(56, 189, 248, 0.4)' : '#7DD3FC',
     borderRadius: 9,
     paddingVertical: 11,
     alignItems: 'center',
     justifyContent: 'center',
   },
   secondaryActionBtnText: {
-    color: '#0369A1',
+    color: isDark ? '#7DD3FC' : '#0369A1',
     fontSize: 13,
     fontWeight: '700',
   },
@@ -1520,7 +1522,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   textInputToggleBtnText: {
-    color: '#0284C7',
+    color: isDark ? '#38BDF8' : '#0284C7',
     fontSize: 12,
     fontWeight: '600',
   },
@@ -1528,7 +1530,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#BAE6FD',
+    borderTopColor: isDark ? 'rgba(56, 189, 248, 0.3)' : '#BAE6FD',
   },
   rawTextInput: {
     borderWidth: 1,
@@ -1566,17 +1568,17 @@ const styles = StyleSheet.create({
   previewTitle: {
     fontSize: 14.5,
     fontWeight: '800',
-    color: '#065F46',
+    color: isDark ? '#6EE7B7' : '#065F46',
   },
   clearPreviewBtnText: {
     fontSize: 12,
-    color: '#EF4444',
+    color: isDark ? '#F87171' : '#EF4444',
     fontWeight: '600',
   },
   statsSummaryGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    backgroundColor: '#ECFDF5',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.14)' : '#ECFDF5',
     borderRadius: 10,
     padding: 10,
     marginBottom: 12,
@@ -1587,31 +1589,31 @@ const styles = StyleSheet.create({
   },
   statsSummaryLabel: {
     fontSize: 11,
-    color: '#047857',
+    color: isDark ? '#6EE7B7' : '#047857',
     marginBottom: 2,
   },
   statsSummaryVal: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#065F46',
+    color: isDark ? '#A7F3D0' : '#065F46',
   },
   alreadySyncedNote: {
-    backgroundColor: '#F0FDF4',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.12)' : '#F0FDF4',
     padding: 8,
     borderRadius: 8,
     marginBottom: 12,
     borderWidth: 0.5,
-    borderColor: '#86EFAC',
+    borderColor: isDark ? 'rgba(52, 211, 153, 0.35)' : '#86EFAC',
   },
   alreadySyncedNoteText: {
     fontSize: 11.5,
-    color: '#15803D',
+    color: isDark ? '#6EE7B7' : '#15803D',
     lineHeight: 16,
   },
   unregWarningBox: {
-    backgroundColor: '#FFFBEB',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.14)' : '#FFFBEB',
     borderWidth: 1,
-    borderColor: '#FDE68A',
+    borderColor: isDark ? 'rgba(251, 191, 36, 0.35)' : '#FDE68A',
     borderRadius: 10,
     padding: 12,
     marginBottom: 12,
@@ -1619,33 +1621,33 @@ const styles = StyleSheet.create({
   unregWarningTitle: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#B45309',
+    color: isDark ? '#FCD34D' : '#B45309',
     marginBottom: 4,
   },
   unregWarningDesc: {
     fontSize: 11.5,
-    color: '#92400E',
+    color: isDark ? '#FDE68A' : '#92400E',
     lineHeight: 16,
     marginBottom: 8,
   },
   unregCarrierRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background.card : '#FFFFFF',
     padding: 8,
     borderRadius: 8,
     borderWidth: 0.5,
-    borderColor: '#FCD34D',
+    borderColor: isDark ? 'rgba(251, 191, 36, 0.4)' : '#FCD34D',
     marginBottom: 6,
   },
   unregCarrierName: {
     fontSize: 12.5,
     fontWeight: '700',
-    color: '#1E293B',
+    color: colors.text.primary,
   },
   unregCarrierNo: {
     fontSize: 11,
-    color: '#64748B',
+    color: isDark ? colors.text.muted : '#64748B',
     marginTop: 2,
   },
   quickAddCardBtn: {
@@ -1662,7 +1664,7 @@ const styles = StyleSheet.create({
   invoicePreviewListTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#475569',
+    color: isDark ? colors.text.secondary : '#475569',
     marginBottom: 8,
   },
   previewInvoiceItem: {
@@ -1685,7 +1687,7 @@ const styles = StyleSheet.create({
   previewInvoiceAmount: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#0284C7',
+    color: isDark ? '#38BDF8' : '#0284C7',
   },
   previewInvoiceMetaRow: {
     flexDirection: 'row',
@@ -1695,10 +1697,10 @@ const styles = StyleSheet.create({
   },
   previewInvoiceDate: {
     fontSize: 11,
-    color: '#64748B',
+    color: isDark ? colors.text.muted : '#64748B',
   },
   previewCarrierBadge: {
-    backgroundColor: '#E0F2FE',
+    backgroundColor: isDark ? 'rgba(14, 165, 233, 0.2)' : '#E0F2FE',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
@@ -1706,7 +1708,7 @@ const styles = StyleSheet.create({
   previewCarrierBadgeText: {
     fontSize: 10.5,
     fontWeight: '600',
-    color: '#0369A1',
+    color: isDark ? '#7DD3FC' : '#0369A1',
   },
   previewInvoiceItems: {
     fontSize: 11,
@@ -1740,12 +1742,12 @@ const styles = StyleSheet.create({
   cardHeaderTitle: {
     fontSize: 13.5,
     fontWeight: '700',
-    color: '#0284C7',
+    color: isDark ? '#38BDF8' : '#0284C7',
   },
   editBarcodeBtnText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#0284C7',
+    color: isDark ? '#38BDF8' : '#0284C7',
   },
   barcodeDisplayRow: {
     flexDirection: 'row',
@@ -1757,7 +1759,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     letterSpacing: 2,
-    color: '#0369A1',
+    color: isDark ? '#7DD3FC' : '#0369A1',
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   barcodeInput: {
@@ -1770,7 +1772,7 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
   verifiedPill: {
-    backgroundColor: '#DCFCE7',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#DCFCE7',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
@@ -1778,11 +1780,11 @@ const styles = StyleSheet.create({
   verifiedPillText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#15803D',
+    color: isDark ? '#6EE7B7' : '#15803D',
   },
   barcodeHintText: {
     fontSize: 11.5,
-    color: '#64748B',
+    color: isDark ? colors.text.muted : '#64748B',
     marginTop: 4,
     lineHeight: 16,
   },
@@ -1811,7 +1813,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 8,
-    backgroundColor: '#E0F2FE',
+    backgroundColor: isDark ? 'rgba(14, 165, 233, 0.2)' : '#E0F2FE',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
@@ -1825,9 +1827,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   cardOwnerPill: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: isDark ? 'rgba(59, 130, 246, 0.18)' : '#EFF6FF',
     borderWidth: 0.5,
-    borderColor: '#93C5FD',
+    borderColor: isDark ? 'rgba(96, 165, 250, 0.45)' : '#93C5FD',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
@@ -1835,21 +1837,21 @@ const styles = StyleSheet.create({
   cardOwnerPillText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#1D4ED8',
+    color: isDark ? '#93C5FD' : '#1D4ED8',
   },
   emptyCardHint: {
     fontSize: 12,
-    color: '#94A3B8',
+    color: colors.text.muted,
     fontStyle: 'italic',
   },
   ruleCountBadge: {
-    backgroundColor: '#E0F2FE',
+    backgroundColor: isDark ? 'rgba(14, 165, 233, 0.2)' : '#E0F2FE',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
   },
   ruleCountBadgeText: {
-    color: '#0284C7',
+    color: isDark ? '#38BDF8' : '#0284C7',
     fontSize: 11,
     fontWeight: '700',
   },
@@ -1861,7 +1863,7 @@ const styles = StyleSheet.create({
   },
   emptyRuleHint: {
     fontSize: 12,
-    color: '#64748B',
+    color: isDark ? colors.text.muted : '#64748B',
     lineHeight: 18,
     textAlign: 'center',
   },
@@ -1877,7 +1879,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 8,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
@@ -1896,9 +1898,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   ruleOwnerBadgeBtn: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: isDark ? 'rgba(59, 130, 246, 0.18)' : '#EFF6FF',
     borderWidth: 0.5,
-    borderColor: '#93C5FD',
+    borderColor: isDark ? 'rgba(96, 165, 250, 0.45)' : '#93C5FD',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
@@ -1906,7 +1908,7 @@ const styles = StyleSheet.create({
   ruleOwnerBadgeText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#1D4ED8',
+    color: isDark ? '#93C5FD' : '#1D4ED8',
   },
   deleteRuleBtn: {
     padding: 6,
@@ -1923,32 +1925,32 @@ const styles = StyleSheet.create({
   emailGuideTitle: {
     fontSize: 13.5,
     fontWeight: '800',
-    color: '#92400E',
+    color: isDark ? '#FCD34D' : '#92400E',
     marginBottom: 6,
   },
   emailGuideText: {
     fontSize: 12,
-    color: '#78350F',
+    color: isDark ? '#FDE68A' : '#78350F',
     lineHeight: 18,
     marginBottom: 8,
   },
   actionCard: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: isDark ? colors.border.default : '#E2E8F0',
     padding: 14,
     marginBottom: 20,
   },
   actionCardTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#0F172A',
+    color: isDark ? colors.text.primary : '#0F172A',
     marginBottom: 4,
   },
   actionCardDesc: {
     fontSize: 12,
-    color: '#64748B',
+    color: isDark ? colors.text.secondary : '#64748B',
     lineHeight: 16,
     marginBottom: 12,
   },
@@ -1971,7 +1973,7 @@ const styles = StyleSheet.create({
   openMofBtnText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#B45309',
+    color: isDark ? '#FBBF24' : '#B45309',
   },
   quickBindOverlay: {
     position: 'absolute',
@@ -2024,14 +2026,14 @@ const styles = StyleSheet.create({
   bindTabBtnText: {
     fontSize: 11.5,
     fontWeight: '700',
-    color: '#64748B',
+    color: isDark ? colors.text.secondary : '#64748B',
   },
   bindTabBtnTextActive: {
     color: '#FFFFFF',
   },
   tabGuideHint: {
     fontSize: 11.5,
-    color: '#0369A1',
+    color: isDark ? '#38BDF8' : '#0369A1',
     lineHeight: 16,
     marginBottom: 8,
   },

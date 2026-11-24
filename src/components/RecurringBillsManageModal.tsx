@@ -1185,12 +1185,21 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
               <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
                 {/* 全家模式唯讀提示橫幅 */}
                 {!canManage && (
-                  <View style={[styles.pastMonthBanner, { backgroundColor: '#FEF3C7', borderColor: '#FDE68A', marginBottom: 10 }]}>
+                  <View
+                    style={[
+                      styles.pastMonthBanner,
+                      {
+                        backgroundColor: isDark ? 'rgba(245, 158, 11, 0.16)' : '#FEF3C7',
+                        borderColor: isDark ? 'rgba(251, 191, 36, 0.35)' : '#FDE68A',
+                        marginBottom: 10,
+                      },
+                    ]}
+                  >
                     <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <Text style={{ fontSize: 18 }}>👀</Text>
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.pastMonthBannerTitle, { color: '#92400E' }]}>全家待繳帳單一覽（純瀏覽模式）</Text>
-                        <Text style={[styles.pastMonthBannerSub, { color: '#B45309' }]}>在此僅供查看全家固定帳單待繳狀況。如需確認入帳，請切換至「我的」視角。</Text>
+                        <Text style={[styles.pastMonthBannerTitle, { color: isDark ? '#FCD34D' : '#92400E' }]}>全家待繳帳單一覽（純瀏覽模式）</Text>
+                        <Text style={[styles.pastMonthBannerSub, { color: isDark ? '#FBBF24' : '#B45309' }]}>在此僅供查看全家固定帳單待繳狀況。如需確認入帳，請切換至「我的」視角。</Text>
                       </View>
                     </View>
                   </View>
@@ -1395,9 +1404,20 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                             )}
                           </View>
                         ) : (
-                          <View style={{ paddingVertical: 8, paddingHorizontal: 12, backgroundColor: '#F3F4F6', borderRadius: 8, marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <View
+                            style={{
+                              paddingVertical: 8,
+                              paddingHorizontal: 12,
+                              backgroundColor: isDark ? colors.background.cardSubtle : '#F3F4F6',
+                              borderRadius: 8,
+                              marginTop: 8,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 6,
+                            }}
+                          >
                             <Text style={{ fontSize: 13 }}>🔒</Text>
-                            <Text style={{ fontSize: 12, color: '#6B7280', flex: 1 }}>
+                            <Text style={{ fontSize: 12, color: isDark ? colors.text.muted : '#6B7280', flex: 1 }}>
                               {targetMemberObj && isTargetingOtherMember
                                 ? `此為「${targetMemberObj.display_name}」負責之扣繳項目（純瀏覽查看模式；若需代為核對入帳，可至家庭設定啟用管理員模式）`
                                 : '全家瀏覽模式僅供查看待繳狀態；若需核對或記帳，請切換至「我的」視角'}
@@ -1460,12 +1480,23 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
           {activeTab === 'rules' && (
             <View style={styles.tabContent}>
               {!canManage && (
-                <View style={[styles.pastMonthBanner, { backgroundColor: '#FEF3C7', borderColor: '#FDE68A', marginHorizontal: 16, marginTop: 12, marginBottom: 4 }]}>
+                <View
+                  style={[
+                    styles.pastMonthBanner,
+                    {
+                      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.16)' : '#FEF3C7',
+                      borderColor: isDark ? 'rgba(251, 191, 36, 0.35)' : '#FDE68A',
+                      marginHorizontal: 16,
+                      marginTop: 12,
+                      marginBottom: 4,
+                    },
+                  ]}
+                >
                   <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <Text style={{ fontSize: 18 }}>👀</Text>
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.pastMonthBannerTitle, { color: '#92400E' }]}>全家週期規則一覽（純瀏覽模式）</Text>
-                      <Text style={[styles.pastMonthBannerSub, { color: '#B45309' }]}>在此僅供查看全家扣繳規則。如需新增或管理個人規則，請切換至「我的」視角。</Text>
+                      <Text style={[styles.pastMonthBannerTitle, { color: isDark ? '#FCD34D' : '#92400E' }]}>全家週期規則一覽（純瀏覽模式）</Text>
+                      <Text style={[styles.pastMonthBannerSub, { color: isDark ? '#FBBF24' : '#B45309' }]}>在此僅供查看全家扣繳規則。如需新增或管理個人規則，請切換至「我的」視角。</Text>
                     </View>
                   </View>
                 </View>

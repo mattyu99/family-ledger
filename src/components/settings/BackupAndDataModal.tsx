@@ -249,6 +249,9 @@ export const BackupAndDataModal: React.FC<BackupAndDataModalProps> = ({
             style={[
               styles.backupToggleBtn,
               autoBackupEnabled ? styles.backupToggleBtnActive : styles.backupToggleBtnInactive,
+              isDark && {
+                backgroundColor: autoBackupEnabled ? 'rgba(16, 185, 129, 0.2)' : colors.background.cardSubtle,
+              },
             ]}
             onPress={() => updateAutoBackupConfig(!autoBackupEnabled, autoBackupInterval)}
             activeOpacity={0.8}
@@ -257,6 +260,9 @@ export const BackupAndDataModal: React.FC<BackupAndDataModalProps> = ({
               style={[
                 styles.backupToggleText,
                 autoBackupEnabled ? styles.backupToggleTextActive : styles.backupToggleTextInactive,
+                isDark && {
+                  color: autoBackupEnabled ? '#6EE7B7' : colors.text.muted,
+                },
               ]}
               allowFontScaling={false}
               maxFontSizeMultiplier={1.08}
@@ -271,12 +277,18 @@ export const BackupAndDataModal: React.FC<BackupAndDataModalProps> = ({
           style={[
             styles.backupStatusNotice,
             isBackupDue ? styles.backupStatusNoticeDue : styles.backupStatusNoticeOk,
+            isDark && {
+              backgroundColor: isBackupDue ? 'rgba(239, 68, 68, 0.16)' : 'rgba(16, 185, 129, 0.15)',
+            },
           ]}
         >
           <Text
             style={[
               styles.backupStatusNoticeText,
               isBackupDue ? styles.backupStatusNoticeTextDue : styles.backupStatusNoticeTextOk,
+              isDark && {
+                color: isBackupDue ? '#FCA5A5' : '#6EE7B7',
+              },
             ]}
             allowFontScaling={false}
             maxFontSizeMultiplier={1.08}
@@ -309,6 +321,10 @@ export const BackupAndDataModal: React.FC<BackupAndDataModalProps> = ({
                     styles.backupIntervalChip,
                     { backgroundColor: colors.background.modal, borderColor: colors.border.default },
                     autoBackupInterval === days && styles.backupIntervalChipActive,
+                    autoBackupInterval === days && isDark && {
+                      backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                      borderColor: '#60A5FA',
+                    },
                   ]}
                   onPress={() => updateAutoBackupConfig(true, days)}
                   activeOpacity={0.7}
@@ -318,6 +334,7 @@ export const BackupAndDataModal: React.FC<BackupAndDataModalProps> = ({
                       styles.backupIntervalChipText,
                       { color: colors.text.secondary },
                       autoBackupInterval === days && styles.backupIntervalChipTextActive,
+                      autoBackupInterval === days && isDark && { color: '#93C5FD' },
                     ]}
                     allowFontScaling={false}
                     maxFontSizeMultiplier={1.08}
@@ -472,8 +489,16 @@ export const BackupAndDataModal: React.FC<BackupAndDataModalProps> = ({
             {realIsOwner ? '📥 從備份檔回復資料 (還原)' : '🔒 從備份檔回復資料 (僅管理員)'}
           </Text>
           {!realIsOwner && (
-            <View style={styles.adminOnlyMiniBadge}>
-              <Text style={styles.adminOnlyMiniBadgeText}>管理員</Text>
+            <View
+              style={[
+                styles.adminOnlyMiniBadge,
+                isDark && {
+                  backgroundColor: 'rgba(239, 68, 68, 0.18)',
+                  borderColor: 'rgba(248, 113, 113, 0.4)',
+                },
+              ]}
+            >
+              <Text style={[styles.adminOnlyMiniBadgeText, isDark && { color: '#FCA5A5' }]}>管理員</Text>
             </View>
           )}
         </View>

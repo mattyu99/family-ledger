@@ -3328,7 +3328,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             key={card.id}
                             style={[
                               styles.cardChip,
-                              isCardSelected && { borderColor: card.color || '#3B82F6', backgroundColor: '#EFF6FF' },
+                              isCardSelected && {
+                                borderColor: card.color || '#3B82F6',
+                                backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF',
+                              },
                             ]}
                             onPress={() => setSelectedAccountId(isCardSelected ? '' : card.id)}
                             activeOpacity={0.7}
@@ -3336,7 +3339,13 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             <Text style={styles.cardChipIcon}>💳</Text>
                             <View>
                               <Text
-                                style={[styles.cardChipName, isCardSelected && { color: card.color || '#1E40AF', fontWeight: '700' }]}
+                                style={[
+                                  styles.cardChipName,
+                                  isCardSelected && {
+                                    color: isDark ? '#93C5FD' : (card.color || '#1E40AF'),
+                                    fontWeight: '700',
+                                  },
+                                ]}
                                 maxFontSizeMultiplier={1.15}
                               >
                                 {card.name}{card.last_four_digits ? ` (*${card.last_four_digits})` : ''}
@@ -3349,8 +3358,21 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   </View>
                 )}
                 {supportsCreditCard && creditCards.length === 0 && paymentMethod === 'credit_card' && (
-                  <View style={[styles.subCardContainer, { paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#F9FAFB', borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: '#E5E7EB' }]}>
-                    <Text style={{ fontSize: 12, color: '#6B7280', lineHeight: 18 }} maxFontSizeMultiplier={1.15}>
+                  <View
+                    style={[
+                      styles.subCardContainer,
+                      {
+                        paddingVertical: 10,
+                        paddingHorizontal: 12,
+                        backgroundColor: isDark ? colors.background.cardSubtle : '#F9FAFB',
+                        borderRadius: 10,
+                        marginVertical: 6,
+                        borderWidth: 1,
+                        borderColor: isDark ? colors.border.default : '#E5E7EB',
+                      },
+                    ]}
+                  >
+                    <Text style={{ fontSize: 12, color: isDark ? colors.text.muted : '#6B7280', lineHeight: 18 }} maxFontSizeMultiplier={1.15}>
                       💳 目前尚未綁定屬於您的信用卡。{!inAdminMode && '（如需選用其他成員卡片，可至「家庭設定」啟用管理員模式）'}
                     </Text>
                   </View>
@@ -3371,7 +3393,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             key={account.id}
                             style={[
                               styles.cardChip,
-                              isAccountSelected && { borderColor: account.color || '#8B5CF6', backgroundColor: '#F5F3FF' },
+                              isAccountSelected && {
+                                borderColor: account.color || '#8B5CF6',
+                                backgroundColor: isDark ? 'rgba(139, 92, 246, 0.2)' : '#F5F3FF',
+                              },
                             ]}
                             onPress={() => setSelectedAccountId(isAccountSelected ? '' : account.id)}
                             activeOpacity={0.7}
@@ -3379,7 +3404,13 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             <Text style={styles.cardChipIcon}>🏦</Text>
                             <View>
                               <Text
-                                style={[styles.cardChipName, isAccountSelected && { color: account.color || '#8B5CF6', fontWeight: '700' }]}
+                                style={[
+                                  styles.cardChipName,
+                                  isAccountSelected && {
+                                    color: isDark ? '#C4B5FD' : (account.color || '#8B5CF6'),
+                                    fontWeight: '700',
+                                  },
+                                ]}
                                 maxFontSizeMultiplier={1.15}
                               >
                                 {account.name}{account.last_four_digits ? ` (*${account.last_four_digits})` : ''}
@@ -3395,8 +3426,21 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   </View>
                 )}
                 {isBankTransfer && bankAccounts.length === 0 && (
-                  <View style={[styles.subCardContainer, { paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#F9FAFB', borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: '#E5E7EB' }]}>
-                    <Text style={{ fontSize: 12, color: '#6B7280', lineHeight: 18 }} maxFontSizeMultiplier={1.15}>
+                  <View
+                    style={[
+                      styles.subCardContainer,
+                      {
+                        paddingVertical: 10,
+                        paddingHorizontal: 12,
+                        backgroundColor: isDark ? colors.background.cardSubtle : '#F9FAFB',
+                        borderRadius: 10,
+                        marginVertical: 6,
+                        borderWidth: 1,
+                        borderColor: isDark ? colors.border.default : '#E5E7EB',
+                      },
+                    ]}
+                  >
+                    <Text style={{ fontSize: 12, color: isDark ? colors.text.muted : '#6B7280', lineHeight: 18 }} maxFontSizeMultiplier={1.15}>
                       🏦 目前尚未綁定屬於您的銀行帳戶。{!inAdminMode && '（如需選用其他成員帳戶，可至「家庭設定」啟用管理員模式）'}
                     </Text>
                   </View>
@@ -3946,7 +3990,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                               key={card.id}
                               style={[
                                 styles.cardChip,
-                                isCardSelected && { borderColor: card.color || '#3B82F6', backgroundColor: '#EFF6FF' },
+                                isCardSelected && {
+                                  borderColor: card.color || '#3B82F6',
+                                  backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF',
+                                },
                               ]}
                               onPress={() => setSelectedAccountId(isCardSelected ? '' : card.id)}
                               activeOpacity={0.7}
@@ -3954,7 +4001,13 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                               <Text style={styles.cardChipIcon}>💳</Text>
                               <View>
                                 <Text
-                                  style={[styles.cardChipName, isCardSelected && { color: card.color || '#1E40AF', fontWeight: '700' }]}
+                                  style={[
+                                    styles.cardChipName,
+                                    isCardSelected && {
+                                      color: isDark ? '#93C5FD' : (card.color || '#1E40AF'),
+                                      fontWeight: '700',
+                                    },
+                                  ]}
                                   maxFontSizeMultiplier={1.15}
                                 >
                                   {card.name}{card.last_four_digits ? ` (*${card.last_four_digits})` : ''}
@@ -3970,8 +4023,21 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     </View>
                   )}
                   {supportsCreditCard && creditCards.length === 0 && paymentMethod === 'credit_card' && (
-                    <View style={[styles.subCardContainer, { paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#F9FAFB', borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: '#E5E7EB' }]}>
-                      <Text style={{ fontSize: 12, color: '#6B7280', lineHeight: 18 }} maxFontSizeMultiplier={1.15}>
+                    <View
+                      style={[
+                        styles.subCardContainer,
+                        {
+                          paddingVertical: 10,
+                          paddingHorizontal: 12,
+                          backgroundColor: isDark ? colors.background.cardSubtle : '#F9FAFB',
+                          borderRadius: 10,
+                          marginVertical: 6,
+                          borderWidth: 1,
+                          borderColor: isDark ? colors.border.default : '#E5E7EB',
+                        },
+                      ]}
+                    >
+                      <Text style={{ fontSize: 12, color: isDark ? colors.text.muted : '#6B7280', lineHeight: 18 }} maxFontSizeMultiplier={1.15}>
                         💳 目前尚未綁定屬於您的信用卡。{!inAdminMode && '（如需選用其他成員卡片，可至「家庭設定」啟用管理員模式）'}
                       </Text>
                     </View>
@@ -3992,7 +4058,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                               key={card.id}
                               style={[
                                 styles.cardChip,
-                                isCardSelected && { borderColor: card.color || '#0284C7', backgroundColor: '#F0F9FF' },
+                                isCardSelected && {
+                                  borderColor: card.color || '#0284C7',
+                                  backgroundColor: isDark ? 'rgba(14, 165, 233, 0.2)' : '#F0F9FF',
+                                },
                               ]}
                               onPress={() => setSelectedAccountId(card.id)}
                               activeOpacity={0.7}
@@ -4000,7 +4069,13 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                               <Text style={styles.cardChipIcon}>{card.icon || '🚌'}</Text>
                               <View>
                                 <Text
-                                  style={[styles.cardChipName, isCardSelected && { color: card.color || '#0284C7', fontWeight: '700' }]}
+                                  style={[
+                                    styles.cardChipName,
+                                    isCardSelected && {
+                                      color: isDark ? '#7DD3FC' : (card.color || '#0284C7'),
+                                      fontWeight: '700',
+                                    },
+                                  ]}
                                   maxFontSizeMultiplier={1.15}
                                 >
                                   {card.name} (餘額: ${card.balance.toLocaleString()})
@@ -4016,8 +4091,21 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     </View>
                   )}
                   {isStoredValue && storedValueCards.length === 0 && (
-                    <View style={[styles.subCardContainer, { paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#F9FAFB', borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: '#E5E7EB' }]}>
-                      <Text style={{ fontSize: 12, color: '#6B7280', lineHeight: 18 }} maxFontSizeMultiplier={1.15}>
+                    <View
+                      style={[
+                        styles.subCardContainer,
+                        {
+                          paddingVertical: 10,
+                          paddingHorizontal: 12,
+                          backgroundColor: isDark ? colors.background.cardSubtle : '#F9FAFB',
+                          borderRadius: 10,
+                          marginVertical: 6,
+                          borderWidth: 1,
+                          borderColor: isDark ? colors.border.default : '#E5E7EB',
+                        },
+                      ]}
+                    >
+                      <Text style={{ fontSize: 12, color: isDark ? colors.text.muted : '#6B7280', lineHeight: 18 }} maxFontSizeMultiplier={1.15}>
                         🚌 目前尚未綁定屬於您的儲值卡/悠遊卡。{!inAdminMode && '（如需選用其他成員卡片，可至「家庭設定」啟用管理員模式）'}
                       </Text>
                     </View>
@@ -4038,7 +4126,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                               key={account.id}
                               style={[
                                 styles.cardChip,
-                                isAccountSelected && { borderColor: account.color || '#8B5CF6', backgroundColor: '#F5F3FF' },
+                                isAccountSelected && {
+                                  borderColor: account.color || '#8B5CF6',
+                                  backgroundColor: isDark ? 'rgba(139, 92, 246, 0.2)' : '#F5F3FF',
+                                },
                               ]}
                               onPress={() => setSelectedAccountId(isAccountSelected ? '' : account.id)}
                               activeOpacity={0.7}
@@ -4046,7 +4137,13 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                               <Text style={styles.cardChipIcon}>🏦</Text>
                               <View>
                                 <Text
-                                  style={[styles.cardChipName, isAccountSelected && { color: account.color || '#8B5CF6', fontWeight: '700' }]}
+                                  style={[
+                                    styles.cardChipName,
+                                    isAccountSelected && {
+                                      color: isDark ? '#C4B5FD' : (account.color || '#8B5CF6'),
+                                      fontWeight: '700',
+                                    },
+                                  ]}
                                   maxFontSizeMultiplier={1.15}
                                 >
                                   {account.name}{account.last_four_digits ? ` (*${account.last_four_digits})` : ''}
@@ -4062,8 +4159,21 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     </View>
                   )}
                   {isBankTransfer && bankAccounts.length === 0 && (
-                    <View style={[styles.subCardContainer, { paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#F9FAFB', borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: '#E5E7EB' }]}>
-                      <Text style={{ fontSize: 12, color: '#6B7280', lineHeight: 18 }} maxFontSizeMultiplier={1.15}>
+                    <View
+                      style={[
+                        styles.subCardContainer,
+                        {
+                          paddingVertical: 10,
+                          paddingHorizontal: 12,
+                          backgroundColor: isDark ? colors.background.cardSubtle : '#F9FAFB',
+                          borderRadius: 10,
+                          marginVertical: 6,
+                          borderWidth: 1,
+                          borderColor: isDark ? colors.border.default : '#E5E7EB',
+                        },
+                      ]}
+                    >
+                      <Text style={{ fontSize: 12, color: isDark ? colors.text.muted : '#6B7280', lineHeight: 18 }} maxFontSizeMultiplier={1.15}>
                         🏦 目前尚未綁定屬於您的銀行帳戶。{!inAdminMode && '（如需選用其他成員帳戶，可至「家庭設定」啟用管理員模式）'}
                       </Text>
                     </View>
@@ -5465,13 +5575,13 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     color: isDark ? colors.text.secondary : '#4B5563',
   },
   quickAmountClearChip: {
-    backgroundColor: '#FEE2E2',
-    borderColor: '#FCA5A5',
+    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.18)' : '#FEE2E2',
+    borderColor: isDark ? 'rgba(248, 113, 113, 0.4)' : '#FCA5A5',
   },
   quickAmountClearText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#DC2626',
+    color: isDark ? '#FCA5A5' : '#DC2626',
   },
   recipientChipActive: {
     borderColor: '#10B981',
@@ -5772,7 +5882,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 6,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#E2E8F0',
   },
   memoPhotoHintText: {
     fontSize: 11.5,
@@ -6530,7 +6640,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     width: 90,
     height: 90,
     borderRadius: 9,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: isDark ? colors.background.cardSubtle : '#E2E8F0',
   },
   receiptEnlargeOverlay: {
     position: 'absolute',
