@@ -4,6 +4,7 @@ import {
   View,
   TouchableOpacity,
   Keyboard,
+  KeyboardAvoidingView,
   Platform,
   Alert,
   StyleSheet,
@@ -58,7 +59,10 @@ export const ChangePinModal: React.FC<ChangePinModalProps> = ({ visible, onClose
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={styles.exportOverlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+        style={styles.exportOverlay}
+      >
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
         <View style={styles.exportCard}>
           <View style={styles.modalHeaderRow}>
@@ -97,7 +101,7 @@ export const ChangePinModal: React.FC<ChangePinModalProps> = ({ visible, onClose
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -140,7 +144,10 @@ export const ClaimAdminModal: React.FC<ClaimAdminModalProps> = ({ visible, onClo
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={styles.exportOverlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+        style={styles.exportOverlay}
+      >
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
         <View style={styles.exportCard}>
           <View style={styles.modalHeaderRow}>
@@ -180,7 +187,7 @@ export const ClaimAdminModal: React.FC<ClaimAdminModalProps> = ({ visible, onClo
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -216,7 +223,10 @@ export const AdminModeModal: React.FC<AdminModeModalProps> = ({ visible, onClose
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={styles.exportOverlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+        style={styles.exportOverlay}
+      >
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
         <View style={styles.exportCard}>
           <View style={styles.modalHeaderRow}>
@@ -251,7 +261,7 @@ export const AdminModeModal: React.FC<AdminModeModalProps> = ({ visible, onClose
             <Text style={styles.submitMemberBtnText}>驗證並啟用管理員模式</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };

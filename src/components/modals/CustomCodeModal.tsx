@@ -4,6 +4,7 @@ import {
   View,
   TouchableOpacity,
   Keyboard,
+  KeyboardAvoidingView,
   Platform,
   Alert,
   StyleSheet,
@@ -65,7 +66,10 @@ export const CustomCodeModal: React.FC<CustomCodeModalProps> = ({ visible, onClo
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={styles.exportOverlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+        style={styles.exportOverlay}
+      >
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
         <View style={styles.exportCard}>
           <View style={styles.modalHeaderRow}>
@@ -103,7 +107,7 @@ export const CustomCodeModal: React.FC<CustomCodeModalProps> = ({ visible, onClo
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };

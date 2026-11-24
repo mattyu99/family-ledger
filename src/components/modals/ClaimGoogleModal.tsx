@@ -5,6 +5,8 @@ import {
   TouchableOpacity,
   ScrollView,
   Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   } from 'react-native';
 import { Text, TextInput } from '../common/Text';
@@ -53,7 +55,10 @@ export const ClaimGoogleModal: React.FC<ClaimGoogleModalProps> = ({ visible, onC
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={styles.exportOverlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+        style={styles.exportOverlay}
+      >
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
         <View style={styles.exportCard}>
           <View style={styles.modalHeaderRow}>
@@ -66,7 +71,12 @@ export const ClaimGoogleModal: React.FC<ClaimGoogleModalProps> = ({ visible, onC
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            style={{ width: '100%' }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
             <View style={styles.claimMethodCard}>
               <Text style={styles.claimMethodTitle}>方式一：線上 Google 授權 (推薦)</Text>
               <Text style={styles.claimMethodDesc}>
@@ -117,7 +127,7 @@ export const ClaimGoogleModal: React.FC<ClaimGoogleModalProps> = ({ visible, onC
             </View>
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };

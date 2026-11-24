@@ -5,14 +5,14 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
+  KeyboardAvoidingView,
   Platform,
-  Alert,
   Linking,
   ActivityIndicator,
-  TextInput,
   Clipboard,
 } from 'react-native';
-import { Text } from './common/Text';
+import { Text, TextInput } from './common/Text';
+import { showAlert, showConfirm } from '../lib/alert';
 import { useTheme } from '../theme/ThemeContext';
 import { useLedger } from '../context/LedgerContext';
 import {
@@ -225,13 +225,12 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
       }
     } catch (err: any) {
       console.warn('DocumentPicker 讀取發票 CSV 失敗，降級提示操作指引:', err);
-      Alert.alert(
+      showConfirm(
         '📂 手機端讀取發票 CSV 指引',
-        '若手機系統未支援直接開檔，可使用剪貼簿快速讀取：\n\n1. 請於信箱中開啟財政部通知信之附件 CSV 檔並「全選複製」\n2. 回到此處點擊「📋 讀取剪貼簿貼上 CSV」\n\n系統將自動秒速辨識並完成卡號分流！',
-        [
-          { text: '關閉', style: 'cancel' },
-          { text: '📋 立即讀取剪貼簿', onPress: () => handlePasteClipboard() },
-        ]
+        '若手機系統未支援直接開檔，可使用剪貼簿快速讀取：\n\n1. 請於信箱中開啟財政部通知信之附件 CSV 檔並「全選複製」\n2. 回到此處點擊「確定」直接讀取剪貼簿貼上\n\n系統將自動秒速辨識並完成卡號分流！',
+        () => {
+          handlePasteClipboard();
+        }
       );
     } finally {
       setIsReadingFile(false);
@@ -366,12 +365,12 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
         handleProcessCsvText(rawCsvText, '載具已建立');
       }
 
-      Alert.alert(
+      showAlert(
         '🎉 網購載具已建立',
         `已成功建立「${defaultName}」！日後發票將自動歸屬給【${memberName}】，且可隨時在「卡片與資產管理」中查閱！`
       );
     } catch (err: any) {
-      Alert.alert('建立失敗', err.message || '發生未知錯誤');
+      showAlert('建立失敗', err.message || '發生未知錯誤');
     }
   };
 
@@ -400,12 +399,12 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
         handleProcessCsvText(rawCsvText, '已綁定至現有卡片');
       }
 
-      Alert.alert(
+      showAlert(
         '🎉 成功綁定至現有卡片',
         `已將載具代號綁定至【${targetAccount.name}】！發票將直接對應此卡，絕不產生多餘重複卡片！`
       );
     } catch (err: any) {
-      Alert.alert('綁定失敗', err.message || '發生未知錯誤');
+      showAlert('綁定失敗', err.message || '發生未知錯誤');
     }
   };
 
@@ -438,12 +437,12 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
         handleProcessCsvText(rawCsvText, '新卡片已建立');
       }
 
-      Alert.alert(
+      showAlert(
         '🎉 新卡片建立成功',
         `已為【${memberName}】建立實體卡片！`
       );
     } catch (err: any) {
-      Alert.alert('建卡失敗', err.message || '發生未知錯誤');
+      showAlert('建卡失敗', err.message || '發生未知錯誤');
     }
   };
 
@@ -475,40 +474,33 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
         handleProcessCsvText(rawCsvText, '變更歸屬成員');
       }
 
-      Alert.alert(
+      showAlert(
         '✅ 歸屬人變更成功',
         `已將「${changingRuleTarget.carrier_name || changingRuleTarget.carrier_no}」之分流歸屬改為【${memberName}】！`
       );
     } catch (err: any) {
-      Alert.alert('更新失敗', err.message || '發生未知錯誤');
+      showAlert('更新失敗', err.message || '發生未知錯誤');
     }
   };
 
   // 刪除載具分流規則（解綁）
   const handleDeleteCarrierRule = (rule: CarrierRule) => {
-    Alert.alert(
+    showConfirm(
       '確認解除綁定',
       `確定要解除「${rule.carrier_name || rule.carrier_no}」的分流規則嗎？解除後相關發票將不再自動歸屬特定成員。`,
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '確定解除',
-          style: 'destructive',
-          onPress: async () => {
-            if (!currentLedger?.id) return;
-            const isAccount = paymentAccounts.some(a => a.id === rule.id);
-            if (isAccount) {
-              await deletePaymentAccount(rule.id);
-            } else {
-              const updated = await removeCarrierRule(currentLedger.id, rule.id);
-              setCarrierRules(updated);
-            }
-            if (rawCsvText) {
-              handleProcessCsvText(rawCsvText, '已解除分流規則');
-            }
-          },
-        },
-      ]
+      async () => {
+        if (!currentLedger?.id) return;
+        const isAccount = paymentAccounts.some(a => a.id === rule.id);
+        if (isAccount) {
+          await deletePaymentAccount(rule.id);
+        } else {
+          const updated = await removeCarrierRule(currentLedger.id, rule.id);
+          setCarrierRules(updated);
+        }
+        if (rawCsvText) {
+          handleProcessCsvText(rawCsvText, '已解除分流規則');
+        }
+      }
     );
   };
 
@@ -580,7 +572,7 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
 
       setSyncResult(result);
     } catch (err: any) {
-      Alert.alert('同步失敗', err.message || '發生未知錯誤');
+      showAlert('同步失敗', err.message || '發生未知錯誤');
     } finally {
       setIsSyncing(false);
     }
@@ -595,7 +587,10 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+        style={styles.modalOverlay}
+      >
         <View
           style={[
             styles.modalContent,
@@ -628,7 +623,12 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.bodyScroll} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={styles.bodyScroll}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
             {/* 狀態提示橫幅 */}
             {statusBanner && (
               <View
@@ -1392,7 +1392,7 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
             </View>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };

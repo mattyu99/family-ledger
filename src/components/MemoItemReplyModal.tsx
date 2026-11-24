@@ -3,13 +3,13 @@ import {
   Modal,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
   Platform,
   KeyboardAvoidingView,
 } from 'react-native';
+import { TextInput } from './common/Text';
 import { useTheme } from '../theme/ThemeContext';
 import { useLedger } from '../context/LedgerContext';
 import { MemoItemReply } from '../lib/memo';

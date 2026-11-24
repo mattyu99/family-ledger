@@ -90,6 +90,7 @@ import { InvoiceScannerModal } from './InvoiceScannerModal';
 import { ImageViewerModal } from './ImageViewerModal';
 import { uploadReceiptPhoto } from '../lib/receiptStorage';
 import { isGroupOrderMemo } from '../lib/groupOrder';
+import { showConfirm } from '../lib/alert';
 
 let ImagePickerModule: any = null;
 try {
@@ -1960,21 +1961,14 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                             <TouchableOpacity
                               style={styles.linkedExpenseUnlinkBtn}
                               onPress={() => {
-                                Alert.alert(
+                                showConfirm(
                                   '解除連動確認',
                                   '解除連動後，這筆生活待辦與該筆記帳將不再相互關聯，但記帳紀錄仍會保留。確定解除嗎？',
-                                  [
-                                    { text: '取消', style: 'cancel' },
-                                    {
-                                      text: '確認解除',
-                                      style: 'destructive',
-                                      onPress: async () => {
-                                        setLinkedTxId('');
-                                        await updateTransaction(transaction.id, { linked_transaction_id: '' });
-                                        await updateTransaction(linkedExpense.id, { linked_transaction_id: '' });
-                                      },
-                                    },
-                                  ]
+                                  async () => {
+                                    setLinkedTxId('');
+                                    await updateTransaction(transaction.id, { linked_transaction_id: '' });
+                                    await updateTransaction(linkedExpense.id, { linked_transaction_id: '' });
+                                  }
                                 );
                               }}
                               activeOpacity={0.7}

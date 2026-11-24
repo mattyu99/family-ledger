@@ -4,6 +4,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Modal,
+  KeyboardAvoidingView,
   Platform,
   } from 'react-native';
 import { Text, TextInput } from './common/Text';
@@ -46,8 +47,11 @@ export const AppLockOverlay: React.FC = () => {
   };
 
   return (
-    <Modal visible={isAppLocked} transparent={false} animationType="fade">
-      <View style={[styles.container, { backgroundColor: colors.background.root }]}>
+    <Modal visible={isAppLocked} transparent={false} animationType="fade" onRequestClose={() => {}}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+        style={[styles.container, { backgroundColor: colors.background.root }]}
+      >
         <View style={[styles.lockCard, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
           <View style={styles.iconCircle}>
             <Text style={styles.lockIcon}>🔐</Text>
@@ -131,7 +135,7 @@ export const AppLockOverlay: React.FC = () => {
             💡 守護全家人的資產與收支隱私，非本人無法檢視帳本數據
           </Text>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };

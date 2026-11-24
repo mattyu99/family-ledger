@@ -6,11 +6,11 @@ import {
   ScrollView,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   Platform,
   Dimensions,
   } from 'react-native';
 import { Text } from './common/Text';
+import { showAlert } from '../lib/alert';
 
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
@@ -68,7 +68,7 @@ export const CloudLedgerManagerModal: React.FC<CloudLedgerManagerModalProps> = (
       setDemoStats(stats);
     } catch (e) {
       console.warn('載入雲端帳本總管失敗:', e);
-      Alert.alert('載入失敗', '無法讀取雲端資料庫帳本清單，請檢查網路連線。');
+      showAlert('載入失敗', '無法讀取雲端資料庫帳本清單，請檢查網路連線。');
     } finally {
       setLoading(false);
     }

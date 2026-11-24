@@ -9,9 +9,9 @@ import {
   Platform,
   Linking,
   Animated,
-  Alert,
 } from 'react-native';
 import { Text } from './common/Text';
+import { showAlert } from '../lib/alert';
 
 import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
@@ -568,7 +568,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                     onLongPress={async () => {
                       if (!isCompleted) {
                         if (isGroupOrderMemo(item.category?.name, item.note)) {
-                          Alert.alert(
+                          showAlert(
                             '協作活動進行中',
                             '此為進行中之家庭協作活動看板，系統已自動常駐於首頁最上方，拍板結案後將自動歸檔，不需也不佔用置頂名額。'
                           );
@@ -583,7 +583,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                             excludeTxId: item.id,
                           });
                           if (!quota.canPin) {
-                            Alert.alert(
+                            showAlert(
                               targetScope === 'personal' ? '個人置頂已達上限' : '全家置頂已達上限',
                               quota.errorMessage || '置頂已達 5 筆上限，請先辦妥或取消現有置頂事項。'
                             );
@@ -705,11 +705,7 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
                               const isCreator = item.creator_id === currentUser?.id || item.paid_by === currentUser?.id;
                               if (groupOrderSummary.deadlineInfo?.isExpired && !isCreator) {
                                 const msg = `開團時間已過截止時限 (${groupOrderSummary.deadlineInfo.rawText} 截止) 囉！\n若仍有加點需求，請直接跟發起人確認。`;
-                                if (Platform.OS === 'web' && typeof window !== 'undefined') {
-                                  window.alert(msg);
-                                } else {
-                                  Alert.alert('開團已截止收單', msg);
-                                }
+                                showAlert('開團已截止收單', msg);
                                 return;
                               }
                               setActiveGroupOrderTx(item);

@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Keyboard,
+  KeyboardAvoidingView,
   StyleSheet,
   } from 'react-native';
 import { Text, TextInput } from '../common/Text';
@@ -182,7 +183,10 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={styles.exportOverlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+        style={styles.exportOverlay}
+      >
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
         <View style={styles.exportCard}>
           <View style={styles.modalHeaderRow}>
@@ -675,7 +679,7 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
             )}
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };

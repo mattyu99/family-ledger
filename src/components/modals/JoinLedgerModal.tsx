@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Keyboard,
+  KeyboardAvoidingView,
   Platform,
   Alert,
   StyleSheet,
@@ -173,7 +174,10 @@ export const JoinLedgerModal: React.FC<JoinLedgerModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+        style={styles.overlay}
+      >
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
         <View style={styles.card}>
           <View style={styles.headerRow}>
@@ -412,7 +416,7 @@ export const JoinLedgerModal: React.FC<JoinLedgerModalProps> = ({
             )}
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };

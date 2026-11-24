@@ -2107,7 +2107,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                 memberId: effectivePaidBy || currentUser?.id,
                               });
                               if (!quota.canPin) {
-                                Alert.alert(
+                                safeAlert(
                                   memoReminderTarget === 'personal' ? '個人置頂已達上限' : '全家置頂已達上限',
                                   quota.errorMessage || '置頂已達 5 筆上限，請先辦妥或取消現有置頂事項。'
                                 );
@@ -2820,7 +2820,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             memberId: effectivePaidBy || currentUser?.id,
                           });
                           if (!quota.canPin) {
-                            Alert.alert('全家置頂已達上限', `${quota.errorMessage}\n切換為全家共享後已自動取消置頂。`);
+                            safeAlert('全家置頂已達上限', `${quota.errorMessage}\n切換為全家共享後已自動取消置頂。`);
                             setMemoIsPinned(false);
       setIsDemoPublicMemo(false);
                           }
@@ -2852,7 +2852,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             memberId: effectivePaidBy || currentUser?.id,
                           });
                           if (!quota.canPin) {
-                            Alert.alert('個人置頂已達上限', `${quota.errorMessage}\n切換為個人專屬後已自動取消置頂。`);
+                            safeAlert('個人置頂已達上限', `${quota.errorMessage}\n切換為個人專屬後已自動取消置頂。`);
                             setMemoIsPinned(false);
       setIsDemoPublicMemo(false);
                           }

@@ -3,7 +3,6 @@ import {
   Modal,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
@@ -13,6 +12,8 @@ import {
   Alert,
   KeyboardAvoidingView,
 } from 'react-native';
+import { TextInput } from './common/Text';
+import { showAlert } from '../lib/alert';
 import { useTheme } from '../theme/ThemeContext';
 import { useLedger } from '../context/LedgerContext';
 import { LiveToastBanner } from './LiveToastBanner';
@@ -332,9 +333,9 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                   onPress={() => {
                     if (isExpired) {
                       if (isOrganizer) {
-                        Alert.alert('已截止收單', '目前已超過截止時間。身為發起人，您可以點選下方的「+15分」順延截止時間，或點選下方進行拍板敲定！');
+                        showAlert('已截止收單', '目前已超過截止時間。身為發起人，您可以點選下方的「+15分」順延截止時間，或點選下方進行拍板敲定！');
                       } else {
-                        Alert.alert('已截止收單', '目前已超過截止時間，無法再追加提案囉！如需繼續參與，請聯繫發起人順延截止時間。');
+                        showAlert('已截止收單', '目前已超過截止時間，無法再追加提案囉！如需繼續參與，請聯繫發起人順延截止時間。');
                       }
                       return;
                     }
@@ -612,9 +613,9 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                               onPress={() => {
                                 if (isExpired) {
                                   if (isOrganizer) {
-                                    Alert.alert('投票已截止', '投票已超過截止時間。身為發起人，您可以點選上方的「+15分」順延截止時間，或點選下方進行拍板敲定！');
+                                    showAlert('投票已截止', '投票已超過截止時間。身為發起人，您可以點選上方的「+15分」順延截止時間，或點選下方進行拍板敲定！');
                                   } else {
-                                    Alert.alert('投票已截止', `投票已於 ${summary.deadlineInfo?.badgeText || '先前'} 截止，無法再投票囉！如需繼續參與，請聯繫發起人順延截止時間。`);
+                                    showAlert('投票已截止', `投票已於 ${summary.deadlineInfo?.badgeText || '先前'} 截止，無法再投票囉！如需繼續參與，請聯繫發起人順延截止時間。`);
                                   }
                                   return;
                                 }
@@ -1264,7 +1265,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                 onPress={() => {
                   const cleanName = editItemName.trim();
                   if (!cleanName) {
-                    Alert.alert('請輸入品項名稱', '餐點品項名稱不能為空白喔！');
+                    showAlert('請輸入品項名稱', '餐點品項名稱不能為空白喔！');
                     return;
                   }
                   const priceVal = parseInt(editPriceStr, 10);
@@ -1346,7 +1347,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                 onPress={() => {
                   const cleanTitle = editVoteTitle.trim();
                   if (!cleanTitle) {
-                    Alert.alert('請輸入方案名稱', '方案名稱不能為空白喔！');
+                    showAlert('請輸入方案名稱', '方案名稱不能為空白喔！');
                     return;
                   }
                   if (editingVoteOption) {

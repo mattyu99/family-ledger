@@ -4,6 +4,7 @@ import {
   View,
   TouchableOpacity,
   ScrollView,
+  KeyboardAvoidingView,
   Platform,
   Alert,
   StyleSheet,
@@ -482,7 +483,10 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={styles.exportOverlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+        style={styles.exportOverlay}
+      >
         <View style={styles.exportCard}>
           <View style={styles.modalHeaderRow}>
             <Text style={styles.exportTitle}>🛡️ 帳本資料備份與還原</Text>
@@ -694,7 +698,12 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
                 </Text>
               </View>
             ) : (
-              <ScrollView style={styles.restoreScrollArea} showsVerticalScrollIndicator={false}>
+              <ScrollView
+                style={styles.restoreScrollArea}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+              >
                 <View style={styles.exportTipBox}>
                   <Text style={styles.exportTipText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                     💡 支援由甜心記帳本匯出的 .json 備份檔。您可點擊「選擇本機 .json 備份檔案」直接讀取，或使用剪貼簿貼上備份內容進行還原。
@@ -936,7 +945,7 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
             <Text style={styles.closeExportBtnText}>關閉</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
