@@ -4,14 +4,17 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  } from 'react-native';
+} from 'react-native';
 import { Text } from '../components/common/Text';
-
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import { getCategoryIcon } from '../lib/icons';
 import { getRollingPendingBills, getRollingBillDueInfo, RollingBillDueInfo } from '../lib/recurring';
+import { SettingsGroupCard, SettingsRowItem } from '../components/settings';
+
+const COLLAPSED_RECURRING_LIMIT = 5;
+const COLLAPSED_ACCOUNTS_LIMIT = 5;
 
 export interface BillsScreenProps {
   onOpenAccountsManageModal: (scope?: 'all' | 'my') => void;
@@ -34,8 +37,6 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
   const {
     currentUser,
     isOwner,
-    realIsOwner,
-    isAdminMode,
     paymentAccounts,
     recurringRules,
     paymentMethods,
@@ -46,6 +47,14 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
   } = useLedger();
 
   const [billsScope, setBillsScope] = useState<'my' | 'all'>('my');
+  const [isRecurringExpanded, setIsRecurringExpanded] = useState(false);
+  const [isAccountsExpanded, setIsAccountsExpanded] = useState(false);
+
+  const handleScopeChange = (nextScope: 'my' | 'all') => {
+    setBillsScope(nextScope);
+    setIsRecurringExpanded(false);
+    setIsAccountsExpanded(false);
+  };
 
   const isMatchedToCurrentUser = useMemo(() => {
     return (paidById?: string) => {
@@ -91,9 +100,6 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
     return getRollingPendingBills(myRecurringRules, new Date(), 7);
   }, [myRecurringRules]);
 
-  const pendingRecurringBillsCount = rollingPendingBills.length;
-  const myPendingRecurringBillsCount = myRollingPendingBills.length;
-
   const displayedRecurringRules = billsScope === 'my' ? myRecurringRules : scopedRecurringRules;
   const displayedPaymentAccounts = billsScope === 'my' ? myPaymentAccounts : scopedPaymentAccounts;
   const activePendingBills = billsScope === 'my' ? myRollingPendingBills : rollingPendingBills;
@@ -118,391 +124,406 @@ export const BillsScreen: React.FC<BillsScreenProps> = ({
     return set;
   }, [activePendingBills]);
 
+  // 依緊急度自動排序週期帳單：已逾期 > 今日/7天內即將扣款 > 其餘正常週期
+  const sortedRecurringRules = useMemo(() => {
+    const getPriority = (ruleId: string) => {
+      const isPending = pendingRecurringRuleIds.has(ruleId);
+      if (!isPending) return 2;
+      const dueInfo = rollingBillDueInfoMap.get(ruleId);
+      return dueInfo?.isOverdue ? 0 : 1;
+    };
+
+    return [...displayedRecurringRules].sort((a, b) => {
+      const pA = getPriority(a.id);
+      const pB = getPriority(b.id);
+      if (pA !== pB) return pA - pB;
+
+      if (pA < 2) {
+        const dA = rollingBillDueInfoMap.get(a.id)?.daysRemaining ?? 999;
+        const dB = rollingBillDueInfoMap.get(b.id)?.daysRemaining ?? 999;
+        if (dA !== dB) return dA - dB;
+      }
+      return (a.due_day || 99) - (b.due_day || 99);
+    });
+  }, [displayedRecurringRules, pendingRecurringRuleIds, rollingBillDueInfoMap]);
+
+  const visibleRecurringRules = isRecurringExpanded
+    ? sortedRecurringRules
+    : sortedRecurringRules.slice(0, COLLAPSED_RECURRING_LIMIT);
+  const hiddenRecurringCount = Math.max(0, sortedRecurringRules.length - COLLAPSED_RECURRING_LIMIT);
+
+  const visiblePaymentAccounts = isAccountsExpanded
+    ? displayedPaymentAccounts
+    : displayedPaymentAccounts.slice(0, COLLAPSED_ACCOUNTS_LIMIT);
+  const hiddenAccountsCount = Math.max(0, displayedPaymentAccounts.length - COLLAPSED_ACCOUNTS_LIMIT);
+
+  const enabledPaymentMethods = useMemo(
+    () => (paymentMethods || []).filter(m => m.is_enabled !== false),
+    [paymentMethods]
+  );
+  const paymentMethodsPreview = useMemo(() => {
+    if (enabledPaymentMethods.length === 0) return '尚未啟用任何付款方式';
+    const names = enabledPaymentMethods.slice(0, 4).map(m => m.name).join('、');
+    return enabledPaymentMethods.length > 4 ? `${names} 等` : names;
+  }, [enabledPaymentMethods]);
+
+  const expenseCategoryCount = useMemo(
+    () => categories.filter(c => c.type === 'expense').length,
+    [categories]
+  );
+  const incomeCategoryCount = useMemo(
+    () => categories.filter(c => c.type === 'income').length,
+    [categories]
+  );
+
   return (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollPadding}>
-      {/* 帳單與支付總覽 Hero 卡片 */}
+      {/* 帳單與支付資產總覽＋視角切換整併卡片 */}
       <View style={styles.billsHeroCard}>
         <View style={styles.billsHeroHeaderRow}>
-          <Text style={styles.billsHeroTitle} numberOfLines={1} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+          <Text style={styles.billsHeroTitle} maxFontSizeMultiplier={1.15}>
             💳 帳單與支付資產
           </Text>
           <View style={styles.billsHeroSummaryChip}>
             <Text style={styles.billsHeroSummaryText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              {billsScope === 'my'
-                ? `${myPaymentAccounts.length} 帳戶 · ${myRecurringRules.length} 項定期 (本機)`
-                : `${scopedPaymentAccounts.length} 帳戶 · ${scopedRecurringRules.length} 項定期 (全家)`}
+              {displayedPaymentAccounts.length} 帳戶 · {displayedRecurringRules.length} 項定期
             </Text>
           </View>
         </View>
-        <Text style={styles.billsHeroDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-          定期扣款・分期攤提・信用卡結帳・悠遊卡與電子支付
-        </Text>
-      </View>
 
-      {/* 切換檢視範圍 */}
-      <View style={styles.billsScopeToggleRow}>
-        <TouchableOpacity
-          style={[styles.billsScopeTab, billsScope === 'my' && styles.billsScopeTabActive]}
-          onPress={() => setBillsScope('my')}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.billsScopeTabText, billsScope === 'my' && styles.billsScopeTabTextActive]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            👤 我的 ({myPaymentAccounts.length + myRecurringRules.length})
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.billsScopeTab, billsScope === 'all' && styles.billsScopeTabActive]}
-          onPress={() => setBillsScope('all')}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.billsScopeTabText, billsScope === 'all' && styles.billsScopeTabTextActive]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            👨‍👩‍👧‍👦 全家 ({scopedPaymentAccounts.length + scopedRecurringRules.length})
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.billsScopeToggleRow}>
+          <TouchableOpacity
+            style={[styles.billsScopeTab, billsScope === 'my' && styles.billsScopeTabActive]}
+            onPress={() => handleScopeChange('my')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.billsScopeTabText, billsScope === 'my' && styles.billsScopeTabTextActive]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              👤 我的 ({myPaymentAccounts.length + myRecurringRules.length})
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.billsScopeTab, billsScope === 'all' && styles.billsScopeTabActive]}
+            onPress={() => handleScopeChange('all')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.billsScopeTabText, billsScope === 'all' && styles.billsScopeTabTextActive]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              👨‍👩‍👧‍👦 全家 ({scopedPaymentAccounts.length + scopedRecurringRules.length})
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* 🗓️ 週期固定帳單 */}
       <View style={styles.cardSection}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.cardSectionTitle} numberOfLines={1} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+        <View style={styles.sectionHeaderWrapRow}>
+          <Text style={styles.cardSectionTitle}>
             🗓️ 週期固定帳單 ({displayedRecurringRules.length})
           </Text>
-          <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+          <View style={styles.sectionActionGroup}>
             {activePendingBillsCount > 0 && (
               <TouchableOpacity
-                style={[styles.manageCategoryBtn, { backgroundColor: '#FEE2E2', borderColor: '#FECACA' }]}
-                onPress={() => {
-                  onOpenRecurringModal(billsScope, undefined, 'pending');
-                }}
+                style={[
+                  styles.actionBtn,
+                  {
+                    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2',
+                    borderColor: isDark ? 'rgba(248, 113, 113, 0.45)' : '#FECACA',
+                  },
+                ]}
+                onPress={() => onOpenRecurringModal(billsScope, undefined, 'pending')}
+                activeOpacity={0.75}
               >
-                <Text style={[styles.manageCategoryBtnText, { color: '#DC2626' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                <Text
+                  style={[styles.actionBtnText, { color: isDark ? '#FCA5A5' : '#DC2626' }]}
+                  allowFontScaling={false}
+                  maxFontSizeMultiplier={1.08}
+                >
                   🔔 待核對 ({activePendingBillsCount})
                 </Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity
-              style={styles.manageCategoryBtn}
-              onPress={() => {
-                onOpenRecurringModal(billsScope, undefined, 'bills');
-              }}
+              style={styles.actionBtn}
+              onPress={() => onOpenRecurringModal(billsScope, undefined, 'bills')}
+              activeOpacity={0.75}
             >
-              <Text style={styles.manageCategoryBtnText} maxFontSizeMultiplier={1.2}>
+              <Text style={styles.actionBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                 {billsScope === 'my' || isOwner ? '⚙️ 規則' : '👀 查看'}
               </Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+        <Text style={styles.sectionHeaderDesc}>
           {billsScope === 'my'
-            ? `僅列出綁定本機「${currentUser?.display_name || '我'}」負責之定期項目，可自主管理規則與確認入帳`
+            ? `僅列出「${currentUser?.display_name || '我'}」負責之定期項目，依逾期與扣款順序置頂`
             : isOwner
-            ? '管理水電瓦斯、房租通訊、分期攤提等定期週期項目，到期手動確認記帳'
+            ? '水電瓦斯、房租通訊與分期攤提項目，依到期急迫度排序'
             : '查看家庭固定週期扣款設定與出帳月份（全家純瀏覽模式）'}
         </Text>
 
-        <View style={styles.paymentAccountPreviewRow}>
-          {displayedRecurringRules.map(rule => {
-            const cat = getCategoryById(rule.category_id);
-            const payer = rule.paid_by ? getMemberById(rule.paid_by) : null;
-            const dueInfo = rollingBillDueInfoMap.get(rule.id);
-            const isPending = pendingRecurringRuleIds.has(rule.id);
+        {sortedRecurringRules.length > 0 ? (
+          <View style={styles.listContainer}>
+            {visibleRecurringRules.map((rule, index) => {
+              const cat = getCategoryById(rule.category_id);
+              const payer = rule.paid_by ? getMemberById(rule.paid_by) : null;
+              const dueInfo = rollingBillDueInfoMap.get(rule.id);
+              const isPending = pendingRecurringRuleIds.has(rule.id);
+              const isOverdue = Boolean(isPending && dueInfo?.isOverdue);
+              const isLast = index === visibleRecurringRules.length - 1 && hiddenRecurringCount === 0;
 
-            const badgeText = isPending && dueInfo?.badgeText ? dueInfo.badgeText : `${rule.due_day}日`;
-            const badgeBg = isPending && dueInfo?.badgeBg ? dueInfo.badgeBg : '#EFF6FF';
-            const badgeColor = isPending && dueInfo?.badgeColor ? dueInfo.badgeColor : '#1D4ED8';
-            const chipBorder = isPending ? (dueInfo?.isOverdue ? '#FECACA' : '#BAE6FD') : '#E2E8F0';
-            const chipBg = isPending ? (dueInfo?.isOverdue ? '#FFF5F5' : '#F0F9FF') : undefined;
+              const badgeText = isPending && dueInfo?.badgeText ? dueInfo.badgeText : `每月 ${rule.due_day} 日`;
+              const badgeBg = isPending
+                ? isOverdue
+                  ? isDark ? 'rgba(239, 68, 68, 0.22)' : '#FEE2E2'
+                  : isDark ? 'rgba(56, 189, 248, 0.2)' : '#E0F2FE'
+                : isDark ? 'rgba(148, 163, 184, 0.16)' : '#F1F5F9';
+              const badgeColor = isPending
+                ? isOverdue
+                  ? isDark ? '#FCA5A5' : '#DC2626'
+                  : isDark ? '#7DD3FC' : '#0369A1'
+                : isDark ? '#CBD5E1' : '#475569';
+              const rowBg = isPending
+                ? isOverdue
+                  ? isDark ? 'rgba(239, 68, 68, 0.08)' : '#FFF7F7'
+                  : isDark ? 'rgba(59, 130, 246, 0.08)' : '#F5FAFF'
+                : 'transparent';
 
-            return (
-              <View key={rule.id} style={{ position: 'relative', overflow: 'visible' }}>
+              return (
                 <TouchableOpacity
+                  key={rule.id}
                   style={[
-                    styles.paymentAccountPreviewChip,
-                    { borderColor: chipBorder },
-                    chipBg ? { backgroundColor: chipBg } : null,
+                    styles.listRow,
+                    { backgroundColor: rowBg },
+                    !isLast && styles.listRowBorder,
                   ]}
-                  onPress={() => {
-                    onOpenRecurringModal(billsScope, undefined, 'pending');
-                  }}
+                  onPress={() => onOpenRecurringModal(billsScope, undefined, isPending ? 'pending' : 'bills')}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.paymentAccountPreviewIcon}>{getCategoryIcon(cat?.icon)}</Text>
-                  <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    {rule.name}{billsScope === 'all' && payer?.display_name ? ` · ${payer.display_name}` : ''}
-                  </Text>
-                  <View
-                    style={[
-                      styles.paymentAccountBadge,
-                      { backgroundColor: badgeBg },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.paymentAccountBadgeText,
-                        { color: badgeColor },
-                      ]}
-                      allowFontScaling={false}
-                      maxFontSizeMultiplier={1.08}
-                    >
-                      {badgeText}
-                    </Text>
+                  <View style={styles.listRowMain}>
+                    <View style={styles.listRowTitleWrap}>
+                      {isPending && (
+                        <View
+                          style={[
+                            styles.pendingDot,
+                            { backgroundColor: isOverdue ? '#EF4444' : '#0EA5E9' },
+                          ]}
+                        />
+                      )}
+                      <Text style={styles.listRowTitle}>
+                        {getCategoryIcon(cat?.icon)} {rule.name}
+                        {billsScope === 'all' && payer?.display_name ? ` · ${payer.display_name}` : ''}
+                      </Text>
+                    </View>
+                    <View style={[styles.statusBadge, { backgroundColor: badgeBg }]}>
+                      <Text
+                        style={[styles.statusBadgeText, { color: badgeColor }]}
+                        allowFontScaling={false}
+                        maxFontSizeMultiplier={1.08}
+                      >
+                        {badgeText}
+                      </Text>
+                    </View>
                   </View>
+                  <Text style={styles.listRowChevron}>›</Text>
                 </TouchableOpacity>
-                {isPending && <View pointerEvents="none" style={styles.ruleChipPendingDot} />}
-              </View>
-            );
-          })}
-          {displayedRecurringRules.length === 0 && (
-            billsScope === 'my' && scopedRecurringRules.length > 0 ? (
-              <View style={{ gap: 8 }}>
-                <TouchableOpacity
-                  style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
-                  onPress={() => {
-                    onOpenRecurringModal(billsScope, undefined, 'bills');
-                  }}
-                >
-                  <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    ＋ 尚無綁定您的定期扣款規則 (點此新增)
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.paymentAccountPreviewChip, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.12)' : '#EEF2FF', borderColor: isDark ? '#4F46E5' : '#C7D2FE' }]}
-                  onPress={() => setBillsScope('all')}
-                >
-                  <Text style={[styles.paymentAccountPreviewText, { color: isDark ? '#A5B4FC' : '#4F46E5' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    👥 切換查看全家定期扣款規則 ({scopedRecurringRules.length})
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
+              );
+            })}
+
+            {hiddenRecurringCount > 0 && (
               <TouchableOpacity
-                style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
-                onPress={() => {
-                  onOpenRecurringModal(billsScope, undefined, 'bills');
-                }}
+                style={styles.expandToggleBtn}
+                onPress={() => setIsRecurringExpanded(prev => !prev)}
+                activeOpacity={0.7}
               >
-                <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                  {billsScope === 'my'
-                    ? '＋ 尚無綁定您的定期扣款規則 (點此新增)'
-                    : '＋ 新增水電瓦斯或定期帳單規則'}
+                <Text style={styles.expandToggleBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                  {isRecurringExpanded
+                    ? '收合週期帳單清單 ▴'
+                    : `展開其餘 ${hiddenRecurringCount} 項規則（共 ${sortedRecurringRules.length} 項）▾`}
                 </Text>
               </TouchableOpacity>
-            )
-          )}
-        </View>
+            )}
+          </View>
+        ) : (
+          <View style={styles.emptyActionGroup}>
+            <TouchableOpacity
+              style={styles.emptyDashedBtn}
+              onPress={() => onOpenRecurringModal(billsScope, undefined, 'bills')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.emptyDashedBtnText}>
+                {billsScope === 'my'
+                  ? '＋ 尚無綁定您的定期扣款規則 (點此新增)'
+                  : '＋ 新增水電瓦斯或定期帳單規則'}
+              </Text>
+            </TouchableOpacity>
+            {billsScope === 'my' && scopedRecurringRules.length > 0 && (
+              <TouchableOpacity
+                style={styles.switchToAllBtn}
+                onPress={() => handleScopeChange('all')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.switchToAllBtnText}>
+                  👥 切換查看全家定期扣款規則 ({scopedRecurringRules.length})
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
       </View>
 
-      {/* 支付卡片與帳戶管理 */}
+      {/* 💳 支付卡片與帳戶管理 */}
       <View style={styles.cardSection}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.cardSectionTitle} numberOfLines={1} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+        <View style={styles.sectionHeaderWrapRow}>
+          <Text style={styles.cardSectionTitle}>
             💳 支付卡片與帳戶 ({displayedPaymentAccounts.length})
           </Text>
-          <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+          <View style={styles.sectionActionGroup}>
             <TouchableOpacity
-              style={[styles.manageCategoryBtn, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}
-              onPress={() => {
-                onOpenReconcileModal('credit_card', undefined, billsScope);
-              }}
+              style={styles.actionBtn}
+              onPress={() => onOpenReconcileModal('credit_card', undefined, billsScope)}
+              activeOpacity={0.75}
             >
-              <Text style={[styles.manageCategoryBtnText, { color: '#4F46E5' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              <Text style={styles.actionBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                 📊 對帳
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.manageCategoryBtn}
-              onPress={() => {
-                onOpenAccountsManageModal(billsScope);
-              }}
+              style={styles.actionBtn}
+              onPress={() => onOpenAccountsManageModal(billsScope)}
+              activeOpacity={0.75}
             >
-              <Text style={styles.manageCategoryBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+              <Text style={styles.actionBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
                 {billsScope === 'my' || isOwner ? '⚙️ 管理' : '👀 查看'}
               </Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+        <Text style={styles.sectionHeaderDesc}>
           {billsScope === 'my'
-            ? `僅列出綁定本機「${currentUser?.display_name || '我'}」專屬之卡片與帳戶，可自主管理與對帳`
+            ? `僅列出「${currentUser?.display_name || '我'}」專屬之卡片與帳戶，點擊即可對帳`
             : isOwner
-            ? '管理信用卡結帳週期、悠遊卡/一卡通餘額與帳單對帳'
+            ? '管理信用卡結帳週期、悠遊卡／一卡通餘額與帳單對帳'
             : '查看全家信用卡結帳日與悠遊卡即時餘額（全家純瀏覽模式）'}
         </Text>
 
-        <View style={styles.paymentAccountPreviewRow}>
-          {displayedPaymentAccounts.map(acc => {
-            const isCard = acc.type === 'credit_card';
-            const cardholder = acc.user_id ? getMemberById(acc.user_id) : null;
-            return (
+        {displayedPaymentAccounts.length > 0 ? (
+          <View style={styles.listContainer}>
+            {visiblePaymentAccounts.map((acc, index) => {
+              const isCard = acc.type === 'credit_card';
+              const cardholder = acc.user_id ? getMemberById(acc.user_id) : null;
+              const last4 = acc.last_four_digits || acc.card_number;
+              const isLast = index === visiblePaymentAccounts.length - 1 && hiddenAccountsCount === 0;
+
+              const badgeText = isCard && acc.billing_cycle_date
+                ? `每月${acc.billing_cycle_date}日結`
+                : !isCard
+                ? `$${(acc.balance || 0).toLocaleString()}`
+                : null;
+
+              const badgeBg = isCard
+                ? isDark ? 'rgba(99, 102, 241, 0.22)' : '#EEF2FF'
+                : isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5';
+              const badgeColor = isCard
+                ? isDark ? '#A5B4FC' : '#4F46E5'
+                : isDark ? '#34D399' : '#047857';
+
+              return (
+                <TouchableOpacity
+                  key={acc.id}
+                  style={[styles.listRow, !isLast && styles.listRowBorder]}
+                  onPress={() => onOpenReconcileModal(isCard ? 'credit_card' : 'stored_value', acc.id, billsScope)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.listRowMain}>
+                    <Text style={styles.listRowTitle}>
+                      {acc.icon || (isCard ? '💳' : '🚌')} {acc.name}
+                      {last4 ? ` (*${last4.slice(-4)})` : ''}
+                      {billsScope === 'all' && cardholder?.display_name ? ` · ${cardholder.display_name}` : ''}
+                    </Text>
+                    {badgeText && (
+                      <View style={[styles.statusBadge, { backgroundColor: badgeBg }]}>
+                        <Text
+                          style={[styles.statusBadgeText, { color: badgeColor }]}
+                          allowFontScaling={false}
+                          maxFontSizeMultiplier={1.08}
+                        >
+                          {badgeText}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.listRowChevron}>›</Text>
+                </TouchableOpacity>
+              );
+            })}
+
+            {hiddenAccountsCount > 0 && (
               <TouchableOpacity
-                key={acc.id}
+                style={styles.expandToggleBtn}
+                onPress={() => setIsAccountsExpanded(prev => !prev)}
                 activeOpacity={0.7}
-                onPress={() => {
-                  onOpenReconcileModal(isCard ? 'credit_card' : 'stored_value', acc.id, billsScope);
-                }}
-                style={[
-                  styles.paymentAccountPreviewChip,
-                  { borderColor: `${acc.color || '#4F46E5'}40`, backgroundColor: `${acc.color || '#4F46E5'}10` },
-                ]}
               >
-                <Text style={styles.paymentAccountPreviewIcon} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                  {acc.icon || (isCard ? '💳' : '🚌')}
+                <Text style={styles.expandToggleBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                  {isAccountsExpanded
+                    ? '收合卡片與帳戶清單 ▴'
+                    : `展開其餘 ${hiddenAccountsCount} 個帳戶（共 ${displayedPaymentAccounts.length} 個）▾`}
                 </Text>
-                <Text
-                  style={styles.paymentAccountPreviewText}
-                  numberOfLines={1}
-                  allowFontScaling={false}
-                  maxFontSizeMultiplier={1.08}
-                >
-                  {acc.name}{(acc.last_four_digits || acc.card_number) ? ` (*${(acc.last_four_digits || acc.card_number)!.slice(-4)})` : ''}
-                  {billsScope === 'all' && cardholder?.display_name ? ` · ${cardholder.display_name}` : ''}
-                </Text>
-                {isCard && acc.billing_cycle_date ? (
-                  <View style={[styles.paymentAccountBadge, { backgroundColor: '#EEF2FF' }]}>
-                    <Text style={[styles.paymentAccountBadgeText, { color: '#4F46E5' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                      每月{acc.billing_cycle_date}日結
-                    </Text>
-                  </View>
-                ) : !isCard ? (
-                  <View style={[styles.paymentAccountBadge, { backgroundColor: '#ECFDF5' }]}>
-                    <Text style={[styles.paymentAccountBadgeText, { color: '#047857' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                      ${(acc.balance || 0).toLocaleString()}
-                    </Text>
-                  </View>
-                ) : null}
               </TouchableOpacity>
-            );
-          })}
-          {displayedPaymentAccounts.length === 0 && (
-            billsScope === 'my' && scopedPaymentAccounts.length > 0 ? (
-              <View style={{ gap: 8 }}>
-                <TouchableOpacity
-                  style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
-                  onPress={() => onOpenAccountsManageModal(billsScope)}
-                >
-                  <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    ＋ 尚無綁定您的支付卡片 (點此新增)
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.paymentAccountPreviewChip, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.12)' : '#EEF2FF', borderColor: isDark ? '#4F46E5' : '#C7D2FE' }]}
-                  onPress={() => setBillsScope('all')}
-                >
-                  <Text style={[styles.paymentAccountPreviewText, { color: isDark ? '#A5B4FC' : '#4F46E5' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    👥 切換查看全家卡片與帳戶 ({scopedPaymentAccounts.length})
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : billsScope === 'my' || isOwner ? (
+            )}
+          </View>
+        ) : (
+          <View style={styles.emptyActionGroup}>
+            {billsScope === 'my' || isOwner ? (
               <TouchableOpacity
-                style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}
+                style={styles.emptyDashedBtn}
                 onPress={() => onOpenAccountsManageModal(billsScope)}
+                activeOpacity={0.7}
               >
-                <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
+                <Text style={styles.emptyDashedBtnText}>
                   {billsScope === 'my' ? '＋ 尚無綁定您的支付卡片 (點此新增)' : '＋ 新增第一張信用卡或悠遊卡'}
                 </Text>
               </TouchableOpacity>
             ) : (
-              <View style={[styles.paymentAccountPreviewChip, { borderStyle: 'dashed' }]}>
-                <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                  尚無支付卡片或帳戶
-                </Text>
+              <View style={styles.emptyDashedBtn}>
+                <Text style={styles.emptyDashedBtnText}>尚無支付卡片或帳戶</Text>
               </View>
-            )
-          )}
-        </View>
+            )}
+            {billsScope === 'my' && scopedPaymentAccounts.length > 0 && (
+              <TouchableOpacity
+                style={styles.switchToAllBtn}
+                onPress={() => handleScopeChange('all')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.switchToAllBtnText}>
+                  👥 切換查看全家卡片與帳戶 ({scopedPaymentAccounts.length})
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
       </View>
 
-      {/* 常用付款方式管理 */}
-      <View style={styles.cardSection}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.cardSectionTitle} numberOfLines={1} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            📱 常用付款方式 ({(paymentMethods || []).filter(m => m.is_enabled !== false).length})
-          </Text>
-          <TouchableOpacity
-            style={styles.manageCategoryBtn}
-            onPress={() => {
-              onOpenPaymentMethodsModal();
-            }}
-          >
-            <Text style={styles.manageCategoryBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              {isOwner ? '⚙️ 管理' : '👀 查看'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-          {isOwner
-            ? '自訂日常記帳可用的支付工具（如 LINE Pay、全支付、悠遊付、街口等），可隨時新增或開關隱藏'
-            : '查看目前日常記帳可用的支付工具（僅帳本管理員可新增或修改）'}
-        </Text>
-
-        <View style={styles.paymentAccountPreviewRow}>
-          {(paymentMethods || []).filter(m => m.is_enabled !== false).map(m => (
-            <TouchableOpacity
-              key={m.id}
-              style={[styles.paymentAccountPreviewChip, { borderColor: `${m.color || '#3B82F6'}45` }]}
-              onPress={() => {
-                onOpenPaymentMethodsModal();
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.paymentAccountPreviewIcon}>{m.icon}</Text>
-              <Text style={styles.paymentAccountPreviewText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                {m.name}
-              </Text>
-              {m.supports_credit_card && (
-                <View style={[styles.paymentAccountBadge, { backgroundColor: '#EFF6FF' }]}>
-                  <Text style={[styles.paymentAccountBadgeText, { color: '#1D4ED8' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                    可綁卡
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      {/* 記帳分類項目管理入口 */}
-      <View style={styles.cardSection}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.cardSectionTitle} numberOfLines={1} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            🏷️ 記帳分類項目 ({categories.length})
-          </Text>
-          <TouchableOpacity
-            style={styles.manageCategoryBtn}
-            onPress={() => {
-              onOpenCategoryModal();
-            }}
-          >
-            <Text style={styles.manageCategoryBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              {isOwner ? '⚙️ 管理' : '👀 查看'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <Text style={styles.sectionHeaderDesc} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-          {isOwner ? '管理員可自訂支出與收入分類項目、圖示及代表顏色' : '查看目前記帳分類項目（僅帳本管理員可新增或修改）'}
-        </Text>
-
-        <View style={styles.categoryPreviewRow}>
-          {categories.map(cat => (
-            <TouchableOpacity
-              key={cat.id}
-              style={[styles.categoryPreviewChip, { borderColor: `${cat.color || '#4F46E5'}40` }]}
-              onPress={onOpenCategoryModal}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.categoryPreviewIcon}>{getCategoryIcon(cat.icon)}</Text>
-              <Text style={styles.categoryPreviewText} numberOfLines={1} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                {cat.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
+      {/* ⚙️ 帳務工具與分類（精簡目錄入口） */}
+      <SettingsGroupCard title="⚙️ 帳務工具與分類" caption={isOwner ? '可自訂管理' : '唯讀瀏覽'}>
+        <SettingsRowItem
+          icon="📱"
+          title="常用付款方式"
+          subtitle={paymentMethodsPreview}
+          badgeText={`共 ${enabledPaymentMethods.length} 項`}
+          badgeTone="info"
+          onPress={onOpenPaymentMethodsModal}
+        />
+        <SettingsRowItem
+          icon="🏷️"
+          title="記帳分類項目"
+          subtitle={`支出 ${expenseCategoryCount} 項 · 收入 ${incomeCategoryCount} 項`}
+          badgeText={`共 ${categories.length} 項`}
+          badgeTone="neutral"
+          isLast
+          onPress={onOpenCategoryModal}
+        />
+      </SettingsGroupCard>
     </ScrollView>
   );
 };
@@ -516,8 +537,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     billsHeroCard: {
       backgroundColor: isDark ? colors.background.card : '#FFFFFF',
       borderRadius: 16,
-      padding: 16,
-      marginBottom: 16,
+      padding: 14,
+      marginBottom: 14,
       borderWidth: 1,
       borderColor: colors.border.default,
       shadowColor: '#0F172A',
@@ -530,22 +551,15 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginBottom: 4,
-    },
-    billsHeroLeft: {
-      flex: 1,
-      paddingRight: 10,
+      flexWrap: 'wrap',
+      gap: 8,
+      marginBottom: 10,
     },
     billsHeroTitle: {
       fontSize: 16,
       fontWeight: '800',
       color: colors.text.primary,
-      marginBottom: 0,
-    },
-    billsHeroDesc: {
-      fontSize: 11,
-      color: colors.text.muted,
-      lineHeight: 16,
+      maxWidth: '100%',
     },
     billsHeroSummaryChip: {
       backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
@@ -553,7 +567,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       borderColor: colors.border.default,
       borderRadius: 20,
       paddingHorizontal: 10,
-      paddingVertical: 5,
+      paddingVertical: 4,
+      flexShrink: 0,
     },
     billsHeroSummaryText: {
       fontSize: 11,
@@ -565,7 +580,6 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
       borderRadius: 12,
       padding: 3,
-      marginBottom: 14,
       gap: 4,
     },
     billsScopeTab: {
@@ -594,31 +608,37 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     },
     cardSection: {
       backgroundColor: isDark ? colors.background.card : '#FFFFFF',
-      borderRadius: 18,
-      padding: 18,
+      borderRadius: 16,
+      padding: 16,
       marginBottom: 16,
+      borderWidth: 1,
+      borderColor: colors.border.default,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.04,
       shadowRadius: 4,
-      elevation: 2,
+      elevation: 1,
     },
-    sectionHeaderRow: {
+    sectionHeaderWrapRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 4,
-    },
-    sectionHeaderLeft: {
-      flex: 1,
-      marginRight: 8,
+      flexWrap: 'wrap',
+      columnGap: 8,
+      rowGap: 8,
+      marginBottom: 6,
     },
     cardSectionTitle: {
       fontSize: 15,
       fontWeight: '700',
       color: colors.text.primary,
-      flex: 1,
-      marginRight: 8,
+      maxWidth: '100%',
+    },
+    sectionActionGroup: {
+      flexDirection: 'row',
+      gap: 6,
+      alignItems: 'center',
+      flexShrink: 0,
     },
     sectionHeaderDesc: {
       fontSize: 12,
@@ -626,107 +646,129 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       marginBottom: 12,
       lineHeight: 17,
     },
-    manageCategoryBtn: {
+    actionBtn: {
       paddingHorizontal: 10,
       paddingVertical: 6,
       borderRadius: 8,
-      backgroundColor: isDark ? 'rgba(79, 70, 229, 0.15)' : '#EEF2FF',
+      backgroundColor: isDark ? 'rgba(79, 70, 229, 0.18)' : '#EEF2FF',
       borderWidth: 1,
-      borderColor: isDark ? 'rgba(79, 70, 229, 0.35)' : '#C7D2FE',
+      borderColor: isDark ? 'rgba(99, 102, 241, 0.4)' : '#C7D2FE',
     },
-    manageCategoryBtnText: {
+    actionBtnText: {
       fontSize: 12,
       fontWeight: '600',
-      color: isDark ? '#818CF8' : '#4F46E5',
+      color: isDark ? '#A5B4FC' : '#4F46E5',
     },
-    paymentAccountPreviewRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 8,
-      marginTop: 10,
-    },
-    paymentAccountPreviewChip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
-      borderWidth: 1,
+    listContainer: {
       borderRadius: 12,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      maxWidth: '100%',
+      borderWidth: 1,
+      borderColor: colors.border.default,
+      backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
       overflow: 'hidden',
     },
-    paymentAccountPreviewIcon: {
-      fontSize: 14,
-      marginRight: 6,
-    },
-    paymentAccountPreviewText: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: colors.text.secondary,
-      flexShrink: 1,
-      marginRight: 4,
-    },
-    paymentAccountBadge: {
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 6,
-      flexShrink: 0,
-      marginLeft: 2,
-    },
-    paymentAccountBadgeText: {
-      fontSize: 10,
-      fontWeight: '700',
-    },
-    ruleChipPendingDot: {
-      position: 'absolute',
-      top: -3,
-      right: -3,
-      width: 9,
-      height: 9,
-      borderRadius: 5,
-      backgroundColor: '#EF4444',
-      borderWidth: 1.5,
-      borderColor: '#FFFFFF',
-      zIndex: 10,
-      elevation: 3,
-    },
-    categoryPreviewRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 6,
-      marginTop: 10,
-    },
-    categoryPreviewChip: {
+    listRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
-      borderWidth: 1,
-      borderRadius: 12,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      maxWidth: '48%',
+      paddingHorizontal: 12,
+      paddingVertical: 11,
+      gap: 8,
     },
-    categoryPreviewIcon: {
-      fontSize: 13,
-      marginRight: 4,
+    listRowBorder: {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border.default,
     },
-    categoryPreviewText: {
-      fontSize: 12,
-      fontWeight: '500',
-      color: colors.text.secondary,
+    listRowMain: {
+      flex: 1,
+      minWidth: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      flexWrap: 'wrap',
+      columnGap: 8,
+      rowGap: 5,
     },
-    categoryMoreChip: {
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 12,
-      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
-      justifyContent: 'center',
+    listRowTitleWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      flexShrink: 1,
+      maxWidth: '100%',
     },
-    categoryMoreText: {
-      fontSize: 11,
-      color: colors.text.muted,
+    pendingDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      flexShrink: 0,
+    },
+    listRowTitle: {
+      fontSize: 14,
       fontWeight: '600',
+      color: colors.text.primary,
+      lineHeight: 20,
+      maxWidth: '100%',
+    },
+    statusBadge: {
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 8,
+      flexShrink: 0,
+    },
+    statusBadgeText: {
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    listRowChevron: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: colors.text.muted,
+      flexShrink: 0,
+    },
+    expandToggleBtn: {
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border.default,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.03)' : '#FFFFFF',
+    },
+    expandToggleBtnText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: isDark ? '#93C5FD' : '#2563EB',
+    },
+    emptyActionGroup: {
+      gap: 8,
+    },
+    emptyDashedBtn: {
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderStyle: 'dashed',
+      borderColor: colors.border.strong,
+      backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
+      alignItems: 'center',
+    },
+    emptyDashedBtnText: {
+      fontSize: 12.5,
+      fontWeight: '600',
+      color: colors.text.secondary,
+      textAlign: 'center',
+    },
+    switchToAllBtn: {
+      paddingVertical: 11,
+      paddingHorizontal: 14,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: isDark ? '#4F46E5' : '#C7D2FE',
+      backgroundColor: isDark ? 'rgba(99, 102, 241, 0.14)' : '#EEF2FF',
+      alignItems: 'center',
+    },
+    switchToAllBtnText: {
+      fontSize: 12.5,
+      fontWeight: '700',
+      color: isDark ? '#A5B4FC' : '#4F46E5',
+      textAlign: 'center',
     },
   });
-

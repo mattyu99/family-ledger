@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.18';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.18 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 10;
+export const APP_BUILD_REVISION = 11;
 
-// 完整版本字串 (例如 "1.0.18.10")
+// 完整版本字串 (例如 "1.0.18.11")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -24,6 +24,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
     title: '家庭設定分組目錄重構、LINE 雙軌日報、桌面待辦直達與 3D 黏土圖示',
     highlights: [
       '⚙️ 家庭設定全新分組目錄與大面板升級：改以四大清單呈現即時狀態並全面防大字體截字，點入專屬設定視窗與公帳切換皆採寬敞底部面板，操作更清爽直覺。',
+      '💳 帳單支付頁清爽清單改版：頂部視角整併瘦身，週期帳單依逾期與即期自動排序並支援預設收合，修正深色模式配色與標題截字，付款方式與分類收斂為精簡目錄。',
       '⚡ 桌面快捷待辦直達與 3D 黏土圖示：長按 App 選單精選四大家庭最高頻入口，正式納入「待辦清單」並搭配專屬圓潤 3D 黏土打勾圖示，隨時秒看待辦與打勾辦妥。',
       '💚 LINE 個人與家庭群組雙軌日報：支援 App 一鍵綁定自由開關與挑選帳簿、多帳簿合併滑動不洗版，並整合信用卡精準倒數、逾期標記、安靜日免打擾與私密備忘隔離守護。',
       '🏛️ 雲端資料庫總綱同步與防分身機制整併：整合信用卡每月繳款截止日與專屬連線通行證，確保新安裝與資料庫重整時具備最完善的防重複分身與帳單共用週期。',
