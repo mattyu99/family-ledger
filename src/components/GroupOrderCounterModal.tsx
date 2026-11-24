@@ -1138,7 +1138,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
         onRequestClose={() => setEditingItem(null)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
           style={styles.editOverlay}
         >
           <TouchableOpacity
@@ -1177,10 +1177,18 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                       style={[
                         styles.memberPill,
                         isSelected && styles.memberPillActive,
-                        isDark && !isSelected && { backgroundColor: '#374151', borderColor: '#4B5563' },
+                        isDark && (isSelected
+                          ? { backgroundColor: 'rgba(59, 130, 246, 0.22)', borderColor: '#60A5FA' }
+                          : { backgroundColor: '#374151', borderColor: '#4B5563' }),
                       ]}
                     >
-                      <Text style={[styles.memberPillText, isSelected && styles.memberPillTextActive]}>
+                      <Text
+                        style={[
+                          styles.memberPillText,
+                          isSelected && styles.memberPillTextActive,
+                          isDark && (isSelected ? { color: '#93C5FD' } : { color: '#D1D5DB' }),
+                        ]}
+                      >
                         👤 {member.display_name}
                       </Text>
                     </TouchableOpacity>
@@ -1256,9 +1264,16 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
                     '確定刪除'
                   );
                 }}
-                style={styles.editDeleteBtn}
+                style={[
+                  styles.editDeleteBtn,
+                  isDark && {
+                    backgroundColor: 'rgba(239, 68, 68, 0.16)',
+                    borderWidth: 1,
+                    borderColor: 'rgba(239, 68, 68, 0.4)',
+                  },
+                ]}
               >
-                <Text style={styles.editDeleteBtnText}>🗑️ 刪除此項</Text>
+                <Text style={[styles.editDeleteBtnText, isDark && { color: '#FCA5A5' }]}>🗑️ 刪除此項</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1298,7 +1313,7 @@ export const GroupOrderCounterModal: React.FC<GroupOrderCounterModalProps> = ({
         onRequestClose={() => setEditingVoteOption(null)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
           style={styles.editOverlay}
         >
           <TouchableOpacity

@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
-  Text,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
   Platform,
+  Keyboard,
   KeyboardAvoidingView,
 } from 'react-native';
-import { TextInput } from './common/Text';
+import { Text, TextInput } from './common/Text';
 import { useTheme } from '../theme/ThemeContext';
 import { useLedger } from '../context/LedgerContext';
 import { MemoItemReply } from '../lib/memo';
@@ -42,7 +42,7 @@ export const MemoItemReplyModal: React.FC<MemoItemReplyModalProps> = ({
   onSaveReply,
   onDeleteReply,
 }) => {
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
   const { currentUser, members } = useLedger();
 
   // 身分選擇
@@ -106,39 +106,59 @@ export const MemoItemReplyModal: React.FC<MemoItemReplyModalProps> = ({
     <Modal
       visible={visible}
       transparent
-      animationType="fade"
+      animationType="slide"
       onRequestClose={onClose}
     >
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.backdrop}
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+        style={[styles.backdrop, isDark && { backgroundColor: 'rgba(0,0,0,0.75)' }]}
       >
         <TouchableOpacity
           style={styles.backdropTouch}
           activeOpacity={1}
-          onPress={onClose}
+          onPress={() => {
+            Keyboard.dismiss();
+            onClose();
+          }}
         />
-        <View style={[styles.dialogCard, isDark && { backgroundColor: '#1F2937', borderColor: '#374151' }]}>
+        <View
+          style={[
+            styles.dialogCard,
+            isDark && {
+              backgroundColor: colors.background.modal,
+              borderTopWidth: 1,
+              borderTopColor: colors.border.default,
+            },
+          ]}
+        >
+          <View style={styles.sheetHandleBarWrap}>
+            <View style={[styles.sheetHandleBar, isDark && { backgroundColor: '#475569' }]} />
+          </View>
           {/* 頂部標題 */}
-          <View style={styles.headerRow}>
+          <View style={[styles.headerRow, isDark && { borderBottomColor: colors.border.default }]}>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.title, isDark && { color: '#F9FAFB' }]} numberOfLines={1}>
+              <Text style={[styles.title, isDark && { color: '#F9FAFB' }]} numberOfLines={1} maxFontSizeMultiplier={1.15}>
                 💬 項目回報與回答
               </Text>
-              <Text style={[styles.itemSubTitle, isDark && { color: '#93C5FD' }]} numberOfLines={1}>
+              <Text style={[styles.itemSubTitle, isDark && { color: '#93C5FD' }]} numberOfLines={1} maxFontSizeMultiplier={1.12}>
                 📌 {itemText || '待辦子項目'}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={[styles.closeIconBtn, isDark && { backgroundColor: '#374151' }]}>
-              <Text style={[styles.closeIconText, isDark && { color: '#9CA3AF' }]}>✕</Text>
+              <Text style={[styles.closeIconText, isDark && { color: '#9CA3AF' }]} maxFontSizeMultiplier={1.15}>✕</Text>
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.contentScroll} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            style={styles.contentScroll}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
             {/* 歷史留言清單 */}
             {replies.length > 0 && (
               <View style={styles.historySection}>
-                <Text style={[styles.sectionLabel, isDark && { color: '#9CA3AF' }]}>
+                <Text style={[styles.sectionLabel, isDark && { color: '#9CA3AF' }]} maxFontSizeMultiplier={1.12}>
                   全家回覆紀錄（{replies.length} 則）：
                 </Text>
                 <View style={styles.replyList}>
@@ -151,8 +171,8 @@ export const MemoItemReplyModal: React.FC<MemoItemReplyModalProps> = ({
                           styles.replyBubble,
                           isMine && styles.replyBubbleMine,
                           isDark && {
-                            backgroundColor: isMine ? '#1E3A8A' : '#374151',
-                            borderColor: isMine ? '#3B82F6' : '#4B5563',
+                            backgroundColor: isMine ? 'rgba(59, 130, 246, 0.18)' : '#374151',
+                            borderColor: isMine ? 'rgba(96, 165, 250, 0.45)' : '#4B5563',
                           },
                         ]}
                       >
@@ -163,6 +183,7 @@ export const MemoItemReplyModal: React.FC<MemoItemReplyModalProps> = ({
                               isMine && styles.replyMemberNameMine,
                               isDark && { color: isMine ? '#93C5FD' : '#D1D5DB' },
                             ]}
+                            maxFontSizeMultiplier={1.1}
                           >
                             👤 {r.memberName}
                           </Text>
@@ -172,7 +193,7 @@ export const MemoItemReplyModal: React.FC<MemoItemReplyModalProps> = ({
                               style={styles.deleteReplyBtn}
                               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                             >
-                              <Text style={styles.deleteReplyText}>🗑️ 清除</Text>
+                              <Text style={[styles.deleteReplyText, isDark && { color: '#FCA5A5' }]} maxFontSizeMultiplier={1.08}>🗑️ 清除</Text>
                             </TouchableOpacity>
                           )}
                         </View>
@@ -181,6 +202,7 @@ export const MemoItemReplyModal: React.FC<MemoItemReplyModalProps> = ({
                             styles.replyContentText,
                             isDark && { color: isMine ? '#E0F2FE' : '#F3F4F6' },
                           ]}
+                          maxFontSizeMultiplier={1.15}
                         >
                           {r.text}
                         </Text>
@@ -192,7 +214,7 @@ export const MemoItemReplyModal: React.FC<MemoItemReplyModalProps> = ({
             )}
 
             {/* 代表成員切換 */}
-            <Text style={[styles.sectionLabel, isDark && { color: '#9CA3AF' }]}>
+            <Text style={[styles.sectionLabel, isDark && { color: '#9CA3AF' }]} maxFontSizeMultiplier={1.12}>
               以誰的身分回覆：
             </Text>
             <HorizontalScrollView showsHorizontalScrollIndicator={false} style={styles.memberScrollRow}>
@@ -207,15 +229,18 @@ export const MemoItemReplyModal: React.FC<MemoItemReplyModalProps> = ({
                     style={[
                       styles.memberPill,
                       isSelected && styles.memberPillActive,
-                      isDark && !isSelected && { backgroundColor: '#374151', borderColor: '#4B5563' },
+                      isDark && (isSelected
+                        ? { backgroundColor: 'rgba(59, 130, 246, 0.22)', borderColor: '#60A5FA' }
+                        : { backgroundColor: '#374151', borderColor: '#4B5563' }),
                     ]}
                   >
                     <Text
                       style={[
                         styles.memberPillText,
                         isSelected && styles.memberPillTextActive,
-                        isDark && !isSelected && { color: '#D1D5DB' },
+                        isDark && (isSelected ? { color: '#93C5FD' } : { color: '#D1D5DB' }),
                       ]}
+                      maxFontSizeMultiplier={1.08}
                     >
                       👤 {cleanName}{isMe ? ' (我)' : ''}
                     </Text>
@@ -225,7 +250,7 @@ export const MemoItemReplyModal: React.FC<MemoItemReplyModalProps> = ({
             </HorizontalScrollView>
 
             {/* 回覆輸入框 */}
-            <Text style={[styles.sectionLabel, isDark && { color: '#9CA3AF' }]}>
+            <Text style={[styles.sectionLabel, isDark && { color: '#9CA3AF' }]} maxFontSizeMultiplier={1.12}>
               {hasMyReply ? '修改回覆內容：' : '輸入回覆內容：'}
             </Text>
             <TextInput
@@ -248,7 +273,7 @@ export const MemoItemReplyModal: React.FC<MemoItemReplyModalProps> = ({
                   onPress={() => setInputText(tag)}
                   style={[styles.quickTagBtn, isDark && { backgroundColor: '#374151', borderColor: '#4B5563' }]}
                 >
-                  <Text style={[styles.quickTagText, isDark && { color: '#D1D5DB' }]}>
+                  <Text style={[styles.quickTagText, isDark && { color: '#D1D5DB' }]} maxFontSizeMultiplier={1.08}>
                     ＋{tag}
                   </Text>
                 </TouchableOpacity>
@@ -257,13 +282,16 @@ export const MemoItemReplyModal: React.FC<MemoItemReplyModalProps> = ({
           </ScrollView>
 
           {/* 底部按鈕 */}
-          <View style={styles.footerRow}>
+          <View style={[styles.footerRow, isDark && { borderTopColor: colors.border.default }]}>
             {hasMyReply && (
               <TouchableOpacity
                 onPress={() => handleDelete(selectedMember)}
-                style={[styles.btnSecondary, isDark && { backgroundColor: '#374151', borderColor: '#4B5563' }]}
+                style={[
+                  styles.btnSecondary,
+                  isDark && { backgroundColor: 'rgba(239, 68, 68, 0.16)', borderColor: 'rgba(239, 68, 68, 0.4)' },
+                ]}
               >
-                <Text style={[styles.btnSecondaryText, isDark && { color: '#F87171' }]}>
+                <Text style={[styles.btnSecondaryText, isDark && { color: '#FCA5A5' }]} maxFontSizeMultiplier={1.1}>
                   🗑️ 清除回覆
                 </Text>
               </TouchableOpacity>
@@ -272,7 +300,7 @@ export const MemoItemReplyModal: React.FC<MemoItemReplyModalProps> = ({
               onPress={handleSave}
               style={[styles.btnPrimary, { flex: 1 }]}
             >
-              <Text style={styles.btnPrimaryText}>
+              <Text style={styles.btnPrimaryText} maxFontSizeMultiplier={1.1}>
                 {hasMyReply ? '💾 儲存修改' : '💬 送出回覆'}
               </Text>
             </TouchableOpacity>
@@ -286,10 +314,8 @@ export const MemoItemReplyModal: React.FC<MemoItemReplyModalProps> = ({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
   },
   backdropTouch: {
     position: 'absolute',
@@ -298,20 +324,34 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
   },
+  sheetHandleBarWrap: {
+    alignItems: 'center',
+    paddingBottom: 10,
+  },
+  sheetHandleBar: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#CBD5E1',
+  },
   dialogCard: {
     width: '100%',
-    maxWidth: 420,
-    maxHeight: '85%',
+    maxWidth: 600,
+    alignSelf: 'center',
+    maxHeight: '90%',
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    paddingTop: 10,
+    paddingHorizontal: 18,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 18,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    elevation: 10,
   },
   headerRow: {
     flexDirection: 'row',
@@ -347,7 +387,8 @@ const styles = StyleSheet.create({
     color: '#6B7280',
   },
   contentScroll: {
-    maxHeight: 380,
+    width: '100%',
+    flexShrink: 1,
   },
   sectionLabel: {
     fontSize: 12.5,

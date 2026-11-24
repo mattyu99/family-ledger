@@ -13,6 +13,7 @@ import {
   Image,
   ActivityIndicator,
   Keyboard,
+  KeyboardAvoidingView,
   Clipboard,
 } from 'react-native';
 import { Text, TextInput } from './common/Text';
@@ -925,7 +926,10 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+        style={styles.overlay}
+      >
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
         <View style={styles.sheet}>
           {/* 標頭 */}
@@ -1403,6 +1407,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
               contentContainerStyle={{ paddingBottom: keyboardOffset > 0 ? keyboardOffset + 60 : 30 }}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
             >
               {/* 卡片選擇標籤橫向滑軌 */}
               <Text style={styles.sectionHeader} maxFontSizeMultiplier={1.15}>
@@ -2137,7 +2142,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
             </ScrollView>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
 
       {/* 🖼️ 圖片格式電子帳單全螢幕預覽彈窗 */}
       <Modal

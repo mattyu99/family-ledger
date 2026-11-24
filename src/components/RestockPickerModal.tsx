@@ -2,17 +2,14 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Modal,
   View,
-  Text,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  Dimensions,
   Platform,
 } from 'react-native';
+import { Text } from './common/Text';
 import { useTheme } from '../theme/ThemeContext';
 import { PendingRestockItem } from '../lib/groupOrder';
-
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface RestockPickerModalProps {
   visible: boolean;
@@ -27,7 +24,7 @@ export const RestockPickerModal: React.FC<RestockPickerModalProps> = ({
   onClose,
   onConfirm,
 }) => {
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
 
   // 選取的品項名稱 Set (依 itemName 唯一標識)
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
@@ -77,23 +74,26 @@ export const RestockPickerModal: React.FC<RestockPickerModalProps> = ({
     <Modal
       visible={visible}
       transparent
-      animationType="fade"
+      animationType="slide"
       onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
+      <View style={[styles.overlay, isDark && { backgroundColor: 'rgba(0,0,0,0.75)' }]}>
         <TouchableOpacity
           style={styles.backdrop}
           activeOpacity={1}
           onPress={onClose}
         />
-        <View style={[styles.modalCard, isDark && styles.modalCardDark]}>
+        <View style={[styles.modalCard, isDark && { backgroundColor: colors.background.modal, borderTopWidth: 1, borderTopColor: colors.border.default }]}>
+          <View style={styles.sheetHandleBarWrap}>
+            <View style={[styles.sheetHandleBar, isDark && { backgroundColor: '#475569' }]} />
+          </View>
           {/* 頂部標題列 */}
-          <View style={styles.header}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.headerTitle, isDark && styles.textLight]} allowFontScaling={false}>
+          <View style={[styles.header, isDark && { borderBottomColor: colors.border.default }]}>
+            <View style={{ flex: 1, marginRight: 8 }}>
+              <Text style={[styles.headerTitle, isDark && styles.textLight]} maxFontSizeMultiplier={1.15}>
                 🏠 挑選要帶入的缺貨品項
               </Text>
-              <Text style={[styles.headerSubtitle, isDark && styles.textMuted]} allowFontScaling={false}>
+              <Text style={[styles.headerSubtitle, isDark && styles.textMuted]} maxFontSizeMultiplier={1.12}>
                 已勾選 {selectedCount}/{pendingItems.length} 項 · 未勾選將保留於缺貨池
               </Text>
             </View>
@@ -102,7 +102,7 @@ export const RestockPickerModal: React.FC<RestockPickerModalProps> = ({
               style={[styles.selectAllBtn, isDark && styles.selectAllBtnDark]}
               activeOpacity={0.7}
             >
-              <Text style={[styles.selectAllBtnText, isDark && styles.selectAllBtnTextDark]}>
+              <Text style={[styles.selectAllBtnText, isDark && styles.selectAllBtnTextDark]} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                 {allSelected ? '取消全選' : '全選'}
               </Text>
             </TouchableOpacity>
@@ -127,28 +127,37 @@ export const RestockPickerModal: React.FC<RestockPickerModalProps> = ({
                   activeOpacity={0.75}
                   onPress={() => handleToggleItem(item.itemName)}
                 >
-                  <View style={[styles.checkbox, isChecked && styles.checkboxChecked]}>
+                  <View
+                    style={[
+                      styles.checkbox,
+                      isChecked && styles.checkboxChecked,
+                      isDark && !isChecked && {
+                        backgroundColor: colors.background.cardSubtle,
+                        borderColor: colors.border.strong,
+                      },
+                    ]}
+                  >
                     <Text style={[styles.checkboxCheck, isChecked && styles.checkboxCheckChecked]}>
                       {isChecked ? '✓' : ''}
                     </Text>
                   </View>
                   <View style={styles.itemInfo}>
                     <View style={styles.itemNameRow}>
-                      <Text style={[styles.itemName, isDark && styles.textLight]} numberOfLines={1}>
+                      <Text style={[styles.itemName, isDark && styles.textLight]} numberOfLines={1} maxFontSizeMultiplier={1.15}>
                         {item.itemName}
                       </Text>
                       {item.specs ? (
-                        <Text style={[styles.itemSpecs, isDark && styles.textMuted]}>
+                        <Text style={[styles.itemSpecs, isDark && styles.textMuted]} maxFontSizeMultiplier={1.1}>
                           ({item.specs})
                         </Text>
                       ) : null}
                     </View>
                     <View style={styles.itemMetaRow}>
-                      <Text style={[styles.itemOrigin, isDark && styles.textMuted]}>
+                      <Text style={[styles.itemOrigin, isDark && styles.textMuted]} maxFontSizeMultiplier={1.08}>
                         來源：{item.memoTitle || '家中缺貨隨手記'}
                       </Text>
                       {item.memberName ? (
-                        <Text style={[styles.itemMember, isDark && styles.textMuted]}>
+                        <Text style={[styles.itemMember, isDark && styles.textMuted]} maxFontSizeMultiplier={1.08}>
                           · 記錄人：{item.memberName}
                         </Text>
                       ) : null}
@@ -160,13 +169,13 @@ export const RestockPickerModal: React.FC<RestockPickerModalProps> = ({
           </ScrollView>
 
           {/* 底部按鈕列 */}
-          <View style={[styles.footer, isDark && styles.footerDark]}>
+          <View style={[styles.footer, isDark && { backgroundColor: colors.background.modal, borderTopColor: colors.border.default }]}>
             <TouchableOpacity
               onPress={onClose}
               style={[styles.cancelBtn, isDark && styles.cancelBtnDark]}
               activeOpacity={0.7}
             >
-              <Text style={[styles.cancelBtnText, isDark && styles.textLight]}>
+              <Text style={[styles.cancelBtnText, isDark && styles.textLight]} maxFontSizeMultiplier={1.1}>
                 取消
               </Text>
             </TouchableOpacity>
@@ -179,7 +188,7 @@ export const RestockPickerModal: React.FC<RestockPickerModalProps> = ({
               ]}
               activeOpacity={0.75}
             >
-              <Text style={styles.confirmBtnText}>
+              <Text style={styles.confirmBtnText} maxFontSizeMultiplier={1.1}>
                 {selectedCount === 0 ? '請至少勾選一項' : `帶入本次推車 (${selectedCount})`}
               </Text>
             </TouchableOpacity>
@@ -193,10 +202,8 @@ export const RestockPickerModal: React.FC<RestockPickerModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
   },
   backdrop: {
     position: 'absolute',
@@ -205,30 +212,40 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
   },
+  sheetHandleBarWrap: {
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  sheetHandleBar: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#CBD5E1',
+  },
   modalCard: {
     width: '100%',
-    maxWidth: 440,
-    maxHeight: SCREEN_HEIGHT * 0.75,
+    maxWidth: 600,
+    alignSelf: 'center',
+    maxHeight: '90%',
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  modalCardDark: {
-    backgroundColor: '#1E293B',
-    borderColor: '#334155',
-    borderWidth: 1,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    elevation: 10,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 18,
+    paddingHorizontal: 18,
+    paddingTop: 6,
     paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
@@ -253,8 +270,8 @@ const styles = StyleSheet.create({
     borderColor: '#BFDBFE',
   },
   selectAllBtnDark: {
-    backgroundColor: '#1E3A8A',
-    borderColor: '#3B82F6',
+    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+    borderColor: 'rgba(96, 165, 250, 0.45)',
   },
   selectAllBtnText: {
     fontSize: 12.5,
@@ -265,10 +282,11 @@ const styles = StyleSheet.create({
     color: '#93C5FD',
   },
   listScroll: {
-    maxHeight: SCREEN_HEIGHT * 0.48,
+    width: '100%',
+    flexShrink: 1,
   },
   listContent: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     paddingVertical: 12,
     gap: 8,
   },
@@ -323,6 +341,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexWrap: 'wrap',
   },
   itemName: {
     fontSize: 15,
@@ -336,6 +355,7 @@ const styles = StyleSheet.create({
   itemMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     marginTop: 2,
   },
   itemOrigin: {
@@ -350,16 +370,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 14,
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
     gap: 10,
     backgroundColor: '#F8FAFC',
-  },
-  footerDark: {
-    backgroundColor: '#0F172A',
-    borderTopColor: '#1E293B',
   },
   cancelBtn: {
     paddingHorizontal: 16,

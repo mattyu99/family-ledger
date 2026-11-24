@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
-  Text,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
 } from 'react-native';
-import { TextInput } from './common/Text';
+import { Text, TextInput } from './common/Text';
 import { HorizontalScrollView } from './HorizontalScrollView';
 import { useTheme } from '../theme/ThemeContext';
 import { useLedger } from '../context/LedgerContext';
@@ -191,27 +191,42 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
     <Modal
       visible={visible}
       transparent
-      animationType="fade"
+      animationType="slide"
       onRequestClose={onClose}
     >
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+        style={[styles.overlay, isDark && { backgroundColor: 'rgba(0,0,0,0.75)' }]}
       >
         <TouchableOpacity
           activeOpacity={1}
           style={styles.backdrop}
-          onPress={onClose}
+          onPress={() => {
+            Keyboard.dismiss();
+            onClose();
+          }}
         />
 
-        <View style={[styles.dialogCard, isDark && { backgroundColor: '#1F2937', borderColor: '#374151' }]}>
+        <View
+          style={[
+            styles.dialogCard,
+            isDark && {
+              backgroundColor: colors.background.modal,
+              borderTopWidth: 1,
+              borderTopColor: colors.border.default,
+            },
+          ]}
+        >
+          <View style={styles.sheetHandleBarWrap}>
+            <View style={[styles.sheetHandleBar, isDark && { backgroundColor: '#475569' }]} />
+          </View>
           {/* 標題列 */}
-          <View style={styles.headerRow}>
+          <View style={[styles.headerRow, isDark && { borderBottomColor: colors.border.default }]}>
             <View style={styles.headerTitleGroup}>
               <Text style={styles.headerIcon}>
                 {isVote ? '🗳️' : (isChore ? '🧹' : (isParcel ? '📦' : (isGrocery ? '🛒' : '🧋')))}
               </Text>
-              <Text style={[styles.headerTitle, isDark && { color: colors.text.primary }]}>
+              <Text style={[styles.headerTitle, isDark && { color: colors.text.primary }]} maxFontSizeMultiplier={1.15}>
                 {storeName &&
                 storeName !== '點餐店家' &&
                 storeName !== '採買賣場' &&
@@ -227,13 +242,18 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Text style={styles.closeBtnText}>✕</Text>
+              <Text style={styles.closeBtnText} maxFontSizeMultiplier={1.15}>✕</Text>
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.bodyScroll} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            style={styles.bodyScroll}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
             {/* 1. 成員選擇列 */}
-            <Text style={[styles.sectionLabel, isDark && { color: colors.text.muted }]}>
+            <Text style={[styles.sectionLabel, isDark && { color: colors.text.muted }]} maxFontSizeMultiplier={1.12}>
               {isVote
                 ? '提案人 (誰提議的，送出後自動投下第 1 票)：'
                 : (isChore
@@ -261,6 +281,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                       selectedMember === '' && styles.memberPillTextActive,
                       isDark && { color: selectedMember === '' ? '#FFFFFF' : '#D1D5DB' },
                     ]}
+                    maxFontSizeMultiplier={1.08}
                   >
                     ✋ 待認領 (大家搶)
                   </Text>
@@ -287,6 +308,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                         isSelected && styles.memberPillTextActive,
                         isDark && { color: isSelected ? '#FFFFFF' : '#D1D5DB' },
                       ]}
+                      maxFontSizeMultiplier={1.08}
                     >
                       {member.display_name}
                     </Text>
@@ -298,7 +320,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
             {/* 1.5 家中缺貨待補快捷帶入 (賣場採買 / 網購湊單專用) */}
             {pendingRestockItems.length > 0 && (
               <View style={styles.favoriteContainer}>
-                <Text style={[styles.sectionLabel, { color: isDark ? '#34D399' : '#059669' }]}>
+                <Text style={[styles.sectionLabel, { color: isDark ? '#34D399' : '#059669' }]} maxFontSizeMultiplier={1.12}>
                   🏠 家中缺貨待補 (點擊秒帶入)：
                 </Text>
                 <HorizontalScrollView showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
@@ -312,7 +334,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                       ]}
                       activeOpacity={0.7}
                     >
-                      <Text style={[styles.restockPillText, isDark && { color: '#6EE7B7' }]}>
+                      <Text style={[styles.restockPillText, isDark && { color: '#6EE7B7' }]} maxFontSizeMultiplier={1.08}>
                         🏠 {rItem.itemName}
                         {rItem.memberName ? ` (${rItem.memberName})` : ''}
                       </Text>
@@ -325,7 +347,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
             {/* 2. 成員專屬私房推薦 (全家同步，點擊一鍵填妥品項、規格與金額) */}
             {familyFavorites.memberFavorites.length > 0 && (
               <View style={styles.favoriteContainer}>
-                <Text style={[styles.sectionLabel, { color: isDark ? '#60A5FA' : '#2563EB' }]}>
+                <Text style={[styles.sectionLabel, { color: isDark ? '#60A5FA' : '#2563EB' }]} maxFontSizeMultiplier={1.12}>
                   💡 {selectedMember || '家人'}{' '}
                   {isParcel ? '常買的網購 (點擊秒帶入)：' : (isGrocery ? '常買的補貨 (點擊秒帶入)：' : '常點的口味 (點擊秒帶入)：')}
                 </Text>
@@ -341,17 +363,17 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                       activeOpacity={0.7}
                     >
                       <View style={styles.favoriteCardTop}>
-                        <Text style={[styles.favoriteCardName, isDark && { color: '#93C5FD' }]}>
+                        <Text style={[styles.favoriteCardName, isDark && { color: '#93C5FD' }]} maxFontSizeMultiplier={1.08}>
                           {fav.itemName}
                         </Text>
                         {fav.price > 0 && (
-                          <Text style={[styles.favoriteCardPrice, isDark && { color: '#34D399' }]}>
+                          <Text style={[styles.favoriteCardPrice, isDark && { color: '#34D399' }]} maxFontSizeMultiplier={1.08}>
                             ${fav.price}
                           </Text>
                         )}
                       </View>
                       {!!fav.specs && (
-                        <Text style={[styles.favoriteCardSpecs, isDark && { color: '#9CA3AF' }]} numberOfLines={1}>
+                        <Text style={[styles.favoriteCardSpecs, isDark && { color: '#9CA3AF' }]} numberOfLines={1} maxFontSizeMultiplier={1.08}>
                           👉 {fav.specs}
                         </Text>
                       )}
@@ -364,7 +386,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
             {/* 3. 全家熱銷排行 (全家同步，大家最常點/最常買 Top 6) */}
             {familyFavorites.familyTopFavorites.length > 0 && (
               <View style={styles.favoriteContainer}>
-                <Text style={[styles.sectionLabel, { color: '#F59E0B' }]}>
+                <Text style={[styles.sectionLabel, { color: '#F59E0B' }]} maxFontSizeMultiplier={1.12}>
                   {isParcel ? '🏆 全家常購/包裹範本：' : (isGrocery ? '🏆 全家常買熱銷榜：' : '🏆 全家常點熱銷榜：')}
                 </Text>
                 <HorizontalScrollView showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
@@ -378,7 +400,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                       ]}
                       activeOpacity={0.7}
                     >
-                      <Text style={[styles.favoritePillText, isDark && { color: '#FCD34D' }]}>
+                      <Text style={[styles.favoritePillText, isDark && { color: '#FCD34D' }]} maxFontSizeMultiplier={1.08}>
                         {fav.itemName}{fav.price > 0 ? ` $${fav.price}` : ''}
                       </Text>
                     </TouchableOpacity>
@@ -392,7 +414,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
               familyFavorites.familyTopFavorites.length === 0 &&
               favoriteItems.length > 0 && (
                 <View style={styles.favoriteContainer}>
-                  <Text style={[styles.sectionLabel, { color: '#F59E0B' }]}>
+                  <Text style={[styles.sectionLabel, { color: '#F59E0B' }]} maxFontSizeMultiplier={1.12}>
                     {isGrocery ? '💡 常買的補貨 (點擊秒帶入)：' : '💡 常點的招牌 (點擊秒帶入)：'}
                   </Text>
                   <HorizontalScrollView showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
@@ -403,7 +425,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                         style={[styles.favoritePill, isDark && { backgroundColor: 'rgba(245, 158, 11, 0.15)', borderColor: '#B45309' }]}
                         activeOpacity={0.7}
                       >
-                        <Text style={[styles.favoritePillText, isDark && { color: '#FCD34D' }]}>{fav}</Text>
+                        <Text style={[styles.favoritePillText, isDark && { color: '#FCD34D' }]} maxFontSizeMultiplier={1.08}>{fav}</Text>
                       </TouchableOpacity>
                     ))}
                   </HorizontalScrollView>
@@ -413,7 +435,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
             {/* 3. 品項名稱與金額 */}
             <View style={styles.inputRow}>
               <View style={{ flex: 1, marginRight: 10 }}>
-                <Text style={[styles.sectionLabel, isDark && { color: colors.text.muted }]}>
+                <Text style={[styles.sectionLabel, isDark && { color: colors.text.muted }]} maxFontSizeMultiplier={1.12}>
                   {isVote ? '候選方案名稱 *：' : (isChore ? '任務名稱 *：' : '品項名稱 *：')}
                 </Text>
                 <TextInput
@@ -438,7 +460,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
               </View>
 
               <View style={{ width: 100 }}>
-                <Text style={[styles.sectionLabel, isDark && { color: colors.text.muted }]}>
+                <Text style={[styles.sectionLabel, isDark && { color: colors.text.muted }]} maxFontSizeMultiplier={1.12}>
                   {isVote ? '預估人均：' : (isChore ? '懸賞金額：' : '預估金額：')}
                 </Text>
                 <TextInput
@@ -456,7 +478,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
             </View>
 
             {/* 4. 客製規格 */}
-            <Text style={[styles.sectionLabel, isDark && { color: colors.text.muted }]}>
+            <Text style={[styles.sectionLabel, isDark && { color: colors.text.muted }]} maxFontSizeMultiplier={1.12}>
               {isVote
                 ? '補充說明／理由 (選填，如評價、需訂位、包廂等)：'
                 : (isChore
@@ -488,7 +510,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
             />
 
             {/* 5. 常用動態記憶膠囊 */}
-            <Text style={[styles.hintText, isDark && { color: '#9CA3AF' }]}>常用快捷標籤 (點選即串接)：</Text>
+            <Text style={[styles.hintText, isDark && { color: '#9CA3AF' }]} maxFontSizeMultiplier={1.12}>常用快捷標籤 (點選即串接)：</Text>
             <HorizontalScrollView showsHorizontalScrollIndicator={false} style={styles.tagScrollRow}>
               {availableTags.slice(0, 18).map((t, idx) => (
                 <TouchableOpacity
@@ -499,16 +521,16 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                     isDark && { backgroundColor: '#374151', borderColor: '#4B5563' },
                   ]}
                 >
-                  <Text style={[styles.specTagPillText, isDark && { color: '#D1D5DB' }]}>{t}</Text>
+                  <Text style={[styles.specTagPillText, isDark && { color: '#D1D5DB' }]} maxFontSizeMultiplier={1.08}>{t}</Text>
                 </TouchableOpacity>
               ))}
             </HorizontalScrollView>
           </ScrollView>
 
           {/* 底部操作按鈕 */}
-          <View style={styles.footerRow}>
+          <View style={[styles.footerRow, isDark && { borderTopColor: colors.border.default }]}>
             <TouchableOpacity onPress={onClose} style={[styles.cancelBtn, isDark && { backgroundColor: '#374151' }]}>
-              <Text style={[styles.cancelBtnText, isDark && { color: '#9CA3AF' }]}>取消</Text>
+              <Text style={[styles.cancelBtnText, isDark && { color: '#9CA3AF' }]} maxFontSizeMultiplier={1.1}>取消</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -519,7 +541,7 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
                 !itemName.trim() && styles.submitBtnDisabled,
               ]}
             >
-              <Text style={styles.submitBtnText}>
+              <Text style={styles.submitBtnText} maxFontSizeMultiplier={1.1}>
                 {isVote
                   ? '確認提議候選 ＋'
                   : (isChore
@@ -537,34 +559,46 @@ export const GroupOrderAppendModal: React.FC<GroupOrderAppendModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
   },
   backdrop: {
     ...StyleSheet.absoluteFill,
   },
+  sheetHandleBarWrap: {
+    alignItems: 'center',
+    paddingBottom: 10,
+  },
+  sheetHandleBar: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#CBD5E1',
+  },
   dialogCard: {
     width: '100%',
-    maxWidth: 480,
+    maxWidth: 600,
+    alignSelf: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    padding: 20,
-    maxHeight: '85%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    paddingTop: 10,
+    paddingHorizontal: 18,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 18,
+    maxHeight: '90%',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    elevation: 10,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 16,
+    marginBottom: 14,
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
@@ -582,6 +616,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     color: '#111827',
+    flexShrink: 1,
   },
   closeBtn: {
     padding: 6,
@@ -592,7 +627,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   bodyScroll: {
-    marginBottom: 16,
+    width: '100%',
+    flexShrink: 1,
+    marginBottom: 8,
   },
   sectionLabel: {
     fontSize: 13,

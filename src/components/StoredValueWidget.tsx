@@ -1,16 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
   Modal,
-  Alert,
   Platform,
   Keyboard,
+  KeyboardAvoidingView,
   Clipboard,
 } from 'react-native';
 import { Text, TextInput } from './common/Text';
+import { showAlert } from '../lib/alert';
 
 import { PaymentAccount, PaymentMethod, CustomPaymentMethod } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
@@ -91,7 +92,6 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
   const [activeModalAccount, setActiveModalAccount] = useState<PaymentAccount | null>(null);
   const [modalMode, setModalMode] = useState<'topup' | 'adjust'>('topup');
   const [customAmount, setCustomAmount] = useState<string>('');
-  const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
 
   // 加值扣款來源設定（全面動態化支援所有支付方式與關聯卡片/銀行）
   const [topUpPaymentMethod, setTopUpPaymentMethod] = useState<PaymentMethod>('cash');
@@ -199,46 +199,6 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
     }
     return payerOtherStoredCards;
   }, [showAllSubAccounts, payerOtherStoredCards, otherStoredValueCards]);
-
-  // 監聽鍵盤高度 (Android, iOS 與 Mobile Web)
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-    const showSub = Keyboard.addListener(showEvent, (e) => {
-      const h = e?.endCoordinates?.height || 280;
-      setKeyboardOffset(h);
-    });
-
-    const hideSub = Keyboard.addListener(hideEvent, () => {
-      setKeyboardOffset(0);
-    });
-
-    let removeViewportListener: (() => void) | undefined;
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.visualViewport) {
-      const handleViewportResize = () => {
-        if (!window.visualViewport) return;
-        const windowHeight = window.innerHeight;
-        const viewportHeight = window.visualViewport.height;
-        const diff = windowHeight - viewportHeight;
-        if (diff > 120) {
-          setKeyboardOffset(diff);
-        } else {
-          setKeyboardOffset(0);
-        }
-      };
-      window.visualViewport.addEventListener('resize', handleViewportResize);
-      removeViewportListener = () => {
-        window.visualViewport?.removeEventListener('resize', handleViewportResize);
-      };
-    }
-
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-      if (removeViewportListener) removeViewportListener();
-    };
-  }, []);
 
   const handlePaymentMethodChange = (newMethod: PaymentMethod) => {
     setTopUpPaymentMethod(newMethod);
@@ -355,15 +315,13 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
     }
 
     if (!realIsOwner) {
-      if (Platform.OS === 'web') alert('權限不足：只有帳本管理員或持卡人本人才能校正卡片餘額');
-      else Alert.alert('權限不足', '只有帳本管理員或持卡人本人才能校正卡片餘額');
+      showAlert('權限不足', '只有帳本管理員或持卡人本人才能校正卡片餘額');
       return;
     }
 
     if (!isAdminMode) {
       const msg = `此為【${acc.name}】非本人卡片，目前為日常檢視模式。\n若需校正餘額，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。`;
-      if (Platform.OS === 'web') alert(msg);
-      else Alert.alert('日常檢視模式', msg);
+      showAlert('日常檢視模式', msg);
       return;
     }
 
@@ -376,8 +334,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
     if (!activeModalAccount) return;
     const num = parseFloat(customAmount);
     if (isNaN(num) || (modalMode === 'topup' && num <= 0) || (modalMode === 'adjust' && num < 0)) {
-      if (Platform.OS === 'web') alert('請輸入有效金額');
-      else Alert.alert('提示', '請輸入有效金額');
+      showAlert('提示', '請輸入有效金額');
       return;
     }
 
@@ -394,13 +351,11 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
     } else {
       const isMyCard = isMatchedToCurrentUser(activeModalAccount.user_id);
       if (!isMyCard && !realIsOwner) {
-        if (Platform.OS === 'web') alert('權限不足：只有帳本管理員或持卡人本人才能校正卡片餘額');
-        else Alert.alert('權限不足', '只有帳本管理員或持卡人本人才能校正卡片餘額');
+        showAlert('權限不足', '只有帳本管理員或持卡人本人才能校正卡片餘額');
         return;
       }
       if (!isMyCard && !isAdminMode) {
-        if (Platform.OS === 'web') alert('權限不足：只有在管理員模式下才能校正非本人卡片餘額');
-        else Alert.alert('日常模式受限', '只有在管理員模式下才能校正非本人卡片餘額');
+        showAlert('日常模式受限', '只有在管理員模式下才能校正非本人卡片餘額');
         return;
       }
       const success = await adjustAccountBalance(activeModalAccount.id, num);
@@ -420,11 +375,9 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
         Clipboard.setString(fullNum);
       }
       const msg = `悠遊卡「${card.name}」完整卡號「${fullNum}」已複製至剪貼簿！可直接貼至官網查詢餘額與搭乘明細。`;
-      if (Platform.OS === 'web') alert(msg);
-      else Alert.alert('已複製完整卡號 📋', msg);
+      showAlert('已複製完整卡號 📋', msg);
     } catch {
-      if (Platform.OS === 'web') alert(`卡號：${fullNum}`);
-      else Alert.alert('卡號', fullNum);
+      showAlert('卡號', fullNum);
     }
   };
 
@@ -483,7 +436,9 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                 </View>
                 {owner && (
                   <View style={styles.ownerBadge}>
-                    <Text style={styles.ownerText}>{owner.avatar_url || '👤'} {owner.display_name}</Text>
+                    <Text style={styles.ownerText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
+                      {owner.avatar_url || '👤'} {owner.display_name}
+                    </Text>
                   </View>
                 )}
               </View>
@@ -552,41 +507,52 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
       <Modal
         visible={!!activeModalAccount}
         transparent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setActiveModalAccount(null)}
       >
-        <View style={[
-          styles.modalOverlay,
-          keyboardOffset > 0 && { justifyContent: 'center', paddingBottom: 80 }
-        ]}>
-          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+          style={styles.modalOverlay}
+        >
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => {
+              Keyboard.dismiss();
+              setActiveModalAccount(null);
+            }}
+          />
           <View style={styles.modalContent}>
+            <View style={styles.sheetHandleBarWrap}>
+              <View style={styles.sheetHandleBar} />
+            </View>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
+              <Text style={styles.modalTitle} maxFontSizeMultiplier={1.15}>
                 {modalMode === 'topup' ? '🚌 悠遊卡快速加值' : '✏️ 校正卡片餘額'}
               </Text>
               <TouchableOpacity onPress={() => setActiveModalAccount(null)} style={styles.modalCloseBtn}>
-                <Text style={styles.modalCloseText}>✕</Text>
+                <Text style={styles.modalCloseText} maxFontSizeMultiplier={1.15}>✕</Text>
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 6 }}>
-              <Text style={styles.modalCardName}>
+            <ScrollView
+              style={{ width: '100%', flexShrink: 1 }}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              contentContainerStyle={{ paddingBottom: 12 }}
+            >
+              <Text style={styles.modalCardName} maxFontSizeMultiplier={1.15}>
                 卡片：{activeModalAccount?.name}
               </Text>
-              <Text style={styles.modalCardSub}>
+              <Text style={styles.modalCardSub} maxFontSizeMultiplier={1.12}>
                 目前餘額：NT$ {activeModalAccount?.balance.toLocaleString()}
               </Text>
 
               {modalMode === 'topup' ? (
                 <>
                   <View style={styles.inputLabelRow}>
-                    <Text style={styles.inputLabel}>選擇加值金額</Text>
-                    {keyboardOffset > 0 && (
-                      <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Text style={styles.dismissKeyboardText}>收起鍵盤 ▾</Text>
-                      </TouchableOpacity>
-                    )}
+                    <Text style={styles.inputLabel} maxFontSizeMultiplier={1.12}>選擇加值金額</Text>
                   </View>
                   <View style={styles.presetAmountsRow}>
                     {[100, 200, 500, 1000].map(val => (
@@ -596,7 +562,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                         onPress={() => handleQuickAddAmount(val)}
                         activeOpacity={0.7}
                       >
-                        <Text style={styles.presetChipText}>
+                        <Text style={styles.presetChipText} maxFontSizeMultiplier={1.08}>
                           +${val}
                         </Text>
                       </TouchableOpacity>
@@ -607,14 +573,14 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                         onPress={() => setCustomAmount('')}
                         activeOpacity={0.7}
                       >
-                        <Text style={styles.presetChipClearText}>
+                        <Text style={styles.presetChipClearText} maxFontSizeMultiplier={1.08}>
                           清除
                         </Text>
                       </TouchableOpacity>
                     )}
                   </View>
                   <View style={styles.amountInputRow}>
-                    <Text style={styles.currencySymbol}>$</Text>
+                    <Text style={styles.currencySymbol} maxFontSizeMultiplier={1.15}>$</Text>
                     <TextInput
                       style={styles.amountInput}
                       value={customAmount}
@@ -630,13 +596,13 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                         onPress={() => setCustomAmount('')}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       >
-                        <Text style={styles.inputClearIcon}>✕</Text>
+                        <Text style={styles.inputClearIcon} maxFontSizeMultiplier={1.1}>✕</Text>
                       </TouchableOpacity>
                     )}
                   </View>
 
                   {/* 出資付款人 */}
-                  <Text style={[styles.inputLabel, { marginTop: 4 }]}>出資付款人</Text>
+                  <Text style={[styles.inputLabel, { marginTop: 4 }]} maxFontSizeMultiplier={1.12}>出資付款人</Text>
                   <View style={styles.payerChipsRow}>
                     {members.map(m => {
                       const isSelected = topUpPayerId === m.id;
@@ -647,7 +613,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                           onPress={() => handlePayerChange(m.id)}
                         >
                           <Text style={styles.payerChipAvatar}>{m.avatar_url || '👤'}</Text>
-                          <Text style={[styles.payerChipName, isSelected && styles.payerChipNameActive]}>
+                          <Text style={[styles.payerChipName, isSelected && styles.payerChipNameActive]} maxFontSizeMultiplier={1.08}>
                             {m.display_name}
                           </Text>
                         </TouchableOpacity>
@@ -657,7 +623,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
 
                   {/* 出資支付方式 (第一層：動態支付方式) */}
                   <View style={styles.inputLabelRow}>
-                    <Text style={[styles.inputLabel, { marginBottom: 0 }]}>出資支付方式</Text>
+                    <Text style={[styles.inputLabel, { marginBottom: 0 }]} maxFontSizeMultiplier={1.12}>出資支付方式</Text>
                   </View>
                   <View style={styles.sourceChipsRow}>
                     {activeTopUpPaymentMethods.map(m => {
@@ -679,6 +645,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                               styles.sourceChipText,
                               isSelected && { color: m.color || '#0284C7', fontWeight: '700' },
                             ]}
+                            maxFontSizeMultiplier={1.08}
                           >
                             {m.icon} {m.name}
                           </Text>
@@ -692,13 +659,13 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                   {isPureCreditCard && (
                     <View style={styles.subAccountSection}>
                       <View style={styles.inputLabelRow}>
-                        <Text style={styles.subAccountLabel}>💳 選擇扣款信用卡 (納入對帳)</Text>
+                        <Text style={styles.subAccountLabel} maxFontSizeMultiplier={1.1}>💳 選擇扣款信用卡 (納入對帳)</Text>
                         {payerCreditCards.length > 0 && creditCards.length > payerCreditCards.length && (
                           <TouchableOpacity
                             onPress={() => setShowAllSubAccounts(prev => !prev)}
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                           >
-                            <Text style={styles.toggleAllCardsLinkText}>
+                            <Text style={styles.toggleAllCardsLinkText} maxFontSizeMultiplier={1.08}>
                               {showAllSubAccounts ? '僅顯示出資人卡片 ▴' : `展開全家卡片 (${creditCards.length}) ▾`}
                             </Text>
                           </TouchableOpacity>
@@ -713,14 +680,14 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                               style={[styles.sourceChip, isSelected && styles.sourceChipActive]}
                               onPress={() => setTopUpAccountId(cc.id)}
                             >
-                              <Text style={[styles.sourceChipText, isSelected && styles.sourceChipTextActive]}>
+                              <Text style={[styles.sourceChipText, isSelected && styles.sourceChipTextActive]} maxFontSizeMultiplier={1.08}>
                                 💳 {cc.name}{cc.last_four_digits ? ` (*${cc.last_four_digits})` : ''}
                               </Text>
                             </TouchableOpacity>
                           );
                         })}
                         {displayedCreditCards.length === 0 && (
-                          <Text style={styles.emptyAccountHint}>💳 目前尚未建立屬於該出資人的信用卡</Text>
+                          <Text style={styles.emptyAccountHint} maxFontSizeMultiplier={1.1}>💳 目前尚未建立屬於該出資人的信用卡</Text>
                         )}
                       </View>
                     </View>
@@ -730,7 +697,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                   {isEWallet && (
                     <View style={styles.subAccountSection}>
                       <View style={styles.inputLabelRow}>
-                        <Text style={styles.subAccountLabel}>
+                        <Text style={styles.subAccountLabel} maxFontSizeMultiplier={1.1}>
                           {currentMethodObj?.icon || '🩵'} 選擇扣款來源方式
                         </Text>
                         {payerCreditCards.length > 0 && creditCards.length > payerCreditCards.length && (
@@ -738,7 +705,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                             onPress={() => setShowAllSubAccounts(prev => !prev)}
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                           >
-                            <Text style={styles.toggleAllCardsLinkText}>
+                            <Text style={styles.toggleAllCardsLinkText} maxFontSizeMultiplier={1.08}>
                               {showAllSubAccounts ? '僅顯示出資人卡片 ▴' : `展開全家卡片 (${creditCards.length}) ▾`}
                             </Text>
                           </TouchableOpacity>
@@ -749,7 +716,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                           style={[styles.sourceChip, !topUpAccountId && styles.sourceChipActive]}
                           onPress={() => setTopUpAccountId('')}
                         >
-                          <Text style={[styles.sourceChipText, !topUpAccountId && styles.sourceChipTextActive]}>
+                          <Text style={[styles.sourceChipText, !topUpAccountId && styles.sourceChipTextActive]} maxFontSizeMultiplier={1.08}>
                             {currentMethodObj?.icon || '🩵'} {currentMethodObj?.name || '電子錢包'}餘額 / 帳戶直接扣款
                           </Text>
                         </TouchableOpacity>
@@ -761,7 +728,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                               style={[styles.sourceChip, isSelected && styles.sourceChipActive]}
                               onPress={() => setTopUpAccountId(cc.id)}
                             >
-                              <Text style={[styles.sourceChipText, isSelected && styles.sourceChipTextActive]}>
+                              <Text style={[styles.sourceChipText, isSelected && styles.sourceChipTextActive]} maxFontSizeMultiplier={1.08}>
                                 💳 綁定 {cc.name}{cc.last_four_digits ? ` (*${cc.last_four_digits})` : ''}
                               </Text>
                             </TouchableOpacity>
@@ -775,13 +742,13 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                   {isBankTransfer && bankAccounts.length > 0 && (
                     <View style={styles.subAccountSection}>
                       <View style={styles.inputLabelRow}>
-                        <Text style={styles.subAccountLabel}>🏦 選擇扣款銀行帳戶 (選填)</Text>
+                        <Text style={styles.subAccountLabel} maxFontSizeMultiplier={1.1}>🏦 選擇扣款銀行帳戶 (選填)</Text>
                         {payerBankAccounts.length > 0 && bankAccounts.length > payerBankAccounts.length && (
                           <TouchableOpacity
                             onPress={() => setShowAllSubAccounts(prev => !prev)}
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                           >
-                            <Text style={styles.toggleAllCardsLinkText}>
+                            <Text style={styles.toggleAllCardsLinkText} maxFontSizeMultiplier={1.08}>
                               {showAllSubAccounts ? '僅顯示出資人帳戶 ▴' : `展開全家帳戶 (${bankAccounts.length}) ▾`}
                             </Text>
                           </TouchableOpacity>
@@ -792,7 +759,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                           style={[styles.sourceChip, !topUpAccountId && styles.sourceChipActive]}
                           onPress={() => setTopUpAccountId('')}
                         >
-                          <Text style={[styles.sourceChipText, !topUpAccountId && styles.sourceChipTextActive]}>
+                          <Text style={[styles.sourceChipText, !topUpAccountId && styles.sourceChipTextActive]} maxFontSizeMultiplier={1.08}>
                             🏦 一般轉帳 (不指定銀行)
                           </Text>
                         </TouchableOpacity>
@@ -804,7 +771,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                               style={[styles.sourceChip, isSelected && styles.sourceChipActive]}
                               onPress={() => setTopUpAccountId(ba.id)}
                             >
-                              <Text style={[styles.sourceChipText, isSelected && styles.sourceChipTextActive]}>
+                              <Text style={[styles.sourceChipText, isSelected && styles.sourceChipTextActive]} maxFontSizeMultiplier={1.08}>
                                 🏦 {ba.name}{ba.last_four_digits ? ` (*${ba.last_four_digits})` : ''}
                               </Text>
                             </TouchableOpacity>
@@ -818,13 +785,13 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                   {isStoredValue && otherStoredValueCards.length > 0 && (
                     <View style={styles.subAccountSection}>
                       <View style={styles.inputLabelRow}>
-                        <Text style={styles.subAccountLabel}>🚌 選擇出資轉出之卡片</Text>
+                        <Text style={styles.subAccountLabel} maxFontSizeMultiplier={1.1}>🚌 選擇出資轉出之卡片</Text>
                         {payerOtherStoredCards.length > 0 && otherStoredValueCards.length > payerOtherStoredCards.length && (
                           <TouchableOpacity
                             onPress={() => setShowAllSubAccounts(prev => !prev)}
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                           >
-                            <Text style={styles.toggleAllCardsLinkText}>
+                            <Text style={styles.toggleAllCardsLinkText} maxFontSizeMultiplier={1.08}>
                               {showAllSubAccounts ? '僅顯示出資人卡片 ▴' : `展開全家卡片 (${otherStoredValueCards.length}) ▾`}
                             </Text>
                           </TouchableOpacity>
@@ -839,7 +806,7 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                               style={[styles.sourceChip, isSelected && styles.sourceChipActive]}
                               onPress={() => setTopUpAccountId(sc.id)}
                             >
-                              <Text style={[styles.sourceChipText, isSelected && styles.sourceChipTextActive]}>
+                              <Text style={[styles.sourceChipText, isSelected && styles.sourceChipTextActive]} maxFontSizeMultiplier={1.08}>
                                 🚌 {sc.name} (餘額: ${sc.balance})
                               </Text>
                             </TouchableOpacity>
@@ -856,36 +823,32 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                     onPress={() => setRecordExpense(prev => !prev)}
                   >
                     <Text style={styles.toggleCheckbox}>{recordExpense ? '☑️' : '⬜'}</Text>
-                    <Text style={styles.toggleLabel}>自動記錄加值轉帳明細（納入對帳）</Text>
+                    <Text style={styles.toggleLabel} maxFontSizeMultiplier={1.12}>自動記錄加值轉帳明細（納入對帳）</Text>
                   </TouchableOpacity>
 
-                  <Text style={styles.modalHint}>
+                  <Text style={styles.modalHint} maxFontSizeMultiplier={1.1}>
                     {renderModalHint()}
                   </Text>
                 </>
               ) : (
                 <>
                   <View style={styles.inputLabelRow}>
-                    <Text style={styles.inputLabel}>實體卡片當前正確餘額</Text>
-                    {keyboardOffset > 0 && (
-                      <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Text style={styles.dismissKeyboardText}>收起鍵盤 ▾</Text>
-                      </TouchableOpacity>
-                    )}
+                    <Text style={styles.inputLabel} maxFontSizeMultiplier={1.12}>實體卡片當前正確餘額</Text>
                   </View>
                   <View style={styles.amountInputRow}>
-                    <Text style={styles.currencySymbol}>$</Text>
+                    <Text style={styles.currencySymbol} maxFontSizeMultiplier={1.15}>$</Text>
                     <TextInput
                       style={styles.amountInput}
                       value={customAmount}
                       onChangeText={setCustomAmount}
                       keyboardType="numeric"
                       placeholder="輸入實際餘額"
+                      placeholderTextColor={isDark ? '#6B7280' : '#9CA3AF'}
                       returnKeyType="done"
                       onSubmitEditing={Keyboard.dismiss}
                     />
                   </View>
-                  <Text style={styles.modalHint}>
+                  <Text style={styles.modalHint} maxFontSizeMultiplier={1.1}>
                     💡 當悠遊卡在捷運逼卡發現金額有出入時，可直接在此調整為最新餘額。
                   </Text>
                 </>
@@ -897,19 +860,19 @@ export const StoredValueWidget: React.FC<StoredValueWidgetProps> = ({
                 style={styles.modalCancelBtn}
                 onPress={() => setActiveModalAccount(null)}
               >
-                <Text style={styles.modalCancelText}>取消</Text>
+                <Text style={styles.modalCancelText} maxFontSizeMultiplier={1.1}>取消</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalSubmitBtn, { backgroundColor: activeModalAccount?.color || '#0284C7' }]}
                 onPress={handleConfirmAction}
               >
-                <Text style={styles.modalSubmitText}>
+                <Text style={styles.modalSubmitText} maxFontSizeMultiplier={1.1}>
                   {modalMode === 'topup' ? '確認加值' : '確認校正'}
                 </Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -1008,15 +971,17 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     flexShrink: 1,
   },
   ownerBadge: {
-    backgroundColor: '#E2E8F0',
-    paddingHorizontal: 5,
-    paddingVertical: 1.5,
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.14)' : 'transparent',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     borderRadius: 6,
   },
   ownerText: {
     fontSize: 9.5,
-    color: colors.text.secondary,
-    fontWeight: '500',
+    color: isDark ? '#E2E8F0' : colors.text.secondary,
+    fontWeight: '600',
   },
   balanceRow: {
     flexDirection: 'row',
@@ -1102,9 +1067,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: isDark ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+    justifyContent: 'flex-end',
   },
   modalBackdrop: {
     position: 'absolute',
@@ -1113,17 +1076,36 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     right: 0,
     bottom: 0,
   },
+  sheetHandleBarWrap: {
+    alignItems: 'center',
+    paddingBottom: 10,
+  },
+  sheetHandleBar: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: isDark ? '#475569' : '#CBD5E1',
+  },
   modalContent: {
     backgroundColor: colors.background.modal,
-    borderRadius: 18,
-    padding: 18,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    paddingTop: 10,
+    paddingHorizontal: 18,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 18,
     width: '100%',
-    maxWidth: 380,
+    maxWidth: 600,
+    alignSelf: 'center',
+    maxHeight: '90%',
+    borderTopWidth: isDark ? 1 : 0,
+    borderTopColor: isDark ? colors.border.default : 'transparent',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 5,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    elevation: 10,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1338,11 +1320,15 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 11,
     color: colors.text.muted,
     lineHeight: 16,
-    marginBottom: 16,
+    marginBottom: 8,
   },
   modalActions: {
     flexDirection: 'row',
     gap: 10,
+    paddingTop: 12,
+    marginTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: isDark ? colors.border.default : '#F1F5F9',
   },
   modalCancelBtn: {
     flex: 1,
