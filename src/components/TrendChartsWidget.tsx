@@ -9,13 +9,16 @@ import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import { getCategoryIcon } from '../lib/icons';
+import { TrendPeriodDatum } from '../lib/analyticsTrend';
 
 export interface TrendMonthDatum {
+  key?: string;
   ym: string;
   label: string;
   income: number;
   expense: number;
   balance: number;
+  isFuture?: boolean;
 }
 
 export interface TrendCategoryInsight {
@@ -34,6 +37,11 @@ export interface TrendChartsWidgetProps {
   selectedMonthYm: string;
   onSelectMonth?: (ym: string) => void;
   sixMonthDataOverride?: TrendMonthDatum[];
+  trendDataOverride?: TrendPeriodDatum[];
+  title?: string;
+  subtitle?: string;
+  compact?: boolean;
+  selectedKey?: string | null;
   momOverride?: TrendMoMInsightData | null;
   showComparison?: boolean;
   isMonthSelected?: boolean;
@@ -44,6 +52,11 @@ export const TrendChartsWidget: React.FC<TrendChartsWidgetProps> = ({
   selectedMonthYm,
   onSelectMonth,
   sixMonthDataOverride,
+  trendDataOverride,
+  title,
+  subtitle,
+  compact = false,
+  selectedKey,
   momOverride,
   showComparison = true,
   isMonthSelected = true,
@@ -53,9 +66,9 @@ export const TrendChartsWidget: React.FC<TrendChartsWidgetProps> = ({
   const { isDark, colors } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
 
-  const sixMonthData = useMemo(
-    () => sixMonthDataOverride || getSixMonthTrend(),
-    [sixMonthDataOverride, getSixMonthTrend]
+  const chartData = useMemo<TrendMonthDatum[]>(
+    () => trendDataOverride ?? sixMonthDataOverride ?? getSixMonthTrend(),
+    [trendDataOverride, sixMonthDataOverride, getSixMonthTrend]
   );
 
   const mom = useMemo<TrendMoMInsightData | null>(() => {
@@ -64,32 +77,52 @@ export const TrendChartsWidget: React.FC<TrendChartsWidgetProps> = ({
     return getMoMComparison(selectedMonthYm);
   }, [showComparison, momOverride, getMoMComparison, selectedMonthYm]);
 
-  // 計算 6 個月中的最高單一項目數值，作為柱狀圖高度 100% 之縮放基準 (最低保底 1,000)
+  const { selectedMonthText, selectedMonthShortLabel, prevMonthShortLabel } = useMemo(() => {
+    const now = new Date();
+    const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const selectedMonthNum = parseInt(selectedMonthYm.slice(5), 10);
+    const shortLabel = isNaN(selectedMonthNum) ? `${selectedMonthYm.slice(5)}月` : `${selectedMonthNum}月`;
+    const prevMonthNum = mom ? parseInt(mom.prevYm.slice(5), 10) : NaN;
+    const prevLabel = mom
+      ? isNaN(prevMonthNum)
+        ? `${mom.prevYm.slice(5)}月`
+        : `${prevMonthNum}月`
+      : '';
+    return {
+      selectedMonthText: selectedMonthYm === currentYm ? '本月' : shortLabel,
+      selectedMonthShortLabel: shortLabel,
+      prevMonthShortLabel: prevLabel,
+    };
+  }, [selectedMonthYm, mom]);
+
+  // 計算區間中的最高單一項目數值，作為柱狀圖高度 100% 之縮放基準 (最低保底 1,000)
   const maxVal = useMemo(() => {
     let max = 1000;
-    sixMonthData.forEach(m => {
+    chartData.forEach(m => {
       if (m.income > max) max = m.income;
       if (m.expense > max) max = m.expense;
     });
     return max;
-  }, [sixMonthData]);
+  }, [chartData]);
 
   const CHART_MAX_HEIGHT = 100;
   const shouldShowInsights = Boolean(
     showComparison && mom && (mom.topIncreasedCategory || mom.topDecreasedCategory)
   );
+  const resolvedTitle = title || '📈 近 6 個月收支走勢';
+  const resolvedSubtitle = subtitle || '點擊月份柱狀可快速切換檢視該月明細';
+  const activeKey = selectedKey !== undefined ? selectedKey : isMonthSelected ? selectedMonthYm : null;
 
   return (
     <View style={styles.container}>
-      {/* 區塊 1: 近 6 個月收支走勢圖 */}
+      {/* 區塊 1: 收支走勢圖 */}
       <View style={styles.chartHeader}>
         <View style={styles.chartTitleCol}>
           <Text style={styles.title}>
-            📈 近 6 個月收支走勢{scopeLabel ? `（${scopeLabel}）` : ''}
+            {resolvedTitle}
+            {scopeLabel ? `（${scopeLabel}）` : ''}
           </Text>
-          <Text style={styles.subtitle}>
-            點擊月份柱狀可快速切換檢視該月明細
-          </Text>
+          <Text style={styles.subtitle}>{resolvedSubtitle}</Text>
         </View>
 
         {/* 圖例說明 */}
@@ -106,50 +139,77 @@ export const TrendChartsWidget: React.FC<TrendChartsWidgetProps> = ({
       </View>
 
       {/* 雙柱狀圖容器 */}
-      <View style={[styles.barsContainer, !shouldShowInsights && { marginBottom: 0 }]}>
-        {sixMonthData.map(item => {
-          const isSelected = isMonthSelected && item.ym === selectedMonthYm;
+      <View
+        style={[
+          styles.barsContainer,
+          compact && styles.barsContainerCompact,
+          !shouldShowInsights && { marginBottom: 0 },
+        ]}
+      >
+        {chartData.map(item => {
+          const itemKey = item.key ?? item.ym;
+          const isSelected = Boolean(activeKey && itemKey === activeKey);
           const incomeHeight = Math.max(4, Math.round((item.income / maxVal) * CHART_MAX_HEIGHT));
           const expenseHeight = Math.max(4, Math.round((item.expense / maxVal) * CHART_MAX_HEIGHT));
 
           return (
             <TouchableOpacity
-              key={item.ym}
-              style={[styles.monthCol, isSelected && styles.monthColSelected]}
-              onPress={() => onSelectMonth && onSelectMonth(item.ym)}
+              key={itemKey}
+              style={[
+                styles.monthCol,
+                compact && styles.monthColCompact,
+                isSelected && styles.monthColSelected,
+              ]}
+              onPress={() => onSelectMonth && onSelectMonth(itemKey)}
               activeOpacity={0.7}
             >
               {/* 柱狀繪製區 */}
-              <View style={[styles.barsArea, { height: CHART_MAX_HEIGHT }]}>
+              <View style={[styles.barsArea, compact && styles.barsAreaCompact, { height: CHART_MAX_HEIGHT }]}>
                 {/* 收入柱 (左) */}
-                <View style={styles.barWrap}>
+                <View style={[styles.barWrap, compact && styles.barWrapCompact]}>
                   <View
                     style={[
                       styles.bar,
+                      compact && styles.barCompact,
                       styles.incomeBar,
+                      item.isFuture && item.income === 0 && styles.futureBar,
                       { height: item.income > 0 ? incomeHeight : 2 },
                     ]}
                   />
                 </View>
 
                 {/* 支出柱 (右) */}
-                <View style={styles.barWrap}>
+                <View style={[styles.barWrap, compact && styles.barWrapCompact]}>
                   <View
                     style={[
                       styles.bar,
+                      compact && styles.barCompact,
                       styles.expenseBar,
+                      item.isFuture && item.expense === 0 && styles.futureBar,
                       { height: item.expense > 0 ? expenseHeight : 2 },
                     ]}
                   />
                 </View>
               </View>
 
-              {/* 月份標籤 */}
-              <View style={[styles.monthBadge, isSelected && styles.monthBadgeSelected]}>
+              {/* 期間標籤 */}
+              <View
+                style={[
+                  styles.monthBadge,
+                  compact && styles.monthBadgeCompact,
+                  isSelected && styles.monthBadgeSelected,
+                ]}
+              >
                 <Text
-                  style={[styles.monthLabel, isSelected && styles.monthLabelSelected]}
+                  style={[
+                    styles.monthLabel,
+                    compact && styles.monthLabelCompact,
+                    item.isFuture && !isSelected && styles.futureLabel,
+                    isSelected && styles.monthLabelSelected,
+                  ]}
+                  numberOfLines={1}
                   allowFontScaling={false}
-                  maxFontSizeMultiplier={1.08}
+                  maxFontSizeMultiplier={compact ? 1.05 : 1.08}
                 >
                   {item.label}
                 </Text>
@@ -165,7 +225,7 @@ export const TrendChartsWidget: React.FC<TrendChartsWidgetProps> = ({
           <View style={styles.momHeaderRow}>
             <Text style={styles.momSectionTitle}>⚖️ 較上月分類變動</Text>
             <Text style={styles.momSubtext}>
-              {selectedMonthYm.slice(5)}月 vs {mom.prevYm.slice(5)}月
+              {selectedMonthShortLabel} vs {prevMonthShortLabel}
             </Text>
           </View>
 
@@ -174,7 +234,7 @@ export const TrendChartsWidget: React.FC<TrendChartsWidgetProps> = ({
               <View style={styles.insightRow}>
                 <Text style={styles.insightIcon}>🔺</Text>
                 <Text style={styles.insightText}>
-                  本月增加最多：
+                  {selectedMonthText}增加最多：
                   <Text style={styles.insightHighlight}>
                     {getCategoryIcon(mom.topIncreasedCategory.icon)} {mom.topIncreasedCategory.name}
                   </Text>{' '}
@@ -186,7 +246,7 @@ export const TrendChartsWidget: React.FC<TrendChartsWidgetProps> = ({
               <View style={[styles.insightRow, mom.topIncreasedCategory && { marginTop: 6 }]}>
                 <Text style={styles.insightIcon}>📉</Text>
                 <Text style={styles.insightText}>
-                  本月省錢最多：
+                  {selectedMonthText}省錢最多：
                   <Text style={styles.insightHighlight}>
                     {getCategoryIcon(mom.topDecreasedCategory.icon)} {mom.topDecreasedCategory.name}
                   </Text>{' '}
@@ -274,11 +334,17 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       borderColor: colors.border.default,
       marginBottom: 14,
     },
+    barsContainerCompact: {
+      paddingHorizontal: 3,
+    },
     monthCol: {
       flex: 1,
       alignItems: 'center',
       paddingVertical: 4,
       borderRadius: 8,
+    },
+    monthColCompact: {
+      paddingHorizontal: 0,
     },
     monthColSelected: {
       backgroundColor: isDark ? 'rgba(79, 70, 229, 0.2)' : '#EEF2FF',
@@ -291,15 +357,25 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       gap: 3,
       paddingBottom: 4,
     },
+    barsAreaCompact: {
+      gap: 1.5,
+    },
     barWrap: {
       width: 9,
       alignItems: 'center',
       justifyContent: 'flex-end',
       height: '100%',
     },
+    barWrapCompact: {
+      width: 5,
+    },
     bar: {
       width: 9,
       borderRadius: 4,
+    },
+    barCompact: {
+      width: 5,
+      borderRadius: 2.5,
     },
     incomeBar: {
       backgroundColor: '#10B981',
@@ -307,11 +383,21 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     expenseBar: {
       backgroundColor: '#4F46E5',
     },
+    futureBar: {
+      opacity: 0.25,
+    },
     monthBadge: {
       marginTop: 6,
       paddingHorizontal: 4,
       paddingVertical: 2,
       borderRadius: 6,
+    },
+    monthBadgeCompact: {
+      marginTop: 5,
+      paddingHorizontal: 1,
+      paddingVertical: 1,
+      minWidth: 16,
+      alignItems: 'center',
     },
     monthBadgeSelected: {
       backgroundColor: '#4F46E5',
@@ -320,6 +406,12 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontSize: 10.5,
       fontWeight: '600',
       color: colors.text.muted,
+    },
+    monthLabelCompact: {
+      fontSize: 10,
+    },
+    futureLabel: {
+      opacity: 0.45,
     },
     monthLabelSelected: {
       color: '#FFFFFF',

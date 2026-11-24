@@ -13,6 +13,7 @@ import { TrendChartsWidget } from '../components/TrendChartsWidget';
 import { MemberAvatar } from '../components/MemberAvatar';
 import { HorizontalScrollView } from '../components/HorizontalScrollView';
 import { getCategoryIcon } from '../lib/icons';
+import { buildAnalyticsTrendSeries } from '../lib/analyticsTrend';
 import { isValidMerchantName, stripMemoInternalTag } from '../lib/memo';
 import { stripInvoiceTag } from '../lib/invoice';
 import { Transaction } from '../types';
@@ -253,44 +254,11 @@ export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({
     return Math.round(analyticsSummary.totalExpense / 30);
   }, [analyticsSummary.totalExpense, analyticsMonth, currentMonthYm, analyticsTransactions]);
 
-  // 依據目前視角（全家 / 僅看我）以本地時區計算近 6 個月走勢
-  const sixMonthTrend = useMemo(() => {
-    const now = new Date();
-    const months: { ym: string; label: string; income: number; expense: number; balance: number }[] = [];
-
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      months.push({ ym, label: `${d.getMonth() + 1}月`, income: 0, expense: 0, balance: 0 });
-    }
-
-    const monthMap = new Map<string, { income: number; expense: number }>();
-    months.forEach(m => monthMap.set(m.ym, { income: 0, expense: 0 }));
-
-    scopedAllTransactions.forEach(t => {
-      const tYm = getLocalYm(t.transacted_at);
-      const entry = monthMap.get(tYm);
-      if (entry) {
-        const amt = Number(t.amount) || 0;
-        if (t.type === 'expense') {
-          entry.expense += amt;
-        } else if (t.type === 'income') {
-          entry.income += amt;
-        }
-      }
-    });
-
-    return months.map(m => {
-      const entry = monthMap.get(m.ym) || { income: 0, expense: 0 };
-      return {
-        ym: m.ym,
-        label: m.label,
-        income: entry.income,
-        expense: entry.expense,
-        balance: entry.income - entry.expense,
-      };
-    });
-  }, [scopedAllTransactions]);
+  // 依據目前視角（全家 / 僅看我）與篩選期間以本地時區建構收支走勢圖資料
+  const trendSeries = useMemo(
+    () => buildAnalyticsTrendSeries(scopedAllTransactions, analyticsMonth),
+    [scopedAllTransactions, analyticsMonth]
+  );
 
   // 單月檢視下的較上月增減與分類變動洞察（與目前視角同步）
   const singleMonthComparison = useMemo(() => {
@@ -861,11 +829,15 @@ export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({
         </View>
       </View>
 
-      {/* 📈 近 6 個月收支走勢圖與較上月分類變動洞察 */}
+      {/* 📈 隨篩選期間聯動的收支走勢圖與較上月分類變動洞察 */}
       <TrendChartsWidget
         selectedMonthYm={isSingleMonth ? analyticsMonth : currentMonthYm}
+        selectedKey={trendSeries.selectedKey}
         onSelectMonth={handleMonthChange}
-        sixMonthDataOverride={sixMonthTrend}
+        trendDataOverride={trendSeries.items}
+        title={trendSeries.title}
+        subtitle={trendSeries.subtitle}
+        compact={trendSeries.compact}
         momOverride={singleMonthComparison}
         showComparison={isSingleMonth}
         isMonthSelected={isSingleMonth}
