@@ -47,7 +47,12 @@ export const SettingsSheetModal: React.FC<SettingsSheetModalProps> = ({
         <View style={styles.sheet}>
           <View style={styles.header}>
             <View style={styles.headerTopRow}>
-              <Text style={styles.title}>{title}</Text>
+              <View style={styles.headerMainRow}>
+                <Text style={styles.title}>{title}</Text>
+                {!!headerRight && (
+                  <View style={styles.headerExtraWrap}>{headerRight}</View>
+                )}
+              </View>
               <TouchableOpacity
                 onPress={onClose}
                 style={styles.closeBtn}
@@ -58,15 +63,8 @@ export const SettingsSheetModal: React.FC<SettingsSheetModalProps> = ({
               </TouchableOpacity>
             </View>
 
-            {(!!headerRight || !!subtitle) && (
-              <View style={styles.headerMetaBlock}>
-                {!!headerRight && (
-                  <View style={styles.headerExtraWrap}>{headerRight}</View>
-                )}
-                {!!subtitle && (
-                  <Text style={styles.subtitle}>{subtitle}</Text>
-                )}
-              </View>
+            {!!subtitle && (
+              <Text style={styles.subtitle}>{subtitle}</Text>
             )}
           </View>
 
@@ -280,27 +278,37 @@ const getSheetStyles = (isDark: boolean, colors: ThemeColors) =>
       justifyContent: 'space-between',
       gap: 10,
     },
-    title: {
+    headerMainRow: {
       flex: 1,
+      minWidth: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      flexWrap: 'wrap',
+      columnGap: 8,
+      rowGap: 6,
+      minHeight: 32,
+    },
+    title: {
       fontSize: 17,
       fontWeight: '800',
       lineHeight: 24,
       color: colors.text.primary,
-    },
-    headerMetaBlock: {
-      marginTop: 6,
-      gap: 6,
+      maxWidth: '100%',
     },
     headerExtraWrap: {
       flexDirection: 'row',
       alignItems: 'center',
       flexWrap: 'wrap',
       gap: 6,
+      flexShrink: 0,
+      maxWidth: '100%',
     },
     subtitle: {
       fontSize: 12,
       lineHeight: 17,
       color: colors.text.secondary,
+      marginTop: 6,
     },
     closeBtn: {
       width: 32,
@@ -383,7 +391,7 @@ const rowStyles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     lineHeight: 21,
-    flexShrink: 1,
+    maxWidth: '100%',
   },
   subtitle: {
     fontSize: 12,
