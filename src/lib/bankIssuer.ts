@@ -55,7 +55,7 @@ export const TAIWAN_BANK_ISSUERS: IssuerBankInfo[] = [
     code: '812',
     name: '台新國際商業銀行',
     shortName: '台新銀行',
-    aliases: ['台新銀行', '台新', 'taishin', 'richart', 'gogo', '黑狗', 'flygo', '飛狗', '玫瑰', '812'],
+    aliases: ['台新銀行', '台新', 'taishin', 'richart', 'gogo', '黑狗', 'flygo', '飛狗', '玫瑰', '街口', '豬富', '812'],
   },
   {
     id: 'esun',

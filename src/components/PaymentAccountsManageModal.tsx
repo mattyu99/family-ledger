@@ -19,6 +19,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import { sortAccountsByUser } from '../lib/payment';
 import { detectIssuerBank, findSameIssuerBillingPeerCards } from '../lib/bankIssuer';
+import { HorizontalScrollView } from './HorizontalScrollView';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -563,11 +564,10 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
 
           {/* 模式分頁切換 Tab */}
           {!isEditing && (
-            <ScrollView
-              horizontal
+            <HorizontalScrollView
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.tabBar}
-              style={{ flexGrow: 0, marginTop: 10, marginBottom: 4 }}
+              style={{ flexGrow: 0, width: '100%', marginTop: 10, marginBottom: 4 }}
             >
               <TouchableOpacity
                 style={[styles.tabItem, activeTab === 'credit_card' && styles.tabItemActive]}
@@ -633,7 +633,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                   🛍️ 網購載具 ({carrierAccounts.length})
                 </Text>
               </TouchableOpacity>
-            </ScrollView>
+            </HorizontalScrollView>
           )}
 
           {isEditing ? (
@@ -811,9 +811,9 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                   </View>
 
                   {/* 常用發卡銀行快捷標籤滑軌 */}
-                  <ScrollView
-                    horizontal
+                  <HorizontalScrollView
                     showsHorizontalScrollIndicator={false}
+                    style={styles.quickBankScroll}
                     contentContainerStyle={styles.quickBankRow}
                   >
                     {POPULAR_ISSUER_BANKS.map(bank => {
@@ -834,7 +834,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                         </TouchableOpacity>
                       );
                     })}
-                  </ScrollView>
+                  </HorizontalScrollView>
 
                   {/* 自訂或微調發卡機構名稱 */}
                   <TextInput
@@ -1857,10 +1857,17 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     color: isDark ? '#F87171' : '#EF4444',
     fontWeight: '600',
   },
-  quickBankRow: {
-    paddingVertical: 4,
-    gap: 6,
+  quickBankScroll: {
+    flexGrow: 0,
+    width: '100%',
     marginBottom: 8,
+  },
+  quickBankRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingRight: 12,
+    gap: 6,
   },
   quickBankChip: {
     paddingHorizontal: 10,

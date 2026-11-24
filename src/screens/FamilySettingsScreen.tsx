@@ -16,6 +16,7 @@ import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { usePrivacy } from '../context/PrivacyContext';
 import { MemberAvatar } from '../components/MemberAvatar';
+import { HorizontalScrollView } from '../components/HorizontalScrollView';
 import { showAlert, showConfirm, copyToClipboard } from '../lib/alert';
 import { formatLastBackupText } from '../lib/backup';
 import { APP_FULL_VERSION as APP_VERSION } from '../constants/version';
@@ -724,7 +725,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
 
       {/* 主題分類切換頁籤 */}
       <View style={styles.categoryTabsContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryTabsScroll}>
+        <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryTabsScroll}>
           {SETTINGS_TABS.map(tab => {
             const isSelected = activeTab === tab.key;
             return (
@@ -755,7 +756,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
+        </HorizontalScrollView>
       </View>
 
       {/* 👨‍👩‍👧 家庭協作維度 */}

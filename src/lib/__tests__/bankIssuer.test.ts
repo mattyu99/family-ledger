@@ -22,6 +22,8 @@ describe('💳 信用卡發卡機構歸戶辨識演算法 (bankIssuer.test.ts)',
       expect(detectIssuerBank('中信英雄聯盟卡')?.id).toBe('ctbc');
       expect(detectIssuerBank('台新 @GoGo 黑狗卡')?.id).toBe('taishin');
       expect(detectIssuerBank('台新玫瑰 Giving 卡')?.id).toBe('taishin');
+      expect(detectIssuerBank('街口豬富卡')?.id).toBe('taishin');
+      expect(detectIssuerBank('街口聯名卡')?.id).toBe('taishin');
       expect(detectIssuerBank('玉山 Ubear 卡')?.id).toBe('esun');
       expect(detectIssuerBank('玉山熊本熊日圓雙幣卡')?.id).toBe('esun');
       expect(detectIssuerBank('永豐 DAWHO 大戶現金回饋卡')?.id).toBe('sinopac');
@@ -200,6 +202,41 @@ describe('💳 信用卡發卡機構歸戶辨識演算法 (bankIssuer.test.ts)',
 
       const notFoundSiblings = getSiblingCardIdsInGroup('non-exist', testAccounts);
       expect(notFoundSiblings).toEqual(['non-exist']);
+    });
+
+    it('未填寫發卡機構的「街口豬富卡」能與同持卡人同結帳日之台新卡自動歸為同一群組', () => {
+      const taishinCards: PaymentAccount[] = [
+        {
+          id: 'taishin-jkopay',
+          ledger_id: 'led-1',
+          name: '街口豬富卡',
+          type: 'credit_card',
+          user_id: 'dad',
+          billing_cycle_date: 12,
+          balance: 0,
+          sort_order: 1,
+          created_at: '',
+        },
+        {
+          id: 'taishin-gogo',
+          ledger_id: 'led-1',
+          name: '台新 @GoGo 黑狗卡',
+          type: 'credit_card',
+          user_id: 'dad',
+          billing_cycle_date: 12,
+          balance: 0,
+          sort_order: 2,
+          created_at: '',
+        },
+      ];
+
+      const groups = groupCreditCardsByIssuer(taishinCards);
+      expect(groups.length).toBe(1);
+      expect(groups[0].key).toBe('dad__taishin__12');
+      expect(groups[0].issuer.shortName).toBe('台新銀行');
+      expect(groups[0].isMultiCard).toBe(true);
+      expect(groups[0].cards.length).toBe(2);
+      expect(groups[0].cards.map(c => c.id)).toEqual(['taishin-jkopay', 'taishin-gogo']);
     });
   });
 

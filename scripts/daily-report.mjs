@@ -182,7 +182,7 @@ export function detectCardBank(card) {
     { name: '國泰世華', match: /國泰|cathay|cube|koko/i },
     { name: '台北富邦', match: /富邦|fubon|momo|costco/i },
     { name: '中國信託', match: /中信|中國信託|ctbc|line pay/i },
-    { name: '台新銀行', match: /台新|taishin|richart|gogo|flygo|玫瑰/i },
+    { name: '台新銀行', match: /台新|taishin|richart|gogo|flygo|玫瑰|街口|豬富/i },
     { name: '玉山銀行', match: /玉山|esun|unicard|u bear/i },
     { name: '聯邦銀行', match: /聯邦|federal|吉鶴/i },
     { name: '永豐銀行', match: /永豐|sinopac|大戶|幣倍/i },

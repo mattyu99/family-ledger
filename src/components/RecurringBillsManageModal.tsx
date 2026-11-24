@@ -37,6 +37,7 @@ import {
 } from '../lib/recurring';
 import { getCategoryIcon } from '../lib/icons';
 import { DatePickerModal } from './DatePickerModal';
+import { HorizontalScrollView } from './HorizontalScrollView';
 import { DEFAULT_PAYMENT_METHODS, KNOWN_PAYMENT_METHOD_UUIDS } from '../lib/payment';
 import { isDemoLedgerId } from '../constants/sweethomeDemo';
 import {
@@ -1020,7 +1021,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
               </View>
 
               {/* 規則分類篩選滑軌 */}
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.vaultFilterScroll}>
+              <HorizontalScrollView showsHorizontalScrollIndicator={false} style={styles.vaultFilterScroll}>
                 <TouchableOpacity
                   style={[styles.vaultFilterChip, !vaultFilterRuleId && styles.vaultFilterChipActive]}
                   onPress={() => setVaultFilterRuleId('')}
@@ -1046,7 +1047,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                     </TouchableOpacity>
                   );
                 })}
-              </ScrollView>
+              </HorizontalScrollView>
 
               {/* 帳單清單 */}
               <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
@@ -2011,7 +2012,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
 
                   {/* 分類選擇 */}
                   <Text style={styles.formFieldLabel}>記帳支出分類</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catChipsScroll}>
+                  <HorizontalScrollView showsHorizontalScrollIndicator={false} style={styles.catChipsScroll}>
                     {categories
                       .filter(c => c.type === 'expense')
                       .map(c => {
@@ -2029,7 +2030,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                           </TouchableOpacity>
                         );
                       })}
-                  </ScrollView>
+                  </HorizontalScrollView>
 
                   {/* 分期付款專屬設定區塊 */}
                   {formIsInstallment ? (
@@ -2268,7 +2269,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                     </TouchableOpacity>
 
                     {/* 常用日快捷 */}
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginLeft: 8 }}>
+                    <HorizontalScrollView showsHorizontalScrollIndicator={false} style={{ flex: 1, minWidth: 0, marginLeft: 8 }}>
                       {[5, 10, 15, 20, 25].map(day => (
                         <TouchableOpacity
                           key={day}
@@ -2280,7 +2281,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                           </Text>
                         </TouchableOpacity>
                       ))}
-                    </ScrollView>
+                    </HorizontalScrollView>
                   </View>
 
                   {/* 預設付款人 */}
