@@ -8,6 +8,7 @@ import {
   Platform,
   Alert,
   StyleSheet,
+  KeyboardAvoidingView,
   } from 'react-native';
 import { Text, TextInput } from '../common/Text';
 
@@ -299,20 +300,35 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.overlay}
+      >
+        <TouchableOpacity
+          style={styles.backdrop}
+          activeOpacity={1}
+          onPress={() => {
+            Keyboard.dismiss();
+            onClose();
+          }}
+        />
         <View style={styles.card}>
           <View style={styles.headerRow}>
             <Text style={styles.title}>🚪 加入或切換家庭公帳</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.closeBtn}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
               <Text style={styles.closeText}>✕</Text>
             </TouchableOpacity>
           </View>
 
           <ScrollView
-            style={{ maxHeight: 420 }}
-            showsVerticalScrollIndicator={false}
+            showsVerticalScrollIndicator={true}
+            contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
@@ -421,7 +437,7 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
 
             {ledgers.length >= 1 && (
               <View style={{ marginBottom: 16 }}>
-                <Text style={styles.label}>📚 您已加入的帳本清單 (點擊可切換)</Text>
+                <Text style={styles.label}>📚 您已加入的帳本清單（共 {ledgers.length} 本，點擊可切換）</Text>
                 {ledgers.map((l) => {
                   const isCurrent = l.id === currentLedger.id;
                   const userInfo = ledgerUserMap[l.id];
@@ -721,7 +737,7 @@ export const SwitchLedgerModal: React.FC<SwitchLedgerModalProps> = ({
             </TouchableOpacity>
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -731,43 +747,64 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     overlay: {
       flex: 1,
       backgroundColor: isDark ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.5)',
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: 20,
+      justifyContent: 'flex-end',
     },
     backdrop: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
+      flex: 1,
     },
     card: {
       width: '100%',
-      maxWidth: 500,
+      maxWidth: 600,
+      alignSelf: 'center',
       backgroundColor: colors.background.modal,
-      borderRadius: 20,
-      padding: 20,
-      maxHeight: '88%',
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      paddingTop: 16,
+      maxHeight: '90%',
+      borderTopWidth: isDark ? 1 : 0,
+      borderLeftWidth: Platform.OS === 'web' && isDark ? 1 : 0,
+      borderRightWidth: Platform.OS === 'web' && isDark ? 1 : 0,
+      borderColor: colors.border.default,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: -6 },
+      shadowOpacity: 0.16,
+      shadowRadius: 16,
+      elevation: 10,
     },
     headerRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 12,
+      paddingHorizontal: 18,
+      paddingBottom: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border.default,
+      gap: 10,
     },
     title: {
-      fontSize: 18,
-      fontWeight: '700',
+      flex: 1,
+      fontSize: 17,
+      fontWeight: '800',
+      lineHeight: 24,
       color: colors.text.primary,
     },
     closeBtn: {
-      padding: 6,
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
     },
     closeText: {
-      fontSize: 18,
+      fontSize: 14,
       color: colors.text.muted,
-      fontWeight: '600',
+      fontWeight: '700',
+    },
+    scrollContent: {
+      padding: 16,
+      paddingBottom: 34,
     },
     googleCard: {
       borderWidth: 1.5,

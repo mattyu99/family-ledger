@@ -1084,7 +1084,6 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
         >
           <SettingsRowItem
             icon="🔗"
-            iconBg={isDark ? 'rgba(16, 185, 129, 0.18)' : '#ECFDF5'}
             title="邀請碼、門禁鎖與安全碼"
             subtitle={`《${currentLedger?.name || '家庭公帳'}》 · 邀請碼 ${inviteCode}`}
             badgeText={allowNewMembers ? '🟢 開放加入' : '🔒 已上鎖'}
@@ -1093,7 +1092,6 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           />
           <SettingsRowItem
             icon="🚪"
-            iconBg={isDark ? 'rgba(59, 130, 246, 0.18)' : '#EFF6FF'}
             title="加入或切換其他家庭公帳"
             subtitle="切換家庭／個人帳本，或輸入邀請碼加入新公帳"
             badgeText={hasOtherUnread ? '新動態' : undefined}
@@ -1102,7 +1100,6 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           />
           <SettingsRowItem
             icon="🎯"
-            iconBg={isDark ? 'rgba(245, 158, 11, 0.18)' : '#FFFBEB'}
             title="預算控管與成員額度"
             subtitle="設定每月公帳預算、個人專屬上限與首頁顯隱偏好"
             isLast={!onOpenCloudInvoiceModal}
@@ -1111,7 +1108,6 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           {onOpenCloudInvoiceModal && (
             <SettingsRowItem
               icon="☁️"
-              iconBg={isDark ? 'rgba(14, 165, 233, 0.18)' : '#E0F2FE'}
               title="財政部雲端發票智慧同步"
               subtitle="共通性載具與卡片自動分流歸屬家庭成員"
               isLast
@@ -1124,7 +1120,6 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
         <SettingsGroupCard title="🔔 通知與日報" caption="訊息推播">
           <SettingsRowItem
             icon="📱"
-            iconBg={isDark ? 'rgba(59, 130, 246, 0.18)' : '#EFF6FF'}
             title="手機推播提醒"
             subtitle="每日提醒鐘點、本人信用卡帳單與生活記事排程"
             badgeText={pushSummaryBadge.text}
@@ -1133,7 +1128,6 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           />
           <SettingsRowItem
             icon="💚"
-            iconBg={isDark ? 'rgba(6, 199, 85, 0.18)' : '#DCFCE7'}
             title="LINE 每日收支日報"
             subtitle="個人自主選帳訂閱與家庭群組公開播報雙軌設定"
             badgeText={lineSummaryBadge.text}
@@ -1147,7 +1141,6 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
         <SettingsGroupCard title="👤 個人偏好與裝置" caption="僅影響本機">
           <SettingsRowItem
             icon="🔐"
-            iconBg={isDark ? 'rgba(139, 92, 246, 0.18)' : '#F5F3FF'}
             title="生物辨識與財務隱私鎖"
             subtitle={`以 ${capability.biometryType} 保護淨值遮罩與 App 啟動解鎖`}
             badgeText={privacySummaryBadge.text}
@@ -1156,7 +1149,6 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           />
           <SettingsRowItem
             icon="🔤"
-            iconBg={isDark ? 'rgba(244, 63, 94, 0.18)' : '#FFE4E6'}
             title="字型大小與顯示"
             subtitle="四段字級與即時排版預覽，長輩閱讀更輕鬆"
             badgeText={fontSummaryText}
@@ -1165,7 +1157,6 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           />
           <SettingsRowItem
             icon="📱"
-            iconBg={isDark ? 'rgba(99, 102, 241, 0.18)' : '#EEF2FF'}
             title="桌面小工具與快捷動作"
             subtitle="4x2 今日待辦即時快照與桌面長按捷徑試按"
             badgeText={
@@ -1183,7 +1174,6 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
         <SettingsGroupCard title="🛡️ 資料備份與系統" caption="安全與維護">
           <SettingsRowItem
             icon="💾"
-            iconBg={isDark ? 'rgba(16, 185, 129, 0.18)' : '#ECFDF5'}
             title="資料備份、匯出與還原"
             subtitle={`${transactions.length.toLocaleString()} 筆明細 · 上次備份：${formatLastBackupText(
               lastBackupAt
@@ -1195,7 +1185,6 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           {realIsOwner && (
             <SettingsRowItem
               icon="☁️"
-              iconBg={isDark ? 'rgba(59, 130, 246, 0.18)' : '#EFF6FF'}
               title="雲端帳本總管"
               subtitle="盤點雲端全部帳本現況、監控 500 MB 空間用量"
               badgeText="管理員"
@@ -1214,7 +1203,6 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           )}
           <SettingsRowItem
             icon="🔧"
-            iconBg={isDark ? 'rgba(148, 163, 184, 0.18)' : '#F1F5F9'}
             title="系統資訊與維護"
             subtitle={`v${APP_VERSION} · 清除本機快取重整、版本更新與手冊`}
             badgeText={

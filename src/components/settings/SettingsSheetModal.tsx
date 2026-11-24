@@ -46,18 +46,8 @@ export const SettingsSheetModal: React.FC<SettingsSheetModalProps> = ({
         />
         <View style={styles.sheet}>
           <View style={styles.header}>
-            <View style={styles.headerTitleWrap}>
-              <Text style={styles.title} numberOfLines={1}>
-                {title}
-              </Text>
-              {!!subtitle && (
-                <Text style={styles.subtitle} numberOfLines={2}>
-                  {subtitle}
-                </Text>
-              )}
-            </View>
-            <View style={styles.headerRightWrap}>
-              {headerRight}
+            <View style={styles.headerTopRow}>
+              <Text style={styles.title}>{title}</Text>
               <TouchableOpacity
                 onPress={onClose}
                 style={styles.closeBtn}
@@ -67,6 +57,17 @@ export const SettingsSheetModal: React.FC<SettingsSheetModalProps> = ({
                 <Text style={styles.closeBtnText}>✕</Text>
               </TouchableOpacity>
             </View>
+
+            {(!!headerRight || !!subtitle) && (
+              <View style={styles.headerMetaBlock}>
+                {!!headerRight && (
+                  <View style={styles.headerExtraWrap}>{headerRight}</View>
+                )}
+                {!!subtitle && (
+                  <Text style={styles.subtitle}>{subtitle}</Text>
+                )}
+              </View>
+            )}
           </View>
 
           <ScrollView
@@ -150,7 +151,6 @@ export interface SettingsRowItemProps {
 
 export const SettingsRowItem: React.FC<SettingsRowItemProps> = ({
   icon,
-  iconBg,
   title,
   subtitle,
   badgeText,
@@ -210,54 +210,31 @@ export const SettingsRowItem: React.FC<SettingsRowItemProps> = ({
       disabled={disabled}
       activeOpacity={0.7}
     >
-      <View
-        style={[
-          rowStyles.iconBox,
-          {
-            backgroundColor:
-              iconBg || (isDark ? 'rgba(148, 163, 184, 0.14)' : '#F1F5F9'),
-          },
-        ]}
-      >
-        <Text style={rowStyles.iconText}>{icon}</Text>
-      </View>
-
-      <View style={rowStyles.textCol}>
-        <Text
-          style={[rowStyles.title, { color: colors.text.primary }]}
-          numberOfLines={1}
-        >
-          {title}
-        </Text>
+      <View style={rowStyles.mainCol}>
+        <View style={rowStyles.titleRow}>
+          <Text style={[rowStyles.title, { color: colors.text.primary }]}>
+            {icon} {title}
+          </Text>
+          {!!badgeText && (
+            <View style={[rowStyles.badge, { backgroundColor: badgePalette.bg }]}>
+              <Text
+                style={[rowStyles.badgeText, { color: badgePalette.text }]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.08}
+              >
+                {badgeText}
+              </Text>
+            </View>
+          )}
+        </View>
         {!!subtitle && (
-          <Text
-            style={[rowStyles.subtitle, { color: colors.text.secondary }]}
-            numberOfLines={2}
-          >
+          <Text style={[rowStyles.subtitle, { color: colors.text.secondary }]}>
             {subtitle}
           </Text>
         )}
       </View>
 
-      <View style={rowStyles.rightCol}>
-        {!!badgeText && (
-          <View
-            style={[
-              rowStyles.badge,
-              { backgroundColor: badgePalette.bg },
-            ]}
-          >
-            <Text
-              style={[rowStyles.badgeText, { color: badgePalette.text }]}
-              numberOfLines={1}
-              maxFontSizeMultiplier={1.08}
-            >
-              {badgeText}
-            </Text>
-          </View>
-        )}
-        <Text style={[rowStyles.chevron, { color: colors.text.muted }]}>›</Text>
-      </View>
+      <Text style={[rowStyles.chevron, { color: colors.text.muted }]}>›</Text>
     </TouchableOpacity>
   );
 };
@@ -292,35 +269,38 @@ const getSheetStyles = (isDark: boolean, colors: ThemeColors) =>
       elevation: 10,
     },
     header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
       paddingHorizontal: 18,
       paddingBottom: 12,
       borderBottomWidth: 1,
       borderBottomColor: colors.border.default,
     },
-    headerTitleWrap: {
-      flex: 1,
-      minWidth: 0,
-      marginRight: 10,
+    headerTopRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: 10,
     },
     title: {
+      flex: 1,
       fontSize: 17,
       fontWeight: '800',
+      lineHeight: 24,
       color: colors.text.primary,
+    },
+    headerMetaBlock: {
+      marginTop: 6,
+      gap: 6,
+    },
+    headerExtraWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 6,
     },
     subtitle: {
       fontSize: 12,
-      lineHeight: 16,
+      lineHeight: 17,
       color: colors.text.secondary,
-      marginTop: 2,
-    },
-    headerRightWrap: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      flexShrink: 0,
     },
     closeBtn: {
       width: 32,
@@ -329,6 +309,7 @@ const getSheetStyles = (isDark: boolean, colors: ThemeColors) =>
       backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
       alignItems: 'center',
       justifyContent: 'center',
+      flexShrink: 0,
     },
     closeBtnText: {
       fontSize: 14,
@@ -379,49 +360,42 @@ const rowStyles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
+    paddingHorizontal: 15,
     paddingVertical: 13,
+    gap: 10,
   },
   rowDisabled: {
     opacity: 0.55,
   },
-  iconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-    flexShrink: 0,
-  },
-  iconText: {
-    fontSize: 18,
-  },
-  textCol: {
+  mainCol: {
     flex: 1,
     minWidth: 0,
-    marginRight: 10,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    columnGap: 8,
+    rowGap: 5,
   },
   title: {
-    fontSize: 14.5,
+    fontSize: 15,
     fontWeight: '700',
+    lineHeight: 21,
+    flexShrink: 1,
   },
   subtitle: {
     fontSize: 12,
-    lineHeight: 16,
-    marginTop: 2,
-  },
-  rightCol: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexShrink: 0,
+    lineHeight: 17,
+    marginTop: 4,
   },
   badge: {
-    maxWidth: 142,
+    maxWidth: '100%',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
+    flexShrink: 0,
   },
   badgeText: {
     fontSize: 11,
@@ -431,5 +405,6 @@ const rowStyles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
     lineHeight: 22,
+    flexShrink: 0,
   },
 });
