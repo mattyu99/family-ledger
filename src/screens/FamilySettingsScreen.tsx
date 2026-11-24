@@ -1,22 +1,18 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  Switch,
   Platform,
   Linking,
-  } from 'react-native';
+} from 'react-native';
 import { Text } from '../components/common/Text';
 import { useFontSize, FONT_SIZE_OPTIONS } from '../theme/FontSizeContext';
-
-import * as Updates from 'expo-updates';
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { usePrivacy } from '../context/PrivacyContext';
 import { MemberAvatar } from '../components/MemberAvatar';
-import { HorizontalScrollView } from '../components/HorizontalScrollView';
 import { showAlert, showConfirm, copyToClipboard } from '../lib/alert';
 import { formatLastBackupText } from '../lib/backup';
 import { APP_FULL_VERSION as APP_VERSION } from '../constants/version';
@@ -36,21 +32,13 @@ import {
   calculateCardOutstandingAmount,
   NotificationPreferences,
   DEFAULT_NOTIFICATION_PREFERENCES,
-  REMINDER_TIME_OPTIONS,
-  BILLING_DUE_ADVANCE_OPTIONS,
-  MEMO_ADVANCE_OPTIONS,
   getNotificationPreferences,
   saveNotificationPreferences,
   buildBillingReminderGroups,
-  computeMemoNotificationTriggers,
   formatBillingAdvanceLabel,
   formatMemoAdvanceLabel,
 } from '../lib/billingNotifications';
-import {
-  isQuickActionSupported,
-  QuickActionKind,
-  QUICK_ACTIONS_CONFIG,
-} from '../lib/quickActions';
+import { QuickActionKind } from '../lib/quickActions';
 import {
   getWidgetSnapshot,
   syncWidgetData,
@@ -67,20 +55,30 @@ import {
   saveLineGroupPreferences,
   unbindLineGroup,
 } from '../lib/lineNotifications';
+import {
+  SettingsGroupCard,
+  SettingsRowItem,
+  SettingsBadgeTone,
+  InviteAndSecurityModal,
+  LocalNotificationsModal,
+  LineDailyReportModal,
+  PrivacyLockModal,
+  DisplayFontModal,
+  WidgetQuickActionsModal,
+  BackupAndDataModal,
+  SystemMaintenanceModal,
+} from '../components/settings';
 
-export type SettingsCategoryTab = 'family' | 'reminders' | 'system' | 'all';
-
-interface SettingsTabItem {
-  key: SettingsCategoryTab;
-  label: string;
-}
-
-const SETTINGS_TABS: SettingsTabItem[] = [
-  { key: 'family', label: '👨‍👩‍👧 家庭協作' },
-  { key: 'reminders', label: '🔔 提醒與個人' },
-  { key: 'system', label: '⚙️ 系統與資料' },
-  { key: 'all', label: '全部設定' },
-];
+type SettingsSheetKey =
+  | 'invite'
+  | 'notifications'
+  | 'line'
+  | 'privacy'
+  | 'font'
+  | 'widget'
+  | 'backup'
+  | 'system'
+  | null;
 
 interface FamilySettingsScreenProps {
   onOpenModal: (mode: 'expense' | 'income' | 'transfer' | 'allowance' | 'memo', recipientId?: string) => void;
@@ -119,21 +117,13 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
   onOpenCloudLedgerManager,
   onOpenProductGuideModal,
   onOpenChangelogModal,
-  onOpenAdminModeModal,
   onCheckForUpdates,
   isCheckingUpdate,
   onTriggerLiveToastDemo,
   onOpenCloudInvoiceModal,
 }) => {
   const { colors, isDark } = useTheme();
-  const {
-    fontSizeLevel,
-    fontScale,
-    followSystemFont,
-    systemFontScale,
-    setFontSizeLevel,
-    setFollowSystemFont,
-  } = useFontSize();
+  const { fontSizeLevel, fontScale, followSystemFont } = useFontSize();
   const {
     members,
     currentUser,
@@ -141,8 +131,6 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     isOwner,
     realIsOwner,
     isAdminMode,
-    disableAdminMode,
-    enableAdminModeWithBiometrics,
     memberDevices,
     currentDeviceId,
     getMemberById,
@@ -181,9 +169,20 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     authenticate,
   } = usePrivacy();
 
+  const [activeSheet, setActiveSheet] = useState<SettingsSheetKey>(null);
+
+  // 先關閉內部設定視窗再開啟外層 App Modal，避免 iOS 雙重 Modal 轉場凍結
+  const closeSheetThen = (action: () => void) => {
+    setActiveSheet(null);
+    setTimeout(action, Platform.OS === 'ios' ? 280 : 60);
+  };
+
   const handleTestBiometrics = async () => {
     if (!capability.isSupported) {
-      showAlert('硬體提示', `目前裝置未偵測到 ${capability.biometryType} 錄入或硬體支援，在 Web 環境中將以安全 PIN 碼保護。`);
+      showAlert(
+        '硬體提示',
+        `目前裝置未偵測到 ${capability.biometryType} 錄入或硬體支援，在 Web 環境中將以安全 PIN 碼保護。`
+      );
       return;
     }
     const success = await authenticate(`測試驗證您的 ${capability.biometryType}`);
@@ -194,15 +193,11 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     }
   };
 
-  const [showPinClear, setShowPinClear] = useState(false);
   const [billingNoticeEnabled, setBillingNoticeEnabled] = useState(false);
   const [isSchedulingNotice, setIsSchedulingNotice] = useState(false);
-  const [isCreditCardsExpanded, setIsCreditCardsExpanded] = useState(false);
   const [memoNoticeEnabled, setMemoNoticeEnabled] = useState(false);
   const [isSchedulingMemoNotice, setIsSchedulingMemoNotice] = useState(false);
-  const [isMemosExpanded, setIsMemosExpanded] = useState(false);
   const [notifPrefs, setNotifPrefs] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
-  const [isQuickActionSupportedState, setIsQuickActionSupportedState] = useState(false);
   const [widgetSnapshot, setWidgetSnapshot] = useState<WidgetSnapshotData | null>(null);
   const [isSyncingWidget, setIsSyncingWidget] = useState(false);
   const [widgetSyncMessage, setWidgetSyncMessage] = useState<string | null>(null);
@@ -211,6 +206,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
   const [isSavingLineSettings, setIsSavingLineSettings] = useState(false);
   const [pendingUserBindCode, setPendingUserBindCode] = useState<{ code: string; expiresAt?: string } | null>(null);
   const [pendingGroupBindCode, setPendingGroupBindCode] = useState<{ code: string; expiresAt?: string } | null>(null);
+  const [isResettingCache, setIsResettingCache] = useState(false);
 
   const loadLineSettings = async () => {
     if (!currentUser?.id || isDemoLedger) {
@@ -232,7 +228,6 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     getBillingNotificationsEnabled().then(setBillingNoticeEnabled);
     getMemoNotificationsEnabled().then(setMemoNoticeEnabled);
     getNotificationPreferences().then(setNotifPrefs);
-    isQuickActionSupported().then(setIsQuickActionSupportedState);
     getWidgetSnapshot().then(setWidgetSnapshot);
   }, []);
 
@@ -250,7 +245,11 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     try {
       const fresh = await syncWidgetData(currentLedger, transactions, members, currentUser?.id);
       setWidgetSnapshot(fresh);
-      const nowTime = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const nowTime = new Date().toLocaleTimeString('zh-TW', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
       setWidgetSyncMessage(`已於 ${nowTime} 完成同步 ✓`);
       setTimeout(() => setWidgetSyncMessage(null), 3500);
     } catch (err) {
@@ -260,9 +259,9 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     }
   };
 
-  // 僅篩選出本機實際會推播提醒的信用卡（持卡人為本人，或未設定持卡人之全家公用卡；其餘家庭成員之信用卡不用列出）
+  // 僅篩選出本機實際會推播提醒的信用卡（持卡人為本人，或未設定持卡人之全家公用卡）
   const creditCards = useMemo(() => {
-    return (paymentAccounts || []).filter(acc => {
+    return (paymentAccounts || []).filter((acc) => {
       if (acc.ledger_id && currentLedger?.id && acc.ledger_id !== currentLedger.id) return false;
       if (acc.type !== 'credit_card') return false;
       if (currentUser?.id && acc.user_id) {
@@ -277,10 +276,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     });
   }, [paymentAccounts, currentLedger?.id, currentUser?.id, currentUser?.display_name, getMemberById]);
 
-  // 依發卡銀行歸戶合併本機個人信用卡提醒群組（同持卡人同銀行只提醒一次並加總待繳金額）
+  // 依發卡銀行歸戶合併本機個人信用卡提醒群組
   const billingGroups = useMemo(() => {
     const ledgerCards = (paymentAccounts || []).filter(
-      acc => !acc.ledger_id || !currentLedger?.id || acc.ledger_id === currentLedger.id
+      (acc) => !acc.ledger_id || !currentLedger?.id || acc.ledger_id === currentLedger.id
     );
     return buildBillingReminderGroups(
       ledgerCards,
@@ -292,28 +291,31 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     );
   }, [paymentAccounts, currentLedger?.id, transactions, currentUser?.id, getMemberById, notifPrefs]);
 
-  // 僅篩選出本機實際會推播提醒的待辦記事：
-  // 1. 以真實到期日（含接力模式下一站）為準，僅保留今天與未來尚未過期的排程
-  // 2. 個人專屬待辦僅列出指派給當前使用者的項目（其餘家庭成員之個人專屬待辦本機不響鈴，予以隱藏避免混淆）
+  // 僅篩選出本機實際會推播提醒的待辦記事
   const pendingMemos = useMemo(() => {
     const todayYmd = getLocalDateYmd();
     return (transactions || [])
-      .filter(t => {
+      .filter((t) => {
         if (t.type !== 'memo' || t.is_settled) return false;
         const effDate = getEffectiveMemoReminderDate(t);
         if (!effDate || effDate < todayYmd) return false;
-        // 個人專屬待辦分流純化：若非全家公用，僅列出指派給自己的項目 (支援別名穿透對齊)
         if (t.reminder_target === 'personal' && currentUser?.id && t.paid_by) {
           if (t.paid_by !== currentUser.id) {
             const assignee = getMemberById ? getMemberById(t.paid_by) : undefined;
-            if (!assignee?.display_name || !currentUser.display_name || assignee.display_name !== currentUser.display_name) {
+            if (
+              !assignee?.display_name ||
+              !currentUser.display_name ||
+              assignee.display_name !== currentUser.display_name
+            ) {
               return false;
             }
           }
         }
         return true;
       })
-      .sort((a, b) => (getEffectiveMemoReminderDate(a) || '').localeCompare(getEffectiveMemoReminderDate(b) || ''));
+      .sort((a, b) =>
+        (getEffectiveMemoReminderDate(a) || '').localeCompare(getEffectiveMemoReminderDate(b) || '')
+      );
   }, [transactions, currentUser?.id, currentUser?.display_name, getMemberById]);
 
   const handleUpdateNotifPrefs = async (partial: Partial<NotificationPreferences>) => {
@@ -326,11 +328,16 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       partial.billingDueEnabled !== undefined ||
       partial.billingDueAdvanceMode !== undefined;
     const affectsMemo =
-      partial.dailyReminderTime !== undefined ||
-      partial.memoAdvanceMode !== undefined;
+      partial.dailyReminderTime !== undefined || partial.memoAdvanceMode !== undefined;
 
     if (affectsBilling && billingNoticeEnabled) {
-      scheduleBillingReminderNotifications(paymentAccounts, transactions, currentUser?.id, getMemberById, nextPrefs).catch(() => {});
+      scheduleBillingReminderNotifications(
+        paymentAccounts,
+        transactions,
+        currentUser?.id,
+        getMemberById,
+        nextPrefs
+      ).catch(() => {});
     }
     if (affectsMemo && memoNoticeEnabled) {
       scheduleMemoReminderNotifications(transactions, members, currentUser?.id, nextPrefs).catch(() => {});
@@ -341,7 +348,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     const nextState = !billingNoticeEnabled;
     if (nextState) {
       if (!isNotificationSupported()) {
-        showAlert('平台提示', 'Web 網頁環境暫不支援原生本機推播，建議在手機 App 上使用；信用卡出帳提醒亦會透過每日 LINE 報表自動發送！');
+        showAlert(
+          '平台提示',
+          'Web 網頁環境暫不支援原生本機推播，建議在手機 App 上使用；信用卡出帳提醒亦會透過每日 LINE 報表自動發送！'
+        );
         return;
       }
       const granted = await requestNotificationPermission();
@@ -357,21 +367,39 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     await setBillingNotificationsEnabled(nextState);
     if (nextState) {
       setIsSchedulingNotice(true);
-      const count = await scheduleBillingReminderNotifications(paymentAccounts, transactions, currentUser?.id, getMemberById, notifPrefs);
+      const count = await scheduleBillingReminderNotifications(
+        paymentAccounts,
+        transactions,
+        currentUser?.id,
+        getMemberById,
+        notifPrefs
+      );
       setIsSchedulingNotice(false);
       const activeRules: string[] = [];
       if (notifPrefs.billingStatementEnabled) {
         activeRules.push(`・出帳日隔天 ${notifPrefs.dailyReminderTime}：帳單出帳提醒`);
       }
       if (notifPrefs.billingDueEnabled) {
-        activeRules.push(`・繳款期限 ${notifPrefs.dailyReminderTime}（${formatBillingAdvanceLabel(notifPrefs.billingDueAdvanceMode)}）：防忘繳提醒`);
+        activeRules.push(
+          `・繳款期限 ${notifPrefs.dailyReminderTime}（${formatBillingAdvanceLabel(
+            notifPrefs.billingDueAdvanceMode
+          )}）：防忘繳提醒`
+        );
       }
       showAlert(
         '🔔 信用卡個人提醒已開啟',
-        `已成功為您本人持有的信用卡依發卡銀行合併排程 ${count} 則提醒！\n（同銀行多卡只響一次、其他家庭成員之卡片不干擾本機）\n\n${activeRules.length > 0 ? activeRules.join('\n') : '・目前出帳與繳款子開關皆關閉，可於下方隨時開啟'}`
+        `已成功為您本人持有的信用卡依發卡銀行合併排程 ${count} 則提醒！\n（同銀行多卡只響一次、其他家庭成員之卡片不干擾本機）\n\n${
+          activeRules.length > 0 ? activeRules.join('\n') : '・目前出帳與繳款子開關皆關閉，可於下方隨時開啟'
+        }`
       );
     } else {
-      await scheduleBillingReminderNotifications(paymentAccounts, transactions, currentUser?.id, getMemberById, notifPrefs);
+      await scheduleBillingReminderNotifications(
+        paymentAccounts,
+        transactions,
+        currentUser?.id,
+        getMemberById,
+        notifPrefs
+      );
       showAlert('信用卡提醒已關閉', '已取消所有信用卡本機排程提醒。');
     }
   };
@@ -383,9 +411,11 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     }
     const sampleCard =
       creditCards.find(
-        c =>
+        (c) =>
           c.user_id === currentUser?.id ||
-          (currentUser?.display_name && getMemberById && getMemberById(c.user_id)?.display_name === currentUser.display_name)
+          (currentUser?.display_name &&
+            getMemberById &&
+            getMemberById(c.user_id)?.display_name === currentUser.display_name)
       ) || creditCards[0];
     const cardName = sampleCard ? sampleCard.name : '玉山信用卡';
     const amount = sampleCard ? calculateCardOutstandingAmount(sampleCard.id, transactions) || 12800 : 12800;
@@ -402,7 +432,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     const nextState = !memoNoticeEnabled;
     if (nextState) {
       if (!isNotificationSupported()) {
-        showAlert('平台提示', 'Web 網頁環境暫不支援原生本機推播，建議在手機 App 上使用；生活記事待辦亦會透過每日 LINE 報表自動發送！');
+        showAlert(
+          '平台提示',
+          'Web 網頁環境暫不支援原生本機推播，建議在手機 App 上使用；生活記事待辦亦會透過每日 LINE 報表自動發送！'
+        );
         return;
       }
       const granted = await requestNotificationPermission();
@@ -422,7 +455,9 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       setIsSchedulingMemoNotice(false);
       showAlert(
         '📌 記事待辦提醒已開啟',
-        `已成功為您排程 ${count} 則待辦提醒！\n（包含全家共同待辦，以及指派給您本人的個人專屬備忘）\n\n・預設預警規則：${formatMemoAdvanceLabel(notifPrefs.memoAdvanceMode)}\n・早晨提醒鐘點：${notifPrefs.dailyReminderTime}`
+        `已成功為您排程 ${count} 則待辦提醒！\n（包含全家共同待辦，以及指派給您本人的個人專屬備忘）\n\n・預設預警規則：${formatMemoAdvanceLabel(
+          notifPrefs.memoAdvanceMode
+        )}\n・早晨提醒鐘點：${notifPrefs.dailyReminderTime}`
       );
     } else {
       await scheduleMemoReminderNotifications(transactions, members, currentUser?.id, notifPrefs);
@@ -465,7 +500,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       try {
         await Linking.openURL(deepLink);
       } catch {
-        copyToClipboard(res.code, `綁定碼 ${res.code} 已複製！\n請打開 LINE 官方帳號 ${LINE_BOT_BASIC_ID} 並傳送此代碼即可完成綁定。`);
+        copyToClipboard(
+          res.code,
+          `綁定碼 ${res.code} 已複製！\n請打開 LINE 官方帳號 ${LINE_BOT_BASIC_ID} 並傳送此代碼即可完成綁定。`
+        );
       }
     } finally {
       setIsSavingLineSettings(false);
@@ -624,9 +662,8 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       currentUser.id === targetMember.id ||
       (!!currentUser.display_name && (currentUser.display_name || '').trim().toLowerCase() === targetName);
 
-    return memberDevices.filter(d => {
+    return memberDevices.filter((d) => {
       if (d.ledger_id && currentLedger?.id && d.ledger_id !== currentLedger.id) return false;
-      // 本機裝置 (currentDeviceId) 永遠只屬於目前本機登入的成員 (isTargetCurrent)，絕不顯示在其他家庭成員名下
       if (currentDeviceId && d.device_id === currentDeviceId) {
         return isTargetCurrent;
       }
@@ -639,8 +676,6 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
       return false;
     });
   };
-
-  const [isResettingCache, setIsResettingCache] = useState(false);
 
   const handleResetLocalCache = () => {
     showConfirm(
@@ -667,1819 +702,164 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
     );
   };
 
-  const [activeTab, setActiveTab] = useState<SettingsCategoryTab>('family');
-  const scrollViewRef = useRef<ScrollView>(null);
+  // ==================== 目錄摘要徽章計算 ====================
+  const pushSummaryBadge = useMemo<{ text: string; tone: SettingsBadgeTone }>(() => {
+    if (billingNoticeEnabled && memoNoticeEnabled) {
+      return { text: `${notifPrefs.dailyReminderTime} · 全開啟`, tone: 'success' };
+    }
+    if (billingNoticeEnabled) {
+      return { text: `${notifPrefs.dailyReminderTime} · 僅信用卡`, tone: 'info' };
+    }
+    if (memoNoticeEnabled) {
+      return { text: `${notifPrefs.dailyReminderTime} · 僅記事`, tone: 'info' };
+    }
+    return { text: '已關閉', tone: 'neutral' };
+  }, [billingNoticeEnabled, memoNoticeEnabled, notifPrefs.dailyReminderTime]);
 
-  const handleTabChange = (tab: SettingsCategoryTab) => {
-    setActiveTab(tab);
-    scrollViewRef.current?.scrollTo({ y: 0, animated: false });
-  };
+  const lineSummaryBadge = useMemo<{ text: string; tone: SettingsBadgeTone }>(() => {
+    if (isDemoLedger) {
+      return { text: '🎭 示範停用', tone: 'neutral' };
+    }
+    if (lineSettings?.isTableMissing) {
+      return { text: '待升級', tone: 'warning' };
+    }
+    if (isLoadingLineSettings && !lineSettings) {
+      return { text: '同步中...', tone: 'neutral' };
+    }
+    const userBound = Boolean(lineSettings?.userBinding.isBound);
+    const userEnabled = Boolean(lineSettings?.userBinding.enabled);
+    const groupBound = Boolean(lineSettings?.groupBinding.isBound);
+    const groupEnabled = Boolean(lineSettings?.groupBinding.enabled);
 
-  const showFamilyCards = activeTab === 'all' || activeTab === 'family';
-  const showReminderCards = activeTab === 'all' || activeTab === 'reminders';
-  const showSystemCards = activeTab === 'all' || activeTab === 'system';
+    if (!userBound && !groupBound) {
+      return { text: '未綁定', tone: 'neutral' };
+    }
+    const userIcon = !userBound ? '⚪' : userEnabled ? '🟢' : '⏸️';
+    const groupIcon = !groupBound ? '⚪' : groupEnabled ? '🟢' : '⏸️';
+    const tone: SettingsBadgeTone =
+      (userBound && userEnabled) || (groupBound && groupEnabled) ? 'success' : 'warning';
+    return { text: `個人${userIcon} · 群組${groupIcon}`, tone };
+  }, [isDemoLedger, isLoadingLineSettings, lineSettings]);
+
+  const privacySummaryBadge = useMemo<{ text: string; tone: SettingsBadgeTone }>(() => {
+    if (privacyMaskEnabled && appLockEnabled) {
+      return { text: '全防護', tone: 'success' };
+    }
+    if (privacyMaskEnabled) {
+      return { text: '淨值遮罩', tone: 'info' };
+    }
+    if (appLockEnabled) {
+      return { text: '啟動解鎖', tone: 'info' };
+    }
+    return { text: '未啟用', tone: 'neutral' };
+  }, [privacyMaskEnabled, appLockEnabled]);
+
+  const fontSummaryText = useMemo(() => {
+    const pct = Math.round(fontScale * 100);
+    if (followSystemFont) return `跟隨系統 (${pct}%)`;
+    const shortLabel = FONT_SIZE_OPTIONS.find((o) => o.level === fontSizeLevel)?.shortLabel || '標準';
+    return `${shortLabel} (${pct}%)`;
+  }, [followSystemFont, fontScale, fontSizeLevel]);
+
+  const backupSummaryBadge = useMemo<{ text: string; tone: SettingsBadgeTone }>(() => {
+    if (historySyncProgress) {
+      return { text: '同步中', tone: 'info' };
+    }
+    if (isBackupDue) {
+      return { text: '建議備份', tone: 'warning' };
+    }
+    if (isCloudSynced) {
+      return { text: '雲端同步', tone: 'success' };
+    }
+    return { text: '離線模式', tone: 'neutral' };
+  }, [historySyncProgress, isBackupDue, isCloudSynced]);
+
+  const scopedPaymentAccountsCount = useMemo(
+    () => (paymentAccounts || []).filter((a) => a.ledger_id === currentLedger?.id).length,
+    [paymentAccounts, currentLedger?.id]
+  );
+  const scopedRecurringRulesCount = useMemo(
+    () => (recurringRules || []).filter((r) => r.ledger_id === currentLedger?.id).length,
+    [recurringRules, currentLedger?.id]
+  );
+  const enabledPaymentMethodsCount = useMemo(
+    () => (paymentMethods || []).filter((m) => m.is_enabled !== false).length,
+    [paymentMethods]
+  );
 
   return (
-    <ScrollView
-      ref={scrollViewRef}
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={[styles.scrollPadding, { backgroundColor: colors.background.root }]}
-    >
-      {/* 頂部常駐版本與操作指南簡報列 (0 滾動即見) */}
-      <View style={[styles.topVersionBar, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
-        <TouchableOpacity
-          style={styles.topVersionLeft}
-          onPress={onOpenChangelogModal}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.topVersionAppName, { color: colors.text.primary }]} numberOfLines={1}>
-            甜心記帳本
-          </Text>
-          <View style={styles.topVersionBadge}>
-            <Text style={styles.topVersionBadgeText}>v{APP_VERSION} 📜</Text>
-          </View>
-        </TouchableOpacity>
-
-        <View style={styles.topVersionRight}>
-          <TouchableOpacity
-            style={[styles.topCheckUpdateBtn, isCheckingUpdate && styles.topCheckUpdateBtnDisabled]}
-            onPress={onCheckForUpdates}
-            disabled={isCheckingUpdate}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.topCheckUpdateBtnText} numberOfLines={1}>
-              {isCheckingUpdate ? '⏳ 檢查中' : '🔄 檢查更新'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.topGuideBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
-            onPress={onOpenProductGuideModal}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.topGuideBtnText, { color: colors.text.primary }]} numberOfLines={1}>
-              📖 操作指南
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* 主題分類切換頁籤 */}
-      <View style={styles.categoryTabsContainer}>
-        <HorizontalScrollView showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryTabsScroll}>
-          {SETTINGS_TABS.map(tab => {
-            const isSelected = activeTab === tab.key;
-            return (
-              <TouchableOpacity
-                key={tab.key}
-                style={[
-                  styles.categoryTabChip,
-                  {
-                    backgroundColor: isSelected
-                      ? (isDark ? 'rgba(244, 63, 94, 0.22)' : '#FFE4E6')
-                      : (isDark ? colors.background.cardSubtle : '#F1F5F9'),
-                    borderColor: isSelected ? '#F43F5E' : (isDark ? colors.border.default : '#E2E8F0'),
-                  },
-                ]}
-                onPress={() => handleTabChange(tab.key)}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={[
-                    styles.categoryTabText,
-                    { color: isSelected ? (isDark ? '#FDA4AF' : '#E11D48') : colors.text.secondary },
-                    isSelected && styles.categoryTabTextActive,
-                  ]}
-                  maxFontSizeMultiplier={1.08}
-                >
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </HorizontalScrollView>
-      </View>
-
-      {/* 👨‍👩‍👧 家庭協作維度 */}
-      {showFamilyCards && (
-        <>
-          {/* 家庭成員名冊與管理 */}
-          <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} numberOfLines={1}>
-                👨‍👩‍👧 家庭成員名單 ({members.length})
-              </Text>
-              {realIsOwner && (
-                <TouchableOpacity
-                  style={styles.addMemberBtn}
-                  onPress={() => {
-                    if (!isAdminMode) {
-                      showAlert('日常模式受限', '目前為日常檢視模式。如需新增家庭成員，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。');
-                      return;
-                    }
-                    onOpenAddMemberModal();
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.addMemberBtnText}>＋ 新增成員</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]}>
-              點擊成員可自訂稱謂、管理連線裝置與 Google 帳號安全防護
-            </Text>
-
-        <View style={styles.userSwitchRow}>
-          {members.map(member => {
-            const isCurrent =
-              currentUser.id === member.id ||
-              (!!currentUser.display_name && currentUser.display_name === member.display_name);
-            const isMemberAdmin =
-              member.role === 'owner' ||
-              member.role === 'admin' ||
-              currentLedger.created_by === member.id;
-            const isCreator = currentLedger.created_by === member.id;
-            const canEdit = isOwner || isCurrent;
-            const memberDevList = getDevicesForMember(member);
-
-            return (
-              <TouchableOpacity
-                key={member.id}
-                style={[
-                  styles.userChip,
-                  { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default },
-                  isCurrent && styles.userChipActive,
-                ]}
-                activeOpacity={0.7}
-                onPress={() => {
-                  onOpenEditMemberModal(member);
-                }}
-              >
-                <MemberAvatar avatar={member.avatar_url} size={20} style={styles.userAvatar} />
-                <Text
-                  style={[styles.userTitle, { color: colors.text.primary }, isCurrent && styles.userTitleActive]}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                >
-                  {member.display_name}
-                </Text>
-                {isCreator ? (
-                  <View style={styles.memberRoleBadge}>
-                    <Text style={styles.memberRoleBadgeText}>👑 創建者</Text>
-                  </View>
-                ) : isMemberAdmin ? (
-                  <View style={styles.memberRoleBadge}>
-                    <Text style={styles.memberRoleBadgeText}>👑 管理員</Text>
-                  </View>
-                ) : null}
-                {memberDevList.length > 0 && (
-                  <View style={styles.memberDeviceCountBadge}>
-                    <Text style={styles.memberDeviceCountBadgeText}>📱 {memberDevList.length}</Text>
-                  </View>
-                )}
-                {member.is_locked ? (
-                  <View style={styles.memberLockedBadge}>
-                    <Text style={styles.memberLockedBadgeText}>🔒 已保護</Text>
-                  </View>
-                ) : (isCurrent && !isDemoLedger) ? (
-                  <View style={[styles.memberLockedBadge, { backgroundColor: isDark ? '#78350F33' : '#FEF3C7', borderColor: isDark ? '#B45309' : '#FDE68A' }]}>
-                    <Text style={[styles.memberLockedBadgeText, { color: isDark ? '#FBBF24' : '#B45309' }]}>⚠️ 訪客</Text>
-                  </View>
-                ) : null}
-                {isCurrent && (
-                  <Text style={styles.activeTag}>我</Text>
-                )}
-                {canEdit && (
-                  <Text style={styles.memberEditHintIcon}>✏️</Text>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {/* 若此手機目前不是管理員，提供狀態說明（若帳本已有管理員，杜絕自行輸入 8888 提權之漏洞） */}
-        {!realIsOwner && (
-          <View style={[
-            styles.claimAdminBanner,
-            { backgroundColor: isDark ? '#1E293B' : '#FEF2F2', borderColor: isDark ? '#334155' : '#FCA5A5' },
-            !members.some(m => m.role === 'owner' || m.role === 'admin') && { borderColor: '#EF4444', backgroundColor: isDark ? '#450A0A' : '#FEF2F2' }
-          ]}>
-            <View style={{ flex: 1, marginRight: 8 }}>
-              <Text style={[
-                styles.claimAdminBannerTitle,
-                !members.some(m => m.role === 'owner' || m.role === 'admin') && { color: '#EF4444' }
-              ]}>
-                {!members.some(m => m.role === 'owner' || m.role === 'admin')
-                  ? '⚠️ 帳本目前無管理員（全員皆為一般成員）'
-                  : '👑 您目前為一般成員'}
-              </Text>
-              <Text style={[
-                styles.claimAdminBannerDesc,
-                { color: colors.text.secondary },
-                !members.some(m => m.role === 'owner' || m.role === 'admin') && { color: isDark ? '#FCA5A5' : '#991B1B' }
-              ]}>
-                {!members.some(m => m.role === 'owner' || m.role === 'admin')
-                  ? '帳本處於異常無管理員狀態，請點擊右側輸入應急安全碼恢復管理員！'
-                  : '若需管理帳本與成員，請由現任管理員在成員卡片中將您設為共同管理員。'}
-              </Text>
-            </View>
-            {!members.some(m => m.role === 'owner' || m.role === 'admin') && (
-              <TouchableOpacity
-                style={[
-                  styles.claimAdminBannerBtn,
-                  { backgroundColor: '#DC2626' }
-                ]}
-                onPress={onOpenClaimAdminModal}
-              >
-                <Text style={styles.claimAdminBannerBtnText}>救援管理員</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-      </View>
-
-      {/* 邀請家人加入與代碼管理 */}
-      <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
-        <View style={styles.inviteHeaderRow}>
-          <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} numberOfLines={1}>
-            🔗 邀請家人共同記帳
-          </Text>
-          <View style={[
-            styles.roleBadge,
-            realIsOwner
-              ? { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7' }
-              : { backgroundColor: isDark ? '#334155' : '#E2E8F0' },
-          ]}>
-            <Text style={[
-              styles.roleBadgeText,
-              realIsOwner
-                ? { color: isDark ? '#FBBF24' : '#B45309' }
-                : { color: isDark ? '#CBD5E1' : '#475569' },
-            ]}>
-              {realIsOwner ? '👑 管理員' : '👤 一般成員'}
-            </Text>
-          </View>
-        </View>
-
-        <Text style={[styles.cardSectionDesc, { color: colors.text.secondary }]}>
-          讓伴侶或家人加入這本公帳，資料即時雙向同步
-        </Text>
-
-        <View style={[styles.inviteCard, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
-          <Text style={[styles.inviteCardLabel, { color: colors.text.secondary }]}>本家庭專屬邀請碼</Text>
-          <View style={styles.inviteCodeRow}>
-            <Text style={[styles.inviteCodeLarge, { color: colors.text.primary }]}>{inviteCode}</Text>
-            <TouchableOpacity
-              style={styles.copyCodeMiniBtn}
-              onPress={() => copyToClipboard(inviteCode, `邀請碼 ${inviteCode} 已複製！`)}
-            >
-              <Text style={styles.copyCodeMiniBtnText}>複製代碼</Text>
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity
-            style={styles.copyLinkBtn}
-            onPress={() => copyToClipboard(getInviteLink(), '專屬邀請連結已複製！\n請直接貼到 LINE 聊天室傳送給家人，家人點開即可自動加入。')}
-          >
-            <Text style={styles.copyLinkBtnText}>📋 複製專屬邀請連結 (傳 LINE 給家人)</Text>
-          </TouchableOpacity>
-
-          {realIsOwner && (
-            <View style={styles.ownerControlsRow}>
-              <TouchableOpacity
-                style={[styles.ownerControlBtn, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}
-                onPress={() => {
-                  if (!isAdminMode) {
-                    showAlert('日常模式受限', '目前為日常檢視模式。如需修改帳本名稱，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。');
-                    return;
-                  }
-                  onOpenEditLedgerModal();
-                }}
-              >
-                <Text style={[styles.ownerControlBtnText, { color: colors.text.primary }]}>✏️ 帳本更名</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.ownerControlBtn, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}
-                onPress={() => {
-                  if (!isAdminMode) {
-                    showAlert('日常模式受限', '目前為日常檢視模式。如需重新產生邀請碼，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。');
-                    return;
-                  }
-                  showConfirm(
-                    '重新產生邀請碼',
-                    '重新產生後，舊代碼將會作廢。確定要產生全新的一組隨機邀請碼嗎？',
-                    async () => {
-                      const newCode = await regenerateInviteCode();
-                      showAlert('已更新', `全新家庭邀請碼為：${newCode}`);
-                    }
-                  );
-                }}
-              >
-                <Text style={[styles.ownerControlBtnText, { color: colors.text.primary }]}>🔄 重新產生</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.ownerControlBtn, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}
-                onPress={() => {
-                  if (!isAdminMode) {
-                    showAlert('日常模式受限', '目前為日常檢視模式。如需自訂邀請碼，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。');
-                    return;
-                  }
-                  onOpenCustomCodeModal();
-                }}
-              >
-                <Text style={[styles.ownerControlBtnText, { color: colors.text.primary }]}>✏️ 自訂代碼</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* 帳本應急救援安全碼 (僅 Owner 可見) */}
-          {realIsOwner && (
-            <View style={[styles.pinSectionWrapper, { borderTopColor: colors.border.default }]}>
-              <View style={styles.pinHeaderRow}>
-                <Text style={[styles.pinHeaderTitle, { color: colors.text.primary }]}>🚨 帳本應急救援安全碼</Text>
-                <Text style={[styles.pinHeaderDesc, { color: colors.text.secondary }]}>
-                  僅於帳本發生異常、全體管理員皆不在線時供緊急救援使用。平時管理員請使用指紋/Face ID 或 Google 帳號管理。
-                </Text>
-              </View>
-
-              <View style={[styles.pinCardInner, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
-                <View>
-                  <Text style={[styles.pinCardLabel, { color: colors.text.secondary }]}>目前安全 PIN 碼</Text>
-                  <Text style={[styles.pinCardValue, { color: colors.text.primary }]}>
-                    {showPinClear ? adminPin : `${adminPin.slice(0, 1)}••${adminPin.slice(-1)}`}
-                  </Text>
-                  <Text style={[styles.pinCardHint, { color: colors.text.muted }]}>（共 {adminPin.length} 碼）</Text>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                  <TouchableOpacity
-                    style={[styles.togglePinBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
-                    onPress={() => {
-                      setShowPinClear(!showPinClear);
-                    }}
-                  >
-                    <Text style={[styles.togglePinBtnText, { color: colors.text.primary }]}>{showPinClear ? '🙈 隱藏' : '👁️ 顯示'}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.changePinBtn}
-                    onPress={() => {
-                      if (!isAdminMode) {
-                        showAlert('日常模式受限', '目前為日常檢視模式。如需修改應急安全碼，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。');
-                        return;
-                      }
-                      onOpenChangePinModal();
-                    }}
-                  >
-                    <Text style={styles.changePinBtnText}>✏️ 修改</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          )}
-
-          {/* 🔒 家庭門禁安全鎖 (允許新成員加入開關) */}
-          <View style={[styles.gatekeeperSectionWrapper, { borderTopColor: colors.border.default }]}>
-            <View style={styles.gatekeeperHeaderRow}>
-              <View style={{ flex: 1, marginRight: 12 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
-                  <Text style={[styles.gatekeeperHeaderTitle, { color: colors.text.primary, flexShrink: 1 }]}>🔒 {currentLedger.name} 門禁安全鎖</Text>
-                  <View style={[styles.gatekeeperBadge, allowNewMembers ? styles.gatekeeperBadgeOpen : styles.gatekeeperBadgeLocked]}>
-                    <Text style={[styles.gatekeeperBadgeText, allowNewMembers ? styles.gatekeeperBadgeTextOpen : styles.gatekeeperBadgeTextLocked]}>
-                      {allowNewMembers ? '🟢 開放加入中' : '🔒 門禁已上鎖'}
-                    </Text>
-                  </View>
-                </View>
-                <Text style={[styles.gatekeeperHeaderDesc, { color: colors.text.secondary }]}>
-                  {allowNewMembers
-                    ? '開放中：家人可憑邀請碼加入或認領身分。家人全數就位後建議關閉上鎖，防範邀請碼外流風險。'
-                    : '已上鎖：全面阻斷新成員加入並隱藏家庭名冊，現有已加入之家人日常記帳完全不受影響。'}
-                </Text>
-              </View>
-              {realIsOwner ? (
-                <Switch
-                  value={allowNewMembers}
-                  onValueChange={async (newVal) => {
-                    if (!isAdminMode) {
-                      showAlert('日常檢視模式', '目前為日常檢視模式，僅供瀏覽門禁狀態。\n如需調整門禁安全鎖，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。');
-                      return;
-                    }
-                    if (!newVal) {
-                      showConfirm(
-                        '上鎖家庭門禁',
-                        '確定要關閉新成員加入通道嗎？\n\n上鎖後：\n• 任何持邀請碼的新訪客均無法加入或預覽此家庭\n• 絕不洩露家庭成員名冊\n• 現有已加入的家人不受任何影響\n\n您可隨時在此重新解鎖開啟！',
-                        async () => {
-                          const res = await updateAllowNewMembers(false);
-                          if (res.success) {
-                            showAlert('門禁已上鎖 🔒', '已成功關閉新成員加入通道，有效防範邀請碼外流！');
-                          } else {
-                            showAlert('更新失敗', res.message || '無法更新門禁設定');
-                          }
-                        }
-                      );
-                    } else {
-                      const res = await updateAllowNewMembers(true);
-                      if (res.success) {
-                        showAlert('門禁已開啟 🟢', '已開放新成員加入通道，家人現在可憑邀請碼加入！');
-                      } else {
-                        showAlert('更新失敗', res.message || '無法更新門禁設定');
-                      }
-                    }
-                  }}
-                  trackColor={{ false: '#FECACA', true: '#BBF7D0' }}
-                  thumbColor={allowNewMembers ? '#16A34A' : '#DC2626'}
-                />
-              ) : (
-                <View style={styles.gatekeeperReadonlyTag}>
-                  <Text style={styles.gatekeeperReadonlyTagText}>
-                    {allowNewMembers ? '開放中' : '已上鎖'}
-                  </Text>
-                </View>
-              )}
-            </View>
-          </View>
-        </View>
-
-        {/* 切換帳本入口 */}
-        <TouchableOpacity
-          style={[styles.switchLedgerEntryBtn, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}
-          onPress={onOpenSwitchLedgerModal}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-            <Text style={[styles.switchLedgerEntryText, { color: colors.text.primary }]}>🚪 加入或切換其他家庭公帳</Text>
-            {hasOtherUnread && (
-              <View style={styles.switchLedgerEntryRedBadge}>
-                <Text style={styles.switchLedgerEntryRedBadgeText}>新動態</Text>
-              </View>
-            )}
-          </View>
-        </TouchableOpacity>
-      </View>
-
-      {/* 🎯 預算控管與成員額度設定 */}
-      <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} numberOfLines={1}>
-            🎯 預算控管與成員額度
-          </Text>
-          <TouchableOpacity
-            style={styles.manageCategoryBtn}
-            onPress={onOpenBudgetManageModal}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.manageCategoryBtnText}>⚙️ 設定預算</Text>
-          </TouchableOpacity>
-        </View>
-
-        <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]}>
-          設定每月家庭公帳預算、成員個人專屬上限，或自訂此裝置顯隱偏好
-        </Text>
-      </View>
-
-      {/* ☁️ 財政部雲端發票智慧同步卡片 (家庭協作與提醒維度皆顯示) */}
-      {onOpenCloudInvoiceModal && (
-        <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} numberOfLines={1} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              ☁️ 財政部雲端發票智慧同步
-            </Text>
-            <TouchableOpacity
-              style={[styles.manageCategoryBtn, { backgroundColor: isDark ? 'rgba(14, 165, 233, 0.2)' : '#E0F2FE', borderColor: '#38BDF8' }]}
-              onPress={onOpenCloudInvoiceModal}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.manageCategoryBtnText, { color: isDark ? '#38BDF8' : '#0284C7' }]}>
-                ⚙️ 載具同步
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            共通性載具與卡片自動分流，悠遊卡/信用卡消費自動歸屬家庭成員
-          </Text>
-        </View>
-      )}
-    </>
-  )}
-
-  {/* 🔔 提醒與個人維度 */}
-  {showReminderCards && (
     <>
-      {/* ⏰ 統一每日提醒鐘點偏好 */}
-      <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            ⏰ 每日提醒鐘點
-          </Text>
-          <View style={[styles.cardholderBadge, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
-            <Text style={[styles.cardholderBadgeText, { color: isDark ? '#34D399' : '#047857' }]}>
-              目前 {notifPrefs.dailyReminderTime}
-            </Text>
-          </View>
-        </View>
-
-        <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-          信用卡帳單與生活記事統一於此早晨時刻響鈴提醒，配合您的日常出門作息
-        </Text>
-
-        <View style={styles.reminderOptionsRow}>
-          {REMINDER_TIME_OPTIONS.map((timeOpt) => {
-            const isSelected = notifPrefs.dailyReminderTime === timeOpt;
-            return (
-              <TouchableOpacity
-                key={timeOpt}
-                style={[
-                  styles.reminderOptionChip,
-                  {
-                    backgroundColor: isSelected
-                      ? (isDark ? 'rgba(59, 130, 246, 0.22)' : '#EFF6FF')
-                      : colors.background.cardSubtle,
-                    borderColor: isSelected ? '#3B82F6' : colors.border.default,
-                  },
-                ]}
-                onPress={() => handleUpdateNotifPrefs({ dailyReminderTime: timeOpt })}
-                activeOpacity={0.75}
-              >
-                <Text
-                  style={[
-                    styles.reminderOptionChipText,
-                    { color: isSelected ? (isDark ? '#93C5FD' : '#1D4ED8') : colors.text.secondary, fontWeight: isSelected ? '700' : '500' },
-                  ]}
-                >
-                  {timeOpt}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
-
-      {/* 💳 信用卡帳單與智慧推播提醒卡片 */}
-      <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            💳 信用卡帳單個人提醒
-          </Text>
-          <TouchableOpacity
-            style={[styles.backupToggleBtn, billingNoticeEnabled ? styles.backupToggleBtnActive : styles.backupToggleBtnInactive]}
-            onPress={handleToggleBillingNotice}
-            activeOpacity={0.8}
-            disabled={isSchedulingNotice}
-          >
-            <Text style={[styles.backupToggleText, billingNoticeEnabled ? styles.backupToggleTextActive : styles.backupToggleTextInactive]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              {billingNoticeEnabled ? '已開啟提醒' : '已關閉提醒'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-          同銀行多張信用卡自動合併通知不重複轟炸，並依本人持卡分流提醒
-        </Text>
-
-        {/* 出帳日與繳款期限獨立子開關 */}
-        <View style={styles.reminderSubSection}>
-          <Text style={[styles.reminderSubLabel, { color: colors.text.secondary }]}>通知項目（可分別開關）</Text>
-          <View style={styles.reminderSubToggleRow}>
-            <TouchableOpacity
-              style={[
-                styles.reminderSubToggleChip,
-                {
-                  backgroundColor: notifPrefs.billingStatementEnabled
-                    ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5')
-                    : colors.background.cardSubtle,
-                  borderColor: notifPrefs.billingStatementEnabled ? '#10B981' : colors.border.default,
-                },
-              ]}
-              onPress={() => handleUpdateNotifPrefs({ billingStatementEnabled: !notifPrefs.billingStatementEnabled })}
-              activeOpacity={0.75}
-            >
-              <Text
-                style={[
-                  styles.reminderSubToggleText,
-                  { color: notifPrefs.billingStatementEnabled ? (isDark ? '#34D399' : '#047857') : colors.text.muted },
-                ]}
-              >
-                {notifPrefs.billingStatementEnabled ? '✓ ' : '○ '}📄 出帳日 (結帳隔天)
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.reminderSubToggleChip,
-                {
-                  backgroundColor: notifPrefs.billingDueEnabled
-                    ? (isDark ? 'rgba(59, 130, 246, 0.22)' : '#EFF6FF')
-                    : colors.background.cardSubtle,
-                  borderColor: notifPrefs.billingDueEnabled ? '#3B82F6' : colors.border.default,
-                },
-              ]}
-              onPress={() => handleUpdateNotifPrefs({ billingDueEnabled: !notifPrefs.billingDueEnabled })}
-              activeOpacity={0.75}
-            >
-              <Text
-                style={[
-                  styles.reminderSubToggleText,
-                  { color: notifPrefs.billingDueEnabled ? (isDark ? '#93C5FD' : '#1D4ED8') : colors.text.muted },
-                ]}
-              >
-                {notifPrefs.billingDueEnabled ? '✓ ' : '○ '}🗓️ 繳款期限日
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {notifPrefs.billingDueEnabled && (
-            <>
-              <Text style={[styles.reminderSubLabel, { color: colors.text.secondary, marginTop: 10 }]}>繳款預警時機</Text>
-              <View style={styles.reminderOptionsWrapRow}>
-                {BILLING_DUE_ADVANCE_OPTIONS.map((opt) => {
-                  const isSelected = notifPrefs.billingDueAdvanceMode === opt.value;
-                  return (
-                    <TouchableOpacity
-                      key={opt.value}
-                      style={[
-                        styles.reminderChoicePill,
-                        {
-                          backgroundColor: isSelected
-                            ? (isDark ? 'rgba(59, 130, 246, 0.22)' : '#EFF6FF')
-                            : colors.background.cardSubtle,
-                          borderColor: isSelected ? '#3B82F6' : colors.border.default,
-                        },
-                      ]}
-                      onPress={() => handleUpdateNotifPrefs({ billingDueAdvanceMode: opt.value })}
-                      activeOpacity={0.75}
-                    >
-                      <Text
-                        style={[
-                          styles.reminderChoicePillText,
-                          { color: isSelected ? (isDark ? '#93C5FD' : '#1D4ED8') : colors.text.secondary, fontWeight: isSelected ? '700' : '500' },
-                        ]}
-                      >
-                        {opt.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </>
-          )}
-        </View>
-
-        {/* 展開/收合信用卡時程按鈕 */}
-        <TouchableOpacity
-          style={[styles.collapseToggleBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
-          onPress={() => setIsCreditCardsExpanded(prev => !prev)}
-          activeOpacity={0.7}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.scrollPadding, { backgroundColor: colors.background.root }]}
+      >
+        {/* 頂部常駐版本與操作指南簡報列 (0 滾動即見) */}
+        <View
+          style={[
+            styles.topVersionBar,
+            { backgroundColor: colors.background.modal, borderColor: colors.border.default },
+          ]}
         >
-          <Text style={[styles.collapseToggleBtnText, { color: colors.text.primary }]}>
-            {isCreditCardsExpanded
-              ? '收合銀行帳單排程 ▴'
-              : `展開銀行帳單排程 (${billingGroups.length} 組) ▾`}
-          </Text>
-        </TouchableOpacity>
-
-        {/* 信用卡時程清單預覽（依發卡銀行歸戶顯示） */}
-        {isCreditCardsExpanded && (
-          <View style={[styles.cardScheduleContainer, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
-            {billingGroups.length === 0 ? (
-              <View style={styles.noCardBox}>
-                <Text style={[styles.noCardText, { color: colors.text.muted }]}>
-                  💳 目前無屬於您本人的信用卡提醒。可至「錢包與帳戶」新增信用卡或指派持卡人為您本人
-                </Text>
-              </View>
-            ) : (
-              billingGroups.map((group) => {
-                const { billStatementDate, advanceReminderDate, dueDayReminderDate, advanceDays, includeDueDay } = group.dates;
-                const fmtMdHm = (d: Date) =>
-                  `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-                const scheduleParts: string[] = [];
-                if (notifPrefs.billingStatementEnabled) {
-                  scheduleParts.push(`出帳 ${fmtMdHm(billStatementDate)}`);
-                }
-                if (notifPrefs.billingDueEnabled) {
-                  scheduleParts.push(`前${advanceDays}天 ${fmtMdHm(advanceReminderDate)}`);
-                  if (includeDueDay) {
-                    scheduleParts.push(`當天 ${fmtMdHm(dueDayReminderDate)}`);
-                  }
-                }
-                return (
-                  <View key={group.groupKey} style={[styles.cardScheduleRow, { borderBottomColor: colors.border.default }]}>
-                    <View style={{ flex: 1, marginRight: 8 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <Text style={styles.cardScheduleIcon}>💳</Text>
-                        <Text style={[styles.cardScheduleName, { color: colors.text.primary }]} numberOfLines={1}>
-                          {group.displayName}
-                        </Text>
-                        {group.isPersonalCard ? (
-                          <View style={[styles.cardholderBadge, { backgroundColor: isDark ? '#1E3A8A' : '#EFF6FF' }]}>
-                            <Text style={[styles.cardholderBadgeText, { color: isDark ? '#93C5FD' : '#2563EB' }]}>
-                              📱 本人帳單
-                            </Text>
-                          </View>
-                        ) : (
-                          <View style={[styles.cardholderBadge, { backgroundColor: colors.border.default }]}>
-                            <Text style={[styles.cardholderBadgeText, { color: colors.text.secondary }]}>
-                              🌐 公用帳單
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                      {group.cards.length > 1 && (
-                        <Text style={[styles.cardScheduleMeta, { color: colors.text.muted }]} numberOfLines={2}>
-                          合併卡片：{group.cardNames.join('、')}
-                        </Text>
-                      )}
-                      <Text style={[styles.cardScheduleMeta, { color: colors.text.secondary }]}>
-                        每月 {group.billingCycleDate} 號結帳 · {group.paymentDueDay ? `${group.paymentDueDay} 號繳款` : '結帳後20天繳款'} · 待繳約 NT$ {group.estimatedAmount.toLocaleString()}
-                      </Text>
-                      <Text style={[styles.cardScheduleDates, { color: colors.text.muted }]}>
-                        {scheduleParts.length > 0 ? `🔔 ${scheduleParts.join(' · ')}` : '⏸️ 目前出帳與繳款子開關皆關閉'}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              })
-            )}
-          </View>
-        )}
-
-        {/* 測試按鈕與雙軌說明 */}
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 12, alignItems: 'center' }}>
-          <TouchableOpacity
-            style={[styles.testNoticeBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
-            onPress={handleSendTestBillingNotice}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.testNoticeBtnText, { color: colors.text.primary }]}>
-              🔔 發送測試推播通知
+          <TouchableOpacity style={styles.topVersionLeft} onPress={onOpenChangelogModal} activeOpacity={0.7}>
+            <Text style={[styles.topVersionAppName, { color: colors.text.primary }]} numberOfLines={1}>
+              甜心記帳本
             </Text>
+            <View style={styles.topVersionBadge}>
+              <Text style={styles.topVersionBadgeText}>v{APP_VERSION} 📜</Text>
+            </View>
           </TouchableOpacity>
-        </View>
 
-        <Text style={[styles.backupPrivacyNote, { color: colors.text.muted, marginTop: 8 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-          💡 雙軌守護：除了手機本機推播之外，每日 LINE 收支日報若適逢出帳日或繳款到期前 3 天，亦會同步在群組發送醒目標籤提醒！
-        </Text>
-      </View>
-
-      {/* 📌 生活記事與待辦推播提醒卡片 */}
-      <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            📌 生活記事待辦提醒
-          </Text>
-          <TouchableOpacity
-            style={[styles.backupToggleBtn, memoNoticeEnabled ? styles.backupToggleBtnActive : styles.backupToggleBtnInactive]}
-            onPress={handleToggleMemoNotice}
-            activeOpacity={0.8}
-            disabled={isSchedulingMemoNotice}
-          >
-            <Text style={[styles.backupToggleText, memoNoticeEnabled ? styles.backupToggleTextActive : styles.backupToggleTextInactive]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              {memoNoticeEnabled ? '已開啟提醒' : '已關閉提醒'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-          全家待辦全員接收；個人專屬待辦僅提醒被指派之負責成員，到期日與預告推播完美一致
-        </Text>
-
-        {/* 生活記事預設提前預警策略 */}
-        <View style={styles.reminderSubSection}>
-          <Text style={[styles.reminderSubLabel, { color: colors.text.secondary }]}>
-            預設提前預警（含一般記事與接力子項目，到期當天皆會於 {notifPrefs.dailyReminderTime} 提醒）
-          </Text>
-          <View style={styles.reminderOptionsWrapRow}>
-            {MEMO_ADVANCE_OPTIONS.map((opt) => {
-              const isSelected = notifPrefs.memoAdvanceMode === opt.value;
-              return (
-                <TouchableOpacity
-                  key={opt.value}
-                  style={[
-                    styles.reminderChoicePill,
-                    {
-                      backgroundColor: isSelected
-                        ? (isDark ? 'rgba(20, 184, 166, 0.22)' : '#CCFBF1')
-                        : colors.background.cardSubtle,
-                      borderColor: isSelected ? '#0D9488' : colors.border.default,
-                    },
-                  ]}
-                  onPress={() => handleUpdateNotifPrefs({ memoAdvanceMode: opt.value })}
-                  activeOpacity={0.75}
-                >
-                  <Text
-                    style={[
-                      styles.reminderChoicePillText,
-                      { color: isSelected ? (isDark ? '#5EEAD4' : '#0F766E') : colors.text.secondary, fontWeight: isSelected ? '700' : '500' },
-                    ]}
-                  >
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* 展開/收合生活待辦時程按鈕 */}
-        <TouchableOpacity
-          style={[styles.collapseToggleBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
-          onPress={() => setIsMemosExpanded(prev => !prev)}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.collapseToggleBtnText, { color: colors.text.primary }]}>
-            {isMemosExpanded
-              ? '收合生活待辦排程 ▴'
-              : `展開生活待辦排程 (${pendingMemos.length} 則) ▾`}
-          </Text>
-        </TouchableOpacity>
-
-        {/* 待辦記事清單預覽 */}
-        {isMemosExpanded && (
-          <View style={[styles.cardScheduleContainer, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
-            {pendingMemos.length === 0 ? (
-              <View style={styles.noCardBox}>
-                <Text style={[styles.noCardText, { color: colors.text.muted }]}>
-                  📝 目前無待提醒之生活記事，可在記帳選單中點擊「生活記事」新增並設定提醒日期
-                </Text>
-              </View>
-            ) : (
-              pendingMemos.map((memo) => {
-                const parsed = parseMemoNote(memo.note);
-                const assignee = memo.paid_by ? getMemberById(memo.paid_by) : null;
-                const schedule = computeMemoNotificationTriggers(memo, notifPrefs);
-                const fmtMdHm = (d: Date) =>
-                  `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-                const triggerSummary = schedule.triggers.map(t => fmtMdHm(t.date)).join(' · ');
-                return (
-                  <View key={memo.id} style={[styles.cardScheduleRow, { borderBottomColor: colors.border.default }]}>
-                    <View style={{ flex: 1, marginRight: 8 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <Text style={styles.cardScheduleIcon}>{parsed.icon || '📌'}</Text>
-                        <Text style={[styles.cardScheduleName, { color: colors.text.primary }]} numberOfLines={1}>
-                          {parsed.title}
-                        </Text>
-                        {schedule.isRelay && (
-                          <View style={[styles.cardholderBadge, { backgroundColor: isDark ? 'rgba(20, 184, 166, 0.25)' : '#CCFBF1' }]}>
-                            <Text style={[styles.cardholderBadgeText, { color: isDark ? '#5EEAD4' : '#0F766E' }]}>
-                              🔁 接力
-                            </Text>
-                          </View>
-                        )}
-                        <View style={[styles.cardholderBadge, { backgroundColor: memo.reminder_target === 'personal' ? (isDark ? '#581C87' : '#FAF5FF') : (isDark ? '#1E3A8A' : '#EFF6FF') }]}>
-                          <Text style={[styles.cardholderBadgeText, { color: memo.reminder_target === 'personal' ? (isDark ? '#D8B4FE' : '#9333EA') : (isDark ? '#93C5FD' : '#2563EB') }]}>
-                            {memo.reminder_target === 'personal' ? `👤 個人專屬${assignee ? `·${assignee.display_name}` : ''}` : '🌐 全家待辦'}
-                          </Text>
-                        </View>
-                      </View>
-                      <Text style={[styles.cardScheduleMeta, { color: colors.text.secondary }]} numberOfLines={1}>
-                        {schedule.nextStopLabel ? `下一站：${schedule.nextStopLabel}` : (parsed.cleanContent || memo.note)}
-                      </Text>
-                      <Text style={[styles.cardScheduleDates, { color: colors.text.muted }]}>
-                        📅 到期 {schedule.dueYmd} · 🔔 推播：{triggerSummary}
-                        {schedule.relayOverrideOffset !== undefined ? `（${schedule.modeLabel}）` : ''}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              })
-            )}
-          </View>
-        )}
-
-        {/* 測試按鈕與雙軌說明 */}
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 12, alignItems: 'center' }}>
-          <TouchableOpacity
-            style={[styles.testNoticeBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
-            onPress={handleSendTestMemoNotice}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.testNoticeBtnText, { color: colors.text.primary }]}>
-              🔔 發送記事測試推播通知
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <Text style={[styles.backupPrivacyNote, { color: colors.text.muted, marginTop: 8 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-          💡 貼心聯防：除了手機本機推播之外，每日收支日報中也會同步整理今日待辦與未來 3 天預告，讓家人互相溫馨提醒！
-        </Text>
-      </View>
-
-      {/* 💚 LINE 每日收支日報雙軌訂閱設定卡片 */}
-      <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            💚 LINE 每日收支日報
-          </Text>
-          {!isDemoLedger && (
+          <View style={styles.topVersionRight}>
             <TouchableOpacity
-              style={[styles.lineRefreshBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
-              onPress={loadLineSettings}
-              disabled={isLoadingLineSettings || isSavingLineSettings}
-              activeOpacity={0.75}
-            >
-              <Text style={[styles.lineRefreshBtnText, { color: colors.text.secondary }]}>
-                {isLoadingLineSettings ? '同步中...' : '🔄 重新整理'}
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-          自由開關 LINE 通知與挑選訂閱帳簿，個人專屬與家庭群組公開播報雙軌並進，嚴格守護隱私
-        </Text>
-
-        {isDemoLedger ? (
-          <View style={[styles.lineNoticeBox, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
-            <Text style={[styles.lineNoticeText, { color: colors.text.secondary }]}>
-              🎭 目前為官方示範帳本，不提供 LINE 綁定功能；切換至您的真實家庭或個人帳本即可自由綁定與訂閱。
-            </Text>
-          </View>
-        ) : lineSettings?.isTableMissing ? (
-          <View style={[styles.lineNoticeBox, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.12)' : '#FFFBEB', borderColor: '#F59E0B' }]}>
-            <Text style={[styles.lineNoticeText, { color: isDark ? '#FCD34D' : '#92400E' }]}>
-              ⏳ 雲端 LINE 訂閱資料表尚未建立，請先執行最新資料庫遷移腳本後再點上方「🔄 重新整理」。
-            </Text>
-          </View>
-        ) : (
-          <>
-            {/* 軌道一：👤 我的個人 LINE 日報 */}
-            <View style={[styles.lineSubCard, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
-              <View style={styles.sectionHeaderRow}>
-                <Text
-                  style={[styles.lineSubCardTitle, { color: colors.text.primary, flex: 1, flexShrink: 1, marginRight: 8 }]}
-                  numberOfLines={1}
-                >
-                  👤 我的個人 LINE 日報
-                </Text>
-                <View
-                  style={[
-                    styles.cardholderBadge,
-                    {
-                      maxWidth: '52%',
-                      flexShrink: 0,
-                      backgroundColor: lineSettings?.userBinding.isBound
-                        ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5')
-                        : (isDark ? '#334155' : '#E2E8F0'),
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.cardholderBadgeText,
-                      {
-                        color: lineSettings?.userBinding.isBound
-                          ? (isDark ? '#34D399' : '#047857')
-                          : colors.text.secondary,
-                      },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {lineSettings?.userBinding.isBound
-                      ? `🟢 已綁定${lineSettings.userBinding.lineDisplayName ? `·${lineSettings.userBinding.lineDisplayName}` : ''}`
-                      : '⚪ 未綁定'}
-                  </Text>
-                </View>
-              </View>
-
-              {!lineSettings?.userBinding.isBound ? (
-                <View style={{ marginTop: 8 }}>
-                  <Text style={[styles.lineSubDesc, { color: colors.text.secondary }]}>
-                    綁定後只會收到「您自己勾選的帳簿」、本人信用卡與本人／全家待辦，不會收到他人的私卡或私密記事。
-                  </Text>
-                  <TouchableOpacity
-                    style={[styles.linePrimaryBtn, { opacity: isSavingLineSettings ? 0.65 : 1 }]}
-                    onPress={handleStartUserLineBind}
-                    disabled={isSavingLineSettings}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.linePrimaryBtnText}>
-                      💚 一鍵開啟 LINE 綁定 ({LINE_BOT_BASIC_ID})
-                    </Text>
-                  </TouchableOpacity>
-
-                  {pendingUserBindCode && (
-                    <View style={[styles.lineCodeBox, { backgroundColor: colors.background.modal, borderColor: '#06C755' }]}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.lineCodeLabel, { color: colors.text.muted }]}>個人綁定碼（10 分鐘內有效）</Text>
-                        <Text style={[styles.lineCodeValue, { color: colors.text.primary }]}>{pendingUserBindCode.code}</Text>
-                        <Text style={[styles.lineCodeHint, { color: colors.text.secondary }]}>
-                          若 LINE 未自動帶出文字，請複製後貼到官方帳號 {LINE_BOT_BASIC_ID} 傳送，完成後點「🔄 重新整理」。
-                        </Text>
-                      </View>
-                      <TouchableOpacity
-                        style={styles.lineCopyBtn}
-                        onPress={() =>
-                          copyToClipboard(
-                            pendingUserBindCode.code,
-                            `已複製綁定碼 ${pendingUserBindCode.code}！\n請打開 LINE 官方帳號 ${LINE_BOT_BASIC_ID} 傳送此代碼。`
-                          )
-                        }
-                        activeOpacity={0.75}
-                      >
-                        <Text style={styles.lineCopyBtnText}>📋 複製</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </View>
-              ) : (
-                <View style={{ marginTop: 8 }}>
-                  <View style={styles.lineSwitchRow}>
-                    <View style={{ flex: 1, paddingRight: 10 }}>
-                      <Text style={[styles.lineSwitchLabel, { color: colors.text.primary }]}>每日 21:18 個人 LINE 推播</Text>
-                      <Text style={[styles.lineSwitchDesc, { color: colors.text.muted }]}>亦可直接在 LINE 聊天室傳送「暫停日報」或「恢復日報」</Text>
-                    </View>
-                    <Switch
-                      value={lineSettings.userBinding.enabled}
-                      onValueChange={(val) => handleToggleUserLinePref({ enabled: val })}
-                      disabled={isSavingLineSettings}
-                      trackColor={{ false: '#CBD5E1', true: '#06C755' }}
-                    />
-                  </View>
-
-                  <View style={[styles.lineSwitchRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border.default, paddingTop: 10, marginTop: 10 }]}>
-                    <View style={{ flex: 1, paddingRight: 10 }}>
-                      <Text style={[styles.lineSwitchLabel, { color: colors.text.primary }]}>🌙 安靜日免打擾</Text>
-                      <Text style={[styles.lineSwitchDesc, { color: colors.text.muted }]}>當日無任何消費收入，且無帳單與待辦提醒時不打擾</Text>
-                    </View>
-                    <Switch
-                      value={lineSettings.userBinding.skipQuietDay}
-                      onValueChange={(val) => handleToggleUserLinePref({ skipQuietDay: val })}
-                      disabled={isSavingLineSettings}
-                      trackColor={{ false: '#CBD5E1', true: '#06C755' }}
-                    />
-                  </View>
-
-                  {/* 訂閱帳簿清單 */}
-                  <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border.default, paddingTop: 10, marginTop: 10 }}>
-                    <Text style={[styles.reminderSubLabel, { color: colors.text.secondary, marginBottom: 6 }]}>
-                      要接收日報的帳簿（多本帳簿會自動合成單則滑動卡片，不洗版）：
-                    </Text>
-                    {lineSettings.ledgerSubscriptions.length === 0 ? (
-                      <Text style={[styles.lineSwitchDesc, { color: colors.text.muted }]}>目前尚無可訂閱的非示範帳簿</Text>
-                    ) : (
-                      lineSettings.ledgerSubscriptions.map((sub) => (
-                        <View
-                          key={sub.ledgerId}
-                          style={[
-                            styles.lineLedgerSubRow,
-                            { backgroundColor: colors.background.modal, borderColor: colors.border.default },
-                          ]}
-                        >
-                          <View style={{ flex: 1, paddingRight: 8 }}>
-                            <Text style={[styles.lineLedgerSubName, { color: colors.text.primary }]} numberOfLines={1}>
-                              📒 {sub.ledgerName}
-                            </Text>
-                            <Text style={[styles.lineSwitchDesc, { color: colors.text.muted }]}>
-                              {sub.enabled ? '✅ 每晚自動送達此帳簿日報' : '⏸️ 目前未訂閱'}
-                            </Text>
-                          </View>
-                          <Switch
-                            value={sub.enabled}
-                            onValueChange={(val) => handleToggleLedgerLineSub(sub.ledgerId, val)}
-                            disabled={isSavingLineSettings || !lineSettings.userBinding.enabled}
-                            trackColor={{ false: '#CBD5E1', true: '#06C755' }}
-                          />
-                        </View>
-                      ))
-                    )}
-                  </View>
-
-                  <TouchableOpacity
-                    style={[styles.lineDangerOutlineBtn, { borderColor: isDark ? 'rgba(239, 68, 68, 0.45)' : '#FCA5A5' }]}
-                    onPress={handleUnbindUserLine}
-                    disabled={isSavingLineSettings}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={styles.lineDangerOutlineText}>解除我的個人 LINE 綁定</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-
-            {/* 軌道二：🏠 家庭群組公開播報（針對目前帳本） */}
-            <View style={[styles.lineSubCard, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default, marginTop: 12 }]}>
-              <View style={styles.sectionHeaderRow}>
-                <Text
-                  style={[styles.lineSubCardTitle, { color: colors.text.primary, flex: 1, flexShrink: 1, marginRight: 8 }]}
-                  numberOfLines={1}
-                >
-                  🏠 家庭群組播報
-                </Text>
-                <View
-                  style={[
-                    styles.cardholderBadge,
-                    {
-                      maxWidth: '56%',
-                      flexShrink: 0,
-                      backgroundColor: lineSettings?.groupBinding.isBound
-                        ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5')
-                        : (isDark ? '#334155' : '#E2E8F0'),
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.cardholderBadgeText,
-                      {
-                        color: lineSettings?.groupBinding.isBound
-                          ? (isDark ? '#34D399' : '#047857')
-                          : colors.text.secondary,
-                      },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {lineSettings?.groupBinding.isBound
-                      ? `🟢 ${lineSettings.groupBinding.groupName || '已綁定群組'}`
-                      : '⚪ 未綁定群組'}
-                  </Text>
-                </View>
-              </View>
-              <Text style={[styles.lineTargetLedgerTag, { color: colors.text.secondary }]} numberOfLines={1}>
-                對象帳本：《{currentLedger?.name || '目前帳本'}》
-              </Text>
-
-              <Text style={[styles.lineSubDesc, { color: colors.text.secondary, marginTop: 6 }]}>
-                群組版會強制隱藏所有「個人專屬」私密備忘與個人信用卡，只播報全家公帳收支與全家待辦。
-              </Text>
-
-              {!lineSettings?.groupBinding.isBound ? (
-                canManageGroupLine ? (
-                  <View style={{ marginTop: 8 }}>
-                    <TouchableOpacity
-                      style={[styles.lineSecondaryBtn, { backgroundColor: colors.background.modal, borderColor: '#06C755' }]}
-                      onPress={handleStartGroupLineBind}
-                      disabled={isSavingLineSettings}
-                      activeOpacity={0.75}
-                    >
-                      <Text style={[styles.lineSecondaryBtnText, { color: isDark ? '#4ADE80' : '#15803D' }]}>
-                        🏠 產生家庭群組綁定碼
-                      </Text>
-                    </TouchableOpacity>
-
-                    {pendingGroupBindCode && (
-                      <View style={[styles.lineCodeBox, { backgroundColor: colors.background.modal, borderColor: '#06C755' }]}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.lineCodeLabel, { color: colors.text.muted }]}>群組綁定碼（10 分鐘內有效）</Text>
-                          <Text style={[styles.lineCodeValue, { color: colors.text.primary }]}>{pendingGroupBindCode.code}</Text>
-                          <Text style={[styles.lineCodeHint, { color: colors.text.secondary }]}>
-                            請將官方帳號 {LINE_BOT_BASIC_ID} 邀請進家庭群組，並在群組傳送「{pendingGroupBindCode.code}」後點重新整理。
-                          </Text>
-                        </View>
-                        <TouchableOpacity
-                          style={styles.lineCopyBtn}
-                          onPress={() =>
-                            copyToClipboard(
-                              pendingGroupBindCode.code,
-                              `群組綁定碼 ${pendingGroupBindCode.code} 已複製！`
-                            )
-                          }
-                          activeOpacity={0.75}
-                        >
-                          <Text style={styles.lineCopyBtnText}>📋 複製</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
-                ) : (
-                  <Text style={[styles.lineSwitchDesc, { color: colors.text.muted, marginTop: 6 }]}>
-                    💡 僅帳本管理員可將本帳本綁定至家庭 LINE 群組。
-                  </Text>
-                )
-              ) : (
-                <View style={{ marginTop: 8 }}>
-                  {canManageGroupLine ? (
-                    <>
-                      <View style={styles.lineSwitchRow}>
-                        <View style={{ flex: 1, paddingRight: 10 }}>
-                          <Text style={[styles.lineSwitchLabel, { color: colors.text.primary }]}>每日 21:18 群組公開播報</Text>
-                          <Text style={[styles.lineSwitchDesc, { color: colors.text.muted }]}>亦可在群組內輸入「暫停群組日報／恢復群組日報」</Text>
-                        </View>
-                        <Switch
-                          value={lineSettings.groupBinding.enabled}
-                          onValueChange={(val) => handleToggleGroupLinePref({ enabled: val })}
-                          disabled={isSavingLineSettings}
-                          trackColor={{ false: '#CBD5E1', true: '#06C755' }}
-                        />
-                      </View>
-
-                      <View style={[styles.lineSwitchRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border.default, paddingTop: 10, marginTop: 10 }]}>
-                        <View style={{ flex: 1, paddingRight: 10 }}>
-                          <Text style={[styles.lineSwitchLabel, { color: colors.text.primary }]}>🌙 群組安靜日免打擾</Text>
-                          <Text style={[styles.lineSwitchDesc, { color: colors.text.muted }]}>公帳當日零交易且無提醒時略過，減少群組洗版</Text>
-                        </View>
-                        <Switch
-                          value={lineSettings.groupBinding.skipQuietDay}
-                          onValueChange={(val) => handleToggleGroupLinePref({ skipQuietDay: val })}
-                          disabled={isSavingLineSettings}
-                          trackColor={{ false: '#CBD5E1', true: '#06C755' }}
-                        />
-                      </View>
-
-                      <View style={[styles.lineSwitchRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border.default, paddingTop: 10, marginTop: 10 }]}>
-                        <View style={{ flex: 1, paddingRight: 10 }}>
-                          <Text style={[styles.lineSwitchLabel, { color: colors.text.primary }]}>💳 群組播報公用信用卡提醒</Text>
-                          <Text style={[styles.lineSwitchDesc, { color: colors.text.muted }]}>預設關閉；開啟時僅播報未指定私人的全家公用卡</Text>
-                        </View>
-                        <Switch
-                          value={lineSettings.groupBinding.includeCreditCards}
-                          onValueChange={(val) => handleToggleGroupLinePref({ includeCreditCards: val })}
-                          disabled={isSavingLineSettings}
-                          trackColor={{ false: '#CBD5E1', true: '#06C755' }}
-                        />
-                      </View>
-
-                      <TouchableOpacity
-                        style={[styles.lineDangerOutlineBtn, { borderColor: isDark ? 'rgba(239, 68, 68, 0.45)' : '#FCA5A5' }]}
-                        onPress={handleUnbindGroupLine}
-                        disabled={isSavingLineSettings}
-                        activeOpacity={0.75}
-                      >
-                        <Text style={styles.lineDangerOutlineText}>解除家庭群組綁定</Text>
-                      </TouchableOpacity>
-                    </>
-                  ) : (
-                    <Text style={[styles.lineSwitchDesc, { color: colors.text.secondary }]}>
-                      狀態：{lineSettings.groupBinding.enabled ? '🟢 每晚 21:18 播報中' : '⏸️ 管理員已暫停播報'}
-                    </Text>
-                  )}
-                </View>
-              )}
-            </View>
-          </>
-        )}
-      </View>
-
-      {/* 🔐 生物辨識與財務隱私鎖卡片 */}
-      <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            🔐 生物辨識與財務隱私鎖
-          </Text>
-          <View style={[
-            styles.roleBadge,
-            capability.isSupported
-              ? { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }
-              : { backgroundColor: isDark ? '#334155' : '#F1F5F9' },
-          ]}>
-            <Text style={[
-              styles.roleBadgeText,
-              capability.isSupported
-                ? { color: isDark ? '#34D399' : '#065F46' }
-                : { color: isDark ? '#94A3B8' : '#64748B' },
-            ]}>
-              {capability.isSupported ? `🟢 支援 ${capability.biometryType}` : '⚪ 密碼備援'}
-            </Text>
-          </View>
-        </View>
-
-        <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-          以 {capability.biometryType} 或安全碼保護資產負債與真實淨值，防旁人窺視
-        </Text>
-
-        {/* 開關選項列表 */}
-        <View style={[styles.cardScheduleContainer, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
-          {/* 設定項目 1：淨值看板預設遮罩 */}
-          <View style={[styles.cardScheduleRow, { borderBottomColor: colors.border.default, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
-            <View style={{ flex: 1, marginRight: 12 }}>
-              <Text style={[styles.cardScheduleName, { color: colors.text.primary }]}>
-                👁️ 資產淨值與餘額預設遮罩
-              </Text>
-              <Text style={[styles.cardScheduleMeta, { color: colors.text.secondary }]}>
-                看板金額預設顯示為星號，需點擊眼睛透過 {capability.biometryType} 驗證後方可查看
-              </Text>
-            </View>
-            <Switch
-              value={privacyMaskEnabled}
-              onValueChange={updatePrivacyMaskEnabled}
-              trackColor={{ false: colors.border.default, true: colors.brand.primary }}
-              thumbColor="#FFFFFF"
-            />
-          </View>
-
-          {/* 設定項目 2：啟動 App 時要求生物驗證 */}
-          <View style={[styles.cardScheduleRow, { borderBottomWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
-            <View style={{ flex: 1, marginRight: 12 }}>
-              <Text style={[styles.cardScheduleName, { color: colors.text.primary }]}>
-                🛡️ 啟動 App 時要求身分解鎖
-              </Text>
-              <Text style={[styles.cardScheduleMeta, { color: colors.text.secondary }]}>
-                冷啟動或離開背景超過 15 秒重新返回時，強制驗證 {capability.biometryType} 或 PIN 碼解鎖
-              </Text>
-            </View>
-            <Switch
-              value={appLockEnabled}
-              onValueChange={updateAppLockEnabled}
-              trackColor={{ false: colors.border.default, true: colors.brand.primary }}
-              thumbColor="#FFFFFF"
-            />
-          </View>
-        </View>
-
-        {/* 測試按鈕 */}
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 12, alignItems: 'center' }}>
-          <TouchableOpacity
-            style={[styles.testNoticeBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
-            onPress={handleTestBiometrics}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.testNoticeBtnText, { color: colors.text.primary }]}>
-              🔐 測試驗證 {capability.biometryType}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <Text style={[styles.backupPrivacyNote, { color: colors.text.muted, marginTop: 8 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-          💡 隱私機制：生物特徵資料全程保存在手機本機 Secure Enclave 晶片中，App 雲端絕不存取任何指紋或臉部特徵。
-        </Text>
-      </View>
-
-      {/* 📱 手機桌面小工具 (Widgets) 與快捷動作 (Quick Actions) */}
-      <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            📱 桌面小工具 (Widgets) 與快捷動作
-          </Text>
-          <View style={[
-            styles.roleBadge,
-            { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }
-          ]}>
-            <Text style={[
-              styles.roleBadgeText,
-              { color: isDark ? '#34D399' : '#065F46' }
-            ]}>
-              🟢 快照就緒
-            </Text>
-          </View>
-        </View>
-
-        <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-          免開 App 在手機桌面即覽今日待辦、本月支出，或 1 鍵直達記帳
-        </Text>
-
-        {/* 桌面小工具即時快照預覽 */}
-        <View style={{
-          backgroundColor: isDark ? '#1E293B' : '#F8FAFC',
-          borderRadius: 12,
-          padding: 14,
-          marginBottom: 12,
-          borderWidth: 1,
-          borderColor: isDark ? '#334155' : '#E2E8F0',
-        }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 8 }}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text.primary }} numberOfLines={1}>
-                📋 今日待辦 (4x2) 快照
-              </Text>
-              <Text style={{ fontSize: 11, color: colors.text.muted, marginTop: 1 }} numberOfLines={1}>
-                帳本：{widgetSnapshot?.ledgerName || currentLedger?.name || '家庭公帳'}
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={{
-                backgroundColor: isSyncingWidget ? (isDark ? '#334155' : '#E2E8F0') : '#4F46E5',
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                borderRadius: 6,
-                flexShrink: 0,
-              }}
-              onPress={handleManualSyncWidget}
-              disabled={isSyncingWidget}
+              style={[styles.topCheckUpdateBtn, isCheckingUpdate && styles.topCheckUpdateBtnDisabled]}
+              onPress={onCheckForUpdates}
+              disabled={isCheckingUpdate}
               activeOpacity={0.7}
             >
-              <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '600' }}>
-                {isSyncingWidget ? '同步中...' : '🔄 立即同步'}
+              <Text style={styles.topCheckUpdateBtnText} numberOfLines={1}>
+                {isCheckingUpdate ? '⏳ 檢查中' : '🔄 檢查更新'}
               </Text>
             </TouchableOpacity>
-          </View>
-
-          {widgetSyncMessage && (
-            <Text style={{ fontSize: 11, color: '#10B981', fontWeight: '600', marginBottom: 6 }}>
-              {widgetSyncMessage}
-            </Text>
-          )}
-
-          {/* 待辦事項清單預覽 (顯示 4 條與 4x2 桌面小工具 1:1 對齊) */}
-          {widgetSnapshot?.pendingMemos && widgetSnapshot.pendingMemos.length > 0 ? (
-            <View style={{ gap: 6, marginBottom: 8 }}>
-              {widgetSnapshot.pendingMemos.slice(0, 4).map((memo, idx) => (
-                <TouchableOpacity
-                  key={memo.id || idx}
-                  activeOpacity={0.7}
-                  onPress={() => onTriggerQuickAction ? onTriggerQuickAction('todo') : undefined}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    borderRadius: 6,
-                    borderWidth: 1,
-                    borderColor: memo.isOverdue ? '#FCA5A5' : (isDark ? '#334155' : '#E2E8F0'),
-                  }}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0, marginRight: 8 }}>
-                    <Text style={{ fontSize: 12, marginRight: 6, flexShrink: 0 }}>
-                      {memo.isOverdue ? '⚠️' : '⭕'}
-                    </Text>
-                    <Text
-                      style={{ fontSize: 12, color: colors.text.primary, fontWeight: '500', flex: 1 }}
-                      numberOfLines={1}
-                    >
-                      {memo.rawTitle || memo.title}
-                    </Text>
-                  </View>
-                  <Text style={{ fontSize: 10, color: memo.isOverdue ? '#EF4444' : colors.text.muted, flexShrink: 0 }}>
-                    {memo.badgeText || (memo.isOverdue ? '已逾期' : (memo.reminderDate ? memo.reminderDate.slice(5) : '日常') + (memo.assigneeName ? ` · ${memo.assigneeName}` : ''))}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          ) : (
-            <View style={{ paddingVertical: 10, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ fontSize: 12, color: colors.text.muted }}>
-                🎉 今日尚無未辦妥之備忘事項
-              </Text>
-            </View>
-          )}
-
-          {/* 快照底部統計與快捷列 */}
-          <View style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            paddingTop: 8,
-            borderTopWidth: 1,
-            borderTopColor: isDark ? '#334155' : '#E2E8F0',
-          }}>
-            <Text style={{ fontSize: 11, color: colors.text.secondary }}>
-              本月支出：<Text style={{ fontWeight: '700', color: colors.text.primary }}>${Number(widgetSnapshot?.monthlyExpense || 0).toLocaleString()}</Text>
-            </Text>
-            <Text style={{ fontSize: 10, color: colors.text.muted }}>
-              快照時間：{widgetSnapshot?.updatedAt ? new Date(widgetSnapshot.updatedAt).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' }) : '剛剛'}
-            </Text>
-          </View>
-        </View>
-
-        {/* 快捷動作說明列表 */}
-        <View style={[styles.cardScheduleContainer, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
-          {QUICK_ACTIONS_CONFIG.map((item, index) => (
-            <View
-              key={item.id}
-              style={[
-                styles.cardScheduleRow,
-                index === QUICK_ACTIONS_CONFIG.length - 1 && { borderBottomWidth: 0 },
-                { borderBottomColor: colors.border.default, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }
-              ]}
-            >
-              <View style={{ flex: 1, marginRight: 12 }}>
-                <Text style={[styles.cardScheduleName, { color: colors.text.primary }]}>
-                  {item.kind === 'expense' ? '📝' : item.kind === 'income' ? '💰' : item.kind === 'scan' ? '📸' : item.kind === 'todo' ? '✅' : '📌'} {item.title}
-                </Text>
-                <Text style={[styles.cardScheduleMeta, { color: colors.text.secondary }]}>
-                  {item.subtitle}
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.testNoticeBtn, { backgroundColor: colors.background.modal, borderColor: colors.border.default, paddingHorizontal: 12, paddingVertical: 6 }]}
-                onPress={() => onTriggerQuickAction ? onTriggerQuickAction(item.kind) : onOpenModal(item.kind === 'memo' ? 'memo' : 'expense')}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.testNoticeBtnText, { color: colors.text.primary, fontSize: 12 }]}>
-                  ▶ 試按
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ))}
-        </View>
-
-        {/* 實用秘訣指引 */}
-        <View style={{ marginTop: 10, gap: 6 }}>
-          <Text style={[styles.backupPrivacyNote, { color: colors.text.muted }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            💡 桌面 1 鍵直達秘訣 (Android)：在手機桌面上長按 App 圖示後，按住「記支出」或「掃描發票」不放直接拖曳至螢幕空白處，即可將快捷按鈕釘選在桌面變成獨立 1x1 小工具！
-          </Text>
-          <Text style={[styles.backupPrivacyNote, { color: colors.text.muted }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            🔒 身分防護整合：若有開啟「身分解鎖防護」，從小工具或捷徑點入時會先通過 Face ID / 指紋驗證後自動直達表單！
-          </Text>
-        </View>
-      </View>
-    </>
-  )}
-
-  {/* ⚙️ 系統與資料維度 */}
-  {showSystemCards && (
-    <>
-      {/* 🔤 介面顯示與字型大小 */}
-      <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} numberOfLines={1}>
-            🔤 介面顯示與字型大小
-          </Text>
-          <View style={[
-            styles.roleBadge,
-            { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF' }
-          ]}>
-            <Text style={[
-              styles.roleBadgeText,
-              { color: isDark ? '#60A5FA' : '#1D4ED8' }
-            ]}>
-              {followSystemFont ? `📱 跟隨系統 (${Math.round(fontScale * 100)}%)` : `${FONT_SIZE_OPTIONS.find(o => o.level === fontSizeLevel)?.shortLabel || '標準'} (${Math.round(fontScale * 100)}%)`}
-            </Text>
-          </View>
-        </View>
-
-        <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]}>
-          自由調整全 App 顯示比例，長輩閱讀更輕鬆舒適
-        </Text>
-
-        {/* 4 檔位快速切換晶片 */}
-        <View style={styles.fontSizeChipsRow}>
-          {FONT_SIZE_OPTIONS.map((opt) => {
-            const isSelected = !followSystemFont && fontSizeLevel === opt.level;
-            return (
-              <TouchableOpacity
-                key={opt.level}
-                style={[
-                  styles.fontSizeChip,
-                  {
-                    backgroundColor: isSelected
-                      ? (isDark ? 'rgba(244, 63, 94, 0.25)' : '#FFE4E6')
-                      : (isDark ? colors.background.cardSubtle : '#F1F5F9'),
-                    borderColor: isSelected ? '#F43F5E' : colors.border.default,
-                  },
-                ]}
-                onPress={() => setFontSizeLevel(opt.level)}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={[
-                    styles.fontSizeChipText,
-                    {
-                      color: isSelected
-                        ? (isDark ? '#FDA4AF' : '#E11D48')
-                        : colors.text.secondary,
-                      fontWeight: isSelected ? '700' : '500',
-                    },
-                  ]}
-                >
-                  {opt.shortLabel}
-                </Text>
-                <Text
-                  style={[
-                    styles.fontSizeChipPercent,
-                    {
-                      color: isSelected
-                        ? (isDark ? '#FDA4AF' : '#E11D48')
-                        : colors.text.muted,
-                    },
-                  ]}
-                >
-                  {Math.round(opt.scale * 100)}%
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {/* 當前檔位詳細說明 */}
-        <View style={[styles.fontSizeDescBox, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
-          <Text style={[styles.fontSizeDescText, { color: colors.text.secondary }]}>
-            💡 {followSystemFont
-              ? `目前啟用跟隨手機系統設定，系統字體倍率為 ${Math.round(systemFontScale * 100)}%（安全上限 130%）。`
-              : FONT_SIZE_OPTIONS.find(o => o.level === fontSizeLevel)?.description}
-          </Text>
-        </View>
-
-        {/* 即時擬真預覽小卡 (Live Preview Card) */}
-        <View style={[styles.fontSizePreviewCard, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
-          <View style={styles.fontSizePreviewHeader}>
-            <Text style={[styles.fontSizePreviewTag, { color: colors.text.muted }]}>
-              即時排版效果預覽
-            </Text>
-            <Text style={[styles.fontSizePreviewScale, { color: '#F43F5E' }]}>
-              ×{fontScale.toFixed(2)}
-            </Text>
-          </View>
-          <View style={styles.fontSizePreviewRow}>
-            <Text style={{ fontSize: 20, marginRight: 8 }}>🍱</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.fontSizePreviewTitle, { color: colors.text.primary }]}>
-                全聯福利中心 · 午餐便當與水果
-              </Text>
-              <Text style={[styles.fontSizePreviewSub, { color: colors.text.muted }]}>
-                2026/10/31 12:30 · 💳 悠遊聯名卡
-              </Text>
-            </View>
-            <Text style={[styles.fontSizePreviewAmount, { color: '#EF4444' }]}>
-              -$125
-            </Text>
-          </View>
-        </View>
-
-        {/* 跟隨手機系統設定開關 */}
-        <View style={[styles.fontSizeSwitchRow, { borderColor: colors.border.default }]}>
-          <View style={{ flex: 1, marginRight: 12 }}>
-            <Text style={[styles.fontSizeSwitchTitle, { color: colors.text.primary }]}>
-              📱 同步跟隨手機系統字體
-            </Text>
-            <Text style={[styles.fontSizeSwitchDesc, { color: colors.text.secondary }]}>
-              自動讀取 Android/iOS 系統設定之字體大小（內建安全防爆版保護）
-            </Text>
-          </View>
-          <Switch
-            value={followSystemFont}
-            onValueChange={setFollowSystemFont}
-            trackColor={{ false: '#334155', true: '#10B981' }}
-            thumbColor="#FFFFFF"
-          />
-        </View>
-      </View>
-
-      {/* 資料備份與掌控 */}
-      <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.cardSectionTitle, { color: colors.text.primary, marginBottom: 0 }]} numberOfLines={1} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            🛡️ 資料備份與掌控
-          </Text>
-          <View style={[
-            styles.roleBadge,
-            isCloudSynced
-              ? { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }
-              : { backgroundColor: isDark ? '#334155' : '#F1F5F9' },
-          ]}>
-            <Text style={[
-              styles.roleBadgeText,
-              isCloudSynced
-                ? { color: isDark ? '#34D399' : '#065F46' }
-                : { color: isDark ? '#94A3B8' : '#64748B' },
-            ]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              {historySyncProgress ? `🔄 歷史資料同步中 (${Math.max(historySyncProgress.loaded, transactions.length).toLocaleString()} / ${historySyncProgress.total.toLocaleString()})` : (isCloudSynced ? '🟢 雲端已同步' : '💾 本機離線模式')}
-            </Text>
-          </View>
-        </View>
-
-        <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-          隨時匯出整本帳簿，資料自主永久保存在個人設備
-        </Text>
-
-        {/* 帳本狀態小指標 (6 大全要素封存數據) */}
-        <View style={[styles.backupStatsGrid, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
-          <View style={styles.backupStatsRow}>
-            <View style={styles.backupStatItem}>
-              <Text style={[styles.backupStatVal, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                {transactions.length.toLocaleString()}
-              </Text>
-              <Text style={[styles.backupStatLabel, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                📝 交易明細
-              </Text>
-            </View>
-            <View style={[styles.backupStatDivider, { backgroundColor: colors.border.default }]} />
-            <View style={styles.backupStatItem}>
-              <Text style={[styles.backupStatVal, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                {members.length}
-              </Text>
-              <Text style={[styles.backupStatLabel, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                👨‍👩‍👧 家庭成員
-              </Text>
-            </View>
-            <View style={[styles.backupStatDivider, { backgroundColor: colors.border.default }]} />
-            <View style={styles.backupStatItem}>
-              <Text style={[styles.backupStatVal, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                {categories.length}
-              </Text>
-              <Text style={[styles.backupStatLabel, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                🏷️ 自訂分類
-              </Text>
-            </View>
-          </View>
-
-          <View style={[styles.backupStatsHorizontalDivider, { backgroundColor: colors.border.default }]} />
-
-          <View style={styles.backupStatsRow}>
-            <View style={styles.backupStatItem}>
-              <Text style={[styles.backupStatVal, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                {(paymentAccounts || []).filter(a => a.ledger_id === currentLedger?.id).length}
-              </Text>
-              <Text style={[styles.backupStatLabel, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                💳 支付卡片
-              </Text>
-            </View>
-            <View style={[styles.backupStatDivider, { backgroundColor: colors.border.default }]} />
-            <View style={styles.backupStatItem}>
-              <Text style={[styles.backupStatVal, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                {(recurringRules || []).filter(r => r.ledger_id === currentLedger?.id).length}
-              </Text>
-              <Text style={[styles.backupStatLabel, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                🗓️ 週期/分期
-              </Text>
-            </View>
-            <View style={[styles.backupStatDivider, { backgroundColor: colors.border.default }]} />
-            <View style={styles.backupStatItem}>
-              <Text style={[styles.backupStatVal, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                {(paymentMethods || []).filter(m => m.is_enabled !== false).length}
-              </Text>
-              <Text style={[styles.backupStatLabel, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                📱 付款方式
-              </Text>
-            </View>
-          </View>
-
-          <View style={[styles.backupStatsFooter, { borderTopColor: colors.border.default }]}>
-            <Text style={[styles.backupStatsFooterText, { color: colors.text.muted }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              🛡️ JSON 備份檔 100% 完整封存以上 6 類全要素資料 (含收據照片與帳單連結)
-            </Text>
-          </View>
-        </View>
-
-        {/* Option B: 定期備份管理區塊 */}
-        <View style={[styles.backupScheduleBox, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
-          <View style={styles.backupScheduleHeader}>
-            <View style={styles.backupScheduleHeaderLeft}>
-              <Text style={[styles.backupScheduleTitle, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                ⏰ 定期備份提醒
-              </Text>
-              <Text style={[styles.backupScheduleSub, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                上次備份：{formatLastBackupText(lastBackupAt)}
-              </Text>
-            </View>
             <TouchableOpacity
-              style={[styles.backupToggleBtn, autoBackupEnabled ? styles.backupToggleBtnActive : styles.backupToggleBtnInactive]}
-              onPress={() => updateAutoBackupConfig(!autoBackupEnabled, autoBackupInterval)}
-              activeOpacity={0.8}
+              style={[
+                styles.topGuideBtn,
+                { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default },
+              ]}
+              onPress={onOpenProductGuideModal}
+              activeOpacity={0.7}
             >
-              <Text style={[styles.backupToggleText, autoBackupEnabled ? styles.backupToggleTextActive : styles.backupToggleTextInactive]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                {autoBackupEnabled ? '已開啟提醒' : '已關閉提醒'}
+              <Text style={[styles.topGuideBtnText, { color: colors.text.primary }]} numberOfLines={1}>
+                📖 操作指南
               </Text>
             </TouchableOpacity>
           </View>
-
-          {/* 備份狀態徽章 */}
-          <View style={[styles.backupStatusNotice, isBackupDue ? styles.backupStatusNoticeDue : styles.backupStatusNoticeOk]}>
-            <Text style={[styles.backupStatusNoticeText, isBackupDue ? styles.backupStatusNoticeTextDue : styles.backupStatusNoticeTextOk]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              {!autoBackupEnabled
-                ? '⏸️ 定期提醒已關閉，您仍可隨時手動點擊下方按鈕匯出存檔。'
-                : daysSinceLastBackup === null
-                ? '⚠️ 尚未備份至雲端，建議儘早建立第一份備份！'
-                : daysSinceLastBackup >= autoBackupInterval
-                ? `⚠️ 已間隔 ${daysSinceLastBackup} 天未備份（已超過設定之 ${autoBackupInterval} 天），建議立即存檔！`
-                : `✅ 備份狀態良好（預計 ${Math.max(1, autoBackupInterval - daysSinceLastBackup)} 天後提醒）`}
-            </Text>
-          </View>
-
-          {/* 週期選擇器 Chips */}
-          {autoBackupEnabled && (
-            <View style={styles.backupIntervalSection}>
-              <Text style={[styles.backupIntervalLabel, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                提醒週期頻率：
-              </Text>
-              <View style={styles.backupIntervalChips}>
-                {([7, 14, 30] as const).map((days) => (
-                  <TouchableOpacity
-                    key={days}
-                    style={[
-                      styles.backupIntervalChip,
-                      { backgroundColor: colors.background.modal, borderColor: colors.border.default },
-                      autoBackupInterval === days && styles.backupIntervalChipActive,
-                    ]}
-                    onPress={() => updateAutoBackupConfig(true, days)}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={[
-                        styles.backupIntervalChipText,
-                        { color: colors.text.secondary },
-                        autoBackupInterval === days && styles.backupIntervalChipTextActive,
-                      ]}
-                      allowFontScaling={false}
-                      maxFontSizeMultiplier={1.08}
-                    >
-                      {days === 7 ? '每週 (7天)' : days === 14 ? '每雙週 (14天)' : '每月 (30天)'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          )}
-
-          <Text style={[styles.backupPrivacyNote, { color: colors.text.muted }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            💡 手機系統隱私機制限制 App 靜默寫入個人雲端；開啟提醒後，系統會在到期時以橫幅通知您一鍵存檔至 Google Drive 或 iCloud。
-          </Text>
         </View>
 
-        {/* 📴 離線待補同步隊列看板 */}
+        {/* 頂部即時警示橫幅：離線待補傳 */}
         {totalPendingOfflineCount > 0 && (
-          <View style={[styles.offlineOutboxCard, { backgroundColor: isDark ? '#450A0A33' : '#FEF2F2', borderColor: isDark ? '#991B1B' : '#FCA5A5' }]}>
-            <View style={styles.offlineOutboxLeft}>
-              <Text style={styles.offlineOutboxIcon}>📴</Text>
+          <View
+            style={[
+              styles.alertBannerCard,
+              {
+                backgroundColor: isDark ? '#450A0A33' : '#FEF2F2',
+                borderColor: isDark ? '#991B1B' : '#FCA5A5',
+              },
+            ]}
+          >
+            <View style={styles.alertBannerLeft}>
+              <Text style={styles.alertBannerIcon}>📴</Text>
               <View style={{ flex: 1, marginRight: 8 }}>
-                <Text style={[styles.offlineOutboxTitle, { color: isDark ? '#FCA5A5' : '#B91C1C' }]}>
+                <Text style={[styles.alertBannerTitle, { color: isDark ? '#FCA5A5' : '#B91C1C' }]}>
                   {pendingOfflineCount > 0 && totalPendingOfflineCount === pendingOfflineCount
-                    ? `離線記帳待補傳隊列 (${pendingOfflineCount} 筆)`
+                    ? `離線記帳待補傳 (${pendingOfflineCount} 筆)`
                     : pendingOfflineCount > 0
-                    ? `離線記帳待補傳 (本帳本 ${pendingOfflineCount} 筆，其他帳本 ${totalPendingOfflineCount - pendingOfflineCount} 筆)`
-                    : `其他帳本待補傳隊列 (${totalPendingOfflineCount} 筆)`}
+                    ? `離線待補傳 (本帳本 ${pendingOfflineCount} 筆，其他 ${
+                        totalPendingOfflineCount - pendingOfflineCount
+                      } 筆)`
+                    : `其他帳本離線待補傳 (${totalPendingOfflineCount} 筆)`}
                 </Text>
-                <Text style={[styles.offlineOutboxDesc, { color: colors.text.secondary }]}>
-                  您在離線環境上記錄或編輯的帳目已安全暫存於本機。當網路通暢時，點擊右側按鈕即可立即將所有公帳待補資料同步送達雲端！
+                <Text style={[styles.alertBannerDesc, { color: colors.text.secondary }]} numberOfLines={2}>
+                  離線紀錄已安全暫存於本機，連網後點擊右側立即上傳雲端。
                 </Text>
               </View>
             </View>
@@ -2487,255 +867,499 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
               style={[styles.offlineSyncBtn, isProcessingQueue && { opacity: 0.6 }]}
               onPress={processOfflineQueue}
               disabled={isProcessingQueue}
+              activeOpacity={0.8}
             >
               <Text style={styles.offlineSyncBtnText}>
-                {isProcessingQueue ? '⏳ 上傳中...' : '☁️ 立即補傳'}
+                {isProcessingQueue ? '⏳ 上傳中' : '☁️ 立即補傳'}
               </Text>
             </TouchableOpacity>
           </View>
         )}
 
-        <View style={styles.backupBtnRow}>
+        {/* 頂部即時警示橫幅：定期備份到期 */}
+        {isBackupDue && (
           <TouchableOpacity
-            style={styles.exportCsvBtn}
-            onPress={() => onOpenExportModal('csv')}
-            activeOpacity={0.8}
+            style={[
+              styles.backupDueBanner,
+              {
+                backgroundColor: isDark ? 'rgba(245, 158, 11, 0.14)' : '#FFFBEB',
+                borderColor: isDark ? 'rgba(245, 158, 11, 0.4)' : '#FCD34D',
+              },
+            ]}
+            onPress={() => setActiveSheet('backup')}
+            activeOpacity={0.75}
           >
-            <Text style={styles.exportCsvBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>📊 匯出 CSV 報表 (Excel)</Text>
-            <Text style={styles.exportBtnSubtext} allowFontScaling={false} maxFontSizeMultiplier={1.08}>內建 UTF-8 BOM 防中文亂碼</Text>
+            <Text style={[styles.backupDueBannerText, { color: isDark ? '#FCD34D' : '#B45309' }]}>
+              ⚠️ {daysSinceLastBackup === null
+                ? '尚未建立第一份資料備份，點擊前往備份 ›'
+                : `已超過 ${daysSinceLastBackup} 天未備份，點擊立即匯出保存 ›`}
+            </Text>
           </TouchableOpacity>
+        )}
 
-          <TouchableOpacity
-            style={styles.exportJsonBtn}
-            onPress={() => onOpenExportModal('json')}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.exportJsonBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>📦 匯出 JSON 結構備份</Text>
-            <Text style={styles.exportBtnSubtext} allowFontScaling={false} maxFontSizeMultiplier={1.08}>全要素結構 (含照片與帳單)</Text>
-          </TouchableOpacity>
+        {/* ==================== 區塊 1：🏠 家庭與帳本 ==================== */}
+        <View style={styles.groupBlockHeader}>
+          <Text style={[styles.groupBlockTitle, { color: colors.text.secondary }]}>
+            🏠 家庭與帳本
+          </Text>
+          <Text style={[styles.groupBlockCaption, { color: colors.text.muted }]}>全家共用</Text>
         </View>
 
-        <TouchableOpacity
-          style={[styles.restoreEntryBtn, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.12)' : '#EEF2FF', borderColor: isDark ? 'rgba(99, 102, 241, 0.3)' : '#C7D2FE', marginTop: 10 }]}
-          onPress={() => onOpenExportModal('attachments')}
-          activeOpacity={0.8}
+        {/* 家庭成員名單卡片（高頻常用，直接展開保留在主頁） */}
+        <View
+          style={[
+            styles.cardSection,
+            { backgroundColor: colors.background.modal, borderColor: colors.border.default },
+          ]}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={[styles.restoreEntryBtnText, { color: isDark ? '#A5B4FC' : '#4F46E5' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              🗂️ 附件離線封存與下載 (收據照片 / 電子帳單)
+          <View style={styles.sectionHeaderRow}>
+            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} numberOfLines={1}>
+              👨‍👩‍👧 家庭成員名單 ({members.length})
             </Text>
-          </View>
-          <Text style={[styles.restoreEntryBtnSub, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            匯出 HTML 視覺化封存庫，一鍵在瀏覽器批次下載全部實體 JPG / PDF 檔案
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.restoreEntryBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
-          onPress={() => {
-            if (!realIsOwner) {
-              showAlert(
-                '🔒 僅限管理員執行',
-                '回復備份具有覆蓋家庭帳本之重大影響，僅限帳本管理員執行。\n若需回復資料，請洽詢家庭管理員協助。'
-              );
-              return;
-            }
-            if (!isAdminMode) {
-              showAlert('日常模式受限', '目前為日常檢視模式。從備份檔回復資料具有重大影響，請先點擊首頁頂部的【🛡️ 日常模式】啟用管理員模式。');
-              return;
-            }
-            onOpenExportModal('restore');
-          }}
-          activeOpacity={realIsOwner ? 0.8 : 0.6}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={[styles.restoreEntryBtnText, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              {realIsOwner ? '📥 從備份檔回復資料 (還原)' : '🔒 從備份檔回復資料 (僅管理員)'}
-            </Text>
-            {!realIsOwner && (
-              <View style={styles.adminOnlyMiniBadge}>
-                <Text style={styles.adminOnlyMiniBadgeText}>管理員</Text>
-              </View>
+            {realIsOwner && (
+              <TouchableOpacity
+                style={styles.addMemberBtn}
+                onPress={() => {
+                  if (!isAdminMode) {
+                    showAlert(
+                      '日常模式受限',
+                      '目前為日常檢視模式。如需新增家庭成員，請先點擊首頁頂部的【🛡️ 日常模式】切換為管理員模式。'
+                    );
+                    return;
+                  }
+                  onOpenAddMemberModal();
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.addMemberBtnText}>＋ 新增成員</Text>
+              </TouchableOpacity>
             )}
           </View>
-          <Text style={[styles.restoreEntryBtnSub, { color: colors.text.secondary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            {realIsOwner
-              ? '支援上傳 .json 備份檔或直接貼上代碼安全還原'
-              : '此操作具有覆蓋全帳本之影響，需管理員權限'}
-          </Text>
-        </TouchableOpacity>
 
-        {/* 🔄 清除本機快取並重新同步 (自癒校準) */}
-        <TouchableOpacity
-          style={[styles.restoreEntryBtn, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.12)' : '#EEF2FF', borderColor: isDark ? 'rgba(99, 102, 241, 0.3)' : '#C7D2FE', marginTop: 10 }]}
-          onPress={handleResetLocalCache}
-          activeOpacity={0.8}
-          disabled={isResettingCache}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={[styles.restoreEntryBtnText, { color: isDark ? '#A5B4FC' : '#4F46E5' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              {isResettingCache ? '⏳ 正在重新校準本機資料...' : '🔄 清除本機快取並重新同步'}
-            </Text>
+          <Text style={[styles.sectionHeaderDesc, { color: colors.text.secondary }]}>
+            點擊成員可自訂稱謂、管理連線裝置與 Google 帳號安全防護
+          </Text>
+
+          <View style={styles.userSwitchRow}>
+            {members.map((member) => {
+              const isCurrent =
+                currentUser.id === member.id ||
+                (!!currentUser.display_name && currentUser.display_name === member.display_name);
+              const isMemberAdmin =
+                member.role === 'owner' ||
+                member.role === 'admin' ||
+                currentLedger.created_by === member.id;
+              const isCreator = currentLedger.created_by === member.id;
+              const canEdit = isOwner || isCurrent;
+              const memberDevList = getDevicesForMember(member);
+
+              return (
+                <TouchableOpacity
+                  key={member.id}
+                  style={[
+                    styles.userChip,
+                    { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default },
+                    isCurrent && styles.userChipActive,
+                  ]}
+                  activeOpacity={0.7}
+                  onPress={() => onOpenEditMemberModal(member)}
+                >
+                  <MemberAvatar avatar={member.avatar_url} size={20} style={styles.userAvatar} />
+                  <Text
+                    style={[
+                      styles.userTitle,
+                      { color: colors.text.primary },
+                      isCurrent && styles.userTitleActive,
+                    ]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    {member.display_name}
+                  </Text>
+                  {isCreator ? (
+                    <View style={styles.memberRoleBadge}>
+                      <Text style={styles.memberRoleBadgeText}>👑 創建者</Text>
+                    </View>
+                  ) : isMemberAdmin ? (
+                    <View style={styles.memberRoleBadge}>
+                      <Text style={styles.memberRoleBadgeText}>👑 管理員</Text>
+                    </View>
+                  ) : null}
+                  {memberDevList.length > 0 && (
+                    <View style={styles.memberDeviceCountBadge}>
+                      <Text style={styles.memberDeviceCountBadgeText}>📱 {memberDevList.length}</Text>
+                    </View>
+                  )}
+                  {member.is_locked ? (
+                    <View style={styles.memberLockedBadge}>
+                      <Text style={styles.memberLockedBadgeText}>🔒 已保護</Text>
+                    </View>
+                  ) : isCurrent && !isDemoLedger ? (
+                    <View
+                      style={[
+                        styles.memberLockedBadge,
+                        {
+                          backgroundColor: isDark ? '#78350F33' : '#FEF3C7',
+                          borderColor: isDark ? '#B45309' : '#FDE68A',
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.memberLockedBadgeText,
+                          { color: isDark ? '#FBBF24' : '#B45309' },
+                        ]}
+                      >
+                        ⚠️ 訪客
+                      </Text>
+                    </View>
+                  ) : null}
+                  {isCurrent && <Text style={styles.activeTag}>我</Text>}
+                  {canEdit && <Text style={styles.memberEditHintIcon}>✏️</Text>}
+                </TouchableOpacity>
+              );
+            })}
           </View>
-          <Text style={[styles.restoreEntryBtnSub, { color: isDark ? '#C7D2FE' : '#6366F1' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            以雲端資料為準，清空手機暫存並重新載入最新明細（絕不影響或修改雲端資料）
-          </Text>
-        </TouchableOpacity>
 
-        {/* 👑 管理員專屬：☁️ 雲端帳本總管入口 */}
-        {realIsOwner && (
-          <TouchableOpacity
-            style={[styles.restoreEntryBtn, { backgroundColor: isDark ? '#1E3A8A22' : '#EFF6FF', borderColor: isDark ? '#1E40AF' : '#BFDBFE', marginTop: 10 }]}
-            onPress={() => {
-              if (!isAdminMode) {
-                showAlert('日常模式受限', '目前為日常檢視模式。如需管理名下所有雲端帳本，請先點擊首頁頂部的【🛡️ 日常模式】啟用管理員模式。');
-                return;
-              }
-              onOpenCloudLedgerManager();
-            }}
-            activeOpacity={0.8}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={[styles.restoreEntryBtnText, { color: '#3B82F6' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-                ☁️ 雲端帳本總管
-              </Text>
-              <View style={[styles.adminOnlyMiniBadge, { backgroundColor: isDark ? '#1E3A8A' : '#DBEAFE', borderColor: '#3B82F6' }]}>
-                <Text style={[styles.adminOnlyMiniBadgeText, { color: '#93C5FD' }]}>管理員</Text>
-              </View>
-            </View>
-            <Text style={[styles.restoreEntryBtnSub, { color: '#60A5FA' }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              盤點雲端全部帳本現況、監控 500 MB 空間用量（安全唯讀模式）
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* 📖 產品介紹與常用操作指南卡片 */}
-      <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
-        <TouchableOpacity
-          style={styles.guideEntryCard}
-          onPress={onOpenProductGuideModal}
-          activeOpacity={0.75}
-        >
-          <View style={styles.guideEntryLeft}>
-            <View style={[styles.guideEntryIconCircle, { backgroundColor: isDark ? '#1E293B' : '#EFF6FF' }]}>
-              <Text style={styles.guideEntryIcon}>📖</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={styles.guideEntryTitleRow}>
-                <Text style={[styles.guideEntryTitle, { color: colors.text.primary }]} numberOfLines={1} adjustsFontSizeToFit>
-                  產品介紹與常用操作指南
+          {/* 無管理員緊急救援橫幅 */}
+          {!realIsOwner && (
+            <View
+              style={[
+                styles.claimAdminBanner,
+                {
+                  backgroundColor: isDark ? '#1E293B' : '#FEF2F2',
+                  borderColor: isDark ? '#334155' : '#FCA5A5',
+                },
+                !members.some((m) => m.role === 'owner' || m.role === 'admin') && {
+                  borderColor: '#EF4444',
+                  backgroundColor: isDark ? '#450A0A' : '#FEF2F2',
+                },
+              ]}
+            >
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text
+                  style={[
+                    styles.claimAdminBannerTitle,
+                    !members.some((m) => m.role === 'owner' || m.role === 'admin') && {
+                      color: '#EF4444',
+                    },
+                  ]}
+                >
+                  {!members.some((m) => m.role === 'owner' || m.role === 'admin')
+                    ? '⚠️ 帳本目前無管理員（全員皆為一般成員）'
+                    : '👑 您目前為一般成員'}
                 </Text>
-                <View style={styles.guideEntryBadge}>
-                  <Text style={styles.guideEntryBadgeText}>速查手冊</Text>
-                </View>
+                <Text
+                  style={[
+                    styles.claimAdminBannerDesc,
+                    { color: colors.text.secondary },
+                    !members.some((m) => m.role === 'owner' || m.role === 'admin') && {
+                      color: isDark ? '#FCA5A5' : '#991B1B',
+                    },
+                  ]}
+                >
+                  {!members.some((m) => m.role === 'owner' || m.role === 'admin')
+                    ? '帳本處於異常無管理員狀態，請點擊右側輸入應急安全碼恢復管理員！'
+                    : '若需管理帳本與成員，請由現任管理員在成員卡片中將您設為共同管理員。'}
+                </Text>
               </View>
-              <Text style={[styles.guideEntryDesc, { color: colors.text.secondary }]} numberOfLines={2}>
-                家庭公帳記帳、撥零用錢、待辦連動、加值與對帳速查
-              </Text>
-            </View>
-          </View>
-          <View style={styles.guideEntryChevronWrap}>
-            <Text style={[styles.guideEntryChevron, { color: colors.text.muted }]}>›</Text>
-          </View>
-        </TouchableOpacity>
-      </View>
-
-      {/* 系統版本與更新狀態卡片 */}
-      <View style={[styles.cardSection, { backgroundColor: colors.background.modal, borderColor: colors.border.default }]}>
-        <View style={styles.versionHeaderRow}>
-          <View style={{ flex: 1, marginRight: 8 }}>
-            <Text style={[styles.cardSectionTitle, { color: colors.text.primary }]} numberOfLines={1} adjustsFontSizeToFit>
-              📱 應用程式版本資訊
-            </Text>
-            <Text style={[styles.cardSectionDesc, { color: colors.text.secondary }]}>甜心記帳本跨平台系統</Text>
-          </View>
-          <TouchableOpacity
-            style={styles.versionTagBadge}
-            onPress={onOpenChangelogModal}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.versionTagBadgeText}>v{APP_VERSION} 📜</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={[styles.versionDetailBox, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}>
-          <View style={styles.versionDetailRow}>
-            <Text style={[styles.versionDetailLabel, { color: colors.text.secondary }]}>運行環境：</Text>
-            <Text style={[styles.versionDetailValue, { color: colors.text.primary }]}>
-              {Platform.OS === 'web'
-                ? '🌐 Web 網頁版'
-                : Platform.OS === 'ios'
-                ? '🍎 iOS 原生 App'
-                : '🤖 Android 原生 App'}
-            </Text>
-          </View>
-
-          <View style={styles.versionDetailRow}>
-            <Text style={[styles.versionDetailLabel, { color: colors.text.secondary }]}>更新機制：</Text>
-            <Text style={[styles.versionDetailValue, { color: colors.text.primary }]}>
-              {Platform.OS === 'web'
-                ? '🌐 網頁即時快取'
-                : (Updates.isEnabled ? '⚡ EAS 雲端熱更新' : '📦 獨立安裝版 (APK)')}
-            </Text>
-          </View>
-
-          {Platform.OS !== 'web' && !!Updates.updateId && (
-            <View style={styles.versionDetailRow}>
-              <Text style={[styles.versionDetailLabel, { color: colors.text.secondary }]}>更新代碼：</Text>
-              <Text style={[styles.versionDetailValue, styles.monoText, { color: colors.text.primary }]}>
-                {Updates.updateId.slice(0, 8)}
-              </Text>
-            </View>
-          )}
-
-          {Platform.OS !== 'web' && !!Updates.createdAt && (
-            <View style={styles.versionDetailRow}>
-              <Text style={[styles.versionDetailLabel, { color: colors.text.secondary }]}>更新時間：</Text>
-              <Text style={[styles.versionDetailValue, { color: colors.text.primary }]}>
-                {new Date(Updates.createdAt).toLocaleString('zh-TW', { hour12: false })}
-              </Text>
+              {!members.some((m) => m.role === 'owner' || m.role === 'admin') && (
+                <TouchableOpacity
+                  style={[styles.claimAdminBannerBtn, { backgroundColor: '#DC2626' }]}
+                  onPress={onOpenClaimAdminModal}
+                >
+                  <Text style={styles.claimAdminBannerBtnText}>救援管理員</Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-          <TouchableOpacity
-            style={[styles.checkUpdateBtn, { flex: 1, marginTop: 0 }, isCheckingUpdate && styles.checkUpdateBtnDisabled]}
-            onPress={onCheckForUpdates}
-            disabled={isCheckingUpdate}
-          >
-            <Text style={styles.checkUpdateBtnText} numberOfLines={1} adjustsFontSizeToFit>
-              {isCheckingUpdate ? '⏳ 檢查中...' : '🔄 檢查更新'}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.viewChangelogBtn, { flex: 1, backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
-            onPress={onOpenChangelogModal}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.viewChangelogBtnText, { color: colors.text.primary }]} numberOfLines={1} adjustsFontSizeToFit>
-              📜 更新歷程
-            </Text>
-          </TouchableOpacity>
+        {/* 家庭與帳本管理清單 */}
+        <View
+          style={[
+            styles.groupCardStandalone,
+            { backgroundColor: colors.background.modal, borderColor: colors.border.default },
+          ]}
+        >
+          <SettingsRowItem
+            icon="🔗"
+            iconBg={isDark ? 'rgba(16, 185, 129, 0.18)' : '#ECFDF5'}
+            title="邀請碼、門禁鎖與安全碼"
+            subtitle={`《${currentLedger?.name || '家庭公帳'}》 · 邀請碼 ${inviteCode}`}
+            badgeText={allowNewMembers ? '🟢 開放加入' : '🔒 已上鎖'}
+            badgeTone={allowNewMembers ? 'success' : 'danger'}
+            onPress={() => setActiveSheet('invite')}
+          />
+          <SettingsRowItem
+            icon="🚪"
+            iconBg={isDark ? 'rgba(59, 130, 246, 0.18)' : '#EFF6FF'}
+            title="加入或切換其他家庭公帳"
+            subtitle="切換家庭／個人帳本，或輸入邀請碼加入新公帳"
+            badgeText={hasOtherUnread ? '新動態' : undefined}
+            badgeTone="danger"
+            onPress={onOpenSwitchLedgerModal}
+          />
+          <SettingsRowItem
+            icon="🎯"
+            iconBg={isDark ? 'rgba(245, 158, 11, 0.18)' : '#FFFBEB'}
+            title="預算控管與成員額度"
+            subtitle="設定每月公帳預算、個人專屬上限與首頁顯隱偏好"
+            isLast={!onOpenCloudInvoiceModal}
+            onPress={onOpenBudgetManageModal}
+          />
+          {onOpenCloudInvoiceModal && (
+            <SettingsRowItem
+              icon="☁️"
+              iconBg={isDark ? 'rgba(14, 165, 233, 0.18)' : '#E0F2FE'}
+              title="財政部雲端發票智慧同步"
+              subtitle="共通性載具與卡片自動分流歸屬家庭成員"
+              isLast
+              onPress={onOpenCloudInvoiceModal}
+            />
+          )}
         </View>
 
-        {isOwner && onTriggerLiveToastDemo && (
-          <TouchableOpacity
-            style={[styles.testToastBtn, { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default }]}
-            onPress={onTriggerLiveToastDemo}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.testToastBtnText, { color: colors.text.primary }]} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-              🔔 測試即時動態泡泡通知
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
+        {/* ==================== 區塊 2：🔔 通知與日報 ==================== */}
+        <SettingsGroupCard title="🔔 通知與日報" caption="訊息推播">
+          <SettingsRowItem
+            icon="📱"
+            iconBg={isDark ? 'rgba(59, 130, 246, 0.18)' : '#EFF6FF'}
+            title="手機推播提醒"
+            subtitle="每日提醒鐘點、本人信用卡帳單與生活記事排程"
+            badgeText={pushSummaryBadge.text}
+            badgeTone={pushSummaryBadge.tone}
+            onPress={() => setActiveSheet('notifications')}
+          />
+          <SettingsRowItem
+            icon="💚"
+            iconBg={isDark ? 'rgba(6, 199, 85, 0.18)' : '#DCFCE7'}
+            title="LINE 每日收支日報"
+            subtitle="個人自主選帳訂閱與家庭群組公開播報雙軌設定"
+            badgeText={lineSummaryBadge.text}
+            badgeTone={lineSummaryBadge.tone}
+            isLast
+            onPress={() => setActiveSheet('line')}
+          />
+        </SettingsGroupCard>
+
+        {/* ==================== 區塊 3：👤 個人偏好與裝置 ==================== */}
+        <SettingsGroupCard title="👤 個人偏好與裝置" caption="僅影響本機">
+          <SettingsRowItem
+            icon="🔐"
+            iconBg={isDark ? 'rgba(139, 92, 246, 0.18)' : '#F5F3FF'}
+            title="生物辨識與財務隱私鎖"
+            subtitle={`以 ${capability.biometryType} 保護淨值遮罩與 App 啟動解鎖`}
+            badgeText={privacySummaryBadge.text}
+            badgeTone={privacySummaryBadge.tone}
+            onPress={() => setActiveSheet('privacy')}
+          />
+          <SettingsRowItem
+            icon="🔤"
+            iconBg={isDark ? 'rgba(244, 63, 94, 0.18)' : '#FFE4E6'}
+            title="字型大小與顯示"
+            subtitle="四段字級與即時排版預覽，長輩閱讀更輕鬆"
+            badgeText={fontSummaryText}
+            badgeTone="info"
+            onPress={() => setActiveSheet('font')}
+          />
+          <SettingsRowItem
+            icon="📱"
+            iconBg={isDark ? 'rgba(99, 102, 241, 0.18)' : '#EEF2FF'}
+            title="桌面小工具與快捷動作"
+            subtitle="4x2 今日待辦即時快照與桌面長按捷徑試按"
+            badgeText={
+              widgetSnapshot?.pendingMemoCount
+                ? `${widgetSnapshot.pendingMemoCount} 則待辦`
+                : '快照就緒'
+            }
+            badgeTone={widgetSnapshot?.pendingMemoCount ? 'info' : 'success'}
+            isLast
+            onPress={() => setActiveSheet('widget')}
+          />
+        </SettingsGroupCard>
+
+        {/* ==================== 區塊 4：🛡️ 資料備份與系統 ==================== */}
+        <SettingsGroupCard title="🛡️ 資料備份與系統" caption="安全與維護">
+          <SettingsRowItem
+            icon="💾"
+            iconBg={isDark ? 'rgba(16, 185, 129, 0.18)' : '#ECFDF5'}
+            title="資料備份、匯出與還原"
+            subtitle={`${transactions.length.toLocaleString()} 筆明細 · 上次備份：${formatLastBackupText(
+              lastBackupAt
+            )}`}
+            badgeText={backupSummaryBadge.text}
+            badgeTone={backupSummaryBadge.tone}
+            onPress={() => setActiveSheet('backup')}
+          />
+          {realIsOwner && (
+            <SettingsRowItem
+              icon="☁️"
+              iconBg={isDark ? 'rgba(59, 130, 246, 0.18)' : '#EFF6FF'}
+              title="雲端帳本總管"
+              subtitle="盤點雲端全部帳本現況、監控 500 MB 空間用量"
+              badgeText="管理員"
+              badgeTone="info"
+              onPress={() => {
+                if (!isAdminMode) {
+                  showAlert(
+                    '日常模式受限',
+                    '目前為日常檢視模式。如需管理名下所有雲端帳本，請先點擊首頁頂部的【🛡️ 日常模式】啟用管理員模式。'
+                  );
+                  return;
+                }
+                onOpenCloudLedgerManager();
+              }}
+            />
+          )}
+          <SettingsRowItem
+            icon="🔧"
+            iconBg={isDark ? 'rgba(148, 163, 184, 0.18)' : '#F1F5F9'}
+            title="系統資訊與維護"
+            subtitle={`v${APP_VERSION} · 清除本機快取重整、版本更新與手冊`}
+            badgeText={
+              Platform.OS === 'web' ? 'Web' : Platform.OS === 'ios' ? 'iOS' : 'Android'
+            }
+            badgeTone="neutral"
+            isLast
+            onPress={() => setActiveSheet('system')}
+          />
+        </SettingsGroupCard>
+      </ScrollView>
+
+      {/* ==================== 8 個專屬設定 Modal ==================== */}
+      <InviteAndSecurityModal
+        visible={activeSheet === 'invite'}
+        onClose={() => setActiveSheet(null)}
+        ledgerName={currentLedger?.name || '家庭公帳'}
+        realIsOwner={realIsOwner}
+        isAdminMode={isAdminMode}
+        inviteCode={inviteCode}
+        getInviteLink={getInviteLink}
+        regenerateInviteCode={regenerateInviteCode}
+        adminPin={adminPin}
+        allowNewMembers={allowNewMembers}
+        updateAllowNewMembers={updateAllowNewMembers}
+        onOpenEditLedgerModal={() => closeSheetThen(onOpenEditLedgerModal)}
+        onOpenCustomCodeModal={() => closeSheetThen(onOpenCustomCodeModal)}
+        onOpenChangePinModal={() => closeSheetThen(onOpenChangePinModal)}
+      />
+
+      <LocalNotificationsModal
+        visible={activeSheet === 'notifications'}
+        onClose={() => setActiveSheet(null)}
+        notifPrefs={notifPrefs}
+        billingNoticeEnabled={billingNoticeEnabled}
+        isSchedulingNotice={isSchedulingNotice}
+        memoNoticeEnabled={memoNoticeEnabled}
+        isSchedulingMemoNotice={isSchedulingMemoNotice}
+        billingGroups={billingGroups}
+        pendingMemos={pendingMemos}
+        getMemberById={getMemberById}
+        onUpdateNotifPrefs={handleUpdateNotifPrefs}
+        onToggleBillingNotice={handleToggleBillingNotice}
+        onSendTestBillingNotice={handleSendTestBillingNotice}
+        onToggleMemoNotice={handleToggleMemoNotice}
+        onSendTestMemoNotice={handleSendTestMemoNotice}
+      />
+
+      <LineDailyReportModal
+        visible={activeSheet === 'line'}
+        onClose={() => setActiveSheet(null)}
+        isDemoLedger={isDemoLedger}
+        currentLedgerName={currentLedger?.name}
+        canManageGroupLine={canManageGroupLine}
+        lineSettings={lineSettings}
+        isLoadingLineSettings={isLoadingLineSettings}
+        isSavingLineSettings={isSavingLineSettings}
+        pendingUserBindCode={pendingUserBindCode}
+        pendingGroupBindCode={pendingGroupBindCode}
+        onRefresh={loadLineSettings}
+        onStartUserLineBind={handleStartUserLineBind}
+        onToggleUserLinePref={handleToggleUserLinePref}
+        onToggleLedgerLineSub={handleToggleLedgerLineSub}
+        onUnbindUserLine={handleUnbindUserLine}
+        onStartGroupLineBind={handleStartGroupLineBind}
+        onToggleGroupLinePref={handleToggleGroupLinePref}
+        onUnbindGroupLine={handleUnbindGroupLine}
+      />
+
+      <PrivacyLockModal
+        visible={activeSheet === 'privacy'}
+        onClose={() => setActiveSheet(null)}
+        capability={capability}
+        privacyMaskEnabled={privacyMaskEnabled}
+        onTogglePrivacyMask={updatePrivacyMaskEnabled}
+        appLockEnabled={appLockEnabled}
+        onToggleAppLock={updateAppLockEnabled}
+        onTestBiometrics={handleTestBiometrics}
+      />
+
+      <DisplayFontModal
+        visible={activeSheet === 'font'}
+        onClose={() => setActiveSheet(null)}
+      />
+
+      <WidgetQuickActionsModal
+        visible={activeSheet === 'widget'}
+        onClose={() => setActiveSheet(null)}
+        ledgerName={currentLedger?.name || '家庭公帳'}
+        widgetSnapshot={widgetSnapshot}
+        isSyncingWidget={isSyncingWidget}
+        widgetSyncMessage={widgetSyncMessage}
+        onManualSyncWidget={handleManualSyncWidget}
+        onTriggerQuickAction={(kind) =>
+          closeSheetThen(() => {
+            if (onTriggerQuickAction) {
+              onTriggerQuickAction(kind);
+            } else {
+              onOpenModal(kind === 'memo' ? 'memo' : 'expense');
+            }
+          })
+        }
+      />
+
+      <BackupAndDataModal
+        visible={activeSheet === 'backup'}
+        onClose={() => setActiveSheet(null)}
+        isCloudSynced={isCloudSynced}
+        historySyncProgress={historySyncProgress}
+        transactionsCount={transactions.length}
+        membersCount={members.length}
+        categoriesCount={categories.length}
+        paymentAccountsCount={scopedPaymentAccountsCount}
+        recurringRulesCount={scopedRecurringRulesCount}
+        paymentMethodsCount={enabledPaymentMethodsCount}
+        lastBackupAt={lastBackupAt}
+        autoBackupEnabled={autoBackupEnabled}
+        autoBackupInterval={autoBackupInterval}
+        daysSinceLastBackup={daysSinceLastBackup}
+        isBackupDue={isBackupDue}
+        updateAutoBackupConfig={updateAutoBackupConfig}
+        pendingOfflineCount={pendingOfflineCount}
+        totalPendingOfflineCount={totalPendingOfflineCount}
+        isProcessingQueue={isProcessingQueue}
+        processOfflineQueue={processOfflineQueue}
+        realIsOwner={realIsOwner}
+        isAdminMode={isAdminMode}
+        onOpenExportModal={(tab) => closeSheetThen(() => onOpenExportModal(tab))}
+      />
+
+      <SystemMaintenanceModal
+        visible={activeSheet === 'system'}
+        onClose={() => setActiveSheet(null)}
+        isCheckingUpdate={isCheckingUpdate}
+        isResettingCache={isResettingCache}
+        isOwner={isOwner}
+        onResetLocalCache={handleResetLocalCache}
+        onCheckForUpdates={onCheckForUpdates}
+        onOpenChangelogModal={() => closeSheetThen(onOpenChangelogModal)}
+        onOpenProductGuideModal={() => closeSheetThen(onOpenProductGuideModal)}
+        onTriggerLiveToastDemo={
+          onTriggerLiveToastDemo ? () => closeSheetThen(onTriggerLiveToastDemo) : undefined
+        }
+      />
     </>
-  )}
-</ScrollView>
   );
 };
 
@@ -2748,7 +1372,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    marginBottom: 12,
+    marginBottom: 14,
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -2811,46 +1435,101 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  categoryTabsContainer: {
-    marginBottom: 14,
-  },
-  categoryTabsScroll: {
-    gap: 8,
-    paddingVertical: 2,
-  },
-  categoryTabChip: {
-    paddingVertical: 7,
-    paddingHorizontal: 13,
-    borderRadius: 20,
+  alertBannerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 14,
     borderWidth: 1,
+    marginBottom: 12,
   },
-  categoryTabText: {
+  alertBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 8,
+  },
+  alertBannerIcon: {
+    fontSize: 20,
+  },
+  alertBannerTitle: {
     fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  alertBannerDesc: {
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  offlineSyncBtn: {
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    flexShrink: 0,
+  },
+  offlineSyncBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  backupDueBanner: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  backupDueBannerText: {
+    fontSize: 12,
     fontWeight: '600',
   },
-  categoryTabTextActive: {
+  groupBlockHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+    marginBottom: 8,
+    gap: 8,
+  },
+  groupBlockTitle: {
+    fontSize: 13,
     fontWeight: '700',
+    flex: 1,
+  },
+  groupBlockCaption: {
+    fontSize: 11,
+    fontWeight: '600',
+    flexShrink: 0,
   },
   cardSection: {
     borderRadius: 16,
     padding: 16,
-    marginBottom: 16,
+    marginBottom: 10,
     borderWidth: 1,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  groupCardStandalone: {
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 4,
-  },
-  sectionHeaderLeft: {
-    flex: 1,
-    marginRight: 8,
   },
   cardSectionTitle: {
     fontSize: 15,
@@ -2863,22 +1542,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     marginBottom: 12,
-  },
-  cardSectionDesc: {
-    fontSize: 12,
-    lineHeight: 16,
-    marginBottom: 12,
-  },
-  allowanceQuickBtn: {
-    backgroundColor: '#F59E0B',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  allowanceQuickBtnText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
   },
   addMemberBtn: {
     backgroundColor: '#3B82F6',
@@ -2895,7 +1558,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: 6,
+    marginTop: 4,
   },
   userChip: {
     flexDirection: 'row',
@@ -2999,1025 +1662,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
-  inviteHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  roleBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  roleBadgeOwner: {
-    backgroundColor: '#FEF3C7',
-  },
-  roleBadgeProtected: {
-    backgroundColor: '#E2E8F0',
-  },
-  roleBadgeMember: {
-    backgroundColor: '#F1F5F9',
-  },
-  roleBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  roleBadgeTextOwner: {
-    color: '#B45309',
-  },
-  roleBadgeTextProtected: {
-    color: '#475569',
-  },
-  roleBadgeTextMember: {
-    color: '#64748B',
-  },
-  inviteCard: {
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-  },
-  inviteCardLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-  },
-  inviteCodeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  inviteCodeLarge: {
-    fontSize: 26,
-    fontWeight: '800',
-    letterSpacing: 3,
-  },
-  copyCodeMiniBtn: {
-    backgroundColor: '#3B82F6',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  copyCodeMiniBtnText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  copyLinkBtn: {
-    backgroundColor: '#10B981',
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  copyLinkBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  ownerControlsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 6,
-  },
-  ownerControlBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 8,
-    alignItems: 'center',
-    borderWidth: 1,
-  },
-  ownerControlBtnText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  pinSectionWrapper: {
-    borderTopWidth: 1,
-    marginTop: 14,
-    paddingTop: 12,
-  },
-  pinHeaderRow: {
-    marginBottom: 8,
-  },
-  pinHeaderTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  pinHeaderDesc: {
-    fontSize: 11,
-    lineHeight: 15,
-  },
-  pinCardInner: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  pinCardLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  pinCardValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 2,
-    marginTop: 2,
-  },
-  pinCardHint: {
-    fontSize: 9,
-  },
-  togglePinBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  togglePinBtnText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  changePinBtn: {
-    backgroundColor: '#3B82F6',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  changePinBtnText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  gatekeeperSectionWrapper: {
-    borderTopWidth: 1,
-    marginTop: 14,
-    paddingTop: 12,
-  },
-  gatekeeperHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  gatekeeperHeaderTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  gatekeeperBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  gatekeeperBadgeOpen: {
-    backgroundColor: '#DCFCE7',
-  },
-  gatekeeperBadgeLocked: {
-    backgroundColor: '#FEE2E2',
-  },
-  gatekeeperBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  gatekeeperBadgeTextOpen: {
-    color: '#15803D',
-  },
-  gatekeeperBadgeTextLocked: {
-    color: '#B91C1C',
-  },
-  gatekeeperHeaderDesc: {
-    fontSize: 11,
-    lineHeight: 15,
-  },
-  gatekeeperReadonlyTag: {
-    backgroundColor: '#E2E8F0',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  gatekeeperReadonlyTagText: {
-    color: '#475569',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  switchLedgerEntryBtn: {
-    marginTop: 10,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  switchLedgerEntryText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  switchLedgerEntryRedBadge: {
-    backgroundColor: '#EF4444',
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 10,
-  },
-  switchLedgerEntryRedBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  manageCategoryBtn: {
-    backgroundColor: '#3B82F6',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  manageCategoryBtnText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  backupStatsGrid: {
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    marginBottom: 12,
-  },
-  backupStatsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-  },
-  backupStatItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  backupStatVal: {
-    fontSize: 16,
-    fontWeight: '800',
-    marginBottom: 2,
-  },
-  backupStatLabel: {
-    fontSize: 11,
-  },
-  backupStatDivider: {
-    width: 1,
-    height: 24,
-  },
-  backupStatsHorizontalDivider: {
-    height: 1,
-    marginVertical: 10,
-  },
-  backupStatsFooter: {
-    borderTopWidth: 1,
-    marginTop: 10,
-    paddingTop: 8,
-    alignItems: 'center',
-  },
-  backupStatsFooterText: {
-    fontSize: 11,
-  },
-  backupScheduleBox: {
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    marginBottom: 12,
-  },
-  backupScheduleHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  backupScheduleHeaderLeft: {
-    flex: 1,
-    marginRight: 8,
-  },
-  backupScheduleTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  backupScheduleSub: {
-    fontSize: 11,
-    marginTop: 2,
-  },
-  backupToggleBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  backupToggleBtnActive: {
-    backgroundColor: '#DCFCE7',
-  },
-  backupToggleBtnInactive: {
-    backgroundColor: '#F1F5F9',
-  },
-  backupToggleText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  backupToggleTextActive: {
-    color: '#15803D',
-  },
-  backupToggleTextInactive: {
-    color: '#64748B',
-  },
-  backupStatusNotice: {
-    padding: 8,
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  backupStatusNoticeOk: {
-    backgroundColor: '#F0FDF4',
-  },
-  backupStatusNoticeDue: {
-    backgroundColor: '#FEF2F2',
-  },
-  backupStatusNoticeText: {
-    fontSize: 11,
-    lineHeight: 15,
-  },
-  backupStatusNoticeTextOk: {
-    color: '#15803D',
-  },
-  backupStatusNoticeTextDue: {
-    color: '#B91C1C',
-  },
-  backupIntervalSection: {
-    marginTop: 4,
-    marginBottom: 6,
-  },
-  backupIntervalLabel: {
-    fontSize: 11,
-    marginBottom: 4,
-  },
-  backupIntervalChips: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  backupIntervalChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  backupIntervalChipActive: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#3B82F6',
-  },
-  backupIntervalChipText: {
-    fontSize: 11,
-  },
-  backupIntervalChipTextActive: {
-    color: '#1D4ED8',
-    fontWeight: '700',
-  },
-  backupPrivacyNote: {
-    fontSize: 10,
-    lineHeight: 14,
-    marginTop: 4,
-  },
-  offlineOutboxCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 12,
-  },
-  offlineOutboxLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: 8,
-  },
-  offlineOutboxIcon: {
-    fontSize: 22,
-  },
-  offlineOutboxTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  offlineOutboxDesc: {
-    fontSize: 11,
-    lineHeight: 15,
-  },
-  offlineSyncBtn: {
-    backgroundColor: '#EF4444',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  offlineSyncBtnText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  backupBtnRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 10,
-  },
-  exportCsvBtn: {
-    flex: 1,
-    backgroundColor: '#059669',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  exportCsvBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  exportJsonBtn: {
-    flex: 1,
-    backgroundColor: '#4F46E5',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  exportJsonBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  exportBtnSubtext: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 10,
-  },
-  restoreEntryBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  restoreEntryBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  adminOnlyMiniBadge: {
-    backgroundColor: '#FEE2E2',
-    borderWidth: 1,
-    borderColor: '#FCA5A5',
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-    marginLeft: 6,
-  },
-  adminOnlyMiniBadgeText: {
-    color: '#B91C1C',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  restoreEntryBtnSub: {
-    fontSize: 11,
-    marginTop: 2,
-  },
-  guideEntryCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  guideEntryLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: 12,
-  },
-  guideEntryIconCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  guideEntryIcon: {
-    fontSize: 22,
-  },
-  guideEntryTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 2,
-  },
-  guideEntryTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  guideEntryBadge: {
-    backgroundColor: '#E0E7FF',
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  guideEntryBadgeText: {
-    color: '#4338CA',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  guideEntryDesc: {
-    fontSize: 11,
-    lineHeight: 15,
-  },
-  guideEntryChevronWrap: {
-    paddingLeft: 8,
-  },
-  guideEntryChevron: {
-    fontSize: 20,
-    fontWeight: '600',
-  },
-  versionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  versionTagBadge: {
-    backgroundColor: '#3B82F6',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  versionTagBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  versionDetailBox: {
-    borderRadius: 10,
-    padding: 10,
-    borderWidth: 1,
-    gap: 6,
-  },
-  versionDetailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  versionDetailLabel: {
-    fontSize: 12,
-  },
-  versionDetailValue: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  monoText: {
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  checkUpdateBtn: {
-    backgroundColor: '#3B82F6',
-    paddingVertical: 8,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkUpdateBtnDisabled: {
-    opacity: 0.6,
-  },
-  checkUpdateBtnText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  viewChangelogBtn: {
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  viewChangelogBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  testToastBtn: {
-    marginTop: 10,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  testToastBtnText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  sudoCard: {
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-  },
-  sudoCardProtected: {
-    backgroundColor: '#F8FAFC',
-    borderColor: '#CBD5E1',
-  },
-  sudoCardUnlocked: {
-    backgroundColor: '#FEF3C7',
-    borderColor: '#F59E0B',
-  },
-  sudoCardLeft: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-    gap: 10,
-  },
-  sudoCardIcon: {
-    fontSize: 24,
-  },
-  sudoCardTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  sudoCardTitleProtected: {
-    color: '#334155',
-  },
-  sudoCardTitleUnlocked: {
-    color: '#B45309',
-  },
-  sudoCardDesc: {
-    fontSize: 11,
-    lineHeight: 16,
-  },
-  sudoCardBtn: {
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  sudoCardBtnLock: {
-    backgroundColor: '#D97706',
-  },
-  sudoCardBtnUnlock: {
-    backgroundColor: '#2563EB',
-  },
-  sudoCardBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  sudoCardBtnTextLock: {
-    color: '#FFFFFF',
-  },
-  sudoCardBtnTextUnlock: {
-    color: '#FFFFFF',
-  },
-  cardScheduleContainer: {
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    marginTop: 8,
-  },
-  noCardBox: {
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  noCardText: {
-    fontSize: 12,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  cardScheduleRow: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-  },
-  cardScheduleIcon: {
-    fontSize: 16,
-  },
-  cardScheduleName: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  cardholderBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  cardholderBadgeText: {
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  cardScheduleMeta: {
-    fontSize: 12,
-    marginTop: 4,
-  },
-  cardScheduleDates: {
-    fontSize: 11,
-    marginTop: 2,
-  },
-  testNoticeBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  testNoticeBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  collapseToggleBtn: {
-    width: '100%',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-  },
-  collapseToggleBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  fontSizeChipsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 14,
-  },
-  fontSizeChip: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fontSizeChipText: {
-    fontSize: 13,
-  },
-  fontSizeChipPercent: {
-    fontSize: 11,
-    marginTop: 2,
-  },
-  fontSizeDescBox: {
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  fontSizeDescText: {
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  fontSizePreviewCard: {
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  fontSizePreviewHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-    paddingBottom: 6,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(150, 150, 150, 0.2)',
-  },
-  fontSizePreviewTag: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  fontSizePreviewScale: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  fontSizePreviewRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  fontSizePreviewTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  fontSizePreviewSub: {
-    fontSize: 11,
-    marginTop: 2,
-  },
-  fontSizePreviewAmount: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginLeft: 8,
-  },
-  fontSizeSwitchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  fontSizeSwitchTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  fontSizeSwitchDesc: {
-    fontSize: 11,
-    marginTop: 2,
-    lineHeight: 16,
-  },
-  reminderOptionsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 10,
-  },
-  reminderOptionChip: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  reminderOptionChipText: {
-    fontSize: 13,
-  },
-  reminderSubSection: {
-    marginTop: 10,
-    marginBottom: 2,
-  },
-  reminderSubLabel: {
-    fontSize: 11.5,
-    fontWeight: '600',
-    marginBottom: 6,
-  },
-  reminderSubToggleRow: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  reminderSubToggleChip: {
-    flex: 1,
-    minWidth: 135,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  reminderSubToggleText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  reminderOptionsWrapRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  reminderChoicePill: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  reminderChoicePillText: {
-    fontSize: 12,
-  },
-  lineRefreshBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  lineRefreshBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  lineNoticeBox: {
-    marginTop: 10,
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  lineNoticeText: {
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  lineSubCard: {
-    marginTop: 10,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  lineSubCardTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  lineTargetLedgerTag: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  lineSubDesc: {
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  linePrimaryBtn: {
-    marginTop: 10,
-    backgroundColor: '#06C755',
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  linePrimaryBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  lineSecondaryBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  lineSecondaryBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  lineCodeBox: {
-    marginTop: 10,
-    padding: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  lineCodeLabel: {
-    fontSize: 11,
-  },
-  lineCodeValue: {
-    fontSize: 17,
-    fontWeight: '800',
-    letterSpacing: 1,
-    marginVertical: 2,
-  },
-  lineCodeHint: {
-    fontSize: 11,
-    lineHeight: 16,
-  },
-  lineCopyBtn: {
-    backgroundColor: '#06C755',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  lineCopyBtnText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  lineSwitchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  lineSwitchLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  lineSwitchDesc: {
-    fontSize: 11,
-    lineHeight: 16,
-    marginTop: 2,
-  },
-  lineLedgerSubRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    marginBottom: 6,
-  },
-  lineLedgerSubName: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  lineDangerOutlineBtn: {
-    marginTop: 10,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  lineDangerOutlineText: {
-    color: '#EF4444',
-    fontSize: 12,
-    fontWeight: '600',
-  },
 });
-
