@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   TouchableOpacity,
@@ -9,7 +9,6 @@ import {
   StyleSheet,
   Animated,
   Alert,
-  Modal,
 } from 'react-native';
 import { Text, TextInput } from '../components/common/Text';
 
@@ -30,6 +29,52 @@ import { checkInvoiceWinning } from '../lib/lottery';
 import { getInvoicePeriodKey } from '../lib/invoice';
 
 const PAGE_SIZE = 40;
+const WEEKDAY_NAMES = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+
+function getLocalDateKeyFromIso(iso?: string): string {
+  if (!iso) return 'unknown';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return 'unknown';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function formatDayGroupLabel(
+  ymd: string,
+  todayYmd: string,
+  yesterdayYmd: string,
+  currentYear: number
+): string {
+  if (ymd === 'unknown') return '未註明日期';
+  const parts = ymd.split('-');
+  if (parts.length !== 3) return ymd;
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  const day = parseInt(parts[2], 10);
+  if (isNaN(year) || isNaN(month) || isNaN(day)) return ymd;
+
+  const d = new Date(year, month - 1, day);
+  const weekday = WEEKDAY_NAMES[d.getDay()] || '';
+  if (ymd === todayYmd) {
+    return `今天 · ${month}/${day} (${weekday})`;
+  }
+  if (ymd === yesterdayYmd) {
+    return `昨天 · ${month}/${day} (${weekday})`;
+  }
+  if (year !== currentYear) {
+    return `${year}/${month}/${day} (${weekday})`;
+  }
+  return `${month}/${day} (${weekday})`;
+}
+
+function shiftYm(ym: string, delta: number): string {
+  const parts = ym.split('-');
+  if (parts.length !== 2) return ym;
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  if (isNaN(year) || isNaN(month)) return ym;
+  const d = new Date(year, month - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
 
 export interface TransactionsScreenProps {
   scrollRef?: React.RefObject<ScrollView>;
@@ -106,12 +151,26 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [transactionTypeFilter, setTransactionTypeFilter] = useState<'all' | 'financial' | 'memo'>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
+  const filterKey = `${filterMonth}|${filterMemberId}|${searchQuery}|${transactionTypeFilter}`;
+  const [paginationState, setPaginationState] = useState<{ filterKey: string; count: number }>({
+    filterKey,
+    count: PAGE_SIZE,
+  });
+  const displayCount = paginationState.filterKey === filterKey ? paginationState.count : PAGE_SIZE;
+  const updateDisplayCount = useCallback((nextCount: number | ((prev: number) => number)) => {
+    setPaginationState(prev => {
+      const currentCount = prev.filterKey === filterKey ? prev.count : PAGE_SIZE;
+      const resolved = typeof nextCount === 'function' ? nextCount(currentCount) : nextCount;
+      return { filterKey, count: resolved };
+    });
+  }, [filterKey]);
+  const [nowTimestamp, setNowTimestamp] = useState(() => Date.now());
   const [isReminderDismissed, setIsReminderDismissed] = useState(false);
   const [isAssetSectionExpanded, setIsAssetSectionExpanded] = useState(false);
   const [isPinnedExpanded, setIsPinnedExpanded] = useState<boolean>(false);
   const [isSummaryExpanded, setIsSummaryExpanded] = useState<boolean>(true);
   const [isSearchFocused, setIsSearchFocused] = useState<boolean>(false);
+  const searchBarYRef = useRef<number>(260);
 
   // 剛才查看之高光錨點紀錄（自動維持 6 秒讓使用者退回列表時瞬間鎖定焦點）
   const [lastViewedTxId, setLastViewedTxId] = useState<string | null>(null);
@@ -174,9 +233,9 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
     if (!lastBackupAt) return null;
     const lastDate = new Date(lastBackupAt);
     if (isNaN(lastDate.getTime())) return null;
-    const diffMs = Date.now() - lastDate.getTime();
+    const diffMs = nowTimestamp - lastDate.getTime();
     return Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  }, [lastBackupAt]);
+  }, [lastBackupAt, nowTimestamp]);
 
   // 定期備份橫幅邏輯
   const isBackupDue = useMemo(() => {
@@ -201,17 +260,6 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
     }).sort((a, b) => (getEffectiveMemoReminderDate(a) || '').localeCompare(getEffectiveMemoReminderDate(b) || ''));
   }, [transactions]);
 
-  const upcomingMemos = useMemo(() => {
-    const todayYmd = getLocalDateYmd();
-    return transactions.filter(t => {
-      if (t.type !== 'memo') return false;
-      if (t.is_settled) return false;
-      const effDate = getEffectiveMemoReminderDate(t);
-      if (!effDate) return false;
-      return effDate > todayYmd;
-    }).sort((a, b) => (getEffectiveMemoReminderDate(a) || '').localeCompare(getEffectiveMemoReminderDate(b) || ''));
-  }, [transactions]);
-
   // 待繳週期帳單計算
   const isMatchedToCurrentUser = useMemo(() => {
     return (paidById?: string) => {
@@ -232,7 +280,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
       if (mem && targetM && mem.display_name === targetM.display_name) return true;
       return false;
     };
-  }, [members, getMemberById]);
+  }, [getMemberById]);
 
   const scopedRecurringRules = useMemo(() => {
     return (recurringRules || []).filter(r => !r.ledger_id || r.ledger_id === currentLedger?.id);
@@ -646,8 +694,252 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
     return [...collabActivitiesList, ...visiblePinnedMemos, ...displayedNormalTransactions];
   }, [collabActivitiesList, visiblePinnedMemos, displayedNormalTransactions]);
 
+  // 預先建立記事與交易雙向關聯索引表，避免單筆卡片渲染重複掃描整份明細陣列
+  const { linkedMemoByTxId, linkedTargetsByMemoId } = useMemo(() => {
+    const byId = new Map<string, Transaction>();
+    transactions.forEach(t => {
+      byId.set(t.id, t);
+    });
+
+    const memoByTx = new Map<string, Transaction>();
+    const targetsByMemo = new Map<string, Transaction[]>();
+
+    transactions.forEach(t => {
+      if (t.type !== 'memo') return;
+      const targets: Transaction[] = [];
+      if (t.linked_transaction_id) {
+        const direct = byId.get(t.linked_transaction_id);
+        if (direct) {
+          targets.push(direct);
+          if (direct.type !== 'memo' && !memoByTx.has(direct.id)) {
+            memoByTx.set(direct.id, t);
+          }
+        }
+      }
+      targetsByMemo.set(t.id, targets);
+    });
+
+    transactions.forEach(t => {
+      if (t.linked_transaction_id) {
+        const linkedOwner = byId.get(t.linked_transaction_id);
+        if (linkedOwner) {
+          if (t.type !== 'memo' && linkedOwner.type === 'memo' && !memoByTx.has(t.id)) {
+            memoByTx.set(t.id, linkedOwner);
+          }
+          if (linkedOwner.type === 'memo' && t.id !== linkedOwner.id) {
+            const list = targetsByMemo.get(linkedOwner.id);
+            if (list && !list.some(existing => existing.id === t.id)) {
+              list.push(t);
+            }
+          }
+        }
+      }
+    });
+
+    return { linkedMemoByTxId: memoByTx, linkedTargetsByMemoId: targetsByMemo };
+  }, [transactions]);
+
+  // 計算各日收支小計與已展開清單的按日分組結構
+  const todayYmd = getLocalDateYmd();
+  const yesterdayDate = new Date();
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterdayYmd = `${yesterdayDate.getFullYear()}-${String(yesterdayDate.getMonth() + 1).padStart(2, '0')}-${String(yesterdayDate.getDate()).padStart(2, '0')}`;
+  const currentYearNum = new Date().getFullYear();
+
+  const dailySummaryMap = useMemo(() => {
+    const map = new Map<string, { expense: number; income: number }>();
+    const isMemberFilter = filterMemberId !== 'all';
+    const targetMember = isMemberFilter
+      ? (members.find(m => m.id === filterMemberId) || (currentUser?.id === filterMemberId ? currentUser : undefined))
+      : undefined;
+
+    normalTransactionsList.forEach(t => {
+      const ymd = getLocalDateKeyFromIso(t.transacted_at);
+      let entry = map.get(ymd);
+      if (!entry) {
+        entry = { expense: 0, income: 0 };
+        map.set(ymd, entry);
+      }
+      if (t.type === 'expense') {
+        entry.expense += Number(t.amount);
+      } else if (t.type === 'income') {
+        entry.income += Number(t.amount);
+      } else if (t.type === 'transfer' && isMemberFilter) {
+        const isTransferIn = isTransferToMember(t, filterMemberId, targetMember?.display_name, paymentAccounts);
+        const isTransferOut = t.paid_by === filterMemberId;
+        if (isTransferIn && !isTransferOut) {
+          entry.income += Number(t.amount);
+        } else if (isTransferOut && !isTransferIn) {
+          entry.expense += Number(t.amount);
+        }
+      }
+    });
+
+    return map;
+  }, [normalTransactionsList, filterMemberId, members, currentUser, paymentAccounts]);
+
+  const groupedNormalTransactions = useMemo(() => {
+    const groupsMap = new Map<string, {
+      ymd: string;
+      label: string;
+      items: Transaction[];
+      expense: number;
+      income: number;
+    }>();
+
+    displayedNormalTransactions.forEach(item => {
+      const ymd = getLocalDateKeyFromIso(item.transacted_at);
+      let group = groupsMap.get(ymd);
+      if (!group) {
+        const summary = dailySummaryMap.get(ymd) || { expense: 0, income: 0 };
+        group = {
+          ymd,
+          label: formatDayGroupLabel(ymd, todayYmd, yesterdayYmd, currentYearNum),
+          items: [],
+          expense: summary.expense,
+          income: summary.income,
+        };
+        groupsMap.set(ymd, group);
+      }
+      group.items.push(item);
+    });
+
+    return Array.from(groupsMap.values());
+  }, [displayedNormalTransactions, dailySummaryMap, todayYmd, yesterdayYmd, currentYearNum]);
+
+  // 共用置頂切換處理（協作看板、置頂區與常規明細共用）
+  const handleTogglePinMemo = useCallback(async (tx: Transaction) => {
+    const parsed = parseMemoNote(tx.note);
+    if (isGroupOrderMemo(parsed.title || tx.category?.name, tx.note)) {
+      Alert.alert(
+        '協作活動進行中',
+        '此為進行中之家庭協作活動看板，系統已自動常駐於首頁最上方，拍板結案後將自動歸檔，不需也不佔用置頂名額。'
+      );
+      return;
+    }
+    const currentlyPinned = isMemoPinned(tx);
+    if (!currentlyPinned) {
+      const targetScope = tx.reminder_target === 'personal' ? 'personal' : 'family';
+      const quota = checkMemoPinQuota(transactions, {
+        targetScope,
+        memberId: tx.paid_by || currentUser?.id,
+        excludeTxId: tx.id,
+      });
+      if (!quota.canPin) {
+        Alert.alert(
+          targetScope === 'personal' ? '個人置頂已達上限' : '全家置頂已達上限',
+          quota.errorMessage || '置頂已達 5 筆上限，請先辦妥或取消現有置頂事項。'
+        );
+        return;
+      }
+    }
+    await updateTransaction(tx.id, { is_pinned: !currentlyPinned });
+  }, [transactions, currentUser?.id, updateTransaction]);
+
+  // 上方智慧提醒狀態與搜尋列待辦角標資訊
+  const headerNoticeInfo = useMemo(() => {
+    const nowYmd = getLocalDateYmd();
+    const max7DaysDate = new Date();
+    max7DaysDate.setDate(max7DaysDate.getDate() + 7);
+    const max7DaysYmd = `${max7DaysDate.getFullYear()}-${String(max7DaysDate.getMonth() + 1).padStart(2, '0')}-${String(max7DaysDate.getDate()).padStart(2, '0')}`;
+
+    const upcoming7DaysMemos = transactions
+      .filter(t => {
+        if (t.type !== 'memo' || t.is_settled) return false;
+        const effDate = getEffectiveMemoReminderDate(t);
+        return !!effDate && effDate > nowYmd && effDate <= max7DaysYmd;
+      })
+      .sort((a, b) => (getEffectiveMemoReminderDate(a) || '').localeCompare(getEffectiveMemoReminderDate(b) || ''));
+
+    const hasPendingBills = currentFilterPendingBills.length > 0;
+    const isMe =
+      filterMemberId === currentUser?.id ||
+      (!!currentUser?.display_name && members.find(m => m.id === filterMemberId)?.display_name === currentUser.display_name);
+
+    const billTitle = `待繳帳單 (${currentFilterPendingBills.length})`;
+
+    const hasOverdueMemo = pendingMemos.some(t => {
+      const effDate = getEffectiveMemoReminderDate(t);
+      return !!effDate && effDate < nowYmd;
+    });
+    const hasTodayMemo = pendingMemos.some(t => getEffectiveMemoReminderDate(t) === nowYmd);
+
+    const activeInteractiveMemos = transactions.filter(
+      t => t.type === 'memo' && !t.is_settled && isGroupOrderMemo(t.category?.name, t.note)
+    );
+    const hasInteractiveOrder = activeInteractiveMemos.length > 0;
+    let interactiveIcon = '🧋';
+    let interactiveLabel = '點餐開團中';
+
+    if (hasInteractiveOrder) {
+      const topOrder = activeInteractiveMemos[0];
+      const summary = computeGroupOrderSummary(topOrder.note || '', topOrder.category?.name);
+      if (summary.mode === 'vote') {
+        interactiveIcon = '🗳️';
+        interactiveLabel = `投票中 (${summary.totalVotes || 0}票)`;
+      } else if (summary.mode === 'grocery') {
+        interactiveIcon = '🛒';
+        interactiveLabel = `${summary.storeName && summary.storeName !== '採買賣場' ? summary.storeName : '賣場'}採買中`;
+      } else if (summary.mode === 'chore') {
+        interactiveIcon = '🧹';
+        interactiveLabel = '家事分工中';
+      } else if (summary.mode === 'parcel') {
+        interactiveIcon = '📦';
+        interactiveLabel = '包裹代領中';
+      } else {
+        interactiveIcon = '🧋';
+        interactiveLabel = `${summary.storeName && summary.storeName !== '點餐店家' ? summary.storeName : '點餐'}開團中`;
+      }
+    }
+
+    const activeMemoList = pendingMemos.length > 0 ? pendingMemos : upcoming7DaysMemos;
+    const hasPendingMemos = pendingMemos.length > 0 || upcoming7DaysMemos.length > 0;
+    const hasMemoNotice = hasInteractiveOrder || hasPendingMemos;
+    const memoCount = activeMemoList.length;
+
+    let memoPrefix = '今日待辦';
+    let chipIcon = pendingMemos.length > 0 ? '🔔' : '🗓️';
+
+    if (hasInteractiveOrder) {
+      memoPrefix = interactiveLabel;
+      chipIcon = interactiveIcon;
+    } else if (hasOverdueMemo) {
+      memoPrefix = '待辦/逾期';
+    } else if (hasTodayMemo) {
+      memoPrefix = '今日待辦';
+    } else if (upcoming7DaysMemos.length > 0) {
+      const firstDue = getRollingMemoDueInfo(getEffectiveMemoReminderDate(upcoming7DaysMemos[0]), nowYmd);
+      memoPrefix = `近期待辦 (${firstDue?.badgeText || '7天內'})`;
+    }
+
+    let memoTitle = `${memoPrefix} (${memoCount})`;
+    if (hasInteractiveOrder) {
+      memoTitle = hasPendingMemos ? `${interactiveLabel} · 待辦(${memoCount})` : interactiveLabel;
+    }
+
+    const isUrgentMemo = hasInteractiveOrder || pendingMemos.length > 0 || upcoming7DaysMemos.length > 0;
+
+    return {
+      hasPendingBills,
+      billTitle,
+      isMe,
+      hasMemoNotice,
+      hasInteractiveOrder,
+      urgentTodoCount: pendingMemos.length,
+      memoTitle,
+      chipIcon,
+      isUrgentMemo,
+    };
+  }, [transactions, currentFilterPendingBills.length, filterMemberId, currentUser, members, pendingMemos]);
+
   const defaultMemberId = currentUser?.id || 'all';
   const isFiltered = filterMonth !== currentMonthYm || filterMemberId !== defaultMemberId || !!searchQuery.trim() || transactionTypeFilter !== 'all';
+  const isSingleMonthFilter = /^\d{4}-\d{2}$/.test(filterMonth);
+  const maxSelectableMonthYm = useMemo(() => {
+    const firstYm = availableMonths[0]?.ym;
+    return firstYm && firstYm > currentMonthYm ? firstYm : currentMonthYm;
+  }, [availableMonths, currentMonthYm]);
+  const canGoNextMonth = isSingleMonthFilter && filterMonth < maxSelectableMonthYm;
 
   // 收支總計
   const displaySummary = useMemo(() => {
@@ -780,6 +1072,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
     try {
       await refreshLedger();
     } finally {
+      setNowTimestamp(Date.now());
       setIsRefreshing(false);
     }
   };
@@ -810,8 +1103,8 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
             layoutMeasurement.height + contentOffset.y >=
             contentSize.height - paddingToBottom
           ) {
-            if (displayCount < filteredTransactions.length) {
-              setDisplayCount(prev => Math.min(prev + PAGE_SIZE, filteredTransactions.length));
+            if (displayCount < normalTransactionsList.length) {
+              updateDisplayCount(prev => Math.min(prev + PAGE_SIZE, normalTransactionsList.length));
             }
           }
 
@@ -906,19 +1199,30 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
           !isSummaryExpanded && styles.summaryCardCollapsed,
         ]}
       >
-        <View style={styles.summaryHeader}>
+        <View style={[styles.summaryHeader, !isSummaryExpanded && styles.summaryHeaderCollapsed]}>
           <TouchableOpacity
             style={styles.summaryTitleTouchArea}
             activeOpacity={0.7}
             onPress={() => setIsSummaryExpanded(prev => !prev)}
           >
-            <View>
+            <View style={styles.summaryTitleRow}>
               <Text style={styles.summaryTitle} maxFontSizeMultiplier={1.2}>
                 {summaryCardTitle}
               </Text>
-              <Text style={styles.currencyLabel} maxFontSizeMultiplier={1.2}>
-                {isFiltered ? '🔍 已套用篩選' : 'TWD (新台幣)'}
+              <Text style={styles.summaryCountText} maxFontSizeMultiplier={1.15}>
+                {historySyncProgress
+                  ? `· ${Math.max(historySyncProgress.loaded, transactions.length).toLocaleString()}/${historySyncProgress.total.toLocaleString()} 筆`
+                  : filteredTransactions.length < transactions.length
+                  ? `· ${filteredTransactions.length.toLocaleString()}/${transactions.length.toLocaleString()} 筆`
+                  : `· ${transactions.length.toLocaleString()} 筆`}
               </Text>
+              {isFiltered && (
+                <View style={styles.summaryFilteredBadge}>
+                  <Text style={styles.summaryFilteredBadgeText} maxFontSizeMultiplier={1.08}>
+                    篩選中
+                  </Text>
+                </View>
+              )}
             </View>
           </TouchableOpacity>
 
@@ -1167,308 +1471,103 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         </View>
       )}
 
-      {/* 雙提醒單行膠囊 (待繳週期帳單 + 生活待辦備忘) - 雙管家對稱常駐 */}
-      {(() => {
-        const todayYmd = getLocalDateYmd();
-        const max7DaysDate = new Date();
-        max7DaysDate.setDate(max7DaysDate.getDate() + 7);
-        const max7DaysYmd = `${max7DaysDate.getFullYear()}-${String(max7DaysDate.getMonth() + 1).padStart(2, '0')}-${String(max7DaysDate.getDate()).padStart(2, '0')}`;
-
-        const upcoming7DaysMemos = transactions
-          .filter(t => {
-            if (t.type !== 'memo' || t.is_settled) return false;
-            const effDate = getEffectiveMemoReminderDate(t);
-            return !!effDate && effDate > todayYmd && effDate <= max7DaysYmd;
-          })
-          .sort((a, b) => (getEffectiveMemoReminderDate(a) || '').localeCompare(getEffectiveMemoReminderDate(b) || ''));
-
-        const hasPendingBills = currentFilterPendingBills.length > 0;
-        const hasPendingMemos = pendingMemos.length > 0 || upcoming7DaysMemos.length > 0 || upcomingMemos.length > 0;
-
-        const isMe =
-          filterMemberId === currentUser?.id ||
-          (!!currentUser?.display_name && members.find(m => m.id === filterMemberId)?.display_name === currentUser.display_name);
-
-        const billTitle = hasPendingBills
-          ? `待繳帳單 (${currentFilterPendingBills.length})`
-          : '暫無待繳帳單';
-
-        const hasOverdueMemo = pendingMemos.some(t => {
-          const effDate = getEffectiveMemoReminderDate(t);
-          return !!effDate && effDate < todayYmd;
-        });
-        const hasTodayMemo = pendingMemos.some(t => getEffectiveMemoReminderDate(t) === todayYmd);
-
-        // 檢查全家是否有進行中的開團、投票或採買 (不論發起人是否有手動置頂，皆以動態高光喚醒)
-        const activeInteractiveMemos = transactions.filter(
-          t => t.type === 'memo' && !t.is_settled && isGroupOrderMemo(t.category?.name, t.note)
-        );
-        const hasInteractiveOrder = activeInteractiveMemos.length > 0;
-        let interactiveIcon = '🧋';
-        let interactiveLabel = '點餐開團中';
-
-        if (hasInteractiveOrder) {
-          const topOrder = activeInteractiveMemos[0];
-          const summary = computeGroupOrderSummary(topOrder.note || '', topOrder.category?.name);
-          if (summary.mode === 'vote') {
-            interactiveIcon = '🗳️';
-            interactiveLabel = `投票中 (${summary.totalVotes || 0}票)`;
-          } else if (summary.mode === 'grocery') {
-            interactiveIcon = '🛒';
-            interactiveLabel = `${summary.storeName && summary.storeName !== '採買賣場' ? summary.storeName : '賣場'}採買中`;
-          } else if (summary.mode === 'chore') {
-            interactiveIcon = '🧹';
-            interactiveLabel = '家事分工中';
-          } else if (summary.mode === 'parcel') {
-            interactiveIcon = '📦';
-            interactiveLabel = '包裹代領中';
-          } else {
-            interactiveIcon = '🧋';
-            interactiveLabel = `${summary.storeName && summary.storeName !== '點餐店家' ? summary.storeName : '點餐'}開團中`;
-          }
-        }
-
-        let memoPrefix = '今日待辦';
-        let chipIcon = hasPendingMemos
-          ? (pendingMemos.length > 0 ? '🔔' : (upcoming7DaysMemos.length > 0 ? '🗓️' : '📌'))
-          : '☕';
-
-        if (hasInteractiveOrder) {
-          memoPrefix = interactiveLabel;
-          chipIcon = interactiveIcon;
-        } else if (hasOverdueMemo) {
-          memoPrefix = '待辦/逾期';
-        } else if (hasTodayMemo) {
-          memoPrefix = '今日待辦';
-        } else if (upcoming7DaysMemos.length > 0) {
-          const firstDue = getRollingMemoDueInfo(getEffectiveMemoReminderDate(upcoming7DaysMemos[0]), todayYmd);
-          memoPrefix = `近期待辦 (${firstDue?.badgeText || '7天內'})`;
-        } else if (upcomingMemos.length > 0) {
-          memoPrefix = '排程預告';
-        }
-
-        const activeMemoList = pendingMemos.length > 0 ? pendingMemos : (upcoming7DaysMemos.length > 0 ? upcoming7DaysMemos : upcomingMemos);
-        const memoCount = activeMemoList.length;
-
-        let memoTitle = hasPendingMemos
-          ? `${memoPrefix} (${memoCount})`
-          : '今日無待辦';
-
-        if (hasInteractiveOrder) {
-          memoTitle = hasPendingMemos ? `${interactiveLabel} · 待辦(${memoCount})` : interactiveLabel;
-        }
-
-        const isUrgentMemo = hasInteractiveOrder || pendingMemos.length > 0 || upcoming7DaysMemos.length > 0;
-
-        return (
-          <View style={styles.compactNoticeRow}>
-            {/* 左側：財務管家 (待繳週期帳單 / 暫無待繳帳單) */}
+      {/* 智慧雙提醒列：有待繳帳單或近期待辦／進行中協作才顯示，雙邊有事並排、單邊有事撐滿、清空自動隱藏 */}
+      {(headerNoticeInfo.hasPendingBills || headerNoticeInfo.hasMemoNotice) && (
+        <View style={styles.compactNoticeRow}>
+          {headerNoticeInfo.hasPendingBills && (
             <TouchableOpacity
               style={[
                 styles.compactNoticeChip,
-                hasPendingBills ? styles.compactNoticeBillChip : styles.compactNoticeBillChipCalm,
-                isDark && (hasPendingBills ? styles.compactNoticeBillChipDark : styles.compactNoticeBillChipCalmDark),
+                styles.compactNoticeBillChip,
+                isDark && styles.compactNoticeBillChipDark,
               ]}
               activeOpacity={0.8}
               onPress={() => {
                 if (filterMemberId === 'all') {
                   onOpenRecurringModal('all', undefined, 'pending');
+                } else if (headerNoticeInfo.isMe) {
+                  onOpenRecurringModal('my', undefined, 'pending');
                 } else {
-                  if (isMe) {
-                    onOpenRecurringModal('my', undefined, 'pending');
-                  } else {
-                    onOpenRecurringModal('all', filterMemberId, 'pending');
-                  }
+                  onOpenRecurringModal('all', filterMemberId, 'pending');
                 }
               }}
             >
-              <Text style={styles.compactNoticeChipIcon}>{hasPendingBills ? '🗓️' : '🌿'}</Text>
+              <Text style={styles.compactNoticeChipIcon}>🗓️</Text>
               <Text
                 style={[
                   styles.compactNoticeChipText,
-                  hasPendingBills ? styles.compactNoticeBillText : styles.compactNoticeBillTextCalm,
-                  isDark && (hasPendingBills ? styles.compactNoticeBillTextDark : styles.compactNoticeBillTextCalmDark),
+                  styles.compactNoticeBillText,
+                  isDark && styles.compactNoticeBillTextDark,
                 ]}
                 numberOfLines={1}
                 maxFontSizeMultiplier={1.08}
               >
-                {billTitle}
+                {headerNoticeInfo.billTitle}
               </Text>
               <Text
                 style={[
                   styles.compactNoticeChipArrow,
-                  hasPendingBills ? styles.compactNoticeBillText : styles.compactNoticeBillTextCalm,
-                  isDark && (hasPendingBills ? styles.compactNoticeBillTextDark : styles.compactNoticeBillTextCalmDark),
+                  styles.compactNoticeBillText,
+                  isDark && styles.compactNoticeBillTextDark,
                 ]}
                 maxFontSizeMultiplier={1.08}
               >
                 ›
               </Text>
             </TouchableOpacity>
+          )}
 
-            {/* 右側：生活管家 (今日/近期待辦 / 今日無待辦) */}
+          {headerNoticeInfo.hasMemoNotice && (
             <TouchableOpacity
               style={[
                 styles.compactNoticeChip,
-                hasPendingMemos
-                  ? (isUrgentMemo ? styles.compactNoticeMemoChip : styles.compactNoticeUpcomingChip)
-                  : styles.compactNoticeMemoChipCalm,
-                isDark && (
-                  hasPendingMemos
-                    ? (isUrgentMemo ? styles.compactNoticeMemoChipDark : styles.compactNoticeUpcomingChipDark)
-                    : styles.compactNoticeMemoChipCalmDark
-                ),
+                headerNoticeInfo.isUrgentMemo ? styles.compactNoticeMemoChip : styles.compactNoticeUpcomingChip,
+                isDark && (headerNoticeInfo.isUrgentMemo ? styles.compactNoticeMemoChipDark : styles.compactNoticeUpcomingChipDark),
               ]}
               activeOpacity={0.8}
               onPress={onOpenMemoTodoModal}
             >
               <Text style={styles.compactNoticeChipIcon}>
-                {chipIcon}
+                {headerNoticeInfo.chipIcon}
               </Text>
               <Text
                 style={[
                   styles.compactNoticeChipText,
-                  hasPendingMemos
-                    ? (isUrgentMemo ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText)
-                    : styles.compactNoticeMemoTextCalm,
-                  isDark && (
-                    hasPendingMemos
-                      ? (isUrgentMemo ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark)
-                      : styles.compactNoticeMemoTextCalmDark
-                  ),
+                  headerNoticeInfo.isUrgentMemo ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText,
+                  isDark && (headerNoticeInfo.isUrgentMemo ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark),
                 ]}
                 numberOfLines={1}
                 maxFontSizeMultiplier={1.08}
               >
-                {memoTitle}
+                {headerNoticeInfo.memoTitle}
               </Text>
               <Text
                 style={[
                   styles.compactNoticeChipArrow,
-                  hasPendingMemos
-                    ? (isUrgentMemo ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText)
-                    : styles.compactNoticeMemoTextCalm,
-                  isDark && (
-                    hasPendingMemos
-                      ? (isUrgentMemo ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark)
-                      : styles.compactNoticeMemoTextCalmDark
-                  ),
+                  headerNoticeInfo.isUrgentMemo ? styles.compactNoticeMemoText : styles.compactNoticeUpcomingText,
+                  isDark && (headerNoticeInfo.isUrgentMemo ? styles.compactNoticeMemoTextDark : styles.compactNoticeUpcomingTextDark),
                 ]}
                 maxFontSizeMultiplier={1.08}
               >
                 ›
               </Text>
             </TouchableOpacity>
-          </View>
-        );
-      })()}
-
-      {/* 方案 4: 交易列表標題與類型快捷切換同列並排 (節省 35~40px) */}
-      <View style={styles.sectionHeaderInlineRow}>
-        <View style={styles.sectionHeaderTitleWrap}>
-          <Text style={[styles.sectionInlineTitle, isDark && { color: colors.text.primary }]}>
-            {transactionTypeFilter === 'memo' ? '記事' : transactionTypeFilter === 'financial' ? '收支' : '明細'}{' '}
-            <Text style={[styles.sectionInlineCount, isDark && { color: colors.text.primary }]}>
-              {historySyncProgress
-                ? `${Math.max(historySyncProgress.loaded, transactions.length).toLocaleString()}/${historySyncProgress.total.toLocaleString()}`
-                : filteredTransactions.length < transactions.length
-                ? `${filteredTransactions.length.toLocaleString()}/${transactions.length.toLocaleString()}`
-                : `${transactions.length.toLocaleString()}`}
-            </Text>
-          </Text>
-          {keyboardOffset > 0 && (
-            <TouchableOpacity onPress={Keyboard.dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收鍵盤▾</Text>
-            </TouchableOpacity>
           )}
         </View>
+      )}
 
-        {/* 緊湊三態切換膠囊 */}
-        <View style={[styles.typeFilterInlineContainer, isDark && { backgroundColor: colors.background.cardSubtle }]}>
-          <TouchableOpacity
-            style={[
-              styles.typeFilterInlineTab,
-              transactionTypeFilter === 'all' && styles.typeFilterInlineTabActiveAll,
-              isDark && transactionTypeFilter === 'all' && {
-                backgroundColor: colors.background.card,
-                borderColor: colors.border.strong,
-              },
-            ]}
-            onPress={() => setTransactionTypeFilter('all')}
-            activeOpacity={0.7}
-          >
-            <Text
-              style={[
-                styles.typeFilterInlineTabText,
-                transactionTypeFilter === 'all' && styles.typeFilterInlineTabTextActiveAll,
-                isDark && { color: colors.text.secondary },
-                isDark && transactionTypeFilter === 'all' && { color: '#A5B4FC' },
-              ]}
-              maxFontSizeMultiplier={1.08}
-            >
-              全部 {typeCountStats.all}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.typeFilterInlineTab,
-              transactionTypeFilter === 'financial' && styles.typeFilterInlineTabActiveFinancial,
-              isDark && transactionTypeFilter === 'financial' && {
-                backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                borderColor: 'rgba(59, 130, 246, 0.45)',
-              },
-            ]}
-            onPress={() => setTransactionTypeFilter('financial')}
-            activeOpacity={0.7}
-          >
-            <Text
-              style={[
-                styles.typeFilterInlineTabText,
-                transactionTypeFilter === 'financial' && styles.typeFilterInlineTabTextActiveFinancial,
-                isDark && { color: colors.text.secondary },
-                isDark && transactionTypeFilter === 'financial' && { color: '#93C5FD' },
-              ]}
-              maxFontSizeMultiplier={1.08}
-            >
-              💳 收支 {typeCountStats.financial}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.typeFilterInlineTab,
-              transactionTypeFilter === 'memo' && styles.typeFilterInlineTabActiveMemo,
-              isDark && transactionTypeFilter === 'memo' && {
-                backgroundColor: 'rgba(245, 158, 11, 0.2)',
-                borderColor: 'rgba(245, 158, 11, 0.45)',
-              },
-            ]}
-            onPress={() => setTransactionTypeFilter('memo')}
-            activeOpacity={0.7}
-          >
-            <Text
-              style={[
-                styles.typeFilterInlineTabText,
-                transactionTypeFilter === 'memo' && styles.typeFilterInlineTabTextActiveMemo,
-                isDark && { color: colors.text.secondary },
-                isDark && transactionTypeFilter === 'memo' && { color: '#FCD34D' },
-              ]}
-              maxFontSizeMultiplier={1.08}
-            >
-              📝 記事 {typeCountStats.memo}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* 🔍 店家 / 關鍵字即時搜尋列 + 🧾 發票工具快捷選單按鈕 */}
-      <View style={styles.searchBarContainer}>
+      {/* 🔍 店家 / 關鍵字即時搜尋列 + 📋 待辦常駐入口 + 🧾 發票對獎 */}
+      <View
+        style={styles.searchBarContainer}
+        onLayout={(e) => {
+          searchBarYRef.current = e.nativeEvent.layout.y;
+        }}
+      >
         <View style={[styles.searchBarInner, isDark && { backgroundColor: colors.background.input, borderColor: colors.border.default }]}>
           <Text style={styles.searchBarIcon}>🔍</Text>
           <TextInput
             style={[styles.searchBarInput, isDark && { color: colors.text.primary }]}
-            placeholder="搜尋店家或備註 (好市多、全聯...)"
+            placeholder="搜尋店家、備註..."
             placeholderTextColor={isDark ? colors.text.muted : '#9CA3AF'}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -1476,10 +1575,12 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
             onSubmitEditing={Keyboard.dismiss}
             onFocus={() => {
               setIsSearchFocused(true);
-              // Web 版（電腦/手機瀏覽器）具有自然視窗佈局，點擊輸入框嚴禁強制捲動避免將搜尋框頂出可視畫面外
               if (Platform.OS !== 'web') {
                 setTimeout(() => {
-                  activeScrollRef.current?.scrollTo({ y: 260, animated: true });
+                  activeScrollRef.current?.scrollTo({
+                    y: Math.max(0, searchBarYRef.current - 12),
+                    animated: true,
+                  });
                 }, 120);
               }
             }}
@@ -1496,7 +1597,59 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
               <Text style={styles.searchClearText}>✕</Text>
             </TouchableOpacity>
           )}
+          {keyboardOffset > 0 && Platform.OS !== 'web' && (
+            <TouchableOpacity
+              style={styles.searchDismissBtn}
+              onPress={Keyboard.dismiss}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.dismissKeyboardText} maxFontSizeMultiplier={1.08}>收鍵盤▾</Text>
+            </TouchableOpacity>
+          )}
         </View>
+
+        {/* 📋 生活待辦常駐入口 (解法 1：確保待辦總覽永遠有固定可見入口) */}
+        {(() => {
+          const isMemoHighlight = headerNoticeInfo.hasInteractiveOrder || headerNoticeInfo.urgentTodoCount > 0;
+          const memoBtnLabel = headerNoticeInfo.urgentTodoCount > 0
+            ? `${headerNoticeInfo.urgentTodoCount}`
+            : headerNoticeInfo.hasInteractiveOrder
+            ? '開團'
+            : '待辦';
+          return (
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={[
+                styles.memoShortcutBtn,
+                isDark && {
+                  backgroundColor: colors.background.card,
+                  borderColor: colors.border.default,
+                },
+                isMemoHighlight && {
+                  borderColor: isDark ? 'rgba(245, 158, 11, 0.55)' : '#F59E0B',
+                  backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
+                },
+              ]}
+              onPress={onOpenMemoTodoModal}
+            >
+              <Text style={styles.invoiceMenuBtnIcon}>📋</Text>
+              <Text
+                style={[
+                  styles.invoiceMenuBtnText,
+                  isDark && { color: colors.text.primary },
+                  isMemoHighlight && {
+                    color: isDark ? '#FCD34D' : '#B45309',
+                    fontWeight: '700',
+                  },
+                ]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.08}
+              >
+                {memoBtnLabel}
+              </Text>
+            </TouchableOpacity>
+          );
+        })()}
 
         {/* 🧾 發票工具按鈕 (點擊直達統一發票對獎中心，有中獎時高亮變身 🎉 中獎) */}
         <TouchableOpacity
@@ -1527,6 +1680,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
               },
             ]}
             numberOfLines={1}
+            maxFontSizeMultiplier={1.08}
           >
             {invoiceLotteryStats.wonCount > 0
               ? `中獎 (${invoiceLotteryStats.wonCount})`
@@ -1579,7 +1733,40 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         </HorizontalScrollView>
       )}
 
-      {/* 篩選工具列 (單行橫向滑動，清除篩選不跳行，節省垂直空間) */}
+      {/* 🔍 選項 B：搜尋即時統計橫條 */}
+      {!!searchQuery.trim() && (
+        <View style={[styles.searchStatsBar, isDark && styles.searchStatsBarDark]}>
+          <Text
+            style={[styles.searchStatsText, isDark && styles.searchStatsTextDark]}
+            numberOfLines={2}
+            maxFontSizeMultiplier={1.1}
+          >
+            🔍「{searchQuery.trim()}」共 {filteredTransactions.length} 筆
+            {displaySummary.effectiveExpense > 0
+              ? ` · 支 -NT$ ${displaySummary.effectiveExpense.toLocaleString()}`
+              : ''}
+            {displaySummary.effectiveIncome > 0
+              ? ` · 收 +NT$ ${displaySummary.effectiveIncome.toLocaleString()}`
+              : ''}
+          </Text>
+          {filterMonth !== 'all' && (
+            <TouchableOpacity
+              style={[styles.searchStatsAllMonthBtn, isDark && styles.searchStatsAllMonthBtnDark]}
+              onPress={() => setFilterMonth('all')}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[styles.searchStatsAllMonthText, isDark && styles.searchStatsAllMonthTextDark]}
+                maxFontSizeMultiplier={1.08}
+              >
+                查全部月份
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {/* 篩選工具列：單月前後箭頭快切 + 成員選擇 + 一鍵切全家/我 + 清除篩選 */}
       <HorizontalScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -1587,45 +1774,138 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         style={styles.filterToolbarWrapper}
         keyboardShouldPersistTaps="handled"
       >
-        {/* 月份篩選 */}
-        <TouchableOpacity
-          activeOpacity={0.7}
-          style={[
-            styles.filterChip,
-            filterMonth !== currentMonthYm && styles.filterChipActive,
-            isDark && {
-              backgroundColor: colors.background.card,
-              borderColor: colors.border.default,
-            },
-            isDark && filterMonth !== currentMonthYm && {
-              backgroundColor: 'rgba(99, 102, 241, 0.25)',
-              borderColor: '#818CF8',
-            },
-          ]}
-          onPress={() => onOpenFilterModal('month')}
-        >
-          <Text style={styles.filterChipIcon}>
-            {/^\d{4}$/.test(filterMonth) ? '🗓️' : filterMonth === 'all' ? '🌐' : '📅'}
-          </Text>
-          <Text
+        {isSingleMonthFilter ? (
+          <View
             style={[
-              styles.filterChipText,
-              filterMonth !== currentMonthYm && styles.filterChipTextActive,
-              isDark && { color: colors.text.secondary },
-              isDark && filterMonth !== currentMonthYm && { color: '#C7D2FE' },
+              styles.monthStepperGroup,
+              filterMonth !== currentMonthYm && styles.filterChipActive,
+              isDark && {
+                backgroundColor: colors.background.card,
+                borderColor: colors.border.default,
+              },
+              isDark && filterMonth !== currentMonthYm && {
+                backgroundColor: 'rgba(99, 102, 241, 0.25)',
+                borderColor: '#818CF8',
+              },
             ]}
-            numberOfLines={1}
           >
-            {filterMonth === 'all'
-              ? '全部月份'
-              : /^\d{4}$/.test(filterMonth)
-              ? (parseInt(filterMonth, 10) === new Date().getFullYear() ? `今年 (${filterMonth} 全年)` : `${filterMonth} 全年`)
-              : filterMonth === currentMonthYm
-              ? `本月 (${parseInt(currentMonthYm.split('-')[1], 10)}月)`
-              : (selectedMonthObj?.label || filterMonth)}
-          </Text>
-          <Text style={[styles.filterChipArrow, filterMonth !== currentMonthYm && styles.filterChipArrowActive, isDark && { color: colors.text.muted }, isDark && filterMonth !== currentMonthYm && { color: '#818CF8' }]}>▾</Text>
-        </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.monthStepperArrowBtn}
+              onPress={() => setFilterMonth(shiftYm(filterMonth, -1))}
+              activeOpacity={0.6}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 2 }}
+            >
+              <Text
+                style={[
+                  styles.monthStepperArrowText,
+                  filterMonth !== currentMonthYm && styles.filterChipTextActive,
+                  isDark && { color: colors.text.secondary },
+                  isDark && filterMonth !== currentMonthYm && { color: '#C7D2FE' },
+                ]}
+                maxFontSizeMultiplier={1.08}
+              >
+                ◀
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.monthStepperCenterBtn}
+              onPress={() => onOpenFilterModal('month')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.filterChipIcon}>📅</Text>
+              <Text
+                style={[
+                  styles.filterChipText,
+                  filterMonth !== currentMonthYm && styles.filterChipTextActive,
+                  isDark && { color: colors.text.secondary },
+                  isDark && filterMonth !== currentMonthYm && { color: '#C7D2FE' },
+                ]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.1}
+              >
+                {filterMonth === currentMonthYm
+                  ? `本月 (${parseInt(currentMonthYm.split('-')[1], 10)}月)`
+                  : (selectedMonthObj?.label || filterMonth)}
+              </Text>
+              <Text
+                style={[
+                  styles.filterChipArrow,
+                  filterMonth !== currentMonthYm && styles.filterChipArrowActive,
+                  isDark && { color: colors.text.muted },
+                  isDark && filterMonth !== currentMonthYm && { color: '#818CF8' },
+                ]}
+              >
+                ▾
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.monthStepperArrowBtn, !canGoNextMonth && styles.monthStepperArrowDisabled]}
+              disabled={!canGoNextMonth}
+              onPress={() => setFilterMonth(shiftYm(filterMonth, 1))}
+              activeOpacity={0.6}
+              hitSlop={{ top: 6, bottom: 6, left: 2, right: 6 }}
+            >
+              <Text
+                style={[
+                  styles.monthStepperArrowText,
+                  filterMonth !== currentMonthYm && styles.filterChipTextActive,
+                  isDark && { color: colors.text.secondary },
+                  isDark && filterMonth !== currentMonthYm && { color: '#C7D2FE' },
+                ]}
+                maxFontSizeMultiplier={1.08}
+              >
+                ▶
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            activeOpacity={0.7}
+            style={[
+              styles.filterChip,
+              filterMonth !== currentMonthYm && styles.filterChipActive,
+              isDark && {
+                backgroundColor: colors.background.card,
+                borderColor: colors.border.default,
+              },
+              isDark && filterMonth !== currentMonthYm && {
+                backgroundColor: 'rgba(99, 102, 241, 0.25)',
+                borderColor: '#818CF8',
+              },
+            ]}
+            onPress={() => onOpenFilterModal('month')}
+          >
+            <Text style={styles.filterChipIcon}>
+              {/^\d{4}$/.test(filterMonth) ? '🗓️' : '🌐'}
+            </Text>
+            <Text
+              style={[
+                styles.filterChipText,
+                filterMonth !== currentMonthYm && styles.filterChipTextActive,
+                isDark && { color: colors.text.secondary },
+                isDark && filterMonth !== currentMonthYm && { color: '#C7D2FE' },
+              ]}
+              numberOfLines={1}
+              maxFontSizeMultiplier={1.1}
+            >
+              {filterMonth === 'all'
+                ? '全部月份'
+                : (parseInt(filterMonth, 10) === currentYearNum ? `今年 (${filterMonth} 全年)` : `${filterMonth} 全年`)}
+            </Text>
+            <Text
+              style={[
+                styles.filterChipArrow,
+                filterMonth !== currentMonthYm && styles.filterChipArrowActive,
+                isDark && { color: colors.text.muted },
+                isDark && filterMonth !== currentMonthYm && { color: '#818CF8' },
+              ]}
+            >
+              ▾
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* 成員篩選 */}
         <TouchableOpacity
@@ -1657,6 +1937,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
               isDark && filterMemberId !== defaultMemberId && { color: '#C7D2FE' },
             ]}
             numberOfLines={1}
+            maxFontSizeMultiplier={1.1}
           >
             {filterMemberId === 'all'
               ? '全部成員'
@@ -1667,20 +1948,26 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
           <Text style={[styles.filterChipArrow, filterMemberId !== defaultMemberId && styles.filterChipArrowActive, isDark && { color: colors.text.muted }, isDark && filterMemberId !== defaultMemberId && { color: '#818CF8' }]}>▾</Text>
         </TouchableOpacity>
 
-        {!!searchQuery.trim() && filterMonth !== 'all' && (
+        {/* 一鍵快切：看全家 / 只看我 */}
+        {members.length > 1 && !!currentUser?.id && (
           <TouchableOpacity
             activeOpacity={0.7}
             style={[
-              styles.filterChip,
-              {
-                borderColor: isDark ? '#6366F1' : '#818CF8',
-                backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF',
+              styles.filterQuickToggleChip,
+              isDark && {
+                backgroundColor: colors.background.card,
+                borderColor: colors.border.default,
               },
             ]}
-            onPress={() => setFilterMonth('all')}
+            onPress={() => setFilterMemberId(filterMemberId === 'all' ? currentUser.id : 'all')}
           >
-            <Text style={styles.filterChipIcon}>🌐</Text>
-            <Text style={[styles.filterChipText, { color: isDark ? '#A5B4FC' : '#4F46E5', fontWeight: '700' }]}>改查全部月份</Text>
+            <Text
+              style={[styles.filterQuickToggleText, isDark && { color: colors.text.secondary }]}
+              numberOfLines={1}
+              maxFontSizeMultiplier={1.08}
+            >
+              {filterMemberId === 'all' ? '👤 只看我' : '👨‍👩‍👧 看全家'}
+            </Text>
           </TouchableOpacity>
         )}
 
@@ -1696,10 +1983,91 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
             ]}
             onPress={resetFilters}
           >
-            <Text style={[styles.filterResetText, isDark && { color: '#A5B4FC' }]}>清除篩選 ↺</Text>
+            <Text style={[styles.filterResetText, isDark && { color: '#A5B4FC' }]} maxFontSizeMultiplier={1.08}>清除篩選 ↺</Text>
           </TouchableOpacity>
         )}
       </HorizontalScrollView>
+
+      {/* 獨立等寬三態分段切換列（防大字體爆版） */}
+      <View style={[styles.typeFilterFullBar, isDark && { backgroundColor: colors.background.cardSubtle }]}>
+        <TouchableOpacity
+          style={[
+            styles.typeFilterFullTab,
+            transactionTypeFilter === 'all' && styles.typeFilterInlineTabActiveAll,
+            isDark && transactionTypeFilter === 'all' && {
+              backgroundColor: colors.background.card,
+              borderColor: colors.border.strong,
+            },
+          ]}
+          onPress={() => setTransactionTypeFilter('all')}
+          activeOpacity={0.7}
+        >
+          <Text
+            style={[
+              styles.typeFilterInlineTabText,
+              transactionTypeFilter === 'all' && styles.typeFilterInlineTabTextActiveAll,
+              isDark && { color: colors.text.secondary },
+              isDark && transactionTypeFilter === 'all' && { color: '#A5B4FC' },
+            ]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.08}
+          >
+            全部 {typeCountStats.all}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.typeFilterFullTab,
+            transactionTypeFilter === 'financial' && styles.typeFilterInlineTabActiveFinancial,
+            isDark && transactionTypeFilter === 'financial' && {
+              backgroundColor: 'rgba(59, 130, 246, 0.2)',
+              borderColor: 'rgba(59, 130, 246, 0.45)',
+            },
+          ]}
+          onPress={() => setTransactionTypeFilter('financial')}
+          activeOpacity={0.7}
+        >
+          <Text
+            style={[
+              styles.typeFilterInlineTabText,
+              transactionTypeFilter === 'financial' && styles.typeFilterInlineTabTextActiveFinancial,
+              isDark && { color: colors.text.secondary },
+              isDark && transactionTypeFilter === 'financial' && { color: '#93C5FD' },
+            ]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.08}
+          >
+            💳 收支 {typeCountStats.financial}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.typeFilterFullTab,
+            transactionTypeFilter === 'memo' && styles.typeFilterInlineTabActiveMemo,
+            isDark && transactionTypeFilter === 'memo' && {
+              backgroundColor: 'rgba(245, 158, 11, 0.2)',
+              borderColor: 'rgba(245, 158, 11, 0.45)',
+            },
+          ]}
+          onPress={() => setTransactionTypeFilter('memo')}
+          activeOpacity={0.7}
+        >
+          <Text
+            style={[
+              styles.typeFilterInlineTabText,
+              transactionTypeFilter === 'memo' && styles.typeFilterInlineTabTextActiveMemo,
+              isDark && { color: colors.text.secondary },
+              isDark && transactionTypeFilter === 'memo' && { color: '#FCD34D' },
+            ]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.08}
+          >
+            📝 記事 {typeCountStats.memo}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       {/* 交易清單 */}
       {transactions.length === 0 ? (
@@ -1748,135 +2116,136 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
       ) : (
         <>
           {/* ⚡ 進行中之五大協作活動看板 (全家最高優先級，天然常駐首頁最上方，不佔用靜態置頂名額) */}
-          {collabActivitiesList.map(item => (
-            <TransactionItem
-              key={item.id}
-              transaction={item}
-              viewingMemberId={filterMemberId}
-              isLastViewed={item.id === lastViewedTxId}
-              onPress={tx => {
-                setLastViewedTxId(tx.id);
-                onOpenEditTransaction(tx);
-              }}
-              onCompleteMemo={tx => {
-                setLastViewedTxId(tx.id);
-                onOpenMemoCompletion(tx);
-              }}
-              onTogglePinMemo={() => {
-                Alert.alert(
-                  '協作活動進行中',
-                  '此為進行中之家庭協作活動看板，系統已自動常駐於首頁最上方，拍板結案後將自動歸檔，不需也不佔用置頂名額。'
-                );
-              }}
-              onViewImage={(url, title) => onViewImage(url, title || '消費收據 / 保固憑證')}
-            />
-          ))}
-
-          {/* 📌 常態置頂生活記事卡片清單 (慢箋藥單、日常備忘，享有獨立 5 筆全家配額，預設展開最新 2 筆) */}
-          {visiblePinnedMemos.map(item => (
-            <TransactionItem
-              key={item.id}
-              transaction={item}
-              viewingMemberId={filterMemberId}
-              isLastViewed={item.id === lastViewedTxId}
-              onPress={tx => {
-                setLastViewedTxId(tx.id);
-                onOpenEditTransaction(tx);
-              }}
-              onCompleteMemo={tx => {
-                setLastViewedTxId(tx.id);
-                onOpenMemoCompletion(tx);
-              }}
-              onTogglePinMemo={async tx => {
-                const parsed = parseMemoNote(tx.note);
-                if (isGroupOrderMemo(parsed.title || tx.category?.name, tx.note)) {
-                  Alert.alert(
-                    '協作活動進行中',
-                    '此為進行中之家庭協作活動看板，系統已自動常駐於首頁最上方，拍板結案後將自動歸檔，不需也不佔用置頂名額。'
-                  );
-                  return;
-                }
-                const currentlyPinned = isMemoPinned(tx);
-                if (!currentlyPinned) {
-                  const targetScope = tx.reminder_target === 'personal' ? 'personal' : 'family';
-                  const quota = checkMemoPinQuota(transactions, {
-                    targetScope,
-                    memberId: tx.paid_by || currentUser?.id,
-                    excludeTxId: tx.id,
-                  });
-                  if (!quota.canPin) {
-                    Alert.alert(
-                      targetScope === 'personal' ? '個人置頂已達上限' : '全家置頂已達上限',
-                      quota.errorMessage || '置頂已達 5 筆上限，請先辦妥或取消現有置頂事項。'
-                    );
-                    return;
-                  }
-                }
-                await updateTransaction(tx.id, { is_pinned: !currentlyPinned });
-              }}
-              onViewImage={(url, title) => onViewImage(url, title || '消費收據 / 保固憑證')}
-            />
-          ))}
-
-          {/* 首頁防霸屏折疊按鈕：超過 2 筆置頂時提供展開 / 收合控制 */}
-          {pinnedMemosList.length > 2 && (
-            <TouchableOpacity
-              style={[styles.pinnedCollapseBtn, isDark && styles.pinnedCollapseBtnDark]}
-              onPress={() => setIsPinnedExpanded(prev => !prev)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.pinnedCollapseText, isDark && styles.pinnedCollapseTextDark]}>
-                {isPinnedExpanded
-                  ? '▴ 收合其餘置頂事項'
-                  : `📌 其餘 ${pinnedMemosList.length - 2} 筆置頂事項 (展開 ▾)`}
-              </Text>
-            </TouchableOpacity>
+          {collabActivitiesList.length > 0 && (
+            <>
+              <View style={styles.listSectionHeader}>
+                <Text style={[styles.listSectionHeaderText, isDark && { color: '#FCD34D' }]} maxFontSizeMultiplier={1.1}>
+                  ⚡ 進行中協作 ({collabActivitiesList.length})
+                </Text>
+              </View>
+              {collabActivitiesList.map(item => (
+                <TransactionItem
+                  key={item.id}
+                  transaction={item}
+                  viewingMemberId={filterMemberId}
+                  isLastViewed={item.id === lastViewedTxId}
+                  hideDateInCard={false}
+                  precomputedLinkedTargets={linkedTargetsByMemoId.get(item.id) ?? []}
+                  onPress={tx => {
+                    setLastViewedTxId(tx.id);
+                    onOpenEditTransaction(tx);
+                  }}
+                  onCompleteMemo={tx => {
+                    setLastViewedTxId(tx.id);
+                    onOpenMemoCompletion(tx);
+                  }}
+                  onTogglePinMemo={handleTogglePinMemo}
+                  onViewImage={(url, title) => onViewImage(url, title || '消費收據 / 保固憑證')}
+                />
+              ))}
+            </>
           )}
 
-          {/* 常規交易與日常生活記事清單 */}
-          {displayedNormalTransactions.map(item => (
-            <TransactionItem
-              key={item.id}
-              transaction={item}
-              viewingMemberId={filterMemberId}
-              isLastViewed={item.id === lastViewedTxId}
-              onPress={tx => {
-                setLastViewedTxId(tx.id);
-                onOpenEditTransaction(tx);
-              }}
-              onCompleteMemo={tx => {
-                setLastViewedTxId(tx.id);
-                onOpenMemoCompletion(tx);
-              }}
-              onTogglePinMemo={async tx => {
-                const parsed = parseMemoNote(tx.note);
-                if (isGroupOrderMemo(parsed.title || tx.category?.name, tx.note)) {
-                  Alert.alert(
-                    '協作活動進行中',
-                    '此為進行中之家庭協作活動看板，系統已自動常駐於首頁最上方，拍板結案後將自動歸檔，不需也不佔用置頂名額。'
-                  );
-                  return;
-                }
-                const currentlyPinned = isMemoPinned(tx);
-                if (!currentlyPinned) {
-                  const targetScope = tx.reminder_target === 'personal' ? 'personal' : 'family';
-                  const quota = checkMemoPinQuota(transactions, {
-                    targetScope,
-                    memberId: tx.paid_by || currentUser?.id,
-                    excludeTxId: tx.id,
-                  });
-                  if (!quota.canPin) {
-                    Alert.alert(
-                      targetScope === 'personal' ? '個人置頂已達上限' : '全家置頂已達上限',
-                      quota.errorMessage || '置頂已達 5 筆上限，請先辦妥或取消現有置頂事項。'
-                    );
-                    return;
-                  }
-                }
-                await updateTransaction(tx.id, { is_pinned: !currentlyPinned });
-              }}
-              onViewImage={(url, title) => onViewImage(url, title || '消費收據 / 保固憑證')}
-            />
+          {/* 📌 常態置頂生活記事卡片清單 (慢箋藥單、日常備忘，享有獨立 5 筆全家配額，預設展開最新 2 筆) */}
+          {visiblePinnedMemos.length > 0 && (
+            <>
+              <View style={styles.listSectionHeader}>
+                <Text style={[styles.listSectionHeaderText, isDark && { color: '#FCD34D' }]} maxFontSizeMultiplier={1.1}>
+                  📌 置頂記事 ({pinnedMemosList.length})
+                </Text>
+              </View>
+              {visiblePinnedMemos.map(item => (
+                <TransactionItem
+                  key={item.id}
+                  transaction={item}
+                  viewingMemberId={filterMemberId}
+                  isLastViewed={item.id === lastViewedTxId}
+                  hideDateInCard={false}
+                  precomputedLinkedTargets={linkedTargetsByMemoId.get(item.id) ?? []}
+                  onPress={tx => {
+                    setLastViewedTxId(tx.id);
+                    onOpenEditTransaction(tx);
+                  }}
+                  onCompleteMemo={tx => {
+                    setLastViewedTxId(tx.id);
+                    onOpenMemoCompletion(tx);
+                  }}
+                  onTogglePinMemo={handleTogglePinMemo}
+                  onViewImage={(url, title) => onViewImage(url, title || '消費收據 / 保固憑證')}
+                />
+              ))}
+
+              {/* 首頁防霸屏折疊按鈕：超過 2 筆置頂時提供展開 / 收合控制 */}
+              {pinnedMemosList.length > 2 && (
+                <TouchableOpacity
+                  style={[styles.pinnedCollapseBtn, isDark && styles.pinnedCollapseBtnDark]}
+                  onPress={() => setIsPinnedExpanded(prev => !prev)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.pinnedCollapseText, isDark && styles.pinnedCollapseTextDark]}>
+                    {isPinnedExpanded
+                      ? '▴ 收合其餘置頂事項'
+                      : `📌 其餘 ${pinnedMemosList.length - 2} 筆置頂事項 (展開 ▾)`}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+
+          {/* 按日分組之常規交易與日常生活記事清單 */}
+          {groupedNormalTransactions.map((group) => (
+            <View key={group.ymd} style={styles.dayGroupBlock}>
+              <View style={[styles.dayGroupHeader, isDark && styles.dayGroupHeaderDark]}>
+                <Text
+                  style={[styles.dayGroupTitle, isDark && styles.dayGroupTitleDark]}
+                  maxFontSizeMultiplier={1.12}
+                >
+                  {group.label}
+                </Text>
+                {(group.expense > 0 || group.income > 0) && (
+                  <View style={styles.dayGroupSummaryWrap}>
+                    {group.expense > 0 && (
+                      <Text
+                        style={[styles.dayGroupExpenseText, isDark && styles.dayGroupExpenseTextDark]}
+                        maxFontSizeMultiplier={1.08}
+                      >
+                        支 -NT$ {group.expense.toLocaleString()}
+                      </Text>
+                    )}
+                    {group.income > 0 && (
+                      <Text
+                        style={[styles.dayGroupIncomeText, isDark && styles.dayGroupIncomeTextDark]}
+                        maxFontSizeMultiplier={1.08}
+                      >
+                        收 +NT$ {group.income.toLocaleString()}
+                      </Text>
+                    )}
+                  </View>
+                )}
+              </View>
+
+              {group.items.map(item => (
+                <TransactionItem
+                  key={item.id}
+                  transaction={item}
+                  viewingMemberId={filterMemberId}
+                  isLastViewed={item.id === lastViewedTxId}
+                  hideDateInCard={item.type !== 'memo'}
+                  precomputedLinkedMemo={item.type !== 'memo' ? (linkedMemoByTxId.get(item.id) ?? null) : undefined}
+                  precomputedLinkedTargets={item.type === 'memo' ? (linkedTargetsByMemoId.get(item.id) ?? []) : undefined}
+                  onPress={tx => {
+                    setLastViewedTxId(tx.id);
+                    onOpenEditTransaction(tx);
+                  }}
+                  onCompleteMemo={tx => {
+                    setLastViewedTxId(tx.id);
+                    onOpenMemoCompletion(tx);
+                  }}
+                  onTogglePinMemo={handleTogglePinMemo}
+                  onViewImage={(url, title) => onViewImage(url, title || '消費收據 / 保固憑證')}
+                />
+              ))}
+            </View>
           ))}
 
           {/* 分批動態載入控制列 */}
@@ -1884,7 +2253,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
             <View style={styles.loadMoreContainer}>
               <TouchableOpacity
                 style={styles.loadMoreBtn}
-                onPress={() => setDisplayCount(prev => Math.min(prev + PAGE_SIZE, normalTransactionsList.length))}
+                onPress={() => updateDisplayCount(prev => Math.min(prev + PAGE_SIZE, normalTransactionsList.length))}
                 activeOpacity={0.7}
               >
                 <Text style={styles.loadMoreBtnText}>
@@ -1898,7 +2267,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
               {normalTransactionsList.length - displayCount > PAGE_SIZE && (
                 <TouchableOpacity
                   style={styles.loadAllBtn}
-                  onPress={() => setDisplayCount(normalTransactionsList.length)}
+                  onPress={() => updateDisplayCount(normalTransactionsList.length)}
                   activeOpacity={0.7}
                 >
                   <Text style={styles.loadAllBtnText}>直接全部展開 ({filteredTransactions.length} 筆)</Text>
@@ -2038,9 +2407,9 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     },
     summaryCard: {
       backgroundColor: '#4F46E5',
-      borderRadius: 20,
-      padding: 18,
-      marginBottom: 10,
+      borderRadius: 18,
+      padding: 14,
+      marginBottom: 8,
       shadowColor: '#4F46E5',
       shadowOffset: { width: 0, height: 6 },
       shadowOpacity: 0.25,
@@ -2056,11 +2425,36 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 12,
+      marginBottom: 8,
+    },
+    summaryHeaderCollapsed: {
+      marginBottom: 4,
     },
     summaryTitleTouchArea: {
       flex: 1,
       marginRight: 8,
+    },
+    summaryTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 6,
+    },
+    summaryCountText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: '#C7D2FE',
+    },
+    summaryFilteredBadge: {
+      backgroundColor: 'rgba(255, 255, 255, 0.22)',
+      paddingHorizontal: 6,
+      paddingVertical: 1.5,
+      borderRadius: 6,
+    },
+    summaryFilteredBadgeText: {
+      fontSize: 10.5,
+      fontWeight: '700',
+      color: '#FFFFFF',
     },
     summaryHeaderRight: {
       flexDirection: 'row',
@@ -2104,10 +2498,6 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontWeight: '600',
       color: '#E0E7FF',
     },
-    currencyLabel: {
-      fontSize: 12,
-      color: '#C7D2FE',
-    },
     summaryAllowanceBtn: {
       backgroundColor: 'rgba(255, 255, 255, 0.2)',
       paddingHorizontal: 10,
@@ -2149,8 +2539,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       color: '#6EE7B7',
     },
     summaryBottomInfoRow: {
-      marginTop: 12,
-      paddingTop: 10,
+      marginTop: 9,
+      paddingTop: 8,
       borderTopWidth: 1,
       borderTopColor: 'rgba(255, 255, 255, 0.15)',
       flexDirection: 'row',
@@ -2161,17 +2551,6 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       flex: 1,
       gap: 2,
       marginRight: 8,
-    },
-    summaryTransferHintRow: {
-      marginTop: 14,
-      paddingTop: 10,
-      borderTopWidth: 1,
-      borderTopColor: 'rgba(255, 255, 255, 0.15)',
-      flexDirection: 'row',
-      justifyContent: 'center',
-      alignItems: 'center',
-      flexWrap: 'wrap',
-      gap: 12,
     },
     summaryTransferHintText: {
       fontSize: 11,
@@ -2216,8 +2595,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       gap: 8,
     },
     summaryBudgetSection: {
-      marginTop: 12,
-      paddingTop: 10,
+      marginTop: 9,
+      paddingTop: 8,
       borderTopWidth: 1,
       borderTopColor: 'rgba(255, 255, 255, 0.15)',
     },
@@ -2305,34 +2684,6 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontWeight: '700',
       marginLeft: 4,
     },
-    compactNoticeActionPill: {
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-      borderRadius: 6,
-      marginLeft: 6,
-    },
-    compactNoticeActionPillText: {
-      fontSize: 11,
-      fontWeight: '700',
-    },
-    compactNoticeActionPillBill: {
-      backgroundColor: '#FEE2E2',
-    },
-    compactNoticeActionPillBillDark: {
-      backgroundColor: 'rgba(239, 68, 68, 0.25)',
-    },
-    compactNoticeActionPillMemo: {
-      backgroundColor: '#FEF3C7',
-    },
-    compactNoticeActionPillMemoDark: {
-      backgroundColor: 'rgba(245, 158, 11, 0.25)',
-    },
-    compactNoticeActionPillUpcoming: {
-      backgroundColor: '#DBEAFE',
-    },
-    compactNoticeActionPillUpcomingDark: {
-      backgroundColor: 'rgba(59, 130, 246, 0.25)',
-    },
     compactNoticeBillChip: {
       backgroundColor: '#FEF2F2',
       borderColor: '#FECACA',
@@ -2346,22 +2697,6 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     },
     compactNoticeBillTextDark: {
       color: '#FCA5A5',
-    },
-    compactNoticeBillChipCalm: {
-      backgroundColor: '#ECFDF5',
-      borderColor: '#A7F3D0',
-    },
-    compactNoticeBillChipCalmDark: {
-      backgroundColor: 'rgba(16, 185, 129, 0.12)',
-      borderColor: 'rgba(16, 185, 129, 0.3)',
-    },
-    compactNoticeBillTextCalm: {
-      color: '#059669',
-      fontWeight: '600',
-    },
-    compactNoticeBillTextCalmDark: {
-      color: '#6EE7B7',
-      fontWeight: '600',
     },
     compactNoticeMemoChip: {
       backgroundColor: '#FFFBEB',
@@ -2391,144 +2726,24 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     compactNoticeUpcomingTextDark: {
       color: '#93C5FD',
     },
-    compactNoticeMemoChipCalm: {
-      backgroundColor: '#F8FAFC',
-      borderColor: '#E2E8F0',
-    },
-    compactNoticeMemoChipCalmDark: {
-      backgroundColor: 'rgba(255, 255, 255, 0.06)',
-      borderColor: 'rgba(255, 255, 255, 0.15)',
-    },
-    compactNoticeMemoTextCalm: {
-      color: '#64748B',
-      fontWeight: '600',
-    },
-    compactNoticeMemoTextCalmDark: {
-      color: '#94A3B8',
-      fontWeight: '600',
-    },
-    collapsibleAssetWrapper: {
-      marginBottom: 10,
-    },
-    compactAssetBar: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      backgroundColor: '#FFFFFF',
-      borderRadius: 14,
-      paddingVertical: 10,
-      paddingHorizontal: 14,
-      borderWidth: 1,
-      borderColor: '#E2E8F0',
-      shadowColor: '#6366F1',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.05,
-      shadowRadius: 4,
-      elevation: 1,
-    },
-    compactAssetBarDark: {
-      backgroundColor: '#1E293B',
-      borderColor: '#334155',
-    },
-    compactAssetBarExpanded: {
-      borderBottomLeftRadius: 4,
-      borderBottomRightRadius: 4,
-      borderColor: '#C7D2FE',
-    },
-    compactAssetBarExpandedDark: {
-      borderColor: '#4338CA',
-    },
-    compactAssetLeft: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flex: 1,
-      flexWrap: 'nowrap',
-      gap: 6,
-    },
-    compactAssetIcon: {
-      fontSize: 14,
-    },
-    compactAssetLabel: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: '#64748B',
-    },
-    compactAssetAmount: {
-      fontSize: 14,
-      fontWeight: '700',
-      color: '#0F172A',
-    },
-    compactAssetPill: {
-      backgroundColor: '#F1F5F9',
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 8,
-      marginLeft: 2,
-    },
-    compactAssetPillDark: {
-      backgroundColor: '#334155',
-    },
-    compactAssetPillText: {
-      fontSize: 10,
-      fontWeight: '600',
-      color: '#475569',
-    },
-    compactAssetPillTextDark: {
-      color: '#94A3B8',
-    },
-    compactAssetRight: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginLeft: 8,
-    },
-    compactAssetToggleText: {
-      fontSize: 12,
-      fontWeight: '700',
-      color: '#4F46E5',
-    },
-    expandedAssetContent: {
-      marginTop: 8,
-      gap: 8,
-    },
-    sectionHeaderInlineRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginBottom: 8,
-      gap: 6,
-    },
-    sectionHeaderTitleWrap: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 5,
-      flexShrink: 0,
-    },
-    sectionInlineTitle: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: colors.text.primary,
-    },
-    sectionInlineCount: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: colors.text.primary,
-    },
     dismissKeyboardText: {
       fontSize: 11,
       color: '#4F46E5',
       fontWeight: '700',
     },
-    typeFilterInlineContainer: {
+    typeFilterFullBar: {
       flexDirection: 'row',
       backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
-      borderRadius: 10,
-      padding: 2,
-      gap: 2,
+      borderRadius: 12,
+      padding: 3,
+      gap: 4,
+      marginBottom: 10,
     },
-    typeFilterInlineTab: {
-      paddingVertical: 4,
-      paddingHorizontal: 7,
-      borderRadius: 8,
+    typeFilterFullTab: {
+      flex: 1,
+      paddingVertical: 6,
+      paddingHorizontal: 6,
+      borderRadius: 9,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -2563,7 +2778,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       elevation: 2,
     },
     typeFilterInlineTabText: {
-      fontSize: 11,
+      fontSize: 12,
       fontWeight: '600',
       color: colors.text.muted,
     },
@@ -2582,7 +2797,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     searchBarContainer: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
+      gap: 6,
       marginBottom: 8,
     },
     searchBarInner: {
@@ -2593,9 +2808,33 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.border.default,
-      paddingHorizontal: 12,
+      paddingHorizontal: 10,
       paddingVertical: Platform.OS === 'ios' ? 8 : 4,
       minHeight: 40,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.03,
+      shadowRadius: 2,
+      elevation: 1,
+    },
+    searchDismissBtn: {
+      marginLeft: 6,
+      paddingHorizontal: 6,
+      paddingVertical: 3,
+      borderRadius: 6,
+      backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF',
+    },
+    memoShortcutBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? colors.background.card : '#FFFFFF',
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border.default,
+      paddingHorizontal: 9,
+      minHeight: 40,
+      gap: 3,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.03,
@@ -2610,9 +2849,9 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.border.default,
-      paddingHorizontal: 10,
+      paddingHorizontal: 9,
       minHeight: 40,
-      gap: 4,
+      gap: 3,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.03,
@@ -2620,12 +2859,59 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       elevation: 1,
     },
     invoiceMenuBtnIcon: {
-      fontSize: 14,
+      fontSize: 13.5,
     },
     invoiceMenuBtnText: {
-      fontSize: 12.5,
+      fontSize: 12,
       fontWeight: '600',
       color: colors.text.primary,
+    },
+    searchStatsBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: '#EEF2FF',
+      borderColor: '#C7D2FE',
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      marginBottom: 8,
+      gap: 8,
+    },
+    searchStatsBarDark: {
+      backgroundColor: 'rgba(99, 102, 241, 0.16)',
+      borderColor: 'rgba(99, 102, 241, 0.4)',
+    },
+    searchStatsText: {
+      flex: 1,
+      fontSize: 12,
+      fontWeight: '700',
+      color: '#4338CA',
+    },
+    searchStatsTextDark: {
+      color: '#C7D2FE',
+    },
+    searchStatsAllMonthBtn: {
+      backgroundColor: '#FFFFFF',
+      borderColor: '#818CF8',
+      borderWidth: 1,
+      borderRadius: 8,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      flexShrink: 0,
+    },
+    searchStatsAllMonthBtnDark: {
+      backgroundColor: 'rgba(99, 102, 241, 0.25)',
+      borderColor: '#818CF8',
+    },
+    searchStatsAllMonthText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: '#4F46E5',
+    },
+    searchStatsAllMonthTextDark: {
+      color: '#A5B4FC',
     },
     searchBarIcon: {
       fontSize: 14,
@@ -2674,7 +2960,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontWeight: '700',
     },
     filterToolbarWrapper: {
-      marginBottom: 10,
+      marginBottom: 8,
     },
     filterToolbarScroll: {
       flexDirection: 'row',
@@ -2682,12 +2968,111 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       gap: 8,
       paddingRight: 16,
     },
-    filterToolbar: {
+    monthStepperGroup: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: isDark ? colors.background.card : '#FFFFFF',
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: colors.border.default,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.04,
+      shadowRadius: 2,
+      elevation: 1,
+      overflow: 'hidden',
+    },
+    monthStepperArrowBtn: {
+      paddingVertical: 6,
+      paddingHorizontal: 9,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    monthStepperArrowDisabled: {
+      opacity: 0.3,
+    },
+    monthStepperArrowText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.text.secondary,
+    },
+    monthStepperCenterBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 6,
+      paddingHorizontal: 4,
+      gap: 4,
+    },
+    filterQuickToggleChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: isDark ? colors.background.card : '#FFFFFF',
+      paddingVertical: 6,
+      paddingHorizontal: 11,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: colors.border.default,
+    },
+    filterQuickToggleText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.text.secondary,
+    },
+    listSectionHeader: {
+      paddingHorizontal: 2,
+      paddingTop: 2,
+      paddingBottom: 6,
+    },
+    listSectionHeaderText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: '#B45309',
+      letterSpacing: 0.3,
+    },
+    dayGroupBlock: {
+      marginBottom: 4,
+    },
+    dayGroupHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 4,
+      paddingTop: 6,
+      paddingBottom: 6,
+      gap: 8,
+    },
+    dayGroupHeaderDark: {
+      borderColor: 'transparent',
+    },
+    dayGroupTitle: {
+      fontSize: 12.5,
+      fontWeight: '700',
+      color: '#64748B',
+    },
+    dayGroupTitleDark: {
+      color: '#94A3B8',
+    },
+    dayGroupSummaryWrap: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
-      marginBottom: 12,
-      flexWrap: 'wrap',
+      flexShrink: 1,
+    },
+    dayGroupExpenseText: {
+      fontSize: 11.5,
+      fontWeight: '700',
+      color: '#EF4444',
+    },
+    dayGroupExpenseTextDark: {
+      color: '#FCA5A5',
+    },
+    dayGroupIncomeText: {
+      fontSize: 11.5,
+      fontWeight: '700',
+      color: '#059669',
+    },
+    dayGroupIncomeTextDark: {
+      color: '#6EE7B7',
     },
     filterChip: {
       flexDirection: 'row',
