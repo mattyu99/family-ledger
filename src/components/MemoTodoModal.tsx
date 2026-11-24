@@ -275,9 +275,9 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
       return {
         label: `${relayPrefix}今天到期${badge?.isLunar || (rep && rep !== 'once') || isRelay ? detailSuffix : ''}`,
         type: 'today',
-        color: '#EA580C',
-        bg: '#FFF7ED',
-        border: '#FDBA74',
+        color: isDark ? '#FDBA74' : '#EA580C',
+        bg: isDark ? 'rgba(234, 88, 12, 0.2)' : '#FFF7ED',
+        border: isDark ? 'rgba(251, 146, 60, 0.45)' : '#FDBA74',
       };
     }
     const rDate = new Date(reminderDateStr + 'T00:00:00');
@@ -287,35 +287,35 @@ export const MemoTodoModal: React.FC<MemoTodoModalProps> = ({
       return {
         label: `${relayPrefix}逾期 ${Math.abs(diffDays)} 天${detailSuffix}`,
         type: 'overdue',
-        color: '#DC2626',
-        bg: '#FEF2F2',
-        border: '#FECACA',
+        color: isDark ? '#FCA5A5' : '#DC2626',
+        bg: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEF2F2',
+        border: isDark ? 'rgba(248, 113, 113, 0.45)' : '#FECACA',
       };
     }
     if (diffDays === 1) {
       return {
         label: `${relayPrefix}明天到期${detailSuffix}`,
         type: 'tomorrow',
-        color: '#2563EB',
-        bg: '#EFF6FF',
-        border: '#BFDBFE',
+        color: isDark ? '#93C5FD' : '#2563EB',
+        bg: isDark ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF',
+        border: isDark ? 'rgba(96, 165, 250, 0.45)' : '#BFDBFE',
       };
     }
     if (diffDays <= 7) {
       return {
         label: `${relayPrefix}${diffDays}天後到期${detailSuffix}`,
         type: 'upcoming7Days',
-        color: '#0891B2',
-        bg: '#ECFEFF',
-        border: '#A5F3FC',
+        color: isDark ? '#67E8F9' : '#0891B2',
+        bg: isDark ? 'rgba(6, 182, 212, 0.18)' : '#ECFEFF',
+        border: isDark ? 'rgba(34, 211, 238, 0.4)' : '#A5F3FC',
       };
     }
     return {
       label: `${relayPrefix}還有 ${diffDays} 天${detailSuffix}`,
       type: 'upcoming',
-      color: '#64748B',
-      bg: '#F8FAFC',
-      border: '#E2E8F0',
+      color: isDark ? '#94A3B8' : '#64748B',
+      bg: isDark ? 'rgba(148, 163, 184, 0.16)' : '#F8FAFC',
+      border: isDark ? 'rgba(148, 163, 184, 0.32)' : '#E2E8F0',
     };
   };
 

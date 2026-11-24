@@ -173,23 +173,33 @@ export const JoinLedgerModal: React.FC<JoinLedgerModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
         style={styles.overlay}
       >
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
+        <TouchableOpacity
+          style={styles.backdrop}
+          activeOpacity={1}
+          onPress={() => {
+            Keyboard.dismiss();
+            onClose();
+          }}
+        />
         <View style={styles.card}>
+          <View style={styles.sheetHandleBarWrap}>
+            <View style={[styles.sheetHandleBar, isDark && { backgroundColor: '#475569' }]} />
+          </View>
           <View style={styles.headerRow}>
-            <Text style={styles.title}>🔗 加入家庭公帳</Text>
+            <Text style={styles.title} maxFontSizeMultiplier={1.15}>🔗 加入家庭公帳</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Text style={styles.closeText}>✕</Text>
+              <Text style={styles.closeText} maxFontSizeMultiplier={1.15}>✕</Text>
             </TouchableOpacity>
           </View>
 
           <ScrollView
             showsVerticalScrollIndicator={false}
-            style={{ width: '100%' }}
+            style={{ width: '100%', flexShrink: 1 }}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
@@ -408,7 +418,7 @@ export const JoinLedgerModal: React.FC<JoinLedgerModalProps> = ({
                   disabled={isJoining}
                   onPress={handleCreateAndJoin}
                 >
-                  <Text style={styles.submitBtnText}>
+                  <Text style={styles.submitBtnText} maxFontSizeMultiplier={1.12}>
                     {isJoining ? '正在建立並加入...' : '✨ 建立新身分並加入帳本'}
                   </Text>
                 </TouchableOpacity>
@@ -426,9 +436,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     overlay: {
       flex: 1,
       backgroundColor: isDark ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.5)',
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: 20,
+      justifyContent: 'flex-end',
     },
     backdrop: {
       position: 'absolute',
@@ -437,13 +445,36 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       right: 0,
       bottom: 0,
     },
+    sheetHandleBarWrap: {
+      alignItems: 'center',
+      paddingBottom: 10,
+    },
+    sheetHandleBar: {
+      width: 38,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: '#CBD5E1',
+    },
     card: {
       width: '100%',
-      maxWidth: 500,
+      maxWidth: 600,
+      alignSelf: 'center',
       backgroundColor: colors.background.modal,
-      borderRadius: 20,
-      padding: 20,
-      maxHeight: '88%',
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      borderBottomLeftRadius: 0,
+      borderBottomRightRadius: 0,
+      paddingTop: 10,
+      paddingHorizontal: 18,
+      paddingBottom: Platform.OS === 'ios' ? 30 : 18,
+      maxHeight: '90%',
+      borderTopWidth: isDark ? 1 : 0,
+      borderTopColor: isDark ? colors.border.default : 'transparent',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: -4 },
+      shadowOpacity: 0.16,
+      shadowRadius: 14,
+      elevation: 10,
     },
     headerRow: {
       flexDirection: 'row',

@@ -962,14 +962,14 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerTitleContainer}>
-              <Text style={styles.headerTitle}>
+              <Text style={styles.headerTitle} maxFontSizeMultiplier={1.15} numberOfLines={1}>
                 {targetMemberObj && isTargetingOtherMember
                   ? `🗓️ ${targetMemberObj.display_name} 的週期扣款`
                   : scope === 'my'
                   ? '🗓️ 我的週期扣款與固定帳單'
                   : '🗓️ 全家週期扣款與固定帳單'}
               </Text>
-              <Text style={styles.headerSubtitle}>
+              <Text style={styles.headerSubtitle} maxFontSizeMultiplier={1.08}>
                 {targetMemberObj && isTargetingOtherMember
                   ? `檢視 ${targetMemberObj.display_name} 負責扣繳之各項固定帳單與分期`
                   : scope === 'my'
@@ -988,12 +988,12 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                 }}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.vaultToggleBtnText, showStatementVault && styles.vaultToggleBtnTextActive]}>
+                <Text style={[styles.vaultToggleBtnText, showStatementVault && styles.vaultToggleBtnTextActive]} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                   {showStatementVault ? '✕ 清單' : `📂 帳單庫${statements.length > 0 ? ` (${statements.length})` : ''}`}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-                <Text style={styles.closeButtonText}>✕</Text>
+                <Text style={styles.closeButtonText} maxFontSizeMultiplier={1.15}>✕</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1122,12 +1122,12 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
               style={[styles.tabItem, activeTab === 'pending' && styles.tabItemActive]}
               onPress={() => setActiveTab('pending')}
             >
-              <Text style={[styles.tabText, activeTab === 'pending' && styles.tabTextActive]}>
+              <Text style={[styles.tabText, activeTab === 'pending' && styles.tabTextActive]} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                 📋 待繳核對清單
               </Text>
               {pendingBills.length > 0 && (
                 <View style={styles.tabBadge}>
-                  <Text style={styles.tabBadgeText}>{pendingBills.length}</Text>
+                  <Text style={styles.tabBadgeText} maxFontSizeMultiplier={1.05} numberOfLines={1}>{pendingBills.length}</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -1136,7 +1136,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
               style={[styles.tabItem, activeTab === 'rules' && styles.tabItemActive]}
               onPress={() => setActiveTab('rules')}
             >
-              <Text style={[styles.tabText, activeTab === 'rules' && styles.tabTextActive]}>
+              <Text style={[styles.tabText, activeTab === 'rules' && styles.tabTextActive]} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                 ⚙️ 規則設定 ({scopedRules.length})
               </Text>
             </TouchableOpacity>
@@ -1153,32 +1153,32 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                   disabled={isAtMinMonth}
                   activeOpacity={isAtMinMonth ? 1 : 0.7}
                 >
-                  <Text style={[styles.monthNavText, isAtMinMonth && styles.monthNavTextDisabled]}>‹ 上個月</Text>
+                  <Text style={[styles.monthNavText, isAtMinMonth && styles.monthNavTextDisabled]} maxFontSizeMultiplier={1.08} numberOfLines={1}>‹ 上個月</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.currentMonthBadge} onPress={handleResetToCurrentMonth}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={styles.currentMonthText}>
+                    <Text style={styles.currentMonthText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                       📅 {year} 年 {month} 月
                     </Text>
                     {isCurrentMonth ? (
                       <View style={styles.monthStatusPillCurrent}>
-                        <Text style={styles.monthStatusPillTextCurrent}>本月</Text>
+                        <Text style={styles.monthStatusPillTextCurrent} maxFontSizeMultiplier={1.05} numberOfLines={1}>本月</Text>
                       </View>
                     ) : isPastMonth ? (
                       <View style={styles.monthStatusPillPast}>
-                        <Text style={styles.monthStatusPillTextPast}>補記上期</Text>
+                        <Text style={styles.monthStatusPillTextPast} maxFontSizeMultiplier={1.05} numberOfLines={1}>補記上期</Text>
                       </View>
                     ) : (
                       <View style={styles.monthStatusPillFuture}>
-                        <Text style={styles.monthStatusPillTextFuture}>預估未來</Text>
+                        <Text style={styles.monthStatusPillTextFuture} maxFontSizeMultiplier={1.05} numberOfLines={1}>預估未來</Text>
                       </View>
                     )}
                   </View>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.monthNavButton} onPress={handleNextMonth}>
-                  <Text style={styles.monthNavText}>下個月 ›</Text>
+                  <Text style={styles.monthNavText} maxFontSizeMultiplier={1.08} numberOfLines={1}>下個月 ›</Text>
                 </TouchableOpacity>
               </View>
 
@@ -1265,13 +1265,13 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                         <View style={styles.cardHeaderRow}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                             <View style={[styles.dueBadge, { backgroundColor: dueBadge.bg }]}>
-                              <Text style={[styles.dueBadgeText, { color: dueBadge.color }]}>
+                              <Text style={[styles.dueBadgeText, { color: dueBadge.color }]} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                                 {dueBadge.text}
                               </Text>
                             </View>
                             {rule.is_installment && (
                               <View style={styles.installmentPendingBadge}>
-                                <Text style={styles.installmentPendingBadgeText}>
+                                <Text style={styles.installmentPendingBadgeText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                                   📦 分期 {instInfo ? instInfo.labelText : ''}
                                 </Text>
                               </View>
@@ -1282,7 +1282,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                                 onPress={() => handleOpenStatement(billStmt)}
                                 activeOpacity={0.7}
                               >
-                                <Text style={styles.cardAttachedStmtPillText}>
+                                <Text style={styles.cardAttachedStmtPillText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                                   📎 {isImageStatement(billStmt) ? '圖片帳單' : 'PDF 帳單'}
                                 </Text>
                               </TouchableOpacity>
@@ -1292,11 +1292,11 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                                 onPress={() => handleUploadRuleStatement(rule, periodKey, periodLabel)}
                                 activeOpacity={0.7}
                               >
-                                <Text style={styles.cardAddStmtPillText}>+ 附帳單</Text>
+                                <Text style={styles.cardAddStmtPillText} maxFontSizeMultiplier={1.08} numberOfLines={1}>+ 附帳單</Text>
                               </TouchableOpacity>
                             )}
                           </View>
-                          <Text style={styles.periodLabelText}>{periodLabel}</Text>
+                          <Text style={styles.periodLabelText} maxFontSizeMultiplier={1.08} numberOfLines={1}>{periodLabel}</Text>
                         </View>
 
                         {/* 主資訊 */}
@@ -1305,7 +1305,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                             <Text style={styles.catIconEmoji}>{getCategoryIcon(cat?.icon)}</Text>
                           </View>
                           <View style={styles.cardInfoContainer}>
-                            <Text style={styles.billNameText}>{rule.name}</Text>
+                            <Text style={styles.billNameText} maxFontSizeMultiplier={1.12} numberOfLines={1}>{rule.name}</Text>
                             <View style={styles.tagsRow}>
                               <Text style={styles.tagFreqText}>{getFrequencyBadgeText(rule)}</Text>
                               {payer && (

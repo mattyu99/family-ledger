@@ -230,11 +230,11 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
           {/* Header */}
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.title}>🎯 預算控管與額度設定</Text>
-              <Text style={styles.subtitle}>支援家庭公帳與成員個人雙重視角，自主掌控開銷</Text>
+              <Text style={styles.title} maxFontSizeMultiplier={1.15} numberOfLines={1}>🎯 預算控管與額度設定</Text>
+              <Text style={styles.subtitle} maxFontSizeMultiplier={1.08}>支援家庭公帳與成員個人雙重視角，自主掌控開銷</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Text style={styles.closeText}>✕</Text>
+              <Text style={styles.closeText} maxFontSizeMultiplier={1.15}>✕</Text>
             </TouchableOpacity>
           </View>
 
@@ -245,7 +245,7 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
               onPress={() => setActiveTab('family')}
               activeOpacity={0.7}
             >
-              <Text style={[styles.tabBtnText, activeTab === 'family' && styles.tabBtnTextActive]}>
+              <Text style={[styles.tabBtnText, activeTab === 'family' && styles.tabBtnTextActive]} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                 🏠 家庭公帳總預算
               </Text>
             </TouchableOpacity>
@@ -255,7 +255,7 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
               onPress={() => setActiveTab('members')}
               activeOpacity={0.7}
             >
-              <Text style={[styles.tabBtnText, activeTab === 'members' && styles.tabBtnTextActive]}>
+              <Text style={[styles.tabBtnText, activeTab === 'members' && styles.tabBtnTextActive]} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                 👤 成員個人額度{configuredMemberCount > 0 ? ` (${configuredMemberCount})` : ''}
               </Text>
             </TouchableOpacity>
@@ -355,7 +355,7 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
                                 onPress={() => setMonthlyTotal(String(amt))}
                                 activeOpacity={0.7}
                               >
-                                <Text style={[styles.presetChipText, isSelected && styles.presetChipTextActive]}>
+                                <Text style={[styles.presetChipText, isSelected && styles.presetChipTextActive]} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                                   ${(amt / 1000).toFixed(0)}k
                                 </Text>
                               </TouchableOpacity>
@@ -368,10 +368,10 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
                     {/* 預警警戒門檻 */}
                     <View style={styles.sectionCard}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                        <Text style={styles.sectionTitle}>⚠️ 警戒提醒門檻 (達標比例亮起提醒)</Text>
+                        <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.1}>⚠️ 警戒提醒門檻 (達標比例亮起提醒)</Text>
                         {!isOwner && (
                           <View style={styles.lockBadge}>
-                            <Text style={styles.lockBadgeText}>🔒 唯讀</Text>
+                            <Text style={styles.lockBadgeText} maxFontSizeMultiplier={1.05} numberOfLines={1}>🔒 唯讀</Text>
                           </View>
                         )}
                       </View>
@@ -390,7 +390,7 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
                               disabled={!isOwner}
                               activeOpacity={isOwner ? 0.7 : 1}
                             >
-                              <Text style={[styles.thresholdChipText, isSelected && styles.thresholdChipTextActive]}>
+                              <Text style={[styles.thresholdChipText, isSelected && styles.thresholdChipTextActive]} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                                 達 {pct}% 警示
                               </Text>
                             </TouchableOpacity>
@@ -559,6 +559,8 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
                                     styles.memberPresetChipText,
                                     isSelected && styles.memberPresetChipTextActive,
                                   ]}
+                                  maxFontSizeMultiplier={1.08}
+                                  numberOfLines={1}
                                 >
                                   ${(amt / 1000).toFixed(0)}k
                                 </Text>
@@ -571,7 +573,7 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
                               onPress={() => updateMemberAmount(member.id, '')}
                               activeOpacity={0.7}
                             >
-                              <Text style={styles.memberClearChipText}>✕ 清除</Text>
+                              <Text style={styles.memberClearChipText} maxFontSizeMultiplier={1.08} numberOfLines={1}>✕ 清除</Text>
                             </TouchableOpacity>
                           )}
                         </View>
@@ -588,10 +590,10 @@ export const BudgetManageModal: React.FC<BudgetManageModalProps> = ({
           {/* Footer Save Button */}
           <View style={styles.footer}>
             <TouchableOpacity style={styles.cancelBtn} onPress={onClose} activeOpacity={0.7}>
-              <Text style={styles.cancelBtnText}>取消</Text>
+              <Text style={styles.cancelBtnText} maxFontSizeMultiplier={1.1} numberOfLines={1}>取消</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.saveBtn} onPress={handleSave} activeOpacity={0.8}>
-              <Text style={styles.saveBtnText}>💾 儲存預算設定</Text>
+              <Text style={styles.saveBtnText} maxFontSizeMultiplier={1.1} numberOfLines={1}>💾 儲存預算設定</Text>
             </TouchableOpacity>
           </View>
         </View>

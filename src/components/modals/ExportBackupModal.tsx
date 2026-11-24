@@ -4,6 +4,7 @@ import {
   View,
   TouchableOpacity,
   ScrollView,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Alert,
@@ -482,16 +483,27 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
         style={styles.exportOverlay}
       >
+        <TouchableOpacity
+          style={styles.backdrop}
+          activeOpacity={1}
+          onPress={() => {
+            Keyboard.dismiss();
+            onClose();
+          }}
+        />
         <View style={styles.exportCard}>
+          <View style={styles.sheetHandleBarWrap}>
+            <View style={[styles.sheetHandleBar, isDark && { backgroundColor: '#475569' }]} />
+          </View>
           <View style={styles.modalHeaderRow}>
-            <Text style={styles.exportTitle}>🛡️ 帳本資料備份與還原</Text>
+            <Text style={styles.exportTitle} maxFontSizeMultiplier={1.15}>🛡️ 帳本資料備份與還原</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Text style={styles.closeText}>✕</Text>
+              <Text style={styles.closeText} maxFontSizeMultiplier={1.15}>✕</Text>
             </TouchableOpacity>
           </View>
 
@@ -537,7 +549,11 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
               onPress={() => setExportTab('csv')}
               activeOpacity={0.7}
             >
-              <Text style={[styles.exportTabBtnText, exportTab === 'csv' && styles.exportTabBtnTextActive]}>
+              <Text
+                style={[styles.exportTabBtnText, exportTab === 'csv' && styles.exportTabBtnTextActive]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.08}
+              >
                 📊 CSV
               </Text>
             </TouchableOpacity>
@@ -547,7 +563,11 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
               onPress={() => setExportTab('json')}
               activeOpacity={0.7}
             >
-              <Text style={[styles.exportTabBtnText, exportTab === 'json' && styles.exportTabBtnTextActive]}>
+              <Text
+                style={[styles.exportTabBtnText, exportTab === 'json' && styles.exportTabBtnTextActive]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.08}
+              >
                 📦 JSON
               </Text>
             </TouchableOpacity>
@@ -557,7 +577,11 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
               onPress={() => setExportTab('attachments')}
               activeOpacity={0.7}
             >
-              <Text style={[styles.exportTabBtnText, exportTab === 'attachments' && styles.exportTabBtnTextActive]}>
+              <Text
+                style={[styles.exportTabBtnText, exportTab === 'attachments' && styles.exportTabBtnTextActive]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.08}
+              >
                 🗂️ 附件
               </Text>
             </TouchableOpacity>
@@ -576,7 +600,11 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
               }}
               activeOpacity={0.7}
             >
-              <Text style={[styles.exportTabBtnText, exportTab === 'restore' && styles.exportTabBtnTextActive]}>
+              <Text
+                style={[styles.exportTabBtnText, exportTab === 'restore' && styles.exportTabBtnTextActive]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.08}
+              >
                 {isOwner ? '📥 還原' : '🔒 還原'}
               </Text>
             </TouchableOpacity>
@@ -599,22 +627,22 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
 
                 <View style={styles.attachmentStatsGrid}>
                   <View style={styles.attachmentStatBox}>
-                    <Text style={styles.attachmentStatNum}>{attachmentStats?.receiptCount || 0}</Text>
-                    <Text style={styles.attachmentStatLabel}>📷 收據照片</Text>
+                    <Text style={styles.attachmentStatNum} numberOfLines={1} maxFontSizeMultiplier={1.08}>{attachmentStats?.receiptCount || 0}</Text>
+                    <Text style={styles.attachmentStatLabel} numberOfLines={1} maxFontSizeMultiplier={1.08}>📷 收據照片</Text>
                   </View>
                   <View style={styles.attachmentStatBox}>
-                    <Text style={styles.attachmentStatNum}>{attachmentStats?.cardStatementCount || 0}</Text>
-                    <Text style={styles.attachmentStatLabel}>💳 信用卡帳單</Text>
+                    <Text style={styles.attachmentStatNum} numberOfLines={1} maxFontSizeMultiplier={1.08}>{attachmentStats?.cardStatementCount || 0}</Text>
+                    <Text style={styles.attachmentStatLabel} numberOfLines={1} maxFontSizeMultiplier={1.08}>💳 信用卡帳單</Text>
                   </View>
                   <View style={styles.attachmentStatBox}>
-                    <Text style={styles.attachmentStatNum}>{attachmentStats?.recurringStatementCount || 0}</Text>
-                    <Text style={styles.attachmentStatLabel}>⚡ 水電固定</Text>
+                    <Text style={styles.attachmentStatNum} numberOfLines={1} maxFontSizeMultiplier={1.08}>{attachmentStats?.recurringStatementCount || 0}</Text>
+                    <Text style={styles.attachmentStatLabel} numberOfLines={1} maxFontSizeMultiplier={1.08}>⚡ 水電固定</Text>
                   </View>
                   <View style={styles.attachmentStatBox}>
-                    <Text style={[styles.attachmentStatNum, { color: '#10B981' }]}>
+                    <Text style={[styles.attachmentStatNum, { color: '#10B981' }]} numberOfLines={1} maxFontSizeMultiplier={1.08}>
                       {attachmentStats?.totalCount || 0}
                     </Text>
-                    <Text style={styles.attachmentStatLabel}>總附件量</Text>
+                    <Text style={styles.attachmentStatLabel} numberOfLines={1} maxFontSizeMultiplier={1.08}>總附件量</Text>
                   </View>
                 </View>
               </View>
@@ -954,23 +982,42 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
   StyleSheet.create({
     exportOverlay: {
       flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.5)',
-      justifyContent: 'center',
+      backgroundColor: isDark ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.5)',
+      justifyContent: 'flex-end',
+    },
+    backdrop: {
+      ...StyleSheet.absoluteFill,
+    },
+    sheetHandleBarWrap: {
       alignItems: 'center',
-      padding: 16,
+      paddingBottom: 10,
+    },
+    sheetHandleBar: {
+      width: 38,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: '#CBD5E1',
     },
     exportCard: {
       backgroundColor: isDark ? colors.background.modal : '#FFFFFF',
-      borderRadius: 16,
-      padding: 20,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      borderBottomLeftRadius: 0,
+      borderBottomRightRadius: 0,
+      paddingTop: 10,
+      paddingHorizontal: 18,
+      paddingBottom: Platform.OS === 'ios' ? 30 : 18,
       width: '100%',
-      maxWidth: 500,
+      maxWidth: 600,
+      alignSelf: 'center',
       maxHeight: '90%',
+      borderTopWidth: isDark ? 1 : 0,
+      borderTopColor: isDark ? colors.border.default : 'transparent',
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.15,
-      shadowRadius: 12,
-      elevation: 5,
+      shadowOffset: { width: 0, height: -4 },
+      shadowOpacity: 0.16,
+      shadowRadius: 14,
+      elevation: 10,
     },
     modalHeaderRow: {
       flexDirection: 'row',
@@ -1109,10 +1156,12 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontWeight: 'bold',
     },
     restoreScrollArea: {
-      maxHeight: 460,
+      maxHeight: Math.round(SCREEN_HEIGHT * 0.62),
+      flexShrink: 1,
     },
     attachmentScrollArea: {
-      maxHeight: Math.min(480, SCREEN_HEIGHT * 0.62),
+      maxHeight: Math.round(SCREEN_HEIGHT * 0.62),
+      flexShrink: 1,
     },
     exportTipBox: {
       backgroundColor: isDark ? colors.background.cardSubtle : '#EFF6FF',

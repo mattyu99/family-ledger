@@ -94,12 +94,12 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
         <View style={[styles.card, isDark && { backgroundColor: colors.background.modal, borderColor: colors.border.default, borderWidth: 1 }]}>
           {/* 頂部標題 */}
           <View style={styles.headerRow}>
-            <View>
-              <Text style={[styles.title, isDark && { color: colors.text.primary }]}>📅 選擇統計期間</Text>
-              <Text style={[styles.subtitle, isDark && { color: colors.text.muted }]}>自由選擇全年度或任意月份查看財務分析</Text>
+            <View style={{ flex: 1, marginRight: 8 }}>
+              <Text style={[styles.title, isDark && { color: colors.text.primary }]} maxFontSizeMultiplier={1.15} numberOfLines={1}>📅 選擇統計期間</Text>
+              <Text style={[styles.subtitle, isDark && { color: colors.text.muted }]} maxFontSizeMultiplier={1.08}>自由選擇全年度或任意月份查看財務分析</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={[styles.closeBtn, isDark && { backgroundColor: colors.background.cardSubtle }]}>
-              <Text style={[styles.closeText, isDark && { color: colors.text.secondary }]}>✕</Text>
+              <Text style={[styles.closeText, isDark && { color: colors.text.secondary }]} maxFontSizeMultiplier={1.15}>✕</Text>
             </TouchableOpacity>
           </View>
 
@@ -118,12 +118,16 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
               }}
               activeOpacity={0.7}
             >
-              <Text style={[
-                styles.quickChipText,
-                isDark && { color: colors.text.secondary },
-                selectedMonth === currentYm && styles.quickChipTextActive,
-                isDark && selectedMonth === currentYm && { color: '#C7D2FE' },
-              ]}>
+              <Text
+                style={[
+                  styles.quickChipText,
+                  isDark && { color: colors.text.secondary },
+                  selectedMonth === currentYm && styles.quickChipTextActive,
+                  isDark && selectedMonth === currentYm && { color: '#C7D2FE' },
+                ]}
+                maxFontSizeMultiplier={1.08}
+                numberOfLines={1}
+              >
                 📍 本月
               </Text>
             </TouchableOpacity>
@@ -141,12 +145,16 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
               }}
               activeOpacity={0.7}
             >
-              <Text style={[
-                styles.quickChipText,
-                isDark && { color: colors.text.secondary },
-                selectedMonth === lastMonthYm && styles.quickChipTextActive,
-                isDark && selectedMonth === lastMonthYm && { color: '#C7D2FE' },
-              ]}>
+              <Text
+                style={[
+                  styles.quickChipText,
+                  isDark && { color: colors.text.secondary },
+                  selectedMonth === lastMonthYm && styles.quickChipTextActive,
+                  isDark && selectedMonth === lastMonthYm && { color: '#C7D2FE' },
+                ]}
+                maxFontSizeMultiplier={1.08}
+                numberOfLines={1}
+              >
                 📅 上月
               </Text>
             </TouchableOpacity>
@@ -164,12 +172,16 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
               }}
               activeOpacity={0.7}
             >
-              <Text style={[
-                styles.quickChipText,
-                isDark && { color: colors.text.secondary },
-                selectedMonth === String(now.getFullYear()) && styles.quickChipTextActive,
-                isDark && selectedMonth === String(now.getFullYear()) && { color: '#C7D2FE' },
-              ]}>
+              <Text
+                style={[
+                  styles.quickChipText,
+                  isDark && { color: colors.text.secondary },
+                  selectedMonth === String(now.getFullYear()) && styles.quickChipTextActive,
+                  isDark && selectedMonth === String(now.getFullYear()) && { color: '#C7D2FE' },
+                ]}
+                maxFontSizeMultiplier={1.08}
+                numberOfLines={1}
+              >
                 🗓️ 今年
               </Text>
             </TouchableOpacity>
@@ -187,12 +199,16 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
               }}
               activeOpacity={0.7}
             >
-              <Text style={[
-                styles.quickChipText,
-                isDark && { color: colors.text.secondary },
-                selectedMonth === 'all' && styles.quickChipTextActive,
-                isDark && selectedMonth === 'all' && { color: '#C7D2FE' },
-              ]}>
+              <Text
+                style={[
+                  styles.quickChipText,
+                  isDark && { color: colors.text.secondary },
+                  selectedMonth === 'all' && styles.quickChipTextActive,
+                  isDark && selectedMonth === 'all' && { color: '#C7D2FE' },
+                ]}
+                maxFontSizeMultiplier={1.08}
+                numberOfLines={1}
+              >
                 🌐 全部
               </Text>
             </TouchableOpacity>
@@ -205,17 +221,17 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
               onPress={() => setPickerYear(y => y - 1)}
               activeOpacity={0.7}
             >
-              <Text style={[styles.yearArrowText, isDark && { color: '#A5B4FC' }]}>◀</Text>
+              <Text style={[styles.yearArrowText, isDark && { color: '#A5B4FC' }]} maxFontSizeMultiplier={1.1}>◀</Text>
             </TouchableOpacity>
 
-            <Text style={[styles.yearTitleText, isDark && { color: colors.text.primary }]}>{pickerYear} 年</Text>
+            <Text style={[styles.yearTitleText, isDark && { color: colors.text.primary }]} maxFontSizeMultiplier={1.15} numberOfLines={1}>{pickerYear} 年</Text>
 
             <TouchableOpacity
               style={[styles.yearArrowBtn, isDark && { backgroundColor: colors.background.card }]}
               onPress={() => setPickerYear(y => y + 1)}
               activeOpacity={0.7}
             >
-              <Text style={[styles.yearArrowText, isDark && { color: '#A5B4FC' }]}>▶</Text>
+              <Text style={[styles.yearArrowText, isDark && { color: '#A5B4FC' }]} maxFontSizeMultiplier={1.1}>▶</Text>
             </TouchableOpacity>
           </View>
 
@@ -232,13 +248,15 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
             }}
             activeOpacity={0.7}
           >
-            <View style={styles.fullYearBtnLeft}>
+            <View style={[styles.fullYearBtnLeft, { flexShrink: 1 }]}>
               <Text
                 style={[
                   styles.fullYearBtnText,
                   isDark && { color: colors.text.primary },
                   selectedMonth === String(pickerYear) && styles.fullYearBtnTextActive,
                 ]}
+                maxFontSizeMultiplier={1.08}
+                numberOfLines={1}
               >
                 🗓️ 查看 {pickerYear} 全年度統計
               </Text>
@@ -248,16 +266,18 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
                   isDark && { color: colors.text.muted },
                   selectedMonth === String(pickerYear) && styles.fullYearCountTextActive,
                 ]}
+                maxFontSizeMultiplier={1.08}
+                numberOfLines={1}
               >
                 ({yearCount} 筆記帳)
               </Text>
             </View>
             {selectedMonth === String(pickerYear) ? (
               <View style={styles.fullYearActiveBadge}>
-                <Text style={styles.fullYearActiveBadgeText}>✓ 目前選取</Text>
+                <Text style={styles.fullYearActiveBadgeText} maxFontSizeMultiplier={1.08} numberOfLines={1}>✓ 目前選取</Text>
               </View>
             ) : (
-              <Text style={[styles.fullYearArrowHint, isDark && { color: '#818CF8' }]}>選擇 ➔</Text>
+              <Text style={[styles.fullYearArrowHint, isDark && { color: '#818CF8' }]} maxFontSizeMultiplier={1.08} numberOfLines={1}>選擇 ➔</Text>
             )}
           </TouchableOpacity>
 
@@ -293,17 +313,19 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
                       isCurrent && !isSelected && styles.monthGridTextCurrent,
                       isDark && isCurrent && !isSelected && { color: '#A5B4FC' },
                     ]}
+                    maxFontSizeMultiplier={1.08}
+                    numberOfLines={1}
                   >
                     {m} 月
                   </Text>
                   {isCurrent && !isSelected && (
-                    <Text style={[styles.currentMonthBadgeText, isDark && { color: '#A5B4FC' }]}>本月</Text>
+                    <Text style={[styles.currentMonthBadgeText, isDark && { color: '#A5B4FC' }]} maxFontSizeMultiplier={1.05} numberOfLines={1}>本月</Text>
                   )}
                   {txCount > 0 && !isSelected && (
-                    <Text style={[styles.txCountBadgeText, isDark && { color: colors.text.muted }]}>{txCount}筆</Text>
+                    <Text style={[styles.txCountBadgeText, isDark && { color: colors.text.muted }]} maxFontSizeMultiplier={1.05} numberOfLines={1}>{txCount}筆</Text>
                   )}
                   {isSelected && (
-                    <Text style={styles.selectedCheckText}>✓</Text>
+                    <Text style={styles.selectedCheckText} maxFontSizeMultiplier={1.08} numberOfLines={1}>✓</Text>
                   )}
                 </TouchableOpacity>
               );
@@ -312,7 +334,7 @@ export const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
 
           {/* 關閉按鈕 */}
           <TouchableOpacity style={[styles.cancelBtn, isDark && { backgroundColor: colors.background.cardSubtle }]} onPress={onClose} activeOpacity={0.8}>
-            <Text style={[styles.cancelBtnText, isDark && { color: colors.text.secondary }]}>關閉</Text>
+            <Text style={[styles.cancelBtnText, isDark && { color: colors.text.secondary }]} maxFontSizeMultiplier={1.1} numberOfLines={1}>關閉</Text>
           </TouchableOpacity>
         </View>
       </View>

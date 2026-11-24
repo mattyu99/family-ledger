@@ -240,40 +240,45 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          {/* 視角切換開關與同步狀態列 (同 MemoTodoModal 樣式) */}
+          {/* 視角切換開關與同步狀態列 (避免三欄擠壓，採上下分工排布) */}
           <View style={styles.scopeBarRow}>
-            <View style={styles.syncRow}>
-              <View style={[styles.syncDot, isSyncing && styles.syncDotLoading]} />
-              <Text style={styles.syncStatusText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
-                {isSyncing ? '正在連線同步財政部最新開獎號碼...' : '官方開獎號碼全自動即時同步'}
-              </Text>
-              {onOpenCloudInvoiceSync && (
+            <View style={styles.scopeTopRow}>
+              <View style={styles.syncRow}>
+                <View style={[styles.syncDot, isSyncing && styles.syncDotLoading]} />
+                <Text style={styles.syncStatusText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
+                  {isSyncing ? '正在連線同步財政部最新開獎號碼...' : '官方開獎號碼全自動即時同步'}
+                </Text>
+              </View>
+
+              <View style={styles.scopeSwitchContainer}>
                 <TouchableOpacity
-                  style={styles.cloudSyncChip}
-                  onPress={onOpenCloudInvoiceSync}
+                  style={[styles.scopeTab, scopeFilter === 'all' && styles.scopeTabActive]}
+                  onPress={() => handleScopeChange('all')}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.cloudSyncChipText}>☁️ 載具同步</Text>
+                  <Text style={[styles.scopeTabText, scopeFilter === 'all' && styles.scopeTabTextActive]} maxFontSizeMultiplier={1.08} numberOfLines={1}>全部</Text>
                 </TouchableOpacity>
-              )}
+                <TouchableOpacity
+                  style={[styles.scopeTab, scopeFilter === 'mine' && styles.scopeTabActive]}
+                  onPress={() => handleScopeChange('mine')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.scopeTabText, scopeFilter === 'mine' && styles.scopeTabTextActive]} maxFontSizeMultiplier={1.08} numberOfLines={1}>我的</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
-            <View style={styles.scopeSwitchContainer}>
+            {onOpenCloudInvoiceSync && (
               <TouchableOpacity
-                style={[styles.scopeTab, scopeFilter === 'all' && styles.scopeTabActive]}
-                onPress={() => handleScopeChange('all')}
+                style={styles.cloudSyncBar}
+                onPress={onOpenCloudInvoiceSync}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.scopeTabText, scopeFilter === 'all' && styles.scopeTabTextActive]} maxFontSizeMultiplier={1.08}>全部</Text>
+                <Text style={styles.cloudSyncChipText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
+                  ☁️ 載具同步 · 匯入發票 CSV 與網購自動分流 ›
+                </Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.scopeTab, scopeFilter === 'mine' && styles.scopeTabActive]}
-                onPress={() => handleScopeChange('mine')}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.scopeTabText, scopeFilter === 'mine' && styles.scopeTabTextActive]} maxFontSizeMultiplier={1.08}>我的</Text>
-              </TouchableOpacity>
-            </View>
+            )}
           </View>
 
           {/* 期別選擇軌道 (使用跨平台 HorizontalScrollView，完美支援網頁端滑鼠滾輪與按住拖曳) */}
@@ -292,13 +297,13 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
                     }}
                     activeOpacity={0.7}
                   >
-                    <Text style={[styles.periodChipText, isSelected && styles.periodChipTextActive]}>
+                    <Text style={[styles.periodChipText, isSelected && styles.periodChipTextActive]} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                       {p.periodLabel}
                     </Text>
                     {isDrawn ? (
                       <View style={[styles.periodDrawnDot, isSelected && styles.periodDrawnDotActive]} />
                     ) : (
-                      <Text style={styles.periodPendingTag}>未開獎</Text>
+                      <Text style={styles.periodPendingTag} maxFontSizeMultiplier={1.05} numberOfLines={1}>未開獎</Text>
                     )}
                   </TouchableOpacity>
                 );
@@ -341,42 +346,42 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
             {drawData ? (
               <View style={styles.drawCard}>
                 <View style={styles.drawCardHeader}>
-                  <Text style={styles.drawCardTitle}>🎯 本期中獎號碼 ({drawData.periodLabel})</Text>
-                  <Text style={styles.drawDateText}>開獎日：{drawData.drawDate}</Text>
+                  <Text style={styles.drawCardTitle} maxFontSizeMultiplier={1.12} numberOfLines={1}>🎯 本期中獎號碼 ({drawData.periodLabel})</Text>
+                  <Text style={styles.drawDateText} maxFontSizeMultiplier={1.08} numberOfLines={1}>開獎日：{drawData.drawDate}</Text>
                 </View>
 
                 <View style={styles.prizeGrid}>
                   {/* 特別獎 */}
                   <View style={styles.prizeItem}>
                     <View style={[styles.prizeTag, { backgroundColor: '#FEE2E2' }]}>
-                      <Text style={[styles.prizeTagText, { color: '#DC2626' }]}>特別獎 (1,000萬)</Text>
+                      <Text style={[styles.prizeTagText, { color: '#DC2626' }]} maxFontSizeMultiplier={1.08} numberOfLines={1}>特別獎 (1,000萬)</Text>
                     </View>
-                    <Text style={[styles.prizeNum, { color: '#B91C1C' }]}>{drawData.superPrize}</Text>
+                    <Text style={[styles.prizeNum, { color: '#B91C1C' }]} maxFontSizeMultiplier={1.12}>{drawData.superPrize}</Text>
                   </View>
 
                   {/* 特獎 */}
                   <View style={styles.prizeItem}>
                     <View style={[styles.prizeTag, { backgroundColor: '#FEF3C7' }]}>
-                      <Text style={[styles.prizeTagText, { color: '#D97706' }]}>特獎 (200萬)</Text>
+                      <Text style={[styles.prizeTagText, { color: '#D97706' }]} maxFontSizeMultiplier={1.08} numberOfLines={1}>特獎 (200萬)</Text>
                     </View>
-                    <Text style={[styles.prizeNum, { color: '#92400E' }]}>{drawData.specialPrize}</Text>
+                    <Text style={[styles.prizeNum, { color: '#92400E' }]} maxFontSizeMultiplier={1.12}>{drawData.specialPrize}</Text>
                   </View>
 
                   {/* 頭獎 */}
                   <View style={styles.prizeItem}>
                     <View style={[styles.prizeTag, { backgroundColor: '#DBEAFE' }]}>
-                      <Text style={[styles.prizeTagText, { color: '#2563EB' }]}>頭獎 (20萬)</Text>
+                      <Text style={[styles.prizeTagText, { color: '#2563EB' }]} maxFontSizeMultiplier={1.08} numberOfLines={1}>頭獎 (20萬)</Text>
                     </View>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
                       {drawData.firstPrizes.map((fp, idx) => (
-                        <Text key={idx} style={[styles.prizeNum, { color: '#1E40AF', fontSize: 15 }]}>{fp}</Text>
+                        <Text key={idx} style={[styles.prizeNum, { color: '#1E40AF', fontSize: 15 }]} maxFontSizeMultiplier={1.12}>{fp}</Text>
                       ))}
                     </View>
                   </View>
 
                   {/* 二獎至六獎對獎規則提示 */}
                   <View style={styles.ruleNotice}>
-                    <Text style={styles.ruleNoticeText}>
+                    <Text style={styles.ruleNoticeText} maxFontSizeMultiplier={1.08}>
                       💡 二獎 (末7碼) • 三獎 (末6碼) • 四獎 (末5碼) • 五獎 (末4碼 $1,000) • 六獎 (末3碼 $200)
                     </Text>
                   </View>
@@ -385,8 +390,8 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
             ) : (
               <View style={styles.pendingDrawCard}>
                 <Text style={styles.pendingDrawIcon}>⏳</Text>
-                <Text style={styles.pendingDrawTitle}>本期統一發票尚未開獎</Text>
-                <Text style={styles.pendingDrawSub}>
+                <Text style={styles.pendingDrawTitle} maxFontSizeMultiplier={1.15}>本期統一發票尚未開獎</Text>
+                <Text style={styles.pendingDrawSub} maxFontSizeMultiplier={1.1}>
                   統一發票於雙月份 25 日下午開獎，開獎後系統將第一時間自動為您進行全量比對！
                 </Text>
               </View>
@@ -440,43 +445,43 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
                     }}
                   >
                     <View style={styles.invoiceCardHeader}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-                        <Text style={styles.invoiceNumText}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, flexWrap: 'wrap' }}>
+                        <Text style={styles.invoiceNumText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                           🧾 {formatInvoiceNumber(tx.invoice_number || '')}
                         </Text>
                         {isWon && (
                           <View style={styles.wonBadge}>
-                            <Text style={styles.wonBadgeText}>
+                            <Text style={styles.wonBadgeText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                               🎉 中獎 ${prizeAmount.toLocaleString()} ({prizeName})
                             </Text>
                           </View>
                         )}
                         {isClaimed && (
                           <View style={styles.claimedBadge}>
-                            <Text style={styles.claimedBadgeText}>
+                            <Text style={styles.claimedBadgeText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                               ✅ 已兌領入帳 (${prizeAmount.toLocaleString()})
                             </Text>
                           </View>
                         )}
                         {isMissed && (
                           <View style={styles.missedBadge}>
-                            <Text style={styles.missedBadgeText}>未中獎</Text>
+                            <Text style={styles.missedBadgeText} maxFontSizeMultiplier={1.08} numberOfLines={1}>未中獎</Text>
                           </View>
                         )}
                         {isPending && (
                           <View style={styles.pendingBadge}>
-                            <Text style={styles.pendingBadgeText}>待開獎</Text>
+                            <Text style={styles.pendingBadgeText} maxFontSizeMultiplier={1.08} numberOfLines={1}>待開獎</Text>
                           </View>
                         )}
                       </View>
-                      <Text style={styles.invoiceDateText}>
+                      <Text style={styles.invoiceDateText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                         {tx.transacted_at.split('T')[0]}
                       </Text>
                     </View>
 
                     <View style={styles.invoiceCardBody}>
                       <View style={{ flex: 1, paddingRight: 8 }}>
-                        <Text style={styles.invoiceMerchantText} numberOfLines={1}>
+                        <Text style={styles.invoiceMerchantText} numberOfLines={1} maxFontSizeMultiplier={1.1}>
                           {tx.merchant || tx.category?.name || '一般消費'}
                         </Text>
                         <Text style={styles.invoiceMetaText} maxFontSizeMultiplier={1.08}>
@@ -495,7 +500,7 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
                             }}
                             activeOpacity={0.8}
                           >
-                            <Text style={styles.claimBtnText}>💰 兌領入帳</Text>
+                            <Text style={styles.claimBtnText} maxFontSizeMultiplier={1.08} numberOfLines={1}>💰 兌領入帳</Text>
                           </TouchableOpacity>
                         )}
                         <Text style={styles.cardArrow}>›</Text>
@@ -560,15 +565,20 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     marginTop: 2,
   },
   scopeBarRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: 'column',
+    gap: 8,
     paddingHorizontal: 20,
     paddingBottom: 10,
     paddingTop: 2,
     backgroundColor: colors.background.modal,
     borderBottomWidth: 1,
     borderBottomColor: isDark ? colors.border.default : '#F1F5F9',
+  },
+  scopeTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
   },
   scopeSwitchContainer: {
     flexDirection: 'row',
@@ -608,9 +618,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   syncRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
     flex: 1,
-    marginRight: 10,
   },
   syncDot: {
     width: 7,
@@ -622,21 +631,22 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     backgroundColor: '#F59E0B',
   },
   syncStatusText: {
-    fontSize: 11,
+    flexShrink: 1,
+    fontSize: 11.5,
     color: isDark ? '#34D399' : '#059669',
     fontWeight: '500',
   },
-  cloudSyncChip: {
-    marginLeft: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    backgroundColor: isDark ? 'rgba(14, 165, 233, 0.2)' : '#E0F2FE',
-    borderWidth: 0.5,
-    borderColor: '#38BDF8',
+  cloudSyncBar: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4.5,
+    borderRadius: 8,
+    backgroundColor: isDark ? 'rgba(14, 165, 233, 0.16)' : '#E0F2FE',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(56, 189, 248, 0.45)' : '#7DD3FC',
   },
   cloudSyncChipText: {
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: '700',
     color: isDark ? '#38BDF8' : '#0284C7',
   },

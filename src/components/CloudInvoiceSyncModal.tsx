@@ -611,15 +611,15 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
           {/* 標題欄 */}
           <View style={styles.headerRow}>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.headerTitle, { color: colors.text.primary }]}>
+              <Text style={[styles.headerTitle, { color: colors.text.primary }]} maxFontSizeMultiplier={1.15} numberOfLines={1}>
                 ☁️ 財政部雲端發票智慧同步
               </Text>
-              <Text style={[styles.headerSubtitle, { color: colors.text.secondary }]}>
+              <Text style={[styles.headerSubtitle, { color: colors.text.secondary }]} maxFontSizeMultiplier={1.08}>
                 消費發票 CSV 匯入 · 依卡號與網購載具自動分流家庭成員
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
-              <Text style={{ fontSize: 18, color: colors.text.secondary }}>✕</Text>
+              <Text style={{ fontSize: 18, color: colors.text.secondary }} maxFontSizeMultiplier={1.15}>✕</Text>
             </TouchableOpacity>
           </View>
 
@@ -685,12 +685,12 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
               ]}
             >
               <View style={styles.heroHeaderRow}>
-                <Text style={styles.heroTitle}>📂 匯入官方 Email 發票 CSV 檔案</Text>
+                <Text style={styles.heroTitle} maxFontSizeMultiplier={1.12} numberOfLines={1}>📂 匯入官方 Email 發票 CSV 檔案</Text>
                 <View style={styles.heroBadge}>
-                  <Text style={styles.heroBadgeText}>最推薦</Text>
+                  <Text style={styles.heroBadgeText} maxFontSizeMultiplier={1.05} numberOfLines={1}>最推薦</Text>
                 </View>
               </View>
-              <Text style={styles.heroDesc}>
+              <Text style={styles.heroDesc} maxFontSizeMultiplier={1.08}>
                 每月初財政部寄送的「消費發票彙整通知」CSV 附件，匯入後系統自動解析商品細項，並依卡號分流家庭成員！
               </Text>
 
@@ -709,10 +709,10 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                   {isReadingFile ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                       <ActivityIndicator size="small" color="#FFFFFF" />
-                      <Text style={styles.primaryActionBtnText}>讀取中...</Text>
+                      <Text style={styles.primaryActionBtnText} maxFontSizeMultiplier={1.08} numberOfLines={1}>讀取中...</Text>
                     </View>
                   ) : (
-                    <Text style={styles.primaryActionBtnText}>📂 選擇發票 CSV 檔</Text>
+                    <Text style={styles.primaryActionBtnText} maxFontSizeMultiplier={1.08} numberOfLines={1}>📂 選擇發票 CSV 檔</Text>
                   )}
                 </TouchableOpacity>
 
@@ -721,7 +721,7 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                   onPress={handlePasteClipboard}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.secondaryActionBtnText}>📋 讀取剪貼簿貼上</Text>
+                  <Text style={styles.secondaryActionBtnText} maxFontSizeMultiplier={1.08} numberOfLines={1}>📋 讀取剪貼簿貼上</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -729,7 +729,7 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                   onPress={() => setShowRawTextInput(!showRawTextInput)}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.textInputToggleBtnText}>
+                  <Text style={styles.textInputToggleBtnText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                     {showRawTextInput ? '收合文字框' : '✍️ 手動貼上'}
                   </Text>
                 </TouchableOpacity>
@@ -1171,6 +1171,8 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                         styles.bindTabBtnText,
                         quickBindTab === 'rule' && styles.bindTabBtnTextActive,
                       ]}
+                      maxFontSizeMultiplier={1.05}
+                      numberOfLines={1}
                     >
                       🛍️ 網購分流規則
                     </Text>
@@ -1186,6 +1188,8 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                         styles.bindTabBtnText,
                         quickBindTab === 'bind_card' && styles.bindTabBtnTextActive,
                       ]}
+                      maxFontSizeMultiplier={1.05}
+                      numberOfLines={1}
                     >
                       🔗 綁定現有卡片
                     </Text>
@@ -1201,6 +1205,8 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                         styles.bindTabBtnText,
                         quickBindTab === 'new_card' && styles.bindTabBtnTextActive,
                       ]}
+                      maxFontSizeMultiplier={1.05}
+                      numberOfLines={1}
                     >
                       ➕ 建立新卡
                     </Text>

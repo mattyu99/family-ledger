@@ -6,6 +6,7 @@ import {
   View,
   TouchableOpacity,
   ScrollView,
+  Platform,
   StyleSheet,
   } from 'react-native';
 import { Text } from './common/Text';
@@ -23,22 +24,26 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ visible, onClose
   return (
     <Modal
       visible={visible}
-      animationType="fade"
+      animationType="slide"
       transparent
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
+        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
         <View style={styles.card}>
+          <View style={styles.sheetHandleBarWrap}>
+            <View style={[styles.sheetHandleBar, isDark && { backgroundColor: '#475569' }]} />
+          </View>
           {/* 頂部標題列 */}
           <View style={styles.headerRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.title}>📜 版本更新歷程</Text>
-              <Text style={styles.subtitle}>
+              <Text style={styles.title} maxFontSizeMultiplier={1.15}>📜 版本更新歷程</Text>
+              <Text style={styles.subtitle} maxFontSizeMultiplier={1.12}>
                 甜心記帳本最新修訂版本：v{APP_FULL_VERSION}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Text style={styles.closeBtnText}>✕</Text>
+              <Text style={styles.closeBtnText} maxFontSizeMultiplier={1.15}>✕</Text>
             </TouchableOpacity>
           </View>
 
@@ -66,12 +71,12 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ visible, onClose
                 >
                   <View style={styles.cardHeader}>
                     <View style={[styles.versionPill, isLatest && styles.versionPillLatest]}>
-                      <Text style={[styles.versionPillText, isLatest && styles.versionPillTextLatest]}>
+                      <Text style={[styles.versionPillText, isLatest && styles.versionPillTextLatest]} maxFontSizeMultiplier={1.08}>
                         v{item.version}
                       </Text>
                       {isLatest && (
                         <View style={styles.latestTag}>
-                          <Text style={styles.latestTagText}>最新</Text>
+                          <Text style={styles.latestTagText} maxFontSizeMultiplier={1.08}>最新</Text>
                         </View>
                       )}
                     </View>
@@ -95,7 +100,7 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ visible, onClose
 
           {/* 底部關閉按鈕 */}
           <TouchableOpacity style={styles.footerBtn} onPress={onClose} activeOpacity={0.8}>
-            <Text style={styles.footerBtnText}>確定關閉</Text>
+            <Text style={styles.footerBtnText} maxFontSizeMultiplier={1.12}>確定關閉</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -107,24 +112,41 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: isDark ? 'rgba(0, 0, 0, 0.75)' : 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFill,
+  },
+  sheetHandleBarWrap: {
     alignItems: 'center',
-    padding: 16,
+    paddingBottom: 10,
+  },
+  sheetHandleBar: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#CBD5E1',
   },
   card: {
     backgroundColor: colors.background.modal,
-    borderRadius: 24,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
     width: '100%',
-    maxWidth: 480,
-    maxHeight: '85%',
-    padding: 18,
+    maxWidth: 600,
+    alignSelf: 'center',
+    maxHeight: '90%',
+    paddingTop: 10,
+    paddingHorizontal: 18,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 18,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    elevation: 8,
-    borderWidth: isDark ? 1 : 0,
-    borderColor: isDark ? colors.border.default : 'transparent',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.16,
+    shadowRadius: 16,
+    elevation: 10,
+    borderTopWidth: isDark ? 1 : 0,
+    borderTopColor: isDark ? colors.border.default : 'transparent',
   },
   headerRow: {
     flexDirection: 'row',
@@ -162,6 +184,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   scrollArea: {
     marginTop: 12,
     marginBottom: 12,
+    flexShrink: 1,
   },
   currentBanner: {
     backgroundColor: isDark ? 'rgba(22, 163, 74, 0.15)' : '#F0FDF4',

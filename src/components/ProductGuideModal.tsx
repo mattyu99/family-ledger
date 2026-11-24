@@ -245,6 +245,31 @@ const GUIDE_ITEMS: GuideItem[] = [
   },
 ];
 
+function getGuideTagDarkColors(tagBg: string): { bg: string; color: string; border: string } {
+  switch (tagBg) {
+    case '#FCE7F3':
+    case '#FDF2F8':
+      return { bg: 'rgba(236, 72, 153, 0.2)', color: '#F9A8D4', border: 'rgba(236, 72, 153, 0.4)' };
+    case '#DCFCE7':
+    case '#ECFDF5':
+    case '#CCFBF1':
+      return { bg: 'rgba(16, 185, 129, 0.2)', color: '#6EE7B7', border: 'rgba(16, 185, 129, 0.4)' };
+    case '#FEF3C7':
+    case '#FFFBEB':
+      return { bg: 'rgba(245, 158, 11, 0.2)', color: '#FCD34D', border: 'rgba(245, 158, 11, 0.4)' };
+    case '#DBEAFE':
+    case '#E0F2FE':
+      return { bg: 'rgba(59, 130, 246, 0.2)', color: '#93C5FD', border: 'rgba(59, 130, 246, 0.4)' };
+    case '#F3E8FF':
+    case '#F5F3FF':
+      return { bg: 'rgba(168, 85, 247, 0.2)', color: '#D8B4FE', border: 'rgba(168, 85, 247, 0.4)' };
+    case '#FFE4E6':
+      return { bg: 'rgba(244, 63, 94, 0.2)', color: '#FDA4AF', border: 'rgba(244, 63, 94, 0.4)' };
+    default:
+      return { bg: 'rgba(99, 102, 241, 0.22)', color: '#A5B4FC', border: 'rgba(99, 102, 241, 0.42)' };
+  }
+}
+
 export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, onClose }) => {
   const { isDark, colors } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
@@ -265,17 +290,21 @@ export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, o
   return (
     <Modal
       visible={visible}
-      animationType="fade"
+      animationType="slide"
       transparent
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
+        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
         <View style={styles.card}>
+          <View style={styles.sheetHandleBarWrap}>
+            <View style={[styles.sheetHandleBar, isDark && { backgroundColor: '#475569' }]} />
+          </View>
           {/* 頂部標題列 */}
           <View style={styles.headerRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.title}>📖 產品介紹與操作指南</Text>
-              <Text style={styles.subtitle}>
+              <Text style={styles.title} maxFontSizeMultiplier={1.15}>📖 產品介紹與操作指南</Text>
+              <Text style={styles.subtitle} maxFontSizeMultiplier={1.12}>
                 甜心記帳本 • 18 大家庭生活與理財操作速查
               </Text>
             </View>
@@ -284,7 +313,7 @@ export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, o
               style={styles.closeBtn}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Text style={styles.closeBtnText}>✕</Text>
+              <Text style={styles.closeBtnText} maxFontSizeMultiplier={1.15}>✕</Text>
             </TouchableOpacity>
           </View>
 
@@ -311,15 +340,30 @@ export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, o
               <Text style={styles.sectionDesc}>點選下方項目快速熟悉各項貼心功能</Text>
             </View>
 
-            {GUIDE_ITEMS.map((item) => (
+            {GUIDE_ITEMS.map((item) => {
+              const darkTag = isDark ? getGuideTagDarkColors(item.tagBg) : null;
+              return (
               <View key={item.title} style={styles.guideCard}>
                 <View style={styles.guideHeader}>
                   <View style={styles.guideTitleRow}>
                     <Text style={styles.guideIcon}>{item.icon}</Text>
-                    <Text style={styles.guideTitleText}>{item.title}</Text>
+                    <Text style={styles.guideTitleText} maxFontSizeMultiplier={1.12}>{item.title}</Text>
                   </View>
-                  <View style={[styles.guideTag, { backgroundColor: item.tagBg }]}>
-                    <Text style={[styles.guideTagText, { color: item.tagColor }]}>{item.tag}</Text>
+                  <View
+                    style={[
+                      styles.guideTag,
+                      darkTag
+                        ? { backgroundColor: darkTag.bg, borderWidth: 1, borderColor: darkTag.border }
+                        : { backgroundColor: item.tagBg },
+                    ]}
+                  >
+                    <Text
+                      style={[styles.guideTagText, { color: darkTag ? darkTag.color : item.tagColor }]}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={1.08}
+                    >
+                      {item.tag}
+                    </Text>
                   </View>
                 </View>
 
@@ -332,7 +376,8 @@ export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, o
                   ))}
                 </View>
               </View>
-            ))}
+              );
+            })}
 
             {/* 官方完整手冊推廣卡片 */}
             <TouchableOpacity
@@ -364,7 +409,7 @@ export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, o
               onPress={handleOpenManual}
               activeOpacity={0.8}
             >
-              <Text style={styles.brochureFooterBtnText}>📖 完整使用者手冊</Text>
+              <Text style={styles.brochureFooterBtnText} numberOfLines={1} maxFontSizeMultiplier={1.1}>📖 完整使用者手冊</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -372,7 +417,7 @@ export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, o
               onPress={onClose}
               activeOpacity={0.8}
             >
-              <Text style={styles.closeFooterBtnText}>我知道了</Text>
+              <Text style={styles.closeFooterBtnText} numberOfLines={1} maxFontSizeMultiplier={1.1}>我知道了</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -384,25 +429,42 @@ export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, o
 const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.75)' : 'rgba(15, 23, 42, 0.65)',
-    justifyContent: 'center',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.75)' : 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'flex-end',
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFill,
+  },
+  sheetHandleBarWrap: {
     alignItems: 'center',
-    padding: 16,
+    paddingBottom: 10,
+  },
+  sheetHandleBar: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#CBD5E1',
   },
   card: {
     backgroundColor: colors.background.modal,
-    borderRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
     width: '100%',
-    maxWidth: 500,
-    maxHeight: '88%',
-    padding: 20,
+    maxWidth: 600,
+    alignSelf: 'center',
+    maxHeight: '90%',
+    paddingTop: 10,
+    paddingHorizontal: 18,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 18,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 8,
-    borderWidth: isDark ? 1 : 0,
-    borderColor: isDark ? colors.border.default : 'transparent',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.16,
+    shadowRadius: 16,
+    elevation: 10,
+    borderTopWidth: isDark ? 1 : 0,
+    borderTopColor: isDark ? colors.border.default : 'transparent',
   },
   headerRow: {
     flexDirection: 'row',
@@ -440,6 +502,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   scrollArea: {
     marginTop: 12,
     marginBottom: 12,
+    flexShrink: 1,
   },
   introBanner: {
     backgroundColor: isDark ? 'rgba(225, 29, 72, 0.15)' : '#FFF1F2',

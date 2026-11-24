@@ -182,17 +182,27 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
         style={styles.exportOverlay}
       >
-        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={Keyboard.dismiss} />
+        <TouchableOpacity
+          style={styles.modalBackdrop}
+          activeOpacity={1}
+          onPress={() => {
+            Keyboard.dismiss();
+            onClose();
+          }}
+        />
         <View style={styles.exportCard}>
+          <View style={styles.sheetHandleBarWrap}>
+            <View style={[styles.sheetHandleBar, isDark && { backgroundColor: '#475569' }]} />
+          </View>
           <View style={styles.modalHeaderRow}>
             <View style={{ flex: 1, marginRight: 8 }}>
-              <Text style={styles.exportTitle}>👤 成員資訊與設定</Text>
-              <Text style={styles.formHint}>
+              <Text style={styles.exportTitle} maxFontSizeMultiplier={1.15}>👤 成員資訊與設定</Text>
+              <Text style={styles.formHint} maxFontSizeMultiplier={1.12}>
                 {isCurrent
                   ? '📱 這是您在本機登入的家庭身分'
                   : isCreator
@@ -203,13 +213,13 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Text style={styles.closeText}>✕</Text>
+              <Text style={styles.closeText} maxFontSizeMultiplier={1.15}>✕</Text>
             </TouchableOpacity>
           </View>
 
           <ScrollView
             showsVerticalScrollIndicator={false}
-            style={{ width: '100%' }}
+            style={{ width: '100%', flexShrink: 1 }}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
@@ -345,7 +355,7 @@ export const EditMemberModal: React.FC<EditMemberModalProps> = ({
                   disabled={isSavingEdit}
                   onPress={handleSaveEditMember}
                 >
-                  <Text style={styles.submitMemberBtnText}>
+                  <Text style={styles.submitMemberBtnText} maxFontSizeMultiplier={1.12}>
                     {isSavingEdit ? '正在儲存...' : '💾 儲存修改'}
                   </Text>
                 </TouchableOpacity>
@@ -688,26 +698,42 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
   StyleSheet.create({
     exportOverlay: {
       flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.5)',
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: 20,
+      backgroundColor: isDark ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.5)',
+      justifyContent: 'flex-end',
     },
     modalBackdrop: {
       ...StyleSheet.absoluteFill,
     },
+    sheetHandleBarWrap: {
+      alignItems: 'center',
+      paddingBottom: 10,
+    },
+    sheetHandleBar: {
+      width: 38,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: '#CBD5E1',
+    },
     exportCard: {
       backgroundColor: isDark ? colors.background.modal : '#FFFFFF',
-      borderRadius: 16,
-      padding: 20,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      borderBottomLeftRadius: 0,
+      borderBottomRightRadius: 0,
+      paddingTop: 10,
+      paddingHorizontal: 18,
+      paddingBottom: Platform.OS === 'ios' ? 30 : 18,
       width: '100%',
-      maxWidth: 420,
+      maxWidth: 600,
+      alignSelf: 'center',
       maxHeight: '90%',
+      borderTopWidth: isDark ? 1 : 0,
+      borderTopColor: isDark ? colors.border.default : 'transparent',
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.15,
-      shadowRadius: 12,
-      elevation: 5,
+      shadowOffset: { width: 0, height: -4 },
+      shadowOpacity: 0.16,
+      shadowRadius: 14,
+      elevation: 10,
     },
     modalHeaderRow: {
       flexDirection: 'row',

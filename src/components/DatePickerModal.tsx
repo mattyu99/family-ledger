@@ -225,11 +225,11 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
           {/* 頂部標題 */}
           <View style={styles.headerRow}>
             <View style={{ flex: 1, marginRight: 8 }}>
-              <Text style={styles.title}>{title}</Text>
-              <Text style={styles.subtitle}>{subtitle}</Text>
+              <Text style={styles.title} maxFontSizeMultiplier={1.15} numberOfLines={1}>{title}</Text>
+              <Text style={styles.subtitle} maxFontSizeMultiplier={1.08}>{subtitle}</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Text style={styles.closeText}>✕</Text>
+              <Text style={styles.closeText} maxFontSizeMultiplier={1.15}>✕</Text>
             </TouchableOpacity>
           </View>
 
@@ -240,7 +240,7 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
               onPress={() => setCalendarMode('solar')}
               activeOpacity={0.8}
             >
-              <Text style={[styles.modeSwitchText, calendarMode === 'solar' && styles.modeSwitchTextActiveSolar]}>
+              <Text style={[styles.modeSwitchText, calendarMode === 'solar' && styles.modeSwitchTextActiveSolar]} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                 🗓️ 國曆月曆 (含農曆)
               </Text>
             </TouchableOpacity>
@@ -253,7 +253,7 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
               }}
               activeOpacity={0.8}
             >
-              <Text style={[styles.modeSwitchText, calendarMode === 'lunar' && styles.modeSwitchTextActiveLunar]}>
+              <Text style={[styles.modeSwitchText, calendarMode === 'lunar' && styles.modeSwitchTextActiveLunar]} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                 🏮 農曆直接指定
               </Text>
             </TouchableOpacity>
@@ -268,7 +268,7 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
                   onPress={() => handleQuickSelect(today)}
                   activeOpacity={0.7}
                 >
-                  <Text style={[styles.quickChipText, isSameDay(tempDate, today) && styles.quickChipTextActive]}>
+                  <Text style={[styles.quickChipText, isSameDay(tempDate, today) && styles.quickChipTextActive]} maxFontSizeMultiplier={1.05} numberOfLines={1}>
                     📍 今天 ({today.getMonth() + 1}/{today.getDate()})
                   </Text>
                 </TouchableOpacity>
@@ -278,7 +278,7 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
                   onPress={() => handleQuickSelect(tomorrow)}
                   activeOpacity={0.7}
                 >
-                  <Text style={[styles.quickChipText, isSameDay(tempDate, tomorrow) && styles.quickChipTextActive]}>
+                  <Text style={[styles.quickChipText, isSameDay(tempDate, tomorrow) && styles.quickChipTextActive]} maxFontSizeMultiplier={1.05} numberOfLines={1}>
                     明天 ({tomorrow.getMonth() + 1}/{tomorrow.getDate()})
                   </Text>
                 </TouchableOpacity>
@@ -288,7 +288,7 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
                   onPress={() => handleQuickSelect(yesterday)}
                   activeOpacity={0.7}
                 >
-                  <Text style={[styles.quickChipText, isSameDay(tempDate, yesterday) && styles.quickChipTextActive]}>
+                  <Text style={[styles.quickChipText, isSameDay(tempDate, yesterday) && styles.quickChipTextActive]} maxFontSizeMultiplier={1.05} numberOfLines={1}>
                     昨天 ({yesterday.getMonth() + 1}/{yesterday.getDate()})
                   </Text>
                 </TouchableOpacity>
@@ -297,24 +297,24 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
               {/* 年月切換列 */}
               <View style={styles.monthNavRow}>
                 <TouchableOpacity onPress={() => setViewYear(y => y - 1)} style={styles.navYearBtn} activeOpacity={0.7}>
-                  <Text style={styles.navYearText}>« 年</Text>
+                  <Text style={styles.navYearText} maxFontSizeMultiplier={1.08} numberOfLines={1}>« 年</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={handlePrevMonth} style={styles.navArrowBtn} activeOpacity={0.7}>
-                  <Text style={styles.navArrowText}>◀</Text>
+                  <Text style={styles.navArrowText} maxFontSizeMultiplier={1.1}>◀</Text>
                 </TouchableOpacity>
                 <View style={styles.navMonthLabelBox}>
-                  <Text style={styles.navMonthLabel}>
+                  <Text style={styles.navMonthLabel} maxFontSizeMultiplier={1.12} numberOfLines={1}>
                     {viewYear} 年 {viewMonth + 1} 月
                   </Text>
-                  <Text style={styles.navLunarSubLabel}>
+                  <Text style={styles.navLunarSubLabel} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                     農曆{tempLunar.yearGanZhi}{tempLunar.zodiac}年 · {tempLunar.monthStr}
                   </Text>
                 </View>
                 <TouchableOpacity onPress={handleNextMonth} style={styles.navArrowBtn} activeOpacity={0.7}>
-                  <Text style={styles.navArrowText}>▶</Text>
+                  <Text style={styles.navArrowText} maxFontSizeMultiplier={1.1}>▶</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => setViewYear(y => y + 1)} style={styles.navYearBtn} activeOpacity={0.7}>
-                  <Text style={styles.navYearText}>年 »</Text>
+                  <Text style={styles.navYearText} maxFontSizeMultiplier={1.08} numberOfLines={1}>年 »</Text>
                 </TouchableOpacity>
               </View>
 
@@ -327,6 +327,8 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
                         styles.weekdayText,
                         (index === 0 || index === 6) && styles.weekdayTextWeekend,
                       ]}
+                      maxFontSizeMultiplier={1.08}
+                      numberOfLines={1}
                     >
                       {w}
                     </Text>
@@ -360,11 +362,14 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
                           isSelected && styles.dayTextSelected,
                           isTodayDate && !isSelected && styles.dayTextToday,
                         ]}
+                        maxFontSizeMultiplier={1.05}
+                        numberOfLines={1}
                       >
                         {cell.day}
                       </Text>
                       <Text
                         numberOfLines={1}
+                        maxFontSizeMultiplier={1.05}
                         style={[
                           styles.lunarCellText,
                           !isCurrentMonth && styles.otherMonthLunarText,
@@ -394,10 +399,10 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
                   <Text style={styles.navArrowText}>◀</Text>
                 </TouchableOpacity>
                 <View style={styles.navMonthLabelBox}>
-                  <Text style={styles.lunarYearTitle}>
+                  <Text style={styles.lunarYearTitle} maxFontSizeMultiplier={1.12} numberOfLines={1}>
                     🏮 農曆 {selLunarYear} 年 ({tempLunar.yearGanZhi}{tempLunar.zodiac}年)
                   </Text>
-                  <Text style={styles.navLunarSubLabel}>點選下方農曆月份與日期，自動換算國曆</Text>
+                  <Text style={styles.navLunarSubLabel} maxFontSizeMultiplier={1.08} numberOfLines={1}>點選下方農曆月份與日期，自動換算國曆</Text>
                 </View>
                 <TouchableOpacity
                   style={styles.navArrowBtn}
@@ -406,7 +411,7 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
                     applyLunarSelection(nextY, selLunarMonth, selLunarDay, false);
                   }}
                 >
-                  <Text style={styles.navArrowText}>▶</Text>
+                  <Text style={styles.navArrowText} maxFontSizeMultiplier={1.1}>▶</Text>
                 </TouchableOpacity>
               </View>
 
@@ -422,7 +427,7 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
                       onPress={() => applyLunarSelection(selLunarYear, mItem.month, selLunarDay, mItem.isLeap)}
                       activeOpacity={0.7}
                     >
-                      <Text style={[styles.lunarMonthChipText, isSel && styles.lunarMonthChipTextActive]}>
+                      <Text style={[styles.lunarMonthChipText, isSel && styles.lunarMonthChipTextActive]} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                         {mItem.label}
                       </Text>
                     </TouchableOpacity>
@@ -432,7 +437,7 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
 
               {/* 農曆日期選擇網格 (初一 ~ 廿九/三十) */}
               <View style={styles.lunarDayHeaderRow}>
-                <Text style={styles.lunarSectionLabel}>
+                <Text style={styles.lunarSectionLabel} maxFontSizeMultiplier={1.08}>
                   選擇農曆日期（本月共 {currentLunarMonthDays} 天）
                 </Text>
                 <View style={styles.lunarQuickDaysRow}>
@@ -455,6 +460,8 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
                           styles.lunarQuickMiniText,
                           selLunarDay === q.d && styles.lunarQuickMiniTextActive,
                         ]}
+                        maxFontSizeMultiplier={1.05}
+                        numberOfLines={1}
                       >
                         {q.label}
                       </Text>
@@ -484,6 +491,8 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
                           isSpecial && !isSel && styles.lunarDayChipTextSpecial,
                           isSel && styles.lunarDayChipTextActive,
                         ]}
+                        maxFontSizeMultiplier={1.08}
+                        numberOfLines={1}
                       >
                         {LUNAR_DAY_NAMES[dNum - 1]}
                       </Text>
@@ -494,10 +503,10 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
 
               {/* 即時換算結果預覽卡片 */}
               <View style={styles.lunarConversionPreviewBox}>
-                <Text style={styles.lunarConversionTitle}>
+                <Text style={styles.lunarConversionTitle} maxFontSizeMultiplier={1.1}>
                   🏮 {tempLunar.fullLabel}
                 </Text>
-                <Text style={styles.lunarConversionSub}>
+                <Text style={styles.lunarConversionSub} maxFontSizeMultiplier={1.08}>
                   ➔ 對應國曆：{tempDate.getFullYear()} 年 {tempDate.getMonth() + 1} 月 {tempDate.getDate()} 日 (週{WEEKDAYS[tempDate.getDay()]})
                 </Text>
               </View>
@@ -507,17 +516,17 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
           {/* 底部目前選中提示與確認按鈕 */}
           <View style={styles.footerRow}>
             <View style={styles.selectedInfoBox}>
-              <Text style={styles.selectedInfoValue}>
+              <Text style={styles.selectedInfoValue} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                 🗓️ {tempDate.getFullYear()}/{tempDate.getMonth() + 1}/{tempDate.getDate()} (週{WEEKDAYS[tempDate.getDay()]})
                 {isSameDay(tempDate, today) ? ' · 今天' : ''}
               </Text>
-              <Text style={styles.selectedLunarValue}>
+              <Text style={styles.selectedLunarValue} maxFontSizeMultiplier={1.05} numberOfLines={1}>
                 🏮 {tempLunar.fullLabel} ({tempLunar.yearGanZhi}{tempLunar.zodiac}年)
               </Text>
             </View>
             <View style={styles.actionBtnRow}>
               <TouchableOpacity style={styles.cancelBtn} onPress={onClose} activeOpacity={0.7}>
-                <Text style={styles.cancelBtnText}>取消</Text>
+                <Text style={styles.cancelBtnText} maxFontSizeMultiplier={1.08} numberOfLines={1}>取消</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
@@ -527,7 +536,7 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
                 onPress={handleConfirm}
                 activeOpacity={0.8}
               >
-                <Text style={styles.confirmBtnText}>
+                <Text style={styles.confirmBtnText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                   {calendarMode === 'lunar' ? '確認農曆' : '確認設定'}
                 </Text>
               </TouchableOpacity>
