@@ -18,6 +18,7 @@ import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import { sortAccountsByUser } from '../lib/payment';
+import { buildPaymentAccountPayloads } from '../lib/paymentAccountForm';
 import { detectIssuerBank, findSameIssuerBillingPeerCards } from '../lib/bankIssuer';
 import { HorizontalScrollView } from './HorizontalScrollView';
 
@@ -383,74 +384,30 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
       return;
     }
 
-    const cleanCardNumber = formCardNumber.replace(/\D/g, '').slice(0, 16);
-    const cleanLastFour = formLastFour.trim();
-    const finalCardNumber = formType === 'carrier'
-      ? (formCardNumber.trim() || undefined)
-      : formType === 'stored_value'
-      ? (cleanCardNumber || undefined)
-      : (formCardNumber.trim() || undefined);
-    const finalLastFour = formType === 'stored_value'
-      ? (cleanCardNumber ? (cleanCardNumber.length > 4 ? cleanCardNumber.slice(-4) : cleanCardNumber) : (cleanLastFour || undefined))
-      : formType === 'carrier'
-      ? undefined
-      : (cleanLastFour || undefined);
-
-    const cleanIssuerBank = formIssuerBank.trim();
-    const finalIssuerBankForAdd = formType === 'credit_card' ? (cleanIssuerBank || undefined) : undefined;
-    const finalIssuerBankForUpdate = formType === 'credit_card' ? (cleanIssuerBank || null) : null;
-
-    const cycleNum = parseInt(formCycleDate, 10);
-    const validCycle = isNaN(cycleNum) ? 15 : Math.max(1, Math.min(31, cycleNum));
-    const parsedDueNum = parseInt(formDueDay.trim(), 10);
-    const validDueDay: number | null =
-      formType === 'credit_card' && !isNaN(parsedDueNum) && parsedDueNum >= 1 && parsedDueNum <= 31
-        ? parsedDueNum
-        : null;
-    const parsedBalance = parseFloat(formBalance.replace(/,/g, '').trim());
-    const balanceNum = Number.isFinite(parsedBalance) ? parsedBalance : 0;
-    const hasBalanceField = formType === 'stored_value' || formType === 'bank' || formType === 'cash';
     const targetUserId = (!isOwner && scope === 'my')
       ? (formUserId && isMatchedToCurrentUser(formUserId) ? formUserId : (currentUser?.id || null))
-      : (formUserId ? formUserId : (null as any));
+      : (formUserId ? formUserId : null);
+
+    const { updatePayload, createPayload, validCycle, validDueDay } = buildPaymentAccountPayloads(
+      {
+        type: formType,
+        name: cleanName,
+        userId: targetUserId,
+        lastFour: formLastFour,
+        cardNumber: formCardNumber,
+        cycleDate: formCycleDate,
+        dueDay: formDueDay,
+        issuerBank: formIssuerBank,
+        balance: formBalance,
+        color: formColor,
+      },
+      paymentAccounts.length + 1
+    );
 
     if (editingId) {
-      await updatePaymentAccount(editingId, {
-        name: cleanName,
-        type: formType,
-        user_id: targetUserId,
-        last_four_digits: finalLastFour,
-        card_number: finalCardNumber,
-        billing_cycle_date: formType === 'credit_card' ? validCycle : undefined,
-        payment_due_day: formType === 'credit_card' ? validDueDay : undefined,
-        issuer_bank: finalIssuerBankForUpdate,
-        balance: hasBalanceField ? balanceNum : 0,
-        color: formColor,
-      });
+      await updatePaymentAccount(editingId, updatePayload);
     } else {
-      await addPaymentAccount({
-        name: cleanName,
-        type: formType,
-        user_id: targetUserId,
-        last_four_digits: finalLastFour,
-        card_number: finalCardNumber,
-        billing_cycle_date: formType === 'credit_card' ? validCycle : undefined,
-        payment_due_day: formType === 'credit_card' ? validDueDay : undefined,
-        issuer_bank: finalIssuerBankForAdd,
-        balance: hasBalanceField ? balanceNum : 0,
-        color: formColor,
-        icon:
-          formType === 'credit_card'
-            ? '💳'
-            : formType === 'bank'
-            ? '🏦'
-            : formType === 'cash'
-            ? '💵'
-            : formType === 'carrier'
-            ? (cleanName.includes('@') || formCardNumber.includes('@') ? '📧' : '🛍️')
-            : '🚌',
-        sort_order: paymentAccounts.length + 1,
-      });
+      await addPaymentAccount(createPayload);
     }
 
     // 若同持卡人同發卡銀行已有其他卡片且日期不一致或已解鎖編輯，一併對齊共用結帳日與繳款截止日
