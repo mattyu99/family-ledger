@@ -1720,9 +1720,11 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                                 <Text style={styles.fixedAmountText}>
                                   ${rule.default_amount.toLocaleString()}
                                 </Text>
-                                <Text style={styles.amountSubText}>
-                                  {instInfo ? instInfo.labelText : '每期固定'}
-                                </Text>
+                                <View style={[styles.installmentPendingBadge, { marginTop: 3, marginBottom: 1 }]}>
+                                  <Text style={styles.installmentPendingBadgeText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
+                                    📦 分期 {instInfo ? instInfo.labelText : '每期固定'}
+                                  </Text>
+                                </View>
                                 {instInfo && instInfo.remainingInstallments > 0 && (
                                   <Text style={styles.installmentRemainingHint}>
                                     尚欠 {instInfo.remainingInstallments} 期 (${instInfo.remainingAmount.toLocaleString()})
