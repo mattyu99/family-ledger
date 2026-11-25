@@ -18,10 +18,12 @@ describe('formatPaymentLabel 支付膠囊標籤精簡測試', () => {
 
     const label1 = formatPaymentLabel('credit_card', cardAccount);
     expect(label1.text).toBe('中信熊大卡');
+    expect(label1.shortText).toBe('信用卡');
     expect(label1.icon).toBe('💳');
 
     const label2 = formatPaymentLabel(undefined, cardAccount);
     expect(label2.text).toBe('中信熊大卡');
+    expect(label2.shortText).toBe('信用卡');
   });
 
   it('純信用卡但若無名稱時保底顯示後四碼', () => {
@@ -68,6 +70,7 @@ describe('formatPaymentLabel 支付膠囊標籤精簡測試', () => {
 
     const label = formatPaymentLabel('line_pay', cardAccount, customMethods);
     expect(label.text).toBe('LINE Pay·7909');
+    expect(label.shortText).toBe('LINE Pay');
     expect(label.icon).toBe('🟢');
   });
 
@@ -86,6 +89,7 @@ describe('formatPaymentLabel 支付膠囊標籤精簡測試', () => {
 
     const label = formatPaymentLabel(undefined, easyCard);
     expect(label.text).toBe('富邦J悠遊卡');
+    expect(label.shortText).toBe('儲值卡');
     expect(label.icon).toBe('🚌');
   });
 });

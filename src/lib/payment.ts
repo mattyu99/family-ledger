@@ -374,7 +374,7 @@ export const formatPaymentLabel = (
   paymentMethod?: PaymentMethod,
   account?: PaymentAccount,
   customMethods?: CustomPaymentMethod[]
-): { icon: string; text: string; color: string } => {
+): { icon: string; text: string; shortText: string; color: string } => {
   const allMethods = customMethods && customMethods.length > 0 ? customMethods : DEFAULT_PAYMENT_METHODS;
   const normalizedId = (paymentMethod && KNOWN_PAYMENT_METHOD_UUIDS[paymentMethod]) || (paymentMethod === 'bank_transfer' ? 'transfer' : paymentMethod);
   const currentMethod = allMethods.find(m => m.id === paymentMethod || m.id === normalizedId);
@@ -384,16 +384,17 @@ export const formatPaymentLabel = (
       const isPureCreditCard = !paymentMethod || paymentMethod === 'credit_card';
 
       if (isPureCreditCard) {
-        // 純信用卡：直接顯示卡片名稱（例如「中信熊大卡」），不再附帶後四碼，大幅節省橫向空間
+        // 純信用卡：直接顯示卡片名稱（例如「中信熊大卡」），空間不足時降級為「信用卡」
         return {
           icon: '💳',
           text: account.name || (account.last_four_digits ? `*${account.last_four_digits}` : '信用卡'),
+          shortText: '信用卡',
           color: account.color || '#3B82F6',
         };
       }
 
       // 透過電子支付 (如 全支付, LINE Pay, 悠遊付, 街口 等) 綁定信用卡扣款：
-      // 精簡排版：直接在支付名稱後帶上綁定卡片後四碼（不加贅餘星號），如「LINE Pay·7909」或「全支付·1234」
+      // 完整版顯示「支付名稱·後四碼」，空間不足時降級為主要付款方式名稱（省略綁定卡別）
       const methodName = currentMethod ? currentMethod.name : (paymentMethod || '行動支付');
       const methodIcon = currentMethod ? currentMethod.icon : '📱';
       const methodColor = currentMethod ? currentMethod.color : (account.color || '#3B82F6');
@@ -404,13 +405,18 @@ export const formatPaymentLabel = (
       return {
         icon: methodIcon,
         text: combinedText,
+        shortText: methodName,
         color: methodColor,
       };
     }
     if (account.type === 'stored_value') {
+      const shortName = account.name.length <= 4
+        ? account.name
+        : (currentMethod?.name === '悠遊卡/儲值卡' ? '儲值卡' : (currentMethod?.name || '儲值卡'));
       return {
         icon: account.icon || '🚌',
         text: account.name,
+        shortText: shortName,
         color: account.color || '#0284C7',
       };
     }
@@ -419,12 +425,14 @@ export const formatPaymentLabel = (
       return {
         icon: account.icon || '🏦',
         text: `轉帳·${account.name}${lastDigits ? `(${lastDigits})` : ''}`,
+        shortText: '轉帳',
         color: account.color || '#8B5CF6',
       };
     }
     return {
       icon: account.icon || '💳',
       text: account.name,
+      shortText: currentMethod?.name || account.name,
       color: account.color || '#4F46E5',
     };
   }
@@ -434,30 +442,33 @@ export const formatPaymentLabel = (
     return {
       icon: currentMethod.icon,
       text: currentMethod.name,
+      shortText: currentMethod.name === '悠遊卡/儲值卡' ? '悠遊卡' : currentMethod.name,
       color: currentMethod.color,
     };
   }
 
   switch (paymentMethod) {
     case 'credit_card':
-      return { icon: '💳', text: '信用卡', color: '#3B82F6' };
+      return { icon: '💳', text: '信用卡', shortText: '信用卡', color: '#3B82F6' };
     case 'line_pay':
-      return { icon: '🟢', text: 'LINE Pay', color: '#06C755' };
+      return { icon: '🟢', text: 'LINE Pay', shortText: 'LINE Pay', color: '#06C755' };
     case 'px_pay':
-      return { icon: '🔵', text: '全支付', color: '#0055B8' };
+      return { icon: '🔵', text: '全支付', shortText: '全支付', color: '#0055B8' };
     case 'easycard_pay':
-      return { icon: '🩵', text: '悠遊付', color: '#00A3E0' };
+      return { icon: '🩵', text: '悠遊付', shortText: '悠遊付', color: '#00A3E0' };
     case 'jkopay':
-      return { icon: '🟣', text: '街口支付', color: '#D8232A' };
+      return { icon: '🟣', text: '街口支付', shortText: '街口支付', color: '#D8232A' };
     case 'stored_value':
-      return { icon: '🚌', text: '悠遊卡', color: '#0284C7' };
+      return { icon: '🚌', text: '悠遊卡', shortText: '悠遊卡', color: '#0284C7' };
     case 'transfer':
     case 'bank_transfer':
-      return { icon: '🏦', text: '轉帳', color: '#8B5CF6' };
+      return { icon: '🏦', text: '轉帳', shortText: '轉帳', color: '#8B5CF6' };
     case 'cash':
-      return { icon: '💵', text: '現金', color: '#10B981' };
-    default:
-      return { icon: '💵', text: paymentMethod || '現金', color: '#6B7280' };
+      return { icon: '💵', text: '現金', shortText: '現金', color: '#10B981' };
+    default: {
+      const fallback = paymentMethod || '現金';
+      return { icon: '💵', text: fallback, shortText: fallback, color: '#6B7280' };
+    }
   }
 };
 

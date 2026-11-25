@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, Linking, Alert, Platform } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Linking, Alert, Platform, useWindowDimensions } from 'react-native';
 import { Text } from './common/Text';
 
 import { Transaction } from '../types/database';
@@ -41,6 +41,25 @@ interface TransactionItemProps {
   onViewImage?: (imageUrl: string, title?: string) => void;
 }
 
+const estimateTextWidth = (text: string, baseFontSize: number, scale: number): number => {
+  const effectiveFontSize = baseFontSize * scale;
+  let total = 0;
+  for (const ch of Array.from(text)) {
+    const code = ch.codePointAt(0) ?? 0;
+    total += code <= 0x7f ? 0.58 * effectiveFontSize : 1.04 * effectiveFontSize;
+  }
+  return total;
+};
+
+interface ThirdRowBadgeItem {
+  key: 'invoice' | 'memo' | 'image' | 'reconciled' | 'synced' | 'lastViewed';
+  fullText: string;
+  iconOnly: string;
+  canShrink: boolean;
+  shrinkOrder: number;
+  shrunk?: boolean;
+}
+
 export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
   transaction,
   viewingMemberId,
@@ -70,7 +89,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
   } = useLedger();
   const { isDark, colors } = useTheme();
   const { fontScale } = useFontSize();
-  const isLargeFont = fontScale >= 1.12;
+  const { width: windowWidth } = useWindowDimensions();
 
   const [isGroupOrderAppendOpen, setIsGroupOrderAppendOpen] = useState(false);
   const [isGroupOrderCounterOpen, setIsGroupOrderCounterOpen] = useState(false);
@@ -915,20 +934,175 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
     ? parsedDiscount.cleanNote
     : transaction.note || '';
   const displayNote = stripInvoiceTag(rawUserNote).trim();
-  const noteContent = displayNote || (isTransfer ? '內部資金調撥' : '');
+  const singleLineNote = displayNote.replace(/\s*\r?\n\s*/g, ' ').trim();
+  const noteContent = singleLineNote;
   const hasNote = !!noteContent;
   const hasRecentlySynced =
     !!transaction.cloud_synced_at &&
     (Date.now() - new Date(transaction.cloud_synced_at).getTime()) <= 86400000;
-  const hasExtraBadges =
-    isTransfer ||
-    !!parsedDiscount?.hasDiscount ||
-    !!linkedMemo ||
-    !!transaction.is_reconciled ||
-    !!transaction.invoice_number ||
-    hasRecentlySynced ||
-    !!transaction.image_url ||
-    !!isLastViewed;
+
+  // 估算卡片內部可用橫向寬度（螢幕寬度扣除清單邊距、卡片內距與左側圓形圖示區）
+  const contentWidth = Math.max(200, windowWidth - 28 - 24 - 50);
+
+  // 第 2 行右側：成員／轉帳流向與付款方式寬度自適應降級
+  const payerDisplayText = isSelfTransfer
+    ? `➔ ${linkedCard?.name || transaction.merchant || '儲值卡'}`
+    : isTransferIn
+    ? `由 ${payer?.avatar_url || '👤'}${payer?.display_name || '出資人'}`
+    : isTransferOut
+    ? `➔ ${recipient?.avatar_url || '👤'}${recipient?.display_name || transaction.merchant}`
+    : isTransfer && recipient
+    ? `${payer?.avatar_url || '👤'}${payer?.display_name || '出資'}➔${recipient?.avatar_url || '👤'}${recipient?.display_name || transaction.merchant}`
+    : `${payer?.avatar_url || '👤'} ${payer?.display_name || '成員'}`;
+
+  const payerWidth = estimateTextWidth(payerDisplayText, 11, fontScale) + 14;
+  const fullPayWidth = paymentLabel
+    ? estimateTextWidth(`${paymentLabel.icon}${paymentLabel.text}`, 10.5, fontScale) + 18
+    : 0;
+  const dateWidth = !hideDateInCard
+    ? estimateTextWidth(formattedDate, 12, fontScale) + 6
+    : 0;
+  const metaGap = (paymentLabel ? 5 : 0) + (!hideDateInCard ? 5 : 0);
+  const reservedNoteWidth = hasNote
+    ? Math.min(estimateTextWidth(noteContent, 13, fontScale) + 6, Math.max(72, contentWidth * 0.34))
+    : 0;
+  const useFullPayment = !paymentLabel || (payerWidth + fullPayWidth + dateWidth + metaGap + reservedNoteWidth <= contentWidth);
+  const paymentDisplayText = paymentLabel
+    ? (useFullPayment ? paymentLabel.text : paymentLabel.shortText)
+    : '';
+
+  // 第 1 行金額前精簡徽章（折抵或轉帳類型，兩者互斥）
+  const isStoredValueTransfer =
+    transaction.merchant?.includes('儲值') ||
+    transaction.merchant?.includes('加值') ||
+    !!linkedCard;
+  const isAllowanceTransfer =
+    transaction.merchant?.includes('零用') ||
+    transaction.note?.includes('零用') ||
+    category?.name?.includes('零用');
+  const transferBadgeLabel = isSelfTransfer
+    ? '🚌 儲值'
+    : isTransferIn
+    ? (isStoredValueTransfer ? '🚌 加值' : (isAllowanceTransfer ? '🎁 零用' : '📥 轉入'))
+    : isTransferOut
+    ? '📤 轉出'
+    : isStoredValueTransfer
+    ? '🚌 儲值'
+    : isAllowanceTransfer
+    ? '🎁 零用'
+    : '⇄ 轉帳';
+
+  const discountBadgeLabel = parsedDiscount?.hasDiscount
+    ? (parsedDiscount.badgeText.includes('全額折') || parsedDiscount.shortBadgeText.includes('全折')
+        ? '🎁 全折'
+        : `🎁 折$${parsedDiscount.discountAmount.toLocaleString()}`)
+    : '';
+
+  // 第 3 行條件式附加資訊陣列（鎖定單行，寬度不足時依優先級漸進縮成純圖示）
+  const thirdRowBadges: ThirdRowBadgeItem[] = [];
+  if (transaction.invoice_number) {
+    if (transaction.invoice_status === 'won') {
+      thirdRowBadges.push({
+        key: 'invoice',
+        fullText: `🎉 中獎 $${transaction.invoice_prize_amount?.toLocaleString()} (${transaction.invoice_prize_name || '中獎'})`,
+        iconOnly: '🎉',
+        canShrink: false,
+        shrinkOrder: 99,
+      });
+    } else if (transaction.invoice_status === 'claimed') {
+      thirdRowBadges.push({
+        key: 'invoice',
+        fullText: `✅ 已兌領 $${transaction.invoice_prize_amount?.toLocaleString()}`,
+        iconOnly: '✅',
+        canShrink: false,
+        shrinkOrder: 99,
+      });
+    } else if (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported') {
+      thirdRowBadges.push({
+        key: 'invoice',
+        fullText: `☁️ ${transaction.invoice_number}`,
+        iconOnly: '☁️',
+        canShrink: true,
+        shrinkOrder: 5,
+      });
+    } else {
+      thirdRowBadges.push({
+        key: 'invoice',
+        fullText: `🧾 ${transaction.invoice_number}`,
+        iconOnly: '🧾',
+        canShrink: true,
+        shrinkOrder: 5,
+      });
+    }
+  }
+  if (linkedMemo) {
+    thirdRowBadges.push({
+      key: 'memo',
+      fullText: '📋 連動待辦',
+      iconOnly: '📋',
+      canShrink: true,
+      shrinkOrder: 4,
+    });
+  }
+  if (transaction.image_url) {
+    thirdRowBadges.push({
+      key: 'image',
+      fullText: '📷 憑證',
+      iconOnly: '📷',
+      canShrink: true,
+      shrinkOrder: 3,
+    });
+  }
+  if (transaction.is_reconciled) {
+    thirdRowBadges.push({
+      key: 'reconciled',
+      fullText: '✓ 已核對',
+      iconOnly: '✓',
+      canShrink: true,
+      shrinkOrder: 2,
+    });
+  }
+  if (hasRecentlySynced) {
+    thirdRowBadges.push({
+      key: 'synced',
+      fullText: '✨ 剛更新',
+      iconOnly: '✨',
+      canShrink: true,
+      shrinkOrder: 1,
+    });
+  }
+  if (isLastViewed) {
+    thirdRowBadges.push({
+      key: 'lastViewed',
+      fullText: '👁️',
+      iconOnly: '👁️',
+      canShrink: false,
+      shrinkOrder: 99,
+    });
+  }
+
+  const calcTotalBadgeWidth = (items: ThirdRowBadgeItem[]) => {
+    if (items.length === 0) return 0;
+    const itemsWidth = items.reduce((sum, item) => {
+      const label = item.shrunk ? item.iconOnly : item.fullText;
+      return sum + estimateTextWidth(label, 10.5, fontScale) + 14;
+    }, 0);
+    return itemsWidth + (items.length - 1) * 5;
+  };
+
+  if (calcTotalBadgeWidth(thirdRowBadges) > contentWidth) {
+    const shrinkQueue = thirdRowBadges
+      .filter(item => item.canShrink)
+      .sort((a, b) => a.shrinkOrder - b.shrinkOrder);
+    for (const target of shrinkQueue) {
+      target.shrunk = true;
+      if (calcTotalBadgeWidth(thirdRowBadges) <= contentWidth) {
+        break;
+      }
+    }
+  }
+
+  const hasExtraBadges = thirdRowBadges.length > 0;
 
   return (
     <TouchableOpacity
@@ -973,7 +1147,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
 
       {/* 項目與細節 */}
       <View style={styles.infoBox}>
-        {/* 第 1 行（主角行）：左側店名／類別名稱，右側金額 */}
+        {/* 第 1 行（主角列）：左側店名／類別名稱，右側 [折抵或轉帳徽章] + 金額 */}
         <View style={styles.topRow}>
           <Text
             style={[styles.categoryName, isDark && { color: colors.text.primary }]}
@@ -985,154 +1159,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
               ? (transaction.merchant || recipient?.display_name || category?.name || '內部轉帳')
               : (transaction.merchant || category?.name || '其他')}
           </Text>
-          <Text
-            style={[
-              styles.amountText,
-              isExpense
-                ? [styles.expenseColor, isDark && { color: colors.status.expense }]
-                : isTransferIn && !isSelfTransfer
-                ? [styles.incomeColor, isDark && { color: colors.status.income }]
-                : isTransferOut
-                ? [styles.transferColor, isDark && { color: '#A5B4FC' }]
-                : isTransfer
-                ? [styles.transferColor, isDark && { color: '#A5B4FC' }]
-                : [styles.incomeColor, isDark && { color: colors.status.income }],
-            ]}
-            maxFontSizeMultiplier={1.2}
-          >
-            {isExpense
-              ? '-'
-              : isTransferIn && !isSelfTransfer
-              ? '+'
-              : isTransferOut
-              ? '-'
-              : isTransfer
-              ? '⇄ '
-              : '+'} NT$ {Number(transaction.amount).toLocaleString()}
-          </Text>
-        </View>
-
-        {/* 第 2 行（說明行）：標準模式左右緊湊並排；大字模式讓備註與標籤各自舒展不截字 */}
-        {isLargeFont ? (
-          <View style={styles.bottomColumnLarge}>
-            {hasNote && (
-              <Text
-                style={[styles.noteTextLarge, isDark && { color: colors.text.secondary }]}
-                numberOfLines={2}
-                ellipsizeMode="tail"
-                maxFontSizeMultiplier={1.2}
-              >
-                {noteContent}
-              </Text>
-            )}
-            <View style={styles.metaRowLarge}>
-              <Text
-                style={[
-                  styles.payerTag,
-                  styles.payerTagLarge,
-                  isDark && {
-                    backgroundColor: colors.background.cardSubtle,
-                    color: colors.text.secondary,
-                  },
-                ]}
-                numberOfLines={1}
-                maxFontSizeMultiplier={1.15}
-              >
-                {isSelfTransfer
-                  ? `存入【${linkedCard?.name || transaction.merchant || '儲值卡'}】`
-                  : isTransferIn
-                  ? `由 ${payer?.avatar_url || '👤'} ${payer?.display_name || '出資人'} 撥入`
-                  : isTransferOut
-                  ? `轉出至 ${recipient?.avatar_url || '👤'} ${recipient?.display_name || transaction.merchant}`
-                  : isTransfer && recipient
-                  ? `${payer?.avatar_url || '👤'} ${payer?.display_name || '出資'} ➔ ${recipient?.avatar_url || '👤'} ${recipient?.display_name || transaction.merchant}`
-                  : `${payer?.avatar_url || '👤'} ${payer?.display_name || '成員'}`}
-              </Text>
-              {!!paymentLabel && (
-                <View style={[styles.paymentBadge, styles.paymentBadgeLarge, { borderColor: `${paymentLabel.color}35`, backgroundColor: `${paymentLabel.color}12` }]}>
-                  <Text style={styles.paymentBadgeIcon}>{paymentLabel.icon}</Text>
-                  <Text
-                    style={[styles.paymentBadgeText, { color: paymentLabel.color }]}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                    maxFontSizeMultiplier={1.08}
-                  >
-                    {paymentLabel.text}
-                  </Text>
-                </View>
-              )}
-              {!hideDateInCard && (
-                <Text
-                  style={[styles.dateText, isDark && { color: colors.text.muted }]}
-                  maxFontSizeMultiplier={1.2}
-                >
-                  {formattedDate}
-                </Text>
-              )}
-            </View>
-          </View>
-        ) : (
-          <View style={[styles.bottomRow, !hasNote && styles.bottomRowAlignEnd]}>
-            {hasNote && (
-              <Text
-                style={[styles.noteText, isDark && { color: colors.text.secondary }]}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-                maxFontSizeMultiplier={1.2}
-              >
-                {noteContent}
-              </Text>
-            )}
-            <View style={[styles.metaRow, hasNote && styles.metaRowConstrained]}>
-              <Text
-                style={[
-                  styles.payerTag,
-                  isDark && {
-                    backgroundColor: colors.background.cardSubtle,
-                    color: colors.text.secondary,
-                  },
-                ]}
-                numberOfLines={1}
-                maxFontSizeMultiplier={1.15}
-              >
-                {isSelfTransfer
-                  ? `存入【${linkedCard?.name || transaction.merchant || '儲值卡'}】`
-                  : isTransferIn
-                  ? `由 ${payer?.avatar_url || '👤'} ${payer?.display_name || '出資人'} 撥入`
-                  : isTransferOut
-                  ? `轉出至 ${recipient?.avatar_url || '👤'} ${recipient?.display_name || transaction.merchant}`
-                  : isTransfer && recipient
-                  ? `${payer?.avatar_url || '👤'} ${payer?.display_name || '出資'} ➔ ${recipient?.avatar_url || '👤'} ${recipient?.display_name || transaction.merchant}`
-                  : `${payer?.avatar_url || '👤'} ${payer?.display_name || '成員'}`}
-              </Text>
-              {!!paymentLabel && (
-                <View style={[styles.paymentBadge, { borderColor: `${paymentLabel.color}35`, backgroundColor: `${paymentLabel.color}12` }]}>
-                  <Text style={styles.paymentBadgeIcon}>{paymentLabel.icon}</Text>
-                  <Text
-                    style={[styles.paymentBadgeText, { color: paymentLabel.color }]}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                    maxFontSizeMultiplier={1.08}
-                  >
-                    {paymentLabel.text}
-                  </Text>
-                </View>
-              )}
-              {!hideDateInCard && (
-                <Text
-                  style={[styles.dateText, isDark && { color: colors.text.muted }]}
-                  maxFontSizeMultiplier={1.2}
-                >
-                  {formattedDate}
-                </Text>
-              )}
-            </View>
-          </View>
-        )}
-
-        {/* 第 3 行（條件式精簡標籤列）：僅當有附加資訊時渲染並自動換行 */}
-        {hasExtraBadges && (
-          <View style={styles.badgeRow}>
+          <View style={styles.topRightGroup}>
             {isTransfer && (
               <View
                 style={[
@@ -1169,121 +1196,240 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                     isDark && isTransferOut && { color: '#C4B5FD' },
                     isDark && isSelfTransfer && { color: '#7DD3FC' },
                   ]}
-                  maxFontSizeMultiplier={1.08}
-                >
-                  {isSelfTransfer
-                    ? '🚌 自有卡片儲值'
-                    : isTransferIn
-                    ? (transaction.merchant?.includes('儲值') || transaction.merchant?.includes('加值') || !!linkedCard ? '🚌 卡片加值入帳' : (transaction.note?.includes('零用') || category?.name?.includes('零用') ? '🎁 零用錢轉入' : '📥 轉入入帳'))
-                    : isTransferOut
-                    ? '📤 轉出款項'
-                    : '⇄ 內部轉帳'}
-                </Text>
-              </View>
-            )}
-            {!!parsedDiscount?.hasDiscount && (
-              <View style={[styles.expenseDiscountBadge, isDark && { backgroundColor: 'rgba(239, 68, 68, 0.18)', borderColor: 'rgba(239, 68, 68, 0.4)' }]}>
-                <Text style={[styles.expenseDiscountBadgeText, isDark && { color: '#FCA5A5' }]} numberOfLines={1} maxFontSizeMultiplier={1.08}>
-                  {parsedDiscount.shortBadgeText || parsedDiscount.badgeText}
-                </Text>
-              </View>
-            )}
-            {!!linkedMemo && (
-              <View style={[styles.expenseLinkedMemoTag, isDark && { backgroundColor: 'rgba(245, 158, 11, 0.18)', borderColor: 'rgba(245, 158, 11, 0.4)' }]}>
-                <Text style={[styles.expenseLinkedMemoTagText, isDark && { color: '#FCD34D' }]} numberOfLines={1} maxFontSizeMultiplier={1.08}>
-                  📋 連動待辦
-                </Text>
-              </View>
-            )}
-            {!!transaction.is_reconciled && (
-              <View style={[styles.reconciledBadge, isDark && { backgroundColor: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.35)' }]}>
-                <Text style={[styles.reconciledBadgeText, isDark && { color: '#34D399' }]} maxFontSizeMultiplier={1.08}>✓ 已核對</Text>
-              </View>
-            )}
-            {!!transaction.invoice_number && (
-              <View
-                style={[
-                  styles.invoiceBadge,
-                  (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported') && styles.invoiceBadgeCloud,
-                  transaction.invoice_status === 'won' && styles.invoiceBadgeWon,
-                  transaction.invoice_status === 'claimed' && styles.invoiceBadgeClaimed,
-                  isDark && { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default },
-                  isDark && (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported') && { backgroundColor: 'rgba(14, 165, 233, 0.18)', borderColor: '#38BDF8' },
-                  isDark && transaction.invoice_status === 'won' && { backgroundColor: 'rgba(236, 72, 153, 0.2)', borderColor: 'rgba(236, 72, 153, 0.5)' },
-                  isDark && transaction.invoice_status === 'claimed' && { backgroundColor: 'rgba(16, 185, 129, 0.2)', borderColor: 'rgba(16, 185, 129, 0.5)' },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.invoiceBadgeText,
-                    (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported') && styles.invoiceBadgeTextCloud,
-                    transaction.invoice_status === 'won' && styles.invoiceBadgeTextWon,
-                    transaction.invoice_status === 'claimed' && styles.invoiceBadgeTextClaimed,
-                    isDark && { color: colors.text.secondary },
-                    isDark && (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported') && { color: '#38BDF8' },
-                    isDark && transaction.invoice_status === 'won' && { color: '#F472B6' },
-                    isDark && transaction.invoice_status === 'claimed' && { color: '#34D399' },
-                  ]}
                   numberOfLines={1}
                   maxFontSizeMultiplier={1.08}
                 >
-                  {transaction.invoice_status === 'won'
-                    ? `🎉 中獎 $${transaction.invoice_prize_amount?.toLocaleString()} (${transaction.invoice_prize_name || '中獎'})`
-                    : transaction.invoice_status === 'claimed'
-                    ? `✅ 已兌領 $${transaction.invoice_prize_amount?.toLocaleString()}`
-                    : (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported')
-                    ? `☁️ 雲端發票 ${transaction.invoice_number}`
-                    : `🧾 ${transaction.invoice_number}`}
+                  {transferBadgeLabel}
                 </Text>
               </View>
             )}
-            {hasRecentlySynced && (
-              <View style={[styles.recentlySyncedBadge, isDark && { backgroundColor: 'rgba(234, 179, 8, 0.18)', borderColor: '#EAB308' }]}>
-                <Text style={[styles.recentlySyncedBadgeText, isDark && { color: '#FDE047' }]} maxFontSizeMultiplier={1.08}>
-                  ✨ 剛更新
+            {!isTransfer && !!discountBadgeLabel && (
+              <View style={[styles.expenseDiscountBadge, isDark && { backgroundColor: 'rgba(239, 68, 68, 0.18)', borderColor: 'rgba(239, 68, 68, 0.4)' }]}>
+                <Text style={[styles.expenseDiscountBadgeText, isDark && { color: '#FCA5A5' }]} numberOfLines={1} maxFontSizeMultiplier={1.08}>
+                  {discountBadgeLabel}
                 </Text>
               </View>
             )}
-            {!!transaction.image_url && (
-              <TouchableOpacity
-                style={[
-                  styles.imageReceiptBadge,
-                  isDark && { backgroundColor: 'rgba(59, 130, 246, 0.18)', borderColor: 'rgba(59, 130, 246, 0.4)' },
-                ]}
-                onPress={(e) => {
-                  e?.stopPropagation?.();
-                  if (onViewImage && transaction.image_url) {
-                    onViewImage(
-                      transaction.image_url,
-                      `${transaction.merchant || category?.name || '消費'} 憑證照片`
-                    );
-                  } else if (onPress) {
-                    onPress(transaction);
-                  }
-                }}
-                activeOpacity={0.7}
-              >
+            <Text
+              style={[
+                styles.amountText,
+                isExpense
+                  ? [styles.expenseColor, isDark && { color: colors.status.expense }]
+                  : isTransferIn && !isSelfTransfer
+                  ? [styles.incomeColor, isDark && { color: colors.status.income }]
+                  : isTransferOut
+                  ? [styles.transferColor, isDark && { color: '#A5B4FC' }]
+                  : isTransfer
+                  ? [styles.transferColor, isDark && { color: '#A5B4FC' }]
+                  : [styles.incomeColor, isDark && { color: colors.status.income }],
+              ]}
+              maxFontSizeMultiplier={1.2}
+            >
+              {isExpense
+                ? '-'
+                : isTransferIn && !isSelfTransfer
+                ? '+'
+                : isTransferOut
+                ? '-'
+                : isTransfer
+                ? '⇄ '
+                : '+'} NT$ {Number(transaction.amount).toLocaleString()}
+            </Text>
+          </View>
+        </View>
+
+        {/* 第 2 行（說明與基本元資料列）：左備註（單行），右 [付款方式] + [成員／流向] */}
+        <View style={[styles.bottomRow, !hasNote && styles.bottomRowAlignEnd]}>
+          {hasNote && (
+            <Text
+              style={[styles.noteText, isDark && { color: colors.text.secondary }]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              maxFontSizeMultiplier={1.2}
+            >
+              {noteContent}
+            </Text>
+          )}
+          <View style={styles.metaRow}>
+            {!!paymentLabel && (
+              <View style={[styles.paymentBadge, { borderColor: `${paymentLabel.color}35`, backgroundColor: `${paymentLabel.color}12` }]}>
+                <Text style={styles.paymentBadgeIcon}>{paymentLabel.icon}</Text>
                 <Text
-                  style={[styles.imageReceiptBadgeText, isDark && { color: '#93C5FD' }]}
+                  style={[styles.paymentBadgeText, { color: paymentLabel.color }]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
                   maxFontSizeMultiplier={1.08}
                 >
-                  📷 憑證
-                </Text>
-              </TouchableOpacity>
-            )}
-            {isLastViewed && (
-              <View style={[styles.lastViewedBadge, { marginLeft: 0 }, isDark && styles.lastViewedBadgeDark]}>
-                <Text style={[styles.lastViewedBadgeText, isDark && styles.lastViewedBadgeTextDark]} maxFontSizeMultiplier={1.08}>
-                  👁️ 剛才查看
+                  {paymentDisplayText}
                 </Text>
               </View>
             )}
+            <Text
+              style={[
+                styles.payerTag,
+                isDark && {
+                  backgroundColor: colors.background.cardSubtle,
+                  color: colors.text.secondary,
+                },
+              ]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              maxFontSizeMultiplier={1.15}
+            >
+              {payerDisplayText}
+            </Text>
+            {!hideDateInCard && (
+              <Text
+                style={[styles.dateText, isDark && { color: colors.text.muted }]}
+                maxFontSizeMultiplier={1.2}
+              >
+                {formattedDate}
+              </Text>
+            )}
+          </View>
+        </View>
+
+        {/* 第 3 行（條件式單行附加資訊列）：僅當有附加資訊時渲染，寬度不足時自動漸進縮成純圖示 */}
+        {hasExtraBadges && (
+          <View style={styles.badgeRow}>
+            {thirdRowBadges.map((badge) => {
+              const labelText = badge.shrunk ? badge.iconOnly : badge.fullText;
+              const isIconOnly = badge.shrunk || badge.key === 'lastViewed';
+
+              if (badge.key === 'invoice') {
+                return (
+                  <View
+                    key="invoice"
+                    style={[
+                      styles.invoiceBadge,
+                      isIconOnly && styles.badgeIconOnly,
+                      (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported') && styles.invoiceBadgeCloud,
+                      transaction.invoice_status === 'won' && styles.invoiceBadgeWon,
+                      transaction.invoice_status === 'claimed' && styles.invoiceBadgeClaimed,
+                      isDark && { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default },
+                      isDark && (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported') && { backgroundColor: 'rgba(14, 165, 233, 0.18)', borderColor: '#38BDF8' },
+                      isDark && transaction.invoice_status === 'won' && { backgroundColor: 'rgba(236, 72, 153, 0.2)', borderColor: 'rgba(236, 72, 153, 0.5)' },
+                      isDark && transaction.invoice_status === 'claimed' && { backgroundColor: 'rgba(16, 185, 129, 0.2)', borderColor: 'rgba(16, 185, 129, 0.5)' },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.invoiceBadgeText,
+                        (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported') && styles.invoiceBadgeTextCloud,
+                        transaction.invoice_status === 'won' && styles.invoiceBadgeTextWon,
+                        transaction.invoice_status === 'claimed' && styles.invoiceBadgeTextClaimed,
+                        isDark && { color: colors.text.secondary },
+                        isDark && (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported') && { color: '#38BDF8' },
+                        isDark && transaction.invoice_status === 'won' && { color: '#F472B6' },
+                        isDark && transaction.invoice_status === 'claimed' && { color: '#34D399' },
+                      ]}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={1.08}
+                    >
+                      {labelText}
+                    </Text>
+                  </View>
+                );
+              }
+
+              if (badge.key === 'memo') {
+                return (
+                  <View
+                    key="memo"
+                    style={[
+                      styles.expenseLinkedMemoTag,
+                      isIconOnly && styles.badgeIconOnly,
+                      isDark && { backgroundColor: 'rgba(245, 158, 11, 0.18)', borderColor: 'rgba(245, 158, 11, 0.4)' },
+                    ]}
+                  >
+                    <Text style={[styles.expenseLinkedMemoTagText, isDark && { color: '#FCD34D' }]} numberOfLines={1} maxFontSizeMultiplier={1.08}>
+                      {labelText}
+                    </Text>
+                  </View>
+                );
+              }
+
+              if (badge.key === 'image') {
+                return (
+                  <TouchableOpacity
+                    key="image"
+                    style={[
+                      styles.imageReceiptBadge,
+                      isIconOnly && styles.badgeIconOnly,
+                      isDark && { backgroundColor: 'rgba(59, 130, 246, 0.18)', borderColor: 'rgba(59, 130, 246, 0.4)' },
+                    ]}
+                    onPress={(e) => {
+                      e?.stopPropagation?.();
+                      if (onViewImage && transaction.image_url) {
+                        onViewImage(
+                          transaction.image_url,
+                          `${transaction.merchant || category?.name || '消費'} 憑證照片`
+                        );
+                      } else if (onPress) {
+                        onPress(transaction);
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[styles.imageReceiptBadgeText, isDark && { color: '#93C5FD' }]}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={1.08}
+                    >
+                      {labelText}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              }
+
+              if (badge.key === 'reconciled') {
+                return (
+                  <View
+                    key="reconciled"
+                    style={[
+                      styles.reconciledBadge,
+                      isIconOnly && styles.badgeIconOnly,
+                      isDark && { backgroundColor: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.35)' },
+                    ]}
+                  >
+                    <Text style={[styles.reconciledBadgeText, isDark && { color: '#34D399' }]} numberOfLines={1} maxFontSizeMultiplier={1.08}>
+                      {labelText}
+                    </Text>
+                  </View>
+                );
+              }
+
+              if (badge.key === 'synced') {
+                return (
+                  <View
+                    key="synced"
+                    style={[
+                      styles.recentlySyncedBadge,
+                      isIconOnly && styles.badgeIconOnly,
+                      isDark && { backgroundColor: 'rgba(234, 179, 8, 0.18)', borderColor: '#EAB308' },
+                    ]}
+                  >
+                    <Text style={[styles.recentlySyncedBadgeText, isDark && { color: '#FDE047' }]} numberOfLines={1} maxFontSizeMultiplier={1.08}>
+                      {labelText}
+                    </Text>
+                  </View>
+                );
+              }
+
+              return (
+                <View
+                  key="lastViewed"
+                  style={[styles.lastViewedBadge, styles.badgeIconOnly, { marginLeft: 0 }, isDark && styles.lastViewedBadgeDark]}
+                >
+                  <Text style={[styles.lastViewedBadgeText, isDark && styles.lastViewedBadgeTextDark]} numberOfLines={1} maxFontSizeMultiplier={1.08}>
+                    {labelText}
+                  </Text>
+                </View>
+              );
+            })}
           </View>
         )}
       </View>
-
-      {/* 點擊編輯指示箭頭 */}
-      <Text style={[styles.cardArrow, isDark && { color: colors.border.strong }]} maxFontSizeMultiplier={1.1}>›</Text>
     </TouchableOpacity>
   );
 });
@@ -1295,10 +1441,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderRadius: 16,
-    marginBottom: 10,
+    marginBottom: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -1306,9 +1452,9 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   iconBox: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
@@ -1325,6 +1471,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 4,
   },
+  topRightGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    flexShrink: 0,
+  },
   categoryName: {
     fontSize: 15,
     fontWeight: '600',
@@ -1335,10 +1487,14 @@ const styles = StyleSheet.create({
   },
   badgeRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     alignItems: 'center',
     gap: 5,
-    marginTop: 6,
+    marginTop: 5,
+    overflow: 'hidden',
+  },
+  badgeIconOnly: {
+    paddingHorizontal: 5,
   },
   amountText: {
     fontSize: 16,
@@ -1392,40 +1548,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   bottomRowAlignEnd: {
     justifyContent: 'flex-end',
-  },
-  bottomColumnLarge: {
-    gap: 5,
   },
   noteText: {
     fontSize: 13,
     color: '#6B7280',
     flex: 1,
     flexShrink: 1,
-    minWidth: 72,
-  },
-  noteTextLarge: {
-    fontSize: 13,
-    color: '#6B7280',
-    lineHeight: 18,
+    minWidth: 44,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     flexShrink: 1,
-  },
-  metaRowLarge: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 6,
-  },
-  metaRowConstrained: {
-    maxWidth: '62%',
   },
   payerTag: {
     fontSize: 11,
@@ -1434,23 +1573,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
-    maxWidth: 110,
+    maxWidth: 165,
     flexShrink: 1,
-  },
-  payerTagLarge: {
-    maxWidth: '100%',
   },
   dateText: {
     fontSize: 12,
     color: '#9CA3AF',
-  },
-  cardArrow: {
-    fontSize: 20,
-    fontWeight: '300',
-    color: '#CBD5E1',
-    marginLeft: 6,
-    marginRight: -2,
-    alignSelf: 'center',
   },
   paymentBadge: {
     flexDirection: 'row',
@@ -1460,11 +1588,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 0.5,
     gap: 3,
-    maxWidth: 125,
     flexShrink: 1,
-  },
-  paymentBadgeLarge: {
-    maxWidth: '100%',
   },
   paymentBadgeIcon: {
     fontSize: 10,
