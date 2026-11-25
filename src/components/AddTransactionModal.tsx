@@ -896,6 +896,20 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     ? (keyboardOffset + 60)
     : 30;
 
+  // Web 版多行備註保底行數估算，避免 textarea 停在預設高度導致多行文字被裁切
+  const webNoteLines = React.useMemo(() => {
+    const lines = (note || '').split('\n');
+    let total = 0;
+    for (const line of lines) {
+      let units = 0;
+      for (const ch of line) {
+        units += ch.charCodeAt(0) > 127 ? 1 : 0.55;
+      }
+      total += Math.max(1, Math.ceil(units / 18));
+    }
+    return Math.max(1, total);
+  }, [note]);
+
   // 使用者是否在本彈窗開啟期間曾手動點選切換過付款/記錄成員
   const [hasUserManuallySelectedPayer, setHasUserManuallySelectedPayer] = useState<boolean>(false);
 
@@ -4276,60 +4290,31 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     </TouchableOpacity>
                   </View>
 
-                  {/* 左右並排輸入列 */}
-                  <View style={styles.storeNoteInputsRow}>
-                    {/* 左側：店家輸入框 */}
-                    <View style={styles.storeInputCol}>
-                      <View style={styles.storeInputInner}>
-                        <Text style={styles.storeInputIcon}>🏪</Text>
-                        <TextInput
-                          style={styles.storeTextInput}
-                          placeholder="例如：麥當勞"
-                          placeholderTextColor="#9CA3AF"
-                          value={merchant}
-                          onChangeText={setMerchant}
-                          onFocus={() => scrollToInput(merchantSectionY, 350)}
-                          returnKeyType="next"
-                          maxFontSizeMultiplier={1.12}
-                        />
-                        {!!merchant && (
-                          <TouchableOpacity
-                            onPress={() => setMerchant('')}
-                            style={styles.storeClearBtn}
-                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                          >
-                            <Text style={styles.storeClearBtnText}>✕</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    </View>
-
-                    {/* 右側：備註輸入框 */}
-                    <View style={styles.noteInputCol}>
-                      <View style={styles.noteInputInner}>
-                        <TextInput
-                          style={styles.noteTextInput}
-                          placeholder="例如：好市多牛肉、加滿油、午餐雙人餐..."
-                          placeholderTextColor="#9CA3AF"
-                          value={note}
-                          onChangeText={setNote}
-                          onFocus={() => scrollToInput(noteSectionY, 400)}
-                          maxFontSizeMultiplier={1.12}
-                        />
-                        {!!note && (
-                          <TouchableOpacity
-                            onPress={() => setNote('')}
-                            style={styles.storeClearBtn}
-                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                          >
-                            <Text style={styles.storeClearBtnText}>✕</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    </View>
+                  {/* 第 1 行：店家輸入框（滿版） */}
+                  <View style={styles.storeInputInner}>
+                    <Text style={styles.storeInputIcon}>🏪</Text>
+                    <TextInput
+                      style={styles.storeTextInput}
+                      placeholder="例如：麥當勞"
+                      placeholderTextColor="#9CA3AF"
+                      value={merchant}
+                      onChangeText={setMerchant}
+                      onFocus={() => scrollToInput(merchantSectionY, 350)}
+                      returnKeyType="next"
+                      maxFontSizeMultiplier={1.12}
+                    />
+                    {!!merchant && (
+                      <TouchableOpacity
+                        onPress={() => setMerchant('')}
+                        style={styles.storeClearBtn}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      >
+                        <Text style={styles.storeClearBtnText}>✕</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
 
-                  {/* 完整一行：常用店家快選滑動列 (常駐開放，一戳秒選秒帶入) */}
+                  {/* 常用店家快選滑動列 (緊貼店家下方，一戳秒選秒帶入) */}
                   {suggestedMerchants.length > 0 && (
                     <View style={styles.quickMerchantsRowContainer}>
                       <HorizontalScrollView
@@ -4358,6 +4343,38 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       </HorizontalScrollView>
                     </View>
                   )}
+
+                  {/* 第 2 行：備註輸入框（滿版＋多行自動展開） */}
+                  <View onLayout={(e) => setNoteSectionY(e.nativeEvent.layout.y)}>
+                    <View style={styles.noteInputInner}>
+                      <Text style={styles.noteInputIcon}>📝</Text>
+                      <TextInput
+                        style={[
+                          styles.noteTextInput,
+                          Platform.OS === 'web' && { height: Math.max(20, webNoteLines * 20) },
+                        ]}
+                        placeholder="備註（例如：好市多牛肉、多筆發票品項明細...）"
+                        placeholderTextColor="#9CA3AF"
+                        value={note}
+                        onChangeText={setNote}
+                        multiline
+                        scrollEnabled={false}
+                        textAlignVertical="top"
+                        numberOfLines={Platform.OS === 'web' ? webNoteLines : undefined}
+                        onFocus={() => scrollToInput(merchantSectionY > 0 ? merchantSectionY + noteSectionY : 0, 400)}
+                        maxFontSizeMultiplier={1.12}
+                      />
+                      {!!note && (
+                        <TouchableOpacity
+                          onPress={() => setNote('')}
+                          style={styles.noteClearBtn}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        >
+                          <Text style={styles.storeClearBtnText}>✕</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
 
                   {/* 緊湊發票操作列 (對稱滿版高顯色排版) */}
                   {mode === 'expense' && (
@@ -7467,17 +7484,6 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontWeight: '600',
     color: isDark ? '#34D399' : '#059669',
   },
-  storeNoteInputsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  storeInputCol: {
-    flex: 1.15,
-  },
-  noteInputCol: {
-    flex: 1.45,
-  },
   headerReceiptBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -7530,19 +7536,34 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   },
   noteInputInner: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
     borderWidth: 1,
     borderColor: isDark ? '#334155' : '#CBD5E1',
     borderRadius: 8,
     paddingHorizontal: 8,
-    height: 38,
+    paddingVertical: 8,
+    minHeight: 38,
+  },
+  noteInputIcon: {
+    fontSize: 13,
+    marginRight: 4,
+    lineHeight: 20,
   },
   noteTextInput: {
     flex: 1,
     fontSize: 12.5,
+    lineHeight: 20,
     color: isDark ? '#F1F5F9' : '#0F172A',
+    paddingTop: 0,
+    paddingBottom: 0,
     paddingVertical: 0,
+    minHeight: 20,
+    includeFontPadding: false,
+  },
+  noteClearBtn: {
+    padding: 2,
+    paddingTop: 3,
   },
   storeClearBtn: {
     padding: 2,

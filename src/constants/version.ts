@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.18';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.18 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 21;
+export const APP_BUILD_REVISION = 22;
 
-// 完整版本字串 (例如 "1.0.18.21")
+// 完整版本字串 (例如 "1.0.18.22")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -20,9 +20,10 @@ export interface ChangelogItem {
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.18',
-    date: '2026-11-23 ~ 2026-11-24',
+    date: '2026-11-23 ~ 2026-11-25',
     title: '四大主頁全面清爽改版、LINE 雙軌日報、桌面待辦直達與 3D 黏土圖示',
     highlights: [
+      '📝 記帳備註支援多行自動展開：新增與編輯明細的店家與備註改為上下滿版排版，多筆發票品項或長備註隨內容自動拉高完整顯示，閱讀與編輯不再截斷。',
       '🪟 各式彈窗大面板升級與打字防遮擋：悠遊卡加值、備份還原、成員管理、點餐與待辦回報等彈窗皆升級寬敞底部面板，全面補齊打字鍵盤避讓、長輩大字防擠壓與提示相容。',
       '🌙 全站深色模式視覺統一與護眼升級：全面統一儲值卡成員標籤、記帳選卡、家庭名冊、雲端發票同步與各項設定的深色柔和底色與清晰對比。',
       '🧾 明細頁按日分組與篩選連動升級：清單依日期分組並顯示每日小計，筆數與全部／收支／記事同列並排一眼掌握連動，單筆卡片精簡防截字，支援月份快切與搜尋即時統計。',
