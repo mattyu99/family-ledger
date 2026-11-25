@@ -3,12 +3,14 @@ import {
   getInstallmentInfo,
   getCurrentPeriodKey,
   appendPeriodKey,
+  removePeriodKey,
   isBillPaidForCurrentPeriod,
   getBillPeriodLabel,
   getBillDueDate,
   getRollingBillDueInfo,
+  findSettledTransactionForPeriod,
 } from '../recurring';
-import { RecurringRule } from '../../types';
+import { RecurringRule, Transaction } from '../../types';
 
 describe('週期性帳單、分期與滾動推算核心模組 (recurring.ts)', () => {
   const baseMonthlyRule: RecurringRule = {
@@ -187,6 +189,68 @@ describe('週期性帳單、分期與滾動推算核心模組 (recurring.ts)', (
       expect(info?.totalInstallments).toBe(12);
       expect(info?.remainingInstallments).toBe(10);
       expect(info?.progressPercent).toBe(17);
+    });
+  });
+
+  describe('期別移除與已完成交易反查 (removePeriodKey, findSettledTransactionForPeriod)', () => {
+    it('removePeriodKey 應正確移除單期變空字串、多期移除指定期別、不存在時維持原樣', () => {
+      expect(removePeriodKey(undefined, '2026-10')).toBe('');
+      expect(removePeriodKey('2026-10', '2026-10')).toBe('');
+      expect(removePeriodKey('2026-09,2026-10,2026-11', '2026-10')).toBe('2026-09,2026-11');
+      expect(removePeriodKey('2026-09,2026-11', '2026-10')).toBe('2026-09,2026-11');
+    });
+
+    it('findSettledTransactionForPeriod 應依備註期別、同月份 Key、扣款日 ±20 天反查且略過回傳 undefined', () => {
+      const makeTx = (overrides: Partial<Transaction>): Transaction => ({
+        id: 'tx-1',
+        ledger_id: 'ledger-1',
+        creator_id: 'user-dad',
+        amount: 899,
+        type: 'expense',
+        category_id: 'cat-internet',
+        paid_by: 'user-dad',
+        payment_method: 'bank_transfer',
+        transacted_at: '2026-11-15T12:00:00.000Z',
+        created_at: '2026-11-15T12:00:00.000Z',
+        linked_transaction_id: `rec_${baseMonthlyRule.id}`,
+        is_settled: true,
+        ...overrides,
+      });
+
+      const periodNov = new Date(2026, 10, 1); // 2026-11
+
+      // 1. 透過備註期別精準命中（即使入帳日在上月底）
+      const txByNote = makeTx({
+        id: 'tx-note',
+        transacted_at: '2026-10-28T12:00:00.000Z',
+        note: '[光纖寬頻網路] 2026年 11月份',
+      });
+      expect(findSettledTransactionForPeriod([txByNote], baseMonthlyRule, periodNov)?.id).toBe('tx-note');
+
+      // 2. 備註被修改時透過同月份 Key 命中
+      const txByMonth = makeTx({
+        id: 'tx-month',
+        transacted_at: '2026-11-05T12:00:00.000Z',
+        note: '寬頻繳費完成',
+      });
+      expect(findSettledTransactionForPeriod([txByMonth], baseMonthlyRule, periodNov)?.id).toBe('tx-month');
+
+      // 3. 提早入帳在 ±20 天內命中（11/15 到期、10/28 提早繳且自訂備註）
+      const txByWindow = makeTx({
+        id: 'tx-window',
+        transacted_at: '2026-10-28T12:00:00.000Z',
+        note: '提早扣繳',
+      });
+      expect(findSettledTransactionForPeriod([txByWindow], baseMonthlyRule, periodNov)?.id).toBe('tx-window');
+
+      // 4. 只有很久以前的紀錄或無紀錄（例如已略過）時回傳 undefined
+      const txTooOld = makeTx({
+        id: 'tx-old',
+        transacted_at: '2026-08-15T12:00:00.000Z',
+        note: '舊紀錄',
+      });
+      expect(findSettledTransactionForPeriod([txTooOld], baseMonthlyRule, periodNov)).toBeUndefined();
+      expect(findSettledTransactionForPeriod([], baseMonthlyRule, periodNov)).toBeUndefined();
     });
   });
 });

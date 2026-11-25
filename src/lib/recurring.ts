@@ -1,4 +1,4 @@
-import { RecurringRule, RecurringFrequency } from '../types/database';
+import { RecurringRule, RecurringFrequency, Transaction } from '../types/database';
 
 /**
  * 檢查特定規則在指定年份與月份中是否為「應繳費/出帳月份」
@@ -140,6 +140,57 @@ export const appendPeriodKey = (currentPeriodStr: string | undefined, newPeriod:
     parts.push(newPeriod);
   }
   return parts.sort().slice(-24).join(',');
+};
+
+/**
+ * 從 last_recorded_period 字串中移除指定期別（回傳空字串 '' 代表無任何已入帳期別，確保資料庫欄位可被清除）
+ */
+export const removePeriodKey = (currentPeriodStr: string | undefined, targetPeriod: string): string => {
+  if (!currentPeriodStr) return '';
+  const parts = currentPeriodStr
+    .split(',')
+    .map(s => s.trim())
+    .filter(part => Boolean(part) && part !== targetPeriod);
+  return parts.sort().join(',');
+};
+
+/**
+ * 尋找指定週期規則在特定期別月份對應的已入帳收支交易（依備註期別 > 同週期 Key > 扣款日 ±20 天優先序）
+ */
+export const findSettledTransactionForPeriod = (
+  transactions: Transaction[],
+  rule: RecurringRule,
+  periodDate = new Date()
+): Transaction | undefined => {
+  if (!transactions || transactions.length === 0) return undefined;
+  const linkedPrefix = `rec_${rule.id}`;
+  const candidates = transactions
+    .filter(tx => tx.linked_transaction_id === linkedPrefix && tx.type === 'expense')
+    .sort((a, b) => new Date(b.transacted_at).getTime() - new Date(a.transacted_at).getTime());
+
+  if (candidates.length === 0) return undefined;
+
+  const fullLabel = getBillPeriodLabel(rule, periodDate);
+  const baseLabel = fullLabel.replace(/\s*\(第\s*\d+\/\d+\s*期\)\s*$/, '').trim();
+  const byNote = candidates.find(tx => {
+    const note = tx.note || '';
+    return note.includes(fullLabel) || (baseLabel.length > 0 && note.includes(baseLabel));
+  });
+  if (byNote) return byNote;
+
+  const targetKey = getCurrentPeriodKey(rule, periodDate);
+  const byPeriodKey = candidates.find(tx => {
+    const txDate = new Date(tx.transacted_at);
+    return !isNaN(txDate.getTime()) && getCurrentPeriodKey(rule, txDate) === targetKey;
+  });
+  if (byPeriodKey) return byPeriodKey;
+
+  const dueTs = getBillDueDate(rule, periodDate).getTime();
+  const twentyDaysMs = 20 * 24 * 60 * 60 * 1000;
+  return candidates.find(tx => {
+    const txTs = new Date(tx.transacted_at).getTime();
+    return !isNaN(txTs) && Math.abs(txTs - dueTs) <= twentyDaysMs;
+  });
 };
 
 /**

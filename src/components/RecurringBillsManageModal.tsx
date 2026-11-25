@@ -17,13 +17,15 @@ import {
 } from 'react-native';
 import { Text, TextInput } from './common/Text';
 
-import { RecurringRule, RecurringFrequency, RecurringAmountType, PaymentMethod, PaymentAccount, Profile, Category } from '../types/database';
+import { RecurringRule, RecurringFrequency, RecurringAmountType, PaymentMethod, PaymentAccount, Profile, Category, Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import {
   isBillDueInMonth,
   getCurrentPeriodKey,
+  appendPeriodKey,
+  removePeriodKey,
   isBillPaidForCurrentPeriod,
   getBillPeriodLabel,
   getFrequencyBadgeText,
@@ -33,6 +35,7 @@ import {
   getRollingPendingBills,
   getRollingBillDueInfo,
   getBillDueInfoForPeriod,
+  findSettledTransactionForPeriod,
   RollingBillDueInfo,
 } from '../lib/recurring';
 import { getCategoryIcon } from '../lib/icons';
@@ -104,6 +107,8 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     recordRecurringBill,
     skipRecurringBill,
     restoreDefaultRecurringRules,
+    transactions,
+    updateTransaction,
     categories,
     members,
     currentUser,
@@ -213,6 +218,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
   // 入帳彈窗狀態 (用於浮動金額、固定金額、分期付款入帳確認)
   const [amountModalVisible, setAmountModalVisible] = useState<boolean>(false);
   const [targetRuleForAmount, setTargetRuleForAmount] = useState<RecurringRule | null>(null);
+  const [editingSettledTx, setEditingSettledTx] = useState<Transaction | null>(null);
   const [targetPeriodDate, setTargetPeriodDate] = useState<Date>(new Date());
   const [inputAmount, setInputAmount] = useState<string>('');
   const [inputNote, setInputNote] = useState<string>('');
@@ -259,6 +265,9 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
   const [previewImageStatement, setPreviewImageStatement] = useState<StatementFile | null>(null);
   const [showStatementVault, setShowStatementVault] = useState<boolean>(false);
   const [vaultFilterRuleId, setVaultFilterRuleId] = useState<string>('');
+  const [showVaultUploadPanel, setShowVaultUploadPanel] = useState<boolean>(false);
+  const [vaultUploadRuleId, setVaultUploadRuleId] = useState<string>('');
+  const [vaultUploadDate, setVaultUploadDate] = useState<Date>(() => new Date());
 
   // 同步載入快取與雲端水電帳單清單
   const refreshStatements = useCallback(async () => {
@@ -446,22 +455,230 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     [filteredAccounts]
   );
 
-  const currentFormMethodObj = useMemo(() => {
+  const getMethodFlags = useCallback((methodId: PaymentMethod) => {
     const list = paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS;
-    return list.find(m => m.id === formPaymentMethod);
-  }, [paymentMethods, formPaymentMethod]);
+    const methodObj = list.find(m => m.id === methodId);
+    const supportsCreditCard = methodObj
+      ? !!methodObj.supports_credit_card
+      : (methodId === 'credit_card' || methodId === 'line_pay' || methodId === 'px_pay' || methodId === 'easycard_pay' || methodId === 'jkopay');
+    const isStoredValue = methodObj
+      ? (methodObj.type === 'stored_value' || methodObj.id === 'stored_value')
+      : methodId === 'stored_value';
+    const isBankTransfer = methodObj
+      ? (methodObj.type === 'bank' || methodObj.id === 'transfer' || methodObj.id === 'bank_transfer')
+      : (methodId === 'transfer' || methodId === 'bank_transfer');
+    return { supportsCreditCard, isStoredValue, isBankTransfer };
+  }, [paymentMethods]);
 
-  const formSupportsCreditCard = currentFormMethodObj
-    ? !!currentFormMethodObj.supports_credit_card
-    : (formPaymentMethod === 'credit_card' || formPaymentMethod === 'line_pay' || formPaymentMethod === 'px_pay' || formPaymentMethod === 'easycard_pay' || formPaymentMethod === 'jkopay');
+  const renderPaymentMethodSelector = ({
+    label,
+    selectedMethod,
+    selectedAccountId,
+    paidById,
+    onSelectMethod,
+    onSelectAccount,
+    accountPrefix,
+  }: {
+    label: string;
+    selectedMethod: PaymentMethod;
+    selectedAccountId?: string;
+    paidById: string;
+    onSelectMethod: (methodId: PaymentMethod) => void;
+    onSelectAccount: (accountId?: string) => void;
+    accountPrefix: string;
+  }) => {
+    const { supportsCreditCard, isStoredValue, isBankTransfer } = getMethodFlags(selectedMethod);
+    return (
+      <>
+        <Text style={styles.formFieldLabel}>{label}</Text>
+        <View style={styles.methodChipsWrap}>
+          {activePaymentMethods.map(m => {
+            const isSelected = selectedMethod === m.id;
+            return (
+              <TouchableOpacity
+                key={m.id}
+                style={[
+                  styles.methodChipBtn,
+                  isSelected && {
+                    backgroundColor: m.color ? `${m.color}15` : '#EFF6FF',
+                    borderColor: m.color || '#2563EB',
+                  },
+                ]}
+                onPress={() => {
+                  onSelectMethod(m.id);
+                  const nextFlags = getMethodFlags(m.id);
+                  if (nextFlags.supportsCreditCard) {
+                    if (!creditCards.some(c => c.id === selectedAccountId)) {
+                      const userCard = creditCards.find(c => c.user_id === paidById) || creditCards[0];
+                      onSelectAccount(userCard?.id);
+                    }
+                  } else if (nextFlags.isStoredValue) {
+                    if (!storedValueCards.some(c => c.id === selectedAccountId)) {
+                      const userCard = storedValueCards.find(c => c.user_id === paidById) || storedValueCards[0];
+                      onSelectAccount(userCard?.id);
+                    }
+                  } else if (nextFlags.isBankTransfer) {
+                    if (!bankAccounts.some(b => b.id === selectedAccountId)) {
+                      const userBank = bankAccounts.find(b => b.user_id === paidById) || bankAccounts[0];
+                      onSelectAccount(userBank?.id);
+                    }
+                  } else {
+                    onSelectAccount(undefined);
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.methodChipEmoji}>{m.icon}</Text>
+                <Text
+                  style={[
+                    styles.methodChipText,
+                    isSelected && { color: m.color || '#2563EB', fontWeight: '700' },
+                  ]}
+                >
+                  {m.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
-  const formIsStoredValue = currentFormMethodObj
-    ? (currentFormMethodObj.type === 'stored_value' || currentFormMethodObj.id === 'stored_value')
-    : formPaymentMethod === 'stored_value';
+        {supportsCreditCard && (
+          <View style={styles.cardPickerContainer}>
+            <Text style={styles.formFieldLabel}>選擇{accountPrefix}信用卡 (選填)</Text>
+            {creditCards.length === 0 ? (
+              <Text style={styles.noCardHint}>
+                (尚未新增信用卡，入帳時將以一般信用卡記錄)
+              </Text>
+            ) : (
+              <View style={styles.cardChipsWrap}>
+                <TouchableOpacity
+                  style={[styles.cardChip, !selectedAccountId && styles.cardChipActive]}
+                  onPress={() => onSelectAccount(undefined)}
+                >
+                  <Text style={[styles.cardChipText, !selectedAccountId && styles.cardChipTextActive]}>
+                    不指定特定卡片
+                  </Text>
+                </TouchableOpacity>
+                {creditCards.map(c => {
+                  const isSelected = selectedAccountId === c.id;
+                  const holder = members.find(m => m.id === c.user_id);
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={[styles.cardChip, isSelected && styles.cardChipActive]}
+                      onPress={() => onSelectAccount(c.id)}
+                    >
+                      <Text style={[styles.cardChipText, isSelected && styles.cardChipTextActive]}>
+                        💳 {c.name} {c.last_four_digits ? `(•${c.last_four_digits})` : ''}
+                        {holder ? ` · ${holder.display_name}` : ''}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        )}
 
-  const formIsBankTransfer = currentFormMethodObj
-    ? (currentFormMethodObj.type === 'bank' || currentFormMethodObj.id === 'transfer' || currentFormMethodObj.id === 'bank_transfer')
-    : (formPaymentMethod === 'transfer' || formPaymentMethod === 'bank_transfer');
+        {isStoredValue && (
+          <View style={styles.cardPickerContainer}>
+            <Text style={styles.formFieldLabel}>選擇{accountPrefix}儲值卡 (選填)</Text>
+            {storedValueCards.length === 0 ? (
+              <Text style={styles.noCardHint}>
+                (尚未新增儲值卡，入帳時將以一般儲值卡記錄)
+              </Text>
+            ) : (
+              <View style={styles.cardChipsWrap}>
+                <TouchableOpacity
+                  style={[styles.cardChip, !selectedAccountId && styles.cardChipActive]}
+                  onPress={() => onSelectAccount(undefined)}
+                >
+                  <Text style={[styles.cardChipText, !selectedAccountId && styles.cardChipTextActive]}>
+                    不指定特定卡片
+                  </Text>
+                </TouchableOpacity>
+                {storedValueCards.map(c => {
+                  const isSelected = selectedAccountId === c.id;
+                  const holder = members.find(m => m.id === c.user_id);
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={[styles.cardChip, isSelected && styles.cardChipActive]}
+                      onPress={() => onSelectAccount(c.id)}
+                    >
+                      <Text style={[styles.cardChipText, isSelected && styles.cardChipTextActive]}>
+                        {c.icon || '🚌'} {c.name}
+                        {holder ? ` · ${holder.display_name}` : ''}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        )}
+
+        {isBankTransfer && (
+          <View style={styles.cardPickerContainer}>
+            <Text style={styles.formFieldLabel}>選擇{accountPrefix}銀行帳戶 (選填)</Text>
+            {bankAccounts.length === 0 ? (
+              <Text style={styles.noCardHint}>
+                (尚未建立銀行帳戶，可至「更多 → 支付卡片與帳戶管理」建立，或直接於下方備註填寫)
+              </Text>
+            ) : (
+              <View style={styles.cardChipsWrap}>
+                <TouchableOpacity
+                  style={[styles.cardChip, !selectedAccountId && styles.cardChipActive]}
+                  onPress={() => onSelectAccount(undefined)}
+                >
+                  <Text style={[styles.cardChipText, !selectedAccountId && styles.cardChipTextActive]}>
+                    不指定特定帳戶
+                  </Text>
+                </TouchableOpacity>
+                {bankAccounts.map(b => {
+                  const isSelected = selectedAccountId === b.id;
+                  const holder = members.find(m => m.id === b.user_id);
+                  return (
+                    <TouchableOpacity
+                      key={b.id}
+                      style={[styles.cardChip, isSelected && styles.cardChipActive]}
+                      onPress={() => onSelectAccount(b.id)}
+                    >
+                      <Text style={[styles.cardChipText, isSelected && styles.cardChipTextActive]}>
+                        🏦 {b.name} {b.last_four_digits ? `(*${b.last_four_digits})` : ''}
+                        {holder ? ` · ${holder.display_name}` : ''}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        )}
+      </>
+    );
+  };
+
+  // 歸檔庫補傳選中的規則與期別衍生狀態
+  const vaultUploadRule = useMemo(() => {
+    if (scopedRules.length === 0) return undefined;
+    return scopedRules.find(r => r.id === vaultUploadRuleId) || scopedRules[0];
+  }, [scopedRules, vaultUploadRuleId]);
+
+  const vaultUploadPeriodKey = useMemo(() => {
+    if (!vaultUploadRule) return '';
+    return getCurrentPeriodKey(vaultUploadRule, vaultUploadDate);
+  }, [vaultUploadRule, vaultUploadDate]);
+
+  const vaultUploadPeriodLabel = useMemo(() => {
+    if (!vaultUploadRule) return '';
+    return getBillPeriodLabel(vaultUploadRule, vaultUploadDate);
+  }, [vaultUploadRule, vaultUploadDate]);
+
+  const vaultUploadExistingStmt = useMemo(() => {
+    if (!vaultUploadRule || !vaultUploadPeriodKey) return undefined;
+    return getRuleStatementForPeriod(vaultUploadRule.id, vaultUploadPeriodKey);
+  }, [vaultUploadRule, vaultUploadPeriodKey, getRuleStatementForPeriod]);
 
   const getRulePaymentBadge = (methodId: PaymentMethod, accountId?: string) => {
     const list = paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS;
@@ -592,6 +809,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
       showAlert('純瀏覽模式', '全家一覽僅供查看待繳狀態；若需核對或記帳，請切換至「我的」視角。');
       return;
     }
+    setEditingSettledTx(null);
     const dInfo = dueInfoMap.get(rule.id);
     const pDate = billPeriodDate || dInfo?.dueDate || selectedDate;
     setTargetPeriodDate(pDate);
@@ -611,6 +829,26 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     setAmountModalVisible(true);
   };
 
+  // 開啟編輯已完成帳單視窗（修改金額、日期、出資人、扣繳管道、備註與補附電子帳單）
+  const handleOpenEditSettledModal = (rule: RecurringRule, tx: Transaction, billPeriodDate?: Date) => {
+    if (!canManage) {
+      showAlert('純瀏覽模式', '全家一覽僅供查看；若需修改帳單紀錄，請切換至「我的」視角。');
+      return;
+    }
+    setEditingSettledTx(tx);
+    setTargetRuleForAmount(rule);
+    setTargetPeriodDate(billPeriodDate || selectedDate);
+    setInputAmount(String(tx.amount));
+    setInputNote(tx.note || '');
+    setInputPaidBy(tx.paid_by || currentUser.id);
+    setInputPaymentMethod(tx.payment_method || rule.payment_method);
+    setInputAccountId(tx.account_id);
+    const parsedTxDate = new Date(tx.transacted_at);
+    setInputDate(isNaN(parsedTxDate.getTime()) ? new Date() : parsedTxDate);
+    setDateMode('custom');
+    setAmountModalVisible(true);
+  };
+
   // 相容舊函式名稱
   const handleOpenAmountModal = handleOpenRecordModal;
   const handleQuickRecordFixed = handleOpenRecordModal;
@@ -622,7 +860,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     setDatePickerVisible(false);
   };
 
-  // 送出金額並入帳
+  // 送出金額並入帳／更新已完成帳單
   const handleConfirmAmountAndRecord = async () => {
     if (!targetRuleForAmount) return;
     const amountNum = parseFloat(inputAmount);
@@ -632,6 +870,25 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
     }
 
     try {
+      if (editingSettledTx) {
+        const updatedOk = await updateTransaction(editingSettledTx.id, {
+          amount: amountNum,
+          transacted_at: inputDate.toISOString(),
+          note: inputNote.trim(),
+          paid_by: inputPaidBy,
+          payment_method: inputPaymentMethod,
+          account_id: inputAccountId,
+        });
+        if (updatedOk) {
+          const editedRuleName = targetRuleForAmount.name;
+          setAmountModalVisible(false);
+          setEditingSettledTx(null);
+          setTargetRuleForAmount(null);
+          showAlert('更新成功', `已更新「${editedRuleName}」實付金額 NT$ ${amountNum.toLocaleString()} 與明細內容！`);
+        }
+        return;
+      }
+
       // 傳入 inputDate（使用者選擇的入帳日期）與 targetPeriodDate（對應帳單期別月份）
       const success = await recordRecurringBill(
         targetRuleForAmount.id,
@@ -648,8 +905,32 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
         showAlert('記帳成功', `已成功將「${recordedRuleName}」NT$ ${amountNum.toLocaleString()} 寫入收支明細！`);
       }
     } catch (e: any) {
-      showAlert('記帳失敗', e?.message || '發生未知錯誤');
+      showAlert('操作失敗', e?.message || '發生未知錯誤');
     }
+  };
+
+  // 將已略過帳單還原回待繳清單
+  const handleUndoSettledBill = (rule: RecurringRule, periodKey: string, periodLabel: string) => {
+    if (!canManage) {
+      showAlert('純瀏覽模式', '全家一覽僅供查看；若需還原待繳，請切換至「我的」視角。');
+      return;
+    }
+    showConfirm(
+      '還原為待繳帳單',
+      `確定將「${rule.name}」在 ${periodLabel} 還原回待繳清單嗎？\n(還原後即可重新輸入金額並入帳)`,
+      async () => {
+        const nextPeriodStr = removePeriodKey(rule.last_recorded_period, periodKey);
+        const payload: Partial<RecurringRule> = {
+          last_recorded_period: nextPeriodStr,
+        };
+        if (rule.is_installment && rule.total_installments && rule.total_installments > 0) {
+          payload.current_installment = Math.max(1, (rule.current_installment || 1) - 1);
+          payload.is_active = true;
+        }
+        await updateRecurringRule(rule.id, payload);
+        showAlert('已還原', `已將「${rule.name}」(${periodLabel}) 還原至待繳清單。`);
+      }
+    );
   };
 
   // 略過本期
@@ -799,6 +1080,8 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
 
     const effectiveAmountType: RecurringAmountType = formIsInstallment ? 'fixed' : formAmountType;
     const effectiveFrequency: RecurringFrequency = formIsInstallment ? 'monthly' : formFrequency;
+    const { supportsCreditCard, isStoredValue, isBankTransfer } = getMethodFlags(formPaymentMethod);
+    const resolvedAccountId = (supportsCreditCard || isStoredValue || isBankTransfer) ? (formAccountId || undefined) : undefined;
 
     if (editingRule) {
       await updateRecurringRule(editingRule.id, {
@@ -812,7 +1095,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
         due_day: Math.min(Math.max(1, formDueDay), 31),
         paid_by: targetPaidBy,
         payment_method: formPaymentMethod,
-        account_id: (formSupportsCreditCard || formIsStoredValue || formIsBankTransfer) ? (formAccountId || undefined) : undefined,
+        account_id: resolvedAccountId,
         is_active: formIsActive,
         note: formNote.trim() || undefined,
         is_installment: formIsInstallment,
@@ -833,7 +1116,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
         due_day: Math.min(Math.max(1, formDueDay), 31),
         paid_by: targetPaidBy,
         payment_method: formPaymentMethod,
-        account_id: (formSupportsCreditCard || formIsStoredValue || formIsBankTransfer) ? (formAccountId || undefined) : undefined,
+        account_id: resolvedAccountId,
         is_active: formIsActive,
         note: formNote.trim() || undefined,
         is_installment: formIsInstallment,
@@ -1013,6 +1296,105 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                   已歸檔 {filteredVaultStatements.length} 份帳單附件 · 佔用容量 {formatFileSize(totalVaultBytes)}
                 </Text>
               </View>
+
+              {/* 補傳／上傳歷史帳單面板 */}
+              {canManage && scopedRules.length > 0 && (
+                <View style={styles.vaultUploadSection}>
+                  <TouchableOpacity
+                    style={[styles.vaultUploadToggleBtn, showVaultUploadPanel && styles.vaultUploadToggleBtnActive]}
+                    onPress={() => {
+                      setShowVaultUploadPanel(prev => {
+                        const next = !prev;
+                        if (next && (!vaultUploadRuleId || !scopedRules.some(r => r.id === vaultUploadRuleId))) {
+                          setVaultUploadRuleId(vaultFilterRuleId || scopedRules[0].id);
+                        }
+                        return next;
+                      });
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.vaultUploadToggleBtnText,
+                        showVaultUploadPanel && styles.vaultUploadToggleBtnTextActive,
+                      ]}
+                      maxFontSizeMultiplier={1.08}
+                    >
+                      {showVaultUploadPanel ? '▲ 收起補傳歷史帳單' : '📤 補傳／上傳歷史帳單'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {showVaultUploadPanel && vaultUploadRule && (
+                    <View style={styles.vaultUploadPanel}>
+                      <Text style={styles.vaultUploadLabel}>1. 選擇帳單項目</Text>
+                      <HorizontalScrollView showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                        {scopedRules.map(r => {
+                          const selected = vaultUploadRule.id === r.id;
+                          return (
+                            <TouchableOpacity
+                              key={r.id}
+                              style={[styles.vaultFilterChip, selected && styles.vaultFilterChipActive]}
+                              onPress={() => setVaultUploadRuleId(r.id)}
+                            >
+                              <Text style={[styles.vaultFilterChipText, selected && styles.vaultFilterChipTextActive]}>
+                                {r.name}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </HorizontalScrollView>
+
+                      <Text style={styles.vaultUploadLabel}>2. 選擇帳單月份期別</Text>
+                      <View style={styles.vaultUploadMonthRow}>
+                        <TouchableOpacity
+                          style={styles.vaultUploadMonthNavBtn}
+                          onPress={() =>
+                            setVaultUploadDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))
+                          }
+                        >
+                          <Text style={styles.vaultUploadMonthNavText}>‹ 上月</Text>
+                        </TouchableOpacity>
+
+                        <View style={styles.vaultUploadMonthCenter}>
+                          <Text style={styles.vaultUploadMonthText}>
+                            {vaultUploadDate.getFullYear()} 年 {vaultUploadDate.getMonth() + 1} 月
+                          </Text>
+                          <Text style={styles.vaultUploadPeriodHint} numberOfLines={1}>
+                            對應期別：{vaultUploadPeriodLabel}
+                            {vaultUploadExistingStmt ? ' · 📎 已有附件（重傳將覆蓋或新增）' : ''}
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          style={styles.vaultUploadMonthNavBtn}
+                          onPress={() =>
+                            setVaultUploadDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))
+                          }
+                        >
+                          <Text style={styles.vaultUploadMonthNavText}>下月 ›</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <TouchableOpacity
+                        style={styles.vaultUploadSubmitBtn}
+                        onPress={() =>
+                          handleUploadRuleStatement(vaultUploadRule, vaultUploadPeriodKey, vaultUploadPeriodLabel)
+                        }
+                        disabled={uploadingStatement}
+                        activeOpacity={0.75}
+                      >
+                        {uploadingStatement ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <Text style={styles.vaultUploadSubmitBtnText}>
+                            📤 選擇 PDF / 圖片並上傳歸檔
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              )}
 
               {/* 規則分類篩選滑軌 */}
               <HorizontalScrollView showsHorizontalScrollIndicator={false} style={styles.vaultFilterScroll}>
@@ -1437,28 +1819,71 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                     {settledBills.map(rule => {
                       const cat = getCategoryById(rule.category_id);
                       const settledKey = getCurrentPeriodKey(rule, selectedDate);
+                      const settledPeriodLabel = getBillPeriodLabel(rule, selectedDate);
                       const settledStmt = getRuleStatementForPeriod(rule.id, settledKey);
+                      const settledTx = findSettledTransactionForPeriod(transactions, rule, selectedDate);
+                      const txDateObj = settledTx ? new Date(settledTx.transacted_at) : null;
+                      const txDateValid = txDateObj && !isNaN(txDateObj.getTime());
                       return (
                         <View key={rule.id} style={styles.settledCard}>
-                          <Text style={styles.settledIcon}>{getCategoryIcon(cat?.icon)}</Text>
-                          <View style={styles.settledInfo}>
-                            <Text style={styles.settledName}>{rule.name}</Text>
-                            <Text style={styles.settledFreq}>{getFrequencyBadgeText(rule)}</Text>
-                          </View>
-                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            {settledStmt && (
-                              <TouchableOpacity
-                                style={styles.settledStmtBtn}
-                                onPress={() => handleOpenStatement(settledStmt)}
-                                activeOpacity={0.7}
-                              >
-                                <Text style={styles.settledStmtBtnText}>📎 帳單</Text>
-                              </TouchableOpacity>
-                            )}
-                            <View style={styles.settledBadge}>
-                              <Text style={styles.settledBadgeText}>已完成</Text>
+                          <View style={styles.settledTopRow}>
+                            <Text style={styles.settledIcon}>{getCategoryIcon(cat?.icon)}</Text>
+                            <View style={styles.settledInfo}>
+                              <Text style={styles.settledName} numberOfLines={1}>{rule.name}</Text>
+                              <Text style={styles.settledFreq} numberOfLines={1}>
+                                {settledTx
+                                  ? `NT$ ${settledTx.amount.toLocaleString()} · ${txDateValid ? `${txDateObj!.getMonth() + 1}/${txDateObj!.getDate()} 入帳` : '已入帳'}`
+                                  : `${getFrequencyBadgeText(rule)} · 本期未寫入收支明細`}
+                              </Text>
+                            </View>
+                            <View style={[styles.settledBadge, !settledTx && styles.settledBadgeSkipped]}>
+                              <Text style={[styles.settledBadgeText, !settledTx && styles.settledBadgeSkippedText]}>
+                                {settledTx ? '已完成' : '已略過'}
+                              </Text>
                             </View>
                           </View>
+
+                          {(settledStmt || canManage) && (
+                            <View style={styles.settledActionsRow}>
+                              {settledStmt ? (
+                                <TouchableOpacity
+                                  style={styles.settledStmtBtn}
+                                  onPress={() => handleOpenStatement(settledStmt)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Text style={styles.settledStmtBtnText} maxFontSizeMultiplier={1.08}>📎 查看帳單</Text>
+                                </TouchableOpacity>
+                              ) : canManage ? (
+                                <TouchableOpacity
+                                  style={styles.settledActionBtn}
+                                  onPress={() => handleUploadRuleStatement(rule, settledKey, settledPeriodLabel)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Text style={styles.settledActionBtnText} maxFontSizeMultiplier={1.08}>+ 補附帳單</Text>
+                                </TouchableOpacity>
+                              ) : null}
+
+                              {canManage && settledTx && (
+                                <TouchableOpacity
+                                  style={styles.settledActionBtnPrimary}
+                                  onPress={() => handleOpenEditSettledModal(rule, settledTx, selectedDate)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Text style={styles.settledActionBtnPrimaryText} maxFontSizeMultiplier={1.08}>✏️ 編輯紀錄</Text>
+                                </TouchableOpacity>
+                              )}
+
+                              {canManage && !settledTx && (
+                                <TouchableOpacity
+                                  style={styles.settledActionBtnWarn}
+                                  onPress={() => handleUndoSettledBill(rule, settledKey, settledPeriodLabel)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Text style={styles.settledActionBtnWarnText} maxFontSizeMultiplier={1.08}>↩️ 還原待繳</Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          )}
                         </View>
                       );
                     })}
@@ -1707,7 +2132,10 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
             visible={amountModalVisible}
             transparent
             animationType="fade"
-            onRequestClose={() => setAmountModalVisible(false)}
+            onRequestClose={() => {
+              setAmountModalVisible(false);
+              setEditingSettledTx(null);
+            }}
           >
             <View style={styles.subModalOverlay}>
               <KeyboardAvoidingView
@@ -1716,26 +2144,38 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
               >
                 <View style={styles.subModalHeader}>
                   <Text style={styles.subModalTitle}>
-                    {targetRuleForAmount?.amount_type === 'variable'
+                    {editingSettledTx
+                      ? '✏️ 編輯已完成帳單'
+                      : targetRuleForAmount?.amount_type === 'variable'
                       ? '⚡ 填寫金額並入帳'
                       : targetRuleForAmount?.is_installment
                       ? '📦 確認分期付款入帳'
                       : '✅ 確認週期帳單入帳'}
                   </Text>
-                  <TouchableOpacity onPress={() => setAmountModalVisible(false)}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setAmountModalVisible(false);
+                      setEditingSettledTx(null);
+                    }}
+                  >
                     <Text style={styles.subModalClose}>✕</Text>
                   </TouchableOpacity>
                 </View>
 
-                {targetRuleForAmount && (
+                {targetRuleForAmount && (() => {
+                  const activePeriodDate = targetPeriodDate || selectedDate;
+                  const targetPeriodKey = getCurrentPeriodKey(targetRuleForAmount, activePeriodDate);
+                  const targetPeriodLabel = getBillPeriodLabel(targetRuleForAmount, activePeriodDate);
+                  const currentPeriodStatement = getRuleStatementForPeriod(targetRuleForAmount.id, targetPeriodKey);
+                  return (
                   <ScrollView style={{ maxHeight: SCREEN_HEIGHT * 0.7 }} showsVerticalScrollIndicator={false}>
                     <View style={styles.targetRuleCardBox}>
                       <Text style={styles.targetRuleName}>{targetRuleForAmount.name}</Text>
                       <View style={styles.targetRuleMetaRow}>
                         <Text style={styles.targetRulePeriod}>
-                          🗓️ 帳單期別：{getBillPeriodLabel(targetRuleForAmount, selectedDate)}
+                          🗓️ 帳單期別：{targetPeriodLabel}
                         </Text>
-                        {isPastMonth && (
+                        {isPastMonth && !editingSettledTx && (
                           <View style={styles.pastMonthMiniBadge}>
                             <Text style={styles.pastMonthMiniBadgeText}>補記上期</Text>
                           </View>
@@ -1744,14 +2184,20 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                       <View style={styles.paymentInfoRow}>
                         <Text style={styles.paymentInfoLabel}>扣繳管道：</Text>
                         <Text style={styles.paymentInfoValue}>
-                          {getRulePaymentBadge(targetRuleForAmount.payment_method, targetRuleForAmount.account_id)}
+                          {editingSettledTx
+                            ? getRulePaymentBadge(inputPaymentMethod, inputAccountId)
+                            : getRulePaymentBadge(targetRuleForAmount.payment_method, targetRuleForAmount.account_id)}
                         </Text>
                       </View>
                     </View>
 
                     {/* 金額輸入 / 確認 */}
                     <Text style={styles.formFieldLabel}>
-                      {targetRuleForAmount.amount_type === 'variable' ? '當期應繳金額 (NT$)' : '應繳入帳金額 (NT$)'}{' '}
+                      {editingSettledTx
+                        ? '實付入帳金額 (NT$)'
+                        : targetRuleForAmount.amount_type === 'variable'
+                        ? '當期應繳金額 (NT$)'
+                        : '應繳入帳金額 (NT$)'}{' '}
                       <Text style={{ color: '#EF4444' }}>*</Text>
                     </Text>
                     <View style={styles.amountInputRow}>
@@ -1763,7 +2209,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                         placeholderTextColor={colors.text.muted}
                         value={inputAmount}
                         onChangeText={setInputAmount}
-                        autoFocus={targetRuleForAmount.amount_type === 'variable'}
+                        autoFocus={!editingSettledTx && targetRuleForAmount.amount_type === 'variable'}
                       />
                     </View>
 
@@ -1797,7 +2243,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                         }}
                       >
                         <Text style={[styles.dateChipText, dateMode === 'scheduled' && styles.dateChipTextActive]}>
-                          🗓 預定扣款日 ({month}/{Math.min(targetRuleForAmount.due_day || 1, 28)})
+                          🗓 預定扣款日 ({activePeriodDate.getMonth() + 1}/{Math.min(targetRuleForAmount.due_day || 1, 28)})
                         </Text>
                       </TouchableOpacity>
 
@@ -1813,11 +2259,6 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                     </View>
 
                     {/* 📎 本期帳單附件（水電瓦斯/固定扣款電子帳單） */}
-                    {(() => {
-                      const targetPeriodKey = getCurrentPeriodKey(targetRuleForAmount, selectedDate);
-                      const targetPeriodLabel = getBillPeriodLabel(targetRuleForAmount, selectedDate);
-                      const currentPeriodStatement = getRuleStatementForPeriod(targetRuleForAmount.id, targetPeriodKey);
-                      return (
                         <View style={styles.stmtSectionBox}>
                           <View style={styles.stmtSectionHeaderRow}>
                             <Text style={styles.formFieldLabel}>📎 本期帳單附件 (PDF / 繳費單截圖)</Text>
@@ -1892,8 +2333,6 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                             </TouchableOpacity>
                           )}
                         </View>
-                      );
-                    })()}
 
                     {/* 備註說明 */}
                     <Text style={styles.formFieldLabel}>記帳備註說明</Text>
@@ -1925,11 +2364,25 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                       })}
                     </View>
 
+                    {/* 編輯已完成帳單時支援變更該筆明細之扣繳管道與卡片/帳戶 */}
+                    {editingSettledTx && renderPaymentMethodSelector({
+                      label: '實際扣繳付款方式',
+                      selectedMethod: inputPaymentMethod,
+                      selectedAccountId: inputAccountId,
+                      paidById: inputPaidBy,
+                      onSelectMethod: setInputPaymentMethod,
+                      onSelectAccount: setInputAccountId,
+                      accountPrefix: '實際扣繳',
+                    })}
+
                     {/* 按鈕列 */}
                     <View style={styles.subModalButtonsRow}>
                       <TouchableOpacity
                         style={styles.subModalCancelBtn}
-                        onPress={() => setAmountModalVisible(false)}
+                        onPress={() => {
+                          setAmountModalVisible(false);
+                          setEditingSettledTx(null);
+                        }}
                       >
                         <Text style={styles.subModalCancelText}>取消</Text>
                       </TouchableOpacity>
@@ -1939,14 +2392,17 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                         onPress={handleConfirmAmountAndRecord}
                       >
                         <Text style={styles.subModalConfirmText}>
-                          {targetRuleForAmount.amount_type === 'variable'
+                          {editingSettledTx
+                            ? '💾 儲存修改'
+                            : targetRuleForAmount.amount_type === 'variable'
                             ? '✅ 確認填寫並入帳'
                             : '✅ 確認記帳入帳'}
                         </Text>
                       </TouchableOpacity>
                     </View>
                   </ScrollView>
-                )}
+                  );
+                })()}
               </KeyboardAvoidingView>
             </View>
           </Modal>
@@ -2332,174 +2788,16 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                     })}
                   </View>
 
-                  {/* 付款方式 */}
-                  <Text style={styles.formFieldLabel}>扣繳付款方式</Text>
-                  <View style={styles.methodChipsWrap}>
-                    {activePaymentMethods.map(m => {
-                      const isSelected = formPaymentMethod === m.id;
-                      return (
-                        <TouchableOpacity
-                          key={m.id}
-                          style={[
-                            styles.methodChipBtn,
-                            isSelected && {
-                              backgroundColor: m.color ? `${m.color}15` : '#EFF6FF',
-                              borderColor: m.color || '#2563EB',
-                            },
-                          ]}
-                          onPress={() => {
-                            setFormPaymentMethod(m.id);
-                            if (m.supports_credit_card) {
-                              if (!creditCards.some(c => c.id === formAccountId)) {
-                                const userCard = creditCards.find(c => c.user_id === formPaidBy) || creditCards[0];
-                                setFormAccountId(userCard?.id);
-                              }
-                            } else if (m.type === 'stored_value' || m.id === 'stored_value') {
-                              if (!storedValueCards.some(c => c.id === formAccountId)) {
-                                const userCard = storedValueCards.find(c => c.user_id === formPaidBy) || storedValueCards[0];
-                                setFormAccountId(userCard?.id);
-                              }
-                            } else if (m.type === 'bank' || m.id === 'transfer') {
-                              if (!bankAccounts.some(b => b.id === formAccountId)) {
-                                const userBank = bankAccounts.find(b => b.user_id === formPaidBy) || bankAccounts[0];
-                                setFormAccountId(userBank?.id);
-                              }
-                            } else {
-                              setFormAccountId(undefined);
-                            }
-                          }}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.methodChipEmoji}>{m.icon}</Text>
-                          <Text
-                            style={[
-                              styles.methodChipText,
-                              isSelected && { color: m.color || '#2563EB', fontWeight: '700' },
-                            ]}
-                          >
-                            {m.name}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-
-                  {/* 若選擇支援信用卡之付款方式（信用卡、LINE Pay、街口、全支付、悠遊付等），提供卡片選擇 */}
-                  {formSupportsCreditCard && (
-                    <View style={styles.cardPickerContainer}>
-                      <Text style={styles.formFieldLabel}>選擇自動扣繳信用卡 (選填)</Text>
-                      {creditCards.length === 0 ? (
-                        <Text style={styles.noCardHint}>
-                          (尚未新增信用卡，入帳時將以一般信用卡記錄)
-                        </Text>
-                      ) : (
-                        <View style={styles.cardChipsWrap}>
-                          <TouchableOpacity
-                            style={[styles.cardChip, !formAccountId && styles.cardChipActive]}
-                            onPress={() => setFormAccountId(undefined)}
-                          >
-                            <Text style={[styles.cardChipText, !formAccountId && styles.cardChipTextActive]}>
-                              不指定特定卡片
-                            </Text>
-                          </TouchableOpacity>
-                          {creditCards.map(c => {
-                            const isSelected = formAccountId === c.id;
-                            const holder = members.find(m => m.id === c.user_id);
-                            return (
-                              <TouchableOpacity
-                                key={c.id}
-                                style={[styles.cardChip, isSelected && styles.cardChipActive]}
-                                onPress={() => setFormAccountId(c.id)}
-                              >
-                                <Text style={[styles.cardChipText, isSelected && styles.cardChipTextActive]}>
-                                  💳 {c.name} {c.last_four_digits ? `(•${c.last_four_digits})` : ''}
-                                  {holder ? ` · ${holder.display_name}` : ''}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                      )}
-                    </View>
-                  )}
-
-                  {/* 若選擇悠遊卡/儲值卡，提供儲值卡選擇 */}
-                  {formIsStoredValue && (
-                    <View style={styles.cardPickerContainer}>
-                      <Text style={styles.formFieldLabel}>選擇自動扣款儲值卡 (選填)</Text>
-                      {storedValueCards.length === 0 ? (
-                        <Text style={styles.noCardHint}>
-                          (尚未新增儲值卡，入帳時將以一般儲值卡記錄)
-                        </Text>
-                      ) : (
-                        <View style={styles.cardChipsWrap}>
-                          <TouchableOpacity
-                            style={[styles.cardChip, !formAccountId && styles.cardChipActive]}
-                            onPress={() => setFormAccountId(undefined)}
-                          >
-                            <Text style={[styles.cardChipText, !formAccountId && styles.cardChipTextActive]}>
-                              不指定特定卡片
-                            </Text>
-                          </TouchableOpacity>
-                          {storedValueCards.map(c => {
-                            const isSelected = formAccountId === c.id;
-                            const holder = members.find(m => m.id === c.user_id);
-                            return (
-                              <TouchableOpacity
-                                key={c.id}
-                                style={[styles.cardChip, isSelected && styles.cardChipActive]}
-                                onPress={() => setFormAccountId(c.id)}
-                              >
-                                <Text style={[styles.cardChipText, isSelected && styles.cardChipTextActive]}>
-                                  {c.icon || '🚌'} {c.name}
-                                  {holder ? ` · ${holder.display_name}` : ''}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                      )}
-                    </View>
-                  )}
-
-                  {/* 若選擇銀行轉帳，提供扣款銀行帳戶選擇 */}
-                  {formIsBankTransfer && (
-                    <View style={styles.cardPickerContainer}>
-                      <Text style={styles.formFieldLabel}>選擇自動扣款銀行帳戶 (選填)</Text>
-                      {bankAccounts.length === 0 ? (
-                        <Text style={styles.noCardHint}>
-                          (尚未建立銀行帳戶，可至「更多 → 支付卡片與帳戶管理」建立，或直接於下方備註填寫)
-                        </Text>
-                      ) : (
-                        <View style={styles.cardChipsWrap}>
-                          <TouchableOpacity
-                            style={[styles.cardChip, !formAccountId && styles.cardChipActive]}
-                            onPress={() => setFormAccountId(undefined)}
-                          >
-                            <Text style={[styles.cardChipText, !formAccountId && styles.cardChipTextActive]}>
-                              不指定特定帳戶
-                            </Text>
-                          </TouchableOpacity>
-                          {bankAccounts.map(b => {
-                            const isSelected = formAccountId === b.id;
-                            const holder = members.find(m => m.id === b.user_id);
-                            return (
-                              <TouchableOpacity
-                                key={b.id}
-                                style={[styles.cardChip, isSelected && styles.cardChipActive]}
-                                onPress={() => setFormAccountId(b.id)}
-                              >
-                                <Text style={[styles.cardChipText, isSelected && styles.cardChipTextActive]}>
-                                  🏦 {b.name} {b.last_four_digits ? `(*${b.last_four_digits})` : ''}
-                                  {holder ? ` · ${holder.display_name}` : ''}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                      )}
-                    </View>
-                  )}
+                  {/* 付款方式（共用元件） */}
+                  {renderPaymentMethodSelector({
+                    label: '扣繳付款方式',
+                    selectedMethod: formPaymentMethod,
+                    selectedAccountId: formAccountId,
+                    paidById: formPaidBy,
+                    onSelectMethod: setFormPaymentMethod,
+                    onSelectAccount: setFormAccountId,
+                    accountPrefix: '自動扣繳',
+                  })}
 
                   {/* 啟用開關 */}
                   <View style={styles.formSwitchRow}>
@@ -2990,8 +3288,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     color: colors.text.muted,
   },
   settledCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
     backgroundColor: colors.background.modal,
     borderRadius: 12,
     paddingVertical: 10,
@@ -2999,6 +3296,11 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     marginBottom: 8,
     borderWidth: 1,
     borderColor: colors.border.default,
+    gap: 8,
+  },
+  settledTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   settledIcon: {
     fontSize: 18,
@@ -3006,6 +3308,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   },
   settledInfo: {
     flex: 1,
+    marginRight: 8,
   },
   settledName: {
     fontSize: 14,
@@ -3013,8 +3316,9 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     color: colors.text.secondary,
   },
   settledFreq: {
-    fontSize: 11,
+    fontSize: 11.5,
     color: colors.text.muted,
+    marginTop: 2,
   },
   settledBadge: {
     backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#DCFCE7',
@@ -3026,6 +3330,60 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 11,
     color: isDark ? '#4ADE80' : '#15803D',
     fontWeight: '600',
+  },
+  settledBadgeSkipped: {
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.16)' : '#FEF3C7',
+  },
+  settledBadgeSkippedText: {
+    color: isDark ? '#FBBF24' : '#B45309',
+  },
+  settledActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9',
+  },
+  settledActionBtn: {
+    backgroundColor: isDark ? 'rgba(148, 163, 184, 0.12)' : '#F8FAFC',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(148, 163, 184, 0.3)' : '#CBD5E1',
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  settledActionBtnText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: colors.text.secondary,
+  },
+  settledActionBtnPrimary: {
+    backgroundColor: isDark ? 'rgba(37, 99, 235, 0.15)' : '#EFF6FF',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(37, 99, 235, 0.35)' : '#BFDBFE',
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  settledActionBtnPrimaryText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: isDark ? '#60A5FA' : '#1D4ED8',
+  },
+  settledActionBtnWarn: {
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FFFBEB',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(245, 158, 11, 0.35)' : '#FDE68A',
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  settledActionBtnWarnText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: isDark ? '#FBBF24' : '#B45309',
   },
   // 規則管理樣式
   rulesActionToolbar: {
@@ -4056,13 +4414,99 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     borderWidth: 1,
     borderColor: isDark ? 'rgba(37, 99, 235, 0.35)' : '#BFDBFE',
     borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginRight: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
   },
   settledStmtBtnText: {
     fontSize: 11.5,
     color: isDark ? '#60A5FA' : '#1D4ED8',
+    fontWeight: '700',
+  },
+  vaultUploadSection: {
+    marginBottom: 10,
+  },
+  vaultUploadToggleBtn: {
+    backgroundColor: isDark ? 'rgba(37, 99, 235, 0.15)' : '#EFF6FF',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(37, 99, 235, 0.35)' : '#93C5FD',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  vaultUploadToggleBtnActive: {
+    backgroundColor: isDark ? 'rgba(37, 99, 235, 0.25)' : '#DBEAFE',
+  },
+  vaultUploadToggleBtnText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: isDark ? '#60A5FA' : '#1D4ED8',
+  },
+  vaultUploadToggleBtnTextActive: {
+    color: isDark ? '#93C5FD' : '#1E40AF',
+  },
+  vaultUploadPanel: {
+    marginTop: 8,
+    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    borderRadius: 12,
+    padding: 12,
+  },
+  vaultUploadLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text.secondary,
+    marginBottom: 6,
+  },
+  vaultUploadMonthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: isDark ? colors.background.modal : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    marginBottom: 10,
+    gap: 8,
+  },
+  vaultUploadMonthNavBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9',
+  },
+  vaultUploadMonthNavText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: isDark ? '#60A5FA' : '#2563EB',
+  },
+  vaultUploadMonthCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  vaultUploadMonthText: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: colors.text.primary,
+  },
+  vaultUploadPeriodHint: {
+    fontSize: 11,
+    color: colors.text.muted,
+    marginTop: 2,
+  },
+  vaultUploadSubmitBtn: {
+    backgroundColor: '#2563EB',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vaultUploadSubmitBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
     fontWeight: '700',
   },
   stmtSectionBox: {
