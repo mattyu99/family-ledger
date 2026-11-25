@@ -50,8 +50,32 @@ import {
   CreditCardIssuerGroup,
 } from '../lib/bankIssuer';
 import { buildPassbookEntries } from '../lib/statementPassbook';
+import { stripInvoiceTag } from '../lib/invoice';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+/** 將深色十六進位色碼在深色模式下提亮為高對比柔和色彩 */
+const resolveReadableDarkHex = (hex?: string, fallback = '#93C5FD'): string => {
+  if (!hex || typeof hex !== 'string') return fallback;
+  let cleaned = hex.trim();
+  if (!cleaned.startsWith('#')) return fallback;
+  if (cleaned.length === 4) {
+    cleaned = `#${cleaned[1]}${cleaned[1]}${cleaned[2]}${cleaned[2]}${cleaned[3]}${cleaned[3]}`;
+  }
+  if (!/^#[0-9a-fA-F]{6}$/.test(cleaned)) return fallback;
+
+  const r = parseInt(cleaned.slice(1, 3), 16);
+  const g = parseInt(cleaned.slice(3, 5), 16);
+  const b = parseInt(cleaned.slice(5, 7), 16);
+  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+  if (lum >= 165) return cleaned;
+
+  const ratio = lum < 90 ? 0.62 : 0.48;
+  const nr = Math.round(r + (255 - r) * ratio);
+  const ng = Math.round(g + (255 - g) * ratio);
+  const nb = Math.round(b + (255 - b) * ratio);
+  return `#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}`;
+};
 
 const REBATE_PRESET_TAGS = [
   '現金回饋折抵',
@@ -1414,14 +1438,17 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                   const isSelected = (currentCard?.id || activeCards[0]?.id) === card.id;
                   const cardholder = getMemberById(card.user_id);
                   const cardStmtCount = isCredit ? statements.filter(s => s.cardId === card.id).length : 0;
+                  const selectedAccentColor = isDark
+                    ? resolveReadableDarkHex(card.color, isCredit ? '#60A5FA' : '#38BDF8')
+                    : (card.color || (isCredit ? '#1E40AF' : '#0369A1'));
                   return (
                     <TouchableOpacity
                       key={card.id}
                       style={[
                         styles.cardSelectChip,
                         isSelected && {
-                          borderColor: card.color || (isCredit ? '#3B82F6' : '#0284C7'),
-                          backgroundColor: isCredit ? '#EFF6FF' : '#F0F9FF',
+                          borderColor: isDark ? selectedAccentColor : (card.color || (isCredit ? '#3B82F6' : '#0284C7')),
+                          backgroundColor: isDark ? `${selectedAccentColor}24` : (isCredit ? '#EFF6FF' : '#F0F9FF'),
                         },
                       ]}
                       onPress={() => {
@@ -1437,7 +1464,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                           style={[
                             styles.cardSelectName,
                             isSelected && {
-                              color: card.color || (isCredit ? '#1E40AF' : '#0369A1'),
+                              color: selectedAccentColor,
                               fontWeight: '700',
                             },
                           ]}
@@ -1545,8 +1572,12 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                       onPress={() => setReconcileViewMode('single')}
                       activeOpacity={0.8}
                     >
-                      <Text style={[styles.modeToggleText, effectiveViewMode === 'single' && styles.modeToggleTextActive]}>
-                        💳 單卡明細 ({currentCard.name})
+                      <Text
+                        style={[styles.modeToggleText, effectiveViewMode === 'single' && styles.modeToggleTextActive]}
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={1.15}
+                      >
+                        💳 單卡 ({currentCard.name})
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -1554,8 +1585,12 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                       onPress={() => setReconcileViewMode('combined')}
                       activeOpacity={0.8}
                     >
-                      <Text style={[styles.modeToggleText, effectiveViewMode === 'combined' && styles.modeToggleTextActive]}>
-                        🏛️ {currentIssuerGroup.issuer.shortName}全卡合併 ({currentIssuerGroup.cards.length}張)
+                      <Text
+                        style={[styles.modeToggleText, effectiveViewMode === 'combined' && styles.modeToggleTextActive]}
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={1.15}
+                      >
+                        🏛️ {currentIssuerGroup.issuer.shortName}合併 ({currentIssuerGroup.cards.length}張)
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -1771,8 +1806,8 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                               {uploadingStatement ? (
                                 <ActivityIndicator size="small" color="#1D4ED8" />
                               ) : (
-                                <Text style={styles.creditActionBtnStmtText} maxFontSizeMultiplier={1.08}>
-                                  📤 上傳本期電子帳單 (PDF/圖片)
+                                <Text style={styles.creditActionBtnStmtText} numberOfLines={1} maxFontSizeMultiplier={1.08}>
+                                  📤 上傳電子帳單
                                 </Text>
                               )}
                             </TouchableOpacity>
@@ -1791,9 +1826,10 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                                 styles.creditActionBtnRebateText,
                                 showRebateForm && styles.creditActionBtnRebateTextActive,
                               ]}
+                              numberOfLines={1}
                               maxFontSizeMultiplier={1.08}
                             >
-                              {showRebateForm ? '✕ 收起回饋折抵' : '🎁 ＋記一筆回饋折抵 / 退刷'}
+                              {showRebateForm ? '✕ 收起回饋折抵' : '🎁 ＋記回饋 / 退刷'}
                             </Text>
                           </TouchableOpacity>
                         </View>
@@ -2127,21 +2163,26 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                                 <Text style={[styles.topUpBadgeText, { color: isDark ? '#A5B4FC' : '#4F46E5' }]}>加值轉出</Text>
                               </View>
                             )}
-                            {payMethodBadgeInfo && (
-                              <View
-                                style={[
-                                  styles.payMethodTag,
-                                  {
-                                    borderColor: `${payMethodBadgeInfo.color}35`,
-                                    backgroundColor: `${payMethodBadgeInfo.color}15`,
-                                  },
-                                ]}
-                              >
-                                <Text style={[styles.payMethodTagText, { color: payMethodBadgeInfo.color }]}>
-                                  {payMethodBadgeInfo.icon} {payMethodBadgeInfo.name}
-                                </Text>
-                              </View>
-                            )}
+                            {payMethodBadgeInfo && (() => {
+                              const badgeColor = isDark
+                                ? resolveReadableDarkHex(payMethodBadgeInfo.color, '#93C5FD')
+                                : payMethodBadgeInfo.color;
+                              return (
+                                <View
+                                  style={[
+                                    styles.payMethodTag,
+                                    {
+                                      borderColor: isDark ? `${badgeColor}55` : `${payMethodBadgeInfo.color}35`,
+                                      backgroundColor: isDark ? `${badgeColor}20` : `${payMethodBadgeInfo.color}15`,
+                                    },
+                                  ]}
+                                >
+                                  <Text style={[styles.payMethodTagText, { color: badgeColor }]}>
+                                    {payMethodBadgeInfo.icon} {payMethodBadgeInfo.name}
+                                  </Text>
+                                </View>
+                              );
+                            })()}
                             {!!parsedDiscount?.hasDiscount && (
                               <View style={styles.topUpBadge}>
                                 <Text style={styles.topUpBadgeText}>{parsedDiscount.shortBadgeText || parsedDiscount.badgeText}</Text>
@@ -2153,9 +2194,12 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                         <View style={styles.txSubRow}>
                           <Text style={styles.txDate}>{dateStr}</Text>
                           <Text style={styles.txNote} numberOfLines={1}>
-                            {parsedDiscount?.hasDiscount
-                              ? (parsedDiscount.cleanNote ? `· ${parsedDiscount.cleanNote}` : '')
-                              : (tx.note ? `· ${tx.note}` : '')}
+                            {(() => {
+                              const cleanDisplayNote = stripInvoiceTag(
+                                parsedDiscount?.hasDiscount ? parsedDiscount.cleanNote : (tx.note || '')
+                              );
+                              return cleanDisplayNote ? `· ${cleanDisplayNote}` : '';
+                            })()}
                           </Text>
                         </View>
                       </TouchableOpacity>
@@ -2698,6 +2742,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 11.5,
     fontWeight: '700',
     color: isDark ? '#60A5FA' : '#1D4ED8',
+    textAlign: 'center',
+    lineHeight: 16,
   },
   creditActionBtnRebate: {
     flex: 1,
@@ -2718,6 +2764,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 11.5,
     fontWeight: '700',
     color: isDark ? '#34D399' : '#047857',
+    textAlign: 'center',
+    lineHeight: 16,
   },
   creditActionBtnRebateTextActive: {
     color: '#FFFFFF',
@@ -3170,7 +3218,9 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     flexShrink: 0,
   },
   topUpBadge: {
-    backgroundColor: '#DCFCE7',
+    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.18)' : '#DCFCE7',
+    borderWidth: isDark ? 1 : 0,
+    borderColor: isDark ? 'rgba(52, 211, 153, 0.35)' : 'transparent',
     paddingHorizontal: 5,
     paddingVertical: 1.5,
     borderRadius: 4,
@@ -3178,7 +3228,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   topUpBadgeText: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#15803D',
+    color: isDark ? '#6EE7B7' : '#15803D',
   },
   payMethodTag: {
     paddingHorizontal: 4.5,
@@ -3328,13 +3378,17 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     borderRadius: 12,
     padding: 3,
+    gap: 3,
     borderWidth: 1,
     borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
   modeToggleBtn: {
     flex: 1,
+    minWidth: 0,
     paddingVertical: 7,
+    paddingHorizontal: 6,
     alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 9,
   },
   modeToggleBtnActive: {
@@ -3349,6 +3403,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: colors.text.muted,
+    textAlign: 'center',
   },
   modeToggleTextActive: {
     fontSize: 12,
