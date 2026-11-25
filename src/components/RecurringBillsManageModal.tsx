@@ -1653,6 +1653,9 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                     const payer = getMemberById(rule.paid_by);
                     const isFixed = rule.amount_type === 'fixed';
                     const periodLabel = billDueInfo?.periodLabel || getBillPeriodLabel(rule, billPeriodDate);
+                    const displayPeriodLabel = rule.is_installment
+                      ? periodLabel.replace(/\s*\(第\s*\d+\/\d+\s*期\)\s*$/, '').trim()
+                      : periodLabel;
                     const periodKey = billDueInfo?.periodKey || getCurrentPeriodKey(rule, billPeriodDate);
                     const billStmt = getRuleStatementForPeriod(rule.id, periodKey);
                     const instInfo = rule.is_installment ? getInstallmentInfo(rule, billPeriodDate) : null;
@@ -1667,13 +1670,6 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                                 {dueBadge.text}
                               </Text>
                             </View>
-                            {rule.is_installment && (
-                              <View style={styles.installmentPendingBadge}>
-                                <Text style={styles.installmentPendingBadgeText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
-                                  📦 分期 {instInfo ? instInfo.labelText : ''}
-                                </Text>
-                              </View>
-                            )}
                             {billStmt ? (
                               <TouchableOpacity
                                 style={styles.cardAttachedStmtPill}
@@ -1694,7 +1690,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                               </TouchableOpacity>
                             )}
                           </View>
-                          <Text style={styles.periodLabelText} maxFontSizeMultiplier={1.08} numberOfLines={1}>{periodLabel}</Text>
+                          <Text style={styles.periodLabelText} maxFontSizeMultiplier={1.08} numberOfLines={1}>{displayPeriodLabel}</Text>
                         </View>
 
                         {/* 主資訊 */}
@@ -3151,7 +3147,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   cardHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 8,
     marginBottom: 10,
   },
@@ -3169,7 +3165,6 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     color: colors.text.muted,
     fontWeight: '500',
     flexShrink: 0,
-    paddingTop: 2,
   },
   cardMainRow: {
     flexDirection: 'row',
