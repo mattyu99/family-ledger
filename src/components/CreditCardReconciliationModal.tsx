@@ -2017,6 +2017,53 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                   const cat = getCategoryById(tx.category_id, tx.category);
                   const d = new Date(tx.transacted_at);
                   const dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
+                  const merchantTitle = isTopUp
+                    ? (tx.merchant || `${currentCard.name}儲值`)
+                    : isRebate
+                    ? (tx.merchant || cat?.name || '刷卡回饋折抵')
+                    : isCreditTransfer
+                    ? (tx.merchant || '加值轉出扣款')
+                    : (tx.merchant || cat?.name || (isCredit ? '消費' : '悠遊卡扣款'));
+
+                  const hasCardOriginBadge = isCredit && effectiveViewMode === 'combined';
+                  const payMethodBadgeInfo = (() => {
+                    if (!isCredit || isRebate || isCreditTransfer || !tx.payment_method || tx.payment_method === 'credit_card') {
+                      return null;
+                    }
+                    const normalizedId = (tx.payment_method && KNOWN_PAYMENT_METHOD_UUIDS[tx.payment_method]) || tx.payment_method;
+                    const allMethods = paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS;
+                    const pm = allMethods.find(m => m.id === tx.payment_method || m.id === normalizedId)
+                      || DEFAULT_PAYMENT_METHODS.find(m => m.id === tx.payment_method || m.id === normalizedId);
+
+                    if (pm) {
+                      return {
+                        icon: pm.icon || '📱',
+                        name: pm.name,
+                        color: pm.color || '#3B82F6',
+                      };
+                    }
+
+                    // 若為 UUID 格式且查無對應定義，安全隱藏以防亂碼外洩
+                    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tx.payment_method);
+                    if (isUUID) {
+                      return null;
+                    }
+
+                    return {
+                      icon: '📱',
+                      name: tx.payment_method,
+                      color: '#3B82F6',
+                    };
+                  })();
+
+                  const hasAnyBadge =
+                    hasCardOriginBadge ||
+                    !!isTopUp ||
+                    !!isRebate ||
+                    !!isCreditTransfer ||
+                    !!payMethodBadgeInfo ||
+                    !!parsedDiscount?.hasDiscount;
+
                   return (
                     <View key={tx.id} style={[styles.txRow, tx.is_reconciled && styles.txRowReconciled]}>
                       {/* 類別圖示 */}
@@ -2034,15 +2081,19 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                         </Text>
                       </View>
 
-                      {/* 消費/折抵/加值內容 */}
+                      {/* 左欄：商家名稱 -> 標籤列 -> 日期與備註 */}
                       <TouchableOpacity
                         style={styles.txInfoCol}
                         onPress={() => onEditTransaction?.(tx)}
                         activeOpacity={0.7}
                       >
-                        <View style={styles.txTitleRow}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 6, flexWrap: 'wrap', gap: 4 }}>
-                            {isCredit && effectiveViewMode === 'combined' && (() => {
+                        <Text style={styles.txMerchantName} numberOfLines={1}>
+                          {merchantTitle}
+                        </Text>
+
+                        {hasAnyBadge && (
+                          <View style={styles.txBadgeRow}>
+                            {hasCardOriginBadge && (() => {
                               const sourceCard = paymentAccounts.find(a => a.id === tx.account_id);
                               const cardName = sourceCard ? sourceCard.name : currentCard?.name || '信用卡';
                               return (
@@ -2076,59 +2127,29 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                                 <Text style={[styles.topUpBadgeText, { color: isDark ? '#A5B4FC' : '#4F46E5' }]}>加值轉出</Text>
                               </View>
                             )}
-                            {isCredit && !isRebate && !isCreditTransfer && !!tx.payment_method && tx.payment_method !== 'credit_card' && (() => {
-                              const normalizedId = (tx.payment_method && KNOWN_PAYMENT_METHOD_UUIDS[tx.payment_method]) || tx.payment_method;
-                              const allMethods = paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS;
-                              const pm = allMethods.find(m => m.id === tx.payment_method || m.id === normalizedId)
-                                || DEFAULT_PAYMENT_METHODS.find(m => m.id === tx.payment_method || m.id === normalizedId);
-
-                              if (pm) {
-                                return (
-                                  <View style={[styles.payMethodTag, { borderColor: `${pm.color || '#3B82F6'}35`, backgroundColor: `${pm.color || '#3B82F6'}15` }]}>
-                                    <Text style={[styles.payMethodTagText, { color: pm.color || '#3B82F6' }]}>
-                                      {pm.icon || '📱'} {pm.name}
-                                    </Text>
-                                  </View>
-                                );
-                              }
-
-                              // 若為 UUID 格式且查無對應定義，安全隱藏以防亂碼外洩
-                              const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tx.payment_method);
-                              if (isUUID) {
-                                return null;
-                              }
-
-                              return (
-                                <View style={[styles.payMethodTag, { borderColor: '#3B82F635', backgroundColor: '#3B82F615' }]}>
-                                  <Text style={[styles.payMethodTagText, { color: '#3B82F6' }]}>
-                                    📱 {tx.payment_method}
-                                  </Text>
-                                </View>
-                              );
-                            })()}
-                            <Text style={styles.txMerchantName} numberOfLines={1}>
-                              {isTopUp
-                                ? (tx.merchant || `${currentCard.name}儲值`)
-                                : isRebate
-                                ? (tx.merchant || cat?.name || '刷卡回饋折抵')
-                                : isCreditTransfer
-                                ? (tx.merchant || '加值轉出扣款')
-                                : (tx.merchant || cat?.name || (isCredit ? '消費' : '悠遊卡扣款'))}
-                            </Text>
+                            {payMethodBadgeInfo && (
+                              <View
+                                style={[
+                                  styles.payMethodTag,
+                                  {
+                                    borderColor: `${payMethodBadgeInfo.color}35`,
+                                    backgroundColor: `${payMethodBadgeInfo.color}15`,
+                                  },
+                                ]}
+                              >
+                                <Text style={[styles.payMethodTagText, { color: payMethodBadgeInfo.color }]}>
+                                  {payMethodBadgeInfo.icon} {payMethodBadgeInfo.name}
+                                </Text>
+                              </View>
+                            )}
                             {!!parsedDiscount?.hasDiscount && (
                               <View style={styles.topUpBadge}>
                                 <Text style={styles.topUpBadgeText}>{parsedDiscount.shortBadgeText || parsedDiscount.badgeText}</Text>
                               </View>
                             )}
                           </View>
-                          <Text style={[styles.txAmountText, (isTopUp || isRebate) && styles.txAmountTopUp]}>
-                            {isTopUp
-                              ? `+NT$ ${Number(tx.amount).toLocaleString()}`
-                              : isRebate
-                              ? `-NT$ ${Number(tx.amount).toLocaleString()} (折抵)`
-                              : `-NT$ ${Number(tx.amount).toLocaleString()}`}
-                          </Text>
-                        </View>
+                        )}
+
                         <View style={styles.txSubRow}>
                           <Text style={styles.txDate}>{dateStr}</Text>
                           <Text style={styles.txNote} numberOfLines={1}>
@@ -2139,20 +2160,34 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                         </View>
                       </TouchableOpacity>
 
-                      {/* 核對勾選按鈕 */}
-                      <TouchableOpacity
-                        style={[
-                          styles.reconcileBtn,
-                          tx.is_reconciled && styles.reconcileBtnActive,
-                          !canManageCurrentCard && { opacity: 0.5 },
-                        ]}
-                        onPress={() => handleToggleReconcile(tx)}
-                        activeOpacity={canManageCurrentCard ? 0.7 : 1}
-                      >
-                        <Text style={[styles.reconcileBtnText, tx.is_reconciled && styles.reconcileBtnTextActive]}>
-                          {tx.is_reconciled ? '✓ 已核對' : '○ 待核對'}
-                        </Text>
-                      </TouchableOpacity>
+                      {/* 右欄：金額（上）與核對勾選按鈕（下） */}
+                      <View style={styles.txRightCol}>
+                        <TouchableOpacity
+                          onPress={() => onEditTransaction?.(tx)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.txAmountText, (isTopUp || isRebate) && styles.txAmountTopUp]} numberOfLines={1}>
+                            {isTopUp
+                              ? `+NT$ ${Number(tx.amount).toLocaleString()}`
+                              : isRebate
+                              ? `-NT$ ${Number(tx.amount).toLocaleString()} (折抵)`
+                              : `-NT$ ${Number(tx.amount).toLocaleString()}`}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[
+                            styles.reconcileBtn,
+                            tx.is_reconciled && styles.reconcileBtnActive,
+                            !canManageCurrentCard && { opacity: 0.5 },
+                          ]}
+                          onPress={() => handleToggleReconcile(tx)}
+                          activeOpacity={canManageCurrentCard ? 0.7 : 1}
+                        >
+                          <Text style={[styles.reconcileBtnText, tx.is_reconciled && styles.reconcileBtnTextActive]}>
+                            {tx.is_reconciled ? '✓ 已核對' : '○ 待核對'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   );
                 })
@@ -3062,8 +3097,11 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   },
   txListHeader: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
     alignItems: 'center',
+    rowGap: 3,
+    columnGap: 8,
     marginTop: 16,
     marginBottom: 8,
   },
@@ -3075,6 +3113,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   txListHint: {
     fontSize: 10.5,
     color: colors.text.muted,
+    flexShrink: 1,
   },
   emptyTxBox: {
     backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
@@ -3115,18 +3154,26 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   },
   txInfoCol: {
     flex: 1,
+    minWidth: 0,
   },
-  txTitleRow: {
+  txBadgeRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
     alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  txRightCol: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: 6,
+    flexShrink: 0,
   },
   topUpBadge: {
     backgroundColor: '#DCFCE7',
     paddingHorizontal: 5,
     paddingVertical: 1.5,
     borderRadius: 4,
-    marginRight: 4,
   },
   topUpBadgeText: {
     fontSize: 10,
@@ -3138,22 +3185,22 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     paddingVertical: 1,
     borderRadius: 4,
     borderWidth: 0.5,
-    marginRight: 4,
   },
   payMethodTagText: {
     fontSize: 9.5,
     fontWeight: '700',
   },
   txMerchantName: {
-    fontSize: 13,
+    fontSize: 13.5,
     fontWeight: '600',
     color: colors.text.primary,
-    flex: 1,
+    lineHeight: 19,
   },
   txAmountText: {
     fontSize: 14,
     fontWeight: '700',
     color: isDark ? '#F87171' : '#EF4444',
+    textAlign: 'right',
   },
   txAmountTopUp: {
     color: isDark ? '#34D399' : '#10B981',
@@ -3161,7 +3208,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   txSubRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 2,
+    marginTop: 4,
     gap: 4,
   },
   txDate: {
@@ -3365,7 +3412,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 1.5,
-    maxWidth: 130,
+    maxWidth: '100%',
   },
   cardOriginBadgeText: {
     fontSize: 10,
