@@ -230,8 +230,11 @@ export const LocalNotificationsModal: React.FC<LocalNotificationsModalProps> = (
                       : colors.text.muted,
                   },
                 ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.85}
               >
-                {notifPrefs.billingStatementEnabled ? '✓ ' : '○ '}📄 出帳日 (結帳隔天)
+                {notifPrefs.billingStatementEnabled ? '✓ ' : '○ '}📄 出帳隔天提醒
               </Text>
             </TouchableOpacity>
 
@@ -261,6 +264,9 @@ export const LocalNotificationsModal: React.FC<LocalNotificationsModalProps> = (
                       : colors.text.muted,
                   },
                 ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.85}
               >
                 {notifPrefs.billingDueEnabled ? '✓ ' : '○ '}🗓️ 繳款期限日
               </Text>

@@ -405,10 +405,10 @@ export const BackupAndDataModal: React.FC<BackupAndDataModalProps> = ({
           activeOpacity={0.8}
         >
           <Text style={styles.exportCsvBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            📊 匯出 CSV 報表 (Excel)
+            📊 匯出 CSV 報表
           </Text>
           <Text style={styles.exportBtnSubtext} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            內建 UTF-8 BOM 防中文亂碼
+            Excel 相容防亂碼
           </Text>
         </TouchableOpacity>
 
@@ -418,7 +418,7 @@ export const BackupAndDataModal: React.FC<BackupAndDataModalProps> = ({
           activeOpacity={0.8}
         >
           <Text style={styles.exportJsonBtnText} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
-            📦 匯出 JSON 結構備份
+            📦 匯出 JSON 備份
           </Text>
           <Text style={styles.exportBtnSubtext} allowFontScaling={false} maxFontSizeMultiplier={1.08}>
             全要素結構 (含照片與帳單)

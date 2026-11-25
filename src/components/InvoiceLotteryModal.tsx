@@ -400,9 +400,9 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
             {/* 發票明細清單 */}
             <View style={styles.listSectionHeader}>
               <Text style={styles.listSectionTitle} maxFontSizeMultiplier={1.15}>
-                {scopeFilter === 'mine' ? '📋 我的發票明細' : '📋 本期記錄之發票'} ({evaluatedTransactions.length})
+                {scopeFilter === 'mine' ? '📋 我的發票' : '📋 本期發票'} ({evaluatedTransactions.length})
               </Text>
-              <Text style={styles.listSectionHint} maxFontSizeMultiplier={1.08}>點擊任一發票可查看或編輯記帳明細 ›</Text>
+              <Text style={styles.listSectionHint} maxFontSizeMultiplier={1.08}>點擊發票可查看或編輯 ›</Text>
             </View>
 
             {evaluatedTransactions.length === 0 ? (
@@ -850,6 +850,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
     marginBottom: 8,
     marginTop: 4,
   },

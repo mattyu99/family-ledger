@@ -1252,8 +1252,8 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                 {targetMemberObj && isTargetingOtherMember
                   ? `🗓️ ${targetMemberObj.display_name} 的週期扣款`
                   : scope === 'my'
-                  ? '🗓️ 我的週期扣款與固定帳單'
-                  : '🗓️ 全家週期扣款與固定帳單'}
+                  ? '🗓️ 我的週期固定帳單'
+                  : '🗓️ 全家週期固定帳單'}
               </Text>
               <Text style={styles.headerSubtitle} maxFontSizeMultiplier={1.08}>
                 {targetMemberObj && isTargetingOtherMember
@@ -1618,11 +1618,11 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                 <View style={styles.sectionHeaderRow}>
                   <Text style={styles.sectionTitle}>
                     {isPastMonth
-                      ? `🔔 上期待補記帳單 (${pendingBills.length})`
-                      : `🔔 本期待確認記帳 (${pendingBills.length})`}
+                      ? `🔔 上期待補記 (${pendingBills.length})`
+                      : `🔔 本期待核對 (${pendingBills.length})`}
                   </Text>
                   <Text style={styles.sectionHint}>
-                    {isPastMonth ? '補繳上期帳單並寫入明細' : '點選確認後立即寫入收支明細'}
+                    {isPastMonth ? '補繳上期帳單' : '點選確認即入帳'}
                   </Text>
                 </View>
 
@@ -1661,7 +1661,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                       <View key={rule.id} style={styles.billCard}>
                         {/* 狀態與週期徽章列 */}
                         <View style={styles.cardHeaderRow}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                             <View style={[styles.dueBadge, { backgroundColor: dueBadge.bg }]}>
                               <Text style={[styles.dueBadgeText, { color: dueBadge.color }]} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                                 {dueBadge.text}
@@ -1769,7 +1769,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                                 onPress={() => handleQuickRecordFixed(rule, billPeriodDate)}
                               >
                                 <Text style={styles.recordPrimaryButtonText}>
-                                  ✅ 確認記帳 ({instInfo?.labelText || ''} NT$ {rule.default_amount.toLocaleString()})
+                                  ✅ 確認記帳 ({instInfo?.labelText || ''} ${rule.default_amount.toLocaleString()})
                                 </Text>
                               </TouchableOpacity>
                             ) : isFixed ? (
@@ -1778,7 +1778,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                                 onPress={() => handleQuickRecordFixed(rule, billPeriodDate)}
                               >
                                 <Text style={styles.recordPrimaryButtonText}>
-                                  ✅ 確認記帳 (NT$ {rule.default_amount.toLocaleString()})
+                                  ✅ 確認記帳 (NT${'\u00A0'}{rule.default_amount.toLocaleString()})
                                 </Text>
                               </TouchableOpacity>
                             ) : (
@@ -3083,7 +3083,9 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'baseline',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
     marginBottom: 10,
     marginTop: 4,
   },
@@ -3149,7 +3151,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   cardHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    gap: 8,
     marginBottom: 10,
   },
   dueBadge: {
@@ -3165,6 +3168,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 12,
     color: colors.text.muted,
     fontWeight: '500',
+    flexShrink: 0,
+    paddingTop: 2,
   },
   cardMainRow: {
     flexDirection: 'row',
@@ -3272,25 +3277,31 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     flex: 1,
     backgroundColor: '#10B981',
     paddingVertical: 9,
+    paddingHorizontal: 10,
     borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   recordPrimaryButtonText: {
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 13,
+    textAlign: 'center',
   },
   recordVariableButton: {
     flex: 1,
     backgroundColor: '#2563EB',
     paddingVertical: 9,
+    paddingHorizontal: 10,
     borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   recordVariableButtonText: {
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 13,
+    textAlign: 'center',
   },
   settledSection: {
     marginTop: 16,

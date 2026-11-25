@@ -336,8 +336,8 @@ export const ProductGuideModal: React.FC<ProductGuideModalProps> = ({ visible, o
 
             {/* 18 大常用操作指引 */}
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>📌 18 大家庭日常操作速查</Text>
-              <Text style={styles.sectionDesc}>點選下方項目快速熟悉各項貼心功能</Text>
+              <Text style={styles.sectionTitle}>📌 18 大操作速查</Text>
+              <Text style={styles.sectionDesc}>快速熟悉各項貼心功能</Text>
             </View>
 
             {GUIDE_ITEMS.map((item) => {
