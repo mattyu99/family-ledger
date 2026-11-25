@@ -5,7 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Dimensions,
+  useWindowDimensions,
   Platform,
   Alert,
   Keyboard,
@@ -20,8 +20,6 @@ import { ThemeColors } from '../theme/colors';
 import { sortAccountsByUser } from '../lib/payment';
 import { detectIssuerBank, findSameIssuerBillingPeerCards } from '../lib/bankIssuer';
 import { HorizontalScrollView } from './HorizontalScrollView';
-
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const COLOR_PALETTE = [
   '#1E40AF', // 富邦藍
@@ -63,6 +61,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   scope = 'my',
 }) => {
   const { isDark, colors } = useTheme();
+  const { height: windowHeight } = useWindowDimensions();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const { currentLedger, paymentAccounts, addPaymentAccount, updatePaymentAccount, syncPaymentAccountsBillingDates, deletePaymentAccount, restoreDefaultAccounts, members, currentUser, isOwner, getMemberById } = useLedger();
 
@@ -79,10 +78,13 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   const [editingId, setEditingId] = useState<string | null>(null);
   const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
   const formScrollRef = useRef<ScrollView>(null);
+  const fieldYMapRef = useRef<Record<string, number>>({});
+  const focusedFieldRef = useRef<string | null>(null);
 
   // 當彈窗關閉時，自動重設為瀏覽清單狀態；開啟且有傳入 initialTab 時自動切換
   useEffect(() => {
     if (!visible) {
+      Keyboard.dismiss();
       setIsEditing(false);
       setEditingId(null);
     } else if (initialTab) {
@@ -130,26 +132,51 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     };
   }, []);
 
-  const handleInputFocus = (field: 'name' | 'lastFour' | 'cycleDate' | 'dueDay' | 'balance' | 'cardNumber' | 'issuerBank') => {
-    // Web 版具有自然視窗佈局，點擊輸入框嚴禁強制捲動避免將輸入框頂出視野
-    if (Platform.OS === 'web') return;
-    const scrollMap: Record<string, number> = {
-      name: 0,
-      issuerBank: 80,
-      lastFour: 150,
-      cycleDate: 220,
-      dueDay: 270,
-      balance: 140,
-      cardNumber: 180,
-    };
-    setTimeout(() => {
-      formScrollRef.current?.scrollTo({ y: scrollMap[field] ?? 0, animated: true });
-    }, 120);
+  const registerFieldY = (field: string, y: number) => {
+    fieldYMapRef.current[field] = y;
   };
 
-  const dynamicBottomPadding = keyboardOffset > 0
-    ? (keyboardOffset + 24)
-    : 30;
+  const scrollToField = useCallback((field: string, delay = 140) => {
+    // Web 版具有自然視窗佈局，點擊輸入框嚴禁強制捲動避免將輸入框頂出視野
+    if (Platform.OS === 'web') return;
+    setTimeout(() => {
+      const targetY = fieldYMapRef.current[field];
+      if (typeof targetY === 'number') {
+        formScrollRef.current?.scrollTo({
+          y: Math.max(0, targetY - 16),
+          animated: true,
+        });
+      }
+    }, delay);
+  }, []);
+
+  const handleInputFocus = (field: 'name' | 'lastFour' | 'cycleDate' | 'dueDay' | 'balance' | 'cardNumber' | 'issuerBank') => {
+    focusedFieldRef.current = field;
+    scrollToField(field, 120);
+  };
+
+  // 當鍵盤高度改變（例如首次升起導致面板縮小）時，重新將當前焦點欄位捲入可視區
+  useEffect(() => {
+    if (isEditing && keyboardOffset > 0 && focusedFieldRef.current) {
+      scrollToField(focusedFieldRef.current, 80);
+    }
+    if (!isEditing || keyboardOffset === 0) {
+      focusedFieldRef.current = null;
+    }
+  }, [keyboardOffset, isEditing, scrollToField]);
+
+  const baseSheetHeight = Math.round(windowHeight * 0.9);
+  const effectiveSheetHeight =
+    Platform.OS === 'web'
+      ? ('90vh' as any)
+      : keyboardOffset > 0
+      ? Math.min(baseSheetHeight, Math.max(260, windowHeight - keyboardOffset - 48))
+      : baseSheetHeight;
+
+  const dynamicBottomPadding =
+    Platform.OS === 'web'
+      ? (keyboardOffset > 0 ? keyboardOffset + 24 : 30)
+      : (keyboardOffset > 0 ? 48 : 30);
 
   // 表單狀態
   const [formType, setFormType] = useState<AccountType>('credit_card');
@@ -330,7 +357,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
         (p.payment_due_day ?? null) !== (acc.payment_due_day ?? null)
     );
     setIsEditingSharedBillingDates(peers.length === 0 || peerMismatch);
-    setFormBalance(String(acc.balance || 0));
+    setFormBalance(String(acc.balance ?? 0));
     setFormColor(acc.color || (acc.type === 'bank' ? COLOR_PALETTE[6] : COLOR_PALETTE[0]));
     const detected = acc.type === 'credit_card' ? detectIssuerBank(acc.name, acc.issuer_bank) : null;
     setIsManualIssuer(!!acc.issuer_bank);
@@ -380,7 +407,9 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
       formType === 'credit_card' && !isNaN(parsedDueNum) && parsedDueNum >= 1 && parsedDueNum <= 31
         ? parsedDueNum
         : null;
-    const balanceNum = parseFloat(formBalance) || 0;
+    const parsedBalance = parseFloat(formBalance.replace(/,/g, '').trim());
+    const balanceNum = Number.isFinite(parsedBalance) ? parsedBalance : 0;
+    const hasBalanceField = formType === 'stored_value' || formType === 'bank' || formType === 'cash';
     const targetUserId = (!isOwner && scope === 'my')
       ? (formUserId && isMatchedToCurrentUser(formUserId) ? formUserId : (currentUser?.id || null))
       : (formUserId ? formUserId : (null as any));
@@ -395,7 +424,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
         billing_cycle_date: formType === 'credit_card' ? validCycle : undefined,
         payment_due_day: formType === 'credit_card' ? validDueDay : undefined,
         issuer_bank: finalIssuerBankForUpdate,
-        balance: formType === 'stored_value' ? balanceNum : 0,
+        balance: hasBalanceField ? balanceNum : 0,
         color: formColor,
       });
     } else {
@@ -408,7 +437,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
         billing_cycle_date: formType === 'credit_card' ? validCycle : undefined,
         payment_due_day: formType === 'credit_card' ? validDueDay : undefined,
         issuer_bank: finalIssuerBankForAdd,
-        balance: formType === 'stored_value' ? balanceNum : 0,
+        balance: hasBalanceField ? balanceNum : 0,
         color: formColor,
         icon:
           formType === 'credit_card'
@@ -444,6 +473,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     if (formType === 'stored_value' || formType === 'credit_card' || formType === 'bank' || formType === 'cash' || formType === 'carrier') {
       setActiveTab(formType);
     }
+    Keyboard.dismiss();
     setIsEditing(false);
     setEditingId(null);
   };
@@ -501,10 +531,28 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.overlay}
+        style={[
+          styles.overlay,
+          Platform.OS === 'android' && keyboardOffset > 0 ? { paddingBottom: keyboardOffset } : null,
+        ]}
       >
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
-        <View style={styles.sheet}>
+        <TouchableOpacity
+          style={styles.backdrop}
+          activeOpacity={1}
+          onPress={() => {
+            Keyboard.dismiss();
+            onClose();
+          }}
+        />
+        <View
+          style={[
+            styles.sheet,
+            {
+              height: effectiveSheetHeight,
+              maxHeight: Platform.OS === 'web' ? ('92vh' as any) : Math.round(windowHeight * 0.94),
+            },
+          ]}
+        >
           {/* 標頭 */}
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
@@ -547,6 +595,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
             </View>
             <TouchableOpacity
               onPress={() => {
+                Keyboard.dismiss();
                 if (isEditing) {
                   setIsEditing(false);
                   setEditingId(null);
@@ -661,7 +710,11 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
               </View>
 
               {/* 類型選擇 */}
-              <View style={styles.typeToggle}>
+              <HorizontalScrollView
+                showsHorizontalScrollIndicator={false}
+                style={styles.typeToggleScroll}
+                contentContainerStyle={styles.typeToggle}
+              >
                 <TouchableOpacity
                   style={[styles.typeBtn, formType === 'credit_card' && styles.typeBtnActive]}
                   onPress={() => {
@@ -669,7 +722,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     if (!editingId && formName === '玉山銀行 薪轉戶') setFormName('富邦 Costco 卡');
                   }}
                 >
-                  <Text style={[styles.typeBtnText, formType === 'credit_card' && styles.typeBtnTextActive]}>
+                  <Text numberOfLines={1} style={[styles.typeBtnText, formType === 'credit_card' && styles.typeBtnTextActive]}>
                     💳 信用卡
                   </Text>
                 </TouchableOpacity>
@@ -680,7 +733,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     if (!editingId && (formName === '富邦 Costco 卡' || formName === '玉山銀行 薪轉戶')) setFormName('悠遊卡');
                   }}
                 >
-                  <Text style={[styles.typeBtnText, formType === 'stored_value' && styles.typeBtnTextActive]}>
+                  <Text numberOfLines={1} style={[styles.typeBtnText, formType === 'stored_value' && styles.typeBtnTextActive]}>
                     🚌 儲值卡
                   </Text>
                 </TouchableOpacity>
@@ -691,7 +744,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     if (!editingId && (formName === '富邦 Costco 卡' || formName === '悠遊卡' || formName === '現金皮夾')) setFormName('玉山銀行 薪轉戶');
                   }}
                 >
-                  <Text style={[styles.typeBtnText, formType === 'bank' && styles.typeBtnTextActive]}>
+                  <Text numberOfLines={1} style={[styles.typeBtnText, formType === 'bank' && styles.typeBtnTextActive]}>
                     🏦 銀行帳戶
                   </Text>
                 </TouchableOpacity>
@@ -702,7 +755,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     if (!editingId && (formName === '富邦 Costco 卡' || formName === '悠遊卡' || formName === '玉山銀行 薪轉戶')) setFormName('現金皮夾');
                   }}
                 >
-                  <Text style={[styles.typeBtnText, formType === 'cash' && styles.typeBtnTextActive]}>
+                  <Text numberOfLines={1} style={[styles.typeBtnText, formType === 'cash' && styles.typeBtnTextActive]}>
                     💵 現金皮包
                   </Text>
                 </TouchableOpacity>
@@ -713,42 +766,44 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     if (!editingId && (formName === '富邦 Costco 卡' || formName === '悠遊卡' || formName === '玉山銀行 薪轉戶' || formName === '現金皮夾')) setFormName('【樂購蝦皮】載具');
                   }}
                 >
-                  <Text style={[styles.typeBtnText, formType === 'carrier' && styles.typeBtnTextActive]}>
+                  <Text numberOfLines={1} style={[styles.typeBtnText, formType === 'carrier' && styles.typeBtnTextActive]}>
                     🛍️ 網購載具
                   </Text>
                 </TouchableOpacity>
-              </View>
+              </HorizontalScrollView>
 
               {/* 卡片/帳戶名稱 */}
-              <Text style={styles.fieldLabel}>
-                {formType === 'credit_card'
-                  ? '卡片名稱'
-                  : formType === 'bank'
-                  ? '銀行 / 帳戶名稱'
-                  : formType === 'cash'
-                  ? '現金皮夾名稱'
-                  : formType === 'carrier'
-                  ? '載具 / 會員自訂名稱'
-                  : '卡片名稱'}
-              </Text>
-              <TextInput
-                style={styles.textInput}
-                value={formName}
-                onChangeText={handleNameChange}
-                placeholder={
-                  formType === 'credit_card'
-                    ? '例如：富邦 Costco 聯名卡'
+              <View onLayout={(e) => registerFieldY('name', e.nativeEvent.layout.y)}>
+                <Text style={styles.fieldLabel}>
+                  {formType === 'credit_card'
+                    ? '卡片名稱'
                     : formType === 'bank'
-                    ? '例如：玉山銀行 薪轉戶、台新 Richart'
+                    ? '銀行 / 帳戶名稱'
                     : formType === 'cash'
-                    ? '例如：爸爸皮夾、公用零用金'
+                    ? '現金皮夾名稱'
                     : formType === 'carrier'
-                    ? '例如：【樂購蝦皮】載具、PSN 跨境電商'
-                    : '例如：爸爸悠遊卡'
-                }
-                onFocus={() => handleInputFocus('name')}
-                returnKeyType="next"
-              />
+                    ? '載具 / 會員自訂名稱'
+                    : '卡片名稱'}
+                </Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={formName}
+                  onChangeText={handleNameChange}
+                  placeholder={
+                    formType === 'credit_card'
+                      ? '例如：富邦 Costco 聯名卡'
+                      : formType === 'bank'
+                      ? '例如：玉山銀行 薪轉戶、台新 Richart'
+                      : formType === 'cash'
+                      ? '例如：爸爸皮夾、公用零用金'
+                      : formType === 'carrier'
+                      ? '例如：【樂購蝦皮】載具、PSN 跨境電商'
+                      : '例如：爸爸悠遊卡'
+                  }
+                  onFocus={() => handleInputFocus('name')}
+                  returnKeyType="next"
+                />
+              </View>
 
               {/* 持卡人 / 帳戶持有人 */}
               <Text style={styles.fieldLabel}>
@@ -837,33 +892,37 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                   </HorizontalScrollView>
 
                   {/* 自訂或微調發卡機構名稱 */}
-                  <TextInput
-                    style={styles.textInput}
-                    value={formIssuerBank}
-                    onChangeText={text => {
-                      setFormIssuerBank(text);
-                      setIsManualIssuer(true);
-                    }}
-                    placeholder="例如：國泰世華、台北富邦、樂天、新光..."
-                    onFocus={() => handleInputFocus('issuerBank')}
-                    returnKeyType="next"
-                  />
+                  <View onLayout={(e) => registerFieldY('issuerBank', e.nativeEvent.layout.y)}>
+                    <TextInput
+                      style={styles.textInput}
+                      value={formIssuerBank}
+                      onChangeText={text => {
+                        setFormIssuerBank(text);
+                        setIsManualIssuer(true);
+                      }}
+                      placeholder="例如：國泰世華、台北富邦、樂天、新光..."
+                      onFocus={() => handleInputFocus('issuerBank')}
+                      returnKeyType="next"
+                    />
+                  </View>
                   <Text style={styles.fieldHint}>
                     💡 設定發卡機構後，同銀行名下多張信用卡在對帳時會自動合併歸戶，上傳一張電子帳單即可全卡自動對齊！
                   </Text>
 
                   {/* 末四碼 */}
-                  <Text style={styles.fieldLabel}>卡片末四碼 (選填，方便對帳辨識)</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    value={formLastFour}
-                    onChangeText={setFormLastFour}
-                    placeholder="例如：8829"
-                    keyboardType="numeric"
-                    maxLength={4}
-                    onFocus={() => handleInputFocus('lastFour')}
-                    returnKeyType="next"
-                  />
+                  <View onLayout={(e) => registerFieldY('lastFour', e.nativeEvent.layout.y)}>
+                    <Text style={styles.fieldLabel}>卡片末四碼 (選填，方便對帳辨識)</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      value={formLastFour}
+                      onChangeText={setFormLastFour}
+                      placeholder="例如：8829"
+                      keyboardType="numeric"
+                      maxLength={4}
+                      onFocus={() => handleInputFocus('lastFour')}
+                      returnKeyType="next"
+                    />
+                  </View>
 
                   {/* 結帳日與繳款截止日（同持卡人同發卡銀行自動共用，免重填防衝突） */}
                   {sameIssuerPeers.length > 0 && !isEditingSharedBillingDates ? (
@@ -898,30 +957,34 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                     </View>
                   ) : (
                     <>
-                      <Text style={styles.fieldLabel}>每月結帳日 (1 ~ 31 號，依帳單切分週期)</Text>
-                      <TextInput
-                        style={styles.textInput}
-                        value={formCycleDate}
-                        onChangeText={setFormCycleDate}
-                        placeholder="15"
-                        keyboardType="numeric"
-                        maxLength={2}
-                        onFocus={() => handleInputFocus('cycleDate')}
-                        returnKeyType="next"
-                      />
+                      <View onLayout={(e) => registerFieldY('cycleDate', e.nativeEvent.layout.y)}>
+                        <Text style={styles.fieldLabel}>每月結帳日 (1 ~ 31 號，依帳單切分週期)</Text>
+                        <TextInput
+                          style={styles.textInput}
+                          value={formCycleDate}
+                          onChangeText={setFormCycleDate}
+                          placeholder="15"
+                          keyboardType="numeric"
+                          maxLength={2}
+                          onFocus={() => handleInputFocus('cycleDate')}
+                          returnKeyType="next"
+                        />
+                      </View>
 
-                      <Text style={styles.fieldLabel}>每月繳款截止日 (1 ~ 31 號，選填，供繳款提醒)</Text>
-                      <TextInput
-                        style={styles.textInput}
-                        value={formDueDay}
-                        onChangeText={(t) => setFormDueDay(t.replace(/\D/g, '').slice(0, 2))}
-                        placeholder="留空則預設結帳日 + 20 天"
-                        keyboardType="numeric"
-                        maxLength={2}
-                        onFocus={() => handleInputFocus('dueDay')}
-                        returnKeyType="done"
-                        onSubmitEditing={Keyboard.dismiss}
-                      />
+                      <View onLayout={(e) => registerFieldY('dueDay', e.nativeEvent.layout.y)}>
+                        <Text style={styles.fieldLabel}>每月繳款截止日 (1 ~ 31 號，選填，供繳款提醒)</Text>
+                        <TextInput
+                          style={styles.textInput}
+                          value={formDueDay}
+                          onChangeText={(t) => setFormDueDay(t.replace(/\D/g, '').slice(0, 2))}
+                          placeholder="留空則預設結帳日 + 20 天"
+                          keyboardType="numeric"
+                          maxLength={2}
+                          onFocus={() => handleInputFocus('dueDay')}
+                          returnKeyType="done"
+                          onSubmitEditing={Keyboard.dismiss}
+                        />
+                      </View>
 
                       <Text style={styles.fieldHint}>
                         {(() => {
@@ -942,30 +1005,34 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
               ) : formType === 'bank' ? (
                 <>
                   {/* 目前存款餘額 */}
-                  <Text style={styles.fieldLabel}>目前帳戶存款餘額 (TWD)</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    value={formBalance}
-                    onChangeText={setFormBalance}
-                    placeholder="例如：50000"
-                    keyboardType="numeric"
-                    onFocus={() => handleInputFocus('balance')}
-                    returnKeyType="next"
-                  />
+                  <View onLayout={(e) => registerFieldY('balance', e.nativeEvent.layout.y)}>
+                    <Text style={styles.fieldLabel}>目前帳戶存款餘額 (TWD)</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      value={formBalance}
+                      onChangeText={setFormBalance}
+                      placeholder="例如：50000"
+                      keyboardType="numeric"
+                      onFocus={() => handleInputFocus('balance')}
+                      returnKeyType="next"
+                    />
+                  </View>
 
                   {/* 銀行帳號末碼 */}
-                  <Text style={styles.fieldLabel}>帳號末五碼 / 末四碼 (選填，方便對帳辨識)</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    value={formLastFour}
-                    onChangeText={setFormLastFour}
-                    placeholder="例如：12345"
-                    keyboardType="numeric"
-                    maxLength={10}
-                    onFocus={() => handleInputFocus('lastFour')}
-                    returnKeyType="done"
-                    onSubmitEditing={Keyboard.dismiss}
-                  />
+                  <View onLayout={(e) => registerFieldY('lastFour', e.nativeEvent.layout.y)}>
+                    <Text style={styles.fieldLabel}>帳號末五碼 / 末四碼 (選填，方便對帳辨識)</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      value={formLastFour}
+                      onChangeText={setFormLastFour}
+                      placeholder="例如：12345"
+                      keyboardType="numeric"
+                      maxLength={10}
+                      onFocus={() => handleInputFocus('lastFour')}
+                      returnKeyType="done"
+                      onSubmitEditing={Keyboard.dismiss}
+                    />
+                  </View>
                   <Text style={styles.fieldHint}>
                     💡 建立銀行帳戶後，在轉帳、提款或設定水電週期扣款時，系統將即時連動扣減並計入家庭總淨值。
                   </Text>
@@ -973,17 +1040,19 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
               ) : formType === 'cash' ? (
                 <>
                   {/* 現金皮包餘額 */}
-                  <Text style={styles.fieldLabel}>目前現金皮包餘額 (TWD)</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    value={formBalance}
-                    onChangeText={setFormBalance}
-                    placeholder="例如：3000"
-                    keyboardType="numeric"
-                    onFocus={() => handleInputFocus('balance')}
-                    returnKeyType="done"
-                    onSubmitEditing={Keyboard.dismiss}
-                  />
+                  <View onLayout={(e) => registerFieldY('balance', e.nativeEvent.layout.y)}>
+                    <Text style={styles.fieldLabel}>目前現金皮包餘額 (TWD)</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      value={formBalance}
+                      onChangeText={setFormBalance}
+                      placeholder="例如：3000"
+                      keyboardType="numeric"
+                      onFocus={() => handleInputFocus('balance')}
+                      returnKeyType="done"
+                      onSubmitEditing={Keyboard.dismiss}
+                    />
+                  </View>
                   <Text style={styles.fieldHint}>
                     💡 現金皮包餘額將自動計入家庭總資產；提款時可一鍵從銀行轉出並充實此皮夾現金。
                   </Text>
@@ -991,17 +1060,19 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
               ) : formType === 'carrier' ? (
                 <>
                   {/* 網購/會員載具代碼 */}
-                  <Text style={styles.fieldLabel}>載具代碼 / 會員代碼 / Email (必填)</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    value={formCardNumber}
-                    onChangeText={setFormCardNumber}
-                    placeholder="例如：蝦皮 16729177、PSN mattyu09@...、MOMO 201103507225"
-                    autoCapitalize="none"
-                    onFocus={() => handleInputFocus('cardNumber')}
-                    returnKeyType="done"
-                    onSubmitEditing={Keyboard.dismiss}
-                  />
+                  <View onLayout={(e) => registerFieldY('cardNumber', e.nativeEvent.layout.y)}>
+                    <Text style={styles.fieldLabel}>載具代碼 / 會員代碼 / Email (必填)</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      value={formCardNumber}
+                      onChangeText={setFormCardNumber}
+                      placeholder="例如：蝦皮 16729177、PSN mattyu09@...、MOMO 201103507225"
+                      autoCapitalize="none"
+                      onFocus={() => handleInputFocus('cardNumber')}
+                      returnKeyType="done"
+                      onSubmitEditing={Keyboard.dismiss}
+                    />
+                  </View>
                   <Text style={styles.fieldHint}>
                     💡 設定後，財政部發票 CSV 匯入只要出現此代碼，系統將自動分流給指定成員，無需建立假卡！
                   </Text>
@@ -1009,30 +1080,34 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
               ) : (
                 <>
                   {/* 當前餘額 */}
-                  <Text style={styles.fieldLabel}>目前卡片餘額 (TWD)</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    value={formBalance}
-                    onChangeText={setFormBalance}
-                    placeholder="0"
-                    keyboardType="numeric"
-                    onFocus={() => handleInputFocus('balance')}
-                    returnKeyType="next"
-                  />
+                  <View onLayout={(e) => registerFieldY('balance', e.nativeEvent.layout.y)}>
+                    <Text style={styles.fieldLabel}>目前卡片餘額 (TWD)</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      value={formBalance}
+                      onChangeText={setFormBalance}
+                      placeholder="0"
+                      keyboardType="numeric"
+                      onFocus={() => handleInputFocus('balance')}
+                      returnKeyType="next"
+                    />
+                  </View>
 
                   {/* 悠遊卡完整卡號 */}
-                  <Text style={styles.fieldLabel}>悠遊卡卡號 (選填，嚴格上限 16 碼，方便官網查餘額與明細)</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    value={formCardNumber}
-                    onChangeText={text => setFormCardNumber(text.replace(/\D/g, '').slice(0, 16))}
-                    placeholder="例如：0123456789 (舊卡10碼 / 新卡16碼)"
-                    keyboardType="numeric"
-                    maxLength={16}
-                    onFocus={() => handleInputFocus('cardNumber')}
-                    returnKeyType="done"
-                    onSubmitEditing={Keyboard.dismiss}
-                  />
+                  <View onLayout={(e) => registerFieldY('cardNumber', e.nativeEvent.layout.y)}>
+                    <Text style={styles.fieldLabel}>悠遊卡卡號 (選填，嚴格上限 16 碼，方便官網查餘額與明細)</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      value={formCardNumber}
+                      onChangeText={text => setFormCardNumber(text.replace(/\D/g, '').slice(0, 16))}
+                      placeholder="例如：0123456789 (舊卡10碼 / 新卡16碼)"
+                      keyboardType="numeric"
+                      maxLength={16}
+                      onFocus={() => handleInputFocus('cardNumber')}
+                      returnKeyType="done"
+                      onSubmitEditing={Keyboard.dismiss}
+                    />
+                  </View>
                   <Text style={[styles.fieldHint, (formCardNumber.length === 10 || formCardNumber.length === 16) && { color: '#059669', fontWeight: '600' }]}>
                     {formCardNumber.length === 10
                       ? '✓ 已輸入 10 碼（舊版悠遊卡標準長度）'
@@ -1063,6 +1138,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                 <TouchableOpacity
                   style={styles.cancelFormBtn}
                   onPress={() => {
+                    Keyboard.dismiss();
                     setIsEditing(false);
                     setEditingId(null);
                   }}
@@ -1073,7 +1149,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                   <Text style={styles.saveFormText}>儲存設定</Text>
                 </TouchableOpacity>
               </View>
-              <View style={{ height: 30 }} />
+              <View style={{ height: 12 }} />
             </ScrollView>
           ) : (
             /* 卡片清單列表 */
@@ -1450,7 +1526,6 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     backgroundColor: isDark ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
     width: '100%',
-    height: '100%',
   },
   backdrop: {
     position: 'absolute',
@@ -1463,8 +1538,6 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.background.modal,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    height: Math.min(SCREEN_HEIGHT * 0.85, 650),
-    maxHeight: Math.min(SCREEN_HEIGHT * 0.9, 720),
     paddingTop: 16,
     paddingHorizontal: 16,
     paddingBottom: Platform.OS === 'ios' ? 24 : 16,
@@ -1683,18 +1756,25 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontWeight: '700',
     color: colors.text.primary,
   },
+  typeToggleScroll: {
+    flexGrow: 0,
+    width: '100%',
+    marginBottom: 12,
+  },
   typeToggle: {
     flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: isDark ? colors.background.cardSubtle : '#F1F5F9',
     borderRadius: 10,
     padding: 3,
-    marginBottom: 12,
+    gap: 4,
   },
   typeBtn: {
-    flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 11,
     alignItems: 'center',
     borderRadius: 8,
+    flexShrink: 0,
   },
   typeBtnActive: {
     backgroundColor: isDark ? colors.background.card : '#FFFFFF',
