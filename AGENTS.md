@@ -44,6 +44,7 @@ Docs: https://docs.expo.dev/eas/index.md
   3. **每次前進小版必重新檢視**：每次推進小版號新增或修改更新歷程時，務必重新全面檢視該主版本下的所有條目，確保整併適當、分列清晰。
   4. **通俗易懂、嚴禁工程術語**：更新歷程是給一般家庭使用者閱讀的，嚴禁出現專業/底層程式術語（例如 `includeFontPadding=false`、`HorizontalScrollView`、`getMemberById`、`RPC`、`Zero-Token`、`UUID` 等），一律使用親切、清晰的日常繁體中文描述功能與好處。
 - **思考與回覆語言規範**：在內部思考推導（Thinking / Chain of Thought）及所有回覆、對話與說明中，一律使用繁體中文進行分析、推理、決策與陳述，確保思考歷程親切直觀易讀。
+- **UI 修改優先使用 Playwright 背景截圖驗收**：涉及畫面排版、樣式、配色或文字顯示調整時，優先啟用專案技能 `playwright-ui-verify`，在背景以 Playwright 無頭瀏覽器一次擷取手機尺寸（390×844，必要時加測 360×780）之「標準 (100%)／特大長輩 (125%)」與「淺色／深色」畫面並讀圖驗收；僅於需即時互動除錯或直接檢視使用者已登入分頁時，才改用 Chrome 遠端偵錯代理，以節省 AI Token 並兼顧長輩大字與深色品質。
 - If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
 - Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
 - Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
