@@ -3,6 +3,11 @@ import { test, expect, Page } from '@playwright/test';
 // 注入已登入公帳本機快取輔助函式
 async function injectActiveLedgerState(page: Page) {
   await page.addInitScript(() => {
+    if (window.localStorage.getItem('@family_ledger_e2e_seeded') === 'true') {
+      return;
+    }
+    window.localStorage.setItem('@family_ledger_e2e_seeded', 'true');
+
     const mockLedger = {
       id: 'ab10fe7e-d0d8-4bc9-b338-24620d26d924',
       name: '幸福小窩家庭公帳',
@@ -35,6 +40,10 @@ async function injectActiveLedgerState(page: Page) {
     window.localStorage.setItem('@family_ledger_has_joined', 'true');
     window.localStorage.setItem('@family_ledger_invite_code', 'FAM-8823');
     window.localStorage.setItem('@family_ledger_transactions', JSON.stringify([]));
+    window.localStorage.setItem(`@family_ledger_transactions_${mockLedger.id}`, JSON.stringify([]));
+    window.localStorage.setItem('@family_ledger_payment_accounts', JSON.stringify([]));
+    window.localStorage.setItem(`@family_ledger_payment_accounts_${mockLedger.id}`, JSON.stringify([]));
+    window.localStorage.setItem('@family_ledger_accounts_initialized', 'true');
     window.localStorage.setItem('@family_ledger_categories', JSON.stringify([
       { id: '30000000-0000-4000-8000-000000000001', name: '餐飲伙食', icon: '🍲', color: '#EF4444', type: 'expense', sort_order: 1 },
       { id: '30000000-0000-4000-8000-000000000002', name: '生鮮超市', icon: '🛒', color: '#F59E0B', type: 'expense', sort_order: 2 },
@@ -111,12 +120,68 @@ test.describe('家庭記帳本 Web 端：核心分頁導航與操作流', () => 
   test('分頁切換：點擊「帳單支付」分頁能呈現帳單與資產概況', async ({ page }) => {
     await page.goto('/family-ledger/');
     await page.getByText('帳單支付', { exact: true }).last().click();
-    await expect(page.getByText(/帳單與支付資產|定期扣款|分期攤提/).first()).toBeVisible();
+    await expect(page.getByText(/帳單與支付資產/).first()).toBeVisible();
+    await expect(page.getByText('📊 對帳', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('⚙️ 管理', { exact: true }).first()).toBeVisible();
   });
 
   test('分頁切換：點擊「家庭設定」能呈現公帳版本與設定選項', async ({ page }) => {
     await page.goto('/family-ledger/');
     await page.getByText('家庭設定', { exact: true }).last().click();
-    await expect(page.getByText(/甜心記帳本|字體大小|家庭成員/).first()).toBeVisible();
+    await expect(page.getByText(/甜心記帳本/).first()).toBeVisible();
+    await expect(page.getByText(/家庭成員名單/).first()).toBeVisible();
+    await expect(page.getByText(/字型大小與顯示/).first()).toBeVisible();
+  });
+
+  test('帳戶餘額儲存防歸零：新增銀行帳戶與現金皮包填寫餘額，儲存與重整後仍完整保留', async ({ page }) => {
+    await page.goto('/family-ledger/');
+    await page.getByText('帳單支付', { exact: true }).last().click();
+    await page.getByText('⚙️ 管理', { exact: true }).first().click();
+
+    // 1. 新增銀行帳戶並填寫餘額 58800
+    await page.getByText(/🏦 銀行/).first().click();
+    await page.getByText(/新增銀行帳戶|新增第一個銀行帳戶/).first().click();
+    await page.getByPlaceholder('例如：玉山銀行 薪轉戶、台新 Richart').fill('玉山薪轉測試戶');
+    await page.getByPlaceholder('例如：50000').fill('58800');
+    await page.getByText('儲存設定', { exact: true }).click();
+
+    await expect(page.getByText('玉山薪轉測試戶', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText(/存款餘額：NT\$ 58,800/).first()).toBeVisible();
+
+    // 2. 新增現金皮包並填寫餘額 3650
+    await page.getByText(/💵 現金/).first().click();
+    await page.getByText(/新增現金皮包|新增第一個現金皮夾/).first().click();
+    await page.getByPlaceholder('例如：爸爸皮夾、公用零用金').fill('爸爸測試皮夾');
+    await page.getByPlaceholder('例如：3000').fill('3650');
+    await page.getByText('儲存設定', { exact: true }).click();
+
+    await expect(page.getByText('爸爸測試皮夾', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText(/目前現金：NT\$ 3,650/).first()).toBeVisible();
+
+    // 3. 驗證 localStorage 持久化欄位值確實非 0
+    const savedBalances = await page.evaluate(() => {
+      const ledgerKey = '@family_ledger_payment_accounts_ab10fe7e-d0d8-4bc9-b338-24620d26d924';
+      const raw = window.localStorage.getItem(ledgerKey) || window.localStorage.getItem('@family_ledger_payment_accounts') || '[]';
+      const list = JSON.parse(raw) as Array<{ name: string; balance: number }>;
+      return {
+        bank: list.find(a => a.name === '玉山薪轉測試戶')?.balance ?? null,
+        cash: list.find(a => a.name === '爸爸測試皮夾')?.balance ?? null,
+      };
+    });
+    expect(savedBalances.bank).toBe(58800);
+    expect(savedBalances.cash).toBe(3650);
+
+    // 4. 整頁重新整理後，再次開啟管理面板確認餘額完整保留不歸零
+    await page.reload();
+    await page.getByText('帳單支付', { exact: true }).last().click();
+    await page.getByText('⚙️ 管理', { exact: true }).first().click();
+
+    await page.getByText(/🏦 銀行/).first().click();
+    await expect(page.getByText('玉山薪轉測試戶', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText(/存款餘額：NT\$ 58,800/).first()).toBeVisible();
+
+    await page.getByText(/💵 現金/).first().click();
+    await expect(page.getByText('爸爸測試皮夾', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText(/目前現金：NT\$ 3,650/).first()).toBeVisible();
   });
 });
