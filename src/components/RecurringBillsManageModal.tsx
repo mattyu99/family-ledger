@@ -961,8 +961,8 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
         <View style={styles.modalContainer}>
           {/* Header */}
           <View style={styles.header}>
-            <View style={styles.headerTitleContainer}>
-              <Text style={styles.headerTitle} maxFontSizeMultiplier={1.15} numberOfLines={1}>
+            <View style={[styles.headerTitleContainer, { marginRight: 8 }]}>
+              <Text style={styles.headerTitle} maxFontSizeMultiplier={1.15}>
                 {targetMemberObj && isTargetingOtherMember
                   ? `🗓️ ${targetMemberObj.display_name} 的週期扣款`
                   : scope === 'my'
@@ -979,23 +979,25 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                       : '全家固定扣繳一覽（純瀏覽模式，僅管理員可異動規則）')}
               </Text>
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <TouchableOpacity
-                style={[styles.vaultToggleBtn, showStatementVault && styles.vaultToggleBtnActive]}
-                onPress={() => {
-                  setShowStatementVault(prev => !prev);
-                  setVaultFilterRuleId('');
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.vaultToggleBtnText, showStatementVault && styles.vaultToggleBtnTextActive]} maxFontSizeMultiplier={1.08} numberOfLines={1}>
-                  {showStatementVault ? '✕ 清單' : `📂 帳單庫${statements.length > 0 ? ` (${statements.length})` : ''}`}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-                <Text style={styles.closeButtonText} maxFontSizeMultiplier={1.15}>✕</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+              <Text style={styles.closeButtonText} maxFontSizeMultiplier={1.15}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* 固定帳單歸檔庫獨立切換列 */}
+          <View style={styles.vaultBarRow}>
+            <TouchableOpacity
+              style={[styles.vaultToggleBtn, showStatementVault && styles.vaultToggleBtnActive]}
+              onPress={() => {
+                setShowStatementVault(prev => !prev);
+                setVaultFilterRuleId('');
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.vaultToggleBtnText, showStatementVault && styles.vaultToggleBtnTextActive]} maxFontSizeMultiplier={1.08} numberOfLines={1}>
+                {showStatementVault ? '← 返回待繳核對與規則清單' : `📂 固定帳單歸檔庫${statements.length > 0 ? ` (${statements.length})` : ''}`}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* 若處於水電瓦斯與固定帳單歸檔庫模式 */}
@@ -1003,21 +1005,13 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
             <View style={styles.tabContent}>
               {/* 歸檔庫統計橫幅 */}
               <View style={styles.vaultBanner}>
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={styles.vaultBannerTitle}>📂 水電瓦斯與固定帳單雲端歸檔庫</Text>
-                    {loadingStatements && <ActivityIndicator size="small" color="#2563EB" />}
-                  </View>
-                  <Text style={styles.vaultBannerSub}>
-                    已歸檔 {filteredVaultStatements.length} 份帳單附件 · 佔用容量 {formatFileSize(totalVaultBytes)}
-                  </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={[styles.vaultBannerTitle, { flexShrink: 1 }]}>📂 水電瓦斯與固定帳單雲端歸檔庫</Text>
+                  {loadingStatements && <ActivityIndicator size="small" color="#2563EB" />}
                 </View>
-                <TouchableOpacity
-                  style={styles.vaultCloseBtn}
-                  onPress={() => setShowStatementVault(false)}
-                >
-                  <Text style={styles.vaultCloseBtnText}>✕ 返回核對</Text>
-                </TouchableOpacity>
+                <Text style={styles.vaultBannerSub}>
+                  已歸檔 {filteredVaultStatements.length} 份帳單附件 · 佔用容量 {formatFileSize(totalVaultBytes)}
+                </Text>
               </View>
 
               {/* 規則分類篩選滑軌 */}
@@ -2667,9 +2661,9 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingHorizontal: 20,
-    paddingBottom: 12,
+    paddingBottom: 10,
   },
   headerTitleContainer: {
     flex: 1,
@@ -4003,14 +3997,20 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     color: colors.text.secondary,
     fontWeight: '600',
   },
+  vaultBarRow: {
+    paddingHorizontal: 20,
+    marginBottom: 10,
+  },
   vaultToggleBtn: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: isDark ? 'rgba(37, 99, 235, 0.15)' : '#EFF6FF',
     borderWidth: 1,
     borderColor: isDark ? 'rgba(37, 99, 235, 0.35)' : '#BFDBFE',
     borderRadius: 10,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    marginRight: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   vaultToggleBtnActive: {
     backgroundColor: '#1D4ED8',
@@ -4203,9 +4203,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     color: isDark ? '#60A5FA' : '#1D4ED8',
   },
   vaultBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
+    alignItems: 'stretch',
     backgroundColor: isDark ? 'rgba(37, 99, 235, 0.15)' : '#EFF6FF',
     borderWidth: 1,
     borderColor: isDark ? 'rgba(37, 99, 235, 0.35)' : '#BFDBFE',
@@ -4222,20 +4221,6 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 11.5,
     color: isDark ? '#60A5FA' : '#3B82F6',
     marginTop: 2,
-  },
-  vaultCloseBtn: {
-    backgroundColor: isDark ? colors.background.cardSubtle : '#FFFFFF',
-    borderWidth: 1,
-    borderColor: colors.border.default,
-    borderRadius: 8,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    marginLeft: 8,
-  },
-  vaultCloseBtnText: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: colors.text.secondary,
   },
   vaultFilterScroll: {
     maxHeight: 38,

@@ -934,7 +934,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
         <View style={styles.sheet}>
           {/* 標頭 */}
           <View style={styles.header}>
-            <View style={{ flex: 1, marginRight: 8 }}>
+            <View style={{ flex: 1, marginRight: 10 }}>
               <Text style={styles.title} maxFontSizeMultiplier={1.15}>
                 {targetMemberObj && isTargetingOtherMember
                   ? (isCredit ? `💳 ${targetMemberObj.display_name} 的信用卡對帳` : `🚌 ${targetMemberObj.display_name} 的悠遊卡對帳`)
@@ -956,48 +956,6 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                       : '全家一覽瀏覽模式（您正在查看其他成員卡片，僅供瀏覽明細）')}
               </Text>
             </View>
-
-            {isCredit && creditCards.length > 0 && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <TouchableOpacity
-                  style={[styles.vaultToggleBtn, showPassbook && styles.vaultToggleBtnActive]}
-                  onPress={() => {
-                    setShowPassbook(prev => !prev);
-                    setShowStatementVault(false);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={[styles.vaultToggleBtnText, showPassbook && styles.vaultToggleBtnTextActive]}
-                    maxFontSizeMultiplier={1.08}
-                  >
-                    {showPassbook ? '← 返回對帳' : '📜 帳單存摺'}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.vaultToggleBtn, showStatementVault && styles.vaultToggleBtnActive]}
-                  onPress={() => {
-                    setShowStatementVault(prev => {
-                      const next = !prev;
-                      if (next) {
-                        refreshStatements();
-                        setShowPassbook(false);
-                      }
-                      return next;
-                    });
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={[styles.vaultToggleBtnText, showStatementVault && styles.vaultToggleBtnTextActive]}
-                    maxFontSizeMultiplier={1.08}
-                  >
-                    {showStatementVault ? '← 返回對帳' : `🗂️ 帳單庫 (${statements.length})`}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
 
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <Text style={styles.closeText} maxFontSizeMultiplier={1.15}>✕</Text>
@@ -1037,6 +995,50 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
             </TouchableOpacity>
           </View>
 
+          {isCredit && creditCards.length > 0 && (
+            <View style={styles.creditActionRow}>
+              <TouchableOpacity
+                style={[styles.vaultToggleBtn, showPassbook && styles.vaultToggleBtnActive]}
+                onPress={() => {
+                  setShowPassbook(prev => !prev);
+                  setShowStatementVault(false);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[styles.vaultToggleBtnText, showPassbook && styles.vaultToggleBtnTextActive]}
+                  maxFontSizeMultiplier={1.08}
+                  numberOfLines={1}
+                >
+                  {showPassbook ? '← 返回對帳' : '📜 帳單存摺'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.vaultToggleBtn, showStatementVault && styles.vaultToggleBtnActive]}
+                onPress={() => {
+                  setShowStatementVault(prev => {
+                    const next = !prev;
+                    if (next) {
+                      refreshStatements();
+                      setShowPassbook(false);
+                    }
+                    return next;
+                  });
+                }}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[styles.vaultToggleBtnText, showStatementVault && styles.vaultToggleBtnTextActive]}
+                  maxFontSizeMultiplier={1.08}
+                  numberOfLines={1}
+                >
+                  {showStatementVault ? '← 返回對帳' : `🗂️ 帳單庫 (${statements.length})`}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {activeCards.length === 0 ? (
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyIcon}>{isCredit ? '💳' : '🚌'}</Text>
@@ -1060,12 +1062,7 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
             <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
               <View style={styles.vaultBannerCard}>
                 <View style={styles.vaultBannerHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.vaultBannerTitle}>🗂️ 雲端信用卡電子帳單庫</Text>
-                    <Text style={styles.vaultBannerSub}>
-                      獨立存放於 Supabase Storage，完全不佔用記帳資料庫空間
-                    </Text>
-                  </View>
+                  <Text style={[styles.vaultBannerTitle, { flex: 1, marginRight: 8 }]}>🗂️ 雲端信用卡電子帳單庫</Text>
                   <TouchableOpacity
                     style={styles.vaultRefreshBtn}
                     onPress={refreshStatements}
@@ -1076,6 +1073,9 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
                     </Text>
                   </TouchableOpacity>
                 </View>
+                <Text style={styles.vaultBannerSub}>
+                  獨立存放於 Supabase Storage，完全不佔用記帳資料庫空間
+                </Text>
 
                 <View style={styles.quotaRow}>
                   <Text style={styles.quotaLabel}>
@@ -1200,14 +1200,10 @@ export const CreditCardReconciliationModal: React.FC<CreditCardReconciliationMod
             /* 📜 歷史帳單存摺總覽視圖 */
             <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
               <View style={styles.passbookBannerCard}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text style={styles.passbookBannerTitle}>📜 信用卡歷期帳單存摺</Text>
-                    <Text style={styles.passbookBannerSub}>
-                      依發卡機構自動歸戶彙總，完美對齊網銀與存摺扣款金額
-                    </Text>
-                  </View>
-                </View>
+                <Text style={styles.passbookBannerTitle}>📜 信用卡歷期帳單存摺</Text>
+                <Text style={styles.passbookBannerSub}>
+                  依發卡機構自動歸戶彙總，完美對齊網銀與存摺扣款金額
+                </Text>
 
                 {/* 存摺總計四大指標看板 */}
                 <View style={styles.passbookStatsRow}>
@@ -2248,7 +2244,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: isDark ? colors.border.default : '#F1F5F9',
@@ -2263,14 +2259,23 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     color: colors.text.muted,
     marginTop: 2,
   },
+  creditActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+    marginBottom: 8,
+  },
   vaultToggleBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: isDark ? 'rgba(37, 99, 235, 0.15)' : '#EFF6FF',
     borderWidth: 1,
     borderColor: isDark ? 'rgba(37, 99, 235, 0.35)' : '#BFDBFE',
     borderRadius: 10,
     paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginRight: 6,
+    paddingVertical: 8,
   },
   vaultToggleBtnActive: {
     backgroundColor: '#1D4ED8',
@@ -2891,7 +2896,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   vaultBannerTitle: {
     fontSize: 14,
@@ -2901,7 +2906,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   vaultBannerSub: {
     fontSize: 11,
     color: isDark ? '#60A5FA' : '#3B82F6',
-    marginTop: 2,
+    marginBottom: 8,
   },
   vaultRefreshBtn: {
     backgroundColor: isDark ? colors.background.card : '#FFFFFF',
