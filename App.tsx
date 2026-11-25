@@ -14,13 +14,14 @@ import {
   Linking,
   AppState,
   AppStateStatus,
+  useWindowDimensions,
 } from 'react-native';
 import * as Updates from 'expo-updates';
 import * as QuickActions from 'expo-quick-actions';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
-import { FontSizeProvider } from './src/theme/FontSizeContext';
+import { FontSizeProvider, useFontSize } from './src/theme/FontSizeContext';
 import { Text } from './src/components/common/Text';
 import { LedgerProvider, useLedger } from './src/context/LedgerContext';
 import { PrivacyProvider, usePrivacy } from './src/context/PrivacyContext';
@@ -107,6 +108,9 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
 
 const AppContent: React.FC = () => {
   const { themeMode, isDark, colors, toggleTheme } = useTheme();
+  const { fontScale } = useFontSize();
+  const { width: windowWidth } = useWindowDimensions();
+  const isCompactTopBar = fontScale >= 1.12 && windowWidth < 385;
   const {
     currentLedger,
     ledgers,
@@ -758,7 +762,7 @@ const AppContent: React.FC = () => {
         <View style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
           {/* 第一行：純品牌 Slogan 緩衝列 */}
           <View style={styles.topBarSubtitleRow}>
-            <Text style={[styles.ledgerSubtitle, { color: colors.text.muted }]} maxFontSizeMultiplier={1.2}>
+            <Text style={[styles.ledgerSubtitle, { color: colors.text.muted }]} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.15}>
               💖 甜心記帳本 · 一起記錄生活點滴
             </Text>
           </View>
@@ -793,7 +797,9 @@ const AppContent: React.FC = () => {
                   activeOpacity={0.7}
                   hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                 >
-                  <Text style={styles.ownerTopBadgeText} maxFontSizeMultiplier={1.2}>👑 管理員模式</Text>
+                  <Text style={styles.ownerTopBadgeText} maxFontSizeMultiplier={1.15} numberOfLines={1}>
+                    {isCompactTopBar ? '👑 管理' : '👑 管理員模式'}
+                  </Text>
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
@@ -802,7 +808,9 @@ const AppContent: React.FC = () => {
                   activeOpacity={0.7}
                   hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                 >
-                  <Text style={styles.dailyModeTopBadgeText} maxFontSizeMultiplier={1.2}>🛡️ 日常模式</Text>
+                  <Text style={styles.dailyModeTopBadgeText} maxFontSizeMultiplier={1.15} numberOfLines={1}>
+                    {isCompactTopBar ? '🛡️ 日常' : '🛡️ 日常模式'}
+                  </Text>
                 </TouchableOpacity>
               )
             )}

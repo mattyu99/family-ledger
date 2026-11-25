@@ -5,6 +5,7 @@ import { Text } from './common/Text';
 import { Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
+import { useFontSize } from '../theme/FontSizeContext';
 import { getCategoryIcon } from '../lib/icons';
 import { formatPaymentLabel, parseExpenseDiscount, isTransferToMember } from '../lib/payment';
 import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, getItemDueDateBadge, getEffectiveMemoReminderDate, isMemoRelayEnabled, getMemoRelayOffsetDays, formatLinkedTransactionSummary, updateChecklistItemReply, MemoChecklistItem } from '../lib/memo';
@@ -68,6 +69,8 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
     currentUser,
   } = useLedger();
   const { isDark, colors } = useTheme();
+  const { fontScale } = useFontSize();
+  const isLargeFont = fontScale >= 1.12;
 
   const [isGroupOrderAppendOpen, setIsGroupOrderAppendOpen] = useState(false);
   const [isGroupOrderCounterOpen, setIsGroupOrderCounterOpen] = useState(false);
@@ -1009,63 +1012,123 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
           </Text>
         </View>
 
-        {/* 第 2 行（說明行）：左側備註（若有），右側付款人 ＋ 支付方式（＋未隱藏時顯示日期） */}
-        <View style={[styles.bottomRow, !hasNote && styles.bottomRowAlignEnd]}>
-          {hasNote && (
-            <Text
-              style={[styles.noteText, isDark && { color: colors.text.secondary }]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-              maxFontSizeMultiplier={1.2}
-            >
-              {noteContent}
-            </Text>
-          )}
-          <View style={[styles.metaRow, hasNote && styles.metaRowConstrained]}>
-            <Text
-              style={[
-                styles.payerTag,
-                isDark && {
-                  backgroundColor: colors.background.cardSubtle,
-                  color: colors.text.secondary,
-                },
-              ]}
-              numberOfLines={1}
-              maxFontSizeMultiplier={1.15}
-            >
-              {isSelfTransfer
-                ? `存入【${linkedCard?.name || transaction.merchant || '儲值卡'}】`
-                : isTransferIn
-                ? `由 ${payer?.avatar_url || '👤'} ${payer?.display_name || '出資人'} 撥入`
-                : isTransferOut
-                ? `轉出至 ${recipient?.avatar_url || '👤'} ${recipient?.display_name || transaction.merchant}`
-                : isTransfer && recipient
-                ? `${payer?.avatar_url || '👤'} ${payer?.display_name || '出資'} ➔ ${recipient?.avatar_url || '👤'} ${recipient?.display_name || transaction.merchant}`
-                : `${payer?.avatar_url || '👤'} ${payer?.display_name || '成員'}`}
-            </Text>
-            {!!paymentLabel && (
-              <View style={[styles.paymentBadge, { borderColor: `${paymentLabel.color}35`, backgroundColor: `${paymentLabel.color}12` }]}>
-                <Text style={styles.paymentBadgeIcon}>{paymentLabel.icon}</Text>
-                <Text
-                  style={[styles.paymentBadgeText, { color: paymentLabel.color }]}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                  maxFontSizeMultiplier={1.08}
-                >
-                  {paymentLabel.text}
-                </Text>
-              </View>
-            )}
-            {!hideDateInCard && (
+        {/* 第 2 行（說明行）：標準模式左右緊湊並排；大字模式讓備註與標籤各自舒展不截字 */}
+        {isLargeFont ? (
+          <View style={styles.bottomColumnLarge}>
+            {hasNote && (
               <Text
-                style={[styles.dateText, isDark && { color: colors.text.muted }]}
+                style={[styles.noteTextLarge, isDark && { color: colors.text.secondary }]}
+                numberOfLines={2}
+                ellipsizeMode="tail"
                 maxFontSizeMultiplier={1.2}
               >
-                {formattedDate}
+                {noteContent}
               </Text>
             )}
+            <View style={styles.metaRowLarge}>
+              <Text
+                style={[
+                  styles.payerTag,
+                  styles.payerTagLarge,
+                  isDark && {
+                    backgroundColor: colors.background.cardSubtle,
+                    color: colors.text.secondary,
+                  },
+                ]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.15}
+              >
+                {isSelfTransfer
+                  ? `存入【${linkedCard?.name || transaction.merchant || '儲值卡'}】`
+                  : isTransferIn
+                  ? `由 ${payer?.avatar_url || '👤'} ${payer?.display_name || '出資人'} 撥入`
+                  : isTransferOut
+                  ? `轉出至 ${recipient?.avatar_url || '👤'} ${recipient?.display_name || transaction.merchant}`
+                  : isTransfer && recipient
+                  ? `${payer?.avatar_url || '👤'} ${payer?.display_name || '出資'} ➔ ${recipient?.avatar_url || '👤'} ${recipient?.display_name || transaction.merchant}`
+                  : `${payer?.avatar_url || '👤'} ${payer?.display_name || '成員'}`}
+              </Text>
+              {!!paymentLabel && (
+                <View style={[styles.paymentBadge, styles.paymentBadgeLarge, { borderColor: `${paymentLabel.color}35`, backgroundColor: `${paymentLabel.color}12` }]}>
+                  <Text style={styles.paymentBadgeIcon}>{paymentLabel.icon}</Text>
+                  <Text
+                    style={[styles.paymentBadgeText, { color: paymentLabel.color }]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                    maxFontSizeMultiplier={1.08}
+                  >
+                    {paymentLabel.text}
+                  </Text>
+                </View>
+              )}
+              {!hideDateInCard && (
+                <Text
+                  style={[styles.dateText, isDark && { color: colors.text.muted }]}
+                  maxFontSizeMultiplier={1.2}
+                >
+                  {formattedDate}
+                </Text>
+              )}
+            </View>
           </View>
-        </View>
+        ) : (
+          <View style={[styles.bottomRow, !hasNote && styles.bottomRowAlignEnd]}>
+            {hasNote && (
+              <Text
+                style={[styles.noteText, isDark && { color: colors.text.secondary }]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                maxFontSizeMultiplier={1.2}
+              >
+                {noteContent}
+              </Text>
+            )}
+            <View style={[styles.metaRow, hasNote && styles.metaRowConstrained]}>
+              <Text
+                style={[
+                  styles.payerTag,
+                  isDark && {
+                    backgroundColor: colors.background.cardSubtle,
+                    color: colors.text.secondary,
+                  },
+                ]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.15}
+              >
+                {isSelfTransfer
+                  ? `存入【${linkedCard?.name || transaction.merchant || '儲值卡'}】`
+                  : isTransferIn
+                  ? `由 ${payer?.avatar_url || '👤'} ${payer?.display_name || '出資人'} 撥入`
+                  : isTransferOut
+                  ? `轉出至 ${recipient?.avatar_url || '👤'} ${recipient?.display_name || transaction.merchant}`
+                  : isTransfer && recipient
+                  ? `${payer?.avatar_url || '👤'} ${payer?.display_name || '出資'} ➔ ${recipient?.avatar_url || '👤'} ${recipient?.display_name || transaction.merchant}`
+                  : `${payer?.avatar_url || '👤'} ${payer?.display_name || '成員'}`}
+              </Text>
+              {!!paymentLabel && (
+                <View style={[styles.paymentBadge, { borderColor: `${paymentLabel.color}35`, backgroundColor: `${paymentLabel.color}12` }]}>
+                  <Text style={styles.paymentBadgeIcon}>{paymentLabel.icon}</Text>
+                  <Text
+                    style={[styles.paymentBadgeText, { color: paymentLabel.color }]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                    maxFontSizeMultiplier={1.08}
+                  >
+                    {paymentLabel.text}
+                  </Text>
+                </View>
+              )}
+              {!hideDateInCard && (
+                <Text
+                  style={[styles.dateText, isDark && { color: colors.text.muted }]}
+                  maxFontSizeMultiplier={1.2}
+                >
+                  {formattedDate}
+                </Text>
+              )}
+            </View>
+          </View>
+        )}
 
         {/* 第 3 行（條件式精簡標籤列）：僅當有附加資訊時渲染並自動換行 */}
         {hasExtraBadges && (
@@ -1334,6 +1397,9 @@ const styles = StyleSheet.create({
   bottomRowAlignEnd: {
     justifyContent: 'flex-end',
   },
+  bottomColumnLarge: {
+    gap: 5,
+  },
   noteText: {
     fontSize: 13,
     color: '#6B7280',
@@ -1341,11 +1407,22 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     minWidth: 72,
   },
+  noteTextLarge: {
+    fontSize: 13,
+    color: '#6B7280',
+    lineHeight: 18,
+  },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     flexShrink: 1,
+  },
+  metaRowLarge: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
   },
   metaRowConstrained: {
     maxWidth: '62%',
@@ -1359,6 +1436,9 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     maxWidth: 110,
     flexShrink: 1,
+  },
+  payerTagLarge: {
+    maxWidth: '100%',
   },
   dateText: {
     fontSize: 12,
@@ -1382,6 +1462,9 @@ const styles = StyleSheet.create({
     gap: 3,
     maxWidth: 125,
     flexShrink: 1,
+  },
+  paymentBadgeLarge: {
+    maxWidth: '100%',
   },
   paymentBadgeIcon: {
     fontSize: 10,

@@ -19,12 +19,12 @@ export const Text = forwardRef<RNText, TextProps>(
     const scaledStyle = useMemo(() => {
       if (disableScaling || fontScale === 1.0) return style;
       const flat = StyleSheet.flatten(style);
-      if (!flat || typeof flat.fontSize !== 'number') return style;
+      const baseFontSize = flat && typeof flat.fontSize === 'number' ? flat.fontSize : 14;
       return [
         style,
         {
-          fontSize: Math.round(flat.fontSize * fontScale * 10) / 10,
-          ...(flat.lineHeight ? { lineHeight: Math.round(flat.lineHeight * fontScale * 10) / 10 } : {}),
+          fontSize: Math.round(baseFontSize * fontScale * 10) / 10,
+          ...(flat?.lineHeight ? { lineHeight: Math.round(flat.lineHeight * fontScale * 10) / 10 } : {}),
         },
       ];
     }, [style, fontScale, disableScaling]);
@@ -53,12 +53,12 @@ export const TextInput = forwardRef<RNTextInput, TextInputProps>(
     const scaledStyle = useMemo(() => {
       if (disableScaling || fontScale === 1.0) return style;
       const flat = StyleSheet.flatten(style);
-      if (!flat || typeof flat.fontSize !== 'number') return style;
+      const baseFontSize = flat && typeof flat.fontSize === 'number' ? flat.fontSize : 14;
       return [
         style,
         {
-          fontSize: Math.round(flat.fontSize * fontScale * 10) / 10,
-          ...(flat.lineHeight ? { lineHeight: Math.round(flat.lineHeight * fontScale * 10) / 10 } : {}),
+          fontSize: Math.round(baseFontSize * fontScale * 10) / 10,
+          ...(flat?.lineHeight ? { lineHeight: Math.round(flat.lineHeight * fontScale * 10) / 10 } : {}),
         },
       ];
     }, [style, fontScale, disableScaling]);

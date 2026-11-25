@@ -20,6 +20,7 @@ import { Text, TextInput } from './common/Text';
 import { RecurringRule, RecurringFrequency, RecurringAmountType, PaymentMethod, PaymentAccount, Profile, Category, Transaction } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
+import { useFontSize } from '../theme/FontSizeContext';
 import { ThemeColors } from '../theme/colors';
 import {
   isBillDueInMonth,
@@ -97,6 +98,8 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
   targetMemberId,
 }) => {
   const { isDark, colors } = useTheme();
+  const { fontScale } = useFontSize();
+  const isLargeFont = fontScale >= 1.12;
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const {
     recurringRules,
@@ -1522,18 +1525,23 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
           {activeTab === 'pending' && (
             <View style={styles.tabContent}>
               {/* 月份切換列（限制最多到上個月） */}
-              <View style={styles.monthSelectorRow}>
+              <View style={[styles.monthSelectorRow, isLargeFont && { paddingHorizontal: 8, gap: 4 }]}>
                 <TouchableOpacity
-                  style={[styles.monthNavButton, isAtMinMonth && styles.monthNavButtonDisabled]}
+                  style={[styles.monthNavButton, isLargeFont && { paddingHorizontal: 4, flexShrink: 0 }, isAtMinMonth && styles.monthNavButtonDisabled]}
                   onPress={handlePrevMonth}
                   disabled={isAtMinMonth}
                   activeOpacity={isAtMinMonth ? 1 : 0.7}
                 >
-                  <Text style={[styles.monthNavText, isAtMinMonth && styles.monthNavTextDisabled]} maxFontSizeMultiplier={1.08} numberOfLines={1}>‹ 上個月</Text>
+                  <Text style={[styles.monthNavText, isAtMinMonth && styles.monthNavTextDisabled]} maxFontSizeMultiplier={1.08} numberOfLines={1}>
+                    {isLargeFont ? '‹ 上月' : '‹ 上個月'}
+                  </Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.currentMonthBadge} onPress={handleResetToCurrentMonth}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <TouchableOpacity
+                  style={[styles.currentMonthBadge, isLargeFont && { paddingHorizontal: 8, flexShrink: 1, minWidth: 0 }]}
+                  onPress={handleResetToCurrentMonth}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                     <Text style={styles.currentMonthText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                       📅 {year} 年 {month} 月
                     </Text>
@@ -1553,8 +1561,13 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                   </View>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.monthNavButton} onPress={handleNextMonth}>
-                  <Text style={styles.monthNavText} maxFontSizeMultiplier={1.08} numberOfLines={1}>下個月 ›</Text>
+                <TouchableOpacity
+                  style={[styles.monthNavButton, isLargeFont && { paddingHorizontal: 4, flexShrink: 0 }]}
+                  onPress={handleNextMonth}
+                >
+                  <Text style={styles.monthNavText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
+                    {isLargeFont ? '下月 ›' : '下個月 ›'}
+                  </Text>
                 </TouchableOpacity>
               </View>
 
@@ -1973,7 +1986,7 @@ export const RecurringBillsManageModal: React.FC<RecurringBillsManageModalProps>
                         <View style={styles.ruleCardTopRow}>
                           <View style={styles.ruleCardHeaderLeft}>
                             <Text style={styles.ruleIcon}>{getCategoryIcon(cat?.icon)}</Text>
-                            <View>
+                            <View style={{ flex: 1, minWidth: 0 }}>
                               <Text style={styles.ruleNameText}>{rule.name}</Text>
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
                                 <Text style={styles.ruleFrequencyText}>
@@ -3433,15 +3446,19 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
     marginBottom: 10,
   },
   ruleCardHeaderLeft: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
   ruleIcon: {
     fontSize: 24,
+    flexShrink: 0,
   },
   ruleNameText: {
     fontSize: 16,
@@ -3457,6 +3474,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexShrink: 0,
   },
   ruleSwitchLabel: {
     fontSize: 11,
@@ -3471,12 +3489,14 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   },
   ruleDetailItem: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   ruleDetailLabel: {
     fontSize: 12,
     color: colors.text.muted,
-    width: 80,
+    minWidth: 80,
+    flexShrink: 0,
+    marginRight: 6,
   },
   ruleDetailValue: {
     fontSize: 12,

@@ -238,7 +238,7 @@ export const TrendChartsWidget: React.FC<TrendChartsWidgetProps> = ({
                   <Text style={styles.insightHighlight}>
                     {getCategoryIcon(mom.topIncreasedCategory.icon)} {mom.topIncreasedCategory.name}
                   </Text>{' '}
-                  (+NT$ {mom.topIncreasedCategory.diff.toLocaleString()})
+                  (+NT${'\u00A0'}{mom.topIncreasedCategory.diff.toLocaleString()})
                 </Text>
               </View>
             )}
@@ -250,7 +250,7 @@ export const TrendChartsWidget: React.FC<TrendChartsWidgetProps> = ({
                   <Text style={styles.insightHighlight}>
                     {getCategoryIcon(mom.topDecreasedCategory.icon)} {mom.topDecreasedCategory.name}
                   </Text>{' '}
-                  (-NT$ {mom.topDecreasedCategory.diff.toLocaleString()})
+                  (-NT${'\u00A0'}{mom.topDecreasedCategory.diff.toLocaleString()})
                 </Text>
               </View>
             )}

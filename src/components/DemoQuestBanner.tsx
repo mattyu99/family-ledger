@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   Modal,
@@ -10,6 +9,7 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from 'react-native';
+import { Text } from './common/Text';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Profile } from '../types/database';
 import { SWEETHOME_MEMBERS } from '../constants/sweethomeDemo';

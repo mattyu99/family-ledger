@@ -3383,8 +3383,9 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             ) : (
               <View style={{ marginBottom: 8 }}>
                 <View style={styles.dateInlineContainer}>
-                  <Text style={styles.dateInlineLabel} maxFontSizeMultiplier={1.12}>日期</Text>
+                  <Text style={styles.dateInlineLabel} maxFontSizeMultiplier={1.12} numberOfLines={1}>日期</Text>
                   <HorizontalScrollView
+                    style={{ flex: 1, minWidth: 0 }}
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.dateInlineScroll}
                     keyboardShouldPersistTaps="handled"
@@ -3606,6 +3607,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                     style={[
                       styles.invoiceToolbarBtn,
                       styles.invoiceToolbarBtnLeft,
+                      !!invoiceNumber && { flex: 1.35 },
                       (isInvoiceExpanded || !!invoiceNumber) && styles.invoiceToolbarBtnLeftActive,
                     ]}
                     onPress={() => setIsInvoiceExpanded(prev => !prev)}
@@ -3618,6 +3620,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                         (isInvoiceExpanded || !!invoiceNumber) && styles.invoiceToolbarBtnTextLeftActive,
                       ]}
                       maxFontSizeMultiplier={1.08}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.85}
                     >
                       {invoiceNumber ? `發票 ${invoiceNumber}` : '＋發票字軌'}
                     </Text>
@@ -6930,6 +6934,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: isDark ? '#94A3B8' : '#64748B',
+    flexShrink: 0,
   },
   dateInlineScroll: {
     flexDirection: 'row',
@@ -7075,13 +7080,15 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   },
   invoiceToolbarBtn: {
     flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     height: 38,
+    paddingHorizontal: 6,
     borderRadius: 9,
     borderWidth: 1.2,
-    gap: 6,
+    gap: 4,
   },
   invoiceToolbarBtnLeft: {
     backgroundColor: isDark ? 'rgba(6, 78, 59, 0.35)' : '#F0FDF4',

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
-  Text,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
@@ -12,7 +11,7 @@ import {
   Alert,
   KeyboardAvoidingView,
 } from 'react-native';
-import { TextInput } from './common/Text';
+import { Text, TextInput } from './common/Text';
 import { showAlert } from '../lib/alert';
 import { useTheme } from '../theme/ThemeContext';
 import { useLedger } from '../context/LedgerContext';

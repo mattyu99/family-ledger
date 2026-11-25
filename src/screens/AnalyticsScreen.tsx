@@ -4,10 +4,12 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
 } from 'react-native';
 import { Text } from '../components/common/Text';
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
+import { useFontSize } from '../theme/FontSizeContext';
 import { ThemeColors } from '../theme/colors';
 import { TrendChartsWidget } from '../components/TrendChartsWidget';
 import { MemberAvatar } from '../components/MemberAvatar';
@@ -62,6 +64,9 @@ export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({
   onOpenMonthPicker,
 }) => {
   const { isDark, colors } = useTheme();
+  const { fontScale } = useFontSize();
+  const { width: windowWidth } = useWindowDimensions();
+  const isCompactNarrowLarge = fontScale >= 1.12 && windowWidth < 385;
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
 
   const {
@@ -521,8 +526,11 @@ export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({
               style={[styles.scopeTabText, analyticsScope === 'my' && styles.scopeTabTextActive]}
               allowFontScaling={false}
               maxFontSizeMultiplier={1.08}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.85}
             >
-              👤 僅看我 ({currentUser?.display_name || '本人'})
+              👤 僅看我 ({(currentUser?.display_name || '本人').replace(/\s*[（(][^）)]*[）)]/g, '').trim() || '本人'})
             </Text>
           </TouchableOpacity>
         </View>
@@ -721,11 +729,11 @@ export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({
                     ? '➖ 與上月持平'
                     : singleMonthComparison.expenseDiff > 0
                     ? singleMonthComparison.expenseDiffRate !== null
-                      ? `🔺 較上月 +${singleMonthComparison.expenseDiffRate}%`
-                      : `🔺 較上月 +$${singleMonthComparison.expenseDiff.toLocaleString()}`
+                      ? `🔺 ${isCompactNarrowLarge ? '上月' : '較上月'} +${singleMonthComparison.expenseDiffRate}%`
+                      : `🔺 ${isCompactNarrowLarge ? '上月' : '較上月'} +$${singleMonthComparison.expenseDiff.toLocaleString()}`
                     : singleMonthComparison.expenseDiffRate !== null
-                    ? `📉 較上月 ${singleMonthComparison.expenseDiffRate}%`
-                    : `📉 較上月 -$${Math.abs(singleMonthComparison.expenseDiff).toLocaleString()}`}
+                    ? `📉 ${isCompactNarrowLarge ? '上月' : '較上月'} ${singleMonthComparison.expenseDiffRate}%`
+                    : `📉 ${isCompactNarrowLarge ? '上月' : '較上月'} -$${Math.abs(singleMonthComparison.expenseDiff).toLocaleString()}`}
                 </Text>
               </View>
             )}
@@ -786,11 +794,11 @@ export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({
                     ? '➖ 與上月持平'
                     : singleMonthComparison.incomeDiff > 0
                     ? singleMonthComparison.incomeDiffRate !== null
-                      ? `📈 較上月 +${singleMonthComparison.incomeDiffRate}%`
-                      : `📈 較上月 +$${singleMonthComparison.incomeDiff.toLocaleString()}`
+                      ? `📈 ${isCompactNarrowLarge ? '上月' : '較上月'} +${singleMonthComparison.incomeDiffRate}%`
+                      : `📈 ${isCompactNarrowLarge ? '上月' : '較上月'} +$${singleMonthComparison.incomeDiff.toLocaleString()}`
                     : singleMonthComparison.incomeDiffRate !== null
-                    ? `📉 較上月 ${singleMonthComparison.incomeDiffRate}%`
-                    : `📉 較上月 -$${Math.abs(singleMonthComparison.incomeDiff).toLocaleString()}`}
+                    ? `📉 ${isCompactNarrowLarge ? '上月' : '較上月'} ${singleMonthComparison.incomeDiffRate}%`
+                    : `📉 ${isCompactNarrowLarge ? '上月' : '較上月'} -$${Math.abs(singleMonthComparison.incomeDiff).toLocaleString()}`}
                 </Text>
               </View>
             )}

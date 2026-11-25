@@ -15,6 +15,7 @@ import { Text, TextInput } from '../components/common/Text';
 import { useLedger } from '../context/LedgerContext';
 import { usePrivacy } from '../context/PrivacyContext';
 import { useTheme } from '../theme/ThemeContext';
+import { useFontSize } from '../theme/FontSizeContext';
 import { ThemeColors } from '../theme/colors';
 import { Transaction } from '../types/database';
 import { TransactionItem } from '../components/TransactionItem';
@@ -120,6 +121,8 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
   onOpenFilterModal,
 }) => {
   const { isDark, colors } = useTheme();
+  const { fontScale } = useFontSize();
+  const isLargeFont = fontScale >= 1.12;
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
 
   const {
@@ -1249,7 +1252,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
             onPress={() => setIsSummaryExpanded(true)}
             activeOpacity={0.7}
           >
-            <Text style={styles.summaryCollapsedText} numberOfLines={1}>
+            <Text style={styles.summaryCollapsedText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
               結餘{' '}
               <Text
                 style={[
@@ -1261,12 +1264,12 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
                     : null,
                 ]}
               >
-                {displaySummary.netBalance > 0 ? '+' : ''}NT$ {displaySummary.netBalance.toLocaleString()}
+                {displaySummary.netBalance > 0 ? '+' : ''}{isLargeFont ? '$' : 'NT$ '}{displaySummary.netBalance.toLocaleString()}
               </Text>
-              {'   '}支 -NT$ {displaySummary.effectiveExpense.toLocaleString()}
-              {'   '}收 +NT$ {displaySummary.effectiveIncome.toLocaleString()}
+              {'  '}支 -{isLargeFont ? '$' : 'NT$ '}{displaySummary.effectiveExpense.toLocaleString()}
+              {!isLargeFont && `  收 +NT$ ${displaySummary.effectiveIncome.toLocaleString()}`}
             </Text>
-            <Text style={styles.summaryCollapsedHint}>
+            <Text style={styles.summaryCollapsedHint} maxFontSizeMultiplier={1.08}>
               💎 {maskedNetWorth}
             </Text>
           </TouchableOpacity>
@@ -1275,57 +1278,61 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
           <>
             <View style={styles.summaryGrid}>
               <View style={styles.summaryCol}>
-                <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2}>
+                <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2} numberOfLines={1}>
                   {displaySummary.isMemberFilter && displaySummary.personalTransferOut > 0 ? '總支出 (含轉出)' : '總支出'}
                 </Text>
                 <Text
-                  style={[styles.summaryVal, styles.expenseVal]}
-                  maxFontSizeMultiplier={1.2}
+                  style={[styles.summaryVal, isLargeFont && styles.summaryValLargeFont, styles.expenseVal]}
+                  maxFontSizeMultiplier={1.15}
                   numberOfLines={1}
                   adjustsFontSizeToFit
+                  minimumFontScale={0.75}
                 >
-                  -NT$ {displaySummary.effectiveExpense.toLocaleString()}
+                  -{isLargeFont ? '$' : 'NT$ '}{displaySummary.effectiveExpense.toLocaleString()}
                 </Text>
               </View>
 
-              <View style={styles.summaryDivider} />
+              <View style={[styles.summaryDivider, isLargeFont && { marginHorizontal: 4 }]} />
 
               <View style={styles.summaryCol}>
-                <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2}>
+                <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2} numberOfLines={1}>
                   {displaySummary.isMemberFilter && displaySummary.personalTransferIn > 0
                     ? (displaySummary.totalIncome > 0 ? '總進帳 (含轉入)' : '轉入款項')
                     : '總收入'}
                 </Text>
                 <Text
-                  style={[styles.summaryVal, styles.incomeVal]}
-                  maxFontSizeMultiplier={1.2}
+                  style={[styles.summaryVal, isLargeFont && styles.summaryValLargeFont, styles.incomeVal]}
+                  maxFontSizeMultiplier={1.15}
                   numberOfLines={1}
                   adjustsFontSizeToFit
+                  minimumFontScale={0.75}
                 >
-                  +NT$ {displaySummary.effectiveIncome.toLocaleString()}
+                  +{isLargeFont ? '$' : 'NT$ '}{displaySummary.effectiveIncome.toLocaleString()}
                 </Text>
               </View>
 
-              <View style={styles.summaryDivider} />
+              <View style={[styles.summaryDivider, isLargeFont && { marginHorizontal: 4 }]} />
 
               <View style={styles.summaryCol}>
-                <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2}>
+                <Text style={styles.summaryLabel} maxFontSizeMultiplier={1.2} numberOfLines={1}>
                   結餘
                 </Text>
                 <Text
                   style={[
                     styles.summaryVal,
+                    isLargeFont && styles.summaryValLargeFont,
                     displaySummary.netBalance > 0
                       ? styles.incomeVal
                       : displaySummary.netBalance < 0
                       ? styles.expenseVal
                       : null,
                   ]}
-                  maxFontSizeMultiplier={1.2}
+                  maxFontSizeMultiplier={1.15}
                   numberOfLines={1}
                   adjustsFontSizeToFit
+                  minimumFontScale={0.75}
                 >
-                  {displaySummary.netBalance > 0 ? '+' : ''}NT$ {displaySummary.netBalance.toLocaleString()}
+                  {displaySummary.netBalance > 0 ? '+' : ''}{isLargeFont ? '$' : 'NT$ '}{displaySummary.netBalance.toLocaleString()}
                 </Text>
               </View>
             </View>
@@ -1931,7 +1938,10 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
             {filterMemberId === 'all'
               ? '全部成員'
               : filterMemberId === currentUser?.id
-              ? `${currentUser?.display_name || '我'} (本機)`
+              ? (() => {
+                  const name = currentUser?.display_name || '我';
+                  return /\(我\)|\(本人\)/.test(name) ? name : `${name} (我)`;
+                })()
               : (selectedMember?.display_name || '指定成員')}
           </Text>
           <Text style={[styles.filterChipArrow, filterMemberId !== defaultMemberId && styles.filterChipArrowActive, isDark && { color: colors.text.muted }, isDark && filterMemberId !== defaultMemberId && { color: '#818CF8' }]}>▾</Text>
@@ -2477,6 +2487,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       color: '#E0E7FF',
       fontWeight: '600',
       flex: 1,
+      minWidth: 0,
     },
     summaryCollapsedVal: {
       fontSize: 13,
@@ -2486,6 +2497,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontSize: 11,
       color: '#C7D2FE',
       fontWeight: '600',
+      flexShrink: 0,
+      marginLeft: 6,
     },
     summaryTitle: {
       fontSize: 15,
@@ -2509,6 +2522,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     },
     summaryCol: {
       flex: 1,
+      minWidth: 0,
       alignItems: 'center',
     },
     summaryDivider: {
@@ -2525,6 +2539,9 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontSize: 16,
       fontWeight: '800',
       color: '#FFFFFF',
+    },
+    summaryValLargeFont: {
+      fontSize: 14,
     },
     expenseVal: {
       color: '#FCA5A5',

@@ -16,6 +16,7 @@ import { Text, TextInput } from './common/Text';
 import { PaymentAccount, AccountType } from '../types/database';
 import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
+import { useFontSize } from '../theme/FontSizeContext';
 import { ThemeColors } from '../theme/colors';
 import { sortAccountsByUser } from '../lib/payment';
 import { buildPaymentAccountPayloads } from '../lib/paymentAccountForm';
@@ -62,6 +63,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
   scope = 'my',
 }) => {
   const { isDark, colors } = useTheme();
+  const { fontScale } = useFontSize();
+  const isLargeFont = fontScale >= 1.12;
   const { height: windowHeight } = useWindowDimensions();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   const { currentLedger, paymentAccounts, addPaymentAccount, updatePaymentAccount, syncPaymentAccountsBillingDates, deletePaymentAccount, restoreDefaultAccounts, members, currentUser, isOwner, getMemberById } = useLedger();
@@ -1156,8 +1159,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                       const detected = detectIssuerBank(card.name, card.issuer_bank);
                       const issuerDisplay = card.issuer_bank || (detected ? detected.shortName : null);
                       return (
-                        <View key={card.id} style={[styles.cardItemRow, { borderLeftColor: card.color || '#3B82F6' }]}>
-                          <View style={styles.cardInfoCol}>
+                        <View key={card.id} style={[styles.cardItemRow, isLargeFont && styles.cardItemRowLargeFont, { borderLeftColor: card.color || '#3B82F6' }]}>
+                          <View style={[styles.cardInfoCol, !isLargeFont && { marginRight: 8 }]}>
                             <View style={styles.cardNameRow}>
                               <Text style={styles.cardNameText}>{card.name}</Text>
                               {!!card.last_four_digits && (
@@ -1178,7 +1181,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                             </Text>
                           </View>
                           {canEditCard && (
-                            <View style={styles.cardActionGroup}>
+                            <View style={[styles.cardActionGroup, isLargeFont && styles.cardActionGroupLargeFont]}>
                               <TouchableOpacity style={styles.editBtn} onPress={() => handleOpenEdit(card)}>
                                 <Text style={styles.editText}>編輯</Text>
                               </TouchableOpacity>
@@ -1227,8 +1230,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                       const isMyCard = isMatchedToCurrentUser(card.user_id);
                       const canEditCard = isOwner || (scope === 'my' && isMyCard);
                       return (
-                        <View key={card.id} style={[styles.cardItemRow, { borderLeftColor: card.color || '#0284C7' }]}>
-                          <View style={styles.cardInfoCol}>
+                        <View key={card.id} style={[styles.cardItemRow, isLargeFont && styles.cardItemRowLargeFont, { borderLeftColor: card.color || '#0284C7' }]}>
+                          <View style={[styles.cardInfoCol, !isLargeFont && { marginRight: 8 }]}>
                             <View style={styles.cardNameRow}>
                               <Text style={styles.cardNameText}>{card.name}</Text>
                               {(card.last_four_digits || card.card_number) && (
@@ -1246,7 +1249,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                             </Text>
                           </View>
                           {canEditCard && (
-                            <View style={styles.cardActionGroup}>
+                            <View style={[styles.cardActionGroup, isLargeFont && styles.cardActionGroupLargeFont]}>
                               <TouchableOpacity style={styles.editBtn} onPress={() => handleOpenEdit(card)}>
                                 <Text style={styles.editText}>編輯</Text>
                               </TouchableOpacity>
@@ -1295,8 +1298,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                       const isMyAccount = isMatchedToCurrentUser(acc.user_id);
                       const canEditAccount = isOwner || (scope === 'my' && isMyAccount);
                       return (
-                        <View key={acc.id} style={[styles.cardItemRow, { borderLeftColor: acc.color || '#8B5CF6' }]}>
-                          <View style={styles.cardInfoCol}>
+                        <View key={acc.id} style={[styles.cardItemRow, isLargeFont && styles.cardItemRowLargeFont, { borderLeftColor: acc.color || '#8B5CF6' }]}>
+                          <View style={[styles.cardInfoCol, !isLargeFont && { marginRight: 8 }]}>
                             <View style={styles.cardNameRow}>
                               <Text style={styles.cardNameText}>{acc.name}</Text>
                               {!!acc.last_four_digits && (
@@ -1311,7 +1314,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                             </Text>
                           </View>
                           {canEditAccount && (
-                            <View style={styles.cardActionGroup}>
+                            <View style={[styles.cardActionGroup, isLargeFont && styles.cardActionGroupLargeFont]}>
                               <TouchableOpacity style={styles.editBtn} onPress={() => handleOpenEdit(acc)}>
                                 <Text style={styles.editText}>編輯</Text>
                               </TouchableOpacity>
@@ -1360,8 +1363,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                       const isMyAccount = isMatchedToCurrentUser(acc.user_id);
                       const canEditAccount = isOwner || (scope === 'my' && isMyAccount);
                       return (
-                        <View key={acc.id} style={[styles.cardItemRow, { borderLeftColor: acc.color || '#10B981' }]}>
-                          <View style={styles.cardInfoCol}>
+                        <View key={acc.id} style={[styles.cardItemRow, isLargeFont && styles.cardItemRowLargeFont, { borderLeftColor: acc.color || '#10B981' }]}>
+                          <View style={[styles.cardInfoCol, !isLargeFont && { marginRight: 8 }]}>
                             <View style={styles.cardNameRow}>
                               <Text style={styles.cardNameText}>{acc.name}</Text>
                             </View>
@@ -1371,7 +1374,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                             </Text>
                           </View>
                           {canEditAccount && (
-                            <View style={styles.cardActionGroup}>
+                            <View style={[styles.cardActionGroup, isLargeFont && styles.cardActionGroupLargeFont]}>
                               <TouchableOpacity style={styles.editBtn} onPress={() => handleOpenEdit(acc)}>
                                 <Text style={styles.editText}>編輯</Text>
                               </TouchableOpacity>
@@ -1423,8 +1426,8 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                       const isMyAccount = isMatchedToCurrentUser(acc.user_id);
                       const canEditAccount = isOwner || (scope === 'my' && isMyAccount);
                       return (
-                        <View key={acc.id} style={[styles.cardItemRow, { borderLeftColor: acc.color || '#EC4899' }]}>
-                          <View style={styles.cardInfoCol}>
+                        <View key={acc.id} style={[styles.cardItemRow, isLargeFont && styles.cardItemRowLargeFont, { borderLeftColor: acc.color || '#EC4899' }]}>
+                          <View style={[styles.cardInfoCol, !isLargeFont && { marginRight: 8 }]}>
                             <View style={styles.cardNameRow}>
                               <Text style={styles.cardNameText}>{acc.name}</Text>
                               {!!acc.card_number && (
@@ -1439,7 +1442,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
                             </Text>
                           </View>
                           {canEditAccount && (
-                            <View style={styles.cardActionGroup}>
+                            <View style={[styles.cardActionGroup, isLargeFont && styles.cardActionGroupLargeFont]}>
                               <TouchableOpacity style={styles.editBtn} onPress={() => handleOpenEdit(acc)}>
                                 <Text style={styles.editText}>編輯</Text>
                               </TouchableOpacity>
@@ -1627,11 +1630,18 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     borderWidth: 1,
     borderColor: isDark ? colors.border.default : '#E2E8F0',
   },
+  cardItemRowLargeFont: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 8,
+  },
   cardInfoCol: {
     flex: 1,
+    minWidth: 0,
   },
   cardNameRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 6,
   },
@@ -1664,6 +1674,10 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
   cardActionGroup: {
     flexDirection: 'row',
     gap: 6,
+    flexShrink: 0,
+  },
+  cardActionGroupLargeFont: {
+    justifyContent: 'flex-end',
   },
   editBtn: {
     paddingHorizontal: 8,

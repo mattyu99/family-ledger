@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Platform,
   Linking,
+  useWindowDimensions,
 } from 'react-native';
 import { Text } from '../components/common/Text';
 import { useFontSize, FONT_SIZE_OPTIONS } from '../theme/FontSizeContext';
@@ -124,6 +125,8 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
 }) => {
   const { colors, isDark } = useTheme();
   const { fontSizeLevel, fontScale, followSystemFont } = useFontSize();
+  const { width: windowWidth } = useWindowDimensions();
+  const isCompactTopBar = fontScale >= 1.12 && windowWidth < 385;
   const {
     members,
     currentUser,
@@ -797,21 +800,37 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
         <View
           style={[
             styles.topVersionBar,
+            isCompactTopBar && styles.topVersionBarCompact,
             { backgroundColor: colors.background.modal, borderColor: colors.border.default },
           ]}
         >
-          <TouchableOpacity style={styles.topVersionLeft} onPress={onOpenChangelogModal} activeOpacity={0.7}>
-            <Text style={[styles.topVersionAppName, { color: colors.text.primary }]} numberOfLines={1}>
+          <TouchableOpacity
+            style={[styles.topVersionLeft, isCompactTopBar && styles.topVersionLeftCompact]}
+            onPress={onOpenChangelogModal}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.topVersionAppName,
+                isCompactTopBar && { marginBottom: 0 },
+                { color: colors.text.primary },
+              ]}
+              numberOfLines={1}
+            >
               甜心記帳本
             </Text>
             <View style={styles.topVersionBadge}>
-              <Text style={styles.topVersionBadgeText}>v{APP_VERSION} 📜</Text>
+              <Text style={styles.topVersionBadgeText} numberOfLines={1}>v{APP_VERSION} 📜</Text>
             </View>
           </TouchableOpacity>
 
-          <View style={styles.topVersionRight}>
+          <View style={[styles.topVersionRight, isCompactTopBar && styles.topVersionRightCompact]}>
             <TouchableOpacity
-              style={[styles.topCheckUpdateBtn, isCheckingUpdate && styles.topCheckUpdateBtnDisabled]}
+              style={[
+                styles.topCheckUpdateBtn,
+                isCompactTopBar && styles.topActionBtnCompact,
+                isCheckingUpdate && styles.topCheckUpdateBtnDisabled,
+              ]}
               onPress={onCheckForUpdates}
               disabled={isCheckingUpdate}
               activeOpacity={0.7}
@@ -823,6 +842,7 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
             <TouchableOpacity
               style={[
                 styles.topGuideBtn,
+                isCompactTopBar && styles.topActionBtnCompact,
                 { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default },
               ]}
               onPress={onOpenProductGuideModal}
@@ -891,9 +911,10 @@ export const FamilySettingsScreen: React.FC<FamilySettingsScreenProps> = ({
           >
             <Text style={[styles.backupDueBannerText, { color: isDark ? '#FCD34D' : '#B45309' }]}>
               ⚠️ {daysSinceLastBackup === null
-                ? '尚未建立第一份資料備份，點擊前往備份 ›'
-                : `已超過 ${daysSinceLastBackup} 天未備份，點擊立即匯出保存 ›`}
+                ? '尚未建立第一份資料備份，點擊前往備份'
+                : `已超過 ${daysSinceLastBackup} 天未備份，點擊立即匯出保存`}
             </Text>
+            <Text style={[styles.backupDueBannerArrow, { color: isDark ? '#FCD34D' : '#B45309' }]}>›</Text>
           </TouchableOpacity>
         )}
 
@@ -1417,10 +1438,24 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 1,
   },
+  topVersionBarCompact: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 10,
+  },
   topVersionLeft: {
     flex: 1,
+    minWidth: 0,
     marginRight: 8,
     justifyContent: 'center',
+  },
+  topVersionLeftCompact: {
+    flex: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginRight: 0,
   },
   topVersionAppName: {
     fontSize: 14,
@@ -1433,6 +1468,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 8,
+    flexShrink: 0,
   },
   topVersionBadgeText: {
     color: '#FFFFFF',
@@ -1444,6 +1480,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     flexShrink: 0,
+  },
+  topVersionRightCompact: {
+    width: '100%',
+    gap: 8,
+  },
+  topActionBtnCompact: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   topCheckUpdateBtn: {
     backgroundColor: '#F43F5E',
@@ -1509,6 +1554,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   backupDueBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 12,
@@ -1516,8 +1565,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   backupDueBannerText: {
+    flex: 1,
     fontSize: 12,
     fontWeight: '600',
+  },
+  backupDueBannerArrow: {
+    fontSize: 16,
+    fontWeight: '700',
+    flexShrink: 0,
   },
   groupBlockHeader: {
     flexDirection: 'row',
