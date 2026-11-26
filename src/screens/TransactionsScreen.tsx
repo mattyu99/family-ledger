@@ -28,6 +28,7 @@ import { getLocalDateYmd, getRollingMemoDueInfo, isMemoPinned, checkMemoPinQuota
 import { isGroupOrderMemo, computeGroupOrderSummary } from '../lib/groupOrder';
 import { checkInvoiceWinning, isInvoiceClaimExpired } from '../lib/lottery';
 import { getInvoicePeriodKey } from '../lib/invoice';
+import { getRecentCloudSyncedTransactions } from '../lib/cloudInvoiceSync';
 
 const PAGE_SIZE = 40;
 const WEEKDAY_NAMES = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
@@ -153,8 +154,9 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
 
   const [searchQuery, setSearchQuery] = useState('');
   const [transactionTypeFilter, setTransactionTypeFilter] = useState<'all' | 'financial' | 'memo'>('all');
+  const [cloudSyncedOnlyFilter, setCloudSyncedOnlyFilter] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const filterKey = `${filterMonth}|${filterMemberId}|${searchQuery}|${transactionTypeFilter}`;
+  const filterKey = `${filterMonth}|${filterMemberId}|${searchQuery}|${transactionTypeFilter}|${cloudSyncedOnlyFilter ? 'cloud24h' : 'normal'}`;
   const [paginationState, setPaginationState] = useState<{ filterKey: string; count: number }>({
     filterKey,
     count: PAGE_SIZE,
@@ -475,9 +477,46 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
     return { all, financial, memo };
   }, [transactions, filterMonth, filterMemberId, searchQuery, getMemberById, getCategoryById, members, currentUser, paymentAccounts]);
 
+  // 近 24 小時雲端發票自動新增或補齊的交易清單（供一鍵跨月份集中檢視）
+  const recent24hCloudSynced = useMemo(() => {
+    return getRecentCloudSyncedTransactions(transactions, { withinHours: 24 });
+  }, [transactions]);
+
+  const recent24hCloudStats = useMemo(() => {
+    let matchedCount = 0;
+    let importedCount = 0;
+    for (const item of recent24hCloudSynced) {
+      if (item.syncType === 'matched_cloud') matchedCount++;
+      else if (item.syncType === 'cloud_imported') importedCount++;
+    }
+    return {
+      total: recent24hCloudSynced.length,
+      matchedCount,
+      importedCount,
+    };
+  }, [recent24hCloudSynced]);
+
   // 依據篩選條件計算 groupedFilteredTransactions (支援方案 C 智慧分流與方案 1 全家/個人置頂)
   const groupedFilteredTransactions = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
+
+    // 0. 若啟用「近 24 小時雲端發票異動集中檢視」，跨月份直接呈現該批新增／修改之交易
+    if (cloudSyncedOnlyFilter) {
+      const list = recent24hCloudSynced
+        .map(item => item.transaction)
+        .filter(t => {
+          if (q) {
+            const mMatch = t.merchant && t.merchant.toLowerCase().includes(q);
+            const nMatch = t.note && t.note.toLowerCase().includes(q);
+            const cat = getCategoryById(t.category_id, t.category);
+            const cMatch = cat && cat.name.toLowerCase().includes(q);
+            const invMatch = t.invoice_number && t.invoice_number.toLowerCase().includes(q);
+            if (!mMatch && !nMatch && !cMatch && !invMatch) return false;
+          }
+          return true;
+        });
+      return { collabActivities: [], pinnedMemos: [], normalTransactions: list, all: list };
+    }
 
     // 1. 若篩選為「僅看收支」，直接排除所有 memo（包含置頂）
     if (transactionTypeFilter === 'financial') {
@@ -663,7 +702,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
       normalTransactions,
       all: [...collabActivities, ...pinnedMemos, ...normalTransactions],
     };
-  }, [transactions, transactionTypeFilter, filterMonth, filterMemberId, searchQuery, getMemberById, getCategoryById, members, currentUser, paymentAccounts]);
+  }, [transactions, transactionTypeFilter, cloudSyncedOnlyFilter, recent24hCloudSynced, filterMonth, filterMemberId, searchQuery, getMemberById, getCategoryById, members, currentUser, paymentAccounts]);
 
   const filteredTransactions = useMemo(() => {
     return groupedFilteredTransactions.all || [];
@@ -936,7 +975,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
   }, [transactions, currentFilterPendingBills.length, filterMemberId, currentUser, members, pendingMemos]);
 
   const defaultMemberId = currentUser?.id || 'all';
-  const isFiltered = filterMonth !== currentMonthYm || filterMemberId !== defaultMemberId || !!searchQuery.trim() || transactionTypeFilter !== 'all';
+  const isFiltered = filterMonth !== currentMonthYm || filterMemberId !== defaultMemberId || !!searchQuery.trim() || transactionTypeFilter !== 'all' || cloudSyncedOnlyFilter;
   const isSingleMonthFilter = /^\d{4}-\d{2}$/.test(filterMonth);
   const maxSelectableMonthYm = useMemo(() => {
     const firstYm = availableMonths[0]?.ym;
@@ -992,6 +1031,9 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
   const selectedMonthObj = availableMonths.find(m => m.ym === filterMonth);
 
   const summaryCardTitle = useMemo(() => {
+    if (cloudSyncedOnlyFilter) {
+      return '✨ 近 24 小時雲端異動';
+    }
     if (searchQuery.trim()) {
       return `🔍「${searchQuery.trim()}」消費總覽`;
     }
@@ -1031,13 +1073,14 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
       parts.push('全體成員');
     }
     return `${parts.join(' ‧ ')} 總覽`;
-  }, [filterMonth, filterMemberId, searchQuery, currentMonthYm, selectedMonthObj, selectedMember, currentUser]);
+  }, [cloudSyncedOnlyFilter, filterMonth, filterMemberId, searchQuery, currentMonthYm, selectedMonthObj, selectedMember, currentUser]);
 
   const resetFilters = () => {
     setFilterMonth(currentMonthYm);
     setFilterMemberId(currentUser?.id || 'all');
     setSearchQuery('');
     setTransactionTypeFilter('all');
+    setCloudSyncedOnlyFilter(false);
   };
 
   const invoiceLotteryStats = useMemo(() => {
@@ -1989,6 +2032,72 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
           </TouchableOpacity>
         )}
       </HorizontalScrollView>
+
+      {/* ✨ 近 24 小時雲端發票異動一鍵集中檢視膠囊（跨月份快速核對，無近期異動時完全隱藏） */}
+      {(recent24hCloudStats.total > 0 || cloudSyncedOnlyFilter) && (
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => setCloudSyncedOnlyFilter(!cloudSyncedOnlyFilter)}
+          style={[
+            styles.cloudSyncFocusBanner,
+            cloudSyncedOnlyFilter && styles.cloudSyncFocusBannerActive,
+            isDark && {
+              backgroundColor: cloudSyncedOnlyFilter
+                ? 'rgba(14, 165, 233, 0.22)'
+                : 'rgba(14, 165, 233, 0.12)',
+              borderColor: cloudSyncedOnlyFilter
+                ? '#38BDF8'
+                : 'rgba(56, 189, 248, 0.35)',
+            },
+          ]}
+        >
+          <View style={styles.cloudSyncFocusLeft}>
+            <Text
+              style={[
+                styles.cloudSyncFocusTitle,
+                isDark && { color: '#7DD3FC' },
+              ]}
+              maxFontSizeMultiplier={1.08}
+            >
+              {cloudSyncedOnlyFilter
+                ? `✨ 近 24 小時雲端異動 (${recent24hCloudStats.total} 筆)`
+                : `✨ 雲端發票剛異動 ${recent24hCloudStats.total} 筆`}
+            </Text>
+            <Text
+              style={[
+                styles.cloudSyncFocusSub,
+                isDark && { color: colors.text.secondary },
+              ]}
+              maxFontSizeMultiplier={1.08}
+            >
+              {`補齊 ${recent24hCloudStats.matchedCount} 筆 · 新增 ${recent24hCloudStats.importedCount} 筆（跨月總覽）`}
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.cloudSyncFocusBtn,
+              cloudSyncedOnlyFilter && styles.cloudSyncFocusBtnActive,
+              isDark && {
+                backgroundColor: cloudSyncedOnlyFilter
+                  ? 'rgba(15, 23, 42, 0.65)'
+                  : 'rgba(14, 165, 233, 0.28)',
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.cloudSyncFocusBtnText,
+                cloudSyncedOnlyFilter && styles.cloudSyncFocusBtnTextActive,
+                isDark && { color: cloudSyncedOnlyFilter ? '#BAE6FD' : '#E0F2FE' },
+              ]}
+              maxFontSizeMultiplier={1.08}
+              numberOfLines={1}
+            >
+              {cloudSyncedOnlyFilter ? '✕ 結束檢視' : '集中檢視 ➔'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      )}
 
       {/* 明細筆數與三態分類切換同列並排（緊貼清單上方，連動一目了然且防大字體爆版） */}
       <View style={styles.sectionHeaderInlineRow}>
@@ -3268,5 +3377,55 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       fontSize: 12,
       color: colors.text.muted,
       fontWeight: '500',
+    },
+    cloudSyncFocusBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+      backgroundColor: '#F0F9FF',
+      borderWidth: 1,
+      borderColor: '#BAE6FD',
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+      marginBottom: 10,
+    },
+    cloudSyncFocusBannerActive: {
+      backgroundColor: '#E0F2FE',
+      borderColor: '#0284C7',
+      borderWidth: 1.5,
+    },
+    cloudSyncFocusLeft: {
+      flex: 1,
+    },
+    cloudSyncFocusTitle: {
+      fontSize: 12.5,
+      fontWeight: '800',
+      color: '#0369A1',
+    },
+    cloudSyncFocusSub: {
+      fontSize: 11,
+      color: '#0C4A6E',
+      marginTop: 2,
+    },
+    cloudSyncFocusBtn: {
+      backgroundColor: '#0284C7',
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    cloudSyncFocusBtnActive: {
+      backgroundColor: '#FFFFFF',
+      borderWidth: 1,
+      borderColor: '#0284C7',
+    },
+    cloudSyncFocusBtnText: {
+      fontSize: 11.5,
+      fontWeight: '700',
+      color: '#FFFFFF',
+    },
+    cloudSyncFocusBtnTextActive: {
+      color: '#0369A1',
     },
   });

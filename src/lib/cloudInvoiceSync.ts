@@ -16,6 +16,13 @@ export const normalizeCarrierCode = (raw?: string): string => {
 };
 
 /**
+ * 標準化發票號碼（移除連字號與空白並轉大寫，如 FB-47844491 -> FB47844491）
+ */
+export const normalizeInvoiceNumber = (raw?: string): string => {
+  return (raw || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+};
+
+/**
  * 檢查帳本中是否已存在相同載具代碼之網購與會員載具帳戶（type === 'carrier'）
  */
 export const findExistingCarrierAccount = (
@@ -128,10 +135,12 @@ export const findMatchingTransaction = (
     if (Math.round(tx.amount) !== invoiceAmt) continue;
 
     // 若發票號碼已完全吻合，為精確對應同一張發票，直接放寬日期限制
+    const normalizedTxInv = normalizeInvoiceNumber(tx.invoice_number);
+    const normalizedInv = normalizeInvoiceNumber(invoice.invoiceNumber);
     const isExactInvoiceNumMatch = !!(
-      tx.invoice_number &&
-      invoice.invoiceNumber &&
-      tx.invoice_number.trim().toUpperCase() === invoice.invoiceNumber.trim().toUpperCase()
+      normalizedTxInv &&
+      normalizedInv &&
+      normalizedTxInv === normalizedInv
     );
 
     const txDateStr = tx.transacted_at.split('T')[0];
@@ -139,7 +148,7 @@ export const findMatchingTransaction = (
 
     if (!isExactInvoiceNumMatch) {
       // 硬條件 2：若已有發票號碼且與當前發票不同，不搶佔他人已綁定的發票
-      if (tx.invoice_number && tx.invoice_number.trim() !== invoice.invoiceNumber.trim()) {
+      if (normalizedTxInv && normalizedTxInv !== normalizedInv) {
         continue;
       }
 
@@ -157,7 +166,7 @@ export const findMatchingTransaction = (
     }
 
     // 發票號碼早已吻合加滿分
-    if (tx.invoice_number && tx.invoice_number.trim() === invoice.invoiceNumber.trim()) {
+    if (isExactInvoiceNumMatch) {
       score += 100;
     }
 
@@ -184,6 +193,16 @@ export const findMatchingTransaction = (
   return bestMatch;
 };
 
+export type CloudSyncChangeFilter = 'all' | 'matched_cloud' | 'cloud_imported';
+
+export interface CloudSyncedTransactionSummary {
+  transaction: Transaction;
+  syncType: 'matched_cloud' | 'cloud_imported';
+  syncedAt: string;
+  syncedAtMs: number;
+  carrierName?: string;
+}
+
 export interface SyncProcessResult {
   updatedTransactions: {
     transactionId: string;
@@ -192,6 +211,7 @@ export interface SyncProcessResult {
     invoice: CloudInvoiceItem;
     matchedAccount?: PaymentAccount;
     isAlreadySynced?: boolean;
+    changedFields: string[];
   }[];
   newTransactions: {
     data: Omit<Transaction, 'id' | 'created_at'>;
@@ -381,7 +401,8 @@ export const processCloudInvoicesSync = (
 
       const isAlreadySynced = !!(
         matchedTx.invoice_sync_status === 'cloud_imported' ||
-        (matchedTx.invoice_number === inv.invoiceNumber && matchedTx.cloud_synced_at)
+        (normalizeInvoiceNumber(matchedTx.invoice_number) === normalizeInvoiceNumber(inv.invoiceNumber) &&
+          (matchedTx.cloud_synced_at || matchedTx.invoice_sync_status === 'matched_cloud'))
       );
 
       const updates: Partial<Transaction> = {
@@ -396,14 +417,29 @@ export const processCloudInvoicesSync = (
         invoice_items: inv.items && inv.items.length > 0 ? inv.items : matchedTx.invoice_items,
       };
 
+      const changedFields: string[] = [];
+      if (normalizeInvoiceNumber(matchedTx.invoice_number) !== normalizeInvoiceNumber(inv.invoiceNumber)) {
+        changedFields.push('發票號碼');
+      }
+
       // 若手動記帳未填店家名稱，以發票官方營業人名稱補齊
       if (!matchedTx.merchant && inv.sellerName) {
         updates.merchant = inv.sellerName;
+        changedFields.push('店家名稱');
       }
 
       // 若原交易未設定帳戶且已比對到卡片，自動關聯帳戶
       if (!matchedTx.account_id && effectiveAcc) {
         updates.account_id = effectiveAcc.id;
+        changedFields.push('扣款卡片');
+      }
+
+      if (inv.items && inv.items.length > 0 && (!matchedTx.invoice_items || matchedTx.invoice_items.length === 0)) {
+        changedFields.push('商品明細');
+      }
+
+      if (changedFields.length === 0 && !isAlreadySynced) {
+        changedFields.push('雲端同步狀態');
       }
 
       updatedTransactions.push({
@@ -413,6 +449,7 @@ export const processCloudInvoicesSync = (
         invoice: inv,
         matchedAccount: effectiveAcc,
         isAlreadySynced,
+        changedFields,
       });
     } else {
       // 全新發票：優先依真卡持卡人，次依載具分流規則歸屬人，否則歸預設成員
@@ -552,4 +589,60 @@ export const generateMockCloudInvoices = (
   });
 
   return invoices;
+};
+
+/**
+ * 彙整近期由雲端發票「修改補齊 (matched_cloud)」或「雲端新增 (cloud_imported)」的交易清單，
+ * 支援跨月份集中檢視、時間區間過濾與異動類型篩選。
+ */
+export const getRecentCloudSyncedTransactions = (
+  transactions: Transaction[],
+  options?: {
+    withinHours?: number;
+    filterType?: CloudSyncChangeFilter;
+    nowMs?: number;
+  }
+): CloudSyncedTransactionSummary[] => {
+  if (!Array.isArray(transactions) || transactions.length === 0) return [];
+
+  const withinHours = options?.withinHours;
+  const filterType = options?.filterType || 'all';
+  const nowMs = options?.nowMs ?? Date.now();
+  const maxAgeMs = withinHours !== undefined && withinHours > 0 ? withinHours * 3600000 : undefined;
+
+  const items: CloudSyncedTransactionSummary[] = [];
+
+  for (const tx of transactions) {
+    if (!tx || tx.type === 'memo') continue;
+    const syncStatus = tx.invoice_sync_status;
+    if (syncStatus !== 'matched_cloud' && syncStatus !== 'cloud_imported') continue;
+    if (filterType !== 'all' && syncStatus !== filterType) continue;
+
+    const syncedAt = tx.cloud_synced_at || tx.updated_at || tx.created_at || '';
+    const parsedMs = syncedAt ? new Date(syncedAt).getTime() : NaN;
+    const syncedAtMs = Number.isFinite(parsedMs) ? parsedMs : 0;
+
+    if (maxAgeMs !== undefined) {
+      if (!tx.cloud_synced_at || !Number.isFinite(parsedMs)) continue;
+      const ageMs = nowMs - parsedMs;
+      if (ageMs < 0 ? Math.abs(ageMs) > 60000 : ageMs > maxAgeMs) continue;
+    }
+
+    items.push({
+      transaction: tx,
+      syncType: syncStatus,
+      syncedAt,
+      syncedAtMs,
+      carrierName: tx.cloud_carrier_name,
+    });
+  }
+
+  items.sort((a, b) => {
+    if (b.syncedAtMs !== a.syncedAtMs) return b.syncedAtMs - a.syncedAtMs;
+    const txTimeA = a.transaction.transacted_at ? new Date(a.transaction.transacted_at).getTime() : 0;
+    const txTimeB = b.transaction.transacted_at ? new Date(b.transaction.transacted_at).getTime() : 0;
+    return txTimeB - txTimeA;
+  });
+
+  return items;
 };

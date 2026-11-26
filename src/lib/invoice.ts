@@ -1098,6 +1098,11 @@ export const parseTaiwanInvoiceQRCode = (
   return null;
 };
 
+const sanitizeInvoiceTagPart = (val?: string): string => {
+  if (!val) return '';
+  return val.replace(/[\|\[\]]/g, ' ').replace(/\s+/g, ' ').trim();
+};
+
 /**
  * 發票標籤編碼，嵌入至 note 中供跨平台及雲端永久同步
  */
@@ -1108,13 +1113,23 @@ export const encodeInvoiceTag = (data: {
   status?: string;
   prizeAmount?: number;
   prizeName?: string;
+  syncStatus?: 'manual' | 'matched_cloud' | 'cloud_imported';
+  syncedAt?: string;
+  carrierName?: string;
 }): string => {
   const num = formatInvoiceNumber(data.invoiceNumber);
-  const period = data.periodKey || '';
-  const code = data.randomCode || '';
-  const status = data.status || 'pending';
+  const period = sanitizeInvoiceTagPart(data.periodKey);
+  const code = sanitizeInvoiceTagPart(data.randomCode);
+  const status = sanitizeInvoiceTagPart(data.status) || 'pending';
   const amount = data.prizeAmount !== undefined ? String(data.prizeAmount) : '0';
-  const name = data.prizeName || '';
+  const name = sanitizeInvoiceTagPart(data.prizeName);
+  const syncStatus = sanitizeInvoiceTagPart(data.syncStatus);
+  const syncedAt = sanitizeInvoiceTagPart(data.syncedAt);
+  const carrierName = sanitizeInvoiceTagPart(data.carrierName);
+
+  if (syncStatus || syncedAt || carrierName) {
+    return `[🧾 ${num}|${period}|${code}|${status}|${amount}|${name}|${syncStatus}|${syncedAt}|${carrierName}]`;
+  }
   return `[🧾 ${num}|${period}|${code}|${status}|${amount}|${name}]`;
 };
 
@@ -1128,20 +1143,31 @@ export const decodeInvoiceTag = (note: string | undefined): {
   status?: 'pending' | 'won' | 'missed' | 'claimed';
   prizeAmount?: number;
   prizeName?: string;
+  syncStatus?: 'manual' | 'matched_cloud' | 'cloud_imported';
+  syncedAt?: string;
+  carrierName?: string;
 } | null => {
   if (!note) return null;
-  const match = note.match(/\[🧾\s*([A-Za-z0-9\-]+)(?:\|([^\|\]]*))?(?:\|([^\|\]]*))?(?:\|([^\|\]]*))?(?:\|([^\|\]]*))?(?:\|([^\|\]]*))?\]/);
+  const match = note.match(/\[🧾\s*([^\]]+)\]/);
   if (!match) return null;
 
-  const rawNum = match[1]?.trim();
+  const parts = match[1].split('|');
+  const rawNum = parts[0]?.trim();
   if (!isValidInvoiceNumber(rawNum)) return null;
 
-  const periodKey = match[2]?.trim() || undefined;
-  const randomCode = match[3]?.trim() || undefined;
-  const rawStatus = match[4]?.trim() as any;
+  const periodKey = parts[1]?.trim() || undefined;
+  const randomCode = parts[2]?.trim() || undefined;
+  const rawStatus = parts[3]?.trim() as any;
   const status = (rawStatus === 'won' || rawStatus === 'missed' || rawStatus === 'claimed') ? rawStatus : 'pending';
-  const prizeAmount = match[5] ? parseInt(match[5].trim(), 10) : 0;
-  const prizeName = match[6]?.trim() || undefined;
+  const prizeAmount = parts[4] ? parseInt(parts[4].trim(), 10) : 0;
+  const prizeName = parts[5]?.trim() || undefined;
+  const rawSyncStatus = parts[6]?.trim();
+  const syncStatus =
+    rawSyncStatus === 'manual' || rawSyncStatus === 'matched_cloud' || rawSyncStatus === 'cloud_imported'
+      ? rawSyncStatus
+      : undefined;
+  const syncedAt = parts[7]?.trim() || undefined;
+  const carrierName = parts[8]?.trim() || undefined;
 
   return {
     invoiceNumber: formatInvoiceNumber(rawNum),
@@ -1150,6 +1176,9 @@ export const decodeInvoiceTag = (note: string | undefined): {
     status,
     prizeAmount: isNaN(prizeAmount) ? 0 : prizeAmount,
     prizeName,
+    syncStatus,
+    syncedAt,
+    carrierName,
   };
 };
 

@@ -13,6 +13,7 @@ import {
   mergeParsedInvoiceData,
   ParsedInvoiceData,
 } from '../invoice';
+import { hydrateTransactionWithInvoice } from '../ledgerUtils';
 
 describe('台灣統一發票與條碼解析核心模組測試 (invoice.ts)', () => {
   describe('發票號碼驗證與格式化', () => {
@@ -118,6 +119,45 @@ describe('台灣統一發票與條碼解析核心模組測試 (invoice.ts)', () 
     it('stripInvoiceTag 應純淨移除發票標籤，保留使用者文字', () => {
       const note = '在全聯買鮮奶 [🧾 AB-12345678|2026-10|1234|won|200|六獎] 記得對帳';
       expect(stripInvoiceTag(note)).toBe('在全聯買鮮奶  記得對帳');
+    });
+
+    it('支援 9 欄擴充雲端同步資訊編解碼並清理特殊符號，且完全相容 stripInvoiceTag', () => {
+      const tag = encodeInvoiceTag({
+        invoiceNumber: 'FB47844491',
+        periodKey: '2026-10',
+        randomCode: '',
+        status: 'missed',
+        prizeAmount: 0,
+        prizeName: '',
+        syncStatus: 'matched_cloud',
+        syncedAt: '2026-11-26T10:00:00.000Z',
+        carrierName: 'LINE Pay|7909[卡]',
+      });
+      expect(tag).toBe('[🧾 FB-47844491|2026-10||missed|0||matched_cloud|2026-11-26T10:00:00.000Z|LINE Pay 7909 卡]');
+
+      const decoded = decodeInvoiceTag(`7-11 買咖啡 ${tag}`);
+      expect(decoded?.invoiceNumber).toBe('FB-47844491');
+      expect(decoded?.status).toBe('missed');
+      expect(decoded?.syncStatus).toBe('matched_cloud');
+      expect(decoded?.syncedAt).toBe('2026-11-26T10:00:00.000Z');
+      expect(decoded?.carrierName).toBe('LINE Pay 7909 卡');
+      expect(stripInvoiceTag(`7-11 買咖啡 ${tag}`)).toBe('7-11 買咖啡');
+    });
+
+    it('hydrateTransactionWithInvoice 應自動從備註標籤還原雲端同步狀態、時間與載具名稱', () => {
+      const hydrated = hydrateTransactionWithInvoice({
+        id: 'tx_1',
+        ledger_id: 'ledger_1',
+        amount: 333,
+        type: 'expense',
+        transacted_at: '2026-10-27T11:20:48.736Z',
+        merchant: '7-11',
+        invoice_number: 'FB-47844491',
+        note: '[🧾 FB-47844491|2026-10||missed|0||matched_cloud|2026-11-26T10:00:00.000Z|手機條碼載具]',
+      });
+      expect(hydrated.invoice_sync_status).toBe('matched_cloud');
+      expect(hydrated.cloud_synced_at).toBe('2026-11-26T10:00:00.000Z');
+      expect(hydrated.cloud_carrier_name).toBe('手機條碼載具');
     });
   });
 

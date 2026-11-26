@@ -2,6 +2,7 @@ import {
   findExistingCarrierAccount,
   findMatchingAccount,
   findMatchingTransaction,
+  getRecentCloudSyncedTransactions,
   normalizeCardNumber,
   parseMofInvoiceCsv,
   processCloudInvoicesSync,
@@ -557,6 +558,187 @@ describe('cloudInvoiceSync 智慧比對引擎測試', () => {
       );
       expect(afterBind.unregisteredCarriers.length).toBe(0);
       expect(afterBind.newTransactions.every(t => t.data.paid_by === 'user_mom')).toBe(true);
+    });
+
+    it('已補齊發票的交易（含連字號差異 FB-47844491 vs FB47844491）重複匯入時應判為已同步且不重複修改', () => {
+      const existingTransactions: Transaction[] = [
+        {
+          id: 'tx_711',
+          ledger_id: 'ledger_1',
+          creator_id: 'user_mom',
+          category_id: 'cat_dining',
+          amount: 333,
+          type: 'expense',
+          paid_by: 'user_mom',
+          transacted_at: '2026-10-27T11:20:48.736Z',
+          merchant: '7-11',
+          invoice_number: 'FB-47844491',
+          invoice_sync_status: 'matched_cloud',
+          cloud_synced_at: '2026-11-26T10:00:00.000Z',
+          is_settled: false,
+          created_at: '2026-10-27T11:20:48.736Z',
+        },
+      ];
+
+      const invoices: CloudInvoiceItem[] = [
+        {
+          invoiceNumber: 'FB47844491',
+          invoiceDate: '2026-10-27',
+          sellerName: '統一超商',
+          amount: 333,
+          carrierType: '3J0002',
+          carrierNo: '/R-VNORQ',
+        },
+      ];
+
+      const result = processCloudInvoicesSync(
+        invoices,
+        existingTransactions,
+        mockAccounts,
+        mockMembers,
+        'user_dad',
+        'ledger_1',
+        'cat_general'
+      );
+
+      expect(result.stats.alreadySyncedCount).toBe(1);
+      expect(result.stats.updatedCount).toBe(0);
+      expect(result.stats.newCount).toBe(0);
+      expect(result.updatedTransactions[0].isAlreadySynced).toBe(true);
+    });
+
+    it('第一次補齊既有手動交易時應正確列出 changedFields 補齊項目摘要', () => {
+      const existingTransactions: Transaction[] = [
+        {
+          id: 'tx_manual_no_merchant',
+          ledger_id: 'ledger_1',
+          creator_id: 'user_dad',
+          category_id: 'cat_dining',
+          amount: 120,
+          type: 'expense',
+          paid_by: 'user_dad',
+          transacted_at: '2026-11-08T12:00:00.000Z',
+          is_settled: false,
+          created_at: '2026-11-08T12:00:00.000Z',
+        },
+      ];
+
+      const invoices: CloudInvoiceItem[] = [
+        {
+          invoiceNumber: 'UV12345678',
+          invoiceDate: '2026-11-08',
+          sellerName: '八方雲集',
+          amount: 120,
+          carrierType: '1K0001',
+          carrierNo: '1000419002328227',
+          items: [{ name: '招牌鍋貼', quantity: 1, unit_price: 120, amount: 120 }],
+        },
+      ];
+
+      const result = processCloudInvoicesSync(
+        invoices,
+        existingTransactions,
+        mockAccounts,
+        mockMembers,
+        'user_dad',
+        'ledger_1',
+        'cat_general'
+      );
+
+      expect(result.updatedTransactions[0].isAlreadySynced).toBe(false);
+      expect(result.updatedTransactions[0].changedFields).toEqual([
+        '發票號碼',
+        '店家名稱',
+        '扣款卡片',
+        '商品明細',
+      ]);
+    });
+  });
+
+  describe('getRecentCloudSyncedTransactions 跨月異動交易集中彙整', () => {
+    const nowMs = new Date('2026-11-26T18:00:00.000Z').getTime();
+    const txs: Transaction[] = [
+      {
+        id: 'tx_matched_oct',
+        ledger_id: 'ledger_1',
+        creator_id: 'user_mom',
+        category_id: 'cat_1',
+        amount: 333,
+        type: 'expense',
+        paid_by: 'user_mom',
+        transacted_at: '2026-10-27T11:20:00.000Z',
+        merchant: '7-11',
+        invoice_number: 'FB-47844491',
+        invoice_sync_status: 'matched_cloud',
+        cloud_synced_at: '2026-11-26T17:30:00.000Z',
+        cloud_carrier_name: '手機條碼載具',
+        is_settled: false,
+        created_at: '2026-10-27',
+      },
+      {
+        id: 'tx_imported_nov',
+        ledger_id: 'ledger_1',
+        creator_id: 'user_dad',
+        category_id: 'cat_1',
+        amount: 848,
+        type: 'expense',
+        paid_by: 'user_dad',
+        transacted_at: '2026-11-01T12:00:00.000Z',
+        merchant: '全聯',
+        invoice_number: 'EU-46266518',
+        invoice_sync_status: 'cloud_imported',
+        cloud_synced_at: '2026-11-26T17:45:00.000Z',
+        is_settled: false,
+        created_at: '2026-11-26',
+      },
+      {
+        id: 'tx_old_synced',
+        ledger_id: 'ledger_1',
+        creator_id: 'user_dad',
+        category_id: 'cat_1',
+        amount: 99,
+        type: 'expense',
+        paid_by: 'user_dad',
+        transacted_at: '2026-09-15T12:00:00.000Z',
+        merchant: '全家',
+        invoice_sync_status: 'cloud_imported',
+        cloud_synced_at: '2026-11-20T10:00:00.000Z',
+        is_settled: false,
+        created_at: '2026-11-20',
+      },
+      {
+        id: 'tx_manual_only',
+        ledger_id: 'ledger_1',
+        creator_id: 'user_dad',
+        category_id: 'cat_1',
+        amount: 50,
+        type: 'expense',
+        paid_by: 'user_dad',
+        transacted_at: '2026-11-26T09:00:00.000Z',
+        merchant: '早餐店',
+        invoice_sync_status: 'manual',
+        is_settled: false,
+        created_at: '2026-11-26',
+      },
+    ];
+
+    it('應按同步時間降冪排列並支援 24 小時區間與異動類型篩選', () => {
+      const recent24h = getRecentCloudSyncedTransactions(txs, { withinHours: 24, nowMs });
+      expect(recent24h.map(i => i.transaction.id)).toEqual(['tx_imported_nov', 'tx_matched_oct']);
+
+      const matchedOnly = getRecentCloudSyncedTransactions(txs, {
+        withinHours: 24,
+        filterType: 'matched_cloud',
+        nowMs,
+      });
+      expect(matchedOnly.map(i => i.transaction.id)).toEqual(['tx_matched_oct']);
+
+      const allSynced = getRecentCloudSyncedTransactions(txs, { nowMs });
+      expect(allSynced.map(i => i.transaction.id)).toEqual([
+        'tx_imported_nov',
+        'tx_matched_oct',
+        'tx_old_synced',
+      ]);
     });
   });
 

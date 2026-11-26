@@ -3403,6 +3403,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (firstChunk.length > 0) {
         const transformedFirst = firstChunk.map(transformSingleTx);
         const mergedMap = new Map<string, Transaction>();
+        const localTxById = new Map<string, Transaction>();
+        if (hasLocalCache && localCachedTransactions.length > 0) {
+          localCachedTransactions.forEach(lt => {
+            if (lt && lt.id) localTxById.set(lt.id, lt);
+          });
+        }
 
         // 讀取當前離線佇列中尚未送達雲端的更新操作，防止雲端尚未落盤的舊資料覆蓋本地最新修改
         const pendingOfflineMutations = await getOfflineQueue().catch(() => []);
@@ -3415,11 +3421,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         transformedFirst.forEach(t => {
           if (!deletedSet.has(t.id)) {
+            const localTx = localTxById.get(t.id);
+            const preservedCloudFields: Partial<Transaction> = localTx
+              ? {
+                  invoice_items: (t.invoice_items && t.invoice_items.length > 0) ? t.invoice_items : localTx.invoice_items,
+                  invoice_sync_status: t.invoice_sync_status || localTx.invoice_sync_status,
+                  cloud_synced_at: t.cloud_synced_at || localTx.cloud_synced_at,
+                  cloud_carrier_name: t.cloud_carrier_name || localTx.cloud_carrier_name,
+                }
+              : {};
             const pendingData = pendingUpdateMap.get(t.id);
             if (pendingData) {
-              mergedMap.set(t.id, { ...t, ...pendingData });
+              mergedMap.set(t.id, { ...t, ...preservedCloudFields, ...pendingData });
             } else {
-              mergedMap.set(t.id, t);
+              mergedMap.set(t.id, { ...t, ...preservedCloudFields });
             }
           }
         });
@@ -7652,6 +7667,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         status: invoiceStatus,
         prizeAmount: invoicePrizeAmount,
         prizeName: invoicePrizeName,
+        syncStatus: data.invoice_sync_status,
+        syncedAt: data.cloud_synced_at,
+        carrierName: data.cloud_carrier_name,
       });
       finalNote = cleanUserNote ? `${cleanUserNote} ${invoiceTag}` : invoiceTag;
     }
@@ -8748,6 +8766,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       let invoiceStatus = data.invoice_status !== undefined ? data.invoice_status : (targetTx?.invoice_status || 'pending');
       let invoicePrizeAmount = data.invoice_prize_amount !== undefined ? data.invoice_prize_amount : (targetTx?.invoice_prize_amount || 0);
       let invoicePrizeName = data.invoice_prize_name !== undefined ? data.invoice_prize_name : targetTx?.invoice_prize_name;
+      const effectiveInvoiceSyncStatus = data.invoice_sync_status !== undefined ? data.invoice_sync_status : targetTx?.invoice_sync_status;
+      const effectiveCloudSyncedAt = data.cloud_synced_at !== undefined ? data.cloud_synced_at : targetTx?.cloud_synced_at;
+      const effectiveCloudCarrierName = data.cloud_carrier_name !== undefined ? data.cloud_carrier_name : targetTx?.cloud_carrier_name;
 
       const hasExplicitInvoiceNum = data.invoice_number !== undefined;
       const targetInvoiceNum = hasExplicitInvoiceNum ? data.invoice_number?.trim() : targetTx?.invoice_number;
@@ -8785,6 +8806,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 status: invoiceStatus,
                 prizeAmount: invoicePrizeAmount,
                 prizeName: invoicePrizeName,
+                syncStatus: effectiveInvoiceSyncStatus,
+                syncedAt: effectiveCloudSyncedAt,
+                carrierName: effectiveCloudCarrierName,
               })}`
             : encodeInvoiceTag({
                 invoiceNumber: formattedInvoiceNumber,
@@ -8793,6 +8817,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 status: invoiceStatus,
                 prizeAmount: invoicePrizeAmount,
                 prizeName: invoicePrizeName,
+                syncStatus: effectiveInvoiceSyncStatus,
+                syncedAt: effectiveCloudSyncedAt,
+                carrierName: effectiveCloudCarrierName,
               }))
         : cleanUserNote;
 
@@ -8870,6 +8897,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             invoice_status: formattedInvoiceNumber ? invoiceStatus : (data.invoice_status !== undefined ? data.invoice_status : t.invoice_status),
             invoice_prize_amount: formattedInvoiceNumber ? invoicePrizeAmount : (data.invoice_prize_amount !== undefined ? data.invoice_prize_amount : t.invoice_prize_amount),
             invoice_prize_name: formattedInvoiceNumber ? invoicePrizeName : (data.invoice_prize_name !== undefined ? data.invoice_prize_name : t.invoice_prize_name),
+            invoice_sync_status: effectiveInvoiceSyncStatus,
+            cloud_synced_at: effectiveCloudSyncedAt,
+            cloud_carrier_name: effectiveCloudCarrierName,
+            invoice_items: data.invoice_items !== undefined ? data.invoice_items : t.invoice_items,
             amount: isTargetMemo ? 0 : (data.amount !== undefined ? data.amount : t.amount),
             reminder_date: isTargetMemo ? effectiveReminder : (data.reminder_date !== undefined ? (data.reminder_date || undefined) : t.reminder_date),
             reminder_calendar: isTargetMemo ? effectiveCalendar : (data.reminder_calendar !== undefined ? (data.reminder_calendar || undefined) : t.reminder_calendar),

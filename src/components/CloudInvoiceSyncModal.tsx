@@ -21,9 +21,11 @@ import {
   generateMockCloudInvoices,
   parseMofInvoiceCsv,
   findExistingCarrierAccount,
+  getRecentCloudSyncedTransactions,
+  CloudSyncChangeFilter,
   SyncProcessResult,
 } from '../lib/cloudInvoiceSync';
-import { CloudInvoiceItem, CarrierRule, PaymentAccount } from '../types/database';
+import { CloudInvoiceItem, CarrierRule, PaymentAccount, Transaction } from '../types/database';
 import {
   loadCarrierRules,
   addOrUpdateCarrierRule,
@@ -34,11 +36,13 @@ import * as DocumentPicker from 'expo-document-picker';
 interface CloudInvoiceSyncModalProps {
   visible: boolean;
   onClose: () => void;
+  onSelectTransaction?: (transaction: Transaction) => void;
 }
 
 export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
   visible,
   onClose,
+  onSelectTransaction,
 }) => {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
@@ -87,12 +91,87 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
   const [mobileBarcode, setMobileBarcode] = useState('/ABC+123');
   const [isEditingBarcode, setIsEditingBarcode] = useState(false);
 
+  // 本次匯入異動紀錄與集中檢視分頁
+  const [lastImportSession, setLastImportSession] = useState<{
+    syncedAt: string;
+    updatedItems: { id: string; changedFields: string[] }[];
+    createdIds: string[];
+  } | null>(null);
+  const [syncHistoryTab, setSyncHistoryTab] = useState<CloudSyncChangeFilter>('all');
+  const [showAllRecentHistory, setShowAllRecentHistory] = useState(false);
+
   // 載入當前帳本的載具分流字典
   useEffect(() => {
     if (visible && currentLedger?.id) {
       loadCarrierRules(currentLedger.id).then(setCarrierRules);
     }
   }, [visible, currentLedger?.id]);
+
+  // 彙整集中檢視之雲端同步異動清單（本次匯入優先，否則顯示帳本近期雲端同步紀錄）
+  const syncedChangeListState = useMemo(() => {
+    const allRecent = getRecentCloudSyncedTransactions(transactions);
+    const sessionHasItems =
+      !!lastImportSession &&
+      (lastImportSession.updatedItems.length > 0 || lastImportSession.createdIds.length > 0);
+
+    const isSessionMode = sessionHasItems && !showAllRecentHistory;
+
+    type DisplayChangeItem = {
+      transaction: Transaction;
+      syncType: 'matched_cloud' | 'cloud_imported';
+      changedFields?: string[];
+      syncedAt: string;
+    };
+
+    let baseItems: DisplayChangeItem[] = [];
+    if (isSessionMode && lastImportSession) {
+      const txMap = new Map(transactions.map(t => [t.id, t]));
+      for (const upd of lastImportSession.updatedItems) {
+        const tx = txMap.get(upd.id);
+        if (tx) {
+          baseItems.push({
+            transaction: tx,
+            syncType: 'matched_cloud',
+            changedFields: upd.changedFields,
+            syncedAt: tx.cloud_synced_at || lastImportSession.syncedAt,
+          });
+        }
+      }
+      for (const cid of lastImportSession.createdIds) {
+        const tx = txMap.get(cid);
+        if (tx) {
+          baseItems.push({
+            transaction: tx,
+            syncType: 'cloud_imported',
+            syncedAt: tx.cloud_synced_at || lastImportSession.syncedAt,
+          });
+        }
+      }
+    } else {
+      baseItems = allRecent.slice(0, 50).map(item => ({
+        transaction: item.transaction,
+        syncType: item.syncType,
+        syncedAt: item.syncedAt,
+      }));
+    }
+
+    const matchedCount = baseItems.filter(i => i.syncType === 'matched_cloud').length;
+    const importedCount = baseItems.filter(i => i.syncType === 'cloud_imported').length;
+    const filteredItems =
+      syncHistoryTab === 'all'
+        ? baseItems
+        : baseItems.filter(i => i.syncType === syncHistoryTab);
+
+    return {
+      isSessionMode,
+      sessionHasItems,
+      totalRecentCount: allRecent.length,
+      totalCount: baseItems.length,
+      matchedCount,
+      importedCount,
+      filteredItems,
+    };
+  }, [transactions, lastImportSession, showAllRecentHistory, syncHistoryTab]);
 
   // 取得現有各成員登記之實體金融卡片對應（排除網購會員載具 type === 'carrier'）
   const cardMappings = useMemo(() => {
@@ -278,18 +357,24 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
     try {
       let updatedCount = 0;
       let newCount = 0;
+      const updatedItems: { id: string; changedFields: string[] }[] = [];
+      const createdIds: string[] = [];
 
       // 1. 執行更新媒合成功的既有手動交易 (排除已完全同步過無變更者)
       for (const item of syncResult.updatedTransactions) {
         if (!item.isAlreadySynced) {
           await updateTransaction(item.transactionId, item.updates);
+          updatedItems.push({
+            id: item.transactionId,
+            changedFields: item.changedFields || ['發票號碼'],
+          });
           updatedCount++;
         }
       }
 
       // 2. 執行新增全新雲端發票
       for (const item of syncResult.newTransactions) {
-        await addTransaction({
+        const createdId = await addTransaction({
           amount: item.data.amount,
           type: 'expense',
           category_id: item.data.category_id,
@@ -306,12 +391,21 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
           cloud_carrier_name: item.data.cloud_carrier_name,
           invoice_items: item.data.invoice_items,
         });
+        if (createdId) createdIds.push(createdId);
         newCount++;
       }
 
+      setLastImportSession({
+        syncedAt: new Date().toISOString(),
+        updatedItems,
+        createdIds,
+      });
+      setSyncHistoryTab('all');
+      setShowAllRecentHistory(false);
+
       setStatusBanner({
         type: 'success',
-        message: `🎉 匯入完成！成功補齊 ${updatedCount} 筆手動帳目，依卡號自動新增 ${newCount} 筆雲端支出！`,
+        message: `🎉 匯入完成！成功補齊 ${updatedCount} 筆手動帳目，依卡號自動新增 ${newCount} 筆雲端支出！請於下方異動清單集中核對。`,
       });
       setParsedInvoices(null);
     } catch (err: any) {
@@ -619,14 +713,21 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
         carrierRules
       );
 
+      const updatedItems: { id: string; changedFields: string[] }[] = [];
+      const createdIds: string[] = [];
+
       for (const item of result.updatedTransactions) {
         if (!item.isAlreadySynced) {
           await updateTransaction(item.transactionId, item.updates);
+          updatedItems.push({
+            id: item.transactionId,
+            changedFields: item.changedFields || ['發票號碼'],
+          });
         }
       }
 
       for (const item of result.newTransactions) {
-        await addTransaction({
+        const createdId = await addTransaction({
           amount: item.data.amount,
           type: 'expense',
           category_id: item.data.category_id,
@@ -643,7 +744,16 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
           cloud_carrier_name: item.data.cloud_carrier_name,
           invoice_items: item.data.invoice_items,
         });
+        if (createdId) createdIds.push(createdId);
       }
+
+      setLastImportSession({
+        syncedAt: new Date().toISOString(),
+        updatedItems,
+        createdIds,
+      });
+      setSyncHistoryTab('all');
+      setShowAllRecentHistory(false);
 
       setSyncResult(result);
     } catch (err: any) {
@@ -993,6 +1103,256 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                     </Text>
                   )}
                 </TouchableOpacity>
+              </View>
+            )}
+
+            {/* 2.5 本次／近期雲端發票同步異動集中清單（跨月彙整，點擊可直達編輯並返回） */}
+            {(syncedChangeListState.totalCount > 0 || syncedChangeListState.sessionHasItems) && (
+              <View
+                style={[
+                  styles.syncChangesCard,
+                  {
+                    backgroundColor: isDark ? colors.background.cardSubtle : '#F8FAFC',
+                    borderColor: isDark ? 'rgba(56, 189, 248, 0.35)' : '#BAE6FD',
+                  },
+                ]}
+              >
+                <View style={styles.syncChangesHeaderRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[styles.syncChangesTitle, { color: isDark ? '#7DD3FC' : '#0369A1' }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.82}
+                      maxFontSizeMultiplier={1.08}
+                    >
+                      {syncedChangeListState.isSessionMode
+                        ? `📋 本次同步異動清單 (${syncedChangeListState.totalCount} 筆)`
+                        : `🕒 近期雲端同步異動 (${syncedChangeListState.totalCount} 筆)`}
+                    </Text>
+                    <Text
+                      style={[styles.syncChangesSubtitle, { color: colors.text.secondary }]}
+                      maxFontSizeMultiplier={1.08}
+                    >
+                      跨月份集中列出新增與補齊發票的交易，點擊即可查看明細或調整分類
+                    </Text>
+                  </View>
+                  {syncedChangeListState.sessionHasItems && syncedChangeListState.totalRecentCount > syncedChangeListState.totalCount && (
+                    <TouchableOpacity
+                      style={[
+                        styles.syncModeSwitchBtn,
+                        {
+                          backgroundColor: isDark ? 'rgba(14, 165, 233, 0.18)' : '#E0F2FE',
+                          borderColor: isDark ? 'rgba(56, 189, 248, 0.4)' : '#7DD3FC',
+                        },
+                      ]}
+                      onPress={() => setShowAllRecentHistory(!showAllRecentHistory)}
+                      activeOpacity={0.75}
+                    >
+                      <Text
+                        style={[styles.syncModeSwitchText, { color: isDark ? '#7DD3FC' : '#0369A1' }]}
+                        maxFontSizeMultiplier={1.08}
+                        numberOfLines={1}
+                      >
+                        {showAllRecentHistory ? '只看本次' : '全部近期'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* 三態分類切換列 */}
+                <View
+                  style={[
+                    styles.syncTabRow,
+                    { backgroundColor: isDark ? 'rgba(15, 23, 42, 0.55)' : '#E2E8F0' },
+                  ]}
+                >
+                  <TouchableOpacity
+                    style={[
+                      styles.syncTabBtn,
+                      syncHistoryTab === 'all' && [
+                        styles.syncTabBtnActive,
+                        isDark && { backgroundColor: colors.background.card },
+                      ],
+                    ]}
+                    onPress={() => setSyncHistoryTab('all')}
+                    activeOpacity={0.75}
+                  >
+                    <Text
+                      style={[
+                        styles.syncTabBtnText,
+                        { color: colors.text.secondary },
+                        syncHistoryTab === 'all' && { color: isDark ? '#7DD3FC' : '#0369A1' },
+                      ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.78}
+                      maxFontSizeMultiplier={1.08}
+                    >
+                      全部 ({syncedChangeListState.totalCount})
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.syncTabBtn,
+                      syncHistoryTab === 'matched_cloud' && [
+                        styles.syncTabBtnActive,
+                        isDark && { backgroundColor: colors.background.card },
+                      ],
+                    ]}
+                    onPress={() => setSyncHistoryTab('matched_cloud')}
+                    activeOpacity={0.75}
+                  >
+                    <Text
+                      style={[
+                        styles.syncTabBtnText,
+                        { color: colors.text.secondary },
+                        syncHistoryTab === 'matched_cloud' && { color: isDark ? '#FBBF24' : '#B45309' },
+                      ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.78}
+                      maxFontSizeMultiplier={1.08}
+                    >
+                      ✏️ 補齊 ({syncedChangeListState.matchedCount})
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.syncTabBtn,
+                      syncHistoryTab === 'cloud_imported' && [
+                        styles.syncTabBtnActive,
+                        isDark && { backgroundColor: colors.background.card },
+                      ],
+                    ]}
+                    onPress={() => setSyncHistoryTab('cloud_imported')}
+                    activeOpacity={0.75}
+                  >
+                    <Text
+                      style={[
+                        styles.syncTabBtnText,
+                        { color: colors.text.secondary },
+                        syncHistoryTab === 'cloud_imported' && { color: isDark ? '#34D399' : '#047857' },
+                      ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.78}
+                      maxFontSizeMultiplier={1.08}
+                    >
+                      🆕 新增 ({syncedChangeListState.importedCount})
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {syncedChangeListState.filteredItems.length === 0 ? (
+                  <Text
+                    style={[styles.syncEmptyHint, { color: colors.text.secondary }]}
+                    maxFontSizeMultiplier={1.08}
+                  >
+                    此分類目前沒有異動交易。
+                  </Text>
+                ) : (
+                  syncedChangeListState.filteredItems.map(item => {
+                    const tx = item.transaction;
+                    const isMatched = item.syncType === 'matched_cloud';
+                    const payerName = tx.paid_by
+                      ? (getMemberById(tx.paid_by)?.display_name || tx.payer_profile?.display_name || '成員')
+                      : '成員';
+                    const dateLabel = tx.transacted_at ? tx.transacted_at.slice(0, 10) : '';
+                    const carrierLabel = tx.cloud_carrier_name || '';
+                    return (
+                      <TouchableOpacity
+                        key={tx.id}
+                        style={[
+                          styles.syncChangeItemCard,
+                          {
+                            backgroundColor: isDark ? colors.background.card : '#FFFFFF',
+                            borderColor: isDark ? colors.border.default : '#E2E8F0',
+                          },
+                        ]}
+                        onPress={() => onSelectTransaction?.(tx)}
+                        activeOpacity={0.75}
+                      >
+                        <View style={styles.syncChangeTopRow}>
+                          <View
+                            style={[
+                              styles.syncChangeTypeBadge,
+                              isMatched
+                                ? {
+                                    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
+                                    borderColor: isDark ? 'rgba(251, 191, 36, 0.45)' : '#FCD34D',
+                                  }
+                                : {
+                                    backgroundColor: isDark ? 'rgba(14, 165, 233, 0.2)' : '#E0F2FE',
+                                    borderColor: isDark ? 'rgba(56, 189, 248, 0.45)' : '#7DD3FC',
+                                  },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.syncChangeTypeBadgeText,
+                                {
+                                  color: isMatched
+                                    ? (isDark ? '#FCD34D' : '#B45309')
+                                    : (isDark ? '#7DD3FC' : '#0369A1'),
+                                },
+                              ]}
+                              numberOfLines={1}
+                              maxFontSizeMultiplier={1.08}
+                            >
+                              {isMatched ? '✏️ 修改補齊' : '🆕 雲端新增'}
+                            </Text>
+                          </View>
+                          <Text
+                            style={[styles.syncChangeMerchant, { color: colors.text.primary }]}
+                            numberOfLines={1}
+                            maxFontSizeMultiplier={1.12}
+                          >
+                            {tx.merchant || '未命名消費'}
+                          </Text>
+                          <Text
+                            style={[styles.syncChangeAmount, { color: isDark ? '#FCA5A5' : '#DC2626' }]}
+                            maxFontSizeMultiplier={1.12}
+                          >
+                            -NT$ {Number(tx.amount).toLocaleString()}
+                          </Text>
+                        </View>
+
+                        <View style={styles.syncChangeMetaRow}>
+                          <Text
+                            style={[styles.syncChangeMetaText, { color: colors.text.secondary }]}
+                            numberOfLines={2}
+                            maxFontSizeMultiplier={1.08}
+                          >
+                            {dateLabel}
+                            {tx.invoice_number ? ` · ☁️ ${tx.invoice_number}` : ''}
+                            {` · ${payerName}`}
+                            {carrierLabel ? ` · ${carrierLabel}` : ''}
+                          </Text>
+                          <Text
+                            style={[styles.syncChangeActionHint, { color: isDark ? '#38BDF8' : '#0284C7' }]}
+                            maxFontSizeMultiplier={1.08}
+                            numberOfLines={1}
+                          >
+                            查看編輯 ›
+                          </Text>
+                        </View>
+
+                        {isMatched && (
+                          <Text
+                            style={[styles.syncChangeDiffHint, { color: isDark ? '#FBBF24' : '#B45309' }]}
+                            numberOfLines={1}
+                            maxFontSizeMultiplier={1.08}
+                          >
+                            已補齊：{item.changedFields && item.changedFields.length > 0 ? item.changedFields.join('、') : '官方發票號碼與明細'}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
               </View>
             )}
 
@@ -2133,5 +2493,120 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     marginTop: 6,
+  },
+  syncChangesCard: {
+    borderWidth: 1.5,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+  },
+  syncChangesHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 10,
+  },
+  syncChangesTitle: {
+    fontSize: 14.5,
+    fontWeight: '800',
+  },
+  syncChangesSubtitle: {
+    fontSize: 11.5,
+    lineHeight: 16,
+    marginTop: 3,
+  },
+  syncModeSwitchBtn: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  syncModeSwitchText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  syncTabRow: {
+    flexDirection: 'row',
+    borderRadius: 10,
+    padding: 3,
+    gap: 4,
+    marginBottom: 10,
+  },
+  syncTabBtn: {
+    flex: 1,
+    paddingVertical: 7,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  syncTabBtnActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  syncTabBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  syncEmptyHint: {
+    fontSize: 12,
+    textAlign: 'center',
+    paddingVertical: 14,
+  },
+  syncChangeItemCard: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 11,
+    marginBottom: 8,
+  },
+  syncChangeTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 5,
+  },
+  syncChangeTypeBadge: {
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  syncChangeTypeBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  syncChangeMerchant: {
+    flex: 1,
+    fontSize: 13.5,
+    fontWeight: '700',
+  },
+  syncChangeAmount: {
+    fontSize: 13.5,
+    fontWeight: '800',
+  },
+  syncChangeMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  syncChangeMetaText: {
+    flex: 1,
+    fontSize: 11.5,
+    lineHeight: 16,
+  },
+  syncChangeActionHint: {
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  syncChangeDiffHint: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 4,
   },
 });

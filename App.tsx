@@ -250,6 +250,7 @@ const AppContent: React.FC = () => {
   const [modalDefaultDemoPublicMemo, setModalDefaultDemoPublicMemo] = useState<boolean>(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const returnToInvoiceLotteryRef = useRef<boolean>(false);
+  const returnToCloudInvoiceSyncRef = useRef<boolean>(false);
 
   // 隱私鎖與桌面快捷動作 (Quick Actions)
   const { isAppLocked } = usePrivacy();
@@ -1298,6 +1299,9 @@ const AppContent: React.FC = () => {
           if (returnToInvoiceLotteryRef.current) {
             returnToInvoiceLotteryRef.current = false;
             setInvoiceLotteryModalVisible(true);
+          } else if (returnToCloudInvoiceSyncRef.current) {
+            returnToCloudInvoiceSyncRef.current = false;
+            setCloudInvoiceModalVisible(true);
           }
         }}
         onLinkExpense={(memoTx) => {
@@ -1397,7 +1401,15 @@ const AppContent: React.FC = () => {
 
       <CloudInvoiceSyncModal
         visible={cloudInvoiceModalVisible}
-        onClose={() => setCloudInvoiceModalVisible(false)}
+        onClose={() => {
+          returnToCloudInvoiceSyncRef.current = false;
+          setCloudInvoiceModalVisible(false);
+        }}
+        onSelectTransaction={(tx) => {
+          returnToCloudInvoiceSyncRef.current = true;
+          setCloudInvoiceModalVisible(false);
+          setEditingTransaction(tx);
+        }}
       />
 
       <TransactionFilterModal

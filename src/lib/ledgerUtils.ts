@@ -46,17 +46,31 @@ export const hydrateTransactionWithInvoice = (t: any): Transaction => {
   let invoiceStatus = t.invoice_status;
   let prizeAmount = t.invoice_prize_amount;
   let prizeName = t.invoice_prize_name;
+  let invoiceSyncStatus = t.invoice_sync_status;
+  let cloudSyncedAt = t.cloud_synced_at;
+  let cloudCarrierName = t.cloud_carrier_name;
 
-  // 1. 若缺少 invoice_number，嘗試從 note 中解碼
-  if (!invoiceNumber && t.note) {
+  // 1. 嘗試從 note 中解碼發票標籤（含雲端同步狀態、時間與來源載具）
+  if (t.note) {
     const decoded = decodeInvoiceTag(t.note);
-    if (decoded?.invoiceNumber) {
-      invoiceNumber = decoded.invoiceNumber;
-      periodKey = periodKey || decoded.periodKey;
-      randomCode = randomCode || decoded.randomCode;
-      invoiceStatus = invoiceStatus || decoded.status;
-      prizeAmount = prizeAmount !== undefined ? prizeAmount : decoded.prizeAmount;
-      prizeName = prizeName || decoded.prizeName;
+    if (decoded) {
+      if (!invoiceNumber && decoded.invoiceNumber) {
+        invoiceNumber = decoded.invoiceNumber;
+        periodKey = periodKey || decoded.periodKey;
+        randomCode = randomCode || decoded.randomCode;
+        invoiceStatus = invoiceStatus || decoded.status;
+        prizeAmount = prizeAmount !== undefined ? prizeAmount : decoded.prizeAmount;
+        prizeName = prizeName || decoded.prizeName;
+      }
+      if (!invoiceSyncStatus && decoded.syncStatus) {
+        invoiceSyncStatus = decoded.syncStatus;
+      }
+      if (!cloudSyncedAt && decoded.syncedAt) {
+        cloudSyncedAt = decoded.syncedAt;
+      }
+      if (!cloudCarrierName && decoded.carrierName) {
+        cloudCarrierName = decoded.carrierName;
+      }
     }
   }
 
@@ -102,6 +116,9 @@ export const hydrateTransactionWithInvoice = (t: any): Transaction => {
       invoice_status: invoiceStatus,
       invoice_prize_amount: prizeAmount,
       invoice_prize_name: prizeName,
+      ...(invoiceSyncStatus ? { invoice_sync_status: invoiceSyncStatus } : {}),
+      ...(cloudSyncedAt ? { cloud_synced_at: cloudSyncedAt } : {}),
+      ...(cloudCarrierName ? { cloud_carrier_name: cloudCarrierName } : {}),
     };
   }
 
@@ -109,6 +126,9 @@ export const hydrateTransactionWithInvoice = (t: any): Transaction => {
     ...t,
     note,
     is_pinned: isPinned !== undefined ? Boolean(isPinned) : t.is_pinned,
+    ...(invoiceSyncStatus ? { invoice_sync_status: invoiceSyncStatus } : {}),
+    ...(cloudSyncedAt ? { cloud_synced_at: cloudSyncedAt } : {}),
+    ...(cloudCarrierName ? { cloud_carrier_name: cloudCarrierName } : {}),
   };
 };
 
