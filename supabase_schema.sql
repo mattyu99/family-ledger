@@ -1541,7 +1541,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.secure_update_account_balance(UUID, NUMERIC) TO anon, authenticated;
 
--- 4. 安全批量新增交易 (例如全家零用錢批量發放)
+-- 4. 安全批量新增交易 (例如全家零用錢批量發放、免登入連動待辦寫入)
 CREATE OR REPLACE FUNCTION public.secure_batch_add_transactions(
     p_transactions JSONB
 )
@@ -1567,6 +1567,12 @@ BEGIN
             image_url,
             is_settled,
             is_reconciled,
+            completed_by,
+            completed_at,
+            completion_note,
+            reminder_date,
+            reminder_target,
+            linked_transaction_id,
             transacted_at,
             created_at,
             updated_at
@@ -1585,12 +1591,29 @@ BEGIN
             NULLIF(item->>'image_url', ''),
             COALESCE((item->>'is_settled')::BOOLEAN, false),
             COALESCE((item->>'is_reconciled')::BOOLEAN, false),
+            CASE WHEN (item->>'completed_by') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (item->>'completed_by')::UUID ELSE NULL END,
+            CASE WHEN NULLIF(item->>'completed_at', '') IS NOT NULL AND (item->>'completed_at') != 'null' THEN (item->>'completed_at')::TIMESTAMPTZ ELSE NULL END,
+            NULLIF(item->>'completion_note', ''),
+            NULLIF(item->>'reminder_date', ''),
+            COALESCE(NULLIF(item->>'reminder_target', ''), 'family'),
+            CASE WHEN (item->>'linked_transaction_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (item->>'linked_transaction_id')::UUID ELSE NULL END,
             COALESCE((item->>'transacted_at')::TIMESTAMPTZ, NOW()),
             COALESCE((item->>'created_at')::TIMESTAMPTZ, NOW()),
             COALESCE((item->>'updated_at')::TIMESTAMPTZ, NOW())
         ) ON CONFLICT (id) DO UPDATE SET
             amount = EXCLUDED.amount,
+            merchant = COALESCE(EXCLUDED.merchant, transactions.merchant),
+            payment_method = COALESCE(EXCLUDED.payment_method, transactions.payment_method),
+            account_id = COALESCE(EXCLUDED.account_id, transactions.account_id),
             note = EXCLUDED.note,
+            is_settled = EXCLUDED.is_settled,
+            is_reconciled = EXCLUDED.is_reconciled,
+            completed_by = COALESCE(EXCLUDED.completed_by, transactions.completed_by),
+            completed_at = COALESCE(EXCLUDED.completed_at, transactions.completed_at),
+            completion_note = COALESCE(EXCLUDED.completion_note, transactions.completion_note),
+            reminder_date = COALESCE(EXCLUDED.reminder_date, transactions.reminder_date),
+            reminder_target = COALESCE(EXCLUDED.reminder_target, transactions.reminder_target),
+            linked_transaction_id = COALESCE(EXCLUDED.linked_transaction_id, transactions.linked_transaction_id),
             updated_at = NOW();
 
         v_inserted_count := v_inserted_count + 1;
