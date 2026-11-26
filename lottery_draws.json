@@ -1,4 +1,17 @@
 {
+  "2026-10": {
+    "periodKey": "2026-10",
+    "periodLabel": "115年 09-10月期",
+    "drawDate": "2026-11-25",
+    "superPrize": "97606522",
+    "specialPrize": "76160702",
+    "firstPrizes": [
+      "02096005",
+      "28745017",
+      "76740352"
+    ],
+    "additionalSixPrizes": []
+  },
   "2026-08": {
     "periodKey": "2026-08",
     "periodLabel": "115年 07-08月期",
@@ -61,19 +74,6 @@
       "92377231",
       "05232592",
       "78125249"
-    ],
-    "additionalSixPrizes": []
-  },
-  "2025-10": {
-    "periodKey": "2025-10",
-    "periodLabel": "114年 09-10月期",
-    "drawDate": "2025-11-25",
-    "superPrize": "25834483",
-    "specialPrize": "46587380",
-    "firstPrizes": [
-      "41016094",
-      "98081574",
-      "07309261"
     ],
     "additionalSixPrizes": []
   }
