@@ -76,8 +76,30 @@ async function syncLottery() {
   }
 
   const outPath = path.join(outDir, 'lottery_draws.json');
-  fs.writeFileSync(outPath, JSON.stringify(draws, null, 2), 'utf-8');
-  console.log(`[Lottery Sync] ✅ 已成功解析 ${Object.keys(draws).length} 期官方中獎號碼至 ${outPath}`);
+  let existingDraws = {};
+  if (fs.existsSync(outPath)) {
+    try {
+      const rawExisting = fs.readFileSync(outPath, 'utf-8');
+      const parsedExisting = JSON.parse(rawExisting);
+      if (parsedExisting && typeof parsedExisting === 'object' && !Array.isArray(parsedExisting)) {
+        existingDraws = parsedExisting;
+      }
+    } catch (err) {
+      console.warn('[Lottery Sync] ⚠️ 讀取既有歷史獎號失敗，將以本次資料重建:', err?.message || err);
+    }
+  }
+
+  // 累加保留歷史期別，並以本次官方抓取最新內容覆寫同期
+  const mergedMap = { ...existingDraws, ...draws };
+  const sortedDraws = {};
+  for (const key of Object.keys(mergedMap).sort((a, b) => b.localeCompare(a))) {
+    sortedDraws[key] = mergedMap[key];
+  }
+
+  fs.writeFileSync(outPath, JSON.stringify(sortedDraws, null, 2), 'utf-8');
+  console.log(
+    `[Lottery Sync] ✅ 本次解析 ${Object.keys(draws).length} 期，累計留存總計 ${Object.keys(sortedDraws).length} 期官方中獎號碼至 ${outPath}`
+  );
   console.log(Object.keys(draws).map(k => `  • ${draws[k].periodLabel} (${draws[k].drawDate})`).join('\n'));
 }
 

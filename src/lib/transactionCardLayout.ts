@@ -108,13 +108,26 @@ const calcWorkingListWidth = (items: WorkingBadge[], fontScale: number): number 
 const tryFitWithProgressiveShrink = (
   pool: CardBadgeInput[],
   maxWidth: number,
-  fontScale: number
+  fontScale: number,
+  allowFull: boolean
 ): WorkingBadge[] | null => {
-  const working: WorkingBadge[] = pool.map((b) => ({ input: b, level: 'compact' }));
+  const startLevel: CardBadgeLevel = allowFull ? 'full' : 'compact';
+  const working: WorkingBadge[] = pool.map((b) => ({ input: b, level: startLevel }));
   if (calcWorkingListWidth(working, fontScale) <= maxWidth) {
     return working;
   }
+
   const shrinkOrder = [...working].sort((a, b) => a.input.shrinkPriority - b.input.shrinkPriority);
+
+  if (allowFull) {
+    for (const target of shrinkOrder) {
+      target.level = 'compact';
+      if (calcWorkingListWidth(working, fontScale) <= maxWidth) {
+        return working;
+      }
+    }
+  }
+
   for (const target of shrinkOrder) {
     target.level = 'icon';
     if (calcWorkingListWidth(working, fontScale) <= maxWidth) {
@@ -127,9 +140,9 @@ const tryFitWithProgressiveShrink = (
 /**
  * 固定座標極簡兩行排版：
  * - 發票、待辦、憑證全數固定於第 1 行金額左側（第 2 行純留給備註、付款方式與成員）；
- * - 優先保留完整店名並由低優先標籤漸進縮為純圖示；
- * - 若為超長店名仍放不下，則允許超長店名縮短至保底 4 中文字＋「...」將徽章穩留第 1 行；
- * - 第 3 行僅保留給中獎／已兌領發票醒目橫條。
+ * - 完整店名空間充裕時優先展開完整文字（如 10 碼發票、連動待辦），放不下再依低優先序降級為精簡版 → 純圖示；
+ * - 若為超長店名仍放不下，則允許超長店名縮短至保底 4 中文字＋「...」將精簡或純圖示徽章穩留第 1 行；
+ * - 第 3 行僅保留給未逾期中獎／已兌領發票醒目橫條。
  */
 export const allocateTransactionCardBadges = (
   input: TransactionCardLayoutInput
@@ -178,10 +191,10 @@ export const allocateTransactionCardBadges = (
   const row1FreeWithFullTitle = Math.max(0, contentWidth - fullTitleWidth - 8 - fixedRightWidth - 8);
   const row1FreeWithMinTitle = Math.max(0, contentWidth - minTitleWidth - 8 - fixedRightWidth - 8);
 
-  // 第 2 步：先以完整店名試放（含文字 → 漸進縮純圖示），若為超長店名再釋放至保底店名寬度，絕不另開第 3 行
-  let chosen = tryFitWithProgressiveShrink(candidates, row1FreeWithFullTitle, fontScale);
+  // 第 2 步：完整店名下三段式試放（完整文字 → 精簡版 → 純圖示）；超長店名保底寬度僅從精簡版起手
+  let chosen = tryFitWithProgressiveShrink(candidates, row1FreeWithFullTitle, fontScale, true);
   if (!chosen && row1FreeWithMinTitle > row1FreeWithFullTitle) {
-    chosen = tryFitWithProgressiveShrink(candidates, row1FreeWithMinTitle, fontScale);
+    chosen = tryFitWithProgressiveShrink(candidates, row1FreeWithMinTitle, fontScale, false);
   }
   if (!chosen) {
     chosen = candidates.map((b) => ({ input: b, level: 'icon' }));

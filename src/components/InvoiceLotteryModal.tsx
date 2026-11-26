@@ -17,6 +17,8 @@ import {
   getOfficialLotteryDraws,
   syncLotteryDrawsAsync,
   checkInvoiceWinning,
+  getInvoiceClaimDeadline,
+  isInvoiceClaimExpired,
 } from '../lib/lottery';
 import { getInvoicePeriodKey, formatInvoiceNumber } from '../lib/invoice';
 import { Transaction } from '../types/database';
@@ -165,12 +167,22 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
     });
   }, [transactions, selectedPeriodKey, scopeFilter, isMine]);
 
-  // 即時計算各發票的中獎判定（整合最新同步之獎號）
+  // 即時計算各發票的中獎判定（整合最新同步之獎號與法定領獎期限）
+  const selectedDeadline = useMemo(
+    () => getInvoiceClaimDeadline(selectedPeriodKey),
+    [selectedPeriodKey]
+  );
+  const isSelectedPeriodExpired = useMemo(
+    () => isInvoiceClaimExpired(selectedPeriodKey),
+    [selectedPeriodKey]
+  );
+
   const evaluatedTransactions = useMemo(() => {
     return periodTransactions.map(tx => {
       const check = checkInvoiceWinning(tx.invoice_number, selectedPeriodKey, drawsMap);
       const isClaimed = tx.invoice_status === 'claimed';
       const isWon = isClaimed ? false : (tx.invoice_status === 'won' || check.isWon);
+      const isExpired = isWon && isSelectedPeriodExpired;
       const isMissed = isClaimed || isWon ? false : (tx.invoice_status === 'missed' || (check.isDrawn && !check.isWon));
       const isPending = !isClaimed && !isWon && !isMissed;
       const prizeAmount = tx.invoice_prize_amount || (check.isWon ? check.prizeAmount : 0);
@@ -179,6 +191,7 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
       return {
         ...tx,
         isWon,
+        isExpired,
         isClaimed,
         isMissed,
         isPending,
@@ -186,27 +199,32 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
         computedPrizeName: prizeName,
       };
     });
-  }, [periodTransactions, selectedPeriodKey, drawsMap]);
+  }, [periodTransactions, selectedPeriodKey, drawsMap, isSelectedPeriodExpired]);
 
-  // 統計數據：總發票數、中獎數、總獎金
+  // 統計數據：總發票數、有效未逾期中獎數、已兌領與未逾期可領獎金
   const stats = useMemo(() => {
     let wonCount = 0;
+    let activeWonCount = 0;
     let totalPrize = 0;
     let claimedCount = 0;
 
     evaluatedTransactions.forEach(t => {
-      if (t.isWon || t.isClaimed) {
-        wonCount += 1;
-        totalPrize += (t.computedPrizeAmount || t.invoice_prize_amount || 0);
-      }
       if (t.isClaimed) {
+        wonCount += 1;
+        activeWonCount += 1;
         claimedCount += 1;
+        totalPrize += (t.computedPrizeAmount || t.invoice_prize_amount || 0);
+      } else if (t.isWon && !t.isExpired) {
+        wonCount += 1;
+        activeWonCount += 1;
+        totalPrize += (t.computedPrizeAmount || t.invoice_prize_amount || 0);
       }
     });
 
     return {
       totalCount: evaluatedTransactions.length,
       wonCount,
+      activeWonCount,
       totalPrize,
       claimedCount,
     };
@@ -223,10 +241,10 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
             <View style={{ flex: 1, marginRight: 8 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                 <Text style={styles.headerTitle} maxFontSizeMultiplier={1.15}>🧾 統一發票對獎中心</Text>
-                {stats.wonCount > 0 && (
+                {stats.activeWonCount > 0 && (
                   <View style={styles.headerWonBadge}>
                     <Text style={styles.headerWonBadgeText} maxFontSizeMultiplier={1.08}>
-                      {scopeFilter === 'mine' ? '我中獎' : '中獎'} {stats.wonCount} 張
+                      {scopeFilter === 'mine' ? '我中獎' : '中獎'} {stats.activeWonCount} 張
                     </Text>
                   </View>
                 )}
@@ -313,7 +331,7 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
 
           <ScrollView ref={scrollRef} style={styles.scrollBody} showsVerticalScrollIndicator={false}>
             {/* 中獎概況統計橫幅 */}
-            <View style={[styles.statsBanner, stats.wonCount > 0 && styles.statsBannerWon]}>
+            <View style={[styles.statsBanner, stats.activeWonCount > 0 && styles.statsBannerWon]}>
               <View style={styles.statsCol}>
                 <Text style={styles.statsLabel} maxFontSizeMultiplier={1.08}>
                   {scopeFilter === 'mine' ? '我的發票' : '本期發票'}
@@ -327,8 +345,8 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
                 <Text style={styles.statsLabel} maxFontSizeMultiplier={1.08}>
                   {scopeFilter === 'mine' ? '我中獎' : '幸運中獎'}
                 </Text>
-                <Text style={[styles.statsValue, stats.wonCount > 0 ? styles.wonValue : null]} maxFontSizeMultiplier={1.15}>
-                  {stats.wonCount} <Text style={styles.statsUnit}>張</Text>
+                <Text style={[styles.statsValue, stats.activeWonCount > 0 ? styles.wonValue : null]} maxFontSizeMultiplier={1.15}>
+                  {stats.activeWonCount} <Text style={styles.statsUnit}>張</Text>
                 </Text>
               </View>
               <View style={styles.statsDivider} />
@@ -379,11 +397,18 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
                     </View>
                   </View>
 
-                  {/* 二獎至六獎對獎規則提示 */}
+                  {/* 二獎至六獎對獎規則提示與法定領獎期限 */}
                   <View style={styles.ruleNotice}>
                     <Text style={styles.ruleNoticeText} maxFontSizeMultiplier={1.08}>
                       💡 二獎 (末7碼) • 三獎 (末6碼) • 四獎 (末5碼) • 五獎 (末4碼 $1,000) • 六獎 (末3碼 $200)
                     </Text>
+                    {selectedDeadline && (
+                      <Text style={[styles.ruleNoticeText, { marginTop: 3 }]} maxFontSizeMultiplier={1.08}>
+                        {isSelectedPeriodExpired
+                          ? `⌛ 本期領獎期限已於 ${selectedDeadline.endDate} 截止`
+                          : `📅 法定領獎期限：${selectedDeadline.startDate} ~ ${selectedDeadline.endDate}`}
+                      </Text>
+                    )}
                   </View>
                 </View>
               </View>
@@ -425,6 +450,7 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
                   ? `${payer.display_name}${isMe && !payer.display_name.includes('我') ? ' (我)' : ''}`
                   : '成員';
                 const isWon = tx.isWon;
+                const isExpired = tx.isExpired;
                 const isClaimed = tx.isClaimed;
                 const isMissed = tx.isMissed;
                 const isPending = tx.isPending;
@@ -436,7 +462,7 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
                     key={tx.id}
                     style={[
                       styles.invoiceCard,
-                      (isWon || isClaimed) && styles.invoiceCardWon,
+                      ((isWon && !isExpired) || isClaimed) && styles.invoiceCardWon,
                     ]}
                     activeOpacity={0.7}
                     onPress={() => {
@@ -449,10 +475,17 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
                         <Text style={styles.invoiceNumText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                           🧾 {formatInvoiceNumber(tx.invoice_number || '')}
                         </Text>
-                        {isWon && (
+                        {isWon && !isExpired && (
                           <View style={styles.wonBadge}>
                             <Text style={styles.wonBadgeText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
                               🎉 中獎 ${prizeAmount.toLocaleString()} ({prizeName})
+                            </Text>
+                          </View>
+                        )}
+                        {isWon && isExpired && (
+                          <View style={styles.missedBadge}>
+                            <Text style={styles.missedBadgeText} maxFontSizeMultiplier={1.08} numberOfLines={1}>
+                              ⌛ 已逾領獎期 (${prizeAmount.toLocaleString()})
                             </Text>
                           </View>
                         )}
@@ -491,7 +524,7 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
 
                       {/* 右側：兌領入帳按鈕與查看箭頭 */}
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        {isWon && !isClaimed && (
+                        {isWon && !isExpired && !isClaimed && (
                           <TouchableOpacity
                             style={styles.claimBtn}
                             onPress={(e) => {

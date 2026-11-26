@@ -11,7 +11,8 @@ import { formatPaymentLabel, parseExpenseDiscount, isTransferToMember } from '..
 import { parseMemoNote, decodeMemoMerchantTag, parseMemoChecklist, formatMemoCompletedDate, formatMemoCompletedTime, isMemoPinned, getItemDueDateBadge, getEffectiveMemoReminderDate, isMemoRelayEnabled, getMemoRelayOffsetDays, formatLinkedTransactionSummary, updateChecklistItemReply, MemoChecklistItem } from '../lib/memo';
 import { MemoItemReplyModal } from './MemoItemReplyModal';
 import { formatMemoReminderBadge } from '../lib/lunar';
-import { stripInvoiceTag } from '../lib/invoice';
+import { stripInvoiceTag, getInvoicePeriodKey } from '../lib/invoice';
+import { isInvoiceClaimExpired } from '../lib/lottery';
 import {
   computeGroupOrderSummary,
   appendGroupOrderItem,
@@ -1004,9 +1005,15 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
   const existingTopRightBadgeText = isTransfer ? transferBadgeLabel : discountBadgeLabel;
 
   // 狀態與發票提醒標籤清單（發票、待辦、憑證固定於第 1 行金額左側；✓ 與 ✨ 固定於右側）
+  const txInvoicePeriodKey = transaction.transacted_at
+    ? getInvoicePeriodKey(transaction.transacted_at).periodKey
+    : (transaction.invoice_period || '');
+  const isWonClaimExpired =
+    transaction.invoice_status === 'won' && isInvoiceClaimExpired(txInvoicePeriodKey);
+
   const rawBadges: CardBadgeInput[] = [];
   if (transaction.invoice_number) {
-    if (transaction.invoice_status === 'won') {
+    if (transaction.invoice_status === 'won' && !isWonClaimExpired) {
       rawBadges.push({
         key: 'invoice',
         fullText: `🎉 中獎 $${transaction.invoice_prize_amount?.toLocaleString()} (${transaction.invoice_prize_name || '中獎'})`,
@@ -1075,6 +1082,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
     const isIconOnly = badge.level === 'icon';
 
     if (badge.key === 'invoice') {
+      const showWonStyle = transaction.invoice_status === 'won' && !isWonClaimExpired;
       return (
         <View
           key={`${keyPrefix}-invoice`}
@@ -1082,11 +1090,11 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
             styles.invoiceBadge,
             isIconOnly && styles.badgeIconOnly,
             (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported') && styles.invoiceBadgeCloud,
-            transaction.invoice_status === 'won' && styles.invoiceBadgeWon,
+            showWonStyle && styles.invoiceBadgeWon,
             transaction.invoice_status === 'claimed' && styles.invoiceBadgeClaimed,
             isDark && { backgroundColor: colors.background.cardSubtle, borderColor: colors.border.default },
             isDark && (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported') && { backgroundColor: 'rgba(14, 165, 233, 0.18)', borderColor: '#38BDF8' },
-            isDark && transaction.invoice_status === 'won' && { backgroundColor: 'rgba(236, 72, 153, 0.2)', borderColor: 'rgba(236, 72, 153, 0.5)' },
+            isDark && showWonStyle && { backgroundColor: 'rgba(236, 72, 153, 0.2)', borderColor: 'rgba(236, 72, 153, 0.5)' },
             isDark && transaction.invoice_status === 'claimed' && { backgroundColor: 'rgba(16, 185, 129, 0.2)', borderColor: 'rgba(16, 185, 129, 0.5)' },
           ]}
         >
@@ -1094,11 +1102,11 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
             style={[
               styles.invoiceBadgeText,
               (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported') && styles.invoiceBadgeTextCloud,
-              transaction.invoice_status === 'won' && styles.invoiceBadgeTextWon,
+              showWonStyle && styles.invoiceBadgeTextWon,
               transaction.invoice_status === 'claimed' && styles.invoiceBadgeTextClaimed,
               isDark && { color: colors.text.secondary },
               isDark && (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported') && { color: '#38BDF8' },
-              isDark && transaction.invoice_status === 'won' && { color: '#F472B6' },
+              isDark && showWonStyle && { color: '#F472B6' },
               isDark && transaction.invoice_status === 'claimed' && { color: '#34D399' },
             ]}
             numberOfLines={1}

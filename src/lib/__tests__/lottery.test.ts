@@ -3,6 +3,8 @@ import {
   parseInvoiceXmlToDraws,
   OFFICIAL_LOTTERY_DRAWS,
   getOfficialLotteryDraws,
+  getInvoiceClaimDeadline,
+  isInvoiceClaimExpired,
   LotteryPeriodData,
 } from '../lottery';
 
@@ -172,6 +174,32 @@ describe('統一發票開獎對獎邏輯測試 (lottery.ts)', () => {
       expect(res.isWon).toBe(true);
       expect(res.prizeName).toBe('特別獎');
       expect(res.prizeAmount).toBe(10000000);
+    });
+  });
+
+  describe('法定 3 個月領獎期限與逾期判斷', () => {
+    it('2025-12（114年11-12月期）領獎期間應為 2026-02-06 ~ 2026-05-05', () => {
+      const deadline = getInvoiceClaimDeadline('2025-12');
+      expect(deadline?.startDate).toBe('2026-02-06');
+      expect(deadline?.endDate).toBe('2026-05-05');
+    });
+
+    it('2026-08（跨年）領獎期間應為 2026-10-06 ~ 2027-01-05', () => {
+      const deadline = getInvoiceClaimDeadline('2026-08');
+      expect(deadline?.startDate).toBe('2026-10-06');
+      expect(deadline?.endDate).toBe('2027-01-05');
+    });
+
+    it('2026-10（115年9-10月期）領獎期間應為 2026-12-06 ~ 2027-03-05', () => {
+      const deadline = getInvoiceClaimDeadline('2026-10');
+      expect(deadline?.startDate).toBe('2026-12-06');
+      expect(deadline?.endDate).toBe('2027-03-05');
+    });
+
+    it('截止當日 23:59 未逾期，隔日 00:00 應判定已逾期', () => {
+      expect(isInvoiceClaimExpired('2025-12', new Date(2026, 4, 5, 23, 59, 0))).toBe(false);
+      expect(isInvoiceClaimExpired('2025-12', new Date(2026, 4, 6, 0, 0, 0))).toBe(true);
+      expect(isInvoiceClaimExpired(undefined)).toBe(false);
     });
   });
 });

@@ -370,3 +370,55 @@ export const checkInvoiceWinning = (
     winningNote: '很可惜，本張發票未中獎',
   };
 };
+
+export interface InvoiceClaimDeadline {
+  startDate: string;
+  endDate: string;
+  endTimestamp: number;
+}
+
+const formatLocalYmd = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+/**
+ * 依台灣統一發票規定計算指定期別之法定 3 個月領獎期間（開獎隔月 6 日起至第 4 個月 5 日止）。
+ */
+export const getInvoiceClaimDeadline = (periodKey?: string): InvoiceClaimDeadline | null => {
+  if (!periodKey) return null;
+  const match = periodKey.trim().match(/^(\d{4})-(\d{1,2})$/);
+  if (!match) return null;
+
+  const year = parseInt(match[1], 10);
+  const rawMonth = parseInt(match[2], 10);
+  if (isNaN(year) || isNaN(rawMonth) || rawMonth < 1 || rawMonth > 12) {
+    return null;
+  }
+
+  // 對齊至雙數月期別（如 09 -> 10）
+  const endMonth = rawMonth % 2 === 1 ? rawMonth + 1 : rawMonth;
+  const drawYear = endMonth === 12 ? year + 1 : year;
+  const drawMonth1Based = endMonth === 12 ? 1 : endMonth + 1;
+
+  // Date 建構子之月份為 0-based，故傳入 drawMonth1Based 即為開獎隔月
+  const startObj = new Date(drawYear, drawMonth1Based, 6, 0, 0, 0, 0);
+  const endObj = new Date(drawYear, drawMonth1Based + 3, 5, 23, 59, 59, 999);
+
+  return {
+    startDate: formatLocalYmd(startObj),
+    endDate: formatLocalYmd(endObj),
+    endTimestamp: endObj.getTime(),
+  };
+};
+
+/**
+ * 判斷指定發票期別是否已超過法定 3 個月領獎期限。
+ */
+export const isInvoiceClaimExpired = (periodKey?: string, now: Date = new Date()): boolean => {
+  const deadline = getInvoiceClaimDeadline(periodKey);
+  if (!deadline) return false;
+  return now.getTime() > deadline.endTimestamp;
+};

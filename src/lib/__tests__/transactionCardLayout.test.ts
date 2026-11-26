@@ -64,7 +64,7 @@ describe('transactionCardLayout - 固定座標極簡兩行排版', () => {
       badges: [makeInvoiceBadge('HG-76094681')],
     });
     expect(res2.row1Badges).toHaveLength(1);
-    expect(res2.row1Badges[0].text).toBe('🧾 681');
+    expect(res2.row1Badges[0].text).toBe('🧾 HG-76094681');
     expect(res2.row3Badges).toHaveLength(0);
   });
 
@@ -197,8 +197,88 @@ describe('transactionCardLayout - 固定座標極簡兩行排版', () => {
     });
 
     expect(result.row1Badges).toHaveLength(1);
-    expect(result.row1Badges[0].text).toBe('📋 待辦');
+    expect(result.row1Badges[0].text).toBe('📋 連動待辦');
     expect(result.row3Badges).toHaveLength(1);
     expect(result.row3Badges[0].text).toBe('🎉 中獎 $1,000 (四獎)');
+  });
+
+  test('三段式自動展開：標準 100% 字級下空間充裕應優先展開完整 10 碼發票與「📋 連動待辦」', () => {
+    const res1 = allocateTransactionCardBadges({
+      contentWidth: CONTENT_WIDTH_390,
+      fontScale: 1.0,
+      titleText: '大樹藥局',
+      amountText: '- NT$ 550',
+      badges: [makeInvoiceBadge('AB-12345543')],
+    });
+    expect(res1.row1Badges[0].text).toBe('🧾 AB-12345543');
+
+    const res2 = allocateTransactionCardBadges({
+      contentWidth: CONTENT_WIDTH_390,
+      fontScale: 1.0,
+      titleText: '萬家福',
+      amountText: '- NT$ 274',
+      badges: [makeInvoiceBadge('HG-76094681')],
+    });
+    expect(res2.row1Badges[0].text).toBe('🧾 HG-76094681');
+
+    const res3 = allocateTransactionCardBadges({
+      contentWidth: CONTENT_WIDTH_390,
+      fontScale: 1.0,
+      titleText: '台北永康企業',
+      amountText: '- NT$ 390',
+      badges: [makeInvoiceBadge('AB-12345123')],
+    });
+    expect(res3.row1Badges[0].text).toBe('🧾 AB-12345123');
+
+    const res4 = allocateTransactionCardBadges({
+      contentWidth: CONTENT_WIDTH_390,
+      fontScale: 1.0,
+      titleText: '達美樂披薩',
+      amountText: '- NT$ 690',
+      badges: [makeInvoiceBadge('CD-99887456')],
+    });
+    expect(res4.row1Badges[0].text).toBe('🧾 CD-99887456');
+
+    const resMemo = allocateTransactionCardBadges({
+      contentWidth: CONTENT_WIDTH_390,
+      fontScale: 1.0,
+      titleText: '花博爭艷館',
+      amountText: '- NT$ 500',
+      badges: [makeMemoBadge()],
+    });
+    expect(resMemo.row1Badges[0].text).toBe('📋 連動待辦');
+
+    // Coco（發票 + 連動待辦）在標準 100% 字級優先保留發票完整 10 碼，低優先的待辦先降為「📋 待辦」
+    const resCoco = allocateTransactionCardBadges({
+      contentWidth: CONTENT_WIDTH_390,
+      fontScale: 1.0,
+      titleText: 'Coco',
+      amountText: '- NT$ 370',
+      badges: [makeInvoiceBadge('HV-79049445'), makeMemoBadge()],
+    });
+    expect(resCoco.row1Badges).toHaveLength(2);
+    expect(resCoco.row1Badges[0].text).toBe('🧾 HV-79049445');
+    expect(resCoco.row1Badges[1].text).toBe('📋 待辦');
+  });
+
+  test('三段式自動展開：125% 長輩大字下短店名「蝦皮」可展開完整「📋 連動待辦」，超長店名不因展開而多截斷', () => {
+    const resShopee = allocateTransactionCardBadges({
+      contentWidth: CONTENT_WIDTH_390,
+      fontScale: 1.25,
+      titleText: '蝦皮',
+      amountText: '- NT$ 1',
+      badges: [makeMemoBadge()],
+    });
+    expect(resShopee.row1Badges[0].text).toBe('📋 連動待辦');
+
+    // 125% 大字下超長店名仍從 compact 起手，不因試圖展開 10 碼而多砍店名
+    const resCarrefour = allocateTransactionCardBadges({
+      contentWidth: CONTENT_WIDTH_390,
+      fontScale: 1.25,
+      titleText: '全聯福利中心南港店',
+      amountText: '- NT$ 1,280',
+      badges: [makeInvoiceBadge('EF-55667788')],
+    });
+    expect(resCarrefour.row1Badges[0].text).toBe('🧾 788');
   });
 });
