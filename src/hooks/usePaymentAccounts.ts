@@ -15,6 +15,7 @@ import { isAccountBelongingToMember, DEFAULT_PAYMENT_METHODS, KNOWN_PAYMENT_METH
 import { STORAGE_KEYS, DEFAULT_CATEGORIES } from '../constants/ledgerDefaults';
 import { isDemoLedgerId } from '../constants/sweethomeDemo';
 import { scheduleBillingReminderNotifications } from '../lib/billingNotifications';
+import { findExistingCarrierAccount } from '../lib/cloudInvoiceSync';
 // supabaseAdmin removed for zero-token security
 
 export interface UsePaymentAccountsProps {
@@ -84,6 +85,53 @@ export function usePaymentAccounts({
     [effectiveCurrentUser, currentUser, members, getMemberById]
   );
 
+  // 輔助函式：將單筆帳號更新寫入雲端（兼容舊版資料庫無 issuer_bank / payment_due_day 欄位之情境）
+  const persistAccountUpdateToCloud = useCallback(async (id: string, data: Partial<PaymentAccount>) => {
+    if (!isConfigured || isDemoLedgerId(currentLedger.id)) return;
+    try {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_update_payment_account', {
+        p_account_id: id,
+        p_payload: data,
+      });
+      if (rpcErr || (rpcRes && rpcRes.success === false)) {
+        let { error: updErr } = await supabase
+          .from('payment_accounts')
+          .update({ ...data, updated_at: new Date().toISOString() })
+          .eq('id', id);
+        if (
+          updErr &&
+          (updErr.code === '42703' ||
+            updErr.code === 'PGRST204' ||
+            updErr.message?.includes('card_number') ||
+            updErr.message?.includes('issuer_bank') ||
+            updErr.message?.includes('payment_due_day'))
+        ) {
+          const { card_number: _c, issuer_bank: _i, payment_due_day: _d, ...fallbackData } = data;
+          await supabase
+            .from('payment_accounts')
+            .update({ ...fallbackData, updated_at: new Date().toISOString() })
+            .eq('id', id);
+        }
+      } else {
+        const patchPayload: Record<string, any> = {};
+        if (rpcRes?.issuer_bank_supported !== true && Object.prototype.hasOwnProperty.call(data, 'issuer_bank')) {
+          patchPayload.issuer_bank = data.issuer_bank ?? null;
+        }
+        if (rpcRes?.payment_due_day_supported !== true && Object.prototype.hasOwnProperty.call(data, 'payment_due_day')) {
+          patchPayload.payment_due_day = data.payment_due_day ?? null;
+        }
+        if (Object.keys(patchPayload).length > 0) {
+          patchPayload.updated_at = new Date().toISOString();
+          try {
+            await supabase.from('payment_accounts').update(patchPayload).eq('id', id);
+          } catch {}
+        }
+      }
+    } catch (e) {
+      console.warn('雲端更新付款帳戶失敗:', e);
+    }
+  }, [isConfigured, currentLedger.id, supabase]);
+
   // 新增付款帳戶 / 信用卡 / 儲值卡
   const addPaymentAccount = useCallback(async (accountData: Omit<PaymentAccount, 'id' | 'ledger_id' | 'created_at'>): Promise<PaymentAccount> => {
     const isTargetingSelf = !accountData.user_id || isAccountBound(accountData.user_id);
@@ -92,14 +140,50 @@ export function usePaymentAccounts({
       throw new Error('只有帳本管理員才能新增全家或其他成員的支付卡片與帳戶');
     }
 
+    const currentScoped = paymentAccountsRef.current.filter(a => a.ledger_id === currentLedger.id);
+
+    // 載具防重複保護：同一帳本同載具代碼（不分大小寫與空白）若已存在 type === 'carrier'，直接轉更新既有帳戶
+    if (accountData.type === 'carrier' && accountData.card_number?.trim()) {
+      const existingCarrier = findExistingCarrierAccount(
+        currentScoped,
+        accountData.card_number,
+        currentLedger.id
+      );
+      if (existingCarrier) {
+        const trimmedCardNo = accountData.card_number.trim();
+        const nowIso = new Date().toISOString();
+        const patchPayload: Partial<PaymentAccount> = {
+          user_id: accountData.user_id !== undefined ? accountData.user_id : existingCarrier.user_id,
+          name: existingCarrier.name || accountData.name,
+          card_number: existingCarrier.card_number || trimmedCardNo,
+          updated_at: nowIso,
+        };
+        const mergedCarrier: PaymentAccount = {
+          ...existingCarrier,
+          ...patchPayload,
+        };
+        const updated = currentScoped.map(a => (a.id === existingCarrier.id ? mergedCarrier : a));
+        paymentAccountsRef.current = updated;
+        setPaymentAccounts(updated);
+        await savePaymentAccountsToStorage(updated);
+
+        if (currentLedger?.id) {
+          AsyncStorage.setItem(`${STORAGE_KEYS.ACCOUNTS_INITIALIZED}_${currentLedger.id}`, 'true').catch(() => {});
+        }
+
+        await persistAccountUpdateToCloud(existingCarrier.id, patchPayload);
+        return mergedCarrier;
+      }
+    }
+
     const newAcc: PaymentAccount = {
       ...accountData,
+      card_number: typeof accountData.card_number === 'string' ? accountData.card_number.trim() : accountData.card_number,
       id: generateUUID(),
       ledger_id: currentLedger.id,
       created_at: new Date().toISOString(),
       balance: accountData.balance ?? 0,
     };
-    const currentScoped = paymentAccountsRef.current.filter(a => a.ledger_id === currentLedger.id);
     const updated = [...currentScoped, newAcc];
     paymentAccountsRef.current = updated;
     setPaymentAccounts(updated);
@@ -157,54 +241,7 @@ export function usePaymentAccounts({
       scheduleBillingReminderNotifications(updated, transactions, currentUser?.id, getMemberById).catch(() => {});
     }
     return newAcc;
-  }, [effectiveIsOwner, isAccountBound, currentLedger.id, paymentAccounts, savePaymentAccountsToStorage, isConfigured, supabase, transactions, currentUser?.id, getMemberById]);
-
-  // 輔助函式：將單筆帳號更新寫入雲端（兼容舊版資料庫無 issuer_bank / payment_due_day 欄位之情境）
-  const persistAccountUpdateToCloud = useCallback(async (id: string, data: Partial<PaymentAccount>) => {
-    if (!isConfigured || isDemoLedgerId(currentLedger.id)) return;
-    try {
-      const { data: rpcRes, error: rpcErr } = await supabase.rpc('secure_update_payment_account', {
-        p_account_id: id,
-        p_payload: data,
-      });
-      if (rpcErr || (rpcRes && rpcRes.success === false)) {
-        let { error: updErr } = await supabase
-          .from('payment_accounts')
-          .update({ ...data, updated_at: new Date().toISOString() })
-          .eq('id', id);
-        if (
-          updErr &&
-          (updErr.code === '42703' ||
-            updErr.code === 'PGRST204' ||
-            updErr.message?.includes('card_number') ||
-            updErr.message?.includes('issuer_bank') ||
-            updErr.message?.includes('payment_due_day'))
-        ) {
-          const { card_number: _c, issuer_bank: _i, payment_due_day: _d, ...fallbackData } = data;
-          await supabase
-            .from('payment_accounts')
-            .update({ ...fallbackData, updated_at: new Date().toISOString() })
-            .eq('id', id);
-        }
-      } else {
-        const patchPayload: Record<string, any> = {};
-        if (rpcRes?.issuer_bank_supported !== true && Object.prototype.hasOwnProperty.call(data, 'issuer_bank')) {
-          patchPayload.issuer_bank = data.issuer_bank ?? null;
-        }
-        if (rpcRes?.payment_due_day_supported !== true && Object.prototype.hasOwnProperty.call(data, 'payment_due_day')) {
-          patchPayload.payment_due_day = data.payment_due_day ?? null;
-        }
-        if (Object.keys(patchPayload).length > 0) {
-          patchPayload.updated_at = new Date().toISOString();
-          try {
-            await supabase.from('payment_accounts').update(patchPayload).eq('id', id);
-          } catch {}
-        }
-      }
-    } catch (e) {
-      console.warn('雲端更新付款帳戶失敗:', e);
-    }
-  }, [isConfigured, currentLedger.id, supabase]);
+  }, [effectiveIsOwner, isAccountBound, currentLedger.id, savePaymentAccountsToStorage, persistAccountUpdateToCloud, isConfigured, supabase, transactions, currentUser?.id, getMemberById]);
 
   // 修改付款帳戶
   const updatePaymentAccount = useCallback(async (id: string, data: Partial<PaymentAccount>): Promise<boolean> => {

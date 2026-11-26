@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Modal,
   View,
@@ -20,9 +20,10 @@ import {
   processCloudInvoicesSync,
   generateMockCloudInvoices,
   parseMofInvoiceCsv,
+  findExistingCarrierAccount,
   SyncProcessResult,
 } from '../lib/cloudInvoiceSync';
-import { CloudInvoiceItem, CarrierRule } from '../types/database';
+import { CloudInvoiceItem, CarrierRule, PaymentAccount } from '../types/database';
 import {
   loadCarrierRules,
   addOrUpdateCarrierRule,
@@ -80,6 +81,8 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
     totalAmount: number;
   } | null>(null);
   const [quickBindTab, setQuickBindTab] = useState<'rule' | 'bind_card' | 'new_card'>('rule');
+  const [isBindingCarrier, setIsBindingCarrier] = useState(false);
+  const isBindingCarrierRef = useRef(false);
 
   const [mobileBarcode, setMobileBarcode] = useState('/ABC+123');
   const [isEditingBarcode, setIsEditingBarcode] = useState(false);
@@ -112,7 +115,8 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
   const handleProcessCsvText = (
     text: string,
     sourceLabel: string = '檔案',
-    overrideRules?: CarrierRule[]
+    overrideRules?: CarrierRule[],
+    overrideAccounts?: PaymentAccount[]
   ) => {
     if (!text || !text.trim()) {
       setStatusBanner({
@@ -140,11 +144,12 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
       const ledgerId = currentLedger?.id || '';
 
       const activeRules = overrideRules || carrierRules;
+      const activeAccounts = overrideAccounts || paymentAccounts;
 
       const preview = processCloudInvoicesSync(
         invoices,
         transactions,
-        paymentAccounts,
+        activeAccounts,
         members,
         defaultPayerId,
         ledgerId,
@@ -339,48 +344,91 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
 
   // 動作 1：登記為「網購與會員載具」（直接收納於 paymentAccounts type === 'carrier'）
   const handleCreateCarrierRule = async (memberId: string) => {
-    if (!quickBindCarrier || !currentLedger?.id) return;
+    if (!quickBindCarrier || !currentLedger?.id || isBindingCarrierRef.current) return;
+    isBindingCarrierRef.current = true;
+    setIsBindingCarrier(true);
     const member = getMemberById(memberId);
     const memberName = member?.display_name || '家庭成員';
 
     try {
+      const trimmedCarrierNo = quickBindCarrier.carrierNo.trim();
       const defaultName =
         quickBindCarrier.carrierName ||
-        (quickBindCarrier.carrierNo.includes('@')
+        (trimmedCarrierNo.includes('@')
           ? '跨境電商載具'
           : `【${memberName}】網購載具`);
 
-      await addPaymentAccount({
+      const existingCarrier = findExistingCarrierAccount(
+        paymentAccounts,
+        trimmedCarrierNo,
+        currentLedger.id
+      );
+
+      let nextAccounts: PaymentAccount[];
+      if (existingCarrier) {
+        const nextName = existingCarrier.name || defaultName;
+        await updatePaymentAccount(existingCarrier.id, {
+          user_id: memberId,
+          name: nextName,
+        });
+        nextAccounts = paymentAccounts.map(a =>
+          a.id === existingCarrier.id ? { ...a, user_id: memberId, name: nextName } : a
+        );
+        setQuickBindCarrier(null);
+
+        if (rawCsvText) {
+          handleProcessCsvText(rawCsvText, '載具已更新', undefined, nextAccounts);
+        }
+
+        showAlert(
+          '✅ 載具歸屬已更新',
+          `「${nextName}」已登記過此載具代碼，已直接將歸屬成員更新為【${memberName}】（不重複建立）！`
+        );
+        return;
+      }
+
+      const createdAcc = await addPaymentAccount({
         name: defaultName,
         type: 'carrier',
         user_id: memberId,
-        card_number: quickBindCarrier.carrierNo,
+        card_number: trimmedCarrierNo,
         balance: 0,
         color: '#EC4899',
-        icon: quickBindCarrier.carrierNo.includes('@') ? '📧' : '🛍️',
+        icon: trimmedCarrierNo.includes('@') ? '📧' : '🛍️',
         sort_order: paymentAccounts.length + 1,
       });
+
+      const existsInPrev = paymentAccounts.some(a => a.id === createdAcc.id);
+      nextAccounts = existsInPrev
+        ? paymentAccounts.map(a => (a.id === createdAcc.id ? createdAcc : a))
+        : [...paymentAccounts, createdAcc];
 
       setQuickBindCarrier(null);
 
       if (rawCsvText) {
-        handleProcessCsvText(rawCsvText, '載具已建立');
+        handleProcessCsvText(rawCsvText, '載具已建立', undefined, nextAccounts);
       }
 
       showAlert(
         '🎉 網購載具已建立',
-        `已成功建立「${defaultName}」！日後發票將自動歸屬給【${memberName}】，且可隨時在「卡片與資產管理」中查閱！`
+        `已成功建立「${createdAcc.name || defaultName}」！日後發票將自動歸屬給【${memberName}】，且可隨時在「卡片與資產管理」中查閱！`
       );
     } catch (err: any) {
       showAlert('建立失敗', err.message || '發生未知錯誤');
+    } finally {
+      isBindingCarrierRef.current = false;
+      setIsBindingCarrier(false);
     }
   };
 
   // 動作 2：綁定至「現有實體金融卡片」（真卡絕不重複）
   const handleBindToExistingCard = async (accountId: string) => {
-    if (!quickBindCarrier) return;
+    if (!quickBindCarrier || isBindingCarrierRef.current) return;
     const targetAccount = paymentAccounts.find(a => a.id === accountId);
     if (!targetAccount) return;
+
+    isBindingCarrierRef.current = true;
+    setIsBindingCarrier(true);
 
     try {
       const existingTokens = targetAccount.card_number
@@ -395,10 +443,14 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
         card_number: updatedCardNumber,
       });
 
+      const nextAccounts = paymentAccounts.map(a =>
+        a.id === targetAccount.id ? { ...a, card_number: updatedCardNumber } : a
+      );
+
       setQuickBindCarrier(null);
 
       if (rawCsvText) {
-        handleProcessCsvText(rawCsvText, '已綁定至現有卡片');
+        handleProcessCsvText(rawCsvText, '已綁定至現有卡片', undefined, nextAccounts);
       }
 
       showAlert(
@@ -407,12 +459,18 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
       );
     } catch (err: any) {
       showAlert('綁定失敗', err.message || '發生未知錯誤');
+    } finally {
+      isBindingCarrierRef.current = false;
+      setIsBindingCarrier(false);
     }
   };
 
   // 動作 3：建立全新實體金融卡片
   const handleCreateNewPhysicalCard = async (memberId: string) => {
-    if (!quickBindCarrier) return;
+    if (!quickBindCarrier || isBindingCarrierRef.current) return;
+    isBindingCarrierRef.current = true;
+    setIsBindingCarrier(true);
+
     const member = getMemberById(memberId);
     const memberName = member?.display_name || '家庭成員';
 
@@ -422,21 +480,23 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
       /^\d{10,16}$/.test(quickBindCarrier.carrierNo);
 
     try {
-      await addPaymentAccount({
+      const createdCard = await addPaymentAccount({
         name: `${memberName}的${quickBindCarrier.carrierName || (isStored ? '悠遊/一卡通' : '信用卡')}`,
         type: isStored ? 'stored_value' : 'credit_card',
         user_id: memberId,
-        card_number: quickBindCarrier.carrierNo,
-        last_four_digits: quickBindCarrier.carrierNo.slice(-4),
+        card_number: quickBindCarrier.carrierNo.trim(),
+        last_four_digits: quickBindCarrier.carrierNo.trim().slice(-4),
         balance: 0,
         icon: isStored ? '🚌' : '💳',
         sort_order: paymentAccounts.length,
       });
 
+      const nextAccounts = [...paymentAccounts, createdCard];
+
       setQuickBindCarrier(null);
 
       if (rawCsvText) {
-        handleProcessCsvText(rawCsvText, '新卡片已建立');
+        handleProcessCsvText(rawCsvText, '新卡片已建立', undefined, nextAccounts);
       }
 
       showAlert(
@@ -445,6 +505,9 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
       );
     } catch (err: any) {
       showAlert('建卡失敗', err.message || '發生未知錯誤');
+    } finally {
+      isBindingCarrierRef.current = false;
+      setIsBindingCarrier(false);
     }
   };
 
@@ -456,24 +519,30 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
 
     try {
       const isAccount = paymentAccounts.some(a => a.id === changingRuleTarget.id);
+      let nextAccounts: PaymentAccount[] | undefined;
+      let nextRules: CarrierRule[] | undefined;
+
       if (isAccount) {
         await updatePaymentAccount(changingRuleTarget.id, {
           user_id: newMemberId,
         });
+        nextAccounts = paymentAccounts.map(a =>
+          a.id === changingRuleTarget.id ? { ...a, user_id: newMemberId } : a
+        );
       } else {
         const updatedRule = await addOrUpdateCarrierRule(currentLedger.id, {
           carrier_no: changingRuleTarget.carrier_no,
           carrier_name: changingRuleTarget.carrier_name,
           user_id: newMemberId,
         });
-        const nextRules = carrierRules.map(r => (r.id === updatedRule.id ? updatedRule : r));
+        nextRules = carrierRules.map(r => (r.id === updatedRule.id ? updatedRule : r));
         setCarrierRules(nextRules);
       }
 
       setChangingRuleTarget(null);
 
       if (rawCsvText) {
-        handleProcessCsvText(rawCsvText, '變更歸屬成員');
+        handleProcessCsvText(rawCsvText, '變更歸屬成員', nextRules, nextAccounts);
       }
 
       showAlert(
@@ -493,14 +562,18 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
       async () => {
         if (!currentLedger?.id) return;
         const isAccount = paymentAccounts.some(a => a.id === rule.id);
+        let nextAccounts: PaymentAccount[] | undefined;
+        let nextRules: CarrierRule[] | undefined;
+
         if (isAccount) {
           await deletePaymentAccount(rule.id);
+          nextAccounts = paymentAccounts.filter(a => a.id !== rule.id);
         } else {
-          const updated = await removeCarrierRule(currentLedger.id, rule.id);
-          setCarrierRules(updated);
+          nextRules = await removeCarrierRule(currentLedger.id, rule.id);
+          setCarrierRules(nextRules);
         }
         if (rawCsvText) {
-          handleProcessCsvText(rawCsvText, '已解除分流規則');
+          handleProcessCsvText(rawCsvText, '已解除分流規則', nextRules, nextAccounts);
         }
       }
     );
@@ -1228,8 +1301,10 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                           style={[
                             styles.quickBindMemberItem,
                             { borderColor: isDark ? colors.border.default : '#E2E8F0' },
+                            isBindingCarrier && { opacity: 0.6 },
                           ]}
                           onPress={() => handleCreateCarrierRule(member.id)}
+                          disabled={isBindingCarrier}
                           activeOpacity={0.7}
                         >
                           <Text style={{ fontSize: 20, marginRight: 10 }}>👤</Text>
@@ -1242,7 +1317,7 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                             </Text>
                           </View>
                           <Text style={{ color: '#0284C7', fontWeight: '700', fontSize: 13 }}>
-                            指定給此成員 ➔
+                            {isBindingCarrier ? '處理中...' : '指定給此成員 ➔'}
                           </Text>
                         </TouchableOpacity>
                       ))}
@@ -1272,8 +1347,10 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                               style={[
                                 styles.quickBindMemberItem,
                                 { borderColor: isDark ? colors.border.default : '#E2E8F0' },
+                                isBindingCarrier && { opacity: 0.6 },
                               ]}
                               onPress={() => handleBindToExistingCard(account.id)}
+                              disabled={isBindingCarrier}
                               activeOpacity={0.7}
                             >
                               <Text style={{ fontSize: 20, marginRight: 10 }}>
@@ -1288,7 +1365,7 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                                 </Text>
                               </View>
                               <Text style={{ color: '#10B981', fontWeight: '700', fontSize: 13 }}>
-                                綁定至此卡 ➔
+                                {isBindingCarrier ? '處理中...' : '綁定至此卡 ➔'}
                               </Text>
                             </TouchableOpacity>
                           );
@@ -1311,8 +1388,10 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                           style={[
                             styles.quickBindMemberItem,
                             { borderColor: isDark ? colors.border.default : '#E2E8F0' },
+                            isBindingCarrier && { opacity: 0.6 },
                           ]}
                           onPress={() => handleCreateNewPhysicalCard(member.id)}
+                          disabled={isBindingCarrier}
                           activeOpacity={0.7}
                         >
                           <Text style={{ fontSize: 20, marginRight: 10 }}>👤</Text>
@@ -1325,7 +1404,7 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                             </Text>
                           </View>
                           <Text style={{ color: '#F59E0B', fontWeight: '700', fontSize: 13 }}>
-                            建立全新卡 ➔
+                            {isBindingCarrier ? '處理中...' : '建立全新卡 ➔'}
                           </Text>
                         </TouchableOpacity>
                       ))}
@@ -1334,8 +1413,9 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                 )}
 
                 <TouchableOpacity
-                  style={styles.quickBindCancelBtn}
+                  style={[styles.quickBindCancelBtn, isBindingCarrier && { opacity: 0.5 }]}
                   onPress={() => setQuickBindCarrier(null)}
+                  disabled={isBindingCarrier}
                   activeOpacity={0.7}
                 >
                   <Text style={{ color: colors.text.secondary, fontWeight: '600' }}>取消</Text>

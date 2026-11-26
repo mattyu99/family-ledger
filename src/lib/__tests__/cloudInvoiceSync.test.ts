@@ -1,4 +1,5 @@
 import {
+  findExistingCarrierAccount,
   findMatchingAccount,
   findMatchingTransaction,
   normalizeCardNumber,
@@ -83,6 +84,90 @@ describe('cloudInvoiceSync 智慧比對引擎測試', () => {
     it('若無符合卡號應回傳 undefined', () => {
       const match = findMatchingAccount('9999-9999-9999-9999', '2G0001', mockAccounts);
       expect(match).toBeUndefined();
+    });
+
+    it('應支援不分大小寫比對網購與會員載具代碼及 Email 載具', () => {
+      const carrierAccounts: PaymentAccount[] = [
+        {
+          id: 'acc_uniopen',
+          ledger_id: 'ledger_1',
+          name: 'uniopen會員載具',
+          type: 'carrier',
+          user_id: 'user_dad',
+          card_number: 'GID37899791210110',
+          balance: 0,
+          sort_order: 1,
+          created_at: '2026-01-01',
+        },
+        {
+          id: 'acc_email',
+          ledger_id: 'ledger_1',
+          name: '跨境電商電子郵件載具',
+          type: 'carrier',
+          user_id: 'user_dad',
+          card_number: 'MattYu09@gmail.com',
+          balance: 0,
+          sort_order: 2,
+          created_at: '2026-01-01',
+        },
+      ];
+
+      expect(findMatchingAccount('gid37899791210110', '3J0002', carrierAccounts)?.id).toBe('acc_uniopen');
+      expect(findMatchingAccount('mattyu09@gmail.com', 'email', carrierAccounts)?.id).toBe('acc_email');
+    });
+  });
+
+  describe('findExistingCarrierAccount 網購會員載具防重複比對', () => {
+    const carrierAccounts: PaymentAccount[] = [
+      ...mockAccounts,
+      {
+        id: 'acc_uniopen_dad',
+        ledger_id: 'ledger_1',
+        name: 'uniopen會員載具',
+        type: 'carrier',
+        user_id: 'user_dad',
+        card_number: 'GID37899791210110',
+        balance: 0,
+        sort_order: 3,
+        created_at: '2026-01-01',
+      },
+      {
+        id: 'acc_other_ledger_uniopen',
+        ledger_id: 'ledger_2',
+        name: 'uniopen會員載具',
+        type: 'carrier',
+        user_id: 'user_mom',
+        card_number: 'GID37899791210110',
+        balance: 0,
+        sort_order: 1,
+        created_at: '2026-01-01',
+      },
+      {
+        id: 'acc_physical_same_code',
+        ledger_id: 'ledger_1',
+        name: '實體悠遊卡',
+        type: 'stored_value',
+        user_id: 'user_dad',
+        card_number: '1000419002328227',
+        balance: 100,
+        sort_order: 4,
+        created_at: '2026-01-01',
+      },
+    ];
+
+    it('同帳本相同載具代碼（忽略大小寫與前後空白）應命中既有載具帳戶', () => {
+      const hit = findExistingCarrierAccount(carrierAccounts, '  gid37899791210110  ', 'ledger_1');
+      expect(hit?.id).toBe('acc_uniopen_dad');
+    });
+
+    it('不同帳本相同載具代碼不應誤判命中', () => {
+      const hit = findExistingCarrierAccount(carrierAccounts, 'GID37899791210110', 'ledger_3');
+      expect(hit).toBeUndefined();
+    });
+
+    it('同代碼但非 carrier 類型的實體卡片不應被視為重複網購載具', () => {
+      const hit = findExistingCarrierAccount(carrierAccounts, '1000419002328227', 'ledger_1');
+      expect(hit).toBeUndefined();
     });
   });
 
@@ -408,6 +493,70 @@ describe('cloudInvoiceSync 智慧比對引擎測試', () => {
       expect(tx?.data.cloud_carrier_name).toBe('【樂購蝦皮】載具');
       expect(tx?.data.account_id).toBeUndefined(); // 網購載具不作為金融扣款帳戶
       expect(result.unregisteredCarriers.length).toBe(0);
+    });
+
+    it('同批發票若有大小寫或空白差異之未登記載具代碼應合併為 1 筆，且登記載具重算後應立即移出未登記清單', () => {
+      const invoices: CloudInvoiceItem[] = [
+        {
+          invoiceNumber: 'UN-11112222',
+          invoiceDate: '2026-11-10',
+          sellerName: '統一超商',
+          amount: 85,
+          carrierNo: 'GID37899791210110',
+          carrierName: 'uniopen會員載具',
+        },
+        {
+          invoiceNumber: 'UN-33334444',
+          invoiceDate: '2026-11-11',
+          sellerName: '康是美',
+          amount: 199,
+          carrierNo: ' gid37899791210110 ',
+          carrierName: 'uniopen會員載具',
+        },
+      ];
+
+      // 登記前：同一載具僅應彙整為 1 筆未登記項目
+      const beforeBind = processCloudInvoicesSync(
+        invoices,
+        [],
+        mockAccounts,
+        mockMembers,
+        'user_dad',
+        'ledger_1',
+        'cat_general'
+      );
+      expect(beforeBind.unregisteredCarriers.length).toBe(1);
+      expect(beforeBind.unregisteredCarriers[0].carrierNo).toBe('GID37899791210110');
+      expect(beforeBind.unregisteredCarriers[0].invoiceCount).toBe(2);
+      expect(beforeBind.unregisteredCarriers[0].totalAmount).toBe(284);
+
+      // 登記為雅媽的 uniopen 會員載具並以最新 accounts 重算
+      const updatedAccounts: PaymentAccount[] = [
+        ...mockAccounts,
+        {
+          id: 'acc_uniopen_mom',
+          ledger_id: 'ledger_1',
+          name: 'uniopen會員載具',
+          type: 'carrier',
+          user_id: 'user_mom',
+          card_number: 'GID37899791210110',
+          balance: 0,
+          sort_order: 3,
+          created_at: '2026-11-26',
+        },
+      ];
+
+      const afterBind = processCloudInvoicesSync(
+        invoices,
+        [],
+        updatedAccounts,
+        mockMembers,
+        'user_dad',
+        'ledger_1',
+        'cat_general'
+      );
+      expect(afterBind.unregisteredCarriers.length).toBe(0);
+      expect(afterBind.newTransactions.every(t => t.data.paid_by === 'user_mom')).toBe(true);
     });
   });
 

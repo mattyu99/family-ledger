@@ -9,6 +9,50 @@ export const normalizeCardNumber = (raw?: string): string => {
 };
 
 /**
+ * 標準化載具代碼（去前後空白並轉小寫，用於跨大小寫比對）
+ */
+export const normalizeCarrierCode = (raw?: string): string => {
+  return (raw || '').trim().toLowerCase();
+};
+
+/**
+ * 檢查帳本中是否已存在相同載具代碼之網購與會員載具帳戶（type === 'carrier'）
+ */
+export const findExistingCarrierAccount = (
+  accounts: PaymentAccount[] = [],
+  carrierNo?: string,
+  ledgerId?: string
+): PaymentAccount | undefined => {
+  const targetNormalized = normalizeCarrierCode(carrierNo);
+  const targetClean = normalizeCardNumber(carrierNo).toLowerCase();
+  if (!targetNormalized && !targetClean) return undefined;
+
+  for (const acc of accounts) {
+    if (!acc || acc.type !== 'carrier') continue;
+    if (ledgerId && acc.ledger_id !== ledgerId) continue;
+    if (!acc.card_number) continue;
+
+    const rawTokens = acc.card_number
+      .split(/[,;\s]+/)
+      .map(t => t.trim())
+      .filter(Boolean);
+
+    const matched = rawTokens.some(token => {
+      const normToken = normalizeCarrierCode(token);
+      const cleanToken = normalizeCardNumber(token).toLowerCase();
+      return (
+        (targetNormalized && normToken === targetNormalized) ||
+        (targetClean && cleanToken === targetClean)
+      );
+    });
+
+    if (matched) return acc;
+  }
+
+  return undefined;
+};
+
+/**
  * 依據財政部回傳之載具卡號，智慧比對帳本中的對應卡片帳戶
  */
 export const findMatchingAccount = (
@@ -18,7 +62,7 @@ export const findMatchingAccount = (
 ): PaymentAccount | undefined => {
   if (!carrierNo || accounts.length === 0) return undefined;
 
-  const cleanCarrierNo = normalizeCardNumber(carrierNo);
+  const cleanCarrierNo = normalizeCardNumber(carrierNo).toLowerCase();
   if (!cleanCarrierNo) return undefined;
 
   // 1. 若卡片帳戶登記之 card_number 包含或等於載具號碼 (支援多組卡號/代碼以逗號/分號/空格分隔)
@@ -26,7 +70,7 @@ export const findMatchingAccount = (
     if (acc.card_number) {
       const cardTokens = acc.card_number
         .split(/[,;\s]+/)
-        .map(t => normalizeCardNumber(t))
+        .map(t => normalizeCardNumber(t).toLowerCase())
         .filter(Boolean);
       if (
         cardTokens.includes(cleanCarrierNo) ||
@@ -44,13 +88,13 @@ export const findMatchingAccount = (
   if (carrierTail4 && carrierTail4.length === 4) {
     for (const acc of accounts) {
       if (acc.last_four_digits) {
-        const cleanLast4 = normalizeCardNumber(acc.last_four_digits);
+        const cleanLast4 = normalizeCardNumber(acc.last_four_digits).toLowerCase();
         if (cleanLast4 === carrierTail4) {
           return acc;
         }
       }
       if (acc.card_number) {
-        const cleanAccCard = normalizeCardNumber(acc.card_number);
+        const cleanAccCard = normalizeCardNumber(acc.card_number).toLowerCase();
         if (cleanAccCard.endsWith(carrierTail4)) {
           return acc;
         }
@@ -288,13 +332,13 @@ export const processCloudInvoicesSync = (
     // 2. 備援比對舊有載具分流字典（相容既有 CarrierRule）
     let matchedCarrierRule: CarrierRule | undefined;
     if (!matchedAcc && inv.carrierNo && carrierRules && carrierRules.length > 0) {
-      const targetCarrierNo = inv.carrierNo.trim().toLowerCase();
-      const cleanInvNo = normalizeCardNumber(inv.carrierNo);
+      const targetCarrierNo = normalizeCarrierCode(inv.carrierNo);
+      const cleanInvNo = normalizeCardNumber(inv.carrierNo).toLowerCase();
       matchedCarrierRule = carrierRules.find(r => {
-        const cleanRuleNo = normalizeCardNumber(r.carrier_no);
+        const cleanRuleNo = normalizeCardNumber(r.carrier_no).toLowerCase();
         return (
           cleanRuleNo === cleanInvNo ||
-          r.carrier_no.trim().toLowerCase() === targetCarrierNo
+          normalizeCarrierCode(r.carrier_no) === targetCarrierNo
         );
       });
     }
@@ -306,9 +350,11 @@ export const processCloudInvoicesSync = (
     const effectiveAcc = (matchedAcc && matchedAcc.type !== 'carrier') ? matchedAcc : ruleDefaultAcc;
 
     // 統計未綁定卡片帳戶且未建立分流規則之載具 (排除手機條碼主號碼 /...)
-    if (!matchedAcc && !matchedCarrierRule && inv.carrierNo && !inv.carrierNo.startsWith('/')) {
-      const existing = unregMap.get(inv.carrierNo) || {
-        carrierNo: inv.carrierNo,
+    const trimmedCarrierNo = inv.carrierNo ? inv.carrierNo.trim() : '';
+    if (!matchedAcc && !matchedCarrierRule && trimmedCarrierNo && !trimmedCarrierNo.startsWith('/')) {
+      const unregKey = normalizeCarrierCode(trimmedCarrierNo);
+      const existing = unregMap.get(unregKey) || {
+        carrierNo: trimmedCarrierNo,
         carrierName:
           inv.carrierName ||
           (inv.carrierType === '1K0001'
@@ -323,7 +369,7 @@ export const processCloudInvoicesSync = (
       };
       existing.invoiceCount += 1;
       existing.totalAmount += inv.amount;
-      unregMap.set(inv.carrierNo, existing);
+      unregMap.set(unregKey, existing);
     }
 
     // 3. 在現有手動交易中尋找吻合項目
