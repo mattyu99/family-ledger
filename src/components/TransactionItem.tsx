@@ -950,11 +950,12 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
   const dateWidth = !hideDateInCard
     ? estimateTextWidth(formattedDate, 12, fontScale) + 6
     : 0;
+  const syncedWidth = hasRecentlySynced ? 23 : 0;
   const metaGap = (paymentLabel ? 5 : 0) + (!hideDateInCard ? 5 : 0);
   const reservedNoteWidth = hasNote
     ? Math.min(estimateTextWidth(noteContent, 13, fontScale) + 6, Math.max(72, contentWidth * 0.34))
     : 0;
-  const useFullPayment = !paymentLabel || (payerWidth + fullPayWidth + dateWidth + metaGap + reservedNoteWidth <= contentWidth);
+  const useFullPayment = !paymentLabel || (payerWidth + fullPayWidth + dateWidth + syncedWidth + metaGap + reservedNoteWidth <= contentWidth);
   const paymentDisplayText = paymentLabel
     ? (useFullPayment ? paymentLabel.text : paymentLabel.shortText)
     : '';
@@ -1002,17 +1003,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
   const amountDisplayText = `${amountPrefix} NT$ ${Number(transaction.amount).toLocaleString()}`;
   const existingTopRightBadgeText = isTransfer ? transferBadgeLabel : discountBadgeLabel;
 
-  const actualPayWidth = paymentLabel
-    ? estimateTextWidth(`${paymentLabel.icon}${paymentDisplayText}`, 10.5, fontScale) + 18
-    : 0;
-  const rightMetaWidth =
-    payerWidth +
-    actualPayWidth +
-    dateWidth +
-    (paymentLabel ? 5 : 0) +
-    (!hideDateInCard ? 5 : 0);
-
-  // 狀態與發票提醒標籤清單（依「第 2 行優先 → 第 1 行留白 → 第 3 行兜底」配置）
+  // 狀態與發票提醒標籤清單（發票、待辦、憑證固定於第 1 行金額左側；✓ 與 ✨ 固定於右側）
   const rawBadges: CardBadgeInput[] = [];
   if (transaction.invoice_number) {
     if (transaction.invoice_status === 'won') {
@@ -1066,39 +1057,20 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
       shrinkPriority: 3,
     });
   }
-  if (transaction.is_reconciled) {
-    rawBadges.push({
-      key: 'reconciled',
-      fullText: '✓ 已核對',
-      compactText: '✓ 核對',
-      iconText: '✓',
-      shrinkPriority: 2,
-    });
-  }
-  if (hasRecentlySynced) {
-    rawBadges.push({
-      key: 'synced',
-      fullText: '✨ 剛更新',
-      compactText: '✨ 更新',
-      iconText: '✨',
-      shrinkPriority: 1,
-    });
-  }
 
-  const { row1Badges, row2Badges, row3Badges } = allocateTransactionCardBadges({
+  const { row1Badges, row3Badges } = allocateTransactionCardBadges({
     contentWidth,
     fontScale,
     titleText,
     amountText: amountDisplayText,
     existingTopRightBadgeText,
-    noteContent,
-    rightMetaWidth,
+    hasReconciledCheck: !!transaction.is_reconciled,
     badges: rawBadges,
   });
 
   const hasExtraBadges = row3Badges.length > 0;
 
-  // 共用狀態／發票徽章渲染器，供第 1、2、3 行一致複用
+  // 共用狀態／發票徽章渲染器，供第 1 行與第 3 行（中獎）一致複用
   const renderStatusBadge = (badge: PlacedCardBadge, keyPrefix: string) => {
     const isIconOnly = badge.level === 'icon';
 
@@ -1155,69 +1127,35 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
       );
     }
 
-    if (badge.key === 'image') {
-      return (
-        <TouchableOpacity
-          key={`${keyPrefix}-image`}
-          style={[
-            styles.imageReceiptBadge,
-            isIconOnly && styles.badgeIconOnly,
-            isDark && { backgroundColor: 'rgba(59, 130, 246, 0.18)', borderColor: 'rgba(59, 130, 246, 0.4)' },
-          ]}
-          onPress={(e) => {
-            e?.stopPropagation?.();
-            if (onViewImage && transaction.image_url) {
-              onViewImage(
-                transaction.image_url,
-                `${transaction.merchant || category?.name || '消費'} 憑證照片`
-              );
-            } else if (onPress) {
-              onPress(transaction);
-            }
-          }}
-          activeOpacity={0.7}
-        >
-          <Text
-            style={[styles.imageReceiptBadgeText, isDark && { color: '#93C5FD' }]}
-            numberOfLines={1}
-            maxFontSizeMultiplier={1.08}
-          >
-            {badge.text}
-          </Text>
-        </TouchableOpacity>
-      );
-    }
-
-    if (badge.key === 'reconciled') {
-      return (
-        <View
-          key={`${keyPrefix}-reconciled`}
-          style={[
-            styles.reconciledBadge,
-            isIconOnly && styles.badgeIconOnly,
-            isDark && { backgroundColor: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.35)' },
-          ]}
-        >
-          <Text style={[styles.reconciledBadgeText, isDark && { color: '#34D399' }]} numberOfLines={1} maxFontSizeMultiplier={1.08}>
-            {badge.text}
-          </Text>
-        </View>
-      );
-    }
-
     return (
-      <View
-        key={`${keyPrefix}-synced`}
+      <TouchableOpacity
+        key={`${keyPrefix}-image`}
         style={[
-          styles.recentlySyncedBadge,
+          styles.imageReceiptBadge,
           isIconOnly && styles.badgeIconOnly,
-          isDark && { backgroundColor: 'rgba(234, 179, 8, 0.18)', borderColor: '#EAB308' },
+          isDark && { backgroundColor: 'rgba(59, 130, 246, 0.18)', borderColor: 'rgba(59, 130, 246, 0.4)' },
         ]}
+        onPress={(e) => {
+          e?.stopPropagation?.();
+          if (onViewImage && transaction.image_url) {
+            onViewImage(
+              transaction.image_url,
+              `${transaction.merchant || category?.name || '消費'} 憑證照片`
+            );
+          } else if (onPress) {
+            onPress(transaction);
+          }
+        }}
+        activeOpacity={0.7}
       >
-        <Text style={[styles.recentlySyncedBadgeText, isDark && { color: '#FDE047' }]} numberOfLines={1} maxFontSizeMultiplier={1.08}>
+        <Text
+          style={[styles.imageReceiptBadgeText, isDark && { color: '#93C5FD' }]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={1.08}
+        >
           {badge.text}
         </Text>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -1350,10 +1288,17 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
             >
               {amountDisplayText}
             </Text>
+            {transaction.is_reconciled && (
+              <View style={[styles.reconciledInlineBadge, isDark && styles.reconciledInlineBadgeDark]}>
+                <Text style={[styles.reconciledInlineText, isDark && styles.reconciledInlineTextDark]} disableScaling>
+                  ✓
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
-        {/* 第 2 行（說明與基本元資料列）：左備註（單行），右 [分流徽章] + [付款方式] + [成員／流向] */}
+        {/* 第 2 行（純淨說明與基本元資料列）：左備註（單行），右 [付款方式] + [成員／流向] + [✨] */}
         <View style={[styles.bottomRow, !hasNote && styles.bottomRowAlignEnd]}>
           {hasNote && (
             <Text
@@ -1365,8 +1310,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
               {noteContent}
             </Text>
           )}
-          <View style={[styles.metaRow, row2Badges.length > 0 && styles.metaRowLocked]}>
-            {row2Badges.map((b) => renderStatusBadge(b, 'r2'))}
+          <View style={styles.metaRow}>
             {!!paymentLabel && (
               <View style={[styles.paymentBadge, { borderColor: `${paymentLabel.color}35`, backgroundColor: `${paymentLabel.color}12` }]}>
                 <Text style={styles.paymentBadgeIcon}>{paymentLabel.icon}</Text>
@@ -1402,10 +1346,17 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
                 {formattedDate}
               </Text>
             )}
+            {hasRecentlySynced && (
+              <View style={[styles.syncedInlineBadge, isDark && styles.syncedInlineBadgeDark]}>
+                <Text style={styles.syncedInlineText} disableScaling>
+                  ✨
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
-        {/* 第 3 行（兜底附加資訊列）：僅於中獎／已兌領或前兩行空間不足時渲染 */}
+        {/* 第 3 行（中獎／已兌領醒目專區）：僅於發票中獎或已兌領時渲染 */}
         {hasExtraBadges && (
           <View style={styles.badgeRow}>
             {row3Badges.map((badge) => renderStatusBadge(badge, 'r3'))}
@@ -1576,9 +1527,6 @@ const styles = StyleSheet.create({
     gap: 5,
     flexShrink: 1,
   },
-  metaRowLocked: {
-    flexShrink: 0,
-  },
   payerTag: {
     fontSize: 11,
     color: '#4B5563',
@@ -1611,18 +1559,46 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flexShrink: 1,
   },
-  reconciledBadge: {
+  reconciledInlineBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     backgroundColor: '#ECFDF5',
     borderColor: '#A7F3D0',
-    borderWidth: 0.5,
-    paddingHorizontal: 5,
-    paddingVertical: 1.5,
-    borderRadius: 5,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  reconciledBadgeText: {
-    fontSize: 9.5,
-    fontWeight: '600',
+  reconciledInlineBadgeDark: {
+    backgroundColor: 'rgba(16, 185, 129, 0.18)',
+    borderColor: 'rgba(16, 185, 129, 0.45)',
+  },
+  reconciledInlineText: {
+    fontSize: 11,
+    fontWeight: '800',
+    lineHeight: 13,
     color: '#059669',
+  },
+  reconciledInlineTextDark: {
+    color: '#34D399',
+  },
+  syncedInlineBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#FEF9C3',
+    borderColor: '#FACC15',
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  syncedInlineBadgeDark: {
+    backgroundColor: 'rgba(234, 179, 8, 0.2)',
+    borderColor: '#EAB308',
+  },
+  syncedInlineText: {
+    fontSize: 10,
+    lineHeight: 12,
   },
   memoCard: {
     backgroundColor: '#FFFBEB',
@@ -2087,20 +2063,6 @@ const styles = StyleSheet.create({
   invoiceBadgeTextCloud: {
     color: '#0284C7',
     fontWeight: '700',
-  },
-  recentlySyncedBadge: {
-    backgroundColor: '#FEF9C3',
-    borderColor: '#FACC15',
-    borderWidth: 1,
-    borderRadius: 6,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    alignSelf: 'center',
-  },
-  recentlySyncedBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#A16207',
   },
   invoiceBadgeText: {
     fontSize: 10.5,
