@@ -1512,6 +1512,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               category: getCategoryById(newRow.category_id, newRow.category),
             });
             const updated = [item, ...prev];
+            transactionsRef.current = updated;
             inMemoryLedgerTxCacheRef.current.set(ledgerId, updated);
             persistTransactionsCache(updated, ledgerId);
             return updated;
@@ -1650,6 +1651,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                   })
                 : t
             );
+            transactionsRef.current = updated;
             inMemoryLedgerTxCacheRef.current.set(ledgerId, updated);
             persistTransactionsCache(updated, ledgerId);
             return updated;
@@ -1901,6 +1903,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                   }
                 : t
             );
+            transactionsRef.current = updated;
             inMemoryLedgerTxCacheRef.current.set(ledgerId, updated);
             persistTransactionsCache(updated, ledgerId);
             return updated;
@@ -7950,8 +7953,10 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } else {
           // 雲端確認成功寫入，解除待同步標記並更新快取
           delete (newTx as any)._isPendingSync;
-          const freshList = [newTx, ...transactions.filter(t => t.id !== newTx.id)];
+          const latestList = transactionsRef.current && transactionsRef.current.length > 0 ? transactionsRef.current : transactions;
+          const freshList = [newTx, ...latestList.filter(t => t.id !== newTx.id)];
           freshList.sort((a, b) => new Date(b.transacted_at).getTime() - new Date(a.transacted_at).getTime());
+          transactionsRef.current = freshList;
           saveTransactionsToStorage(freshList).catch(() => {});
 
           if (newTx.splits && newTx.splits.length > 0) {
