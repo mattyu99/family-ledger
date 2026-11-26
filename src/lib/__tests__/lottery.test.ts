@@ -1,4 +1,10 @@
-import { checkInvoiceWinning, parseInvoiceXmlToDraws, LotteryPeriodData } from '../lottery';
+import {
+  checkInvoiceWinning,
+  parseInvoiceXmlToDraws,
+  OFFICIAL_LOTTERY_DRAWS,
+  getOfficialLotteryDraws,
+  LotteryPeriodData,
+} from '../lottery';
 
 describe('統一發票開獎對獎邏輯測試 (lottery.ts)', () => {
   const mockDraws: Record<string, LotteryPeriodData> = {
@@ -148,6 +154,24 @@ describe('統一發票開獎對獎邏輯測試 (lottery.ts)', () => {
       expect(parsed['2026-08'].specialPrize).toBe('08276859');
       expect(parsed['2026-08'].firstPrizes).toEqual(['32110911', '84289408', '13446901']);
       expect(parsed['2026-08'].additionalSixPrizes).toEqual(['123']);
+    });
+  });
+
+  describe('內建官方獎號單一來源載入', () => {
+    it('應自動載入 public/lottery_draws.json 中最新一期 2026-10 並正確對獎', () => {
+      const official = OFFICIAL_LOTTERY_DRAWS;
+      const runtimeDraws = getOfficialLotteryDraws();
+
+      expect(official['2026-10']).toBeDefined();
+      expect(official['2026-10'].periodLabel).toBe('115年 09-10月期');
+      expect(official['2026-10'].superPrize).toBe('97606522');
+      expect(runtimeDraws['2026-10']).toEqual(official['2026-10']);
+
+      const res = checkInvoiceWinning('AB-97606522', '2026-10');
+      expect(res.isDrawn).toBe(true);
+      expect(res.isWon).toBe(true);
+      expect(res.prizeName).toBe('特別獎');
+      expect(res.prizeAmount).toBe(10000000);
     });
   });
 });

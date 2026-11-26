@@ -392,7 +392,7 @@ export const InvoiceLotteryModal: React.FC<InvoiceLotteryModalProps> = ({
                 <Text style={styles.pendingDrawIcon}>⏳</Text>
                 <Text style={styles.pendingDrawTitle} maxFontSizeMultiplier={1.15}>本期統一發票尚未開獎</Text>
                 <Text style={styles.pendingDrawSub} maxFontSizeMultiplier={1.1}>
-                  統一發票於雙月份 25 日下午開獎，開獎後系統將第一時間自動為您進行全量比對！
+                  統一發票於單數月（1、3、5、7、9、11 月）25 日下午開獎，開獎後系統將第一時間自動為您進行全量比對！
                 </Text>
               </View>
             )}

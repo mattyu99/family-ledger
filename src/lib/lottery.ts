@@ -2,6 +2,7 @@
  * 統一發票開獎號碼資料結構與自動對獎演算法模組
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import bundledLotteryDraws from '../../public/lottery_draws.json';
 
 export interface LotteryWinningPrize {
   isDrawn: boolean;           // 是否已開獎
@@ -22,60 +23,7 @@ export interface LotteryPeriodData {
   additionalSixPrizes?: string[]; // 增開六獎 (末3位數字，200元)
 }
 
-/**
- * 內建最新公開開獎號碼庫 (財政部官方歷史紀錄，供離線及即時本地極速對獎)
- */
-export const OFFICIAL_LOTTERY_DRAWS: Record<string, LotteryPeriodData> = {
-  // 115年 07-08月期 (2026-08)
-  '2026-08': {
-    periodKey: '2026-08',
-    periodLabel: '115年 07-08月期',
-    drawDate: '2026-09-25',
-    superPrize: '89996565',
-    specialPrize: '91098182',
-    firstPrizes: ['54348835', '44991397', '06595111'],
-    additionalSixPrizes: [],
-  },
-  // 115年 05-06月期 (2026-06)
-  '2026-06': {
-    periodKey: '2026-06',
-    periodLabel: '115年 05-06月期',
-    drawDate: '2026-07-25',
-    superPrize: '38548029',
-    specialPrize: '10138845',
-    firstPrizes: ['24121106', '28589937', '83663333'],
-    additionalSixPrizes: [],
-  },
-  // 115年 03-04月期 (2026-04)
-  '2026-04': {
-    periodKey: '2026-04',
-    periodLabel: '115年 03-04月期',
-    drawDate: '2026-05-25',
-    superPrize: '19531471',
-    specialPrize: '85941329',
-    firstPrizes: ['07225810', '20231230', '83518781'],
-    additionalSixPrizes: [],
-  },
-  // 115年 01-02月期 (2026-02)
-  '2026-02': {
-    periodKey: '2026-02',
-    periodLabel: '115年 01-02月期',
-    drawDate: '2026-03-25',
-    superPrize: '87510041',
-    specialPrize: '32220522',
-    firstPrizes: ['21677046', '44662410', '31262513'],
-    additionalSixPrizes: [],
-  },
-  // 114年 11-12月期 (2025-12)
-  '2025-12': {
-    periodKey: '2025-12',
-    periodLabel: '114年 11-12月期',
-    drawDate: '2026-01-25',
-    superPrize: '97023797',
-    specialPrize: '00507588',
-    firstPrizes: ['92377231', '05232592', '78125249'],
-    additionalSixPrizes: [],
-  },
+const LEGACY_LOTTERY_DRAWS: Record<string, LotteryPeriodData> = {
   // 114年 09-10月期 (2025-10)
   '2025-10': {
     periodKey: '2025-10',
@@ -86,6 +34,14 @@ export const OFFICIAL_LOTTERY_DRAWS: Record<string, LotteryPeriodData> = {
     firstPrizes: ['41016094', '98081574', '07309261'],
     additionalSixPrizes: [],
   },
+};
+
+/**
+ * 內建最新公開開獎號碼庫 (整合 public/lottery_draws.json 單一來源與歷史紀錄，供離線及即時本地極速對獎)
+ */
+export const OFFICIAL_LOTTERY_DRAWS: Record<string, LotteryPeriodData> = {
+  ...LEGACY_LOTTERY_DRAWS,
+  ...(bundledLotteryDraws as unknown as Record<string, LotteryPeriodData>),
 };
 
 const LOTTERY_CACHE_KEY = '@family_ledger_lottery_draws';
@@ -184,44 +140,55 @@ const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutM
   }
 };
 
+const fetchJsonDraws = async (url: string, timeoutMs = 5000): Promise<Record<string, LotteryPeriodData> | null> => {
+  const res = await fetchWithTimeout(url, {
+    headers: { 'Accept': 'application/json' },
+  }, timeoutMs);
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (data && typeof data === 'object' && Object.keys(data).length > 0) {
+    return data as Record<string, LotteryPeriodData>;
+  }
+  return null;
+};
+
+const fetchXmlDraws = async (url: string, timeoutMs = 6000): Promise<Record<string, LotteryPeriodData> | null> => {
+  const xmlRes = await fetchWithTimeout(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (FamilyLedger/1.0)',
+      'Accept': 'application/xml, text/xml, */*',
+    },
+  }, timeoutMs);
+  if (!xmlRes.ok) return null;
+  const xmlText = await xmlRes.text();
+  const parsedDraws = parseInvoiceXmlToDraws(xmlText);
+  return Object.keys(parsedDraws).length > 0 ? parsedDraws : null;
+};
+
 /**
- * 全自動聯網同步中獎號碼庫：
- * 1. 優先從 GitHub Pages 靜態端點抓取 (無 CORS 限制，經 CDN 加速)
- * 2. 備援直連財政部 XML/RSS
- * 3. 取得後自動寫入本機 AsyncStorage，下次免聯網即可秒開對獎
+ * 全自動聯網同步中獎號碼庫（並行拉取以降低等待延遲）：
+ * 1. GitHub Pages 靜態端點 (無 CORS 限制，經 CDN 加速)
+ * 2. GitHub main 分支 Raw 檔 (無 CORS 限制，免等手動部署網頁即同步)
+ * 3. 備援直連財政部官方 XML/RSS (原生 App 與 Node 具備免 CORS 直連優勢)
+ * 取得後依優先權合併並自動寫入本機 AsyncStorage，下次免聯網即可秒開對獎
  */
 export const syncLotteryDrawsAsync = async (): Promise<Record<string, LotteryPeriodData>> => {
+  const timestamp = Date.now();
+  const [ghPagesResult, rawMainResult, mofXmlResult] = await Promise.allSettled([
+    fetchJsonDraws(`https://mattyu99.github.io/family-ledger/lottery_draws.json?t=${timestamp}`, 5000),
+    fetchJsonDraws(`https://raw.githubusercontent.com/mattyu99/family-ledger/main/public/lottery_draws.json?t=${timestamp}`, 5000),
+    fetchXmlDraws('https://invoice.etax.nat.gov.tw/invoice.xml', 6000),
+  ]);
+
   let updated = false;
+  const sources = [ghPagesResult, rawMainResult, mofXmlResult];
 
-  // 1. 優先從 CDN / GitHub Pages 靜態端點拉取
-  try {
-    const remoteUrl = 'https://mattyu99.github.io/family-ledger/lottery_draws.json?t=' + Date.now();
-    const res = await fetchWithTimeout(remoteUrl, {
-      headers: { 'Accept': 'application/json' },
-    }, 4000);
-    if (res.ok) {
-      const remoteDraws = await res.json();
-      if (remoteDraws && typeof remoteDraws === 'object' && Object.keys(remoteDraws).length > 0) {
-        dynamicLotteryDraws = { ...OFFICIAL_LOTTERY_DRAWS, ...dynamicLotteryDraws, ...remoteDraws };
-        updated = true;
-      }
+  for (const result of sources) {
+    if (result.status === 'fulfilled' && result.value) {
+      dynamicLotteryDraws = { ...OFFICIAL_LOTTERY_DRAWS, ...dynamicLotteryDraws, ...result.value };
+      updated = true;
     }
-  } catch {}
-
-  // 2. 備援直連財政部官方 XML/RSS (原生 App 與 Node 具備免 CORS 直連優勢)
-  try {
-    const xmlRes = await fetchWithTimeout('https://invoice.etax.nat.gov.tw/invoice.xml', {
-      headers: { 'Accept': 'application/xml, text/xml, */*' },
-    }, 4000);
-    if (xmlRes.ok) {
-      const xmlText = await xmlRes.text();
-      const parsedDraws = parseInvoiceXmlToDraws(xmlText);
-      if (Object.keys(parsedDraws).length > 0) {
-        dynamicLotteryDraws = { ...OFFICIAL_LOTTERY_DRAWS, ...dynamicLotteryDraws, ...parsedDraws };
-        updated = true;
-      }
-    }
-  } catch {}
+  }
 
   // 若有獲取新數據，即刻持久化至本機快取
   if (updated) {

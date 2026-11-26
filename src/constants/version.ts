@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.18';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.18 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 34;
+export const APP_BUILD_REVISION = 35;
 
-// 完整版本字串 (例如 "1.0.18.34")
+// 完整版本字串 (例如 "1.0.18.35")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -20,9 +20,10 @@ export interface ChangelogItem {
 export const CHANGELOG_HISTORY: ChangelogItem[] = [
   {
     version: '1.0.18',
-    date: '2026-11-23 ~ 2026-11-25',
+    date: '2026-11-23 ~ 2026-11-26',
     title: '四大主頁全面清爽改版、LINE 雙軌日報、桌面待辦直達與 3D 黏土圖示',
     highlights: [
+      '🧾 發票對獎自動同步修復與說明修正：修正未開獎提示為單數月 25 日開獎，補齊最新一期官方獎號並強化開獎自動同步機制，開獎後打開即可即時核對。',
       '👵 全站長輩大字與小螢幕排版優化：開啟大字級時自動舒展收支總覽、消費卡片、固定帳單與分期標籤、帳戶及設定按鈕文案，窄螢幕維持俐落不截字，並補齊任務看板與推車點餐大字縮放。',
       '📎 固定帳單補傳與已完成編輯升級：已完成帳單支援直接編輯金額與補附電子帳單、已略過項目可一鍵還原待繳，歸檔庫同步新增歷史月份補傳入口。',
       '💳 對帳與固定帳單排版與深色優化：對帳頁與固定帳單按鈕獨立置中不折字，消費明細獨立呈現卡片與折抵標籤、自動過濾發票雜訊並支援長輩大字與深色高對比護眼配色。',

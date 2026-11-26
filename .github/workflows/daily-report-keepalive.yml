@@ -40,6 +40,25 @@ jobs:
             git push origin main || true
           fi
 
+      - name: 🌐 同步最新開獎號碼至 GitHub Pages (gh-pages)
+        run: |
+          if git fetch --depth=1 origin gh-pages:gh-pages 2>/dev/null; then
+            TMP_DIR=$(mktemp -d)
+            git worktree add "$TMP_DIR" gh-pages
+            cp public/lottery_draws.json "$TMP_DIR/lottery_draws.json"
+            (
+              cd "$TMP_DIR"
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              if ! git diff --quiet lottery_draws.json; then
+                git add lottery_draws.json
+                git commit -m "chore(lottery): 同步最新統一發票開獎號碼至 GitHub Pages [skip ci]"
+                git push origin gh-pages || true
+              fi
+            )
+            git worktree remove --force "$TMP_DIR" || true
+          fi
+
       - name: 🚀 執行防休眠打卡與收支日報
         env:
           # Supabase 連線資訊 (優先讀取 Secrets，若未設定則自動使用專案預設值)
