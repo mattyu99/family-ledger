@@ -1271,24 +1271,18 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
 
       {/* 項目與細節 */}
       <View style={styles.infoBox}>
-        {/* 第 1 行（主角列）：左側店名／類別名稱 + 行內徽章，右側 [折抵或轉帳徽章] + 金額 */}
+        {/* 第 1 行（主角列）：左側店名／類別名稱，右側 [狀態/發票徽章] + [折抵或轉帳徽章] + 金額 */}
         <View style={styles.topRow}>
-          <View style={styles.topLeftGroup}>
-            <Text
-              style={[styles.categoryName, isDark && { color: colors.text.primary }]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-              maxFontSizeMultiplier={1.2}
-            >
-              {titleText}
-            </Text>
-            {row1Badges.length > 0 && (
-              <View style={styles.inlineBadgesGroup}>
-                {row1Badges.map((b) => renderStatusBadge(b, 'r1'))}
-              </View>
-            )}
-          </View>
+          <Text
+            style={[styles.categoryName, isDark && { color: colors.text.primary }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            maxFontSizeMultiplier={1.2}
+          >
+            {titleText}
+          </Text>
           <View style={styles.topRightGroup}>
+            {row1Badges.map((b) => renderStatusBadge(b, 'r1'))}
             {isTransfer && (
               <View
                 style={[
@@ -1359,32 +1353,20 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
           </View>
         </View>
 
-        {/* 第 2 行（說明與基本元資料列）：左備註 + 行內徽章，右 [付款方式] + [成員／流向] */}
-        <View style={[styles.bottomRow, !hasNote && row2Badges.length === 0 && styles.bottomRowAlignEnd]}>
-          {(hasNote || row2Badges.length > 0) && (
-            <View style={styles.bottomLeftGroup}>
-              {hasNote && (
-                <Text
-                  style={[
-                    styles.noteText,
-                    row2Badges.length > 0 && styles.noteTextWithInlineBadges,
-                    isDark && { color: colors.text.secondary },
-                  ]}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                  maxFontSizeMultiplier={1.2}
-                >
-                  {noteContent}
-                </Text>
-              )}
-              {row2Badges.length > 0 && (
-                <View style={styles.inlineBadgesGroup}>
-                  {row2Badges.map((b) => renderStatusBadge(b, 'r2'))}
-                </View>
-              )}
-            </View>
+        {/* 第 2 行（說明與基本元資料列）：左備註（單行），右 [分流徽章] + [付款方式] + [成員／流向] */}
+        <View style={[styles.bottomRow, !hasNote && styles.bottomRowAlignEnd]}>
+          {hasNote && (
+            <Text
+              style={[styles.noteText, isDark && { color: colors.text.secondary }]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              maxFontSizeMultiplier={1.2}
+            >
+              {noteContent}
+            </Text>
           )}
           <View style={[styles.metaRow, row2Badges.length > 0 && styles.metaRowLocked]}>
+            {row2Badges.map((b) => renderStatusBadge(b, 'r2'))}
             {!!paymentLabel && (
               <View style={[styles.paymentBadge, { borderColor: `${paymentLabel.color}35`, backgroundColor: `${paymentLabel.color}12` }]}>
                 <Text style={styles.paymentBadgeIcon}>{paymentLabel.icon}</Text>
@@ -1499,20 +1481,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 4,
   },
-  topLeftGroup: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginRight: 6,
-    minWidth: 0,
-  },
-  inlineBadgesGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    flexShrink: 0,
-  },
   topRightGroup: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1523,7 +1491,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#1F2937',
+    flex: 1,
     flexShrink: 1,
+    marginRight: 8,
   },
   badgeRow: {
     flexDirection: 'row',
@@ -1593,25 +1563,12 @@ const styles = StyleSheet.create({
   bottomRowAlignEnd: {
     justifyContent: 'flex-end',
   },
-  bottomLeftGroup: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    minWidth: 0,
-  },
   noteText: {
     fontSize: 13,
     color: '#6B7280',
     flex: 1,
     flexShrink: 1,
     minWidth: 44,
-  },
-  noteTextWithInlineBadges: {
-    flexGrow: 0,
-    flexShrink: 1,
-    flexBasis: 'auto',
-    minWidth: 0,
   },
   metaRow: {
     flexDirection: 'row',

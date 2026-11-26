@@ -40,7 +40,8 @@ export interface TransactionCardLayoutResult {
 const BADGE_GAP = 5;
 
 /**
- * 依字元類型估算顯示寬度（區分 ASCII、Emoji 與全形中文字，並忽略零寬變體選擇符）。
+ * 校準後之字寬估算函式：細分空白、窄標點、ASCII、勾選符號、Emoji 與中文字，
+ * 避免高估寬度導致實際有空間時卻誤把標籤縮成純圖示。
  */
 export const estimateTextWidth = (text: string, baseFontSize: number, scale: number): number => {
   const effectiveFontSize = baseFontSize * scale;
@@ -50,12 +51,18 @@ export const estimateTextWidth = (text: string, baseFontSize: number, scale: num
     if (code === 0xfe0f || code === 0xfe0e || code === 0x200d) {
       continue;
     }
-    if (code <= 0x7f) {
-      total += 0.60 * effectiveFontSize;
+    if (ch === ' ') {
+      total += 0.28 * effectiveFontSize;
+    } else if ('-.,:/|()[]'.includes(ch)) {
+      total += 0.36 * effectiveFontSize;
+    } else if (code <= 0x7f) {
+      total += 0.56 * effectiveFontSize;
+    } else if (code === 0x2713 || code === 0x2714) {
+      total += 0.85 * effectiveFontSize;
     } else if (code >= 0x1f000 || (code >= 0x2600 && code <= 0x27bf)) {
-      total += 1.22 * effectiveFontSize;
+      total += 1.12 * effectiveFontSize;
     } else {
-      total += 1.06 * effectiveFontSize;
+      total += 1.00 * effectiveFontSize;
     }
   }
   return total;
@@ -77,7 +84,7 @@ const getLabelForLevel = (badge: CardBadgeInput, level: CardBadgeLevel): string 
 
 const estimateBadgeWidth = (badge: CardBadgeInput, level: CardBadgeLevel, fontScale: number): number => {
   const label = getLabelForLevel(badge, level);
-  return estimateTextWidth(label, 10.5, fontScale) + (level === 'icon' ? 12 : 14);
+  return estimateTextWidth(label, 10.5, fontScale) + (level === 'icon' ? 13 : 17);
 };
 
 const toPlacedBadge = (badge: CardBadgeInput, level: CardBadgeLevel): PlacedCardBadge => ({
@@ -101,8 +108,8 @@ const calcWorkingListWidth = (items: WorkingBadge[], fontScale: number): number 
 };
 
 /**
- * 將交易卡片狀態與發票標籤依「第 2 行優先 → 第 1 行留白 → 第 3 行兜底」配置，
- * 確保店家名稱與短備註不被無謂截斷，同時盡可能將卡片收斂為 2 行。
+ * 依「第 1 行金額左側優先 → 第 2 行付款方式左側分流 → 第 1 行降純圖示 → 第 2 行回填純圖示 → 第 3 行兜底」
+ * 配置交易明細標籤，維持所有卡片視覺高度一致且不截斷店名與短備註。
  */
 export const allocateTransactionCardBadges = (
   input: TransactionCardLayoutInput
@@ -133,113 +140,105 @@ export const allocateTransactionCardBadges = (
     }
   }
 
-  // 第 1 步：計算第 2 行在不截斷完整備註的前提下所剩餘的可用寬度
+  // 第 1 步：計算第 1 行與第 2 行在不截斷完整店名／備註下的純餘裕寬度
+  const fullTitleWidth = estimateTextWidth(titleText, 15, fontScale) * 1.07;
+  const amountWidth = estimateTextWidth(amountText, 16, fontScale) * 1.09;
+  const existingBadgeWidth = existingTopRightBadgeText
+    ? estimateTextWidth(existingTopRightBadgeText, 10.5, fontScale) + 17 + BADGE_GAP
+    : 0;
+  const row1FreeWidth = Math.max(
+    0,
+    contentWidth - fullTitleWidth - 8 - amountWidth - existingBadgeWidth - 8
+  );
+
   const trimmedNote = noteContent.trim();
   const fullNoteWidth = trimmedNote ? estimateTextWidth(trimmedNote, 13, fontScale) : 0;
   const row2FreeWidth = trimmedNote
-    ? Math.max(0, contentWidth - fullNoteWidth - 6 - rightMetaWidth - 8)
-    : Math.max(0, contentWidth - rightMetaWidth - 8);
+    ? Math.max(0, contentWidth - fullNoteWidth - 6 - rightMetaWidth - 5)
+    : Math.max(0, contentWidth - rightMetaWidth - 5);
 
-  // 第 2 步：優先將候選標籤以 full 或 compact 放入第 2 行，避免過早在第 2 行壓成純圖示
-  const row2Working: WorkingBadge[] = [];
-  let remaining: CardBadgeInput[] = [];
+  // 第 2 步：第 1 行優先以 compact 裝箱（維持整個清單視覺一致）
+  let row1Working: WorkingBadge[] = [];
+  const overflow: CardBadgeInput[] = [];
 
-  if (candidates.length > 0 && row2FreeWidth > 0) {
-    const allInRow2: WorkingBadge[] = candidates.map((b) => ({ input: b, level: 'full' }));
-    if (calcWorkingListWidth(allInRow2, fontScale) <= row2FreeWidth) {
-      row2Working.push(...allInRow2);
+  if (candidates.length > 0 && row1FreeWidth > 0) {
+    const allCompactInRow1: WorkingBadge[] = candidates.map((b) => ({ input: b, level: 'compact' }));
+    if (calcWorkingListWidth(allCompactInRow1, fontScale) <= row1FreeWidth) {
+      row1Working.push(...allCompactInRow1);
     } else {
-      const shrinkOrder = [...allInRow2].sort((a, b) => a.input.shrinkPriority - b.input.shrinkPriority);
-      let fitAllAtCompact = false;
-      for (const target of shrinkOrder) {
-        target.level = 'compact';
-        if (calcWorkingListWidth(allInRow2, fontScale) <= row2FreeWidth) {
-          fitAllAtCompact = true;
-          break;
-        }
-      }
-
-      if (fitAllAtCompact) {
-        row2Working.push(...allInRow2);
-      } else {
-        // 全員降為 compact 仍超出時，依優先順序逐顆嘗試放入 full 或 compact，放不下留給第 1 行
-        for (const badge of candidates) {
-          const gapIfNeeded = row2Working.length > 0 ? BADGE_GAP : 0;
-          const used = calcWorkingListWidth(row2Working, fontScale);
-          const fullW = estimateBadgeWidth(badge, 'full', fontScale);
-          if (used + gapIfNeeded + fullW <= row2FreeWidth) {
-            row2Working.push({ input: badge, level: 'full' });
-            continue;
-          }
-          const compactW = estimateBadgeWidth(badge, 'compact', fontScale);
-          if (used + gapIfNeeded + compactW <= row2FreeWidth) {
-            row2Working.push({ input: badge, level: 'compact' });
-            continue;
-          }
-          remaining.push(badge);
+      for (const badge of candidates) {
+        const gapIfNeeded = row1Working.length > 0 ? BADGE_GAP : 0;
+        const used = calcWorkingListWidth(row1Working, fontScale);
+        const compactW = estimateBadgeWidth(badge, 'compact', fontScale);
+        if (used + gapIfNeeded + compactW <= row1FreeWidth) {
+          row1Working.push({ input: badge, level: 'compact' });
+        } else {
+          overflow.push(badge);
         }
       }
     }
   } else {
-    remaining = [...candidates];
+    overflow.push(...candidates);
   }
 
-  // 第 3 步：計算第 1 行在不截斷完整店名的前提下所剩餘的可用寬度
-  const fullTitleWidth = estimateTextWidth(titleText, 15, fontScale) * 1.04;
-  const amountWidth = estimateTextWidth(amountText, 16, fontScale) * 1.06;
-  const existingBadgeWidth = existingTopRightBadgeText
-    ? estimateTextWidth(existingTopRightBadgeText, 10.5, fontScale) + 14 + 5
-    : 0;
-  const row1FreeWidth = Math.max(
-    0,
-    contentWidth - fullTitleWidth - 6 - amountWidth - existingBadgeWidth - 8
-  );
+  // 第 3 步：第 1 行放不下 compact 的標籤，優先分流至第 2 行付款方式左側（保持 compact）
+  const row2Working: WorkingBadge[] = [];
+  const stillOverflow: CardBadgeInput[] = [];
 
-  // 第 4 步：將剩餘標籤安插至第 1 行（上限為 compact）
-  const row1Working: WorkingBadge[] = [];
-  let leftover: CardBadgeInput[] = [];
-
-  if (remaining.length > 0 && row1FreeWidth > 0) {
-    const allInRow1: WorkingBadge[] = remaining.map((b) => ({ input: b, level: 'compact' }));
-    if (calcWorkingListWidth(allInRow1, fontScale) <= row1FreeWidth) {
-      row1Working.push(...allInRow1);
+  for (const badge of overflow) {
+    const gapIfNeeded = row2Working.length > 0 ? BADGE_GAP : 0;
+    const usedRow2 = calcWorkingListWidth(row2Working, fontScale);
+    const compactW = estimateBadgeWidth(badge, 'compact', fontScale);
+    if (usedRow2 + gapIfNeeded + compactW <= row2FreeWidth) {
+      row2Working.push({ input: badge, level: 'compact' });
     } else {
-      const shrinkOrder = [...allInRow1].sort((a, b) => a.input.shrinkPriority - b.input.shrinkPriority);
-      let fitAllAtIcon = false;
+      stillOverflow.push(badge);
+    }
+  }
+
+  // 第 4 步：若仍有未放入的標籤，嘗試把第 1 行現有標籤與 stillOverflow 依優先順序降級為 icon 塞進第 1 行
+  const leftover: CardBadgeInput[] = [];
+  if (stillOverflow.length > 0) {
+    if (row1FreeWidth > 0) {
+      const retryPoolInputs = [...row1Working.map((w) => w.input), ...stillOverflow];
+      const retryAll: WorkingBadge[] = retryPoolInputs.map((b) => ({ input: b, level: 'compact' }));
+      const shrinkOrder = [...retryAll].sort((a, b) => a.input.shrinkPriority - b.input.shrinkPriority);
+      let fitAllWithIcons = false;
       for (const target of shrinkOrder) {
         target.level = 'icon';
-        if (calcWorkingListWidth(allInRow1, fontScale) <= row1FreeWidth) {
-          fitAllAtIcon = true;
+        if (calcWorkingListWidth(retryAll, fontScale) <= row1FreeWidth) {
+          fitAllWithIcons = true;
           break;
         }
       }
 
-      if (fitAllAtIcon) {
-        row1Working.push(...allInRow1);
+      if (fitAllWithIcons) {
+        row1Working = retryAll;
       } else {
-        // 即使全縮成 icon 仍放不下全部，逐顆放入能容納的高優先標籤，其餘交給第 5 步兜底
-        for (const badge of remaining) {
-          const gapIfNeeded = row1Working.length > 0 ? BADGE_GAP : 0;
-          const used = calcWorkingListWidth(row1Working, fontScale);
+        const nextRow1: WorkingBadge[] = [];
+        for (const badge of retryPoolInputs) {
+          const gapIfNeeded = nextRow1.length > 0 ? BADGE_GAP : 0;
+          const used = calcWorkingListWidth(nextRow1, fontScale);
           const compactW = estimateBadgeWidth(badge, 'compact', fontScale);
           if (used + gapIfNeeded + compactW <= row1FreeWidth) {
-            row1Working.push({ input: badge, level: 'compact' });
+            nextRow1.push({ input: badge, level: 'compact' });
             continue;
           }
           const iconW = estimateBadgeWidth(badge, 'icon', fontScale);
           if (used + gapIfNeeded + iconW <= row1FreeWidth) {
-            row1Working.push({ input: badge, level: 'icon' });
+            nextRow1.push({ input: badge, level: 'icon' });
             continue;
           }
           leftover.push(badge);
         }
+        row1Working = nextRow1;
       }
+    } else {
+      leftover.push(...stillOverflow);
     }
-  } else {
-    leftover = [...remaining];
   }
 
-  // 第 5 步：先嘗試把殘餘標籤以 icon 回填進第 2 行剩餘空隙，仍放不下才退至第 3 行
+  // 第 5 步：兜底回填第 2 行 icon，仍放不下才退至第 3 行
   const fallbackRow3: CardBadgeInput[] = [];
   for (const badge of leftover) {
     const gapIfNeeded = row2Working.length > 0 ? BADGE_GAP : 0;
