@@ -2001,12 +2001,11 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
             minimumFontScale={0.75}
             maxFontSizeMultiplier={1.12}
           >
-            {transactionTypeFilter === 'memo' ? '記事' : transactionTypeFilter === 'financial' ? '收支' : '明細'}{' '}
             {historySyncProgress
-              ? `${Math.max(historySyncProgress.loaded, transactions.length).toLocaleString()}/${historySyncProgress.total.toLocaleString()}`
+              ? `${Math.max(historySyncProgress.loaded, transactions.length).toLocaleString()}/總${historySyncProgress.total.toLocaleString()}`
               : filteredTransactions.length < transactions.length
-              ? `${filteredTransactions.length.toLocaleString()}/${transactions.length.toLocaleString()}`
-              : `${transactions.length.toLocaleString()}`}
+              ? `${filteredTransactions.length.toLocaleString()}/總${transactions.length.toLocaleString()}`
+              : `共${transactions.length.toLocaleString()}筆`}
           </Text>
         </View>
 
