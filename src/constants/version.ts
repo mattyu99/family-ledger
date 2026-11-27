@@ -5,9 +5,9 @@ export const APP_BASE_VERSION = appConfig.expo.version || '1.0.18';
 
 // 小版號 / 建置修訂版號 (Build Revision)
 // 代表自 v1.0.18 正式發布以來，歷次功能更新與修訂的累計版次
-export const APP_BUILD_REVISION = 50;
+export const APP_BUILD_REVISION = 51;
 
-// 完整版本字串 (例如 "1.0.18.50")
+// 完整版本字串 (例如 "1.0.18.51")
 export const APP_FULL_VERSION = `${APP_BASE_VERSION}.${APP_BUILD_REVISION}`;
 
 export interface ChangelogItem {
@@ -23,7 +23,7 @@ export const CHANGELOG_HISTORY: ChangelogItem[] = [
     date: '2026-11-23 ~ 2026-11-27',
     title: '四大主頁全面清爽改版、LINE 雙軌日報、桌面待辦直達與 3D 黏土圖示',
     highlights: [
-      '🛡️ 備份還原安全升級與全欄位同步修復：匯出備份全面移除管理員密碼與邀請碼防外洩，並修復還原時待辦說明、發票同步狀態、卡片銀行與自訂付款方式同步缺漏。',
+      '🛡️ 備份還原安全升級與自動防漏守護：匯出備份全面移除管理員密碼與邀請碼防外洩，修復還原時各項資料同步缺漏，並建立欄位變動自動檢查機制確保未來不漏備份。',
       '✨ App 啟動與更新載入防閃爍：優先載入本機家庭帳本，徹底消除更新或重新開啟時首頁短暫閃現紫色體驗導覽畫面的問題。',
       '☁️ 雲端發票同步與全部發票集中管理：自動帶入品項金額備註且保留手寫內容，明細頁支援一鍵切換「全部雲端發票」與「補齊／新增」篩選，並支援跨月核對與載具防重登記。',
       '🧾 發票對獎自動同步修復與領獎期限守護：修正開獎文案並永久累加保留歷期獎號，自動識別法定三個月領獎期限，逾期未領不再重複亮燈催領。',
