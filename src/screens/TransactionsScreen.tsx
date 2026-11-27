@@ -501,21 +501,42 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
     return getRecentCloudSyncedTransactions(transactions);
   }, [transactions]);
 
-  const recent24hCloudStats = useMemo(() => {
+  const allCloudTotalCount = allCloudSynced.length;
+
+  const matchesCloudMemberFilter = useCallback(
+    (t: Transaction): boolean => {
+      if (filterMemberId === 'all') return true;
+      const payer = getMemberById(t.paid_by) || t.payer_profile;
+      const targetMember =
+        members.find(m => m.id === filterMemberId) ||
+        (currentUser?.id === filterMemberId ? currentUser : undefined);
+      const isTransferIn = isTransferToMember(t, filterMemberId, targetMember?.display_name, paymentAccounts);
+      return (
+        (payer && payer.id === filterMemberId) ||
+        t.paid_by === filterMemberId ||
+        (targetMember && (payer?.display_name === targetMember.display_name || (t as any).payer_name === targetMember.display_name)) ||
+        isTransferIn
+      );
+    },
+    [filterMemberId, getMemberById, members, currentUser, paymentAccounts]
+  );
+
+  const memberScopedRecent24hStats = useMemo(() => {
+    let total = 0;
     let matchedCount = 0;
     let importedCount = 0;
     for (const item of recent24hCloudSynced) {
+      if (!matchesCloudMemberFilter(item.transaction)) continue;
+      total++;
       if (item.syncType === 'matched_cloud') matchedCount++;
       else if (item.syncType === 'cloud_imported') importedCount++;
     }
-    return {
-      total: recent24hCloudSynced.length,
-      matchedCount,
-      importedCount,
-    };
-  }, [recent24hCloudSynced]);
+    return { total, matchedCount, importedCount };
+  }, [recent24hCloudSynced, matchesCloudMemberFilter]);
 
-  const allCloudTotalCount = allCloudSynced.length;
+  const memberScopedAllCloudCount = useMemo(() => {
+    return allCloudSynced.filter(item => matchesCloudMemberFilter(item.transaction)).length;
+  }, [allCloudSynced, matchesCloudMemberFilter]);
 
   const matchesCloudScopeFilters = useCallback(
     (t: Transaction): boolean => {
@@ -531,19 +552,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         }
       }
 
-      if (filterMemberId !== 'all') {
-        const payer = getMemberById(t.paid_by) || t.payer_profile;
-        const targetMember =
-          members.find(m => m.id === filterMemberId) ||
-          (currentUser?.id === filterMemberId ? currentUser : undefined);
-        const isTransferIn = isTransferToMember(t, filterMemberId, targetMember?.display_name, paymentAccounts);
-        const isMatch =
-          (payer && payer.id === filterMemberId) ||
-          t.paid_by === filterMemberId ||
-          (targetMember && (payer?.display_name === targetMember.display_name || (t as any).payer_name === targetMember.display_name)) ||
-          isTransferIn;
-        if (!isMatch) return false;
-      }
+      if (!matchesCloudMemberFilter(t)) return false;
 
       const q = searchQuery.trim().toLowerCase();
       if (q) {
@@ -558,7 +567,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
 
       return true;
     },
-    [filterMonth, filterMemberId, searchQuery, getMemberById, getCategoryById, members, currentUser, paymentAccounts]
+    [filterMonth, matchesCloudMemberFilter, searchQuery, getCategoryById]
   );
 
   const scopedAllCloudItems = useMemo(() => {
@@ -2209,14 +2218,13 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
         )}
       </HorizontalScrollView>
 
-      {/* ✨ 近 24 小時雲端異動 / ☁️ 全部雲端發票集中檢視橫幅（平時無近 24 小時異動時完全隱藏） */}
-      {(recent24hCloudStats.total > 0 || cloudSyncViewMode !== 'off') && (
+      {/* ✨ 近 24 小時雲端異動 / ☁️ 全部雲端發票集中檢視橫幅（依目前成員計算，無近 24 小時異動時完全隱藏） */}
+      {(memberScopedRecent24hStats.total > 0 || cloudSyncViewMode !== 'off') && (
         cloudSyncViewMode === 'off' ? (
           <TouchableOpacity
             activeOpacity={0.8}
             onPress={() => {
               setFilterMonth('all');
-              setFilterMemberId('all');
               setCloudSyncTypeFilter('all');
               setCloudSyncViewMode('recent24h');
             }}
@@ -2233,13 +2241,13 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
                 style={[styles.cloudSyncFocusTitle, isDark && { color: '#7DD3FC' }]}
                 maxFontSizeMultiplier={1.08}
               >
-                {`✨ 雲端發票剛異動 ${recent24hCloudStats.total} 筆`}
+                {`✨ 雲端發票剛異動 ${memberScopedRecent24hStats.total} 筆`}
               </Text>
               <Text
                 style={[styles.cloudSyncFocusSub, isDark && { color: colors.text.secondary }]}
                 maxFontSizeMultiplier={1.08}
               >
-                {`補齊 ${recent24hCloudStats.matchedCount} 筆 · 新增 ${recent24hCloudStats.importedCount} 筆（跨月總覽）`}
+                {`補齊 ${memberScopedRecent24hStats.matchedCount} 筆 · 新增 ${memberScopedRecent24hStats.importedCount} 筆${filterMemberId === 'all' ? '（跨月總覽）' : '（目前成員·跨月）'}`}
               </Text>
             </View>
             <View
@@ -2321,12 +2329,11 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
               >
                 {`補齊 ${activeCloudSyncedScope.matchedCount} 筆 · 新增 ${activeCloudSyncedScope.importedCount} 筆`}
               </Text>
-              {cloudSyncViewMode === 'recent24h' && allCloudTotalCount > activeCloudSyncedScope.total && (
+              {cloudSyncViewMode === 'recent24h' && memberScopedAllCloudCount > activeCloudSyncedScope.total && (
                 <TouchableOpacity
                   activeOpacity={0.75}
                   onPress={() => {
                     setFilterMonth('all');
-                    setFilterMemberId('all');
                     setCloudSyncTypeFilter('all');
                     setCloudSyncViewMode('all');
                   }}
@@ -2344,11 +2351,11 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
                     maxFontSizeMultiplier={1.08}
                     numberOfLines={1}
                   >
-                    {`看全部 (${allCloudTotalCount}) ➔`}
+                    {`看全部 (${memberScopedAllCloudCount}) ➔`}
                   </Text>
                 </TouchableOpacity>
               )}
-              {cloudSyncViewMode === 'all' && recent24hCloudStats.total > 0 && (
+              {cloudSyncViewMode === 'all' && memberScopedRecent24hStats.total > 0 && (
                 <TouchableOpacity
                   activeOpacity={0.75}
                   onPress={() => {
@@ -2601,9 +2608,11 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
           <Text style={[styles.emptySubtext, isDark && { color: colors.text.muted }]}>
             {cloudSyncViewMode !== 'off'
               ? (cloudSyncTypeFilter !== 'all'
-                  ? '可切換上方「全部／補齊／新增」標籤，或改查全部月份與成員'
-                  : (filterMonth !== 'all' || filterMemberId !== 'all')
-                  ? '目前僅篩選指定月份或成員，點擊下方按鈕可改查全部雲端發票'
+                  ? '可切換上方「全部／補齊／新增」標籤，或改查全部月份'
+                  : filterMonth !== 'all' && memberScopedAllCloudCount > 0
+                  ? '目前僅篩選指定月份，點擊下方按鈕可改查該成員全部月份發票'
+                  : filterMemberId !== 'all' && allCloudTotalCount > 0
+                  ? '目前成員無符合之雲端發票，點擊下方按鈕可改看全部成員'
                   : '目前尚無符合條件的雲端發票紀錄')
               : transactionTypeFilter === 'memo' && !searchQuery.trim()
               ? '點擊右下角「+」並切換至「記事」隨手記錄家庭大小事'
@@ -2614,7 +2623,24 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
               : '請嘗試更換店家關鍵字或重設篩選'}
           </Text>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
-            {cloudSyncViewMode !== 'off' && (filterMonth !== 'all' || filterMemberId !== 'all') && allCloudTotalCount > 0 && (
+            {cloudSyncViewMode !== 'off' && filterMonth !== 'all' && memberScopedAllCloudCount > 0 && (
+              <TouchableOpacity
+                style={[
+                  styles.filterEmptyResetBtn,
+                  {
+                    backgroundColor: isDark ? 'rgba(14, 165, 233, 0.18)' : '#E0F2FE',
+                    borderColor: isDark ? '#38BDF8' : '#0284C7',
+                  },
+                ]}
+                onPress={() => {
+                  setFilterMonth('all');
+                  setCloudSyncTypeFilter('all');
+                }}
+              >
+                <Text style={[styles.filterEmptyResetText, { color: isDark ? '#7DD3FC' : '#0369A1' }]}>🗓️ 改查全部月份</Text>
+              </TouchableOpacity>
+            )}
+            {cloudSyncViewMode !== 'off' && !(filterMonth !== 'all' && memberScopedAllCloudCount > 0) && filterMemberId !== 'all' && allCloudTotalCount > 0 && (
               <TouchableOpacity
                 style={[
                   styles.filterEmptyResetBtn,
@@ -2629,7 +2655,7 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
                   setCloudSyncTypeFilter('all');
                 }}
               >
-                <Text style={[styles.filterEmptyResetText, { color: isDark ? '#7DD3FC' : '#0369A1' }]}>🌐 查全部月份與成員</Text>
+                <Text style={[styles.filterEmptyResetText, { color: isDark ? '#7DD3FC' : '#0369A1' }]}>👨‍👩‍👧 改看全部成員</Text>
               </TouchableOpacity>
             )}
             {cloudSyncViewMode === 'off' && searchQuery.trim() && filterMonth !== 'all' && (
