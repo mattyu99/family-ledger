@@ -2795,7 +2795,6 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
                   viewingMemberId={filterMemberId}
                   isLastViewed={item.id === lastViewedTxId}
                   hideDateInCard={item.type !== 'memo'}
-                  showCloudSyncTypeBadge={cloudSyncViewMode !== 'off'}
                   precomputedLinkedMemo={item.type !== 'memo' ? (linkedMemoByTxId.get(item.id) ?? null) : undefined}
                   precomputedLinkedTargets={item.type === 'memo' ? (linkedTargetsByMemoId.get(item.id) ?? []) : undefined}
                   onPress={tx => {
