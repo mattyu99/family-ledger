@@ -961,7 +961,7 @@ CREATE TABLE IF NOT EXISTS public.recurring_rules (
     paid_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
     payment_method TEXT DEFAULT 'credit_card' NOT NULL,
     account_id UUID REFERENCES public.payment_accounts(id) ON DELETE SET NULL,
-    frequency TEXT CHECK (frequency IN ('monthly', 'bimonthly', 'yearly')) DEFAULT 'monthly' NOT NULL,
+    frequency TEXT CHECK (frequency IN ('monthly', 'bimonthly', 'quarterly', 'yearly')) DEFAULT 'monthly' NOT NULL,
     due_day INT CHECK (due_day BETWEEN 1 AND 31) DEFAULT 1 NOT NULL,
     bimonthly_start_month INT CHECK (bimonthly_start_month IN (1, 2)),
     is_active BOOLEAN DEFAULT TRUE NOT NULL,
@@ -975,11 +975,14 @@ CREATE TABLE IF NOT EXISTS public.recurring_rules (
     updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 資料庫遷移：若資料表已存在，安全補齊分期付款欄位
+-- 資料庫遷移：若資料表已存在，安全補齊分期付款欄位與每季週期支援
 ALTER TABLE public.recurring_rules ADD COLUMN IF NOT EXISTS is_installment BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.recurring_rules ADD COLUMN IF NOT EXISTS total_installments INT;
 ALTER TABLE public.recurring_rules ADD COLUMN IF NOT EXISTS current_installment INT DEFAULT 1;
 ALTER TABLE public.recurring_rules ADD COLUMN IF NOT EXISTS installment_start_period TEXT;
+ALTER TABLE public.recurring_rules DROP CONSTRAINT IF EXISTS recurring_rules_frequency_check;
+ALTER TABLE public.recurring_rules ADD CONSTRAINT recurring_rules_frequency_check
+    CHECK (frequency IN ('monthly', 'bimonthly', 'quarterly', 'yearly'));
 
 -- 啟用 RLS
 ALTER TABLE public.recurring_rules ENABLE ROW LEVEL SECURITY;
@@ -3113,5 +3116,6 @@ VALUES
     ('20261120_auth_session_links_and_member_dedup', '獨立連線通行證與防成員重複分身純淨守護'),
     ('20261122_add_payment_accounts_issuer_bank', '補齊信用卡發卡機構識別與儲存支援'),
     ('20261122_add_payment_accounts_payment_due_day', '補齊信用卡每月繳款截止日欄位與共用週期支援'),
-    ('20261123_add_line_subscriptions', '新增 LINE 個人自主訂閱與家庭群組雙軌日報資料表與安全 RPC')
+    ('20261123_add_line_subscriptions', '新增 LINE 個人自主訂閱與家庭群組雙軌日報資料表與安全 RPC'),
+    ('20261127_add_recurring_rules_quarterly', '擴充 recurring_rules.frequency 支援每季 (quarterly) 週期帳單')
 ON CONFLICT (version) DO UPDATE SET applied_at = NOW();

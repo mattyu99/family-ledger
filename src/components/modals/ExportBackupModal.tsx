@@ -66,6 +66,7 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
     historySyncProgress,
     exportToCSV,
     exportToJSON,
+    refreshBackupSnapshots,
     restoreFromJSON,
     recordBackupComplete,
   } = useLedger();
@@ -106,20 +107,31 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
   }, [statusBanner]);
 
   useEffect(() => {
-    if (visible) {
-      setExportTab(initialTab);
-      setStatusBanner(null);
-      setIsExporting(false);
-      setLastDownloadUrl(null);
-      try {
-        const csv = exportToCSV();
-        const json = exportToJSON();
-        setCsvContent(csv);
-        setJsonContent(json);
-      } catch (e) {
-        console.warn('匯出資料準備失敗:', e);
-      }
+    if (!visible) return;
+    let isMounted = true;
+    setExportTab(initialTab);
+    setStatusBanner(null);
+    setIsExporting(false);
+    setLastDownloadUrl(null);
+    try {
+      const csv = exportToCSV();
+      const json = exportToJSON();
+      setCsvContent(csv);
+      setJsonContent(json);
+    } catch (e) {
+      console.warn('匯出資料準備失敗:', e);
     }
+    refreshBackupSnapshots()
+      .then(() => {
+        if (!isMounted) return;
+        try {
+          setJsonContent(exportToJSON());
+        } catch {}
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
   }, [visible, initialTab]);
 
   // 載入附件與電子帳單統計數據

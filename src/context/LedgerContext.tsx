@@ -388,6 +388,7 @@ interface LedgerContextType {
   toggleMemoChecklistItem: (transactionId: string, itemIndex: number) => Promise<boolean>;
   exportToCSV: () => string;
   exportToJSON: () => string;
+  refreshBackupSnapshots: () => Promise<void>;
   restoreFromJSON: (
     jsonStr: string,
     options?: { mode?: 'merge' | 'overwrite' }
@@ -1039,6 +1040,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setAutoBackupInterval,
     recordBackupComplete,
     updateAutoBackupConfig,
+    refreshBackupSnapshots,
     exportToCSV,
     exportToJSON,
     restoreFromJSON,
@@ -10091,6 +10093,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         toggleMemoChecklistItem,
         exportToCSV,
         exportToJSON,
+        refreshBackupSnapshots,
         restoreFromJSON,
         lastBackupAt,
         autoBackupEnabled,
