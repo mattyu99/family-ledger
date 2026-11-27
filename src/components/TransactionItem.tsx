@@ -35,6 +35,7 @@ import {
   getInvoiceLastThree,
   PlacedCardBadge,
 } from '../lib/transactionCardLayout';
+import { isPdfReceipt } from '../lib/receiptStorage';
 
 interface TransactionItemProps {
   transaction: Transaction;
@@ -1056,11 +1057,12 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
     });
   }
   if (transaction.image_url) {
+    const isPdf = isPdfReceipt(transaction.image_url);
     rawBadges.push({
       key: 'image',
-      fullText: '📷 憑證',
-      compactText: '📷 憑證',
-      iconText: '📷',
+      fullText: isPdf ? '📄 PDF憑證' : '📷 憑證',
+      compactText: isPdf ? '📄 憑證' : '📷 憑證',
+      iconText: isPdf ? '📄' : '📷',
       shrinkPriority: 3,
     });
   }
@@ -1146,9 +1148,10 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
         onPress={(e) => {
           e?.stopPropagation?.();
           if (onViewImage && transaction.image_url) {
+            const isPdf = isPdfReceipt(transaction.image_url);
             onViewImage(
               transaction.image_url,
-              `${transaction.merchant || category?.name || '消費'} 憑證照片`
+              `${transaction.merchant || category?.name || '消費'} ${isPdf ? 'PDF 憑證' : '憑證照片'}`
             );
           } else if (onPress) {
             onPress(transaction);

@@ -87,8 +87,15 @@ import { checkInvoiceWinning } from '../lib/lottery';
 import { DatePickerModal } from './DatePickerModal';
 import { InvoiceScannerModal } from './InvoiceScannerModal';
 import { ImageViewerModal } from './ImageViewerModal';
+import { ReceiptSourceModal } from './ReceiptSourceModal';
 import { RestockPickerModal } from './RestockPickerModal';
-import { uploadReceiptPhoto } from '../lib/receiptStorage';
+import {
+  uploadReceiptPhoto,
+  isPdfReceipt,
+  extractReceiptFileName,
+  resolveReceiptMimeType,
+  MAX_RECEIPT_FILE_BYTES,
+} from '../lib/receiptStorage';
 import { DEMO_USER_DAD } from '../constants/ledgerDefaults';
 
 const safeAlert = (title: string, message: string) => {
@@ -108,6 +115,17 @@ try {
   }
 } catch {
   ImagePickerModule = null;
+}
+
+let DocumentPickerModule: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const docPkg = require('expo-document-picker');
+  if (docPkg?.getDocumentAsync) {
+    DocumentPickerModule = docPkg;
+  }
+} catch {
+  DocumentPickerModule = null;
 }
 
 const CATEGORY_MERCHANT_PRESETS: Record<string, string[]> = {
@@ -267,12 +285,30 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [transferToAccountId, setTransferToAccountId] = useState<string>('');
   const [transferFee, setTransferFee] = useState<string>('0');
 
-  // 📎 收據/保固照片附件狀態 (階段 B)
+  // 📎 收據/保固/PDF 憑證附件狀態 (階段 B)
   const [receiptPhotoUri, setReceiptPhotoUri] = useState<string>('');
   const [receiptPhotoBase64, setReceiptPhotoBase64] = useState<string>('');
+  const [receiptPhotoMimeType, setReceiptPhotoMimeType] = useState<string>('');
+  const [receiptPhotoName, setReceiptPhotoName] = useState<string>('');
+  const [receiptPhotoFile, setReceiptPhotoFile] = useState<Blob | File | null>(null);
+  const [receiptSourceModalVisible, setReceiptSourceModalVisible] = useState<boolean>(false);
+  const [receiptSourceModalMode, setReceiptSourceModalMode] = useState<'receipt' | 'memo'>('receipt');
   const [viewingPhotoModal, setViewingPhotoModal] = useState<boolean>(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  const clearReceiptAttachment = () => {
+    setReceiptPhotoUri('');
+    setReceiptPhotoBase64('');
+    setReceiptPhotoMimeType('');
+    setReceiptPhotoName('');
+    setReceiptPhotoFile(null);
+  };
+
+  const isPdfAttachment = isPdfReceipt(receiptPhotoUri, receiptPhotoMimeType, receiptPhotoName);
+  const attachmentDisplayName = receiptPhotoUri
+    ? extractReceiptFileName(receiptPhotoUri, receiptPhotoName)
+    : '';
   const [selectedSchoolSubject, setSelectedSchoolSubject] = useState<string>('國文');
   const [isMemoTagDrawerOpen, setIsMemoTagDrawerOpen] = useState<boolean>(false);
   const [isMemoTemplateDrawerOpen, setIsMemoTemplateDrawerOpen] = useState<boolean>(false);
@@ -1187,8 +1223,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     setDiscountCalcMode('subtract');
     setAllowanceMode('transfer');
     setTransferFee('0');
-    setReceiptPhotoUri('');
-    setReceiptPhotoBase64('');
+    clearReceiptAttachment();
+    setReceiptSourceModalVisible(false);
     setViewingPhotoModal(false);
     setScannerModalVisible(false);
 
@@ -1340,10 +1376,12 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         base64: true,
       });
       if (!result.canceled && result.assets?.[0]?.uri) {
-        setReceiptPhotoUri(result.assets[0].uri);
-        if (result.assets[0].base64) {
-          setReceiptPhotoBase64(result.assets[0].base64);
-        }
+        const asset = result.assets[0];
+        setReceiptPhotoUri(asset.uri);
+        setReceiptPhotoBase64(asset.base64 || '');
+        setReceiptPhotoMimeType(asset.mimeType || 'image/jpeg');
+        setReceiptPhotoName(asset.fileName || 'receipt.jpg');
+        setReceiptPhotoFile(null);
       }
     } catch (e: any) {
       safeAlert('相機錯誤', e?.message || '無法開啟相機');
@@ -1363,78 +1401,97 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         base64: true,
       });
       if (!result.canceled && result.assets?.[0]?.uri) {
-        setReceiptPhotoUri(result.assets[0].uri);
-        if (result.assets[0].base64) {
-          setReceiptPhotoBase64(result.assets[0].base64);
-        }
+        const asset = result.assets[0];
+        setReceiptPhotoUri(asset.uri);
+        setReceiptPhotoBase64(asset.base64 || '');
+        setReceiptPhotoMimeType(asset.mimeType || 'image/jpeg');
+        setReceiptPhotoName(asset.fileName || 'receipt.jpg');
+        setReceiptPhotoFile(null);
       }
     } catch (e: any) {
       safeAlert('相簿錯誤', e?.message || '無法讀取相簿');
     }
   };
 
-  // 📷 生活記事拍照或選取照片提示 (菜單、聯絡簿、規格備忘)
-  const handlePromptMemoPhotoSource = () => {
-    Keyboard.dismiss();
+  // 從檔案總管挑選 PDF 或圖片憑證
+  const handlePickReceiptFromDocument = async () => {
     if (Platform.OS === 'web') {
-      if (receiptPhotoUri) {
-        if (typeof window !== 'undefined') {
-          if (window.confirm('目前已附加記事照片。\n\n按「確定」重新選擇新照片更換，\n按「取消」保留目前照片。')) {
-            handlePickReceiptFromLibrary();
-          }
+      if (typeof document === 'undefined') return;
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp';
+      input.style.display = 'none';
+      document.body.appendChild(input);
+
+      const cleanup = () => {
+        try {
+          if (input.parentNode) input.parentNode.removeChild(input);
+        } catch {}
+      };
+
+      input.onchange = () => {
+        const file = input.files?.[0];
+        cleanup();
+        if (!file) return;
+        if (file.size > MAX_RECEIPT_FILE_BYTES) {
+          safeAlert('檔案過大', '檔案大小超過 20 MB 上限，請選擇較小的 PDF 或圖片檔');
+          return;
         }
-      } else {
-        handlePickReceiptFromLibrary();
-      }
+        const objectUrl = URL.createObjectURL(file);
+        setReceiptPhotoUri(objectUrl);
+        setReceiptPhotoBase64('');
+        setReceiptPhotoMimeType(resolveReceiptMimeType(file.type, file.name));
+        setReceiptPhotoName(file.name || 'receipt.pdf');
+        setReceiptPhotoFile(file);
+      };
+
+      input.oncancel = () => {
+        cleanup();
+      };
+
+      input.click();
       return;
     }
-    Alert.alert(
-      '📷 附加照片備忘',
-      '拍下菜單、聯絡簿或物品型號，省去手打快速記錄：',
-      [
-        { text: '📸 立即拍照', onPress: handlePickReceiptFromCamera },
-        { text: '🖼️ 從相簿挑選', onPress: handlePickReceiptFromLibrary },
-        { text: '取消', style: 'cancel' },
-      ],
-      { cancelable: true }
-    );
+
+    if (!DocumentPickerModule?.getDocumentAsync) {
+      safeAlert('不支援檔案選取', '目前環境暫不支援開啟檔案總管選取 PDF');
+      return;
+    }
+
+    try {
+      const result = await DocumentPickerModule.getDocumentAsync({
+        type: ['application/pdf', 'image/*'],
+        copyToCacheDirectory: true,
+      });
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        const asset = result.assets[0];
+        if (asset.size && asset.size > MAX_RECEIPT_FILE_BYTES) {
+          safeAlert('檔案過大', '檔案大小超過 20 MB 上限，請選擇較小的 PDF 或圖片檔');
+          return;
+        }
+        setReceiptPhotoUri(asset.uri);
+        setReceiptPhotoBase64('');
+        setReceiptPhotoMimeType(resolveReceiptMimeType(asset.mimeType, asset.name, asset.uri));
+        setReceiptPhotoName(asset.name || '');
+        setReceiptPhotoFile(null);
+      }
+    } catch (e: any) {
+      safeAlert('檔案選取錯誤', e?.message || '無法讀取選取的檔案');
+    }
   };
 
-  // 📷 消費收據 / 保固憑證拍照或相簿提示 (支出分頁極致瘦身)
+  // 📷 生活記事拍照或選取照片／PDF 提示 (菜單、聯絡簿、規格備忘)
+  const handlePromptMemoPhotoSource = () => {
+    Keyboard.dismiss();
+    setReceiptSourceModalMode('memo');
+    setReceiptSourceModalVisible(true);
+  };
+
+  // 📷 消費收據 / 保固憑證 / PDF 來源選擇 (支出分頁極致瘦身)
   const handlePromptReceiptPhotoSource = () => {
     Keyboard.dismiss();
-    if (Platform.OS === 'web') {
-      if (receiptPhotoUri) {
-        if (typeof window !== 'undefined') {
-          if (window.confirm('目前已附加收據照片。\n\n按「確定」重新選擇收據照片更換，\n按「取消」保留目前照片（若欲移除照片可直接點選下方縮圖旁的「✕ 移除」）。')) {
-            handlePickReceiptFromLibrary();
-          }
-        }
-      } else {
-        handlePickReceiptFromLibrary();
-      }
-      return;
-    }
-    Alert.alert(
-      '📷 附加消費收據 / 保固憑證',
-      '拍下發票收據或保固卡，日後對帳與保固查驗超省心：',
-      [
-        { text: '📸 拍照附收據', onPress: handlePickReceiptFromCamera },
-        { text: '🖼️ 從相簿選擇', onPress: handlePickReceiptFromLibrary },
-        ...(receiptPhotoUri
-          ? [{
-              text: '🗑️ 移除照片',
-              style: 'destructive' as const,
-              onPress: () => {
-                setReceiptPhotoUri('');
-                setReceiptPhotoBase64('');
-              },
-            }]
-          : []),
-        { text: '取消', style: 'cancel' as const },
-      ],
-      { cancelable: true }
-    );
+    setReceiptSourceModalMode('receipt');
+    setReceiptSourceModalVisible(true);
   };
 
   // 送出內部轉帳 / 提款 / 繳卡費 (階段 B)
@@ -1594,7 +1651,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       txDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
       const transacted_at = txDate.toISOString();
 
-      // 若有附加備忘/菜單照片，上傳至雲端 Storage
+      // 若有附加備忘/菜單照片或 PDF 憑證，上傳至雲端 Storage
       let finalImageUrl: string | undefined = undefined;
       if (receiptPhotoUri) {
         if (receiptPhotoUri.startsWith('http://') || receiptPhotoUri.startsWith('https://')) {
@@ -1606,8 +1663,15 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               ledgerId: currentLedger.id,
               uri: receiptPhotoUri,
               base64: receiptPhotoBase64 || undefined,
+              mimeType: receiptPhotoMimeType || undefined,
+              originalName: receiptPhotoName || undefined,
+              file: receiptPhotoFile || undefined,
             });
-          } catch {
+          } catch (uploadErr: any) {
+            if (typeof uploadErr?.message === 'string' && uploadErr.message.includes('20 MB')) {
+              safeAlert('檔案過大', uploadErr.message);
+              return;
+            }
             finalImageUrl = receiptPhotoUri;
           } finally {
             setIsUploadingPhoto(false);
@@ -1687,8 +1751,13 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       setAmount('');
       setMerchant('');
       setNote('');
-      setReceiptPhotoUri('');
-      setReceiptPhotoBase64('');
+      const uploadedFallbackPdf =
+        isPdfAttachment &&
+        finalImageUrl &&
+        !finalImageUrl.startsWith('http://') &&
+        !finalImageUrl.startsWith('https://') &&
+        !isDemoLedgerId(currentLedger?.id);
+      clearReceiptAttachment();
       setMemoReminderDate('');
       setMemoReminderCalendar('solar');
       setMemoReminderRepeat('once');
@@ -1705,6 +1774,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       setSelectedDate(new Date());
       onSuccess?.(createdTxId);
       onClose();
+      if (uploadedFallbackPdf) {
+        safeAlert('PDF 已暫存本機', 'PDF 憑證雲端上傳逾時，已暫存本機，建議於網路穩定時重新附加。');
+      }
     } catch (err: any) {
       safeAlert('儲存失敗', err?.message || '儲存生活記事時發生錯誤');
     } finally {
@@ -1814,7 +1886,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         txDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
         const transacted_at = txDate.toISOString();
 
-        // 若有收據照片附件，上傳至雲端 Storage
+        // 若有收據照片或 PDF 憑證附件，上傳至雲端 Storage
         let finalImageUrl: string | undefined = undefined;
         if (receiptPhotoUri) {
           if (receiptPhotoUri.startsWith('http://') || receiptPhotoUri.startsWith('https://')) {
@@ -1826,8 +1898,15 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 ledgerId: currentLedger.id,
                 uri: receiptPhotoUri,
                 base64: receiptPhotoBase64 || undefined,
+                mimeType: receiptPhotoMimeType || undefined,
+                originalName: receiptPhotoName || undefined,
+                file: receiptPhotoFile || undefined,
               });
-            } catch {
+            } catch (uploadErr: any) {
+              if (typeof uploadErr?.message === 'string' && uploadErr.message.includes('20 MB')) {
+                safeAlert('檔案過大', uploadErr.message);
+                return;
+              }
               finalImageUrl = receiptPhotoUri;
             } finally {
               setIsUploadingPhoto(false);
@@ -1878,10 +1957,18 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         setPaymentMethod('cash');
         setSelectedAccountId('');
         setSelectedDate(new Date());
-        setReceiptPhotoUri('');
-        setReceiptPhotoBase64('');
+        const uploadedFallbackPdf =
+          isPdfAttachment &&
+          finalImageUrl &&
+          !finalImageUrl.startsWith('http://') &&
+          !finalImageUrl.startsWith('https://') &&
+          !isDemoLedgerId(currentLedger?.id);
+        clearReceiptAttachment();
         onSuccess?.(createdTxId);
         onClose();
+        if (uploadedFallbackPdf) {
+          safeAlert('PDF 已暫存本機', 'PDF 憑證雲端上傳逾時，已暫存本機，建議於網路穩定時重新附加。');
+        }
       } catch (err: any) {
         safeAlert('儲存失敗', err.message || '儲存記帳時發生錯誤');
       } finally {
@@ -2208,18 +2295,18 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       </Text>
                     </TouchableOpacity>
 
-                    {/* 📷 純圖示拍照/相簿按鈕 (菜單/聯絡簿/型號速記) */}
+                    {/* 📷 純圖示拍照/相簿/PDF 按鈕 (菜單/聯絡簿/型號速記) */}
                     <TouchableOpacity
                       style={[styles.memoToolbarBtnCamera, !!receiptPhotoUri && styles.memoToolbarBtnCameraActive]}
                       onPress={handlePromptMemoPhotoSource}
                       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                       activeOpacity={0.7}
                     >
-                      <Text style={styles.memoToolbarBtnCameraIcon}>📷</Text>
+                      <Text style={styles.memoToolbarBtnCameraIcon}>{isPdfAttachment ? '📄' : '📷'}</Text>
                     </TouchableOpacity>
                   </View>
 
-                  {/* 📷 記事即時照片縮圖列 (有照片才顯示，支援點擊全螢幕放大與一鍵移除) */}
+                  {/* 📷 記事即時照片 / PDF 憑證縮圖列 (有附件才顯示，支援點擊檢視與一鍵移除) */}
                   {!!receiptPhotoUri && (
                     <View style={styles.memoPhotoPreviewBar}>
                       <TouchableOpacity
@@ -2227,17 +2314,27 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         activeOpacity={0.8}
                         style={styles.memoPhotoThumbnailTouchable}
                       >
-                        <Image source={{ uri: receiptPhotoUri }} style={styles.memoPhotoThumbnailImg} />
-                        <Text style={styles.memoPhotoHintText} maxFontSizeMultiplier={1.05}>
-                          📷 照片已附加 (點擊放大檢視)
-                        </Text>
+                        {isPdfAttachment ? (
+                          <View style={styles.memoPdfBadgeBox}>
+                            <Text style={styles.memoPdfBadgeIcon}>📄</Text>
+                          </View>
+                        ) : (
+                          <Image source={{ uri: receiptPhotoUri }} style={styles.memoPhotoThumbnailImg} />
+                        )}
+                        <View style={styles.memoPhotoTextCol}>
+                          <Text style={styles.memoPhotoHintText} numberOfLines={1} maxFontSizeMultiplier={1.05}>
+                            {isPdfAttachment ? `📄 ${attachmentDisplayName}` : '📷 照片已附加 (點擊放大檢視)'}
+                          </Text>
+                          {isPdfAttachment && (
+                            <Text style={styles.memoPhotoSubHintText} numberOfLines={1} maxFontSizeMultiplier={1.05}>
+                              點擊檢視 / 開啟 PDF 憑證
+                            </Text>
+                          )}
+                        </View>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.memoPhotoDeleteBtn}
-                        onPress={() => {
-                          setReceiptPhotoUri('');
-                          setReceiptPhotoBase64('');
-                        }}
+                        onPress={clearReceiptAttachment}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         activeOpacity={0.7}
                       >
@@ -4265,7 +4362,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                     <Text style={styles.storeNoteCardTitle} maxFontSizeMultiplier={1.12}>
                       🏪 店家與備註
                     </Text>
-                    {/* 📷 拍照附收據移至標題列右上角 */}
+                    {/* 📷 拍照附收據/PDF 移至標題列右上角 */}
                     <TouchableOpacity
                       style={[
                         styles.headerReceiptBtn,
@@ -4274,7 +4371,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       onPress={handlePromptReceiptPhotoSource}
                       activeOpacity={0.7}
                     >
-                      <Text style={styles.headerReceiptBtnIcon}>📸</Text>
+                      <Text style={styles.headerReceiptBtnIcon}>{isPdfAttachment ? '📄' : '📸'}</Text>
                       <Text
                         style={[
                           styles.headerReceiptBtnText,
@@ -4282,7 +4379,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         ]}
                         maxFontSizeMultiplier={1.08}
                       >
-                        {receiptPhotoUri ? '收據已附 ▾' : '拍照收據'}
+                        {receiptPhotoUri ? (isPdfAttachment ? 'PDF 已附 ▾' : '收據已附 ▾') : '收據/PDF'}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -4409,7 +4506,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   )}
                 </View>
 
-                {/* 📷 支出照片縮圖預覽列 (有照片才顯示，支援點擊放大與移除) */}
+                {/* 📷 支出照片 / PDF 憑證縮圖預覽列 (有附件才顯示，支援點擊放大/開啟與移除) */}
                 {!!receiptPhotoUri && (
                   <View style={styles.memoPhotoPreviewBar}>
                     <TouchableOpacity
@@ -4417,17 +4514,27 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       activeOpacity={0.8}
                       style={styles.memoPhotoThumbnailTouchable}
                     >
-                      <Image source={{ uri: receiptPhotoUri }} style={styles.memoPhotoThumbnailImg} />
-                      <Text style={styles.memoPhotoHintText} maxFontSizeMultiplier={1.05}>
-                        📷 收據已附加 (點擊放大檢視)
-                      </Text>
+                      {isPdfAttachment ? (
+                        <View style={styles.memoPdfBadgeBox}>
+                          <Text style={styles.memoPdfBadgeIcon}>📄</Text>
+                        </View>
+                      ) : (
+                        <Image source={{ uri: receiptPhotoUri }} style={styles.memoPhotoThumbnailImg} />
+                      )}
+                      <View style={styles.memoPhotoTextCol}>
+                        <Text style={styles.memoPhotoHintText} numberOfLines={1} maxFontSizeMultiplier={1.05}>
+                          {isPdfAttachment ? `📄 ${attachmentDisplayName}` : '📷 收據已附加 (點擊放大檢視)'}
+                        </Text>
+                        {isPdfAttachment && (
+                          <Text style={styles.memoPhotoSubHintText} numberOfLines={1} maxFontSizeMultiplier={1.05}>
+                            點擊檢視 / 開啟 PDF 憑證
+                          </Text>
+                        )}
+                      </View>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.memoPhotoDeleteBtn}
-                      onPress={() => {
-                        setReceiptPhotoUri('');
-                        setReceiptPhotoBase64('');
-                      }}
+                      onPress={clearReceiptAttachment}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       activeOpacity={0.7}
                     >
@@ -4991,11 +5098,26 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     visible={viewingPhotoModal}
     onClose={() => setViewingPhotoModal(false)}
     imageUrl={receiptPhotoUri}
-    title={mode === 'memo' ? '記事照片備忘 (菜單/聯絡簿/型號)' : '消費收據 / 保固憑證'}
+    mimeType={receiptPhotoMimeType}
+    fileName={receiptPhotoName}
+    title={mode === 'memo' ? '記事附件憑證' : '消費收據 / 保固憑證'}
     onDelete={() => {
-      setReceiptPhotoUri('');
-      setReceiptPhotoBase64('');
+      clearReceiptAttachment();
+      setViewingPhotoModal(false);
     }}
+  />
+
+  <ReceiptSourceModal
+    visible={receiptSourceModalVisible}
+    mode={receiptSourceModalMode}
+    hasExisting={!!receiptPhotoUri}
+    existingIsPdf={isPdfAttachment}
+    existingFileName={attachmentDisplayName}
+    onPickCamera={handlePickReceiptFromCamera}
+    onPickImageLibrary={handlePickReceiptFromLibrary}
+    onPickDocument={handlePickReceiptFromDocument}
+    onRemove={clearReceiptAttachment}
+    onClose={() => setReceiptSourceModalVisible(false)}
   />
 
   <RestockPickerModal
@@ -5898,10 +6020,32 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     borderRadius: 6,
     backgroundColor: isDark ? colors.background.cardSubtle : '#E2E8F0',
   },
+  memoPdfBadgeBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 6,
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(245, 158, 11, 0.45)' : '#FCD34D',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  memoPdfBadgeIcon: {
+    fontSize: 18,
+  },
+  memoPhotoTextCol: {
+    flex: 1,
+    minWidth: 0,
+  },
   memoPhotoHintText: {
     fontSize: 11.5,
     fontWeight: '600',
     color: isDark ? '#CBD5E1' : '#475569',
+  },
+  memoPhotoSubHintText: {
+    fontSize: 10.5,
+    color: isDark ? '#94A3B8' : '#64748B',
+    marginTop: 1,
   },
   memoPhotoDeleteBtn: {
     backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2',

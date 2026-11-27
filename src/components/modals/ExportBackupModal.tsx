@@ -640,7 +640,7 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
                 <View style={styles.attachmentStatsGrid}>
                   <View style={styles.attachmentStatBox}>
                     <Text style={styles.attachmentStatNum} numberOfLines={1} maxFontSizeMultiplier={1.08}>{attachmentStats?.receiptCount || 0}</Text>
-                    <Text style={styles.attachmentStatLabel} numberOfLines={1} maxFontSizeMultiplier={1.08}>📷 收據照片</Text>
+                    <Text style={styles.attachmentStatLabel} numberOfLines={1} maxFontSizeMultiplier={1.08}>📎 收據憑證</Text>
                   </View>
                   <View style={styles.attachmentStatBox}>
                     <Text style={styles.attachmentStatNum} numberOfLines={1} maxFontSizeMultiplier={1.08}>{attachmentStats?.cardStatementCount || 0}</Text>
@@ -700,7 +700,11 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
                   {attachmentStats.allItems.slice(0, 15).map(item => (
                     <View key={item.id} style={styles.attachmentListItem}>
                       <Text style={styles.attachmentItemIcon}>
-                        {item.type === 'receipt' ? '📷' : item.type === 'card_statement' ? '💳' : '⚡'}
+                        {item.type === 'receipt'
+                          ? (item.mimeType === 'application/pdf' ? '📄' : '📷')
+                          : item.type === 'card_statement'
+                          ? '💳'
+                          : '⚡'}
                       </Text>
                       <View style={{ flex: 1, marginRight: 8 }}>
                         <Text style={styles.attachmentItemTitle} numberOfLines={1}>
@@ -843,7 +847,7 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({
                         <Text style={styles.previewItemLabel}>附件與帳單</Text>
                         <Text style={[styles.previewItemValue, { color: '#8B5CF6', fontWeight: '800' }]}>
                           {parsedBackupPreview.receiptCount > 0 || parsedBackupPreview.statementCount > 0
-                            ? `${parsedBackupPreview.receiptCount} 張照片 / ${parsedBackupPreview.statementCount} 份帳單`
+                            ? `${parsedBackupPreview.receiptCount} 份憑證 / ${parsedBackupPreview.statementCount} 份帳單`
                             : '無附件'}
                         </Text>
                       </View>

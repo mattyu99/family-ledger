@@ -4,6 +4,7 @@ import {
   formatFileSize,
 } from './statementStorage';
 import { exportAndDownloadFile, FileExportResult } from './fileExport';
+import { isPdfReceipt, getReceiptExtension } from './receiptStorage';
 
 export interface AttachmentItem {
   id: string;
@@ -77,7 +78,7 @@ export const collectAttachmentStats = (params: {
     if (c.id) categoryMap.set(c.id, c);
   });
 
-  // 1. 交易收據照片
+  // 1. 交易收據照片或 PDF 憑證
   const receipts: AttachmentItem[] = [];
   transactions.forEach(t => {
     if (!t.image_url || typeof t.image_url !== 'string' || !t.image_url.trim()) return;
@@ -85,8 +86,17 @@ export const collectAttachmentStats = (params: {
     const dateStr = t.transacted_at ? t.transacted_at.slice(0, 10).replace(/-/g, '') : '未知日期';
     const cleanMerchant = (t.merchant || '未註記店家').replace(/[\\/:*?"<>|]/g, '_').slice(0, 15);
     const amountVal = Math.round(Number(t.amount || 0));
-    const ext = t.image_url.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
-    const originalName = `${dateStr}_${cleanMerchant}_${amountVal}元_收據.${ext}`;
+    const isPdf = isPdfReceipt(t.image_url);
+    const ext = getReceiptExtension(undefined, undefined, t.image_url);
+    const originalName = `${dateStr}_${cleanMerchant}_${amountVal}元_${isPdf ? '憑證' : '收據'}.${ext}`;
+    const mimeType =
+      ext === 'pdf'
+        ? 'application/pdf'
+        : ext === 'png'
+        ? 'image/png'
+        : ext === 'webp'
+        ? 'image/webp'
+        : 'image/jpeg';
 
     const payer = (t.paid_by && memberMap.get(t.paid_by)) || t.payer_profile;
     const cat = (t.category_id && categoryMap.get(t.category_id)) || t.category;
@@ -95,14 +105,14 @@ export const collectAttachmentStats = (params: {
       id: `receipt_${t.id}`,
       type: 'receipt',
       title: t.merchant || (t.type === 'expense' ? '一般支出' : t.type === 'income' ? '收入記錄' : '記帳明細'),
-      subtitle: t.note ? t.note : '收據發票照片',
+      subtitle: t.note ? t.note : (isPdf ? '收據 / PDF 憑證' : '收據發票照片'),
       date: t.transacted_at ? t.transacted_at.slice(0, 10) : '未知日期',
       amountText: t.amount !== undefined ? `$${Number(t.amount).toLocaleString()}` : undefined,
       originalName,
       url: t.image_url,
-      thumbnailUrl: t.image_url,
-      size: 450 * 1024, // 估算平均一張壓縮收據約 450 KB
-      mimeType: ext === 'png' ? 'image/png' : 'image/jpeg',
+      thumbnailUrl: isPdf ? undefined : t.image_url,
+      size: isPdf ? 550 * 1024 : 450 * 1024, // 估算平均收據檔案大小
+      mimeType,
       payerName: payer?.display_name || undefined,
       categoryName: cat?.name || undefined,
     });
@@ -471,8 +481,8 @@ export const generateAttachmentArchiveHtml = (params: {
       </p>
       <div class="stats-row">
         <div class="stat-badge">
-          <div class="stat-label">📷 收據照片</div>
-          <div class="stat-value" style="color: #38BDF8;">${stats.receiptCount} 張</div>
+          <div class="stat-label">📎 收據憑證</div>
+          <div class="stat-value" style="color: #38BDF8;">${stats.receiptCount} 份</div>
         </div>
         <div class="stat-badge">
           <div class="stat-label">💳 信用卡帳單</div>
@@ -502,7 +512,7 @@ export const generateAttachmentArchiveHtml = (params: {
     <div class="action-bar">
       <div class="filter-group">
         <button class="btn btn-filter active" onclick="setFilter('all')">全部 (${stats.totalCount})</button>
-        <button class="btn btn-filter" onclick="setFilter('receipt')">📷 收據 (${stats.receiptCount})</button>
+        <button class="btn btn-filter" onclick="setFilter('receipt')">📎 收據憑證 (${stats.receiptCount})</button>
         <button class="btn btn-filter" onclick="setFilter('card_statement')">💳 信用卡 (${stats.cardStatementCount})</button>
         <button class="btn btn-filter" onclick="setFilter('recurring_statement')">⚡ 水電固定 (${stats.recurringStatementCount})</button>
       </div>
@@ -559,8 +569,13 @@ export const generateAttachmentArchiveHtml = (params: {
 
       grid.innerHTML = filtered.map(item => {
         const isReceipt = item.type === 'receipt';
-        const typeBadge = isReceipt ? '📷 發票收據' : item.type === 'card_statement' ? '💳 信用卡帳單' : '⚡ 固定繳費單';
-        const thumbHtml = isReceipt
+        const isImg = (item.mimeType || '').startsWith('image/') || /\\.(jpg|jpeg|png|webp)(\\?|$)/i.test(item.url || '');
+        const typeBadge = isReceipt
+          ? (isImg ? '📷 發票收據' : '📄 收據 PDF')
+          : item.type === 'card_statement'
+          ? '💳 信用卡帳單'
+          : '⚡ 固定繳費單';
+        const thumbHtml = isImg
           ? '<img class="card-thumb-img" src="' + item.url + '" alt="' + item.title + '" loading="lazy" onclick="openLightbox(\\'' + item.url + '\\', \\'' + item.originalName + '\\')">'
           : '<div class="card-pdf-icon" onclick="window.open(\\'' + item.url + '\\', \\'_blank\\')">📄</div>';
 
