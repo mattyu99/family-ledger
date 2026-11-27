@@ -584,6 +584,7 @@ interface LedgerContextType {
   processOfflineQueue: () => Promise<{ success: boolean; syncedCount: number; failedCount: number }>;
   refreshLedgerList: () => Promise<{ success: boolean; count: number; message?: string }>;
   isDemoLedger: boolean;
+  isLocalHydrated: boolean;
   resetDemoLedger: () => Promise<void>;
 }
 
@@ -645,6 +646,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const [hasJoinedLedger, setHasJoinedLedger] = useState<boolean>(true);
+  const [isLocalHydrated, setIsLocalHydrated] = useState<boolean>(false);
   const [inviteCode, setInviteCode] = useState<string>(SWEETHOME_INVITE_CODE);
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
 
@@ -1099,9 +1101,24 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
 
         const savedLedgerStr = await AsyncStorage.getItem(STORAGE_KEYS.LEDGER);
+        let parsedSavedLedger: Ledger | null = null;
         let parsedLedgerId: string | null = null;
         if (savedLedgerStr) {
-          try { parsedLedgerId = JSON.parse(savedLedgerStr)?.id; } catch {}
+          try {
+            const parsed = JSON.parse(savedLedgerStr);
+            if (parsed && typeof parsed === 'object') {
+              parsedSavedLedger = parsed as Ledger;
+              parsedLedgerId = parsed.id || null;
+              if (isValidUUID(parsed.id) && !isDemoLedgerId(parsed.id)) {
+                setLedgers(prev => {
+                  if (prev.some(l => l.id === parsed.id)) return prev;
+                  return [parsed, ...prev];
+                });
+                setCurrentLedger(parsed);
+                setHasJoinedLedger(true);
+              }
+            }
+          } catch {}
         }
 
         const deletedSet = new Set<string>();
@@ -1215,7 +1232,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const savedCode = await AsyncStorage.getItem(STORAGE_KEYS.INVITE_CODE);
         if (savedCode) setInviteCode(savedCode);
 
-        const savedLedger = await AsyncStorage.getItem(STORAGE_KEYS.LEDGER);
+        const savedLedger = savedLedgerStr;
         const savedUserStr = await AsyncStorage.getItem(STORAGE_KEYS.CURRENT_USER);
 
         const savedLedgersStr = await AsyncStorage.getItem(STORAGE_KEYS.LEDGERS);
@@ -1228,22 +1245,17 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } catch {}
         }
 
-        if (savedLedger) {
-          try {
-            const parsed = JSON.parse(savedLedger);
-            if (isValidUUID(parsed.id) && !isDemoLedgerId(parsed.id)) {
-              setLedgers(prev => {
-                if (prev.some(l => l.id === parsed.id)) return prev;
-                return [parsed, ...prev];
-              });
-              setCurrentLedger(parsed);
-              // 只要本機存有真實帳本快取，自動修復任何舊版殘留的 'false' 標記，100% 保持已加入狀態
-              setHasJoinedLedger(true);
-              if (savedHasJoined !== 'true') {
-                await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
-              }
-            }
-          } catch {}
+        if (parsedSavedLedger && isValidUUID(parsedSavedLedger.id) && !isDemoLedgerId(parsedSavedLedger.id)) {
+          setLedgers(prev => {
+            if (prev.some(l => l.id === parsedSavedLedger!.id)) return prev;
+            return [parsedSavedLedger!, ...prev];
+          });
+          setCurrentLedger(parsedSavedLedger);
+          // 只要本機存有真實帳本快取，自動修復任何舊版殘留的 'false' 標記，100% 保持已加入狀態
+          setHasJoinedLedger(true);
+          if (savedHasJoined !== 'true') {
+            await AsyncStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true');
+          }
         }
 
         // 本機快取黃金絕對鎖定 (Local-First Absolute Lock)：
@@ -1254,6 +1266,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           // 僅在「完全無任何帳本快取、身分紀錄與邀請碼」的全新冷啟動時，才顯示初始歡迎畫面
           setHasJoinedLedger(false);
         }
+        setIsLocalHydrated(true);
 
         const savedBound = await AsyncStorage.getItem(STORAGE_KEYS.DEVICE_BOUND);
         if (savedBound === 'true') setIsDeviceBound(true);
@@ -1327,7 +1340,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } catch {}
         }
 
-        const ledgerId = savedLedger ? JSON.parse(savedLedger)?.id : null;
+        const ledgerId = parsedLedgerId;
         const savedAccounts =
           (ledgerId && await AsyncStorage.getItem(`${STORAGE_KEYS.PAYMENT_ACCOUNTS}_${ledgerId}`)) ||
           (!isDemoLedgerId(ledgerId) ? await AsyncStorage.getItem(STORAGE_KEYS.PAYMENT_ACCOUNTS) : null);
@@ -1412,6 +1425,8 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           .catch(() => {});
       } catch (err) {
         console.warn('載入本地記帳快取失敗:', err);
+      } finally {
+        setIsLocalHydrated(true);
       }
     };
     loadLocalCache();
@@ -10203,6 +10218,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         processOfflineQueue,
         refreshLedgerList,
         isDemoLedger,
+        isLocalHydrated,
         resetDemoLedger,
       }}
     >

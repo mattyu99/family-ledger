@@ -149,9 +149,13 @@ const AppContent: React.FC = () => {
     isProcessingQueue,
     processOfflineQueue,
     isDemoLedger,
+    isLocalHydrated,
     resetDemoLedger,
     switchCurrentUser,
   } = useLedger();
+
+  // 僅在本機快取讀取完成後才顯示體驗帳本紫色導覽 UI，防止更新或冷啟動瞬間閃爍
+  const showDemoUi = isLocalHydrated && isDemoLedger;
 
   // 分頁狀態
   const [activeTab, setActiveTab] = useState<'transactions' | 'analytics' | 'bills' | 'family'>('transactions');
@@ -398,7 +402,7 @@ const AppContent: React.FC = () => {
 
   // 載入示範任務完成狀態
   useEffect(() => {
-    if (isDemoLedger) {
+    if (showDemoUi) {
       AsyncStorage.getItem(STORAGE_KEY_QUESTS).then((val: string | null) => {
         if (val) {
           try {
@@ -408,7 +412,7 @@ const AppContent: React.FC = () => {
         }
       });
     }
-  }, [isDemoLedger]);
+  }, [showDemoUi]);
 
   const handleMarkQuestCompleted = useCallback((questId: string) => {
     setCompletedDemoQuestIds(prev => {
@@ -844,7 +848,7 @@ const AppContent: React.FC = () => {
           <TouchableOpacity
             style={[
               styles.syncBadge,
-              isDemoLedger
+              showDemoUi
                 ? {
                     backgroundColor: isDark ? 'rgba(147, 51, 234, 0.18)' : '#F3E8FF',
                     borderColor: isDark ? '#7E22CE' : '#D8B4FE',
@@ -854,7 +858,7 @@ const AppContent: React.FC = () => {
                 : isCloudSynced
                 ? styles.syncOnline
                 : styles.syncLocal,
-              isDark && !isDemoLedger && {
+              isDark && !showDemoUi && {
                 backgroundColor:
                   pendingOfflineCount > 0
                     ? 'rgba(239, 68, 68, 0.15)'
@@ -886,7 +890,7 @@ const AppContent: React.FC = () => {
             hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
           >
             <Text style={styles.syncDot}>
-              {isDemoLedger
+              {showDemoUi
                 ? '🎮'
                 : historySyncProgress || isRefreshing || isProcessingQueue
                 ? '🔄'
@@ -899,13 +903,13 @@ const AppContent: React.FC = () => {
             <Text
               style={[
                 styles.syncText,
-                isDemoLedger && { color: isDark ? '#E9D5FF' : '#7E22CE', fontWeight: '700' },
-                !isDemoLedger && pendingOfflineCount > 0 && { color: isDark ? '#FCA5A5' : '#B91C1C' },
-                !isDemoLedger && isDark && pendingOfflineCount === 0 && { color: colors.text.secondary },
+                showDemoUi && { color: isDark ? '#E9D5FF' : '#7E22CE', fontWeight: '700' },
+                !showDemoUi && pendingOfflineCount > 0 && { color: isDark ? '#FCA5A5' : '#B91C1C' },
+                !showDemoUi && isDark && pendingOfflineCount === 0 && { color: colors.text.secondary },
               ]}
               maxFontSizeMultiplier={1.2}
             >
-              {isDemoLedger
+              {showDemoUi
                 ? '體驗'
                 : historySyncProgress || isRefreshing || isProcessingQueue
                 ? '同步中'
@@ -960,7 +964,7 @@ const AppContent: React.FC = () => {
       {/* 主頁籤內容 */}
       <View style={{ flex: 1 }}>
         {/* 🎮 體驗帳本專屬新手任務探索橫幅 */}
-        {isDemoLedger && (
+        {showDemoUi && (
           <DemoQuestBanner
             isDark={isDark}
             activeTab={activeTab}
@@ -1204,7 +1208,7 @@ const AppContent: React.FC = () => {
       )}
 
       {/* 🌟 SWEETHOME 體驗帳本專屬轉換橫幅 */}
-      {isDemoLedger && (
+      {showDemoUi && (
         <View style={[styles.demoBottomBar, isDark && styles.demoBottomBarDark]}>
           <Text style={[styles.demoBottomBarText, isDark && styles.demoBottomBarTextDark]}>
             🌟 正在體驗 SWEETHOME 展示帳本
