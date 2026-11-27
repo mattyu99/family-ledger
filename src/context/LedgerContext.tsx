@@ -70,6 +70,12 @@ import {
   isRealAuthEmail,
 } from '../lib/ledgerUtils';
 import { recordDemoTryoutSafely } from '../lib/demoAnalytics';
+import {
+  resolveLatestVisitedIso,
+  collectOwnIdentityIdsForLedger,
+  isCrossLedgerNotifyableTx,
+  countUnreadCandidateTxs,
+} from '../lib/unreadLedger';
 
 // 領域狀態 Hooks
 import { useLedgerBudget } from '../hooks/useLedgerBudget';
@@ -943,6 +949,75 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     refreshLedger: async () => refreshLedgerRef.current(),
   });
 
+  const googleUserEmailRef = useRef<string | null>(googleUserEmail);
+  useEffect(() => {
+    googleUserEmailRef.current = googleUserEmail;
+  }, [googleUserEmail]);
+
+  const getLatestCreatedAtForLedger = (txList: Transaction[], ledgerId: string): string | undefined => {
+    let latestIso: string | undefined;
+    let latestMs = -Infinity;
+    for (const tx of txList) {
+      if (!tx || tx.ledger_id !== ledgerId) continue;
+      const ts = tx.created_at || tx.transacted_at;
+      if (!ts) continue;
+      const ms = new Date(ts).getTime();
+      if (Number.isFinite(ms) && ms > latestMs) {
+        latestMs = ms;
+        latestIso = ts;
+      }
+    }
+    return latestIso;
+  };
+
+  const touchLedgerLastVisited = async (
+    ledgerId?: string | null,
+    candidateTimestamps?: Array<string | null | undefined>
+  ) => {
+    if (!ledgerId || !isValidUUID(ledgerId) || isDemoLedgerId(ledgerId)) return;
+    const visitKey = `${STORAGE_KEYS.LAST_VISITED_PREFIX}${ledgerId}`;
+    const existing = await AsyncStorage.getItem(visitKey);
+    const nextIso = resolveLatestVisitedIso(existing, candidateTimestamps);
+    if (nextIso !== existing) {
+      await AsyncStorage.setItem(visitKey, nextIso);
+    }
+  };
+
+  const getOwnIdentityIdsForLedger = async (
+    ledgerId: string,
+    authId?: string | null
+  ): Promise<Set<string>> => {
+    let cachedLedgerUser: { id?: string | null; auth_email?: string | null } | null = null;
+    let cachedLedgerMembers: Array<{ id?: string | null; auth_email?: string | null; email?: string | null }> | null = null;
+
+    try {
+      const [userStr, membersStr] = await Promise.all([
+        AsyncStorage.getItem(`${STORAGE_KEYS.CURRENT_USER}_${ledgerId}`),
+        AsyncStorage.getItem(`${STORAGE_KEYS.MEMBERS}_${ledgerId}`),
+      ]);
+      if (userStr) {
+        const parsedUser = JSON.parse(userStr);
+        if (parsedUser && typeof parsedUser === 'object') {
+          cachedLedgerUser = parsedUser;
+        }
+      }
+      if (membersStr) {
+        const parsedMembers = JSON.parse(membersStr);
+        if (Array.isArray(parsedMembers)) {
+          cachedLedgerMembers = parsedMembers;
+        }
+      }
+    } catch {}
+
+    return collectOwnIdentityIdsForLedger({
+      authId,
+      currentUserId: currentUserRef.current?.id,
+      cachedLedgerUser,
+      cachedLedgerMembers,
+      googleEmail: googleUserEmailRef.current || currentUserRef.current?.auth_email,
+    });
+  };
+
   // 2. 四大支付帳戶、自訂付款方式、轉帳與淨值看板模組
   const {
     paymentAccounts,
@@ -1534,6 +1609,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             persistTransactionsCache(updated, ledgerId);
             return updated;
           });
+          touchLedgerLastVisited(ledgerId, [newRow.created_at, newRow.transacted_at]).catch(() => {});
 
           // 若這筆記帳/記事由其他裝置寫入，觸發即時通知泡泡
           const myId = currentUserRef.current?.id;
@@ -2715,8 +2791,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await AsyncStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(targetLedger));
 
     // 記錄當前帳本最後造訪時間，並消除本機該帳本的未讀紅點標記
-    const nowIso = new Date().toISOString();
-    await AsyncStorage.setItem(`${STORAGE_KEYS.LAST_VISITED_PREFIX}${targetLedger.id}`, nowIso);
+    await touchLedgerLastVisited(targetLedger.id);
     setUnreadLedgerMap(prev => {
       if (!prev[targetLedger.id]) return prev;
       const next = { ...prev };
@@ -3772,6 +3847,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     inMemoryLedgerTxCacheRef.current.set(targetLedger.id, finalTx);
     await persistTransactionsCache(finalTx, targetLedger.id);
     setIsCloudSynced(!isDemoLedgerId(targetLedger.id));
+    const latestSyncedCreatedAt = getLatestCreatedAtForLedger(finalTx, targetLedger.id);
+    touchLedgerLastVisited(
+      targetLedger.id,
+      latestSyncedCreatedAt ? [latestSyncedCreatedAt] : undefined
+    ).catch(() => {});
 
     // 若雲端總筆數大於目前已載入筆數 (例如 25,980 > 1,000)，啟動高效游標式接力拉取，補齊海量歷史明細 (Keyset Pagination)
     const targetLedgerId = targetLedger.id;
@@ -5874,6 +5954,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (currentLedger && !isDemoLedgerId(currentLedger.id)) {
           refreshLedger();
         }
+      } else if ((nextAppState === 'background' || nextAppState === 'inactive') && currentLedger && !isDemoLedgerId(currentLedger.id)) {
+        const latestCurCreatedAt = getLatestCreatedAtForLedger(transactionsRef.current || [], currentLedger.id);
+        touchLedgerLastVisited(
+          currentLedger.id,
+          latestCurCreatedAt ? [latestCurCreatedAt] : undefined
+        ).catch(() => {});
       }
     });
 
@@ -6143,29 +6229,26 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const visitKey = `${STORAGE_KEYS.LAST_VISITED_PREFIX}${otherL.id}`;
         const lastVisitedStr = await AsyncStorage.getItem(visitKey);
 
-        // 查詢該帳本最新一筆交易 (以 created_at 降冪排序)
+        if (!lastVisitedStr) {
+          // 初次使用或未記錄過離開時間：以目前時間為起點，避免將歷史舊帳誤判為未讀紅點
+          await AsyncStorage.setItem(visitKey, new Date().toISOString());
+          continue;
+        }
+
+        // 查詢該帳本在最後造訪時間之後建立的新交易，並過濾本人跨帳本記帳、個人私密記事及一般隨手記事
         const { data: latestTxs } = await supabase
           .from('transactions')
-          .select('id, created_at, transacted_at, creator_id, paid_by')
+          .select('id, type, amount, created_at, transacted_at, creator_id, paid_by, merchant, note, is_pinned, reminder_date, reminder_target')
           .eq('ledger_id', otherL.id)
+          .gt('created_at', lastVisitedStr)
           .order('created_at', { ascending: false })
-          .limit(1);
+          .limit(20);
 
         if (latestTxs && latestTxs.length > 0) {
-          const latest = latestTxs[0];
-          const latestTime = latest.created_at || latest.transacted_at;
-
-          if (!lastVisitedStr) {
-            // 初次使用或未記錄過離開時間：以目前時間為起點，避免將歷史舊帳誤判為未讀紅點
-            await AsyncStorage.setItem(visitKey, new Date().toISOString());
-          } else if (latestTime && new Date(latestTime).getTime() > new Date(lastVisitedStr).getTime()) {
-            // 防呆：若是自己建立的交易，不觸發自己的未讀紅點
-            const isMe = (authId && latest.creator_id === authId) ||
-                         (authId && latest.paid_by === authId) ||
-                         (currentUserRef.current?.id && (latest.creator_id === currentUserRef.current.id || latest.paid_by === currentUserRef.current.id));
-            if (!isMe) {
-              newUnreadMap[otherL.id] = 1;
-            }
+          const ownIds = await getOwnIdentityIdsForLedger(otherL.id, authId);
+          const unreadCount = countUnreadCandidateTxs(latestTxs, lastVisitedStr, ownIds);
+          if (unreadCount > 0) {
+            newUnreadMap[otherL.id] = unreadCount;
           }
         }
       }
@@ -6220,6 +6303,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       );
       if (otherLedgers.length === 0) return;
 
+      const ownIdsEntries = await Promise.all(
+        otherLedgers.map(async (ol) => [ol.id, await getOwnIdentityIdsForLedger(ol.id, authId)] as const)
+      );
+      if (!isSubscribed) return;
+      const ownIdsMap = new Map<string, Set<string>>(ownIdsEntries);
+
       const channel = supabase.channel(`multi-ledger-unread-${currentLedger.id}-${Date.now()}`);
 
       otherLedgers.forEach((otherL) => {
@@ -6235,11 +6324,9 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const newRow = payload.new as any;
             if (!newRow) return;
 
-            // 防呆：若記帳者為本機裝置，不觸發紅點
-            const isMe = (authId && newRow.creator_id === authId) ||
-                         (authId && newRow.paid_by === authId) ||
-                         (currentUserRef.current?.id && (newRow.creator_id === currentUserRef.current.id || newRow.paid_by === currentUserRef.current.id));
-            if (isMe) return;
+            // 防呆：排除自己跨帳本的記帳、他人私密記事與一般未置頂/無提醒生活記事
+            const ownIds = ownIdsMap.get(otherL.id) || new Set<string>();
+            if (!isCrossLedgerNotifyableTx(newRow, ownIds)) return;
 
             // 1. 標記該帳本未讀
             setUnreadLedgerMap(prev => ({
@@ -6247,18 +6334,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               [otherL.id]: (prev[otherL.id] || 0) + 1,
             }));
 
-            // 2. 彈出頂部跨帳本即時動態泡泡（若為一般未置頂/無提醒之普通生活記事則保持安靜不彈泡泡）
+            // 2. 彈出頂部跨帳本即時動態泡泡
             let displayMerchant = '記事';
-            if (newRow.type === 'memo') {
+            const decodedCrossMemo = decodeMemoMerchantTag(newRow.merchant);
+            const isCrossMemo =
+              newRow.type === 'memo' ||
+              decodedCrossMemo.isMemo ||
+              (newRow.type === 'transfer' && Number(newRow.amount ?? 0) === 0);
+
+            if (isCrossMemo) {
               const memoData = parseMemoNote(newRow.note);
-              const decodedCrossMemo = decodeMemoMerchantTag(newRow.merchant);
-              const effectiveCrossTarget = newRow.reminder_target || decodedCrossMemo.reminderTarget || 'family';
-              const isImportantCrossMemo =
-                effectiveCrossTarget !== 'personal' &&
-                (isGroupOrderMemo(memoData.title, newRow.note) ||
-                  Boolean(newRow.is_pinned || decodedCrossMemo.isPinned) ||
-                  Boolean(newRow.reminder_date || decodedCrossMemo.reminderDate));
-              if (!isImportantCrossMemo) return;
               displayMerchant = `[${memoData.title}] ${memoData.cleanContent}`;
             } else {
               let parsedMerchant = newRow.merchant;
@@ -6268,7 +6353,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               }
               displayMerchant = parsedMerchant || (newRow.type === 'expense' ? '支出' : '收入');
             }
-            const displayAmount = newRow.amount ? ` NT$ ${Number(newRow.amount).toLocaleString('zh-TW')}` : '';
+            const displayAmount = !isCrossMemo && newRow.amount ? ` NT$ ${Number(newRow.amount).toLocaleString('zh-TW')}` : '';
 
             triggerLiveToast({
               id: `cross-ledger-${otherL.id}-${newRow.id || Date.now()}`,
@@ -6277,7 +6362,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               avatar: '📬',
               title: `📬 [${otherL.name}] 新記帳`,
               message: `${displayMerchant}${displayAmount}`,
-              amount: newRow.amount ? Number(newRow.amount) : undefined,
+              amount: !isCrossMemo && newRow.amount ? Number(newRow.amount) : undefined,
               createdAt: Date.now(),
             });
           }
@@ -7381,6 +7466,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // 依帳本 ID 直接在使用者已加入的帳本間無縫切換
   const switchLedgerById = async (targetLedgerId: string) => {
     try {
+      // 離開當前帳本前先更新其最後造訪時間，避免停留期間已看過的新記帳在切走後又誤亮紅點
+      if (currentLedger?.id && currentLedger.id !== targetLedgerId) {
+        const latestCurCreatedAt = getLatestCreatedAtForLedger(transactionsRef.current || [], currentLedger.id);
+        await touchLedgerLastVisited(
+          currentLedger.id,
+          latestCurCreatedAt ? [latestCurCreatedAt] : undefined
+        );
+      }
       setIsAdminMode(false);
       setRecurringRules(prev => prev.filter(r => r.ledger_id === targetLedgerId));
       setPaymentAccounts(prev => prev.filter(a => a.ledger_id === targetLedgerId));
@@ -7819,6 +7912,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     transactionsRef.current = updated;
     setTransactions(updated);
     await saveTransactionsToStorage(updated);
+    touchLedgerLastVisited(currentLedger.id, [newTx.created_at]).catch(() => {});
 
     if (newTx.type === 'memo') {
       scheduleMemoReminderNotifications(updated, members, currentUser?.id).catch(() => {});
@@ -8248,6 +8342,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       amount: data.amount,
       createdAt: Date.now(),
     });
+    touchLedgerLastVisited(currentLedger.id).catch(() => {});
 
     // 若正式雲端帳本，同步寫入 Supabase
     if (isOnlinePublishing) {
