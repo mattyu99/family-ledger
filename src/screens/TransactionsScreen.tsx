@@ -2322,156 +2322,75 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
               </TouchableOpacity>
             </View>
 
-            <View style={styles.cloudSyncFocusSubRow}>
-              <Text
-                style={[styles.cloudSyncFocusSub, { marginTop: 0, flex: 1 }, isDark && { color: colors.text.secondary }]}
-                maxFontSizeMultiplier={1.08}
-              >
-                {`補齊 ${activeCloudSyncedScope.matchedCount} 筆 · 新增 ${activeCloudSyncedScope.importedCount} 筆`}
-              </Text>
-              {cloudSyncViewMode === 'recent24h' && memberScopedAllCloudCount > activeCloudSyncedScope.total && (
-                <TouchableOpacity
-                  activeOpacity={0.75}
-                  onPress={() => {
-                    setFilterMonth('all');
-                    setCloudSyncTypeFilter('all');
-                    setCloudSyncViewMode('all');
-                  }}
-                  style={[
-                    styles.cloudSyncFocusBtn,
-                    styles.cloudSyncFocusBtnSwitch,
-                    isDark && {
-                      backgroundColor: 'rgba(14, 165, 233, 0.25)',
-                      borderColor: '#38BDF8',
-                    },
-                  ]}
+            {(
+              (cloudSyncViewMode === 'recent24h' && memberScopedAllCloudCount > activeCloudSyncedScope.total) ||
+              (cloudSyncViewMode === 'all' && memberScopedRecent24hStats.total > 0)
+            ) && (
+              <View style={styles.cloudSyncFocusSubRow}>
+                <Text
+                  style={[styles.cloudSyncFocusSub, { marginTop: 0, flex: 1 }, isDark && { color: colors.text.secondary }]}
+                  maxFontSizeMultiplier={1.08}
                 >
-                  <Text
-                    style={[styles.cloudSyncFocusBtnText, styles.cloudSyncFocusBtnSwitchText, isDark && { color: '#BAE6FD' }]}
-                    maxFontSizeMultiplier={1.08}
-                    numberOfLines={1}
+                  {`補齊 ${activeCloudSyncedScope.matchedCount} 筆 · 新增 ${activeCloudSyncedScope.importedCount} 筆`}
+                </Text>
+                {cloudSyncViewMode === 'recent24h' && memberScopedAllCloudCount > activeCloudSyncedScope.total && (
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    onPress={() => {
+                      setFilterMonth('all');
+                      setCloudSyncTypeFilter('all');
+                      setCloudSyncViewMode('all');
+                    }}
+                    style={[
+                      styles.cloudSyncFocusBtn,
+                      styles.cloudSyncFocusBtnSwitch,
+                      isDark && {
+                        backgroundColor: 'rgba(14, 165, 233, 0.25)',
+                        borderColor: '#38BDF8',
+                      },
+                    ]}
                   >
-                    {`看全部 (${memberScopedAllCloudCount}) ➔`}
-                  </Text>
-                </TouchableOpacity>
-              )}
-              {cloudSyncViewMode === 'all' && memberScopedRecent24hStats.total > 0 && (
-                <TouchableOpacity
-                  activeOpacity={0.75}
-                  onPress={() => {
-                    setCloudSyncTypeFilter('all');
-                    setCloudSyncViewMode('recent24h');
-                  }}
-                  style={[
-                    styles.cloudSyncFocusBtn,
-                    styles.cloudSyncFocusBtnSwitch,
-                    isDark && {
-                      backgroundColor: 'rgba(14, 165, 233, 0.25)',
-                      borderColor: '#38BDF8',
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[styles.cloudSyncFocusBtnText, styles.cloudSyncFocusBtnSwitchText, isDark && { color: '#BAE6FD' }]}
-                    maxFontSizeMultiplier={1.08}
-                    numberOfLines={1}
+                    <Text
+                      style={[styles.cloudSyncFocusBtnText, styles.cloudSyncFocusBtnSwitchText, isDark && { color: '#BAE6FD' }]}
+                      maxFontSizeMultiplier={1.08}
+                      numberOfLines={1}
+                    >
+                      {`看全部 (${memberScopedAllCloudCount}) ➔`}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                {cloudSyncViewMode === 'all' && memberScopedRecent24hStats.total > 0 && (
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    onPress={() => {
+                      setCloudSyncTypeFilter('all');
+                      setCloudSyncViewMode('recent24h');
+                    }}
+                    style={[
+                      styles.cloudSyncFocusBtn,
+                      styles.cloudSyncFocusBtnSwitch,
+                      isDark && {
+                        backgroundColor: 'rgba(14, 165, 233, 0.25)',
+                        borderColor: '#38BDF8',
+                      },
+                    ]}
                   >
-                    切近 24h ↺
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* 補齊／新增三態切換膠囊 */}
-            <View
-              style={[
-                styles.cloudSyncTypeTabRow,
-                isDark && { backgroundColor: 'rgba(15, 23, 42, 0.55)' },
-              ]}
-            >
-              <TouchableOpacity
-                activeOpacity={0.75}
-                onPress={() => setCloudSyncTypeFilter('all')}
-                style={[
-                  styles.cloudSyncTypeTabBtn,
-                  cloudSyncTypeFilter === 'all' && [
-                    styles.cloudSyncTypeTabBtnActive,
-                    isDark && { backgroundColor: colors.background.card },
-                  ],
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.cloudSyncTypeTabText,
-                    { color: colors.text.secondary },
-                    cloudSyncTypeFilter === 'all' && { color: isDark ? '#7DD3FC' : '#0369A1', fontWeight: '800' },
-                  ]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.76}
-                  maxFontSizeMultiplier={1.08}
-                >
-                  {`全部 (${activeCloudSyncedScope.total})`}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                activeOpacity={0.75}
-                onPress={() => setCloudSyncTypeFilter('matched_cloud')}
-                style={[
-                  styles.cloudSyncTypeTabBtn,
-                  cloudSyncTypeFilter === 'matched_cloud' && [
-                    styles.cloudSyncTypeTabBtnActive,
-                    isDark && { backgroundColor: colors.background.card },
-                  ],
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.cloudSyncTypeTabText,
-                    { color: colors.text.secondary },
-                    cloudSyncTypeFilter === 'matched_cloud' && { color: isDark ? '#FBBF24' : '#B45309', fontWeight: '800' },
-                  ]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.76}
-                  maxFontSizeMultiplier={1.08}
-                >
-                  {`✏️ 補齊 (${activeCloudSyncedScope.matchedCount})`}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                activeOpacity={0.75}
-                onPress={() => setCloudSyncTypeFilter('cloud_imported')}
-                style={[
-                  styles.cloudSyncTypeTabBtn,
-                  cloudSyncTypeFilter === 'cloud_imported' && [
-                    styles.cloudSyncTypeTabBtnActive,
-                    isDark && { backgroundColor: colors.background.card },
-                  ],
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.cloudSyncTypeTabText,
-                    { color: colors.text.secondary },
-                    cloudSyncTypeFilter === 'cloud_imported' && { color: isDark ? '#38BDF8' : '#0284C7', fontWeight: '800' },
-                  ]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.76}
-                  maxFontSizeMultiplier={1.08}
-                >
-                  {`🆕 新增 (${activeCloudSyncedScope.importedCount})`}
-                </Text>
-              </TouchableOpacity>
-            </View>
+                    <Text
+                      style={[styles.cloudSyncFocusBtnText, styles.cloudSyncFocusBtnSwitchText, isDark && { color: '#BAE6FD' }]}
+                      maxFontSizeMultiplier={1.08}
+                      numberOfLines={1}
+                    >
+                      切近 24h ↺
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
           </View>
         )
       )}
 
-      {/* 明細筆數與三態分類切換同列並排（緊貼清單上方，連動一目了然且防大字體爆版） */}
+      {/* 明細筆數與三態分類切換同列並排（緊貼清單上方，一般模式切換收支/記事，雲端模式取代為全部/補齊/新增） */}
       <View style={styles.sectionHeaderInlineRow}>
         <View style={styles.sectionHeaderTitleWrap}>
           <Text
@@ -2490,88 +2409,169 @@ export const TransactionsScreen: React.FC<TransactionsScreenProps> = ({
           </Text>
         </View>
 
-        {/* 緊湊三態切換膠囊（雲端發票檢視模式下改由上方橫幅控制，避免顯示全帳本筆數混淆） */}
-        {cloudSyncViewMode === 'off' && (
-          <View style={[styles.typeFilterInlineContainer, isDark && { backgroundColor: colors.background.cardSubtle }]}>
-            <TouchableOpacity
-              style={[
-                styles.typeFilterInlineTab,
-                transactionTypeFilter === 'all' && styles.typeFilterInlineTabActiveAll,
-                isDark && transactionTypeFilter === 'all' && {
-                  backgroundColor: colors.background.card,
-                  borderColor: colors.border.strong,
-                },
-              ]}
-              onPress={() => setTransactionTypeFilter('all')}
-              activeOpacity={0.7}
-            >
-              <Text
+        {/* 緊湊三態切換膠囊 */}
+        <View style={[styles.typeFilterInlineContainer, isDark && { backgroundColor: colors.background.cardSubtle }]}>
+          {cloudSyncViewMode === 'off' ? (
+            <>
+              <TouchableOpacity
                 style={[
-                  styles.typeFilterInlineTabText,
-                  transactionTypeFilter === 'all' && styles.typeFilterInlineTabTextActiveAll,
-                  isDark && { color: colors.text.secondary },
-                  isDark && transactionTypeFilter === 'all' && { color: '#A5B4FC' },
+                  styles.typeFilterInlineTab,
+                  transactionTypeFilter === 'all' && styles.typeFilterInlineTabActiveAll,
+                  isDark && transactionTypeFilter === 'all' && {
+                    backgroundColor: colors.background.card,
+                    borderColor: colors.border.strong,
+                  },
                 ]}
-                numberOfLines={1}
-                maxFontSizeMultiplier={1.06}
+                onPress={() => setTransactionTypeFilter('all')}
+                activeOpacity={0.7}
               >
-                全部 {typeCountStats.all}
-              </Text>
-            </TouchableOpacity>
+                <Text
+                  style={[
+                    styles.typeFilterInlineTabText,
+                    transactionTypeFilter === 'all' && styles.typeFilterInlineTabTextActiveAll,
+                    isDark && { color: colors.text.secondary },
+                    isDark && transactionTypeFilter === 'all' && { color: '#A5B4FC' },
+                  ]}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={1.06}
+                >
+                  全部 {typeCountStats.all}
+                </Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[
-                styles.typeFilterInlineTab,
-                transactionTypeFilter === 'financial' && styles.typeFilterInlineTabActiveFinancial,
-                isDark && transactionTypeFilter === 'financial' && {
-                  backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                  borderColor: 'rgba(59, 130, 246, 0.45)',
-                },
-              ]}
-              onPress={() => setTransactionTypeFilter('financial')}
-              activeOpacity={0.7}
-            >
-              <Text
+              <TouchableOpacity
                 style={[
-                  styles.typeFilterInlineTabText,
-                  transactionTypeFilter === 'financial' && styles.typeFilterInlineTabTextActiveFinancial,
-                  isDark && { color: colors.text.secondary },
-                  isDark && transactionTypeFilter === 'financial' && { color: '#93C5FD' },
+                  styles.typeFilterInlineTab,
+                  transactionTypeFilter === 'financial' && styles.typeFilterInlineTabActiveFinancial,
+                  isDark && transactionTypeFilter === 'financial' && {
+                    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                    borderColor: 'rgba(59, 130, 246, 0.45)',
+                  },
                 ]}
-                numberOfLines={1}
-                maxFontSizeMultiplier={1.06}
+                onPress={() => setTransactionTypeFilter('financial')}
+                activeOpacity={0.7}
               >
-                💳 收支 {typeCountStats.financial}
-              </Text>
-            </TouchableOpacity>
+                <Text
+                  style={[
+                    styles.typeFilterInlineTabText,
+                    transactionTypeFilter === 'financial' && styles.typeFilterInlineTabTextActiveFinancial,
+                    isDark && { color: colors.text.secondary },
+                    isDark && transactionTypeFilter === 'financial' && { color: '#93C5FD' },
+                  ]}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={1.06}
+                >
+                  💳 收支 {typeCountStats.financial}
+                </Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[
-                styles.typeFilterInlineTab,
-                transactionTypeFilter === 'memo' && styles.typeFilterInlineTabActiveMemo,
-                isDark && transactionTypeFilter === 'memo' && {
-                  backgroundColor: 'rgba(245, 158, 11, 0.2)',
-                  borderColor: 'rgba(245, 158, 11, 0.45)',
-                },
-              ]}
-              onPress={() => setTransactionTypeFilter('memo')}
-              activeOpacity={0.7}
-            >
-              <Text
+              <TouchableOpacity
                 style={[
-                  styles.typeFilterInlineTabText,
-                  transactionTypeFilter === 'memo' && styles.typeFilterInlineTabTextActiveMemo,
-                  isDark && { color: colors.text.secondary },
-                  isDark && transactionTypeFilter === 'memo' && { color: '#FCD34D' },
+                  styles.typeFilterInlineTab,
+                  transactionTypeFilter === 'memo' && styles.typeFilterInlineTabActiveMemo,
+                  isDark && transactionTypeFilter === 'memo' && {
+                    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                    borderColor: 'rgba(245, 158, 11, 0.45)',
+                  },
                 ]}
-                numberOfLines={1}
-                maxFontSizeMultiplier={1.06}
+                onPress={() => setTransactionTypeFilter('memo')}
+                activeOpacity={0.7}
               >
-                📝 記事 {typeCountStats.memo}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
+                <Text
+                  style={[
+                    styles.typeFilterInlineTabText,
+                    transactionTypeFilter === 'memo' && styles.typeFilterInlineTabTextActiveMemo,
+                    isDark && { color: colors.text.secondary },
+                    isDark && transactionTypeFilter === 'memo' && { color: '#FCD34D' },
+                  ]}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={1.06}
+                >
+                  📝 記事 {typeCountStats.memo}
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <TouchableOpacity
+                style={[
+                  styles.typeFilterInlineTab,
+                  cloudSyncTypeFilter === 'all' && styles.typeFilterInlineTabActiveAll,
+                  isDark && cloudSyncTypeFilter === 'all' && {
+                    backgroundColor: colors.background.card,
+                    borderColor: colors.border.strong,
+                  },
+                ]}
+                onPress={() => setCloudSyncTypeFilter('all')}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.typeFilterInlineTabText,
+                    cloudSyncTypeFilter === 'all' && { color: isDark ? '#7DD3FC' : '#0369A1', fontWeight: '800' },
+                    isDark && cloudSyncTypeFilter !== 'all' && { color: colors.text.secondary },
+                  ]}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={1.06}
+                >
+                  全部 {activeCloudSyncedScope.total}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.typeFilterInlineTab,
+                  cloudSyncTypeFilter === 'matched_cloud' && styles.typeFilterInlineTabActiveMemo,
+                  isDark && cloudSyncTypeFilter === 'matched_cloud' && {
+                    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                    borderColor: 'rgba(245, 158, 11, 0.45)',
+                  },
+                ]}
+                onPress={() => setCloudSyncTypeFilter('matched_cloud')}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.typeFilterInlineTabText,
+                    cloudSyncTypeFilter === 'matched_cloud' && styles.typeFilterInlineTabTextActiveMemo,
+                    isDark && cloudSyncTypeFilter !== 'matched_cloud' && { color: colors.text.secondary },
+                    isDark && cloudSyncTypeFilter === 'matched_cloud' && { color: '#FCD34D' },
+                  ]}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={1.06}
+                >
+                  ✏️ 補齊 {activeCloudSyncedScope.matchedCount}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.typeFilterInlineTab,
+                  cloudSyncTypeFilter === 'cloud_imported' && styles.typeFilterInlineTabActiveFinancial,
+                  isDark && cloudSyncTypeFilter === 'cloud_imported' && {
+                    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                    borderColor: 'rgba(59, 130, 246, 0.45)',
+                  },
+                ]}
+                onPress={() => setCloudSyncTypeFilter('cloud_imported')}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.typeFilterInlineTabText,
+                    cloudSyncTypeFilter === 'cloud_imported' && styles.typeFilterInlineTabTextActiveFinancial,
+                    isDark && cloudSyncTypeFilter !== 'cloud_imported' && { color: colors.text.secondary },
+                    isDark && cloudSyncTypeFilter === 'cloud_imported' && { color: '#93C5FD' },
+                  ]}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={1.06}
+                >
+                  🆕 新增 {activeCloudSyncedScope.importedCount}
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
       </View>
 
       {/* 交易清單 */}
@@ -3890,33 +3890,5 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
     },
     cloudSyncFocusBtnTextActive: {
       color: '#0369A1',
-    },
-    cloudSyncTypeTabRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: 'rgba(15, 23, 42, 0.08)',
-      borderRadius: 9,
-      padding: 3,
-      gap: 4,
-    },
-    cloudSyncTypeTabBtn: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: 6,
-      paddingHorizontal: 4,
-      borderRadius: 7,
-    },
-    cloudSyncTypeTabBtnActive: {
-      backgroundColor: '#FFFFFF',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.06,
-      shadowRadius: 2,
-      elevation: 1,
-    },
-    cloudSyncTypeTabText: {
-      fontSize: 11.5,
-      fontWeight: '700',
     },
   });
