@@ -10,7 +10,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
-  Dimensions,
   Keyboard,
 } from 'react-native';
 import { Text, TextInput } from './common/Text';
@@ -19,8 +18,6 @@ import { Text, TextInput } from './common/Text';
 import { useLedger } from '../context/LedgerContext';
 import { Category, CategoryType } from '../types/database';
 import { getCategoryIcon } from '../lib/icons';
-
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const PRESET_ICONS = [
   '🍲', '🛒', '💡', '🚗', '🎬', '💊', '👶', '💰', '📈', '🐾',
@@ -506,7 +503,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: Platform.OS === 'ios' ? 32 : 16,
-    maxHeight: Math.min(SCREEN_HEIGHT * 0.9, 740),
+    maxHeight: '90%',
     width: '100%',
     maxWidth: 600,
     alignSelf: 'center',

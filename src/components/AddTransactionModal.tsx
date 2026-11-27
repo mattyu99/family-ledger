@@ -7,7 +7,6 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Dimensions,
   Keyboard,
   Alert,
   Image,
@@ -110,8 +109,6 @@ try {
 } catch {
   ImagePickerModule = null;
 }
-
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const CATEGORY_MERCHANT_PRESETS: Record<string, string[]> = {
   food: ['全聯', '麥當勞', '50嵐', '美而美', '八方雲集', '星巴克', '摩斯', '路易莎', '7-11', '全家'],
@@ -5032,7 +5029,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: Platform.OS === 'ios' ? 32 : 16,
-    maxHeight: Math.min(SCREEN_HEIGHT * 0.9, 740),
+    maxHeight: '90%',
     width: '100%',
     maxWidth: 600,
     alignSelf: 'center',
