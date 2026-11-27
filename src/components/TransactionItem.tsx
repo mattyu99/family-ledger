@@ -41,6 +41,7 @@ interface TransactionItemProps {
   viewingMemberId?: string;
   isLastViewed?: boolean;
   hideDateInCard?: boolean;
+  showCloudSyncTypeBadge?: boolean;
   precomputedLinkedMemo?: Transaction | null;
   precomputedLinkedTargets?: Transaction[];
   onPress?: (transaction: Transaction) => void;
@@ -54,6 +55,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
   viewingMemberId,
   isLastViewed,
   hideDateInCard = false,
+  showCloudSyncTypeBadge = false,
   precomputedLinkedMemo,
   precomputedLinkedTargets,
   onPress,
@@ -1046,6 +1048,16 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
       });
     }
   }
+  if (showCloudSyncTypeBadge && (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported')) {
+    const isMatchedCloud = transaction.invoice_sync_status === 'matched_cloud';
+    rawBadges.push({
+      key: 'cloud_sync_type',
+      fullText: isMatchedCloud ? '✏️ 補齊' : '🆕 新增',
+      compactText: isMatchedCloud ? '補齊' : '新增',
+      iconText: isMatchedCloud ? '✏️' : '🆕',
+      shrinkPriority: 6,
+    });
+  }
   if (linkedMemo) {
     rawBadges.push({
       key: 'memo',
@@ -1108,6 +1120,35 @@ export const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
               isDark && (transaction.invoice_sync_status === 'matched_cloud' || transaction.invoice_sync_status === 'cloud_imported') && { color: '#38BDF8' },
               isDark && showWonStyle && { color: '#F472B6' },
               isDark && transaction.invoice_status === 'claimed' && { color: '#34D399' },
+            ]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.08}
+          >
+            {badge.text}
+          </Text>
+        </View>
+      );
+    }
+
+    if (badge.key === 'cloud_sync_type') {
+      const isMatchedCloud = transaction.invoice_sync_status === 'matched_cloud';
+      return (
+        <View
+          key={`${keyPrefix}-cloud-sync-type`}
+          style={[
+            styles.cloudSyncTypeBadge,
+            isIconOnly && styles.badgeIconOnly,
+            isMatchedCloud ? styles.cloudSyncTypeBadgeMatched : styles.cloudSyncTypeBadgeImported,
+            isDark && (isMatchedCloud
+              ? { backgroundColor: 'rgba(245, 158, 11, 0.2)', borderColor: 'rgba(251, 191, 36, 0.45)' }
+              : { backgroundColor: 'rgba(14, 165, 233, 0.2)', borderColor: 'rgba(56, 189, 248, 0.45)' }),
+          ]}
+        >
+          <Text
+            style={[
+              styles.cloudSyncTypeBadgeText,
+              isMatchedCloud ? styles.cloudSyncTypeBadgeTextMatched : styles.cloudSyncTypeBadgeTextImported,
+              isDark && { color: isMatchedCloud ? '#FCD34D' : '#7DD3FC' },
             ]}
             numberOfLines={1}
             maxFontSizeMultiplier={1.08}
@@ -2084,6 +2125,31 @@ const styles = StyleSheet.create({
   invoiceBadgeTextClaimed: {
     color: '#047857',
     fontWeight: '700',
+  },
+  cloudSyncTypeBadge: {
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderWidth: 1,
+    flexShrink: 0,
+  },
+  cloudSyncTypeBadgeMatched: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FCD34D',
+  },
+  cloudSyncTypeBadgeImported: {
+    backgroundColor: '#E0F2FE',
+    borderColor: '#7DD3FC',
+  },
+  cloudSyncTypeBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+  },
+  cloudSyncTypeBadgeTextMatched: {
+    color: '#B45309',
+  },
+  cloudSyncTypeBadgeTextImported: {
+    color: '#0369A1',
   },
   lastViewedBadge: {
     backgroundColor: '#EFF6FF',

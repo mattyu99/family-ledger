@@ -1,4 +1,22 @@
 import { CarrierRule, CloudInvoiceItem, PaymentAccount, Profile, Transaction } from '../types/database';
+import { formatInvoiceItemsToNote, stripInvoiceTag } from './invoice';
+
+/**
+ * 將雲端發票商品明細格式化為精簡帶金額備註文字（與 QR Code 掃描格式一致）
+ */
+export const formatCloudInvoiceItemsToNote = (
+  items?: CloudInvoiceItem['items']
+): string => {
+  if (!Array.isArray(items) || items.length === 0) return '';
+  return formatInvoiceItemsToNote(
+    items.map(item => ({
+      name: item.name,
+      quantity: item.quantity,
+      unitPrice: item.unit_price,
+      amount: item.amount,
+    }))
+  );
+};
 
 /**
  * 清理並標準化卡號字串（去除空格、連字號、星號遮罩）
@@ -438,6 +456,13 @@ export const processCloudInvoicesSync = (
         changedFields.push('商品明細');
       }
 
+      const formattedItemsNote = formatCloudInvoiceItemsToNote(inv.items);
+      const existingCleanNote = stripInvoiceTag(matchedTx.note).trim();
+      if (!existingCleanNote && formattedItemsNote) {
+        updates.note = formattedItemsNote;
+        changedFields.push('品項備註');
+      }
+
       if (changedFields.length === 0 && !isAlreadySynced) {
         changedFields.push('雲端同步狀態');
       }
@@ -455,6 +480,8 @@ export const processCloudInvoicesSync = (
       // 全新發票：優先依真卡持卡人，次依載具分流規則歸屬人，否則歸預設成員
       const targetPayerId =
         matchedAcc?.user_id || matchedCarrierRule?.user_id || defaultPayerId;
+
+      const formattedItemsNote = formatCloudInvoiceItemsToNote(inv.items);
 
       const newTxData: Omit<Transaction, 'id' | 'created_at'> = {
         ledger_id: ledgerId,
@@ -476,7 +503,7 @@ export const processCloudInvoicesSync = (
             ? 'stored_value'
             : 'cash',
         account_id: effectiveAcc?.id,
-        note: inv.items && inv.items.length > 0 ? inv.items.map(i => `${i.name} x${i.quantity}`).join('、') : '',
+        note: formattedItemsNote,
         invoice_number: inv.invoiceNumber,
         invoice_random_code: inv.randomCode,
         invoice_sync_status: 'cloud_imported',

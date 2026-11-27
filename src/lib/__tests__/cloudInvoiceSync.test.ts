@@ -2,6 +2,7 @@ import {
   findExistingCarrierAccount,
   findMatchingAccount,
   findMatchingTransaction,
+  formatCloudInvoiceItemsToNote,
   getRecentCloudSyncedTransactions,
   normalizeCardNumber,
   parseMofInvoiceCsv,
@@ -288,21 +289,105 @@ describe('cloudInvoiceSync 智慧比對引擎測試', () => {
       expect(result.stats.updatedCount).toBe(1);
       expect(result.stats.newCount).toBe(1);
 
-      // 驗證更新的交易：保留原本備註與分類，填入發票號碼與標籤
+      // 驗證更新的交易：保留原本手寫備註與分類，填入發票號碼與標籤
       const updated = result.updatedTransactions[0];
       expect(updated.transactionId).toBe('tx_coffee');
       expect(updated.updates.invoice_number).toBe('EF-21608064');
       expect(updated.updates.invoice_sync_status).toBe('matched_cloud');
       expect(updated.updates.cloud_carrier_name).toBe('智市民卡');
+      expect(updated.updates.note).toBeUndefined();
       expect(updated.original.note).toBe('手動記帳備註');
       expect(updated.original.category_id).toBe('cat_dining');
 
-      // 驗證新建立的交易：自動指派給雅媽
+      // 驗證新建立的交易：自動指派給雅媽，並於備註寫入帶金額之品項文字
       const newTx = result.newTransactions[0];
       expect(newTx.data.invoice_number).toBe('EF-59301284');
       expect(newTx.data.paid_by).toBe('user_mom'); // 核心需求：依卡片來源歸給雅媽！
       expect(newTx.data.account_id).toBe('acc_cc_mom');
       expect(newTx.data.invoice_sync_status).toBe('cloud_imported');
+      expect(newTx.data.note).toBe('鮮乳 $350');
+    });
+
+    it('媒合補齊既有交易時若原備註為空應補上品項金額文字，若僅含發票標籤亦應補上且不覆蓋手寫備註', () => {
+      const existingTransactions: Transaction[] = [
+        {
+          id: 'tx_empty_note',
+          ledger_id: 'ledger_1',
+          creator_id: 'user_dad',
+          category_id: 'cat_dining',
+          amount: 160,
+          type: 'expense',
+          paid_by: 'user_dad',
+          transacted_at: '2026-11-06T12:00:00.000Z',
+          merchant: '全聯',
+          note: '[🧾 |2026-11||pending|0|]',
+          is_settled: true,
+          created_at: '2026-11-06',
+        },
+        {
+          id: 'tx_manual_note',
+          ledger_id: 'ledger_1',
+          creator_id: 'user_dad',
+          category_id: 'cat_dining',
+          amount: 90,
+          type: 'expense',
+          paid_by: 'user_dad',
+          transacted_at: '2026-11-06T12:00:00.000Z',
+          merchant: '星巴克',
+          note: '請同事喝咖啡',
+          is_settled: true,
+          created_at: '2026-11-06',
+        },
+      ];
+
+      const cloudInvoices: CloudInvoiceItem[] = [
+        {
+          invoiceNumber: 'EF-11112222',
+          invoiceDate: '2026-11-06',
+          sellerName: '全聯福利中心',
+          amount: 160,
+          carrierType: '3J0002',
+          carrierNo: '/ABC+123',
+          items: [
+            { name: '鮮乳', quantity: 1, unit_price: 92, amount: 92 },
+            { name: '洗選紅蛋', quantity: 1, unit_price: 68, amount: 68 },
+          ],
+        },
+        {
+          invoiceNumber: 'EF-33334444',
+          invoiceDate: '2026-11-06',
+          sellerName: '星巴克',
+          amount: 90,
+          carrierType: '3J0002',
+          carrierNo: '/ABC+123',
+          items: [
+            { name: '拿鐵', quantity: 2, unit_price: 45, amount: 90 },
+          ],
+        },
+      ];
+
+      const result = processCloudInvoicesSync(
+        cloudInvoices,
+        existingTransactions,
+        mockAccounts,
+        mockMembers,
+        'user_dad',
+        'ledger_1',
+        'cat_general'
+      );
+
+      const emptyUpdated = result.updatedTransactions.find(u => u.transactionId === 'tx_empty_note');
+      const manualUpdated = result.updatedTransactions.find(u => u.transactionId === 'tx_manual_note');
+
+      expect(emptyUpdated?.updates.note).toBe('鮮乳 $92、洗選紅蛋 $68');
+      expect(emptyUpdated?.changedFields).toContain('品項備註');
+      expect(manualUpdated?.updates.note).toBeUndefined();
+      expect(manualUpdated?.changedFields).not.toContain('品項備註');
+
+      expect(formatCloudInvoiceItemsToNote([
+        { name: '拿鐵', quantity: 2, unit_price: 45, amount: 90 },
+        { name: '123', quantity: 1, unit_price: 10, amount: 10 },
+      ])).toBe('拿鐵 x2 $90');
     });
 
     it('若已存在過去匯入過之發票，應自動標記防重且不重複新增', () => {
@@ -651,6 +736,7 @@ describe('cloudInvoiceSync 智慧比對引擎測試', () => {
         '店家名稱',
         '扣款卡片',
         '商品明細',
+        '品項備註',
       ]);
     });
   });

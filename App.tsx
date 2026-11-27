@@ -38,6 +38,8 @@ import {
   BillsScreen,
   FamilySettingsScreen,
 } from './src/screens';
+import type { CloudSyncViewMode } from './src/screens/TransactionsScreen';
+import type { CloudSyncChangeFilter } from './src/lib/cloudInvoiceSync';
 
 // Modals
 import {
@@ -162,6 +164,8 @@ const AppContent: React.FC = () => {
   const [filterMemberId, setFilterMemberId] = useState<string>(() => currentUser?.id || 'all');
   const [hasManuallySelectedMember, setHasManuallySelectedMember] = useState<boolean>(false);
   const [filterModalType, setFilterModalType] = useState<'month' | 'member' | null>(null);
+  const [cloudSyncViewMode, setCloudSyncViewMode] = useState<CloudSyncViewMode>('off');
+  const [cloudSyncTypeFilter, setCloudSyncTypeFilter] = useState<CloudSyncChangeFilter>('all');
 
   // 統計月份狀態
   const [analyticsMonth, setAnalyticsMonth] = useState<string>(() => {
@@ -1064,6 +1068,10 @@ const AppContent: React.FC = () => {
             }}
             onViewImage={handleViewImage}
             onOpenFilterModal={(type) => setFilterModalType(type)}
+            cloudSyncViewMode={cloudSyncViewMode}
+            setCloudSyncViewMode={setCloudSyncViewMode}
+            cloudSyncTypeFilter={cloudSyncTypeFilter}
+            setCloudSyncTypeFilter={setCloudSyncTypeFilter}
           />
         )}
 
@@ -1409,6 +1417,18 @@ const AppContent: React.FC = () => {
           returnToCloudInvoiceSyncRef.current = true;
           setCloudInvoiceModalVisible(false);
           setEditingTransaction(tx);
+        }}
+        onOpenAllCloudSyncedInLedger={(initialFilter) => {
+          returnToCloudInvoiceSyncRef.current = false;
+          returnToInvoiceLotteryRef.current = false;
+          setCloudInvoiceModalVisible(false);
+          setInvoiceLotteryModalVisible(false);
+          setInvoiceLotteryTargetPeriod(undefined);
+          setActiveTab('transactions');
+          setFilterMonth('all');
+          setFilterMemberId('all');
+          setCloudSyncTypeFilter(initialFilter || 'all');
+          setCloudSyncViewMode('all');
         }}
       />
 

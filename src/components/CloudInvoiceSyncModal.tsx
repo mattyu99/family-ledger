@@ -37,12 +37,16 @@ interface CloudInvoiceSyncModalProps {
   visible: boolean;
   onClose: () => void;
   onSelectTransaction?: (transaction: Transaction) => void;
+  onOpenAllCloudSyncedInLedger?: (initialFilter?: CloudSyncChangeFilter) => void;
 }
+
+const RECENT_PREVIEW_LIMIT = 10;
 
 export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
   visible,
   onClose,
   onSelectTransaction,
+  onOpenAllCloudSyncedInLedger,
 }) => {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
@@ -148,7 +152,7 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
         }
       }
     } else {
-      baseItems = allRecent.slice(0, 50).map(item => ({
+      baseItems = allRecent.map(item => ({
         transaction: item.transaction,
         syncType: item.syncType,
         syncedAt: item.syncedAt,
@@ -169,7 +173,9 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
       totalCount: baseItems.length,
       matchedCount,
       importedCount,
-      filteredItems,
+      filteredTotalCount: filteredItems.length,
+      hasMoreItems: filteredItems.length > RECENT_PREVIEW_LIMIT,
+      filteredItems: filteredItems.slice(0, RECENT_PREVIEW_LIMIT),
     };
   }, [transactions, lastImportSession, showAllRecentHistory, syncHistoryTab]);
 
@@ -1127,14 +1133,16 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                       maxFontSizeMultiplier={1.08}
                     >
                       {syncedChangeListState.isSessionMode
-                        ? `📋 本次同步異動清單 (${syncedChangeListState.totalCount} 筆)`
-                        : `🕒 近期雲端同步異動 (${syncedChangeListState.totalCount} 筆)`}
+                        ? `📋 本次同步異動清單 (共 ${syncedChangeListState.totalCount} 筆)`
+                        : `🕒 近期雲端同步異動 (共 ${syncedChangeListState.totalCount} 筆)`}
                     </Text>
                     <Text
                       style={[styles.syncChangesSubtitle, { color: colors.text.secondary }]}
                       maxFontSizeMultiplier={1.08}
                     >
-                      跨月份集中列出新增與補齊發票的交易，點擊即可查看明細或調整分類
+                      {syncedChangeListState.hasMoreItems
+                        ? `預覽最新 ${RECENT_PREVIEW_LIMIT} 筆，點擊下方按鈕可至明細頁檢視與搜尋全部紀錄`
+                        : '跨月份集中列出新增與補齊發票的交易，點擊即可查看明細或調整分類'}
                     </Text>
                   </View>
                   {syncedChangeListState.sessionHasItems && syncedChangeListState.totalRecentCount > syncedChangeListState.totalCount && (
@@ -1352,6 +1360,32 @@ export const CloudInvoiceSyncModal: React.FC<CloudInvoiceSyncModalProps> = ({
                       </TouchableOpacity>
                     );
                   })
+                )}
+
+                {onOpenAllCloudSyncedInLedger && syncedChangeListState.totalRecentCount > 0 && (
+                  <TouchableOpacity
+                    style={[
+                      styles.viewAllInLedgerBtn,
+                      {
+                        backgroundColor: isDark ? 'rgba(14, 165, 233, 0.2)' : '#E0F2FE',
+                        borderColor: isDark ? 'rgba(56, 189, 248, 0.45)' : '#7DD3FC',
+                      },
+                    ]}
+                    onPress={() => onOpenAllCloudSyncedInLedger(syncHistoryTab)}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={[styles.viewAllInLedgerBtnText, { color: isDark ? '#7DD3FC' : '#0369A1' }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.82}
+                      maxFontSizeMultiplier={1.08}
+                    >
+                      {syncedChangeListState.hasMoreItems
+                        ? `🔍 到明細頁查看全部 (${syncedChangeListState.filteredTotalCount > 0 ? syncedChangeListState.filteredTotalCount : syncedChangeListState.totalRecentCount} 筆) ➔`
+                        : `🔍 到明細頁集中管理 (${syncedChangeListState.totalRecentCount} 筆) ➔`}
+                    </Text>
+                  </TouchableOpacity>
                 )}
               </View>
             )}
@@ -2608,5 +2642,18 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     marginTop: 4,
+  },
+  viewAllInLedgerBtn: {
+    marginTop: 6,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewAllInLedgerBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
   },
 });

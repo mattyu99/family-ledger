@@ -1,4 +1,4 @@
-export type CardBadgeKey = 'invoice' | 'memo' | 'image';
+export type CardBadgeKey = 'invoice' | 'memo' | 'image' | 'cloud_sync_type';
 
 export type CardBadgeLevel = 'full' | 'compact' | 'icon';
 
