@@ -2962,7 +2962,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.background.modal,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: SCREEN_HEIGHT * 0.92,
+    maxHeight: '90%',
     minHeight: SCREEN_HEIGHT * 0.6,
     flex: 1,
     paddingTop: 16,

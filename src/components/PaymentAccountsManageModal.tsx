@@ -509,7 +509,7 @@ export const PaymentAccountsManageModal: React.FC<PaymentAccountsManageModalProp
             styles.sheet,
             {
               height: effectiveSheetHeight,
-              maxHeight: Platform.OS === 'web' ? ('92vh' as any) : Math.round(windowHeight * 0.94),
+              maxHeight: Platform.OS === 'web' ? ('90vh' as any) : Math.round(windowHeight * 0.9),
             },
           ]}
         >

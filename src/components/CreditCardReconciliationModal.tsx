@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Dimensions,
   Platform,
   Alert,
   Linking,
@@ -51,8 +50,6 @@ import {
 } from '../lib/bankIssuer';
 import { buildPassbookEntries } from '../lib/statementPassbook';
 import { stripInvoiceTag } from '../lib/invoice';
-
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 /** 將深色十六進位色碼在深色模式下提亮為高對比柔和色彩 */
 const resolveReadableDarkHex = (hex?: string, fallback = '#93C5FD'): string => {
@@ -2313,8 +2310,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.background.modal,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    height: (Platform.OS === 'web' ? '92vh' : Math.round(SCREEN_HEIGHT * 0.92)) as any,
-    maxHeight: Math.round(SCREEN_HEIGHT * 0.94),
+    height: '90%',
+    maxHeight: '90%',
     paddingTop: 16,
     paddingHorizontal: 16,
     borderTopWidth: isDark ? 1 : 0,

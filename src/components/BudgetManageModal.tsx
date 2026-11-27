@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Dimensions,
   Platform,
   Switch,
   KeyboardAvoidingView,
@@ -16,8 +15,6 @@ import { useLedger } from '../context/LedgerContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import { getCategoryIcon } from '../lib/icons';
-
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const PRESET_AMOUNTS = [30000, 40000, 50000, 60000, 80000];
 const PRESET_THRESHOLDS = [70, 80, 90];
@@ -616,7 +613,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       backgroundColor: colors.background.modal,
       borderTopLeftRadius: 24,
       borderTopRightRadius: 24,
-      maxHeight: Math.round(SCREEN_HEIGHT * 0.9),
+      maxHeight: '90%',
       paddingTop: 16,
       borderTopWidth: isDark ? 1 : 0,
       borderTopColor: colors.border.default,

@@ -186,7 +186,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) =>
       backgroundColor: colors.background.modal,
       borderRadius: 20,
       padding: 20,
-      maxHeight: '88%',
+      maxHeight: '90%',
     },
     headerRow: {
       flexDirection: 'row',

@@ -7,7 +7,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Dimensions,
   Keyboard,
 } from 'react-native';
 import { Text, TextInput } from './common/Text';
@@ -19,8 +18,6 @@ import { ThemeColors } from '../theme/colors';
 import { parseMemoNote, decodeMemoMerchantTag } from '../lib/memo';
 import { formatMemoReminderBadge, getNextMemoReminderDate } from '../lib/lunar';
 import { HorizontalScrollView } from './HorizontalScrollView';
-
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const QUICK_COMPLETION_TAGS = ['已在全聯買齊', '已送達家中', '已繳費完成', '發票已留存', '無額外花費'];
 
@@ -307,7 +304,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.background.modal,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: Math.min(SCREEN_HEIGHT * 0.9, 760),
+    maxHeight: '90%',
     width: '100%',
     maxWidth: 600,
     alignSelf: 'center',

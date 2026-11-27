@@ -7,7 +7,6 @@ import {
   StyleSheet,
   ActivityIndicator,
   Platform,
-  Dimensions,
   } from 'react-native';
 import { Text } from './common/Text';
 import { showAlert } from '../lib/alert';
@@ -22,8 +21,6 @@ import {
 } from '../lib/cloudLedgerService';
 import { fetchDemoTryoutsStats, DemoTryoutsStats } from '../lib/demoAnalytics';
 import { SWEETHOME_LEDGER_ID } from '../constants/sweethomeDemo';
-
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const EMPTY_KNOWN_LEDGERS: any[] = [];
 
@@ -347,8 +344,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     borderTopRightRadius: 24,
     paddingTop: 16,
     paddingHorizontal: 16,
-    height: Platform.OS === 'web' ? '92%' : Math.min(SCREEN_HEIGHT * 0.92, 840),
-    maxHeight: '94%',
+    height: '90%',
+    maxHeight: '90%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -6 },
     shadowOpacity: 0.15,

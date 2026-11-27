@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Dimensions,
   Platform,
   Linking,
   Animated,
@@ -37,8 +36,6 @@ import {
 import { GroupOrderAppendModal } from './GroupOrderAppendModal';
 import { GroupOrderCounterModal } from './GroupOrderCounterModal';
 import { MemoItemReplyModal } from './MemoItemReplyModal';
-
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 type TodoTab = 'all' | 'today' | 'upcoming' | 'undated' | 'completed';
 type TodoScope = 'all' | 'mine';
@@ -1271,8 +1268,8 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.background.modal,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    height: Math.min(SCREEN_HEIGHT * 0.94, 880),
-    maxHeight: Math.min(SCREEN_HEIGHT * 0.94, 880),
+    height: '90%',
+    maxHeight: '90%',
     paddingTop: 16,
     paddingBottom: Platform.OS === 'ios' ? 32 : 16,
     paddingHorizontal: 16,

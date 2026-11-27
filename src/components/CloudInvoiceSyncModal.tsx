@@ -1886,7 +1886,7 @@ const getStyles = (isDark: boolean, colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    maxHeight: '92%',
+    maxHeight: '90%',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingTop: 16,
